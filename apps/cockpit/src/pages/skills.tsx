@@ -65,7 +65,6 @@ function skillsLine(t: Translate, skills: number, proposals: number): string {
 
 function StateBadge({ status }: { status: string }) {
   const { t } = useI18n();
-  // "archived" is how the engine says a skill is switched off.
   return (
     <StatusBadge
       state={status === "archived" ? "disabled" : status}
@@ -74,14 +73,12 @@ function StateBadge({ status }: { status: string }) {
   );
 }
 
-/** A row of the one list: a skill, or a proposal still open. */
 type SkillRow = { kind: "skill"; skill: Skill } | { kind: "proposal"; candidate: SkillCandidate };
 
 function rowTitle(row: SkillRow): string {
   return row.kind === "skill" ? row.skill.title : row.candidate.title;
 }
 
-/** A skill's own page; a proposal has none — it opens in place, in its sheet. */
 function rowAddress(row: SkillRow): string | null {
   return row.kind === "skill" ? recordHref("skills", row.skill.id) : null;
 }
@@ -96,7 +93,6 @@ function rowScopeKey(row: SkillRow) {
     : skillScopeKey(row.candidate.scope);
 }
 
-/** Skills (V7): the rules SubKit follows, and the ones it proposes to follow. */
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -131,8 +127,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   };
   const title = t("nav.skills");
 
-  // One list, as a reader expects it: the open proposals first, then the
-  // skills themselves. A proposal is decided in its sheet, after reading it.
   const columns = useMemo<CockpitColumn<SkillRow>[]>(() => {
     const column = tableColumns<SkillRow>({ t, dateTime });
     return [
@@ -286,8 +280,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             hasActiveFilters={Boolean(q)}
             sorting={sorting}
             onSortingChange={setSorting}
-            // A proposal has no page of its own: its name opens its sheet here,
-            // where what it says is read and it is adopted or discarded.
             onOpen={(row) => {
               if (row.kind === "proposal") setProposalId(row.candidate.id);
               else void navigate(routerTarget(recordHref("skills", row.skill.id)));
@@ -314,7 +306,6 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   );
 }
 
-/** The record or its editor: `/skills/new` and `?mode=edit` open the editor. */
 export function SkillPage({ permissions }: { permissions: readonly string[] }): ReactNode {
   const { resourceId: id = "" } = useParams({ strict: false }) as { resourceId?: string };
   const searchStr: string = useRouterState({ select: (state) => state.location.searchStr });
@@ -340,7 +331,6 @@ function editHref(id: string): string {
   return `${absolute(recordHref("skills", id))}?mode=edit`;
 }
 
-/** One skill (V7d): its state, its rules as written, its facts folded away. */
 function SkillRecord({ id, permissions }: { id: string; permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -535,11 +525,6 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   );
 }
 
-/**
- * The editor: Markdown, written directly. Bearbeiten | Vorschau beside the
- * summary, and the save bar appears only once something changed — saving
- * takes effect at once.
- */
 function SkillEditor({ id, permissions }: { id: string; permissions: readonly string[] }) {
   const { t } = useI18n();
   const router = useRouter();

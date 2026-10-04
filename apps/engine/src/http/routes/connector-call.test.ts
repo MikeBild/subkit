@@ -1,9 +1,3 @@
-// HTTP integration tests for `POST /v1/connectors/{id}/call`.
-//
-// We stand up a per-suite mock HTTP server so the call surface lands a
-// real fetch with a real (test-fixture) credential applied — the same
-// end-to-end path the conversation tool exercises.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -25,7 +19,6 @@ let nextBody: string = JSON.stringify({ ok: true, data: { id: "cust_42" } });
 
 let connectorId: string;
 let connectorWithoutCredentialId: string;
-// Member with no permissions for the 403 path.
 let memberApiKey: string;
 
 beforeAll(async () => {
@@ -60,8 +53,6 @@ beforeAll(async () => {
   const port = typeof addr === "object" && addr ? addr.port : 0;
   mockBaseUrl = `http://127.0.0.1:${port}`;
 
-  // Persist a connector backed by the mock server. Stored credential is
-  // a static bearer token; the HTTP driver injects it on the wire.
   const created = await createConnector(
     {
       tenant_id: ctx.tenantId,
@@ -90,8 +81,6 @@ beforeAll(async () => {
     ctx.db,
   );
 
-  // A second connector without any credential row to exercise the 422
-  // `credential_required` envelope.
   const noCred = await createConnector(
     {
       tenant_id: ctx.tenantId,
@@ -109,8 +98,6 @@ beforeAll(async () => {
   );
   connectorWithoutCredentialId = noCred.id;
 
-  // Member with empty role for the 403 path. Built-in `member` already
-  // grants `connector:read`; we need a role with no permissions at all.
   const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-conn-call", "no permissions");
   const [member] = await ctx.db
     .insert(users)
@@ -140,8 +127,6 @@ afterAll(async () => {
       resolve();
     }),
   );
-  // Drain async audit inserts before tearing down the test db; without
-  // it `pool.end()` can hang on in-flight `api_key.used` writes.
   // allow-wall-clock: real ms required to flush postgres write queue.
   await new Promise((r) => setTimeout(r, 250));
   // allow-wall-clock: wall-clock cap on cleanup to avoid Bun's 5s afterAll timeout.
@@ -187,7 +172,6 @@ describe("POST /v1/connectors/{id}/call", () => {
     expect(body.metadata.path).toBe("/v1/customers");
     expect(typeof body.latency_ms).toBe("number");
 
-    // The mock saw the configured bearer token as Authorization header.
     expect(captured.length).toBe(1);
     expect(captured[0]?.headers.authorization).toBe("Bearer TEST-TOKEN-call-route");
     expect(captured[0]?.url).toContain("limit=1");
@@ -203,9 +187,6 @@ describe("POST /v1/connectors/{id}/call", () => {
       headers: adminAuth(),
       body: JSON.stringify({ method: "GET", path: "/v1/customers/nope" }),
     });
-    // The route is 200 (the call succeeded — the upstream just answered
-    // 4xx). The body carries the upstream status so the SDK caller can
-    // decide. This matches the call_connector tool's contract.
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       status: number;
@@ -215,9 +196,6 @@ describe("POST /v1/connectors/{id}/call", () => {
     };
     expect(body.status).toBe(404);
     expect(body.body.error.code).toBe("not_found");
-    // 404 is still inspectable (route 200, body carried), but the verdict is
-    // now `not_found` so the caller gets path/identifier guidance instead of
-    // mistaking a wrong path for a healthy empty result.
     expect(body.health).toBe("not_found");
     expect(body.health_suggestion).toContain("not a broken connector");
   });
@@ -240,7 +218,6 @@ describe("POST /v1/connectors/{id}/call", () => {
       next_best_actions?: string[];
     };
     expect(body.status).toBe(401);
-    // A rejected credential must be distinguishable from an empty result.
     expect(body.health).toBe("auth_failed");
     expect(body.next_best_actions).toContain("setup_connector_credentials");
     expect(typeof body.health_suggestion).toBe("string");
@@ -287,9 +264,6 @@ describe("POST /v1/connectors/{id}/call", () => {
   });
 
   test("422 — Postgres / non-HTTP driver returns driver_not_supported envelope", async () => {
-    // Persist a postgres connector. Its `dsn` is a stub since we never
-    // actually dispatch — the route should reject before reaching the
-    // driver.
     const pg = await createConnector(
       {
         tenant_id: ctx.tenantId,

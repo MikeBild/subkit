@@ -1,10 +1,3 @@
-// Authoring context block — rendered into the volatile cache segment of
-// the system prompt. Gives the model a structured, up-to-date view of the
-// current conversation's draft state so it can decide next actions without
-// replaying every prior tool result. Secrets are masked by an allowlist of
-// renderable fields — credential payloads, tokens, DSNs, and arbitrary
-// config blobs never reach the rendered text.
-
 import { normalizeDraftDocument } from "../../conversations/authoring-state.ts";
 import {
   nextQuestion as computeNextQuestion,
@@ -30,23 +23,12 @@ export interface AuthoringContextInput {
     tool_name: string;
     summary: string | null;
   } | null;
-  /**
-   * Summary of the latest document analysis pass for the connector
-   * being authored. Sourced from `connector_endpoint_schemas` rows.
-   * When null/empty, the section is omitted.
-   */
   document_analysis?: {
     source: string;
     confidence: number;
     endpoint_count: number;
     sample_endpoints?: Array<{ method: string; path: string; description?: string }>;
   } | null;
-  /**
-   * Caller's read on the user's expertise. The renderer uses it to pick
-   * one of three concise "tone" hints — `novice` asks for more scaffolding,
-   * `expert` suppresses hand-holding so the assistant stays out of the way.
-   * Missing hint → no tone line is emitted (same behaviour as before).
-   */
   expertise?: ExpertiseHint;
 }
 
@@ -110,8 +92,6 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
       const preview = da.sample_endpoints.slice(0, 6).map((e) => {
         const base = `${e.method} ${e.path}`;
         if (!e.description) return base;
-        // Truncate the description to bound the prompt-token budget; the
-        // full text is reachable via the connector's endpoint schema rows.
         const desc = e.description.length > 120 ? `${e.description.slice(0, 119)}…` : e.description;
         return `${base} — ${desc}`;
       });
@@ -328,14 +308,6 @@ function renderConnectorLines(draft: DraftDocument): string[] {
   return lines;
 }
 
-/**
- * Two URL shapes are valid in a request step. The LLM picks one without
- * guessing because both are listed up-front:
- *   • absolute http(s)://...
- *   • ${connector.<slug>.base_url}/<path> (resolved at execution time;
- *     also accepted by the workflow validator)
- * Or use `connector_id` + `path` — the driver merges base_url + path.
- */
 const REQUEST_STEP_URL_HINT_LINES = [
   "- Request step URL shapes (pick one, do not invent others):",
   "  - `connector_id` + `path` (relative path, base_url merged from the connector)",
@@ -371,21 +343,11 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
       `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
     );
   }
-  // Inline validation state: re-run the in-memory validator on every
-  // authoring turn so the LLM never has to call `validate_draft` to see
-  // current errors. The validator is pure-CPU (Zod parse + ref checks);
-  // running it per turn beats the round-trip cost of a dedicated
-  // tool call.
   const validationLines = renderValidationStateLines(workflow);
   if (validationLines.length > 0) {
     lines.push(...validationLines);
   }
   lines.push(...REQUEST_STEP_URL_HINT_LINES);
-  // P4: append a typed scope manifest so the LLM can cite real JSONata
-  // paths instead of guessing them. Without this the assistant cycles
-  // through `.data.resources`-style invented paths until the dry-run
-  // surfaces unresolved_identifier warnings — the session-79bf2cca
-  // failure mode.
   const stepTraces = draft.latest_preview?.step_traces ?? [];
   const manifest = renderScopeManifestLines(workflow.steps, stepTraces);
   if (manifest.length > 0) {
@@ -398,18 +360,6 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
   return lines;
 }
 
-/** Walk the draft's step DAG and produce a path-by-path manifest of what
- *  is reachable from a JSONata expression at any point in the workflow.
- *  Output is per-step:
- *    - `<step_id>` and `<step_id>.data` for plain steps
- *    - `<loop_id>.data` (array of iterations) plus the per-iteration
- *      body shape and the post-loop flat access form.
- *  When a `latest_preview.step_traces` entry exists for the loop's
- *  source step, the per-iteration item shape (top-level keys) is
- *  surfaced too — so `$item.<field>` is grounded in real data, not
- *  guessed. Skips steps with no `id` or unknown kinds. Truncates to a
- *  small number of steps to keep the prompt-token cost bounded; the
- *  active authoring focus is on the few most recent steps. */
 function renderScopeManifestLines(
   rawSteps: unknown[],
   stepTraces: WorkflowDraftStepPreview[],
@@ -457,10 +407,6 @@ function renderScopeManifestLines(
         );
       }
       if (firstBodyId) {
-        // The "flat access" form: jsonata implicitly maps over arrays,
-        // so $scope.<loop>.data.<body>.data flattens iterations into a
-        // single array. This is what users typically want — telling
-        // them up-front saves a guess.
         lines.push(
           `    - flat access across all iterations: $scope.${id}.data.${firstBodyId}.data`,
         );
@@ -470,14 +416,6 @@ function renderScopeManifestLines(
       lines.push(
         `  - $scope.${id}.data: ${describeStepDataType(kind, step)} (envelope at $scope.${id})`,
       );
-      // Closed authoring loop: when a dry-run recorded this step's real
-      // output, surface the concrete reachable JSONata paths so the LLM
-      // cites them verbatim instead of guessing `.data.<field>` from
-      // documentation. This is the same data `suggest_jsonata_paths`
-      // returns, delivered inline on every turn after a preview — the
-      // fix for the path-guessing spiral. Concrete array indices and
-      // the `[*]` marker are dropped: the LLM should project with
-      // JSONata fanout (`edges.node`), not a literal index.
       const trace = tracesById.get(id);
       const rawPaths = trace?.scope_at_step?.available_paths ?? [];
       const concretePaths = rawPaths.filter((rel) => !/\[\d+\]|\[\*\]/.test(rel));
@@ -499,20 +437,12 @@ function renderScopeManifestLines(
 }
 
 interface LoopItemShape {
-  /** The source step id the loop iterates over, if extractable. */
   source: string | null;
-  /** Top-level keys of the first iteration item (truncated). */
   keys: string[];
-  /** Non-null when the item is a primitive (e.g. "string", "number"). */
   primitive: string | null;
-  /** True when a step_traces entry exists for the source step. */
   previewed: boolean;
 }
 
-/** Find the source step's recorded `output_preview`, navigate into the
- *  array the loop iterates, and return the top-level keys of element 0.
- *  Returns empty `keys` and `primitive: null` when the source can't be
- *  identified or no preview is recorded yet. */
 function describeLoopItemShape(
   loop: Record<string, unknown>,
   tracesById: Map<string, WorkflowDraftStepPreview>,
@@ -523,9 +453,6 @@ function describeLoopItemShape(
   const refs = extractStepIdReferences(sourceExpr);
   let sourceStep = refs[0] ?? null;
   if (!sourceStep && dataSelector) {
-    // data_selector uses bare `sourceData.<step>.…` form rather than
-    // $scope-prefixed paths, so the regex above won't catch it. Pull
-    // the first identifier after `sourceData.` instead.
     const m = /sourceData\.([a-zA-Z_][\w-]*)/.exec(dataSelector);
     sourceStep = m?.[1] ?? null;
   }
@@ -567,17 +494,7 @@ function shapeOfItem(item: unknown, source: string, previewed: boolean): LoopIte
   };
 }
 
-/** Best-effort walk into an `output_preview` to find the array (or
- *  array-ish object) the loop iterates over. Honors path segments after
- *  the source step id in either `$scope.<step>.data.x.y` or
- *  `sourceData.<step>.x.y` form. Returns the located value, or the
- *  whole output_preview when no further path is given. */
 function resolveLoopItemSample(output: unknown, sourceExpr: string, sourceStep: string): unknown {
-  // Strip the $scope.<step> / sourceData.<step> prefix and walk the
-  // remaining dot-path. JSONata `data` segments fold into the preview's
-  // root (the preview IS the step's `data`), so a path of
-  // `$scope.list_projects.data.projects` becomes `.projects` against
-  // the preview body.
   const escaped = sourceStep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const stripRe = new RegExp(
     `(?:\\$scope|\\$steps|sourceData|\\$\\{\\s*scope)\\.${escaped}(?:\\.data)?`,
@@ -585,9 +502,6 @@ function resolveLoopItemSample(output: unknown, sourceExpr: string, sourceStep: 
   const m = stripRe.exec(sourceExpr);
   if (!m) return output;
   const rest = sourceExpr.slice(m.index + m[0].length);
-  // Take only the dotted-identifier suffix; stop at the first non-path
-  // char (operator, paren, bracket) so JSONata expressions like
-  // `$scope.list.data.items[*]` collapse to `.items`.
   const pathMatch = /^((?:\.[a-zA-Z_][\w-]*)+)/.exec(rest);
   const captured = pathMatch?.[1];
   if (!captured) return output;
@@ -595,18 +509,13 @@ function resolveLoopItemSample(output: unknown, sourceExpr: string, sourceStep: 
   let cur: unknown = output;
   for (const seg of segments) {
     if (cur === null || cur === undefined) return undefined;
-    if (Array.isArray(cur)) return undefined; // ambiguous mid-path
+    if (Array.isArray(cur)) return undefined;
     if (typeof cur !== "object") return undefined;
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
 }
 
-/** Re-run the workflow validator in-process and emit a compact
- *  "Current validation state" section. Eliminates the per-turn round
- *  trip the LLM used to spend on `validate_draft`. Errors are capped
- *  at 8 entries to bound the prompt budget — the validator returns the
- *  full list to the LLM via `validate_draft` if it ever needs it. */
 function renderValidationStateLines(workflow: unknown): string[] {
   const result = validateWorkflowDef(workflow, { allowForwardRefs: true });
   if (result.ok && result.errors.length === 0) {
@@ -627,9 +536,6 @@ function renderValidationStateLines(workflow: unknown): string[] {
   return lines;
 }
 
-/** Best-effort label for `<step_id>.data`'s runtime type, derived from
- *  the step kind and its declared shape. The labels match the wording
- *  the data-handling skill uses so the LLM can correlate. */
 function describeStepDataType(kind: string, step: Record<string, unknown>): string {
   switch (kind) {
     case "request":

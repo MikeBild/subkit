@@ -37,7 +37,6 @@ describe("docs-ingestion/budget", () => {
   });
 
   test("PageTooLargeError on an oversized markdown content string", async () => {
-    // Build > 3 MB of content. Use "a b c d e" repeated for valid tokens.
     const oversized = "a b c d e ".repeat(Math.ceil(PER_PAGE_BYTES / 10) + 1000);
     await expect(
       ingestDocs(

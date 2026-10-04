@@ -1,12 +1,3 @@
-// GET /v1/operator/health-digest — deterministic operator health digest.
-//
-// The `sk` REPL fetches this at startup and renders it as a colored
-// first assistant turn ("I noticed N issues… walk through fixes?"),
-// then injects the structured payload as conversation context so the
-// LLM can act on the failures. Server-computed, LLM-free, tenant-scoped.
-// Gated by `stats:read` — it's a runtime-status read, same family as
-// /v1/stats/*.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { PREVIEW_CLASSIFICATIONS } from "../../../execution/index.ts";
 import { buildOperatorHealthDigest } from "../../../operator/health-digest.ts";
@@ -15,7 +6,6 @@ import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { AttentionV1Schema } from "./attention-schema.ts";
 
-/** The classifier's class behind a failure group's `cause`. */
 const CauseClass = z.enum(PREVIEW_CLASSIFICATIONS).openapi("FailureCauseClass");
 
 const FailureGroupSchema = z
@@ -70,8 +60,6 @@ const DigestResponse = z
     headline: z.string(),
     failure_groups: z.array(FailureGroupSchema),
     patch_candidates: z.object({
-      // Exact count of open patch decisions (proposed AND reviewable on the
-      // current workflow version); `items` is capped.
       open: z.number().int(),
       items: z.array(PatchSchema),
     }),

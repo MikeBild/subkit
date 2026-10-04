@@ -8,7 +8,6 @@ import {
   rejectDiscoveryArtifact,
 } from "../service.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let testDb: TestDb;
@@ -51,7 +50,6 @@ describe.skipIf(skip)("discovery/edge-cases", () => {
       },
       testDb.db,
     );
-    // Both files should be recorded (one may have status=failed)
     expect(run.file_count).toBe(2);
   });
 

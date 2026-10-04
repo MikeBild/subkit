@@ -1,20 +1,3 @@
-// Egress audit + trace propagation + URL scrubbing for connector calls.
-//
-// Single source of truth for the three concerns the docs claim hold for
-// every outbound call:
-//   - SOC 2 CC9 / docs/07:85: "All egress is logged in the audit log with
-//     request source, caller identity, and outcome." → CONNECTOR_INVOKED.
-//   - GDPR Art. 32 / SOC 2 CC6.7 / audit/types.ts:187: credential reads
-//     during use are forensically tracked. → CREDENTIAL_ACCESSED.
-//   - Distributed tracing / W3C Trace Context: outbound HTTP carries a
-//     `traceparent` header so external systems can correlate.
-//
-// URL scrubbing for log lines is also colocated here because the same
-// hot paths that touch the URL also need to log it without leaking
-// `?token=…` query params.
-//
-// This module is the wrapper layer; it does not own the driver protocol.
-
 import { auditAwait } from "../audit/audit.ts";
 import type { AuditActorType, AuditEntry } from "../audit/types.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -38,12 +21,6 @@ const SENSITIVE_QUERY_KEYS = new Set([
   "x-amz-credential",
 ]);
 
-/**
- * Return a string form of `url` with sensitive query params replaced by
- * `***`. Keeps host + path intact so logs stay useful for triage. Accepts
- * either a `URL` instance or a string; on parse failure returns the
- * input unchanged so we never throw from a logging call site.
- */
 export function scrubUrl(url: URL | string): string {
   let parsed: URL;
   try {
@@ -61,18 +38,6 @@ export function scrubUrl(url: URL | string): string {
   return mutated ? parsed.toString() : parsed.toString();
 }
 
-/**
- * Inject W3C Trace Context (`traceparent`) into an outbound header bag
- * if the current async context has a trace_id and one is not already
- * set. Format: `00-<32hex>-<16hex>-01` per
- * https://www.w3.org/TR/trace-context/#traceparent-header.
- *
- * The engine's trace_id is 12 hex chars (collision-resistant within a
- * burst, not globally unique). We pad to 32 hex by left-zero-filling so
- * the header is well-formed; downstream tracing backends will treat the
- * shortened ids as a single trace within a request lifetime, which is
- * the level of correlation we can offer today.
- */
 export function injectTraceContext(headers: Record<string, string>): void {
   if (headers.traceparent || headers.Traceparent) return;
   const ctx = getContext();
@@ -97,18 +62,10 @@ export interface EgressInput {
   connector_id: string;
   connector_slug: string;
   driver: EgressKind;
-  /** When the egress used a stored credential, the credential row id.
-   *  `null` for `auth_type=none` connectors. */
   credential_id: string | null;
-  /** HTTP method, S3 verb, or GraphQL operation. */
   operation?: string;
-  /** Target URL or endpoint. Sensitive query params are scrubbed before
-   *  logging; the unscrubbed value never leaves this module. */
   url?: URL | string | null;
-  /** Identifies what triggered the call so the audit row can answer
-   *  "which surface invoked this connector?". */
   source?: "execution" | "test" | "tool" | "scheduler";
-  /** Foreign-key handles so the audit row joins back to the run. */
   execution_id?: string | null;
   workflow_id?: string | null;
   step_id?: string | null;
@@ -117,36 +74,11 @@ export interface EgressInput {
 export interface EgressOutcome {
   status?: number | null;
   bytes_in?: number | null;
-  /**
-   * Logical outcome of the call, independent of transport success.
-   * A GraphQL response can carry `body.errors` on HTTP 200 — the call
-   * reached the wire but the operation failed. When `extract` reports
-   * `ok: false` the `CONNECTOR_INVOKED` audit row records
-   * `result: "error"` so the audit trail's outcome stays honest
-   * (SOC 2 CC9). Omitted / `true` means a normal success.
-   */
   ok?: boolean;
-  /** Short reason surfaced on the audit row when `ok` is false. */
   reason?: string;
-  /**
-   * id of the resource a write call created/sent, lifted from the
-   * response body (e.g. a Gmail message id from `POST .../messages/send`).
-   * Makes "WHAT did this outbound call produce?" answerable from the audit
-   * row. Populated by the driver's `extract` callback via
-   * `extractCreatedResourceId`; scrubbed like every other metadata field.
-   */
   created_resource_id?: string;
 }
 
-/**
- * generic created/sent-resource id for the `CONNECTOR_INVOKED` audit
- * row. Only meaningful for writes (non-idempotent methods create or send),
- * so reads/deletes return nothing. Pulls the FIRST id-like top-level field
- * of the response body — the cross-vendor convention for a create/send
- * response (`id`, `messageId`, `name`, …). Deliberately generic: no vendor
- * string is hardcoded, so it covers Gmail message ids, Stripe object ids,
- * Linear issue ids, etc. without special-casing any one.
- */
 const CREATED_RESOURCE_ID_KEYS = ["id", "messageId", "message_id", "name", "key", "uuid"] as const;
 export function extractCreatedResourceId(method: string, body: unknown): string | undefined {
   const m = method.toUpperCase();
@@ -163,19 +95,6 @@ export function extractCreatedResourceId(method: string, body: unknown): string 
 
 type EgressAuditWriter = (entry: Partial<AuditEntry>) => Promise<unknown>;
 
-/**
- * Wrap a driver invocation with audit + accounting. Emits exactly one
- * `CONNECTOR_INVOKED` row per call (success or failure) and one
- * `CREDENTIAL_ACCESSED` row when a credential was used.
- *
- * `extract` is an optional projection from the driver's raw result to
- * the egress outcome shape (status code, bytes read). The driver result
- * is returned verbatim; the wrapper does not transform it.
- *
- * The wrapper does not retry, does not log secrets (URL is scrubbed
- * before being placed on the audit metadata), and never swallows the
- * underlying error — it re-throws after recording the failure.
- */
 export async function withEgressAudit<T>(
   input: EgressInput,
   fn: () => Promise<T>,
@@ -212,16 +131,9 @@ export async function withEgressAudit<T>(
   try {
     const result = await fn();
     const outcome = extract?.(result) ?? {};
-    // Drivers that did not know their credential id at call time can
-    // surface it on the result envelope (`{credential_id}`). Honour it
-    // post-call so the audit trail still names the secret that was used.
     const lateCredentialId = readCredentialId(result);
     if (!input.credential_id && lateCredentialId) await emitCredentialAccess(lateCredentialId);
 
-    // A driver can reach the wire and still fail logically — a GraphQL
-    // response with `body.errors` on HTTP 200 is the canonical case.
-    // `extract` reports that via `ok: false`; the audit outcome must
-    // reflect it, not the bare "fn() did not throw".
     const logicalFailure = outcome.ok === false;
     const latencyMs = Date.now() - start;
     await auditWriter({

@@ -1,5 +1,3 @@
-// GitHub native verifier tests.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { handleInbound } from "../service.ts";

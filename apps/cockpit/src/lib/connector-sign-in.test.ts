@@ -16,7 +16,6 @@ describe("a connector's own sign-in", () => {
     expect(
       connectorSignIn({ driver: "http", sign_in: { kind: "oauth", start: "/v1/x/oauth/start" } }),
     ).toEqual({ kind: "oauth", start: "/v1/x/oauth/start" });
-    // No statement, no sign-in — even for an oauth2 connector.
     expect(connectorSignIn({ driver: "mcp", auth_type: "oauth2" })).toBeNull();
     expect(connectorSignIn({ sign_in: null })).toBeNull();
     expect(connectorSignIn({ sign_in: { kind: "other", start: "/a" } })).toBeNull();
@@ -32,7 +31,6 @@ describe("a connector's own sign-in", () => {
     );
     expect(signInFailure(refused("oauth_start_failed"), de)).toBe(de("signIn.failed.service"));
     expect(signInFailure(refused("mcp_authorization_failed"), de)).toBe(de("signIn.failed.mcp"));
-    // A reason this build has no line for is said in the engine's words.
     expect(signInFailure(refused("bad_request", "no client_id"), de)).toBe(
       "Anmeldung nicht gestartet: no client_id",
     );

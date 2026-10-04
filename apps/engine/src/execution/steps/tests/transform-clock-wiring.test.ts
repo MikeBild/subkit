@@ -1,12 +1,3 @@
-// Wiring guard — the transform STEP must thread the
-// execution's deterministic clock/seed into the QuickJS sandbox so that
-// `sk.now()` returns the execution's fixed `started_at` and `sk.uuid()`
-// derives from a stable `${execution_id}:${step.id}` seed — i.e. a run
-// REPLAYED with the same (execution_id, step.id) reproduces byte-identical
-// ids. The pure runtime/stdlib tests prove `runJs` honors a `clock`; this
-// test proves the transform driver actually PASSES one (the gap that would
-// let `sk.now()` silently read the epoch).
-
 import { describe, expect, test } from "bun:test";
 import { RunLlmBudget } from "../../../llm/accounting/index.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
@@ -19,9 +10,6 @@ const STEP_ID = "clock_probe";
 
 function ctx(scope: Record<string, unknown>): StepRunContext {
   return {
-    // Empty DB stub: a non-offloaded transform scope never touches the DB.
-    // If this stub starts crashing at runtime, the test is correctly telling
-    // you runTransformStep now needs DB access — wire a real test DB then.
     // biome-ignore lint/suspicious/noExplicitAny: minimal stub; no DB needed for a non-offloaded scope
     db: {} as any,
     tenant_id: "t-transform",
@@ -64,7 +52,6 @@ describe("runTransformStep · deterministic clock/id wiring", () => {
   test("sk.now() equals ctx.started_at.getTime()", async () => {
     const [now] = await runProbe();
     expect(now).toBe(TEST_NOW_MS);
-    // Specifically NOT the silent-epoch fallback.
     expect(now).not.toBe(0);
   });
 
@@ -72,7 +59,6 @@ describe("runTransformStep · deterministic clock/id wiring", () => {
     const [, uuidA] = await runProbe();
     const [, uuidB] = await runProbe();
     expect(uuidA).toBe(uuidB);
-    // Sanity: it is a v4-shaped uuid, not an empty/constant fallback.
     expect(uuidA).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 });

@@ -1,29 +1,4 @@
-// Tenant-scoped file resolver.
-//
-// SPOOL_THRESHOLD_BYTES: files larger than this are buffered to a tmpfile
-// before dispatch so the driver receives a seekable file-backed stream
-// instead of an in-memory iterable. 50 MB is the size at which the spool
-// cost is cheaper than re-buffering the iterable per consumer.
 export const SPOOL_THRESHOLD_BYTES = 50 * 1024 * 1024;
-
-//
-// Two pieces:
-//
-//   1. `requireFileForTenant(db, tenant_id, fid)` — the single
-//      tenant-isolation chokepoint. Every consumer that wants the
-//      bytes (or metadata) for a file id routes through here. A
-//      cross-tenant fid throws `not_found`; the route layer maps that
-//      to HTTP 404 so the existence of another tenant's file never
-//      leaks.
-//
-//   2. `walkAndResolve(value, ctx, cache)` — async recursive replacer
-//      that walks a JSON value and replaces every `{ "$file": "fid_..."
-//      }` leaf with a `ResolvedFile`. Used by the step-runner before
-//      dispatch (so connector drivers see `openRead`-able bodies, not
-//      reference shapes) and by the conversation-attachments analyser.
-//      The `cache` is per-call so a single step that mentions the same
-//      fid in multiple places (e.g. body + multipart) only reads the
-//      bytes once.
 
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -38,8 +13,6 @@ export interface ResolvedFile {
   filename: string;
   content_type: string | null;
   size_bytes: number;
-  /** Stream the bytes from the object store. Resolved lazily so a
-   *  resolver call that only inspects metadata doesn't pull bytes. */
   openRead(): Promise<AsyncIterable<Uint8Array>>;
 }
 
@@ -51,21 +24,11 @@ export class FileNotFoundError extends Error {
   }
 }
 
-/**
- * The tenant-isolation chokepoint. Returns the row when (tenant_id,
- * fid) match; throws `FileNotFoundError` otherwise. Soft-deleted rows
- * (`deleted_at IS NOT NULL`) are still returned on the read path so a
- * workflow run holding a `$file` ref mid-deletion can still see the
- * bytes during the cleanup-cron 7-day soft-delete grace window.
- */
 export async function requireFileForTenant(
   db: Db,
   tenant_id: string,
   fid: string,
 ): Promise<FileRow> {
-  // Wire format is `fid_<uuid>`; the DB column is `uuid`. Strip the
-  // `fid_` prefix before the SELECT so a wire-format ref doesn't
-  // miss against the typed column.
   const uuid = fid.startsWith("fid_") ? fid.slice("fid_".length) : fid;
   const rows = await db
     .select()
@@ -77,32 +40,22 @@ export async function requireFileForTenant(
   return row;
 }
 
-/** Storage-URI parser. New rows use `s3://`; legacy bridge imports may
- *  still carry `local://` or `memory://` locators while they are migrated. */
 export function storageKey(storage_uri: string): string {
-  // `memory://<key>` — legacy in-process journey-test fixtures.
   if (storage_uri.startsWith("memory://")) return storage_uri.slice("memory://".length);
   if (storage_uri.startsWith("local://")) {
-    // Drop any query params from a legacy presign locator.
     const q = storage_uri.indexOf("?");
     const tail =
       q >= 0 ? storage_uri.slice("local://".length, q) : storage_uri.slice("local://".length);
     return tail;
   }
   if (storage_uri.startsWith("s3://")) {
-    // `s3://<bucket>/<key>` — drop the bucket; the object store
-    // singleton already binds the bucket at construction.
     const rest = storage_uri.slice("s3://".length);
     const slash = rest.indexOf("/");
     return slash >= 0 ? rest.slice(slash + 1) : rest;
   }
-  // Unknown scheme — assume it's already a bare key.
   return storage_uri;
 }
 
-/** Build a `ResolvedFile` from a row. `openRead` is bound lazily so a
- *  resolver call that only needs metadata never touches the object
- *  store. */
 export function resolvedFromRow(row: FileRow): ResolvedFile {
   return {
     id: row.id,
@@ -119,12 +72,6 @@ export function resolvedFromRow(row: FileRow): ResolvedFile {
 export interface ResolverContext {
   db: Db;
   tenant_id: string;
-  /**
-   * Whether an `@attachment:<slug>` leaf may name the tenant's live file of
-   * that slug. A slug is a readable name anyone can guess, unlike a `fid_`
-   * id, so only a reference a workflow author wrote into the definition is
-   * trusted to name a file this way. Left out, a slug leaf is not found.
-   */
   resolve_references?: boolean;
 }
 
@@ -140,17 +87,6 @@ function isFileRef(value: unknown): value is FileRefLeaf {
   return typeof fid === "string" && fid.length > 0;
 }
 
-/**
- * Resolve a single `fid` (wire format or bare UUID) to a `ResolvedFile`
- * leaf. Tenant-scoped via `requireFileForTenant`; cross-tenant fids
- * throw `FileNotFoundError`. The optional `cache` lets the LLM
- * file-context assembler share lookups across multiple sibling resolves
- * within the same turn without paying for repeated row reads.
- *
- * Prefer this helper over hand-crafting a `{ $file: fid }` ref and
- * routing it through `walkAndResolve` — the cast that pattern requires
- * is unsafe and obscures the call shape.
- */
 export async function resolveSingleFid(
   db: Db,
   tenant_id: string,
@@ -167,15 +103,6 @@ export async function resolveSingleFid(
   return resolved;
 }
 
-/**
- * Recursively walk `value`, replacing every `{ "$file": "fid_..." }`
- * leaf with the corresponding `ResolvedFile`. Non-ref leaves pass
- * through. `cache` is a per-call `Map` so the same fid mentioned
- * multiple times in one step input only hits the DB + object store
- * once. Cross-tenant fids throw `FileNotFoundError`; the caller
- * decides how to surface it (HTTP 404 for the routes, run failure for
- * the step runner).
- */
 async function requireFileByReference(ctx: ResolverContext, ref: string): Promise<FileRow> {
   const slug = ctx.resolve_references ? parseFileReference(ref) : null;
   const row = slug ? await findFileBySlug(ctx.db, ctx.tenant_id, slug) : null;

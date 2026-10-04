@@ -19,13 +19,10 @@ function makeClient() {
   });
 }
 
-/** Candidate rows for the interactive connector picker (TTY only). */
 const fetchConnectorRows = async (client: EngineClient) => {
   const { items } = await client.listConnectors({ limit: 50 });
   return (items as Record<string, unknown>[]).map((r) => ({
     id: String(r.id),
-    // The engine exposes the connector's name as `display_name`; fall back to
-    // it so the picker/list never show a blank name column.
     name:
       typeof r.display_name === "string"
         ? r.display_name
@@ -42,10 +39,6 @@ const listCommand = defineCommand({
     limit: { type: "string", description: "Max rows", default: "50" },
     category: {
       type: "string",
-      // Naming the values is the whole point: a filter whose accepted set is
-      // only discoverable by reading the engine's schema is a filter nobody
-      // driving the CLI from a terminal or a script can use. The set is
-      // pinned to the engine's driver enum by connectors-driver-help.test.ts.
       description:
         "Only this catalog block. A connector's block is its driver: http, graphql, postgres, s3, mcp.",
     },
@@ -59,8 +52,6 @@ const listCommand = defineCommand({
         limit: Number(args.limit),
         ...(args.category ? { category: args.category } : {}),
       });
-      // The engine names connectors via `display_name`; surface it under the
-      // `name` column so the list never renders a blank name.
       const rows = (items as Record<string, unknown>[]).map((r) => ({
         ...r,
         name:
@@ -76,7 +67,6 @@ const listCommand = defineCommand({
       } else {
         emitGroupedList(!!args.json, columns, rows, categories);
       }
-      // Ground-truth cardinality: never present a page as the universe.
       if (!args.json) {
         const blocks =
           !args.flat && categories?.length
@@ -114,19 +104,6 @@ const getCommand = defineCommand({
   },
 });
 
-/**
- * Render a probe answer and decide the exit code.
- *
- * Shared by `probe` and `test` because they ask the engine the SAME question
- * and used to answer differently: both printed a bare `ok: false` — dropping
- * the `error_code` and `detail` the engine had already worked out — and `test`
- * additionally exited 0 on a failed probe while `probe` exited 1. An operator
- * comparing the two got a different verdict for one upstream answer.
- *
- * The reason matters most exactly when it is absent: a connector refused
- * because it is DISABLED and one refused because the remote is down both read
- * as `ok: false`, and the first is fixed by a switch while the second is not.
- */
 function renderProbeOutcome(
   result: Record<string, unknown> & { ok?: unknown },
   jsonMode: boolean,
@@ -142,8 +119,6 @@ function renderProbeOutcome(
     const detail = typeof result.detail === "string" ? result.detail : null;
     if (code) process.stdout.write(`${pc.dim("reason:")} ${code}\n`);
     if (detail) process.stdout.write(`${pc.dim("detail:")} ${detail}\n`);
-    // A deep link the provider console offers for this failure — the one case
-    // where the fix is a click rather than a config change.
     if (typeof result.provider_action_url === "string") {
       process.stdout.write(`${pc.dim("fix:")} ${result.provider_action_url}\n`);
     }
@@ -151,23 +126,11 @@ function renderProbeOutcome(
   return ok;
 }
 
-/** Read and parse a definition file, failing with a usage error rather than a
- *  stack trace when it is missing or not JSON. */
 async function readDefinitionFile(path: string): Promise<Record<string, unknown>> {
   const { readFileSync } = await import("node:fs");
   return JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
 }
 
-/**
- * Save a connector definition from a file: validate → probe → save.
- *
- * The same three-phase shape as `sk workflows create/update`, and for the same
- * reason — an author should learn that a definition is wrong before it exists,
- * not after. `--skip-checks` bypasses both checks and says so on stderr.
- *
- * The probe runs against the UNSAVED definition (`POST /v1/connectors/probe`),
- * so a connector that cannot reach its upstream is never created at all.
- */
 async function saveConnectorFromFile(
   target: { action: "create" } | { action: "patch"; id: string },
   args: Record<string, unknown>,
@@ -206,15 +169,6 @@ async function saveConnectorFromFile(
         process.exit(1);
       }
 
-      // A patch carries only the changed fields, so there is no complete
-      // definition to probe — the probe belongs to `create`, where the file IS
-      // the whole connector.
-      //
-      // An mcp definition is exempt: its session and credential are resolved by
-      // connector id, so there is nothing to probe until the row exists, and
-      // `POST /v1/connectors/probe` refuses it. Reporting that as a failed
-      // pre-flight would make an mcp connector uncreatable from a file for a
-      // check that could never have run.
       if (target.action === "create" && body.driver === "mcp") {
         await renderTaskList(
           [
@@ -253,9 +207,6 @@ async function saveConnectorFromFile(
             ],
             { jsonMode },
           );
-          // EX_DATAERR — same code `create --template` uses for a failed probe,
-          // so a script branches on "probe said no" identically either way.
-          // Nothing was created: the probe ran against the unsaved definition.
           process.exit(64);
         }
       }
@@ -317,9 +268,6 @@ const createCommand = defineCommand({
     json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
   async run({ args }) {
-    // Exactly one source. Accepting both would leave it ambiguous which one
-    // won; accepting neither used to be impossible because --template was
-    // required, and that requirement is what kept declarative authoring out.
     if (args.file && args.template) {
       process.stderr.write("error: pass either --template or --file, not both\n");
       process.exit(1);
@@ -376,12 +324,6 @@ const createCommand = defineCommand({
               },
             ];
             await renderTaskList(phases, { jsonMode });
-            // EX_DATAERR (sysexits.h 64): "the input data was incorrect in
-            // some way". The connector exists but its driver probe came
-            // back not-ok — distinct from a transport/auth failure (which
-            // exitCodeFor maps to 2) and a hard usage error (1). Pinning
-            // a stable code here lets CI scripts branch reliably on
-            // "probe-said-no" without parsing stderr.
             process.exit(64);
           }
         } catch (err) {
@@ -398,9 +340,6 @@ const createCommand = defineCommand({
           process.exit(exitCodeFor(err));
         }
       } else if (skip && !jsonMode) {
-        // Mirror the workflows.ts skip-checks reminder so the operator
-        // sees the same warning at both authoring surfaces. Gated on
-        // !jsonMode so the --json contract stays "stderr silent".
         process.stderr.write(
           `${pc.yellow("warning:")} --skip-checks active; no driver probe was run\n`,
         );
@@ -415,11 +354,6 @@ const createCommand = defineCommand({
       };
       await renderSummary(summary, { jsonMode });
 
-      // Next-step hint with the fresh id filled in, so the operator
-      // never has to copy-paste it out of the JSON body. OAuth-backed
-      // connectors need the browser handshake before anything else;
-      // everything else is ready for a workflow. Stderr, suppressed in
-      // jsonMode (the --json contract keeps stderr silent).
       if (!jsonMode && typeof created.id === "string") {
         const authType = typeof created.auth_type === "string" ? created.auth_type : "";
         const next = authType.startsWith("oauth")
@@ -433,9 +367,6 @@ const createCommand = defineCommand({
   },
 });
 
-// probe is an alias for `test` that mirrors the conversational authoring
-// vocabulary: "inspect -> validate -> probe -> save". The CLI exposes both
-// names so operators can follow the same mental model from either surface.
 const probeCommand = defineCommand({
   meta: {
     name: "probe",
@@ -469,9 +400,6 @@ const probeCommand = defineCommand({
           ...(credential ? { credential } : {}),
         });
         printJson(result);
-        // Same exit-code contract as the saved-connector probe: a reachable
-        // upstream is 0, an unreachable one is non-zero, so a script branches
-        // the same way whether the connector exists yet or not.
         if (!result.ok) process.exit(1);
         return;
       }
@@ -553,16 +481,12 @@ const importCommand = defineCommand({
     const client = makeClient();
     const jsonMode = Boolean(args.json);
     try {
-      // A spec can be a file, a URL, or a literal curl command. Reading it as a
-      // file only when one exists keeps all three working through one flag.
       const specArg = String(args.spec);
       let content = specArg;
       try {
         const { existsSync, readFileSync } = await import("node:fs");
         if (existsSync(specArg)) content = readFileSync(specArg, "utf8");
-      } catch {
-        // Not a readable path — treat the argument as inline content.
-      }
+      } catch {}
 
       const imported = await client.importConnectorFromSpec({
         source: String(args.source),
@@ -573,8 +497,6 @@ const importCommand = defineCommand({
 
       const draft = imported.draft;
       if (!draft) {
-        // The import matched an existing connector instead of producing a
-        // draft. Show what it found rather than creating a duplicate.
         printJson(imported);
         return;
       }
@@ -582,8 +504,6 @@ const importCommand = defineCommand({
       printJson(draft);
       if (args["dry-run"]) return;
 
-      // Show, then ask. The whole reason import returns a draft instead of
-      // saving is that a definition should pass in front of a person first.
       if (!args.yes) {
         if (!process.stdin.isTTY) {
           process.stderr.write(
@@ -613,8 +533,6 @@ const importCommand = defineCommand({
   },
 });
 
-// inspect is an alias for `get` that mirrors the conversational authoring
-// vocabulary. Returns the current connector resource body.
 const inspectCommand = defineCommand({
   meta: {
     name: "inspect",
@@ -638,11 +556,6 @@ const inspectCommand = defineCommand({
   },
 });
 
-/** Enable / disable / mcp-authorize / mcp-inspect — the driver-dispatched
- *  operations. `enable` and `disable` work for every driver. The two mcp
- *  verbs are sent whatever the connector's driver is: the refusal an
- *  operator reads then comes from the engine, rather than from a driver
- *  check this client would have to keep in step with the engine's. */
 const enableCommand = defineCommand({
   meta: { name: "enable", description: "Enable a connector (operator on switch)" },
   args: {
@@ -866,8 +779,6 @@ const testCommand = defineCommand({
         fetch: () => fetchConnectorRows(client),
       });
       const result = await client.testConnector(id);
-      // Same renderer and same exit contract as `probe`: these two names ask
-      // the engine one question, so they must not answer it differently.
       if (!renderProbeOutcome(result, jsonMode)) process.exit(1);
     } catch (err) {
       reportCommandError(err, { json: jsonMode });

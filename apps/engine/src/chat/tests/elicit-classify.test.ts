@@ -1,10 +1,3 @@
-// Unit coverage for classifyChatElicitError — the graceful-degradation
-// mapping. Focus: a resumed chat turn that reaches for a tool absent from
-// the read-only palette (an authoring/write tool the model offered but chat
-// cannot run) must classify as `surface_unsupported` so the caller posts an
-// actionable redirect instead of rethrowing into the queue (which DLQs and
-// leaves the user with Google Chat's opaque error card).
-
 import { describe, expect, test } from "bun:test";
 import { NoSuchToolError } from "ai";
 import { classifyChatElicitError } from "../elicit-routing.ts";

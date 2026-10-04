@@ -1,7 +1,3 @@
-// Failing-step snapshot loaders shared by the repair loop
-// (service.ts) and the operator-facing candidate review surface
-// (candidate-review.ts).
-
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Executor } from "../db/client.ts";
@@ -12,24 +8,12 @@ import type { FailingStepSnapshot } from "./drift-detector.ts";
 import type { DryRunStep } from "./types.ts";
 
 export function buildDryRunStep(snapshot: FailingStepSnapshot): DryRunStep {
-  // `data_selector` / `response_filters` / `expression` come from the
-  // persisted step config (whoever upstream loaded the snapshot
-  // populated `snapshot.expression`); the typed RequestMeta union
-  // intentionally doesn't carry them. Future expansion: surface
-  // additional dry-run inputs on FailingStepSnapshot itself.
   const kind = snapshot.kind === "transform" ? "transform" : "request";
   const step: DryRunStep = { id: snapshot.id, kind };
   if (typeof snapshot.expression === "string") step.expression = snapshot.expression;
   return step;
 }
 
-/**
- * Parse the persisted JSONB request_meta payload through the strict
- * RequestMeta schema. Tolerant fall-through: rows persisted before
- * the typed-union migration, or with a future driver variant we
- * don't recognise here, return `null` rather than crashing the
- * repair loop.
- */
 export function parsePersistedRequestMeta(
   raw: unknown,
 ): import("../execution/types.ts").RequestMeta | null {
@@ -38,20 +22,6 @@ export function parsePersistedRequestMeta(
   return parsed.success ? (parsed.data as import("../execution/types.ts").RequestMeta) : null;
 }
 
-/**
- * Derive the shape/dedup endpoint key from a persisted request_meta —
- * the SAME key the driver's recordSuccessShape call writes, so the
- * repair loop's `getLatestShape` lookup and the patch-candidate
- * endpoint dedup land on the identical identity:
- *
- *   http      → `${method} ${pathname}`            (dispatch.ts http sites)
- *   graphql   → graphqlEndpointKey(operation_name) (operation-aware)
- *   s3        → `S3 ${method} ${prefix ?? key ?? "/"}`
- *   postgres  → `SQL ${query_preview.slice(0, 80)}`
- *
- * Null when the meta variant carries no stable anchor (connectorless,
- * error, missing operation_name).
- */
 export function endpointKeyFromRequestMeta(
   meta: import("../execution/types.ts").RequestMeta | null,
 ): string | null {
@@ -76,18 +46,6 @@ export function endpointKeyFromRequestMeta(
   }
 }
 
-/**
- * Resolve the DAG step id behind a failing *execution* step.
- *
- * `execution_steps.step_key` is written by the engine as the DAG step's own
- * `id`, so it is the link between "this run broke" and "this line of the
- * workflow definition". Both the operator preview and the apply path resolve
- * their target through here, which is what keeps the previewed diff and the
- * applied version pointed at the same step.
- *
- * Null when the id does not resolve — the caller must treat that as "no step
- * to patch", never as "patch a guess".
- */
 export async function loadWorkflowStepKey(
   tenant_id: string,
   execution_step_id: string,
@@ -102,17 +60,6 @@ export async function loadWorkflowStepKey(
   return rows[0]?.step_key ?? null;
 }
 
-/**
- * Resolve the definition step a candidate's diff points at.
- *
- * Two anchors, in order of directness:
- *   1. `workflow_step_id` — the definition step recorded at proposal time. A
- *      proactive signal has this and nothing else.
- *   2. `step_id` — the failing *execution* row, one hop from the definition.
- *
- * Preview and apply resolve through this one function so the operator can
- * never review a different step than the one the apply path rewrites.
- */
 export async function resolveCandidateStepKey(
   tenant_id: string,
   diff: Record<string, unknown>,

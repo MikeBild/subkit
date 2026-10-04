@@ -14,12 +14,6 @@ export const ScheduleEntry = z
     admission_hold: ScheduleAdmissionHold,
     workflow_slug: z.string().nullable(),
     workflow_name: z.string().nullable(),
-    /**
-     * A saved draft that is not the version this schedule runs. Null when there
-     * is none. A held schedule whose repair is already prepared reads as
-     * unapprovable otherwise: the reader judges the running version, whose
-     * problems are exactly why it is held, and the fix stays invisible.
-     */
     prepared_version_id: z.string().nullable(),
     cron: z.string(),
     timezone: z.string(),

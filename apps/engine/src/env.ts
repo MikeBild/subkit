@@ -1,14 +1,5 @@
 import { z } from "zod";
 
-// Minimal process-bootstrap env vars. Runtime settings and versioned secrets
-// live in PostgreSQL; OBJECT_STORAGE_* and PORT are revision-1 seed bindings
-// only and never override an existing database revision.
-//
-// MASTER_KEY stays in env so it can be injected from a secret manager
-// into the container without ever touching a plaintext file.
-//
-// NODE_ENV and ENGINE_LISTEN_HOST are process bindings read before the
-// runtime snapshot can be activated.
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   MASTER_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, "MASTER_KEY must be 64 hex chars (32 bytes)"),
@@ -23,23 +14,15 @@ const EnvSchema = z.object({
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   OBJECT_STORAGE_SESSION_TOKEN: z.string().min(1).optional(),
   OBJECT_STORAGE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
-  // Compatibility alias for self-hosted deployments created before the
-  // Upraft `files` binding standardized OBJECT_STORAGE_PATH_STYLE.
   OBJECT_STORAGE_FORCE_PATH_STYLE: z.enum(["true", "false", "1", "0"]).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
 
-// Stale-env-var detection. Surface old runtime bindings so operators can
-// import them once through the settings API instead of silently depending on
-// process environment after revision 1.
 const RETIRED_ENV_KEYS = new Set([
-  // Server / logging — moved to log.* and server.*
   "LOG_LEVEL",
   "LOG_FORMAT",
-  // PORT and DATABASE_URL remain bootstrap bindings.
   "PUBLIC_BASE_URL",
-  // LLM — moved to llm.* and llm.providers.*
   "LLM_PROVIDER",
   "LLM_FALLBACK_PROVIDER",
   "SUMMARIZE_LLM_PROVIDER",
@@ -77,7 +60,6 @@ const RETIRED_ENV_KEYS = new Set([
   "VERTEX_PRIVATE_KEY",
   "GOOGLE_APPLICATION_CREDENTIALS",
   "LLM_OUTPUT_GUARD",
-  // Retired pre-object_store storage bindings.
   "S3_ENDPOINT",
   "S3_ACCESS_KEY",
   "S3_SECRET_KEY",
@@ -87,29 +69,23 @@ const RETIRED_ENV_KEYS = new Set([
   "S3_OFFLOAD_SECRET_KEY",
   "S3_OFFLOAD_ENDPOINT",
   "S3_OFFLOAD_KEY_PREFIX",
-  // Chat platforms — moved to platform.*
   "SLACK_SIGNING_SECRET",
   "SLACK_CLIENT_ID",
   "SLACK_CLIENT_SECRET",
   "TEAMS_APP_ID",
   "TEAMS_APP_PASSWORD",
   "GOOGLE_CHAT_PROJECT_ID",
-  // Auth session — moved to auth.session.*
   "SESSION_SECRET",
-  // Observability — moved to observability.*
   "LANGFUSE_SECRET_KEY",
   "LANGFUSE_PUBLIC_KEY",
   "LANGFUSE_BASE_URL",
   "OTEL_EXPORTER_OTLP_ENDPOINT",
   "OTEL_SERVICE_NAME",
-  // MCP — moved to mcp.*
   "SK_MCP_READ_ONLY",
-  // Egress / connectors — moved to egress.* and spec.*
   "EGRESS_GUARD",
   "SUBKIT_LLM_PROVIDER_HOSTS_EXTRA",
   "SUBKIT_ALLOW_PRIVATE_SPEC_FETCH",
   "SUBKIT_PUBLIC_BASE_URL",
-  // Feature flags
   "LLM_CONTEXT_1M",
   "SK_ERROR_RING_SIZE",
   "SKIP_DOCKER",
@@ -124,9 +100,6 @@ function parseEnv(): Env {
     throw new Error(`Invalid environment:\n${issues}`);
   }
 
-  // Warn on retired env vars that operators may still be setting.
-  // Output via stderr (bypassing the structured logger) because env
-  // resolution can run before the logger is wired in some test paths.
   const retired = Object.keys(process.env).filter((k) => RETIRED_ENV_KEYS.has(k));
   if (retired.length > 0 && process.env.NODE_ENV !== "test") {
     process.stderr.write(
@@ -145,8 +118,6 @@ function resolveEnv(): Env {
   return _resolved;
 }
 
-// Lazy facade — same shape as v3.4 so existing call sites keep
-// working. Only the bootstrap allowlist above is exposed.
 export const env: Env = new Proxy({} as Env, {
   get(_target, prop) {
     return resolveEnv()[prop as keyof Env];

@@ -1,22 +1,8 @@
-// Fix 6(b) regression — the `array[4]<null>` incident (session
-// 784c1b02). A loop's `output_preview` must NEVER render `null` for an
-// iteration that actually ran:
-//
-//   - offloaded iteration payloads collapse to the labeled
-//     `[offloaded:…]` stub (`previewOffloadRefs`), and
-//   - the per-step LLM truncation pass replaces over-budget iteration
-//     objects with a labeled `[omitted: … get_raw_result(…)]` stub —
-//     not bare `null`, which the model read as "the loop collapsed all
-//     body outputs to null" and restructured a working workflow.
-
 import { describe, expect, it } from "bun:test";
 import { previewOffloadRefs } from "../../../execution/offload-rehydrate.ts";
 import { summarizeScopeShape } from "../../../workflows/scope-shape.ts";
 import { clearRawStore, truncateStepPreviewForLlm } from "../truncate.ts";
 
-/** Four fat iteration objects, shaped like the loop accumulator
- *  (`{ <body_step_id>: envelope }`), each well over the per-step
- *  preview budget so pass-2 has to shrink every one of them. */
 function fatLoopPreview(): unknown[] {
   return Array.from({ length: 4 }, (_, i) => ({
     fetch_detail: {
@@ -54,18 +40,12 @@ describe("loop output_preview never renders null for an iteration that ran", () 
     const r = truncateStepPreviewForLlm(fatLoopPreview());
     expect(r.truncated).toBe(true);
     const arr = r.data as unknown[];
-    // No iteration entry may be null — that's the array[4]<null> bug.
     for (const entry of arr) {
       expect(entry).not.toBeNull();
     }
-    // Deep check: pass-2 must not have nulled ANY branch (the envelope
-    // `error: null` fields are legitimately null; pass-2 only touches
-    // object/string branches >64 chars, so a surviving null can only be
-    // a pre-existing data null).
     const serialized = JSON.stringify(arr);
     expect(serialized).toContain("[omitted:");
     expect(serialized).toContain("get_raw_result");
-    // The shape summary the model reads must not be `array[4]<null>`.
     expect(
       summarizeScopeShape(
         arr.filter(
@@ -125,13 +105,9 @@ describe("loop output_preview never renders null for an iteration that ran", () 
     const previewed = previewOffloadRefs(iterationResults) as Array<{
       fetch_detail: { data: unknown };
     }>;
-    // Offloaded entry → labeled primitive stub with redacted locator.
     expect(previewed[0]!.fetch_detail.data).toBe("[offloaded:s3://…:1048576B]");
-    // Non-offloaded body results pass through faithfully.
     expect(previewed[1]!.fetch_detail.data).toEqual({ id: "droplet-1", inline: true });
-    // No nulls anywhere for iterations that ran (the envelope's own
-    // `error: null` is the only legitimate null).
     const nulls = collectNulls(previewed);
-    expect(nulls.length).toBe(2); // exactly the two error:null fields
+    expect(nulls.length).toBe(2);
   });
 });

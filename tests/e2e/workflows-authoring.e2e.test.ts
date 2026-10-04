@@ -1,14 +1,3 @@
-// Workflow authoring surface — create, validate, version, restore, audit.
-//
-// Drives the HTTP authoring contract (create → history → update → restore)
-// plus the standalone validation utility, and proves the create writes an
-// immutable audit row (workflow.created). Complements the conversation /
-// mock-pinned authoring flows in authoring-regressions + guided-authoring
-// (which own the inspect→validate→preview→commit tool loop) by pinning the
-// plain REST authoring lifecycle.
-//
-// LLM: mock — boot hermetic; no model call on this REST path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { defaultTransformSteps, seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
@@ -47,13 +36,11 @@ describe("create → history → update → restore", () => {
     const api = apiClient(env);
     const { id, slug } = await seedWorkflow(env, { description: "v1" });
 
-    // History has at least the initial version.
     const hist1 = await api.get<{ items?: unknown[] } | unknown[]>(`/v1/workflows/${id}/history`);
     expect(hist1.status).toBe(200);
     const versions1 = Array.isArray(hist1.body) ? hist1.body : (hist1.body.items ?? []);
     expect(versions1.length).toBeGreaterThanOrEqual(1);
 
-    // Update produces a new version.
     const update = await api.put<{ id: string }>(`/v1/workflows/${id}`, {
       name: `Seed ${slug}`,
       slug,
@@ -74,11 +61,9 @@ describe("create → history → update → restore", () => {
     const versions2 = Array.isArray(hist2.body) ? hist2.body : (hist2.body.items ?? []);
     expect(versions2.length).toBeGreaterThan(versions1.length);
 
-    // Restore the first version.
     const restore = await api.post(`/v1/workflows/${id}/restore/1`, {});
     expect([200, 201]).toContain(restore.status);
 
-    // The create is in the audit trail.
     const audit = await api.get<unknown>("/v1/audit-log?limit=50");
     expect(audit.status).toBe(200);
     expect(JSON.stringify(audit.body)).toContain("workflow.created");

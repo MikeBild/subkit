@@ -2,26 +2,11 @@ import type { ToolPart } from "@/components/ai-elements/tool";
 import { asToolPart, toolNameOf, withToolResult } from "@/lib/tool-parts";
 import { toolTier } from "@/lib/tool-presentation";
 
-// How one assistant turn's parts become rows on screen.
-//
-// A turn is a flat list of text, tool calls and tool results. Rendered
-// one-to-one it reads as a wall of identical cards, because most of those calls
-// are reads the agent made to orient itself. Grouping consecutive background
-// reads into a single run is what turns that wall back into a story: the agent
-// looked around, then it did the thing.
-
 export type TranscriptGroup =
   | { kind: "part"; part: unknown; index: number }
   | { kind: "tool"; tool: ToolPart; index: number }
   | { kind: "background"; tools: readonly ToolPart[]; index: number };
 
-/**
- * Walk a message's parts in order and emit render groups.
- *
- * Order is preserved exactly — a background run is collapsed only across
- * *adjacent* background calls, so a read that happens after a write still
- * appears after it. Anything that is not a tool call passes through untouched.
- */
 export function groupMessageParts(
   parts: readonly unknown[],
   pendingApprovalId: string | null = null,
@@ -38,8 +23,6 @@ export function groupMessageParts(
   parts.forEach((part, index) => {
     const called = asToolPart(part, pendingApprovalId);
     if (!called) {
-      // A `tool_result` part is merged into its call, never rendered on its
-      // own — it carries no text a person can read.
       if (isToolResultPart(part)) return;
       flush(index);
       groups.push({ kind: "part", part, index });
@@ -64,12 +47,6 @@ function isToolResultPart(part: unknown): boolean {
   );
 }
 
-/**
- * Collapse a background run into one line per distinct action.
- *
- * Six `get_workflow` calls are one fact — the agent read six workflows — and
- * six identical lines is the same wall the cards were, just quieter.
- */
 export function dedupeBackground(
   tools: readonly ToolPart[],
 ): Array<{ toolName: string; count: number; running: boolean }> {

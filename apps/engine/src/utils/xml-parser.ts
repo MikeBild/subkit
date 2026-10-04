@@ -1,26 +1,3 @@
-// Minimal XML serializer + parser used by the HTTP driver and the
-// request step. Lives here (not in `connectors/drivers/`) because both
-// callers are general-purpose body-shape utilities, not driver-specific
-// auth or pagination logic.
-//
-// The shape is symmetric: `serializeXmlBody(parseXmlBody(text))`
-// round-trips the structures the parser produces. Attribute keys are
-// prefixed `@`; the special `#text` key holds inter-element text.
-// Namespaces are tracked at parse time so `<foo xmlns="urn:bar"/>` is
-// rendered as `{ foo: { ... } }` rather than `{ "urn:bar:foo": ... }`.
-
-/**
- * Serialize a JS value into an XML document string. Symmetric with
- * `parseXmlBody` — feeding the parser's output back in produces the
- * same XML byte-for-byte (modulo whitespace).
- *
- * Conventions:
- * - Object keys whose name starts with `@` are rendered as attributes.
- * - The reserved key `#text` becomes element text content.
- * - Arrays under a single key produce repeated sibling elements.
- * - Top-level objects with one key use that key as the root element;
- *   otherwise the synthetic `<root>` wrapper is emitted.
- */
 export function serializeXmlBody(value: unknown): string {
   const escapeText = (s: string): string =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -65,25 +42,11 @@ export function serializeXmlBody(value: unknown): string {
   return renderNode("root", value);
 }
 
-/**
- * Parse an XML document into a JS value. Returns `null` on any parse
- * failure (callers fall back to raw text). Designed for HTTP response
- * bodies — handles XML declarations, comments, CDATA, processing
- * instructions, namespaces, and self-closing tags.
- *
- * Output is symmetric with `serializeXmlBody`: attributes appear as
- * `@`-prefixed keys, inter-element text as `#text`, repeated sibling
- * elements as arrays.
- */
 export function parseXmlBody(text: string): unknown {
   try {
     type XmlNode = string | { [k: string]: unknown };
     let i = 0;
     const len = text.length;
-    // Active namespace bindings stack — each frame is the prefix→URI
-    // map in scope at that depth. Pushed on element entry, popped on
-    // element exit. A `null` URI means "no namespace" (default
-    // namespace removed).
     const nsStack: Array<Record<string, string>> = [{}];
 
     const currentBindings = (): Record<string, string> => Object.assign({}, ...nsStack);
@@ -108,7 +71,6 @@ export function parseXmlBody(text: string): unknown {
       }
     };
 
-    // Drop XML declaration, DOCTYPE, comments, processing instructions.
     const consumeProlog = (): void => {
       while (i < len) {
         skipWhitespace();
@@ -163,9 +125,6 @@ export function parseXmlBody(text: string): unknown {
       const attrPart = spaceIdx < 0 ? "" : inner.slice(spaceIdx + 1);
       const rawAttrs = parseAttrs(attrPart);
 
-      // Pull xmlns declarations out of the attribute set + push a new
-      // namespace frame so child elements resolve through the right
-      // bindings.
       const newBindings: Record<string, string> = {};
       for (const [k, v] of Object.entries(rawAttrs)) {
         if (k === "@xmlns") {
@@ -216,11 +175,6 @@ export function parseXmlBody(text: string): unknown {
         if (text[i] === "<") {
           const child = parseElement();
           if (!child) return null;
-          // Collision-avoidance: if an attribute exists at @name and a
-          // child element shares the local name, rewrite the attribute
-          // key to @@name so the operator can disambiguate. The double-
-          // @ is parser-internal escape — `serializeXmlBody` reads it
-          // back as a single attribute name on round-trip.
           const collidingAttr = `@${child.name}`;
           if (collidingAttr in children) {
             children[`@@${child.name}`] = children[collidingAttr];

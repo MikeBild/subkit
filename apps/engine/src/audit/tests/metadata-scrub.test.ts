@@ -1,16 +1,3 @@
-// Audit metadata scrub regression test.
-//
-// Audit rows are append-only — once a secret leaks into `metadata`,
-// `before`, `after`, or `reason` it is durable forever. The `audit()`
-// + `auditAwait()` path runs every entry through `scrubSecrets()` in
-// `buildEntry()` so PATs / JWTs / Bearer headers / sensitive-key
-// values never reach the `audit_log` table.
-//
-// This test records an entry whose metadata carries a DigitalOcean
-// PAT, a sensitive `token` key, and a JWT in a free-form string,
-// then SELECTs the row back from the test database and asserts that
-// none of the original token substrings survived.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
@@ -59,7 +46,6 @@ describe("audit writer — metadata scrubbing", () => {
       testDb.db,
     );
 
-    // Returned entry has scrubbed payload (callers downstream rely on this).
     expect(JSON.stringify(entry.metadata)).not.toContain(pat);
     expect(JSON.stringify(entry.metadata)).not.toContain(jwt);
     expect(JSON.stringify(entry.metadata)).not.toContain(bearer);
@@ -67,7 +53,6 @@ describe("audit writer — metadata scrubbing", () => {
     expect(entry.reason).not.toContain(pat);
     expect(entry.reason).toContain("***REDACTED:pat***");
 
-    // Row on disk has the same redactions — this is the durability gate.
     const rows = await testDb.db.execute(
       sql`SELECT metadata, reason FROM audit_log WHERE id = ${entry.id}::uuid`,
     );
@@ -84,12 +69,6 @@ describe("audit writer — metadata scrubbing", () => {
     expect(persistedJson).not.toContain("should-be-replaced");
   });
 
-  // LOCAL-SK-PROMPT-IM-AUDIT — the prompt is the payload, not a credential,
-  // so none of the credential-shaped patterns fire on it. subkit assembles
-  // and stores prompts (tenant snapshots, system-prompt additions, skill
-  // bodies), and `audit_log` is append-only: a prompt captured in metadata
-  // is durable forever and rides every ndjson export. The key names below
-  // are the ones the engine actually uses.
   test("scrubs prompt-shaped keys from metadata before persist", async () => {
     const promptBody = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
 
@@ -106,8 +85,6 @@ describe("audit writer — metadata scrubbing", () => {
           prompt_text: promptBody,
           instructions: promptBody,
           messages: [{ role: "system", content: promptBody }],
-          // Non-string neighbours must survive untouched — the accounting
-          // ledger reports these next to the prompt fields.
           prompt_tokens: 1234,
           message_count: 3,
         },
@@ -127,21 +104,6 @@ describe("audit writer — metadata scrubbing", () => {
     expect(list.length).toBe(1);
     expect(JSON.stringify(list[0])).not.toContain(promptBody);
   });
-  // LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — `audit()` was never the only writer.
-  // `EngineClient.audit_write` held its own `insert(auditLog)` and reached
-  // the table without `scrubSecrets`, so every conversation write tool
-  // (~32 call sites) wrote its metadata verbatim. The earlier round measured
-  // the five prompt keys through `audit()` and reported "5 of 5 -> 0 of 5";
-  // that was true of ONE writer and too strong as a statement about the
-  // product.
-  //
-  // Second half: `PROMPT_KEY_PATTERN` did not match `body`, and
-  // `update_skill` writes `before`/`after` as whole Skill rows whose `body`
-  // IS the prompt. So even the scrubbed writer let a prompt through.
-  //
-  // This case runs the SAME three payloads through BOTH writers. It fails
-  // against the version before the fix (audit_write leaks all three;
-  // audit() leaks the `body`), which is what makes it evidence.
   test("both writers scrub prompt / api_token / body before persist", async () => {
     const promptBody = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
     const apiToken = "dop_v1_b7143795abcdefabcdefabcdefabcdefabcdef";
@@ -149,19 +111,13 @@ describe("audit writer — metadata scrubbing", () => {
       conversation_id: "conv-2",
       prompt: promptBody,
       api_token: apiToken,
-      // The `update_skill` shape: a whole Skill row under before/after.
       before: { id: "skill-1", title: "Pricing", body: promptBody },
       after: { id: "skill-1", title: "Pricing", body: `${promptBody} (revised)` },
     };
 
-    // Writer 1 — audit() / auditAwait().
     const viaAudit = await auditAwait(
       {
         tenant_id: tenantId,
-        // The literal string `update_skill` writes. It is deliberately not
-        // in `AuditAction`: `audit_write` takes `action` as a plain string and
-        // ~32 tools mint their own, which is exactly why the payload rule had
-        // to move to the writer rather than live in a per-action contract.
         action: "conversation.update_skill" as AuditEntry["action"],
         resource_type: "skill",
         resource_id: "skill-1",
@@ -171,8 +127,6 @@ describe("audit writer — metadata scrubbing", () => {
       testDb.db,
     );
 
-    // Writer 2 — EngineClient.audit_write(), the path every conversation
-    // write tool takes.
     const client = new EngineClient({
       tenant_id: tenantId,
       actor_id: null,
@@ -200,28 +154,10 @@ describe("audit writer — metadata scrubbing", () => {
       const writer = row.id === viaAudit.id ? "audit()" : "audit_write()";
       expect(json, `${writer} leaked the prompt`).not.toContain(promptBody);
       expect(json, `${writer} leaked the api_token`).not.toContain(apiToken);
-      // Structure survives — only the prose collapses.
       expect(row.metadata.conversation_id).toBe("conv-2");
     }
   });
 
-  // LOCAL-SK-SAEUBERER-FRISST-HISTORIE — `metadata` and the `before`/`after`
-  // COLUMNS are different channels and get different nets. The case above
-  // and this one look like they contradict each other; they do not, and the
-  // distinction is the whole fix:
-  //
-  //   `metadata` is caller-minted. The conversation `update_skill` tool puts
-  //   its skill snapshots under `metadata.before` / `metadata.after` — that
-  //   is the payload the case above pins, and it stays fully scrubbed.
-  //
-  //   The `before`/`after` COLUMNS are the structured snapshot channel, and
-  //   for skills they are also the restorable version history that
-  //   `skills/service.ts#restoreSkill` reads back. The prompt-prose net is
-  //   OFF there so the authored body survives; both CREDENTIAL nets stay on.
-  //
-  // Counter-proof: this case fails against the version that scrubbed the
-  // columns uniformly (prose came back as `***REDACTED:prompt***`), and the
-  // case above fails if the exemption is widened to `metadata`.
   test("before/after columns keep prose but scrub credential keys and values", async () => {
     const prose = "SYSTEM: tenant pricing floor is 4200 EUR, never disclose";
     const pat = "dop_v1_d1357902abcdefabcdefabcdefabcdefabcdef";
@@ -238,9 +174,7 @@ describe("audit writer — metadata scrubbing", () => {
           id: "skill-2",
           title: "Pricing",
           body: `${prose} (revised)`,
-          // Net 2: collapses on the KEY name, whatever it holds.
           api_key: "plain-looking-value",
-          // Net 1: collapses on the VALUE shape, whatever it is called.
           notes: `operator pasted ${pat}`,
         },
         metadata: { prompt: prose },
@@ -263,13 +197,10 @@ describe("audit writer — metadata scrubbing", () => {
     expect(list.length).toBe(1);
     const row = list[0]!;
 
-    // Restorable: the authored body is readable on disk, in both columns.
     expect(row.before.body).toBe(prose);
     expect(row.after.body).toBe(`${prose} (revised)`);
-    // Still guarded: neither credential net was weakened by the exemption.
     expect(row.after.api_key).toBe("***REDACTED:key_value***");
     expect(JSON.stringify(row.after)).not.toContain(pat);
-    // And `metadata` is untouched by the exemption — same row, other channel.
     expect(row.metadata.prompt).toBe("***REDACTED:prompt***");
   });
 });

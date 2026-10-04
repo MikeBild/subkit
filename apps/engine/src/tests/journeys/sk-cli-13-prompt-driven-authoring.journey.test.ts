@@ -1,29 +1,3 @@
-// User story: as an operator typing into the sk-cli prompt (the same
-// surface claude.ai drives via MCP), I send a natural-language
-// authoring request and the engine produces an inert workflow draft
-// without me touching workflow-shaped APIs by hand.
-//
-// This journey is the deterministic counterpart to the live browser
-// verification under `reference_claude_ai_browser_verification_flow.md`
-// and `scripts/verify-cli-authoring.sh`. The live test guards the
-// behavior end-to-end against a real LLM; this journey guards the same
-// behavior in CI via the mock provider's canned plan, so we catch the
-// regression class (run_workflow-in-idle loops, broken commit gates,
-// missing audit rows) on every push.
-//
-// Acceptance criteria:
-//
-//   AC1. Sending the canonical authoring prompt drives the conversation
-//        through the canned inner loop and lands the elicitation row
-//        the operator has to confirm.
-//   AC2. Confirming the elicitation saves the draft: conversation
-//        status returns to `active`, a `workflows` row has a draft version
-//        and no active version, and the canonical approval audit row is emitted.
-//   AC3. The tool-call sequence never includes `run_workflow` — the
-//        whole point of the 6.0.3 step-router fix is that an authoring
-//        loop on a not-yet-persisted draft cannot reach the execution
-//        tool.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import * as conversationsSvc from "../../conversations/service.ts";
@@ -63,9 +37,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
   }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1+AC2: prompt drives canned loop, confirmation saves an inert draft and audit", async () => {
-    // The exact prompt the operator types — matches the regex wired in
-    // apps/engine/src/conversations/service/create.ts that seeds the
-    // canned `cannedListPrivateGithubReposPlan`.
     const initial_message = `Create a new workflow named ${SLUG} in SubKit that lists my private GitHub repositories.`;
 
     const outcome = await createConversationWithTurn(
@@ -79,9 +50,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     );
     const conversation_id = outcome.conversation.id;
 
-    // AC3: the inner-loop tool sequence must not contain run_workflow.
-    // The canned plan also never proposes it, but assert anyway to
-    // catch a future drift in the plan or in the step router.
     const toolNames = outcome.result.events
       .filter(
         (e): e is Extract<typeof e, { type: "tool_call_start" }> => e.type === "tool_call_start",
@@ -89,9 +57,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
       .map((e) => e.tool);
     expect(toolNames).not.toContain("run_workflow");
 
-    // AC1: the canned plan ends in `ask_user_confirm` (kind = save_workflow_draft)
-    // which the loop renders as an elicitation row awaiting operator
-    // confirmation.
     const [pending] = await ctx.db
       .select({ id: conversationElicitations.id, status: conversationElicitations.status })
       .from(conversationElicitations)
@@ -100,7 +65,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     expect(pending).toBeDefined();
     expect(pending?.status).toBe("pending");
 
-    // AC2: confirm → inert draft → workflow row + audit row.
     await respondElicitationForTest(
       {
         tenant_id: ctx.tenantId,
@@ -130,11 +94,6 @@ describe("journey: sk-cli prompt-driven authoring", () => {
     expect(row).toBeDefined();
     expect(row?.draft).toBeTruthy();
     expect(row?.active).toBeNull();
-    // The canned plan doesn't currently override the slug; the engine
-    // derives it from the conversation summary. We just assert the row
-    // exists and has the workflow id the conversation points at — the
-    // strict slug-equality assertion belongs in a mock-provider unit
-    // test, not the journey.
     expect(row?.id).toBe(workflowId as string);
 
     expect(await countAudit("approval.approved", pending!.id)).toBe(1);

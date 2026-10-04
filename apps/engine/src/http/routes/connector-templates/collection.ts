@@ -1,8 +1,3 @@
-// Collection-level connector-template endpoints:
-//   GET    /v1/connector-templates                — list built-ins + tenant overrides
-//   POST   /v1/connector-templates                — admin: add a tenant override
-//   DELETE /v1/connector-templates/{id}           — admin: remove a tenant override
-
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -81,11 +76,6 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
         slug: body.slug,
         name: body.name,
         driver: body.driver,
-        // base_url / url_pattern / ingestion_source are nullable in the
-        // builtin-template Zod schema (per-tenant templates like AppSync
-        // don't ship a fixed URL); the DB column is still non-null today,
-        // so coalesce to empty string to keep tenant-template inserts
-        // working until the DB migration relaxes the constraint.
         base_url: body.base_url ?? "",
         auth_type: body.auth_type,
         oauth: body.oauth ?? null,

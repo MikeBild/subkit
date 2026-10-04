@@ -1,5 +1,3 @@
-// Single-object S3 calls use the client's signer, but retain control of the
-// actual dispatch so an approval cannot follow a redirect to a different target.
 import type { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { getDriverFetch } from "./fetch-seam.ts";
@@ -51,7 +49,6 @@ export async function executeBoundS3Request(p: {
   const key = params.path.replace(/^\//, "");
   let target: URL;
   if (client.accessKey) {
-    // This URL remains in memory. It is never returned, logged or persisted.
     target = new URL(await client.getPresignedUrl(verb, key, { expirySeconds: 60 }));
   } else {
     const host = client.pathStyle ? client.host : `${client.defaultBucket}.${client.host}`;

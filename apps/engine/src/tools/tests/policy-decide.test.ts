@@ -1,11 +1,3 @@
-// Policy-gate parity tests.
-//
-// policyDecide() must produce decisions structurally equivalent to
-// resolveToolMode() (the chat sdk-wrap path) on every surface.
-//
-// We test the pure decision here. Audit emission happens in
-// `tools/approval.ts` — those assertions live in dispatcher.test.ts.
-
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
 import {
@@ -40,7 +32,6 @@ describe("tools/policy.policyDecide (active parity)", () => {
   });
 
   test("draft_write on chat → proceed (current sdk-wrap behavior)", () => {
-    // dry_run_workflow is draft_write but no_confirm — sdk-wrap dispatches.
     expect(
       policyDecide({
         tool: "dry_run_workflow",
@@ -60,19 +51,10 @@ describe("tools/policy.policyDecide (active parity)", () => {
     });
     expect(decision.kind).toBe("not_available_on_surface");
     if (decision.kind === "not_available_on_surface") {
-      // Structured, actionable message naming the entry tool — the
-      // decision carries a sentence the client can surface verbatim
-      // rather than a bare `requires_conversation_surface` code.
       expect(decision.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
     }
   });
 
-  // Lock-step protection: `DRAFT_WRITE_MCP_UNAVAILABLE_REASON` is built
-  // by interpolating `MCP_ELICITATION_BLURB`, and the same blurb is woven
-  // into the `conversation_start` / `conversation_append` tool
-  // descriptions. Pinning the containment here means a future wording
-  // change to the blurb cannot silently desync the constant from its
-  // consumers — the assertion fails before the desync ships.
   test("DRAFT_WRITE_MCP_UNAVAILABLE_REASON embeds MCP_ELICITATION_BLURB verbatim", () => {
     expect(DRAFT_WRITE_MCP_UNAVAILABLE_REASON.includes(MCP_ELICITATION_BLURB)).toBe(true);
   });
@@ -174,7 +156,6 @@ describe("tools/policy.policyDecide (active parity)", () => {
     ).toEqual({ kind: "proceed" });
   });
 
-  // ---- Property-style parity sweep against resolveToolMode ----
   test("chat-surface decision mirrors resolveToolMode for representative tools", () => {
     const cases = [
       { tool: "test_connector", category: "tenant_read" as const, args: { connector_id: "x" } },
@@ -238,15 +219,6 @@ describe("tools/policy.policyDecide (active parity)", () => {
   });
 });
 
-// call_connector is category tenant_read but issues arbitrary side
-// effects. The prod incident: a direct PATCH to a Notion endpoint over
-// MCP executed with NO confirm gate, because call_connector was absent
-// from TOOL_POLICIES and fell back to the tenant_read default
-// (no_confirm). These pin the classifier fix: gate on the ACTUAL side
-// effect, and don't let permission_mode=auto auto-approve a write.
-//
-// Both surfaces enforce the same classification. Client hints cannot replace
-// the durable approval consumed by the dispatcher.
 describe("tools/policy.policyDecide — call_connector gates on real side effect", () => {
   const read = (extra: Record<string, unknown>) => ({ connector_id: "c", ...extra });
 
@@ -273,8 +245,6 @@ describe("tools/policy.policyDecide — call_connector gates on real side effect
       });
       expect(chatDecision.kind).toBe("needs_confirm");
       if (chatDecision.kind === "needs_confirm") {
-        // The envelope names the rule that was ENFORCED — here the
-        // side-effect classifier, not a fixed "destructive_action" label.
         expect(chatDecision.envelope.reason).toBe("computed_from_input");
       }
       expect(

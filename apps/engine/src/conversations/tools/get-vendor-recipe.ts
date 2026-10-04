@@ -1,22 +1,5 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: placeholder tokens (${engine_url}, ${plaintext_key}) are the literal prompt-surface the model reads — they must appear verbatim in description and notes.
 
-// get_vendor_recipe — look up a verified MCP-client / SDK config
-// recipe from the VendorRecipeManifest.
-//
-// Rationale: vendor-specific configuration shapes (Codex, Claude
-// Desktop, Cursor, Continue, Zed, Goose) must not live in the
-// conversation system prompt — that scales linearly with every new
-// client and duplicates data that already exists as structured JSON
-// in `apps/engine/src/conversations/seed/vendor-recipes/`. The tool
-// exposes the manifest to the model so it can fetch the canonical
-// config template by client name and emit it verbatim, rather than
-// inventing a shape that later drifts from the real client.
-//
-// The model's flow discipline (answer first, confirm before minting
-// an API key, never paste placeholders) lives in the base prompt's
-// TURN-ONE DISCIPLINE block and in the generic `mcp-server-setup`
-// skill — this tool only returns data.
-
 import { z } from "@hono/zod-openapi";
 import {
   getVendorRecipe,

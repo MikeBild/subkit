@@ -1,17 +1,3 @@
-// api-key auth provider — negative-path tests.
-//
-// The api-key provider has six rejection paths in resolve():
-// malformed token, prefix not found,
-// hash mismatch, revoked, not_before in the future, expired. The
-// existing http/tests/auth.test.ts covers malformed + missing cases
-// at the route layer; this file pins the provider-direct behavior for
-// the four time/state-bound rejections and the happy path.
-//
-// Malformed-token logging is split by prefix: a token WITHOUT the
-// wf_live_ prefix is a foreign credential (chat-platform JWT, OIDC
-// token, probe) and returns null SILENTLY; only a prefixed-but-corrupt
-// token WARN-logs malformed_token. The two tests below pin that split.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
@@ -94,7 +80,7 @@ describe("api-key provider — negative paths", () => {
 
   test("hash mismatch (right prefix, wrong tail) returns null", async () => {
     const issued = await seedKey({});
-    const wrongTail = "deadbeef".repeat(4); // 32 chars
+    const wrongTail = "deadbeef".repeat(4);
     const wrongToken = `${issued.plaintext.slice(0, 12)}${wrongTail}`;
     const provider = createApiKeyProvider({ db });
     const principal = await provider.resolve(bearerReq(wrongToken));
@@ -109,8 +95,7 @@ describe("api-key provider — negative paths", () => {
   });
 
   test("not_yet_active (not_before in the future) returns null", async () => {
-    // Stable far-future date so the comparison is deterministic.
-    const future = new Date(8_000_000_000_000); // year 2223
+    const future = new Date(8_000_000_000_000);
     const issued = await seedKey({ not_before: future });
     const provider = createApiKeyProvider({ db });
     expect(await provider.resolve(bearerReq(issued.plaintext))).toBeNull();
@@ -133,10 +118,6 @@ describe("api-key provider — negative paths", () => {
   });
 
   test("a foreign bearer token (no subkit prefix) returns null WITHOUT a malformed_token WARN", async () => {
-    // A chat-platform JWT / OIDC token / probe on any route currently
-    // hit the api-key provider and WARN-logged malformed_token on every
-    // request — the noise that fired on every /v1/chat/* call. A token
-    // that doesn't carry the wf_live_ prefix must fall through silently.
     const warnSpy = spyOn(logger, "warn");
     try {
       const provider = createApiKeyProvider({ db });
@@ -152,12 +133,10 @@ describe("api-key provider — negative paths", () => {
   });
 
   test("a prefixed-but-corrupt subkit key returns null AND still WARN-logs malformed_token", async () => {
-    // A token that carries the wf_live_ prefix but is too short to be a
-    // real key is a genuinely broken subkit key — keep surfacing it.
     const warnSpy = spyOn(logger, "warn");
     try {
       const provider = createApiKeyProvider({ db });
-      const corrupt = "wf_live_short"; // prefix present, tail too short to parse
+      const corrupt = "wf_live_short";
       expect(await provider.resolve(bearerReq(corrupt))).toBeNull();
       const deniedWarn = warnSpy.mock.calls.find(
         (c) => (c[0] as { action?: string; reason?: string })?.reason === "malformed_token",

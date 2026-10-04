@@ -1,7 +1,3 @@
-// Unit tests for `hydrateDraftFromSavedConnector` — the helper that
-// builds a re-issue-bound connector draft from an already-saved connector.
-// Pure function: no DB, no network.
-
 import { describe, expect, it } from "bun:test";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { hydrateDraftFromSavedConnector } from "./normalize.ts";
@@ -91,7 +87,6 @@ describe("hydrateDraftFromSavedConnector", () => {
   });
 
   it("sets config to empty object when the view has null config", () => {
-    // ConnectorView.config is typed non-null but guard defensively
     const view = makeView({ config: {} });
     const draft = hydrateDraftFromSavedConnector(view);
     expect(draft.config).toEqual({});
@@ -113,8 +108,6 @@ describe("hydrateDraftFromSavedConnector", () => {
     const draft = hydrateDraftFromSavedConnector(
       makeView({ operator_quirks: { auth: "send token as X-Token header" } }),
     );
-    // ConnectorDraftDocument has no operator_quirks field; the saved row keeps
-    // its quirks, so the re-issue draft intentionally drops them (no loss).
     expect("operator_quirks" in draft).toBe(false);
   });
 });

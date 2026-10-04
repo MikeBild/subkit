@@ -17,7 +17,6 @@ import {
 import type { KnowledgeSourceView } from "../types.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 const nextUuid = createDeterministicUuidFactory(0x6b10_20);
 
@@ -64,7 +63,6 @@ describe.skipIf(skip)("knowledge/service", () => {
     expect(result.bytes_total).toBeGreaterThan(0);
     createdId = result.id;
 
-    // Verify chunks persisted
     const chunks = await ctx.testDb.db
       .select()
       .from(knowledgeChunks)
@@ -72,7 +70,6 @@ describe.skipIf(skip)("knowledge/service", () => {
     expect(chunks.length).toBe(result.chunk_count);
     expect(chunks.every((c) => c.fingerprint.length > 0)).toBe(true);
 
-    // Verify audit
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -174,12 +171,10 @@ describe.skipIf(skip)("knowledge/service", () => {
   });
 
   test("ingestKnowledgeSource replaces chunks", async () => {
-    // Get current chunk count
     const before = await getKnowledgeSource(ctx.tenantId, createdId, ctx.testDb.db);
     expect(before).not.toBeNull();
     const _chunksBefore = before!.chunk_count;
 
-    // Re-ingest with different content
     const result = await ingestKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -198,10 +193,8 @@ describe.skipIf(skip)("knowledge/service", () => {
 
     expect(result.ingested_count).toBeGreaterThan(0);
 
-    // Verify old chunks were replaced
     const after = await getKnowledgeSource(ctx.tenantId, createdId, ctx.testDb.db);
     expect(after).not.toBeNull();
-    // Version should have changed
     expect(after!.version).not.toBe(before!.version);
   });
 
@@ -251,15 +244,12 @@ describe.skipIf(skip)("knowledge/service", () => {
     const deleted = await deleteKnowledgeSource(ctx.tenantId, createdId, null, ctx.testDb.db);
     expect(deleted).toBe(true);
 
-    // Should no longer appear in get
     const after = await getKnowledgeSource(ctx.tenantId, createdId, ctx.testDb.db);
     expect(after).toBeNull();
 
-    // Should no longer appear in list
     const list = await listKnowledgeSources({ tenant_id: ctx.tenantId }, ctx.testDb.db);
     expect(list.find((s) => s.id === createdId)).toBeUndefined();
 
-    // Audit should record the delete
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -282,10 +272,7 @@ describe.skipIf(skip)("knowledge/service", () => {
     expect(result).toBe(false);
   });
 
-  // --- tags -------------------------------------------------------------------
-
   test("createKnowledgeSource persists tags, deduped and capped to 20", async () => {
-    // 22 tags (including two case-insensitive dups) → expect 20 unique deduped
     const inputTags = [
       "alpha",
       "beta",
@@ -307,8 +294,8 @@ describe.skipIf(skip)("knowledge/service", () => {
       "sigma",
       "tau",
       "upsilon",
-      "Alpha", // dup of "alpha" (different case)
-      "extra", // pushed beyond cap of 20
+      "Alpha",
+      "extra",
     ];
 
     const source = await createKnowledgeSource(
@@ -321,12 +308,9 @@ describe.skipIf(skip)("knowledge/service", () => {
       ctx.testDb.db,
     );
 
-    // Dedup removes "Alpha" (dup of "alpha"), cap at 20 removes "extra".
     expect(source.tags.length).toBe(20);
     expect(source.tags.includes("alpha")).toBe(true);
-    // "Alpha" (dup) must not appear because dedupe keeps first-seen casing
     expect(source.tags.filter((t) => t.toLowerCase() === "alpha").length).toBe(1);
-    // "extra" beyond the cap must not appear
     expect(source.tags.includes("extra")).toBe(false);
   });
 
@@ -343,7 +327,6 @@ describe.skipIf(skip)("knowledge/service", () => {
 
     expect(source.tags).toEqual(["original", "tags"]);
 
-    // Update with a new set that has a duplicate
     const updated = (await updateKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -354,7 +337,6 @@ describe.skipIf(skip)("knowledge/service", () => {
       ctx.testDb.db,
     )) as KnowledgeSourceView;
 
-    // Must be a replacement — not the union, and deduped
     expect(updated.tags).toEqual(["new", "set"]);
     expect(updated.tags.includes("original")).toBe(false);
   });
@@ -380,7 +362,6 @@ describe.skipIf(skip)("knowledge/service", () => {
       ctx.testDb.db,
     )) as KnowledgeSourceView;
 
-    // All three "billing" variants collapse to one (first-seen wins)
     expect(updated.tags.filter((t) => t.toLowerCase() === "billing").length).toBe(1);
     expect(updated.tags).toEqual(["Billing", "api"]);
   });

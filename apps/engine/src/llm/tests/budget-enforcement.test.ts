@@ -1,14 +1,3 @@
-// GC6 — per-tenant monthly token budget enforcement.
-//
-// Seeds the tenant cap `tokens.monthly_budget = 1000` and
-// pre-inserts `llm_usage` rows totaling 995 tokens in the current
-// month. A subsequent `runGenerateFlow` for that tenant must raise
-// `LlmQuotaExhausted` because the projected prompt tokens (~1024+)
-// push the tenant over the cap.
-//
-// The test also directly exercises `checkAndDecrement` so the helper's
-// behaviour is pinned independently of the flow orchestration path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
@@ -26,8 +15,6 @@ beforeAll(async () => {
     llm_provider: "mock",
   });
   await setConfigKey("tokens.monthly_budget", 1000, { tenantId: ctx.tenant_id, force: true });
-  // Pre-seed 995 tokens of historic usage in the current month so the
-  // budget is deliberately near the edge.
   const bucket = currentMonthBucket();
   await ctx.testDb.db.insert(llmUsage).values([
     {

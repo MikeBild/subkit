@@ -1,13 +1,3 @@
-// Discovery-run conversation tools.
-//
-// Exposes the existing discovery service (apps/engine/src/discovery/service.ts)
-// as conversation tools so the LLM can walk discovery runs + artifacts
-// directly without leaving the conversation loop.
-//
-//   list_discovery_artifacts  (tenant_read)   list artifacts for a run
-//   get_discovery_artifact    (tenant_read)   fetch full draft + evidence
-//   approve_discovery_artifact (tenant_write) flip to approved (human gate)
-
 import { z } from "@hono/zod-openapi";
 import {
   approveDiscoveryArtifact,

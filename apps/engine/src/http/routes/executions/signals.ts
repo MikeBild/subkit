@@ -1,21 +1,3 @@
-// Inject a runtime signal into a wait-for-event step.
-//
-//   POST /v1/executions/{id}/signals[?token=<hmac>]
-//   Body:  { event: string, payload?: Record<string, unknown> }
-//
-// Authorization paths (in order):
-//
-//   1. `?token=<hmac>` query param. Used by external approvers (Slack
-//      button, email link). The token binds to (tenant_id, execution_id,
-//      event_name, expires_at) so a stolen URL is bounded by the
-//      wait_for_event timeout. Verified via `verifySignalToken` which
-//      reuses the existing rotating-HMAC primitive at
-//      `webhooks/outbound/signer.ts`. When a valid token is present,
-//      the route bypasses the standard RBAC middleware — the token IS
-//      the authorization.
-//   2. Standard bearer auth + the `execution:signal` permission.
-//      Internal callers (system accounts, ops dashboards) use this.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -60,10 +42,6 @@ const signalRoute = createRoute({
 });
 
 export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
-  // Conditional permission middleware: when a `?token=<hmac>` query is
-  // present we delay auth until the body is parsed so the token can be
-  // verified against the requested event_name. Otherwise fall through
-  // to the standard `execution:signal` permission check.
   app.use("/v1/executions/:id/signals", async (c, next) => {
     if (c.req.query("token")) return next();
     const id = c.req.param("id");
@@ -78,11 +56,6 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
 
     let tenant_id: string;
     if (token) {
-      // Token-mediated path. The execution row carries the canonical
-      // tenant_id; we look it up by primary key and verify the
-      // tenant binding against the signed HMAC token below — at this
-      // point in the flow the principal has not yet been established,
-      // so the lookup is intentionally cross-tenant.
       // tenant-filter:exempt — token-mediated lookup by globally-unique execution_id; tenant_id is read out and verified against the signed HMAC token below
       const rows = await db
         .select({ id: executions.id, tenant_id: executions.tenant_id })

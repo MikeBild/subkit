@@ -57,10 +57,6 @@ function buildExpectScript(steps: readonly ExpectStep[]): string {
     "set timeout 20",
     "match_max 100000",
     "log_user 1",
-    // No `--` after `-noecho`. expect's `spawn` rejects `--` with
-    // "bad flag" (error is non-fatal, the script continues, the
-    // spawn silently fails, downstream waits time out then exits
-    // 0). Paths with whitespace are already covered by tclQuote.
     `spawn -noecho ${tclQuote(SK_BIN)}`,
   ];
 
@@ -136,16 +132,6 @@ async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<str
   return visible;
 }
 
-// PTY harness fixed (spawn flag + ResizeBoundary 0×0 sanitization)
-// surfaces a separate, pre-existing problem in this file: the starter-
-// action expectations ("I want to connect a system.", "I want to build
-// a workflow.", etc.) reference LLM mock responses that don't exist
-// anywhere in the source — they were vacuously passing because the
-// harness had a `spawn --` bug that made every assertion run on empty
-// captured output. With the harness fixed, those tests now fail
-// honestly. Re-enabling them needs the engine-side starter scripts
-// to be seeded into the LLM mock provider, which is a separate piece
-// of work. Until that lands these stay opt-in via SK_RUN_STARTER_E2E=1.
 const SK_RUN_STARTER_E2E = process.env.SK_RUN_STARTER_E2E === "1";
 const skipStarter = !SK_RUN_STARTER_E2E;
 

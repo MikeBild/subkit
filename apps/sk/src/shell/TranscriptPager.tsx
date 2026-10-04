@@ -1,16 +1,3 @@
-// Full-screen transcript pager (Ctrl+T).
-//
-// Renders every cell with full output / full diff regardless of the
-// inline truncation state. Operator scrolls with arrow keys / page
-// up/down; Esc or Ctrl+T closes.
-//
-// Implementation: a fixed-position overlay rendered above the normal
-// transcript when active. The visible window is delegated to
-// VirtualTranscript so a 10k-cell history doesn't blow the React
-// reconciler budget on every keystroke; the pager itself owns the
-// scroll cursor and slice math so the existing `g`/`G`/PgUp/PgDn
-// keys stay bound to the same semantics.
-
 import type { ToolCallState } from "@cli-core/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
@@ -22,11 +9,8 @@ import { VirtualTranscript } from "./VirtualTranscript.tsx";
 export interface PagerEntry {
   id: string;
   kind: "user" | "assistant" | "tool" | "diff";
-  /** Raw content for textual cells. */
   text?: string;
-  /** Tool call payload — full args + result rendered without truncation. */
   toolCall?: ToolCallState;
-  /** Diff payload — rendered fully (no maxLines). */
   diff?: {
     title: string;
     language: "json" | "yaml" | "text";
@@ -38,7 +22,6 @@ export interface TranscriptPagerProps {
   open: boolean;
   entries: ReadonlyArray<PagerEntry>;
   onClose: () => void;
-  /** Visible window height (rows) — caller passes terminal rows. */
   rows?: number;
 }
 
@@ -68,8 +51,6 @@ const TranscriptPagerImpl: React.FC<TranscriptPagerProps> = ({
   );
 
   if (!open) return null;
-  // Slice from the scroll cursor; VirtualTranscript handles the rest
-  // of the bounding for the visible window.
   const sliced = entries.slice(Math.min(scroll, Math.max(0, entries.length - 1)));
 
   return (
@@ -87,9 +68,6 @@ const TranscriptPagerImpl: React.FC<TranscriptPagerProps> = ({
       <VirtualTranscript<PagerEntry>
         items={sliced as PagerEntry[]}
         getKey={(e) => e.id}
-        // Pager rows vary in height; estimate 6 rows per entry on
-        // average (one header + a few body lines). Sticky-bottom
-        // disabled — the operator owns the scroll position.
         estimateHeight={() => 6}
         renderItem={(entry) => <PagerEntryRow entry={entry} />}
         viewportHeight={Math.max(rows - 4, 8)}

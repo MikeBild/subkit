@@ -1,15 +1,3 @@
-// The chat surface's palette switch in `wrapTools`:
-//
-//   - `ctx.surface === "chat"` → the fixed read-only allow-list
-//     (CHAT_READONLY_TOOLS), independent of loadedSkills; external MCP
-//     tools skipped.
-//   - any other / absent surface → today's authoring palette,
-//     unchanged (the web/CLI/MCP regression guard).
-//
-// The default-path guard matters most: the read-only branch is
-// additive-conditional, and this test fails loudly if a refactor ever
-// makes the restriction leak into the default palette (or vice versa).
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
@@ -83,8 +71,6 @@ describe("wrapTools chat-surface palette switch", () => {
       freshSignals(),
       events,
       ctx.testDb.db as unknown as Db,
-      // Deliberately load BOTH authoring skills: on the chat surface
-      // they must unlock nothing.
       ["workflow-authoring", "connector-creation-guidance"],
       {},
     );
@@ -106,11 +92,6 @@ describe("wrapTools chat-surface palette switch", () => {
     expect(names.has("run_workflow")).toBe(true);
     expect(names.has("find_workflow")).toBe(true);
 
-    // The knowledge-read path must actually REACH chat, not just avoid
-    // leaking. The allow-list is fail-closed, so a read tool that nobody
-    // adds to it is silently unavailable on Slack/Teams/Google Chat while
-    // the docs advertise it — `read_knowledge` shipped that way once.
-    // Presence assertions, not just absence ones, are what catch that.
     for (const expected of [
       "search_knowledge",
       "read_knowledge",
@@ -132,9 +113,6 @@ describe("wrapTools chat-surface palette switch", () => {
       {},
     );
     const names = new Set(Object.keys(wrapped));
-    // The authoring surface must keep its full contract: builder,
-    // editor, persistence, connector tools, and the tenant_read
-    // catch-all (call_connector).
     for (const expected of [
       "author_workflow",
       "edit_workflow_patch",

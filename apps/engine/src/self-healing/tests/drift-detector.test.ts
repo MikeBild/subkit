@@ -134,11 +134,6 @@ describe("self-healing/drift-detector", () => {
   test("validation_failed step error becomes validation_failed drift signal", () => {
     const signal = analyzeStepFailure(
       {
-        // The engine surfaces validation_failed at the run-result
-        // level, but the self-healing flow inspects step rows. To
-        // route the invariant violation through the same drift path
-        // the run-finalisation persists a synthetic step entry; this
-        // test exercises the detector directly with the same shape.
         id: "$validation",
         kind: "transform",
         status: "failed",
@@ -165,9 +160,6 @@ describe("self-healing/drift-detector", () => {
   });
 
   test("validation_failed without expression text returns null", () => {
-    // Defensive: a malformed validation_failed error envelope (no
-    // expression) should not produce a useless drift signal — fall
-    // through to null so the retry path handles it.
     const signal = analyzeStepFailure(
       {
         id: "$validation",

@@ -1,7 +1,3 @@
-// Shared helpers + error types + lightweight result shapes used by
-// every per-operation module under `service/`. Each per-operation file
-// imports from here.
-
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db, Executor } from "../../db/client.ts";
 import { type conversations, systemAccounts, users } from "../../db/schema/index.ts";
@@ -36,9 +32,6 @@ export async function persistPermissionModeIfChanged(params: {
 }): Promise<void> {
   const current = getStoredPermissionMode(params.draft);
   const nextMode = normalizePermissionMode(params.permission_mode);
-  // Non-sticky modes (yolo) never overwrite the stored sticky mode.
-  // Treat them as a no-op so the next non-yolo turn picks up the
-  // operator's previous auto/ask/plan choice.
   if (nextMode === "yolo") return;
   if (current === nextMode) return;
   const baseDraft = params.draft ?? createEmptyDraftDocument();
@@ -93,27 +86,10 @@ export interface PendingElicitationSummary {
   id: string;
   tool_name: string;
   summary: string;
-  /**
-   * The gated tool-call row id and the full tool input. Carried so a
-   * client that raced a plain prompt against a just-arrived
-   * elicitation can RESTORE the dialog from the rejection alone —
-   * without these the CLI dropped `pending_elicitation` to null and
-   * the session deadlocked (every later prompt blocked, no dialog to
-   * answer). Optional so older callers still type-check.
-   */
   tool_call_id?: string | null;
   input?: unknown;
 }
 
-/**
- * Raised when a prompt (or a direct tool invoke) races an open `ask_user_*`
- * dialog. Serialized into HTTP 409 bodies, SSE error frames, and the chat
- * dispatcher's typed-reply salvage, so the persisted prompt it carries is
- * projected through `elicitationInputForClient` HERE, in the constructor — the
- * engine-authored `commit_intent.payload.approval_id` on a policy-gate row is an
- * internal coordinate of a governance decision, and every one of those readers
- * would otherwise have to remember to strip it.
- */
 export class PendingElicitationBlockedError extends Error {
   readonly pending_elicitation: PendingElicitationSummary;
 
@@ -127,12 +103,6 @@ export class PendingElicitationBlockedError extends Error {
   }
 }
 
-/**
- * Raised when a duplicate `/respond` POST lands for an elicitation that
- * is already terminal. Without this guard a second response re-runs the
- * conversation loop, double-charges the LLM, and produces the silent
- * "approve approve …" UI seen in session 79bf2cca.
- */
 export class ElicitationAlreadyResolvedError extends Error {
   readonly elicitation_id: string;
   readonly status: "resolved" | "cancelled" | "timeout";
@@ -154,7 +124,6 @@ export class ElicitationAlreadyResolvedError extends Error {
   }
 }
 
-/** Owner names for a page of rows: people by e-mail, machine accounts by name. */
 export async function loadOwners(
   tenant_id: string,
   ownerIds: Array<string | null>,

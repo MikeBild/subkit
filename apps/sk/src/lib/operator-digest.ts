@@ -1,13 +1,3 @@
-// Startup operator digest for the `sk` REPL.
-//
-// The engine computes a deterministic health digest (failed runs grouped
-// by root cause + tagged by origin, plus self-healing fixes awaiting
-// review). At REPL open we fetch it once: the structured digest is
-// rendered as in-context chrome by repl/needs-attention-panel.tsx, and
-// folded into the first turn's memory via digestAsContext so the injected
-// "guided triage" starter action grounds the LLM in the same issues.
-// Best-effort: any failure here must never block the REPL.
-
 import pc from "picocolors";
 import type {
   AttentionItem,
@@ -17,8 +7,6 @@ import type {
   RiskSeverity,
 } from "../engine-client.ts";
 
-/** Friendly label per failure origin. Shared by the needs-attention panel so
- *  the chrome and any future context render stay in sync. */
 export const FAILURE_ORIGIN_LABEL: Record<FailureOrigin, string> = {
   authoring: "authoring",
   manual: "test run",
@@ -26,34 +14,21 @@ export const FAILURE_ORIGIN_LABEL: Record<FailureOrigin, string> = {
   mixed: "mixed",
 };
 
-/** Total failing runs across all groups (sum of per-group counts). The single
- *  source for both the panel header and the guided-triage starter label so the
- *  two can never drift. */
 export function totalFailureCount(digest: OperatorHealthDigest): number {
   return digest.failure_groups.reduce((acc, g) => acc + g.count, 0);
 }
 
-/**
- * The digest, normalized — or null only when the engine could not be read.
- * `all_clear` answers "does anything need a person now"; it does not mean
- * the digest is empty (a warning trend is still in `risk`).
- */
 export async function readOperatorDigest(
   client: EngineClient,
 ): Promise<OperatorHealthDigest | null> {
   try {
     const digest = await client.getOperatorHealthDigest();
-    // Normalize at the chokepoint: an engine older than the risk[] field (a
-    // rolling-deploy version skew) omits `risk`, and every caller reads
-    // `digest.risk.length` outside a guard. Default to [] here so the chrome
-    // / context render can never throw on a missing field.
     return { ...digest, risk: digest.risk ?? [] };
   } catch {
     return null;
   }
 }
 
-/** The digest the REPL shows at startup: null when nothing needs attention. */
 export async function fetchOperatorDigest(
   client: EngineClient,
 ): Promise<OperatorHealthDigest | null> {
@@ -61,11 +36,6 @@ export async function fetchOperatorDigest(
   return digest && !digest.all_clear ? digest : null;
 }
 
-/**
- * One attention item as a line: what, why, and where it is acted on — the
- * engine's machine reason, with the counts behind it and the primary action's
- * address.
- */
 export function attentionItemLine(item: AttentionItem): string {
   const subject = item.subject
     ? `${item.subject.kind} ${item.subject.name ?? item.subject.id}`
@@ -89,28 +59,18 @@ export function attentionItemLine(item: AttentionItem): string {
   ].join("");
 }
 
-/** The attention sources the engine could not read — never to be taken as empty. */
 export function unreadAttentionSources(digest: OperatorHealthDigest): string[] {
   return Object.entries(digest.attention.sources)
     .filter(([, state]) => state === "failed")
     .map(([source]) => source);
 }
 
-/** Severity → terminal color. Critical leads in red (same weight as a
- *  scheduled production failure); warn is yellow. */
 const RISK_COLOR: Record<RiskSeverity, (s: string) => string> = {
   critical: pc.red,
   warn: pc.yellow,
 };
 
-/** Best-effort one-line risk summary for the `sk login` success path. Fetches
- *  the digest, returns a single severity-colored line naming the top risk and
- *  any others, or null when there's nothing to flag / the engine is
- *  unreachable. Never throws — login must never block on this. */
 export async function riskSummaryLine(client: EngineClient): Promise<string | null> {
-  // The normalized read (risk ?? [], null only when unreachable) — NOT the
-  // REPL's startup fetch: a warning trend is worth this line even when nothing
-  // needs acting on, which is exactly when `all_clear` is true.
   const digest = await readOperatorDigest(client);
   if (!digest || digest.risk.length === 0) return null;
   const top = digest.risk[0]!;
@@ -119,8 +79,6 @@ export async function riskSummaryLine(client: EngineClient): Promise<string | nu
   return `${color("●")} ${color(`[${top.severity}]`)} ${top.headline}${more}`;
 }
 
-/** Plain-text context block folded into the first turn's memory so the
- *  LLM can act on the same issues the operator just saw. */
 export function digestAsContext(digest: OperatorHealthDigest): string {
   const parts: string[] = [
     "## Operator health digest (engine-computed, deterministic)",

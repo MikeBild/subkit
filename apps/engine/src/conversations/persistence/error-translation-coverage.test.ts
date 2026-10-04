@@ -1,16 +1,3 @@
-// Cross-write-path Postgres-error translation coverage. Pre-fix the
-// translator existed in `auto-persist.ts` but only the auto-persist
-// dispatcher used it — every direct tool path (save_connector_draft,
-// update_connector, update_workflow, delete_connector, delete_workflow)
-// surfaced raw SQL strings to the LLM (session 975a64b0 16:37:21:
-// 23505 unique-violation rendered as "Failed query: insert into
-// \"connectors\" ..." → 3m09s of opaque "summarising 5 tool results"
-// while the LLM tried to recover).
-//
-// Post-fix every write path runs the same translator, producing
-// typed `error_code` + `next_best_actions` so the LLM converges in
-// 1 turn instead of looping. This test pins the contract.
-
 import { describe, expect, test } from "bun:test";
 import { translateAutoPersistError } from "./auto-persist.ts";
 
@@ -44,7 +31,6 @@ describe("translateAutoPersistError · 23505 unique-violation", () => {
       );
       expect(t.error_code).toBe("slug_already_in_use");
       expect(t.message).toMatch(/already exists/i);
-      // Resource-aware next-best-actions
       const isConnector =
         ctx === "save_connector_draft" || ctx === "update_connector" || ctx === "delete_connector";
       const isWorkflow =
@@ -92,7 +78,6 @@ describe("translateAutoPersistError · 22P02 invalid_input_format", () => {
 
 describe("translateAutoPersistError · regex fallback (no .code)", () => {
   test("23505 message text without code still triggers slug_already_in_use", () => {
-    // Some upstream wrappers re-throw with just the message text.
     const e = new Error('duplicate key value violates unique constraint "x"');
     const t = translateAutoPersistError(e, "save_connector_draft");
     expect(t.error_code).toBe("slug_already_in_use");

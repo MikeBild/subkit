@@ -1,9 +1,3 @@
-// DB-backed skill gate tests.
-//
-// Verifies that `requiredSkillForTenant` and `filterBySkillGateForTenant`
-// read `skills.gates_tools` correctly and that the 60s cache honours
-// `resetGateCache`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { skills, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -92,15 +86,11 @@ describe("DB-backed gates — tenant layer", () => {
 
   test("cache reflects DB updates only after resetGateCache", async () => {
     resetGateCache();
-    // First call seeds the cache
     const before = await requiredSkillForTenant("late_tool", tenant_id, ctx.db);
     expect(before).toBeUndefined();
-    // Add a seed that gates `late_tool`
     await seedSkill("late-gate", ["late_tool"]);
-    // Cached result is still the old one
     const stillCached = await requiredSkillForTenant("late_tool", tenant_id, ctx.db);
     expect(stillCached).toBeUndefined();
-    // After reset, new value picked up
     resetGateCache(tenant_id);
     const fresh = await requiredSkillForTenant("late_tool", tenant_id, ctx.db);
     expect(fresh).toBe("late-gate");
@@ -111,7 +101,6 @@ describe("DB-backed gates — tenant layer", () => {
     await seedSkill("alpha-gate", ["shared_tool"]);
     await seedSkill("zeta-gate", ["shared_tool"]);
     const gateSlug = await requiredSkillForTenant("shared_tool", tenant_id, ctx.db);
-    // Sorted by slug, 'alpha-gate' wins over 'zeta-gate'.
     expect(gateSlug).toBe("alpha-gate");
   });
 });

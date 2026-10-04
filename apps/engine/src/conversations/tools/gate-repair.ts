@@ -1,11 +1,3 @@
-// diagnose_workflow / propose_workflow_repair — the approval gate's block and
-// its deterministic repair, on every conversation surface.
-//
-// Both read the one diagnosis producer (`workflows/gate-diagnosis.ts`), so a
-// chat, an MCP client and the HTTP route see the same remedies. Proposing files
-// an inert `proposed` patch candidate — the person's approval of that
-// candidate is the confirmation, so the proposal itself is never gated.
-
 import { z } from "@hono/zod-openapi";
 import { GateRepairError, proposeGateRepair } from "../../self-healing/index.ts";
 import { diagnoseWorkflow, GateFixerSchema } from "../../workflows/index.ts";
@@ -65,11 +57,6 @@ export const proposeWorkflowRepairTool: ConversationTool = {
   inputSchema: ProposeInput,
   category: "tenant_write",
   permission: { action: "workflow:write", resourceType: "workflow", resourceIdArg: "workflow_id" },
-  // Files an inert `proposed` candidate behind the patch-candidate review: it
-  // changes no definition and runs nothing, and approving it stays an
-  // operator's act on the patch-candidate surface. That is why a read-and-run
-  // credential may file it — the surface that sees the block can ask for its
-  // repair. RBAC `workflow:write` still gates it.
   visible_when_readonly: true,
   inert_proposal: true,
   use_case:

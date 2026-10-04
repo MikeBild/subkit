@@ -1,9 +1,3 @@
-// Discovery service — run lifecycle, file analysis, synthesis, artifact review.
-//
-// Discovery runs are created implicitly when files are attached to
-// conversations and analyzed. The service also supports programmatic
-// creation via the REST API.
-
 import { createHash } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -22,10 +16,6 @@ import type {
   ListDiscoveryArtifactsParams,
   ListDiscoveryRunsParams,
 } from "./types.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function toRunView(row: typeof discoveryRuns.$inferSelect): DiscoveryRunView {
   const usage = (row.token_usage ?? {
@@ -73,18 +63,12 @@ function toArtifactView(row: typeof discoveryArtifacts.$inferSelect): DiscoveryA
   };
 }
 
-// ---------------------------------------------------------------------------
-// Run lifecycle
-// ---------------------------------------------------------------------------
-
 export async function createDiscoveryRun(
   p: CreateDiscoveryRunParams,
   exec?: Executor,
 ): Promise<DiscoveryRunView> {
   const db = exec ?? getDb();
 
-  // Parse all files OUTSIDE the transaction. Failures are recorded in the
-  // parsed results so the transaction only does clean inserts.
   interface ParsedFile {
     filename: string;
     mime_type: string | null;
@@ -102,7 +86,6 @@ export async function createDiscoveryRun(
       const content =
         typeof file.buffer === "string" ? file.buffer : new TextDecoder().decode(file.buffer);
 
-      // PostgreSQL TEXT columns reject null bytes — detect and fail early
       if (content.includes("\x00")) {
         throw new Error("File contains null bytes — binary files are not supported");
       }
@@ -160,9 +143,6 @@ export async function createDiscoveryRun(
 
     assertInsertRow(run, "discovery_runs");
 
-    // Link the persisted raw-archive file (canonical `files` row) to the
-    // run. The extracted text still lands in `discovery_files` below —
-    // this link is what keeps the original binary upload retrievable.
     if (p.archive_file_id) {
       await tx
         .insert(fileLinks)
@@ -176,7 +156,6 @@ export async function createDiscoveryRun(
         .onConflictDoNothing();
     }
 
-    // Insert all pre-parsed files in a clean transaction
     for (const pf of parsedFiles) {
       await tx.insert(discoveryFiles).values({
         tenant_id: p.tenant_id,
@@ -215,10 +194,6 @@ export async function createDiscoveryRun(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Run status transitions
-// ---------------------------------------------------------------------------
-
 export async function markRunAnalyzing(
   tenant_id: string,
   run_id: string,
@@ -249,7 +224,6 @@ export async function markRunCompleted(
       })
       .where(and(eq(discoveryRuns.tenant_id, tenant_id), eq(discoveryRuns.id, run_id)));
 
-    // Clear file content after analysis to reclaim storage
     await tx.update(discoveryFiles).set({ content: null }).where(eq(discoveryFiles.run_id, run_id));
 
     await auditAwait(
@@ -324,10 +298,6 @@ export async function incrementFilesAnalyzed(
     .returning({ files_analyzed: discoveryRuns.files_analyzed });
   return row?.files_analyzed ?? 0;
 }
-
-// ---------------------------------------------------------------------------
-// Queries
-// ---------------------------------------------------------------------------
 
 export async function getDiscoveryRun(
   tenant_id: string,
@@ -405,10 +375,6 @@ export async function getDiscoveryArtifact(
   return rows[0] ? toArtifactView(rows[0]) : null;
 }
 
-// ---------------------------------------------------------------------------
-// Artifact review (human gate)
-// ---------------------------------------------------------------------------
-
 export async function approveDiscoveryArtifact(
   params: { tenant_id: string; artifact_id: string; actor_id: string | null },
   exec?: Executor,
@@ -431,9 +397,6 @@ export async function approveDiscoveryArtifact(
     if (!rows[0]) return null;
     const row = rows[0];
 
-    // Mark approved — actual materialization (creating the Connector / Skill /
-    // Knowledge Source) happens via the conversation tools (start_connector_from_*,
-    // propose_skill) or via the caller after receiving the draft.
     await tx
       .update(discoveryArtifacts)
       .set({ status: "approved", updated_at: new Date() })
@@ -513,30 +476,8 @@ export async function rejectDiscoveryArtifact(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Capability gaps — the inverse of discovery.
-//
-// Recorded when the assistant calls `cannot_help`: the request could not
-// be served because no connector / workflow / knowledge source exists for
-// it. The old behaviour kept only a Prometheus counter, discarding the
-// request text. We persist the gap as a `capability_gap` discovery
-// artifact so the operator sees a deduped, demand-ranked backlog and can
-// turn a recurring gap into a real capability through the same
-// propose → approve lifecycle.
-//
-// A gap has no source files: its `draft` carries the requested intent,
-// the missing capability, a dedup fingerprint and an occurrence counter;
-// its `evidence` is empty. Gaps attach to a per-tenant pseudo-run so the
-// notNull `run_id` contract holds without relaxing the schema.
-// ---------------------------------------------------------------------------
-
-/** Sentinel label for the per-tenant pseudo-run that owns capability-gap
- *  artifacts (they have no file run). */
 const CAPABILITY_GAP_RUN_LABEL = "__capability_gaps__";
 
-/** Local intent normaliser for the dedup key — identical in spirit to the
- *  ranking normaliser in context-assembler/loaders.ts, inlined to avoid a
- *  discovery → llm/core dependency. */
 function normalizeIntent(s: string): string {
   return s
     .toLowerCase()
@@ -550,9 +491,7 @@ export type SuggestedGapKind = "connector" | "workflow" | "knowledge" | "unknown
 export interface RecordGapCandidateParams {
   tenant_id: string;
   conversation_id: string | null;
-  /** What the user wanted / why it could not be served (cannot_help reason). */
   requested: string;
-  /** Stable capability slug from cannot_help, when given. Primary dedup key. */
   missing_capability: string | null;
   suggested_kind?: SuggestedGapKind;
   actor_id?: string | null;
@@ -567,15 +506,6 @@ export interface CapabilityGapDraft {
   conversation_id: string | null;
 }
 
-/**
- * Record (or increment) a capability gap. Idempotent by fingerprint:
- * the same (tenant, missing_capability | normalised intent) bumps an
- * occurrence counter instead of inserting a duplicate, so a recurring
- * gap floats to the top of the operator backlog by demand.
- *
- * Best-effort by contract — callers (cannot_help) must not let a failure
- * here break the turn; on error this logs and returns null.
- */
 export async function recordGapCandidate(
   p: RecordGapCandidateParams,
   exec?: Executor,
@@ -592,12 +522,8 @@ export async function recordGapCandidate(
   const suggested_kind: SuggestedGapKind = p.suggested_kind ?? "unknown";
 
   try {
-    // Resolving the default database is part of this best-effort side effect:
-    // a missing bootstrap configuration must not break cannot_help itself.
     const db = exec ?? getDb();
     return await (db as Db).transaction(async (tx) => {
-      // Dedup: an existing proposed gap with this fingerprint just gets
-      // its occurrence counter bumped (the demand signal).
       const [existing] = await tx
         .select()
         .from(discoveryArtifacts)
@@ -624,7 +550,6 @@ export async function recordGapCandidate(
         return toArtifactView(bumped);
       }
 
-      // First occurrence: ensure the per-tenant gap pseudo-run exists.
       const existingRuns = await tx
         .select({ id: discoveryRuns.id })
         .from(discoveryRuns)
@@ -718,12 +643,6 @@ export interface ListCapabilityGapsParams {
   limit?: number;
 }
 
-/**
- * List capability gaps for a tenant, demand-ranked (highest occurrence
- * count first). Unlike `listDiscoveryArtifacts` this is not scoped to a
- * single run — gaps live under the per-tenant pseudo-run, so the operator
- * wants them aggregated across the tenant.
- */
 export async function listCapabilityGaps(
   p: ListCapabilityGapsParams,
   exec?: Executor,

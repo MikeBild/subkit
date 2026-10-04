@@ -1,12 +1,3 @@
-// A run's outcome as structure, over real engine runs.
-//
-// `status` alone could not say what happened: a hold-writes preview finalizes
-// `succeeded` with nothing written, an `on_error:"continue"` failure leaves the
-// run `succeeded`, and a failed run named neither the step that stopped it nor
-// why — so a reader showed an earlier step's output as the failed run's result.
-// These tests pin `outcome` on GET /v1/executions/{id} and `failure` on the
-// list, and that the list classifies a page in a constant number of queries.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
@@ -165,7 +156,6 @@ describe("execution outcome", () => {
   });
 
   test("a workflow-level failure has no failed step but keeps its code", async () => {
-    // The draft run body carries no validation_expression; a saved workflow does.
     const created = await fetch(`${ctx.baseUrl}/v1/workflows`, {
       method: "POST",
       headers: auth(),
@@ -205,8 +195,6 @@ describe("execution outcome", () => {
 
 describe("execution list failure", () => {
   test("only failed runs carry a failure, in a constant number of queries", async () => {
-    // A saved workflow, so every page item resolves a workflow name as well:
-    // the pages compared below differ only in length.
     const created = await fetch(`${ctx.baseUrl}/v1/workflows`, {
       method: "POST",
       headers: auth(),

@@ -1,27 +1,10 @@
-// One rule for "may this credential still authenticate?", shared by every
-// path that answers the question.
-//
-// Before tranche E the repository held two different answers: the API-key
-// resolver refused a soft-deleted or disabled owner, while the MCP-OAuth
-// resolver matched only on id + tenant — so a deactivated person's OAuth
-// token kept working, and the refresh rotation read no user row at all.
-// The rule is not "OAuth is special"; it is the one below, and both the
-// access path and the refresh path apply it.
-//
-// A credential is only as live as the identity behind it and the client
-// registration it was issued to. Everything else (revocation, expiry,
-// rotation) is a property of the token row itself and stays where it is.
-
-/** The columns a liveness decision needs — nothing else is read. */
 export interface UserLivenessRow {
   status: string;
   deleted_at: Date | null;
 }
 
-/** The columns a client-registration decision needs. */
 export interface ClientLivenessRow {
   disabled_at: Date | null;
-  /** Set with `disabled_at` when housekeeping retired an unused registration. */
   retired_at: Date | null;
 }
 
@@ -33,11 +16,6 @@ export type LivenessRefusal =
   | "client_revoked"
   | "client_retired";
 
-/**
- * `null` when the person may still authenticate. Disabling or soft-deleting
- * a user must void their credentials at once — a still-valid token for a
- * withdrawn account is exactly what an operator expects withdrawal to prevent.
- */
 export function userLivenessRefusal(user: UserLivenessRow | undefined): LivenessRefusal | null {
   if (!user) return "user_missing";
   if (user.deleted_at !== null) return "user_deleted";
@@ -45,7 +23,6 @@ export function userLivenessRefusal(user: UserLivenessRow | undefined): Liveness
   return null;
 }
 
-/** `null` when the client registration may still be used. */
 export function clientLivenessRefusal(
   client: ClientLivenessRow | undefined,
 ): LivenessRefusal | null {
@@ -55,11 +32,6 @@ export function clientLivenessRefusal(
   return null;
 }
 
-/**
- * What the refusal says out loud on the token endpoint. It names what
- * happened; it never advises pasting an API key, which is the fallback
- * tranche B removed from the connection story.
- */
 export function livenessRefusalDescription(refusal: LivenessRefusal): string {
   switch (refusal) {
     case "user_missing":

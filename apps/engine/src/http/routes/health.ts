@@ -1,6 +1,3 @@
-// GET /health — public liveness probe.
-// GET /ready — public readiness probe.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { sql } from "drizzle-orm";
@@ -10,13 +7,6 @@ import { logger } from "../../logging/index.ts";
 import { getHealthState } from "../health-state.ts";
 import type { AppEnv } from "../openapi.ts";
 import { OPENAPI_INFO } from "../openapi.ts";
-
-// /health is unauthenticated and reachable from the public internet.
-// It MUST stay minimal — no fields that leak operational posture
-// (which secrets are present, which provider is wired, model names,
-// schema-drift state, update availability). The operational fields
-// (`db_schema_drift`, `update_available`, `latest_version`) live
-// behind `audit:read` at `GET /v1/diagnostics/version`.
 
 const HealthResponse = z
   .object({
@@ -48,11 +38,6 @@ const route = createRoute({
   },
 });
 
-// Readiness is distinct from liveness: /health is a liveness probe (the
-// process is up → 200), while /ready is a readiness probe that returns 503
-// when the engine cannot serve real traffic because its database is
-// unreachable. Load balancers / orchestrators should gate routing on /ready,
-// not /health.
 const ReadyResponse = z
   .object({
     status: z.enum(["ready", "not_ready"]),
@@ -132,10 +117,6 @@ function livenessSnapshot(): HealthSnapshot {
 
 async function readinessSnapshot(db: Db): Promise<{ body: ReadySnapshot; status: 200 | 503 }> {
   const database = (await pingDb(db)) ? ("pass" as const) : ("fail" as const);
-  // Draining (graceful shutdown in progress) is also "not ready": we want
-  // the load balancer / systemd gate to stop routing new traffic here while
-  // in-flight conversation turns finish, without leaking that posture on the
-  // public /health route.
   const lifecycle = getHealthState().draining ? ("fail" as const) : ("pass" as const);
   const ready = database === "pass" && lifecycle === "pass";
   return {

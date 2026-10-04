@@ -1,33 +1,3 @@
-// Repair Pattern Detector — accumulates recurring self-healing repairs into
-// connector-scoped (interface-level) Skill Candidate signals.
-//
-// A single drift repair lands as one applied `patch_candidate`. When the SAME
-// repair recurs across the SAME interface — a connector + endpoint pair — it is
-// no longer an isolated fix: it is a standing convention about how that
-// interface behaves. This detector promotes that recurrence into context that
-// applies to EVERY workflow talking to the interface, not just the workflow
-// where the patch happened to be observed.
-//
-// Input:        Applied patches for a tenant (last 30 days), joined to their
-//               execution fixtures for connector + endpoint context.
-// Grouping key: (connector_id, endpoint_key, patch kind)
-// Threshold:    >= 3 patches in a group
-// Output:       Connector-scoped PatternSignal (cross-workflow accumulation;
-//               connector + endpoint context comes from execution_fixtures).
-//
-// Grouping is deliberately at interface altitude: the kind is grouped, the
-// specific field path is NOT part of the key. Three `update_field_path`
-// repairs on the same endpoint that touch different paths still form one
-// "this interface needs field-path adjustment" convention. Because the path
-// is not part of the group, candidate copy never names a specific path — that
-// would misrepresent a group that may span several.
-//
-// Rows without an execution fixture (null fixture_id) carry no interface
-// context and are skipped (counted). Rows whose diff lacks a PatchProposal are
-// skipped (counted). The self-healing writer (processDriftSignal in
-// self-healing/service.ts) nests the proposal under `diff.proposal`; `kind` is
-// `proposal.kind`.
-
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { and, eq, gte } from "drizzle-orm";
@@ -41,13 +11,6 @@ import { computeConfidence, type PatternSignal } from "../types.ts";
 const MIN_PATCH_COUNT = 3;
 const LOOKBACK_DAYS = 30;
 
-// Read-shape for the patch proposal the self-healing writer nests under
-// `diff.proposal` (the producer is `processDriftSignal` in
-// self-healing/service.ts, which stores a PatchProposal from
-// llm/flows/repair.ts). This is an internal trust boundary — the writer is the
-// only producer — but parsing it through a schema means a writer-side rename
-// surfaces as a counted skip (`skipped_no_proposal`) instead of a silent
-// misgroup, and keeps the read site honest about the field it depends on.
 const RepairProposalReadSchema = z.object({
   kind: z.string(),
 });
@@ -64,13 +27,6 @@ interface PatchGroup {
 export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise<PatternSignal[]> {
   const cutoff = new Date(now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 
-  // Inner-join to execution_fixtures on BOTH fixture_id and tenant_id: the
-  // tenant predicate keeps the read tenant-scoped (no cross-tenant fixture
-  // reads), and the inner join naturally drops rows with a null fixture_id.
-  // Left-join connectors (also tenant-scoped) for the human-readable slug:
-  // the connector may have been deleted, so slug is best-effort and only used
-  // for the candidate title — but the tenant predicate stops a mis-shaped
-  // fixture from leaking another tenant's slug into a user-visible title.
   const rows = await exec
     .select({
       id: patchCandidates.id,
@@ -103,8 +59,6 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
   let skipped_no_endpoint = 0;
 
   const groups = new Map<string, PatchGroup>();
-  // Per-(connector, endpoint) total of applied patches that carry a proposal —
-  // the denominator for the confidence consistency ratio at interface altitude.
   const totalsByInterface = new Map<string, number>();
 
   for (const row of rows) {
@@ -160,13 +114,7 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       .digest("hex")
       .slice(0, 32);
 
-    // Qualify the interface with the connector slug so two connectors that
-    // expose the same endpoint_key don't produce visually identical titles.
-    // Falls back to the connector id when the connector row is gone.
     const interfaceLabel = `${group.connector_slug ?? group.connector_id}/${group.endpoint_key}`;
-    // The specific field path is intentionally absent: the group spans a kind
-    // on an interface, possibly across several paths, so the copy stays at the
-    // interface convention level rather than naming one path.
     const body =
       group.kind === "update_field_path"
         ? `Repairs on the '${interfaceLabel}' interface consistently adjust a response field path. This is an interface-level convention shared by every workflow that calls this connector endpoint — capture it as a skill so the path is applied up front instead of being re-discovered through drift.`
@@ -180,9 +128,6 @@ export async function detectRepairPatterns(tenant_id: string, exec: Db): Promise
       pattern_kind: "repair_pattern",
       scope: "connector",
       connector_id: group.connector_id,
-      // endpoint_key is part of the candidate's logical identity — two
-      // endpoints on one connector are distinct interfaces (distinct skills),
-      // so the supersede step must not collapse them. See upsertFromSignal.
       endpoint_key: group.endpoint_key,
       title: `Recurring ${group.kind} on ${interfaceLabel}`,
       body,

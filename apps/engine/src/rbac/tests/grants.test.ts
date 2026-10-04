@@ -1,10 +1,3 @@
-// Resource-grant CRUD tests. The matrix test exercises the
-// `grantResource` write path through the evaluator; this file covers
-// `revokeResource`, `listGrants`, `listGrantsForSubject`, the unique
-// constraint upsert, and the `permission_unknown` error path so the
-// rbac/ coverage floor (90 % line / 85 % branch) holds without
-// stretching the matrix file.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -89,8 +82,6 @@ describe("rbac grants CRUD", () => {
 
   test("listGrants returns every grant in the tenant", async () => {
     const all = await listGrants(db, tenantId);
-    // Two distinct (subject, permission, resource) tuples from the
-    // tests above. Each maps to one row.
     const resourceIds = all.map((g) => g.resource_id).sort();
     expect(resourceIds).toContain(workflowAlpha);
     expect(resourceIds).toContain(workflowBeta);
@@ -118,8 +109,6 @@ describe("rbac grants CRUD", () => {
   });
 
   test("listGrantsForSubject scopes to the subject_type", async () => {
-    // Same subject_id but a different subject_type. Should yield zero
-    // matches because we only inserted user-typed rows.
     const rows = await listGrantsForSubject(db, tenantId, "system_account", subjectId);
     expect(rows).toEqual([]);
   });
@@ -152,7 +141,6 @@ describe("rbac grants CRUD", () => {
     if (!otherTenant) throw new Error("seed second tenant");
     const ok = await revokeResource(db, otherTenant.id, grant.id);
     expect(ok).toBe(false);
-    // Original row still resolvable.
     const stillThere = await listGrantsForSubject(db, tenantId, "user", subjectId);
     expect(stillThere.find((g) => g.id === grant.id)).toBeDefined();
   });

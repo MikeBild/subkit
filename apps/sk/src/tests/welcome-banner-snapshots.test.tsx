@@ -1,12 +1,3 @@
-// Snapshot tests for key rendered components.
-// Asserts that the critical strings remain visible across the full
-// matrix of states. ink-testing-library doesn't expose a column
-// override directly, but the rendered text for fixed-Box layouts is
-// stable across widths because Ink wraps long lines rather than
-// dropping them. The strongest regression catch is "key string is
-// still visible" + "line count under cap" (already in the size-budget
-// test).
-
 import { describe, expect, test } from "bun:test";
 import type { EngineClient } from "../engine-client.ts";
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
@@ -61,7 +52,6 @@ describe("WelcomeBanner — visibility snapshots (H9)", () => {
           (t) => t.includes("sk") && (t.includes("acme") || t.includes("not signed")),
         );
         const txt = ui.text();
-        // sk wordmark + version always visible
         expect(txt).toMatch(/^sk \b|· v\d/);
       } finally {
         ui.unmount();
@@ -94,9 +84,6 @@ describe("SettingsModal — tab strip visibility snapshots (H9)", () => {
   });
 
   test("operator surfaces (Permissions / Profile / Admin) are NOT inside /settings", async () => {
-    // Confirms the 5-tab refactor: these surfaces moved to their own
-    // SinglePane slash commands. The presence of bare words like
-    // "Profile" elsewhere in the frame is unlikely with empty sections.
     const ui = renderInk(
       <SettingsModal
         fields={[]}

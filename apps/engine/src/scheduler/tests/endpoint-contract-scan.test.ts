@@ -1,20 +1,3 @@
-// Integration tests for runEndpointContractScanForTenant.
-//
-// The scan probes the GET operations committed workflows reference and rolls
-// 410/deprecation verdicts into connector + workflow health — WITHOUT any
-// workflow execution. node:http mock servers (the repo's stable pattern)
-// stand in for the vendor.
-//
-// Coverage:
-//   - 410 on a committed operation → connector needs_update
-//     (endpoint_removed) + referencing workflow needs_attention + exactly
-//     one connector.health_changed event (edge dedup on re-scan).
-//   - 200 + Deprecation/Sunset headers → needs_update (endpoint_deprecated)
-//     with sunset_at, with NO failing request anywhere.
-//   - 200 plain → connector stays ok, no event.
-//   - Placeholdered paths (${input.x}) are never probed.
-//   - Tenant isolation: another tenant's identical workflow is untouched.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, events, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -135,7 +118,6 @@ describe("endpoint-contract scan", () => {
 
     await runEndpointContractScanForTenant(tenantId, NOW, db.db);
 
-    // The probe hit exactly the committed operation, nothing else.
     expect(requestedPaths.some((p) => p.startsWith("/gone"))).toBe(true);
 
     const conn = await connectorRow(connectorId);
@@ -148,8 +130,6 @@ describe("endpoint-contract scan", () => {
 
     expect((await healthEvents(tenantId)).length - before).toBe(1);
 
-    // Re-scan: connector is no longer "healthy" so it is skipped entirely —
-    // no second event, no storm.
     await runEndpointContractScanForTenant(tenantId, NOW, db.db);
     expect((await healthEvents(tenantId)).length - before).toBe(1);
   });

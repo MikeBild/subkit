@@ -1,29 +1,14 @@
-// A stored file's human-readable reference: `@attachment:<slug>`.
-//
-// The slug is tenant-unique among live files (partial unique index
-// `files_tenant_slug_uq`) and is chosen once, when the row is created. A
-// rename or a content replacement keeps it, so a workflow or a message that
-// names the file by its reference keeps finding it.
-//
-// `slugifyFilename` mirrors the backfill in migration 0077 exactly: a file
-// that existed before the column did carries the slug this function would
-// have chosen for it.
-
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
 
-/** The reference prefix chat text and `$file` leaves use for a slug. */
 export const ATTACHMENT_REFERENCE_PREFIX = "@attachment:";
 
-/** A slug as the reference grammar accepts it. */
 export const FILE_SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 const SLUG_BASE_MAX = 48;
 const MAX_ATTEMPTS = 5;
 
-/** The slug a file name suggests: the name without its extension, umlauts
- *  spelled out, lowercased, every other run of characters a single `-`. */
 export function slugifyFilename(filename: string): string {
   const stem = filename
     .replace(/\.[^.]*$/, "")
@@ -41,20 +26,16 @@ export function slugifyFilename(filename: string): string {
   return stem.length > 0 ? stem : "file";
 }
 
-/** `@attachment:<slug>` for a slug, or null when the file has none. */
 export function fileReference(slug: string | null | undefined): string | null {
   return slug ? `${ATTACHMENT_REFERENCE_PREFIX}${slug}` : null;
 }
 
-/** The slug named by an `@attachment:<slug>` reference, or null. */
 export function parseFileReference(value: string): string | null {
   if (!value.startsWith(ATTACHMENT_REFERENCE_PREFIX)) return null;
   const slug = value.slice(ATTACHMENT_REFERENCE_PREFIX.length);
   return FILE_SLUG_RE.test(slug) ? slug : null;
 }
 
-/** The first free slug for `filename` in the tenant: the bare slug, else
- *  `<slug>-2`, `<slug>-3`, … */
 export async function nextFreeFileSlug(
   db: Db,
   tenant_id: string,
@@ -85,9 +66,6 @@ function isSlugConflict(err: unknown): boolean {
   return msg.includes("files_tenant_slug_uq") || cause.includes("files_tenant_slug_uq");
 }
 
-/** Run `write` with a free slug, retrying when a concurrent write took it
- *  first. Each attempt runs in its own (nested) transaction so a conflict
- *  inside a caller's transaction does not poison it. */
 async function withFreeSlug<T>(
   db: Db,
   tenant_id: string,
@@ -104,8 +82,6 @@ async function withFreeSlug<T>(
   }
 }
 
-/** The single way a `files` row comes into being: the row is inserted with
- *  a tenant-unique slug derived from its name. */
 export async function insertFileRow(
   db: Db,
   values: Omit<typeof files.$inferInsert, "slug">,
@@ -120,8 +96,6 @@ export async function insertFileRow(
   });
 }
 
-/** Bring a soft-deleted row back. It keeps its slug unless a live file took
- *  it meanwhile; then it gets the next free one. */
 export async function reviveFileRow(
   db: Db,
   row: typeof files.$inferSelect,
@@ -150,7 +124,6 @@ export async function reviveFileRow(
   });
 }
 
-/** The live file a slug names in the tenant, or null. */
 export async function findFileBySlug(
   db: Db,
   tenant_id: string,

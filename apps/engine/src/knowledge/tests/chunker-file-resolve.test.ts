@@ -1,11 +1,3 @@
-// C19: Verify the knowledge service persists upload bytes into the
-// canonical `files` table and stamps `knowledge_sources.file_id`.
-//
-//   - Test A: createKnowledgeSource with source_type='file_upload'
-//     inserts a `files` row (via persistInlineUpload) and sets file_id.
-//   - Test B: source_type='url' keeps file_id NULL — source_uri is the
-//     canonical reference for URL sources.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { files, knowledgeSources } from "../../db/schema/index.ts";
@@ -44,7 +36,6 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
     expect(result.id).toBeDefined();
     expect(result.source_type).toBe("file_upload");
 
-    // Verify the DB row.
     const rows = await ctx.testDb.db
       .select()
       .from(knowledgeSources)
@@ -55,7 +46,6 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
 
     expect(ksRow.file_id).not.toBeNull();
 
-    // The service wrote a `files` row and ksRow.file_id references it.
     const fileRows = await ctx.testDb.db
       .select()
       .from(files)
@@ -85,7 +75,6 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
     expect(result.source_type).toBe("url");
     expect(result.source_uri).toBe("https://example.com/docs.md");
 
-    // URL sources must NEVER get a file_id — they read through source_uri.
     const rows = await ctx.testDb.db
       .select()
       .from(knowledgeSources)
@@ -97,7 +86,6 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
   });
 
   test("tenant isolation: source_type=file_upload not visible from wrong tenant", async () => {
-    // Create a source under tenantId.
     const result = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
@@ -112,7 +100,6 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
       ctx.testDb.db,
     );
 
-    // Query from a different (non-existent) tenant — must return nothing.
     const wrongTenantRows = await ctx.testDb.db
       .select()
       .from(knowledgeSources)

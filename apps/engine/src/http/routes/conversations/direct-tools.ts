@@ -1,20 +1,3 @@
-// User-driven direct tool invocation against the conversation draft.
-//
-//   POST /v1/conversations/{id}/preview                 — dry_run_workflow / dry_run_step
-//   POST /v1/conversations/{id}/probe                   — probe_connector_draft
-//   POST /v1/conversations/{id}/draft/patch             — edit_workflow_patch
-//   GET  /v1/conversations/{id}/draft/snapshots         — list_draft_snapshots
-//   POST /v1/conversations/{id}/draft/snapshots/restore — restore_draft_snapshot
-//
-// These endpoints run the SAME conversation-tool implementations the
-// model dispatches — one implementation, two callers (see
-// conversations/direct-invoke.ts). What used to take a full LLM turn
-// ("Run dry_run_workflow …" as a prose directive, then a second
-// command to read the result) is one synchronous request. The
-// persisted tool-call row keeps the next model turn fully grounded in
-// what the operator ran. Write safety is unchanged: previews hold
-// writes by default, and no tenant_write tool is reachable here.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
@@ -47,7 +30,6 @@ const DirectToolResultSchema = z
     ok: z.boolean(),
     tool: z.string(),
     tool_call_id: z.string(),
-    /** Full tool envelope — same free-form shape the model receives. */
     data: z.unknown(),
     committed_workflow_id: z.string().optional(),
     logs: z.array(DirectToolLogSchema),
@@ -57,7 +39,6 @@ const DirectToolResultSchema = z
 
 const PreviewRequestSchema = z
   .object({
-    /** Preview a single step instead of the whole workflow. */
     step_id: z.string().min(1).optional(),
     input: z.unknown().optional(),
     environment: z.enum(["dev", "prod"]).optional(),
@@ -185,7 +166,6 @@ const snapshotRestoreRoute = createRoute({
   responses: directToolResponses(),
 });
 
-/** Map service-layer failures onto the shared HTTP error envelope. */
 function toHttpError(error: unknown): never {
   if (error instanceof DirectInvokeError) {
     throw new HttpError(error.status, error.error_code, error.message, {

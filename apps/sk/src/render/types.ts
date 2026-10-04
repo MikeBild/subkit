@@ -1,8 +1,3 @@
-// Re-export the plan-step types from the REPL so call sites that only
-// touch the render module don't need to dip into `../repl/plan-cell.tsx`
-// for the structural shape. The actual runtime renderer (PlanCard) and
-// the heuristic detector still live with the REPL because they are
-// Ink-specific.
 export type { PlanStep, PlanStepStatus } from "../repl/plan-cell.tsx";
 
 export type WorkflowTrigger =
@@ -15,16 +10,12 @@ export interface WorkflowIntent {
   name: string;
   slug?: string;
   trigger: WorkflowTrigger;
-  /** Verb for the headline. Defaults to "Create" when omitted. */
   action?: "Create" | "Update";
   steps: Array<{ key: string; kind: string; connector_slug?: string }>;
 }
 
 export interface ConnectorIntent {
   kind: "connector";
-  /** Absent for a connector authored from a definition file: `sk connectors
-   *  create --file` has no template, and a required field here is what let
-   *  the literal string "undefined" reach the operator's terminal. */
   template_slug?: string;
   name?: string;
   environment?: "dev" | "prod";
@@ -40,10 +31,6 @@ export interface KnowledgeSourceIntent {
   size_bytes: number;
 }
 
-// Render-shape mirror of the engine's `ResourceUsage` payload
-// (apps/engine/src/conversations/tools/usage-guidance.ts). sk is a thin
-// client — these are parsed defensively from `data.usage` on persist
-// envelopes, never imported from engine types.
 export interface UsageAccessEntry {
   via: string;
   label: string;
@@ -64,8 +51,6 @@ export interface ResourceUsage {
   output: string | null;
   access: UsageAccessEntry[];
   follow_up: string;
-  /** Structured execution-options picker — present only for workflow usage.
-   *  Parsed defensively from the persist envelope; sk never imports engine types. */
   follow_up_options?: FollowUpOption[];
 }
 
@@ -75,7 +60,6 @@ export interface WorkflowSummary {
   version: number;
   name: string;
   trigger: WorkflowTrigger;
-  /** Verb for the headline. Defaults to "Created" when omitted. */
   action?: "Created" | "Updated";
   preview_execution_id?: string;
   usage?: ResourceUsage;
@@ -85,7 +69,6 @@ export interface ConnectorSummary {
   kind: "connector";
   id: string;
   slug: string;
-  /** Absent for a file-authored connector — see `ConnectorIntent`. */
   template_slug?: string;
   probe?: { ok: boolean; status_code?: number; duration_ms?: number };
   usage?: ResourceUsage;
@@ -97,9 +80,7 @@ export interface KnowledgeSourceSummary {
   name: string;
   mime_type: string;
   size_bytes: number;
-  /** Auto-generated (or supplied) description — shown so the user sees enrichment happened. */
   description?: string;
-  /** Auto-generated (or supplied) topical tags. */
   tags?: string[];
   file_id?: string;
   link_failed?: boolean;

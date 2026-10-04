@@ -1,9 +1,3 @@
-// Skills tab — multi-select toggle for skill activation. Lists all
-// skills via /v1/skills; space toggles a row's lifecycle between
-// `active` and `archived` via the per-skill activate/archive endpoints.
-// Filter via `/`. RBAC errors render inline; the row's checkbox does
-// not flip on failure.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,10 +6,6 @@ import { resolveAction } from "../keybindings/useKeybinding.ts";
 
 interface Props {
   client: EngineClient;
-  /**
-   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
-   * SkillsTab owns Esc only while its search is active.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -27,9 +17,6 @@ interface SkillRow {
 }
 
 function readStatus(item: { id: string; title: string; scope: string }): string {
-  // listSkills' typed signature is narrower than the actual payload —
-  // the engine returns `status` on every Skill (see openapi schema).
-  // Read it defensively.
   const r = item as unknown as Record<string, unknown>;
   return typeof r.status === "string" ? r.status : "draft";
 }
@@ -42,12 +29,6 @@ export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
   const [searchActive, setSearchActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [toggleError, setToggleError] = useState<string | null>(null);
-  // A flash that distinguishes "activated existing skill" from
-  // "activated draft skill". The engine's `listSkills` returns rows
-  // with `status: draft|active|archived` — pressing space on a draft
-  // promotes draft → active, the operator-explicit promotion path
-  // AGENTS.md describes as legal. The label difference is purely UX
-  // so the operator notices a promotion happened.
   const [activationFlash, setActivationFlash] = useState<string | null>(null);
 
   useEffect(() => {
@@ -103,9 +84,6 @@ export const SkillsTab: React.FC<Props> = ({ client, onInnerEscape }) => {
         const wasDraft = row.status === "draft";
         await client.activateSkill(row.id);
         setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status: "active" } : r)));
-        // Explicit "promoted draft → active" wording for draft
-        // promotion so the operator never mistakes the toggle for a
-        // no-op state flip on an already-promoted Skill.
         setActivationFlash(
           wasDraft ? `activated draft skill ${row.title}` : `activated ${row.title}`,
         );

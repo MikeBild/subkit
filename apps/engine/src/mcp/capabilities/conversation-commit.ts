@@ -1,4 +1,3 @@
-// Read-only report of exact saved draft versus active workflow state.
 import { z } from "zod";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { persistedWorkflowResource } from "../../conversations/authoring-state/summary.ts";
@@ -11,9 +10,6 @@ import { getWorkflowDraft } from "../../workflows/drafts.ts";
 import { getWorkflow, getWorkflowBySlug } from "../../workflows/service.ts";
 import type { HandleConversationToolResult } from "./conversations.ts";
 
-// conversation_commit reply — every field under `committed` is read from the
-// persisted rows (workflows + workflowVersions), never from the draft, so the
-// tool result can only claim what is actually on disk.
 const CommitResult = z.object({
   conversation_id: z.string(),
   workflow_id: z.string(),
@@ -45,14 +41,6 @@ export async function readConversationCommit(
 
   const draft = await loadDraft(principal.tenant_id, detail.conversation.id, db);
 
-  // Resolve the committed workflow. The conversation row's
-  // target_workflow_id is the primary source, but an inline
-  // auto-commit (a green dry_run_workflow persists the draft
-  // immediately) can leave it null — a later turn-finalization write
-  // races the commit's conversation-row update. The draft's bound
-  // resource still points at the persisted workflow, so fall back to
-  // it and report the commit idempotently instead of a false
-  // "no committed workflow" (the poll and the commit must agree).
   let workflowId = detail.conversation.target_workflow_id;
   if (!workflowId) {
     const bound = draft.state ? persistedWorkflowResource(draft.state) : null;
@@ -66,14 +54,6 @@ export async function readConversationCommit(
   if (!workflowId) {
     return errorText("conversation has no committed workflow");
   }
-  // Honest reporting (RC2): conversation_commit is a read-only status tool —
-  // it does NOT persist the draft. If the working draft still holds workflow
-  // STEP edits that are not in the live version, echoing "committed" + usage
-  // is a "reported ≠ written" lie (the model narrates success the user never
-  // got). Detect that and return a directive error instead. Everything the
-  // success reply claims is then read from the persisted rows (workflows +
-  // workflowVersions) — never from the draft — so a partial or no-op commit
-  // cannot read as success.
   const draftState = await classifyDraftVsPersisted(db, principal.tenant_id, draft, workflowId);
   if (draftState.state === "structural") {
     return errorText(
@@ -90,9 +70,6 @@ export async function readConversationCommit(
       "COMMIT UNVERIFIED: a persisted version exists but its stored definition could not be read, so the commit cannot be confirmed against it. Do not report success; inspect the workflow with get_workflow.",
     );
   }
-  // Read the persisted view (checked AFTER the unreadable_dag branch —
-  // getWorkflow parses the stored dag and would throw an opaque schema
-  // error on a corrupt one).
   const committedWorkflow = await getWorkflow(principal.tenant_id, workflowId, db);
   if (!committedWorkflow) {
     return errorText(
@@ -130,16 +107,11 @@ export async function readConversationCommit(
     );
   }
   if (!committedWorkflow.current_version_id || committedWorkflow.current_version == null) {
-    // The classifier can skip the version check (empty draft returns
-    // early), and a delete/rotate can race it — same persisted truth
-    // either way: no version row means nothing was written.
     return errorText(
       "NOT COMMITTED: the resolved workflow has no persisted version — nothing was written. conversation_commit only reports status; to persist the draft call save_workflow_draft (after a successful dry_run_workflow). Do not tell the user it is committed.",
     );
   }
   const verified = draftState.state === "clean";
-  // Attach the usage block so external MCP clients (claude.ai) can
-  // tell the user what was committed and every real way to run it.
   return successText(
     CommitResult.parse({
       conversation_id: detail.conversation.id,

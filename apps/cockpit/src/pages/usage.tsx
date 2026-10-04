@@ -71,29 +71,12 @@ function isWindow(value: string): value is StatsWindow {
   return (STATS_WINDOWS as readonly string[]).includes(value);
 }
 
-/**
- * Nutzung (V8): what the model calls cost over one window — what the money was
- * spent on, which workflows' runs spent it, and on which models.
- *
- * "Wofür" leads because it is the question the page is opened with. A
- * breakdown by workflow alone could not answer it: most spend is chat, which
- * has no run, and the page showed one row "Keinem zuzuordnen" for nearly the
- * whole month. "Nach Workflow" now holds only spend a run can be named for,
- * and stands only when there is some.
- *
- * The window is a filter, not a page action (D14): it stands at the right of
- * the summary line, and the summary line is the page's one figure — the
- * window's spend and how much of the month's cap is gone. The operating
- * figures (runs, success rate, connector health) are the Übersicht's.
- */
 export function UsagePage() {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
   const live = useLiveQueryOptions();
   const allowed = session.permissions.includes("stats:read");
   const title = t("resource.usage.title");
-  // The window comes from the address (`?window=24h`), so a figure elsewhere
-  // opens this page over the very window it counted.
   const [bounds, setBounds] = useState<WindowBounds>(() =>
     windowBounds(usageWindowFromUrl(window.location.search)),
   );
@@ -136,7 +119,6 @@ export function UsagePage() {
     queryFn: () => apiRequest<unknown>(`${executionStatsEndpoint(bounds)}&group_by=workflow_id`),
     ...live,
   });
-  // The cap answers about the calendar month, the rest about the window.
   const status = useQuery({
     queryKey: ["usage-status"],
     enabled: allowed,
@@ -145,8 +127,6 @@ export function UsagePage() {
   });
 
   const origins = useMemo(() => originRows(byFlow.data), [byFlow.data]);
-  // Every workflow row, the catch-all of calls without a run included: the
-  // window's token total below is the sum of all of them.
   const workflowRows = useMemo(
     () => consumptionRows(byWorkflow.data, "workflow"),
     [byWorkflow.data],
@@ -161,8 +141,6 @@ export function UsagePage() {
     [workflowRows],
   );
 
-  // Names for the workflow rows, each id looked up by itself: only a 404
-  // says a workflow is gone; any other failure is a name this page could not read.
   const workflowIds = useMemo(
     () => workflowRows.filter((row) => !row.unattributed).map((row) => row.key),
     [workflowRows],
@@ -200,8 +178,6 @@ export function UsagePage() {
     [numberFormat],
   );
 
-  // The money and its share of the window, as a bar and an amount — one cell
-  // for both breakdowns, so "Wofür" and "Nach Workflow" read alike.
   const costCell = useCallback(
     (row: { cost: number | null; tokens: number; share: number | null }) => (
       <span className="flex items-center gap-3">
@@ -234,14 +210,11 @@ export function UsagePage() {
         (row) => (
           <span
             className="block break-words font-medium"
-            // The engine's own names for what the row sums, for whoever asks.
             title={row.flows.filter(Boolean).join(", ") || undefined}
             data-testid="usage-origin"
             data-origin={row.key}
           >
             {t(ORIGIN_LABEL[row.key])}
-            {/* "Sonstiges" names what fell into it — an unknown purpose is
-                said, not hidden behind a word. */}
             {row.key === "other" && row.flows.some(Boolean) ? (
               <span className="ml-2 font-normal text-muted-foreground">
                 {row.flows.filter(Boolean).join(", ")}
@@ -324,7 +297,6 @@ export function UsagePage() {
         "share",
         (row) => row.share,
         t("resource.field.share"),
-        // A share of nothing is not nought per cent — the dash says so.
         (row) => (
           <span className="whitespace-nowrap tabular-nums">
             {row.share === null ? MISSING : percent.format(row.share)}
@@ -348,7 +320,6 @@ export function UsagePage() {
       </Page>
     );
 
-  // The page's one figure: the window's spend, then the month's cap.
   const spent = money
     ? currency.format(money.amount)
     : t("resource.usage.tokensAmount", { count: number.format(windowTokens) });
@@ -362,7 +333,6 @@ export function UsagePage() {
     <span data-testid="usage-cap-consequence">{t("resource.usage.capReached")}</span>
   ) : share !== null ? (
     pressure === "tightening" || pressure === "critical" ? (
-      // Close to the cap, the share opens the setting that raises it.
       <a
         className="font-medium text-foreground underline underline-offset-2"
         href={absolute(settingsHref(BUDGET_SETTING))}
@@ -376,7 +346,6 @@ export function UsagePage() {
     )
   ) : null;
 
-  // Neither table filters, so the filtered state never shows; the type asks for it.
   const emptyState = {
     zero: { title: t("resource.usage.consumptionEmpty") },
     filtered: {
@@ -422,8 +391,6 @@ export function UsagePage() {
 
         <Section label={t("resource.usage.byOrigin")} testId="usage-origins">
           <DataTable
-            // Every `data-testid` the table emits derives from `collectionId`,
-            // so each table on this page needs its own.
             collectionId="usage-origin-table"
             collectionTier="embedded"
             columns={originColumns}
@@ -434,15 +401,12 @@ export function UsagePage() {
             hasActiveFilters={false}
             sorting={[] as SortingState}
             onSortingChange={() => {}}
-            // Several tables, several column pickers: each names the table it shapes.
             columnsLabel={`${t("catalog.columns")} · ${t("resource.usage.byOrigin")}`}
             recordsLabel={t("catalog.records")}
             actionsLabel={t("common.actions")}
           />
         </Section>
 
-        {/* Only spend a run can be named for. With none, the section stands
-            down — but never while it is still reading or could not read. */}
         {byWorkflow.isPending || byWorkflow.error || attributedRows.length > 0 ? (
           <Section label={t("resource.usage.byWorkflow")} testId="usage-breakdown">
             <DataTable

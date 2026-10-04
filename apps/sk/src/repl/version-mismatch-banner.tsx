@@ -1,22 +1,3 @@
-// CLI ↔ engine version-mismatch banner. Without it, the engine
-// container can run an older binary while sk-CLI ships fixes —
-// symptoms like "loop_authoring_requires_inspect after a successful
-// probe" reproduce because a probe-evidence fix exists in source but
-// not in the running container.
-//
-// The banner runs the same comparison the operator would do
-// manually: `sk --version` vs. `GET /v1/status` -> `version`.
-// Mismatch surfaces as a sticky banner above the welcome panel
-// with one of three severities:
-//
-//   ↻  CLI v3.2.1 → engine v3.2.0 (engine is older — rebuild image)
-//   ⚠  CLI v3.2.0 → engine v3.2.1 (CLI is older — bump sk and reinstall)
-//   ◦  CLI v0.0.0-dev (development build — version skew not enforced)
-//
-// We never block the session — the CLI is always usable — but the
-// hint short-circuits the "why are these fixes not landing?"
-// triage cycle.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
@@ -29,18 +10,6 @@ export interface VersionSkewSnapshot {
   severity: VersionSkewSeverity;
 }
 
-/**
- * Pure classifier — no React. Used by the banner AND the debug-log
- * line so both surfaces report the same severity.
- *
- * Comparison strategy:
- *   - "0.0.0-dev" CLI → dev_build (operator is iterating; skew is
- *     intentional).
- *   - identical strings → match.
- *   - otherwise compare semver-style. CLI > engine → engine_older
- *     (the dominant production case: stale docker container);
- *     CLI < engine → cli_older (operator hasn't bumped sk).
- */
 export function classifyVersionSkew(
   cliVersion: string,
   engineVersion: string,
@@ -61,9 +30,6 @@ export function classifyVersionSkew(
   };
 }
 
-/** Lex-compare two semver strings. Returns >0 when `a > b`, <0 when
- *  `a < b`, 0 on equal. Tolerates extra suffix segments — purely
- *  numeric comparison up to the prefix that's numeric. */
 function compareSemver(a: string, b: string): number {
   const partsA = parseSegments(a);
   const partsB = parseSegments(b);

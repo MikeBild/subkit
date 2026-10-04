@@ -18,10 +18,6 @@ import type {
 
 export type AnySummary = WorkflowSummary | ConnectorSummary | KnowledgeSourceSummary;
 
-// Dynamic usage block — renders the engine-provided `usage` payload
-// (inputs, output, access mechanisms, follow-up) from the persist
-// envelope. When `usage` is absent (degenerate envelope) the card
-// renders without it; there is no hardcoded command fallback.
 const UsageBlock: React.FC<{ usage: ResourceUsage }> = ({ usage }) => (
   <Box flexDirection="column" marginTop={1}>
     {usage.inputs.length > 0 ? (

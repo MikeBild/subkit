@@ -1,18 +1,3 @@
-// call_connector — stringified GraphQL body acceptance tests (P3).
-//
-// The `body` input schema was changed from `z.unknown()` to
-// `z.union([z.object({}).passthrough(), z.string()])`. An MCP client that
-// serializes the object to a JSON string must still reach dispatch, and
-// the `{query}` presence check must parse the string before evaluating it.
-//
-// Three cases:
-//   1. Object body `{query, variables}` → dispatches to the graphql driver.
-//   2. JSON-string body `'{"query":"{ x }","variables":{}}'` → same dispatch.
-//   3. Non-JSON string (e.g. "not-an-object") → invalid_input, no dispatch.
-//
-// The graphql driver is replaced with a spy so no live endpoint is
-// contacted; we assert the spy was invoked with the correct parsed body.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as graphqlDriver from "../../connectors/drivers/graphql.ts";
 import { connectors } from "../../db/schema/index.ts";
@@ -67,7 +52,6 @@ function makeToolCtx(): ToolContext {
   };
 }
 
-/** Minimal stub for graphqlDriver.query that returns a successful response. */
 function mockGraphqlSuccess() {
   return spyOn(graphqlDriver, "query").mockResolvedValue({
     status: 200,
@@ -95,7 +79,6 @@ describe("call_connector — GraphQL: object body", () => {
     });
 
     expect(result.ok).toBe(true);
-    // Driver was called once with the expected query.
     expect(spy).toHaveBeenCalledTimes(1);
     const call = spy.mock.calls[0]![0] as { query: string; variables?: Record<string, unknown> };
     expect(call.query).toBe("{ x }");
@@ -119,12 +102,10 @@ describe("call_connector — GraphQL: JSON-stringified body", () => {
       body: bodyString as any,
     });
 
-    // Must NOT return invalid_input — the string was successfully parsed.
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect((data.error as { code: string } | undefined)?.code).not.toBe("invalid_input");
 
-    // Driver was called once — dispatch reached the wire.
     expect(spy).toHaveBeenCalledTimes(1);
     const call = spy.mock.calls[0]![0] as { query: string };
     expect(call.query).toBe("{ x }");
@@ -175,7 +156,6 @@ describe("call_connector — GraphQL: non-JSON string body fails cleanly", () =>
     const data = result.data as { error: { code: string } };
     expect(data.error.code).toBe("invalid_input");
 
-    // Driver must NOT have been called — validation failed before dispatch.
     expect(spy).not.toHaveBeenCalled();
 
     spy.mockRestore();
@@ -185,7 +165,6 @@ describe("call_connector — GraphQL: non-JSON string body fails cleanly", () =>
     const connectorId = await seedGraphqlConnector("gql-missing-query");
     const spy = mockGraphqlSuccess();
 
-    // Valid JSON but missing the `query` field — the guard must still reject.
     const bodyString = JSON.stringify({ variables: { id: "x" } });
     const result = await callConnectorTool.execute(makeToolCtx(), {
       connector_id: connectorId,

@@ -1,19 +1,6 @@
-// Pure helpers the conversation loop uses for stream-level stop
-// conditions and post-turn fallbacks. Kept in their own module so they
-// can be unit-tested without spinning the DB / provider stack.
-
 import { isAutomationReviewCard } from "./loop/stop-conditions.ts";
 import type { TurnEvent } from "./types.ts";
 
-/**
- * Stop the stream when the per-turn loop-warning budget is exhausted —
- * the per-tool loop-breaker in sdk-wrap sets `reason: "turn_loop_budget_exhausted"`
- * on its wrapped result once `signals.totalLoopWarnings` crosses the
- * turn-level cap. Without this, the model keeps getting re-driven into
- * the same short-circuit and burns the entire step budget with nothing
- * to show for it (observed in session 4e6696e3: 20 rounds, 1.1 M tokens,
- * empty output).
- */
 export const turnLoopBudgetStopCondition = ({
   steps,
 }: {
@@ -32,11 +19,6 @@ export const turnLoopBudgetStopCondition = ({
   });
 };
 
-/** Tag for WHY `synthesizeFallbackMessage` produced output, so the
- *  conversation loop can log it accurately and operators can
- *  distinguish a benign next-prompt synthesis from an emergency
- *  loop-budget short-circuit.
- */
 export type FallbackSynthesisReason =
   | "next_prompt_from_tool"
   | "loop_warnings_no_signal"
@@ -53,12 +35,6 @@ function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null
   return typeof o.next_prompt === "string" && o.next_prompt.length > 0 ? o.next_prompt : null;
 }
 
-/** Companion to `synthesizeFallbackMessage` — returns the same text
- *  the message would have, paired with the reason tag, so the
- *  conversation loop can emit a structured log distinguishing a
- *  benign next-prompt synthesis from an emergency loop-budget
- *  short-circuit. Returns null when the message would also be null.
- */
 export function classifyFallbackSynthesis(params: {
   events: ReadonlyArray<TurnEvent>;
   loopWarnings: number;
@@ -81,33 +57,10 @@ export function classifyFallbackSynthesis(params: {
   };
 }
 
-/**
- * Build a short fallback message from collected `tool_result` events
- * when the turn finished without the model producing any text. Walks
- * the events, picks the last output per tool name, and renders a
- * one-line summary per tool.
- *
- * Output is English. The model is responsible for any locale-aware
- * surface text in the regular path; the fallback is a backstop and
- * stays in one canonical language so observability + test-snapshot
- * matchers don't drift across tenants.
- *
- * Returns null when there is no meaningful signal — callers then
- * decide between a generic apology line and silence. An empty
- * assistant text is always worse than a synthesised paragraph, so the
- * loop should prefer this over rendering `""`.
- */
 export function synthesizeFallbackMessage(params: {
   events: ReadonlyArray<TurnEvent>;
   loopWarnings: number;
 }): string | null {
-  // Walk every `tool_result` to collect (a) the most recent output per
-  // tool and (b) per-tool counts + success/error tallies. The header
-  // varies based on whether the loop guard fired AND whether the
-  // calls actually succeeded — a turn where 5 run_workflow calls all
-  // succeeded should not say "I stopped this turn early" (session
-  // d34e5858 regression: misleading fallback after a parallel-tool
-  // fan-out where every execution actually succeeded).
   const latestPerTool = new Map<string, Record<string, unknown>>();
   const callsPerTool = new Map<string, number>();
   let totalCalls = 0;
@@ -127,15 +80,6 @@ export function synthesizeFallbackMessage(params: {
       (out as { ok?: unknown }).ok === false;
     if (!looksError) successCalls += 1;
   }
-  // Never-silent guard. If we have any tool result with a `next_prompt`
-  // and the model emitted no text, synthesise a one-liner so the user
-  // is never staring at a blank turn after a successful tool fired.
-  // Pre-fix the probe-success path produced no model text and no
-  // fallback (the lifecycle envelope didn't match any of the recognised
-  // shapes), so the user saw silence and asked "what's now?" (session
-  // 0ac7593c). Even when the regular fallback would produce something,
-  // a `next_prompt` from the freshest tool gives the most actionable
-  // line — preferred.
   const nextPrompt = pickFreshestNextPrompt(params.events);
   if (nextPrompt) return nextPrompt;
   if (latestPerTool.size === 0) {
@@ -146,21 +90,9 @@ export function synthesizeFallbackMessage(params: {
   const lines: string[] = [];
   for (const [tool, output] of latestPerTool) {
     const callCount = callsPerTool.get(tool) ?? 1;
-    // Only annotate the call count when the loop guard fired — that is
-    // when the operator needs to see "this tool ran N times". In normal
-    // multi-tool summaries the per-line shape stays `- tool: descr`.
     const suffix = params.loopWarnings > 0 && callCount > 1 ? ` (called ${callCount}×)` : "";
     lines.push(`- ${tool}: ${describeToolOutput(output)}${suffix}`);
   }
-  // Pick the header that matches the actual turn shape:
-  //   - loop fired AND every call succeeded AND there were multiple
-  //     calls of the same tool → "ran the same tool N×". This is the
-  //     parallel-fan-out case (session d34e5858: five succeeding
-  //     run_workflow calls in one turn) — saying "I stopped early" is
-  //     misleading because every call actually completed.
-  //   - loop fired in any other shape → the original "stopped early"
-  //     message. Single-call short-circuits, error retries, etc.
-  //   - loop did not fire → plain summary header.
   const sameToolFanOut =
     params.loopWarnings > 0 &&
     successCalls === totalCalls &&
@@ -178,11 +110,6 @@ export function synthesizeFallbackMessage(params: {
   return `${header}\n${lines.join("\n")}`;
 }
 
-// Translate a `lifecycle_state` enum value to a user-facing verb. Pre-fix
-// the fallback rendered the raw token (`workflow_validated`,
-// `connector_probed`) which read as internal jargon. The mapping covers
-// the known authoring transitions; unknown values fall through to a
-// trimmed, humanised version of the token itself.
 function humaniseLifecycleState(state: string): string {
   const map: Record<string, string> = {
     none: "drafting",
@@ -214,17 +141,6 @@ function looksLikeLifecyclePayload(output: Record<string, unknown>): boolean {
   );
 }
 
-/**
- * Render an `ok:false` envelope as operator-readable prose. The
- * fallback text is shown to a HUMAN, so the raw `error_code:` token
- * must never appear — the envelope's hint/message fields carry the
- * explanation, and the structured `missing` / `expected_fields` /
- * `setup_instructions` detail is appended so the corrective action is
- * visible at a glance (conversation 68b5c87e: the operator saw
- * "ask_user_form: error_code: credential_form_mismatch" four times).
- * Detail fields are read from the top level first, then from a nested
- * `data` object — both envelope shapes exist at this layer.
- */
 function describeErrorEnvelope(output: Record<string, unknown>): string {
   const data =
     output.data && typeof output.data === "object" && !Array.isArray(output.data)
@@ -256,10 +172,6 @@ function describeErrorEnvelope(output: Record<string, unknown>): string {
 }
 
 function describeToolOutput(output: Record<string, unknown>): string {
-  // Loop-abort envelope that carries the IDENTICAL call's earlier success:
-  // describe the finished run, not the abort. Pre-fix the abort envelope
-  // replaced the success in `latestPerTool` and the user read
-  // "status=succeeded · no output" for a run whose data existed all along.
   if (
     (output.reason === "tool_loop_detected" || output.reason === "turn_loop_budget_exhausted") &&
     output.prior_success_output !== undefined &&
@@ -270,9 +182,6 @@ function describeToolOutput(output: Record<string, unknown>): string {
       output.prior_success_output as Record<string, unknown>,
     )}`;
   }
-  // Auto-act envelopes carry an explicit `auto_saved` / `auto_committed`
-  // flag. Surface that as the headline so the user sees "saved" / "committed"
-  // before any list / lifecycle / fields fallback — task #4 result.
   if (output.auto_saved === true) {
     const next =
       typeof output.next_prompt === "string" ? output.next_prompt : "ready for the next step";
@@ -291,30 +200,16 @@ function describeToolOutput(output: Record<string, unknown>): string {
     "items",
     "hits",
     "results",
-    // The find_* read tools (find_workflow / find_connector / find_skill
-    // / find_role / find_user) return `{ matches, total }`. Without this
-    // key a read-only turn that ends silently after find_workflow fell
-    // through to the last-resort field dump ("fields: matches, total,
-    // truncated") instead of the "N of M entries" summary its siblings
-    // get (chat weather repro, conversation cd56aa7a).
     "matches",
   ];
   for (const key of candidateKeys) {
     const value = output[key];
     if (Array.isArray(value)) {
-      // Self-describing list envelopes carry the exact filtered total —
-      // surface it so a page is never summarized as the universe.
       const total = typeof output.total === "number" ? output.total : null;
       if (total !== null && total !== value.length) return `${value.length} of ${total} entries`;
       return `${value.length} entries`;
     }
   }
-  // run_workflow / dry_run_workflow lifecycle payload — surface the
-  // actual outcome instead of falling through to the generic
-  // "fields: mode, stage, lifecycle_state, …" list (session 86de186b
-  // continuation: when the loop-breaker fired 5× the operator saw
-  // "fields: mode, stage, …" with no actual workflow output, no
-  // status, no warning text — useless).
   const status = typeof output.status === "string" ? output.status : null;
   const requiresRepair = output.requires_repair === true;
   const warnings = Array.isArray(output.warnings) ? (output.warnings as unknown[]) : null;
@@ -329,10 +224,6 @@ function describeToolOutput(output: Record<string, unknown>): string {
     }
     if (Array.isArray(wfOutput)) parts.push(`output: ${wfOutput.length} rows`);
     else if (wfOutput && typeof wfOutput === "object") {
-      // A pre-sampled output carries REAL rows — show them, not just key
-      // names. The fallback is often the only text the user sees on a
-      // tool-only turn; "output: org, count, repos" answers nothing while
-      // the actual top rows sit one field away.
       if (output.output_sampled === true) {
         let snippet = "";
         try {
@@ -354,10 +245,6 @@ function describeToolOutput(output: Record<string, unknown>): string {
         );
       }
     } else if (wfOutput === null || wfOutput === undefined) {
-      // A big result gets stripped from the LLM-facing envelope by the
-      // outer 8KB truncate pass — that is NOT "no output". Saying so sent
-      // production operators chasing phantom failures while their 95-row
-      // result sat behind the raw_ref. Point at the retrieval path.
       if (output._truncated === true || typeof output._raw_ref === "string") {
         parts.push(
           typeof output._raw_ref === "string"
@@ -370,12 +257,6 @@ function describeToolOutput(output: Record<string, unknown>): string {
     }
     return parts.join(" · ");
   }
-  // Lifecycle envelope (build*Payload from authoring-contract.ts) —
-  // covers connector + workflow draft tools. Pre-fix this fell through
-  // to the generic key-enumeration line and surfaced as
-  // "fields: mode, stage, lifecycle_state, resource_kind, resource_id"
-  // (session 0ac7593c). Translate to a humane one-liner anchored on
-  // the lifecycle_state and the next recommended action.
   if (looksLikeLifecyclePayload(output)) {
     const kind = (output.resource_kind as string | null) ?? "draft";
     const id = (output.resource_id as string | null) ?? "draft";
@@ -396,12 +277,6 @@ function describeToolOutput(output: Record<string, unknown>): string {
   if (typeof output.error === "string") return `error: ${output.error.slice(0, 160)}`;
   if (typeof output.reason === "string") return `note: ${String(output.reason)}`;
   if (typeof output.message === "string") return String(output.message).slice(0, 160);
-  // Last resort — enumerate domain keys but defensively strip any
-  // underscore-prefixed envelope keys so internal markers
-  // (`_truncated`, `_truncation_note`, future additions) never reach
-  // the user. Lifecycle envelopes are handled above; this fallback is
-  // only hit for tools whose output is neither a list, a status payload,
-  // nor a lifecycle envelope (e.g. `whoami`, ad-hoc admin tools).
   const keys = Object.keys(output).filter((k) => !k.startsWith("_"));
   return keys.length > 0 ? `fields: ${keys.slice(0, 5).join(", ")}` : "no structured output";
 }

@@ -1,20 +1,3 @@
-// Unit coverage for the elicitation-answer renderer.
-//
-// Pre-fix symptom: every `ask_user_form` submission rendered as
-// `(answered)` in the transcript regardless of what the user typed —
-// no audit trail of which fields were filled, even when the values
-// were not sensitive. The renderer fell through to the default branch
-// because it did not consult the form schema, so it could neither
-// distinguish sensitive from non-sensitive fields nor list the field
-// names when the engine had already redacted the values.
-//
-// Post-fix: pass the elicitation's `input` to read the form schema.
-// Sensitive fields (type=password, sensitive:true, or a name like
-// `token`/`api_key`) render as `<name>=***`. Plain fields render the
-// actual value. An empty/redacted output with a known schema renders
-// `(filled: <names>)` so the user can see which fields were
-// submitted.
-
 import { describe, expect, test } from "bun:test";
 import { renderElicitAnswer } from "../ink-app.tsx";
 
@@ -31,10 +14,6 @@ describe("renderElicitAnswer — confirmation outputs", () => {
     );
   });
 
-  // Fix #4 — confirmation transcript shows the proposed payload so the
-  // user can scroll back and audit WHAT they approved. Without this the
-  // history was 5× `you approve` lines with zero context (session
-  // a6440493).
   test("appends commit_intent.description as payload preview", () => {
     const input = {
       kind: "save_workflow_draft",
@@ -94,7 +73,6 @@ describe("renderElicitAnswer — confirmation outputs", () => {
       },
     };
     const out = renderElicitAnswer({ confirmed: true }, input);
-    // truncateForTranscript keeps it under 80 chars + ellipsis suffix.
     expect(out.length).toBeLessThan(120);
     expect(out.startsWith("approve · ")).toBe(true);
   });
@@ -144,8 +122,6 @@ describe("renderElicitAnswer — form outputs with schema", () => {
   });
 
   test("redacts by name heuristic when schema is missing", () => {
-    // Defensive: a malformed `ask_user_form` without `sensitive` flags
-    // must still redact known credential field names.
     expect(renderElicitAnswer({ token: "leak" })).toBe("token=***");
     expect(renderElicitAnswer({ api_key: "leak" })).toBe("api_key=***");
     expect(renderElicitAnswer({ password: "leak" })).toBe("password=***");

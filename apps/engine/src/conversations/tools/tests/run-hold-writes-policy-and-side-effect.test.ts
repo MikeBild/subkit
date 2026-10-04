@@ -1,21 +1,9 @@
-// authoring-flow hold_writes policy gate + inspect-workflow-draft
-// side_effect label (unit layer, no DB).
-//
-// Coverage:
-//   C. Generic workflow starts delegate to durable admission for every flag.
-//   D. inspect_workflow_draft marks POST/send steps side_effect:"write" and
-//      GET/transform steps side_effect:"read".
-
 import { describe, expect, it } from "bun:test";
 import { createEmptyDraftDocument, withWorkflowDraft } from "../../authoring-state.ts";
 import { resolveToolMode } from "../../tool-policies.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { inspectWorkflowDraftTool } from "../inspect-workflow-draft.ts";
-
-// ---------------------------------------------------------------------------
-// C. Enforcement resolver: run_workflow's compute-from-input hook
-// ---------------------------------------------------------------------------
 
 function runWorkflowMode(input: Record<string, unknown>) {
   return resolveToolMode({
@@ -61,10 +49,6 @@ describe("resolveToolMode for run_workflow (enforcement table)", () => {
     expect(runWorkflowMode({ workflow: "my-wf" })).toBe("no_confirm");
   });
 });
-
-// ---------------------------------------------------------------------------
-// D. inspect_workflow_draft side_effect labels
-// ---------------------------------------------------------------------------
 
 function makeDraftCtx(draft: DraftDocument): ToolContext {
   return {

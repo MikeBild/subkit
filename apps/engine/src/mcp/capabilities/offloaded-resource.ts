@@ -8,8 +8,6 @@ import { can } from "../../rbac/evaluator.ts";
 
 const RESOURCE_NOT_FOUND = -32002 as ErrorCode;
 
-/** Resolve an object-store resource only through an exact, tenant-owned
- * PostgreSQL pointer. Knowledge of a bucket/key is never authority. */
 export async function readOffloadedExecutionResource(
   db: Db,
   principal: ResolvedPrincipal,

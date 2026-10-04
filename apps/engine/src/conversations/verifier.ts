@@ -1,23 +1,3 @@
-// Static verifier for workflow drafts.
-//
-// Runs inside `build_workflow` and can be called from `validate_draft`
-// before commit. Catches classes of error that the zod schema cannot:
-//
-//   - JSONata expression syntax errors in transform / data_selector /
-//     outputTransform / branch.when
-//   - Scope-reference integrity: `${scope.<step>.*}` must point at a
-//     step whose `id` appears earlier in the workflow
-//   - Output schema validity: `output_schema` compiles as JSON Schema
-//     (Ajv) without throwing
-//   - Method safety hints: POST/PUT/DELETE without `onError.mode` set →
-//     warning (one unhandled failure can abort the whole workflow)
-//   - Idempotency hints: GET steps with retry on and no `idempotency_key`
-//     → info
-//
-// Verifier is pure and cheap — no DB calls, no LLM calls. If it throws
-// it's an invariant bug; otherwise it returns a structured
-// { errors, warnings, infos } tuple.
-
 import {
   compile as compileJsonata,
   findUnboundFunctionCalls,
@@ -31,7 +11,6 @@ export interface VerifierFinding {
   severity: VerifierSeverity;
   code: string;
   message: string;
-  /** Dotted path into the WorkflowDef that triggered the finding. */
   path: string;
 }
 
@@ -51,16 +30,9 @@ interface InputWorkflow {
 }
 
 const JSONATA_FIELDS: Array<{
-  /** Which step `kind` carries this field; undefined = top-level */
   kind?: string;
-  /** Field name on the step or workflow root. */
   field: string;
-}> = [
-  // NOTE: `transform.expression` is intentionally NOT here — a transform may
-  // be JSONata OR JavaScript, so it is routed by `language` in
-  // `validateTransformExpression`. `branch.when` is always JSONata.
-  { kind: "branch", field: "when" },
-];
+}> = [{ kind: "branch", field: "when" }];
 
 function addFinding(report: VerifierReport, finding: VerifierFinding): void {
   if (finding.severity === "error") report.errors.push(finding);
@@ -90,16 +62,8 @@ function tryJsonata(expression: string, path: string, report: VerifierReport): v
   }
 }
 
-// Validate a JavaScript transform body WITHOUT executing it. The QuickJS
-// sandbox (sandboxes/quickjs/runtime.ts) wraps user code as
-// `(function(input){ <expression> })`, so `new Function("input", expression)`
-// parses the body under the exact same grammar. The Function constructor
-// compiles but never RUNS the body, so this stays as pure and cheap as the
-// JSONata path — a SyntaxError here is the same failure the author would
-// otherwise only discover at runtime in the sandbox.
 function tryJavascript(expression: string, path: string, report: VerifierReport): void {
   try {
-    // Parse-only: the Function constructor compiles the body but never runs it.
     new Function("input", expression);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -112,13 +76,6 @@ function tryJavascript(expression: string, path: string, report: VerifierReport)
   }
 }
 
-// Validate a transform step's `expression`. Transforms are JavaScript-only —
-// validating a JS body through the JSONata parser is exactly the bug that
-// trapped the authoring loop ("JSONata expression failed to parse" on correct
-// JavaScript). JSONata survives only in the one-line slots (`data_selector`,
-// `branch.when`, `output_transform`, `${scope.x.data}` interpolation), which
-// are validated elsewhere. The three web-scraper languages carry no
-// `expression` (their config blocks do), so they are skipped.
 function validateTransformExpression(
   step: Record<string, unknown>,
   path: string,
@@ -256,10 +213,6 @@ function checkOutputSchema(schema: unknown, report: VerifierReport): void {
     });
     return;
   }
-  // We don't compile against Ajv here (it adds a heavy dep for
-  // what is a surface sanity check). Instead: assert the shape looks
-  // like a JSON Schema — it must have a `type` or `$ref` or `oneOf`/
-  // `anyOf`/`allOf` key at the root.
   const s = schema as Record<string, unknown>;
   const looksLikeSchema =
     "type" in s || "$ref" in s || "oneOf" in s || "anyOf" in s || "allOf" in s || "properties" in s;
@@ -285,16 +238,12 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
     const kind = typeof step.kind === "string" ? step.kind : undefined;
     const path = `steps[${i}]`;
 
-    // Scope refs in this step can only reference PREVIOUS steps.
     scanScopeRefs(step, seenStepIds, path, report);
 
-    // Transform expressions are validated against their DECLARED language
-    // (JSONata XOR JavaScript), not unconditionally as JSONata.
     if (kind === "transform") {
       validateTransformExpression(step, path, report);
     }
 
-    // JSONata-only fields per step kind.
     for (const spec of JSONATA_FIELDS) {
       if (spec.kind && spec.kind !== kind) continue;
       const v = step[spec.field];
@@ -303,19 +252,12 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
       }
     }
 
-    // data_selector is present across kinds.
     if (typeof step.data_selector === "string" && step.data_selector.length > 0) {
       tryJsonata(step.data_selector, `${path}.data_selector`, report);
     }
 
     checkMethodSafety(step, path, report);
 
-    // `item_var` is retired from the authored contract. The canonical
-    // enforcement point is `validateWorkflowDef` (every write surface
-    // routes through it); this build-time duplicate exists because
-    // `build_workflow` runs the verifier BEFORE the draft is accepted,
-    // so the author gets the refusal one round-trip earlier — same
-    // defence-in-depth pattern as the reserved-auth-header check.
     if (kind === "loop" && step.item_var !== undefined) {
       addFinding(report, {
         severity: "error",
@@ -330,11 +272,6 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
     if (id) seenStepIds.add(id);
   }
 
-  // Bare-iteration-identifier lint: loop-body JSONata must address the
-  // current item as `$item` — the bare `item` default and any legacy
-  // declared item_var name are not bound for new definitions. The
-  // helper returns a concrete `$item`-rewritten expression as
-  // did_you_mean when the AST rewriter can prove it.
   for (const finding of validateBareIterationIdentifiers(steps)) {
     addFinding(report, {
       severity: "error",
@@ -348,11 +285,8 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
     });
   }
 
-  // Workflow-level fields.
   if (typeof wf.output_transform === "string" && wf.output_transform.length > 0) {
     tryJsonata(wf.output_transform, "output_transform", report);
-    // Output transforms may reference the final step's data via
-    // $scope.<step_id>.data — validate refs against the full set.
     scanScopeRefs(wf.output_transform, seenStepIds, "output_transform", report);
   }
   checkOutputSchema(wf.output_schema, report);
@@ -360,7 +294,6 @@ export function verifyWorkflow(wf: InputWorkflow): VerifierReport {
   return report;
 }
 
-/** Convenience: true when there are no error-severity findings. */
 export function isAcceptable(report: VerifierReport): boolean {
   return report.errors.length === 0;
 }

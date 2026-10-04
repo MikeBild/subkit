@@ -1,9 +1,3 @@
-// Engine-API read-tool families. One module per domain; each module
-// exports an array of `ConversationTool` instances. All tools are
-// `tenant_read` — safe to invoke in parallel, tenant-scoped via the
-// EngineClient, and carry no side effects beyond audit-log entries
-// written by the EngineClient.
-
 export { auditReadTools } from "./audit.ts";
 export { connectorReadTools } from "./connectors.ts";
 export {
@@ -61,8 +55,6 @@ export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
   ...hookReadTools,
   ...subscriptionReadTools,
   ...statusReadTools,
-  // Discovery read + write: list_ + get_ are tenant_read; approve_ is
-  // tenant_write but registered here so the palette sees it.
   listDiscoveryArtifactsTool,
   getDiscoveryArtifactTool,
   approveDiscoveryArtifactTool,

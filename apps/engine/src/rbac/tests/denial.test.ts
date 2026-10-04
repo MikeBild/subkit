@@ -1,8 +1,3 @@
-// Pure unit tests for the actionable-denial formatter (Stream 2).
-// No DB — just the message/details shaping from a DenyDetail (+ optional
-// connector level). Covers the connector-level path, the credential-ceiling
-// path, the generic path, and the missing-detail fallback.
-
 import { describe, expect, test } from "bun:test";
 import { denialDetails, denialHint } from "../denial.ts";
 import type { DenyDetail } from "../evaluator.ts";

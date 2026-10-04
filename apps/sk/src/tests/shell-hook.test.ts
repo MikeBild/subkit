@@ -20,7 +20,7 @@ const baseInput: StatusLineInput = {
   permission_mode: "ask",
   cwd: "/",
   git_branch: null,
-  timestamp: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
+  timestamp: "2024-11-14T22:13:20.000Z",
 };
 
 beforeEach(() => {
@@ -47,11 +47,7 @@ describe("runShellHook", () => {
     const ok = await runShellHook("printf 'cached'", baseInput, { timeoutMs: 800 });
     expect(ok.source).toBe("fresh");
     const fail = await runShellHook("printf 'cached'", baseInput, { timeoutMs: 800 });
-    // Second hit IS still fresh because the command is the same and
-    // succeeds again. Use a different command for the failing case.
     expect(fail.source).toBe("fresh");
-    // Now make the hook fail; we expect the cache for *that* command
-    // not to exist, so it returns error/empty.
     const failingCmdResult = await runShellHook("exit 1", baseInput, { timeoutMs: 800 });
     expect(failingCmdResult.source).toBe("error");
   });
@@ -69,15 +65,11 @@ describe("runShellHook", () => {
 
   test("aborting mid-flight resolves with cached or aborted status", async () => {
     const ctrl = new AbortController();
-    // Kick off a slow hook (sleep) and abort immediately — synchronous
-    // abort before the spawn completes the abort path before any
-    // wall-clock delay matters.
     ctrl.abort();
     const r = await runShellHook("sleep 5; printf 'late'", baseInput, {
       timeoutMs: 5000,
       signal: ctrl.signal,
     });
-    // No cache was populated for this command, so we get aborted.
     expect(["aborted", "cached"]).toContain(r.source);
   });
 });

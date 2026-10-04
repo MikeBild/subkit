@@ -1,19 +1,3 @@
-// LLM tool-palette smoke test. Builds the exact tool definitions the
-// engine sends to Anthropic on every turn and asserts each one is
-// shaped the way the API requires. This is the test that should have
-// caught the wave-3 `test_rbac_expression` regression — switching
-// the input schema from `z.object` to `z.union` made every CLI turn
-// return HTTP 503 because tool index 55 had no `input_schema.type`.
-//
-// What we assert per tool, mirroring Anthropic's documented contract:
-//   - top-level shape: { name, description, input_schema }
-//   - input_schema has type === "object"
-//   - input_schema.properties (when present) is a plain object
-//   - input_schema doesn't accidentally produce $ref / definitions /
-//     $defs at the root (Anthropic doesn't follow them)
-//   - input_schema.required is a string array referencing real keys
-//   - the entire thing JSON-stringifies (no circular refs)
-
 import { describe, expect, test } from "bun:test";
 import type { ZodType } from "zod";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
@@ -111,11 +95,6 @@ describe("llm tool palette · Anthropic provider shape", () => {
   });
 
   test("number of tools is in a plausible range", () => {
-    // If the registration plumbing breaks and the registry empties,
-    // every other test in this file degenerates. Catch that case
-    // explicitly. Reasonable floor (>= 80) and ceiling (<= 200) so
-    // future palette growth doesn't trip it but a regression to 0
-    // / 5 / etc. does.
     expect(defs.length).toBeGreaterThan(80);
     expect(defs.length).toBeLessThan(200);
   });

@@ -1,9 +1,3 @@
-// Locks the chat-native generic patch contract for connectors,
-// knowledge sources, and outbound subscriptions. All three follow the
-// same `update_<resource>` pattern as `update_workflow` /
-// `update_schedule`: bare field names, optional patches, audit funnels
-// through the existing `<resource>.updated` action.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, connectors, knowledgeSources, subscriptions } from "../../db/schema/index.ts";
@@ -63,9 +57,6 @@ function toolCtx(): ToolContext {
     audit_write: async (entry: any) => {
       const { auditAwait } = await import("../../audit/audit.ts");
       const { AuditAction } = await import("../../audit/types.ts");
-      // Map the chat-tool's free-form action label into the typed enum
-      // for whichever resource is being updated. Production funnels
-      // through the same enum entries.
       const enumByResource = {
         connector: AuditAction.CONNECTOR_UPDATED,
         knowledge_source: AuditAction.KNOWLEDGE_SOURCE_UPDATED,
@@ -133,8 +124,6 @@ describe("update_connector tool — chat-native metadata patch", () => {
   });
 
   test("rejects an empty patch (no fields)", () => {
-    // Enforced at the dispatch boundary, which parses `inputSchema` before
-    // `execute` runs; the executor no longer re-parses its own input.
     const parsed = updateConnectorTool.inputSchema.safeParse({ id: ctx.connector_id });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {

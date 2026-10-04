@@ -1,12 +1,3 @@
-// Manual approve / reject of a proposed patch candidate.
-//
-// Split out of `service.ts` (which holds the signal→candidate pipeline and
-// the reactive/proactive loops) to keep that file under the 1000-LOC
-// invariant. These two are the operator-facing decision endpoints — invoked
-// from the HTTP route, the MCP `approve_patch_candidate` tool, and the
-// outcome tracker — and share no private state with the pipeline, only the
-// same external helpers (`autoApplyPatch`, audit, metrics).
-
 import { and, eq } from "drizzle-orm";
 import { audit, auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -98,11 +89,6 @@ export async function approvePatchCandidate(
       ...(params.prepared_version_id ? { prepared_version_id: params.prepared_version_id } : {}),
     });
 
-    // An approval the engine cannot perform is an approval that changed
-    // nothing. Say so — audit it as an error with the reason, close the
-    // candidate only when readiness proves it undecidable (otherwise it stays
-    // `proposed`), then throw after committing the refusal audit.
-    // The route returns a conflict instead of inventing a version.
     if (!outcome.applied) {
       await auditAwait(
         {
@@ -124,8 +110,6 @@ export async function approvePatchCandidate(
         outcome.reason,
         "manual_approve",
       );
-      // A refusal the current version proves permanent closes the candidate;
-      // anything else stays proposed for the operator to look at again.
       await closeIfUndecidable(tx, row, "manual_approve");
       return { failure: outcome.reason };
     }
@@ -170,8 +154,6 @@ export async function approvePatchCandidate(
     });
     return outcome.version_id;
   });
-  // After the commit, whatever the outcome: an applied fix and a refusal that
-  // closed the candidate both change what waits for a person.
   if (result !== null) invalidateTenantState(params.tenant_id);
   if (result && typeof result === "object") throw new PatchDecisionError(result.failure);
   return result;

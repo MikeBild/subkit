@@ -1,9 +1,3 @@
-// Schema-evolution / migration tooling — pins listShapeHistory +
-// proposeSchemaMigration. Renames are detected via "removed key + added
-// key with same type" pairing; remaining adds/removes/widens fall through
-// as standalone steps. fully_safe=false when any `remove` slipped through
-// (a real breaking change that needs operator review).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -71,7 +65,6 @@ describe("schema-versions · listShapeHistory", () => {
       ctx.db,
     );
     expect(history.length).toBe(2);
-    // Newest entry has the wider shape.
     const latest = history[0]!;
     expect(latest.schema.type).toBe("object");
   });
@@ -182,9 +175,6 @@ describe("schema-versions · proposeSchemaMigration", () => {
 
   test("name-similarity drives rename pairing over coincidental same-type", async () => {
     const ek = "GET /v1/leads";
-    // Two ints rename + one float left alone. With type-only pairing
-    // we'd risk swapping `score` with `customer_id`. With name-
-    // similarity scoring `customer_id → id` wins decisively.
     await recordSuccessShape(
       {
         tenant_id: tenantId,

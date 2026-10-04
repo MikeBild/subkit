@@ -54,8 +54,6 @@ describe("patchContext", () => {
   });
 
   test("drops the run link when the person cannot open runs", () => {
-    // `execution:read` is evaluated per object, so a link for someone without
-    // it resolves to a refusal — a missing link costs less than a dead one.
     const { sources } = patchContext(patch, labels, index, false);
     expect(sources.map((entry) => entry.label)).not.toContain("Fehlgeschlagener Lauf");
   });
@@ -72,8 +70,6 @@ describe("patchContext", () => {
   });
 
   test("an id we hold stays a link even when the catalogue cannot name it", () => {
-    // The route is valid whether or not the name is in the fetched page; only
-    // the label degrades, and it degrades to the kind rather than to an id.
     const { sources } = patchContext({ ...patch, connectorId: "gone" }, labels, index, true);
     const endpoint = sources.find((entry) => entry.note === "GET /reports");
     expect(endpoint?.href).toBe("/connectors/gone");
@@ -146,8 +142,6 @@ describe("skillContext", () => {
   });
 
   test("a global candidate states that it applies everywhere", () => {
-    // This is a fact about the skill, not a missing target — the card must not
-    // read as though something failed to resolve.
     const { targets } = skillContext(
       { scope: "global", workflowId: null, connectorId: null, endpointKey: null, evidenceCount: 8 },
       labels,

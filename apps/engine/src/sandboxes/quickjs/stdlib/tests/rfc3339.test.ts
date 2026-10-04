@@ -1,11 +1,3 @@
-// sk.rfc3339Parts — faithful date-time splitting for calendar shapes.
-// The sandbox has no tz database (no Date/Intl by design), so a transform
-// that reformats a Google Calendar `start.dateTime` cannot convert
-// timezones — it can only PRESERVE what the vendor sent. This helper
-// makes the faithful split (date/time/offset/wall) the easy path; the
-// lossy shape it prevents is slicing the string and dropping the offset,
-// which silently shifts event times while the run reports green.
-
 import { describe, expect, test } from "bun:test";
 import { runJs } from "../../runtime.ts";
 

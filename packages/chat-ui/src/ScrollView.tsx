@@ -1,46 +1,19 @@
-// Keyboard-scrollable viewport for the transcript.
-//
-// The Ink runtime does not expose the terminal's native scrollback to
-// React, so the usual strategy is to let the terminal scroll
-// everything above the composer. That falls apart once Ink re-renders:
-// the previous frame is erased and older content vanishes. We need an
-// in-memory pager.
-//
-// ScrollView keeps the whole history in memory and displays a windowed
-// slice. The window size is driven by the rendered `height` prop
-// (rows), defaulting to the rest of the terminal minus a reserved
-// composer/status band. Arrow keys / PgUp / PgDn / Home / End move the
-// window; any new content auto-pins to the bottom unless the user has
-// scrolled up. A windowed virtual-list approach simplified for the
-// Ink 7 surface.
-
 import { Box, Text, useInput, useStdout } from "ink";
 import type React from "react";
 import { Children, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTheme } from "./theme/Provider.tsx";
 
 export interface ScrollViewProps {
-  /** Each child is one scrollable row; height is measured per-row. */
   children: React.ReactNode;
-  /** Height in rows of the visible viewport. Defaults to `process.stdout.rows - reserved`. */
   height?: number;
-  /** Rows reserved at the bottom for the composer + status. */
   reservedRows?: number;
-  /** When true, the viewport is interactive and captures arrow keys. */
   active?: boolean;
-  /** Show a "N above" hint when scrolled up. */
   showMoreHint?: boolean;
-  /** Optional label announced to the user for accessibility / empty state. */
   emptyLabel?: string;
 }
 
-const DEFAULT_RESERVED_ROWS = 6; // spinner + status + composer + suggestion line
+const DEFAULT_RESERVED_ROWS = 6;
 
-/**
- * A windowed, keyboard-scrollable container. Auto-pins to bottom on
- * new content; Home jumps to top; End jumps to bottom; PgUp/PgDn
- * move a viewport at a time; arrow keys move one row.
- */
 export const ScrollView: React.FC<ScrollViewProps> = ({
   children,
   height,
@@ -59,7 +32,6 @@ export const ScrollView: React.FC<ScrollViewProps> = ({
     return Math.max(3, rows - reservedRows);
   });
 
-  // Measure the viewport on mount + whenever the terminal size changes.
   useLayoutEffect(() => {
     if (height && height > 0) {
       setViewportRows(height);
@@ -77,9 +49,6 @@ export const ScrollView: React.FC<ScrollViewProps> = ({
     };
   }, [height, reservedRows, stdout]);
 
-  // `offset` is the index of the *first visible row*. `length - offset`
-  // rows are shown, up to viewportRows. When the user hasn't manually
-  // scrolled, offset auto-follows the tail so new content stays pinned.
   const [offset, setOffset] = useState(0);
   const [sticky, setSticky] = useState(true);
 

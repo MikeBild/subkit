@@ -1,18 +1,3 @@
-// PR5 Ink-side test for the input credential filter.
-//
-// Mounts <InkApp> with `ink-testing-library` and pastes a real-shape
-// DigitalOcean PAT. Asserts:
-//   - the literal token is NOT visible in the rendered frame
-//     (no leak into transcript / composer);
-//   - the redirect hint IS shown with the safe 6-char prefix sample;
-//   - submitting again sends the typed `request_credential_form` event
-//     (detected kind as `credential_hint`) plus the benign prose
-//     fallback as the message — never the original token — to
-//     `onPrompt`;
-//   - Esc clears the redirect without sending anything.
-//
-// Tests use a tmp history path so they don't touch ~/.sk.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,12 +48,6 @@ function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
   };
 }
 
-// Determinism gate forbids `setTimeout` in tests, but Ink's render
-// pipeline needs the macrotask phase to flush. `globalThis.setTimeout`
-// via the test's macrotask scheduler IS what Ink awaits internally;
-// the gate's intent is to ban *wall-clock* timeouts that produce
-// non-deterministic delays. We bind through globalThis to bypass the
-// regex while still using the same primitive Ink uses.
 const macrotask: (cb: () => void, ms: number) => unknown = (
   globalThis as unknown as { setTimeout: (cb: () => void, ms: number) => unknown }
 ).setTimeout;
@@ -99,16 +78,11 @@ afterEach(() => {
     if (d) {
       try {
         rmSync(d, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 });
 
-// Real-shape DigitalOcean PAT that mirrors session 00b93a52-… The
-// token is invented (random hex), but its prefix + length match the
-// production format so the detector treats it as a real positive.
 const DOP_TOKEN = "dop_v1_a9053683ac4c864800f693f0c7b325d880a44f056bd884c8d975db2ece655796";
 
 describe("composer: input-side credential filter", () => {
@@ -129,41 +103,26 @@ describe("composer: input-side credential filter", () => {
     );
     await tick();
 
-    // Type-out the token (each char individually) so it ends up in the
-    // input buffer verbatim, not stashed as a paste ref. Mirrors the
-    // session-00b93a52 paste path because that token was short enough
-    // to inline.
     await type(instance, DOP_TOKEN);
     await pressEnter(instance);
     await tick(40);
 
-    // The original token MUST NOT have been forwarded to the engine.
     expect(calls).toHaveLength(0);
 
-    // The composer should now show the redirect hint with the kind
-    // label and a 6-char sample, but NOT the literal token.
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("digitalocean pat");
     expect(frame).toContain("dop_v1");
     expect(frame).toContain("masked form");
-    // Critical: the full token never appears on screen.
     expect(frame).not.toContain(DOP_TOKEN);
 
-    // Press Enter again to confirm the redirect — the engine should
-    // receive the typed event (+ benign prose fallback as the message)
-    // instead of the raw paste.
     await pressEnter(instance);
     await tick(40);
 
     expect(calls).toHaveLength(1);
-    // The typed event drives the engine's deterministic masked-form
-    // short-circuit; the detected kind rides as credential_hint.
     expect(calls[0]?.opts?.event).toEqual({
       type: "request_credential_form",
       credential_hint: "digitalocean_pat",
     });
-    // The message is the benign prose fallback (older-engine
-    // degradation path), never the original token.
     expect(calls[0]?.text).toBe(REQUEST_CREDENTIAL_FORM_FALLBACK);
     expect(calls[0]?.text).not.toContain(DOP_TOKEN);
     expect(JSON.stringify(calls[0])).not.toContain(DOP_TOKEN);
@@ -190,14 +149,11 @@ describe("composer: input-side credential filter", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Esc keystroke — should clear the buffer + dismiss the redirect.
     instance.stdin.write("\x1b");
     await tick(40);
 
-    // Nothing reached the engine, on either submit attempt.
     expect(calls).toHaveLength(0);
 
-    // Buffer is empty / hint cleared.
     const frame = instance.lastFrame() ?? "";
     expect(frame).not.toContain("Press Enter to confirm");
     instance.unmount();
@@ -223,7 +179,6 @@ describe("composer: input-side credential filter", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Non-credential prompt goes through to onPrompt verbatim.
     expect(calls).toHaveLength(1);
     expect(calls[0]).toBe("set up a digitalocean connector for me");
     instance.unmount();

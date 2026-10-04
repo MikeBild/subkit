@@ -13,12 +13,6 @@ export interface Fact {
 
 const GRID = "grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-6 gap-y-2 text-sm";
 
-/**
- * Every set of key/value facts (P9): a two-column list, the label muted.
- *
- * `loading` keeps the list's final shape while the facts load: one label and
- * value bar per fact the list will hold (`items.length`, or the number given).
- */
 export function FactList({
   items,
   loading,

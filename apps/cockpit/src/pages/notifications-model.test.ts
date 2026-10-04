@@ -1,9 +1,3 @@
-// What the notifications page says about a rule and a channel.
-//
-// It printed `*`, `sk_cli` and the seeded rule's English name, and a delivery
-// phase it had no word for fell back to the red "ausgesetzt" badge. These pin
-// the words, the fallbacks and the one case that may be red.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,9 +14,6 @@ import {
 const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
 
-// The engine's own words, read from its source: the seeded rule's pattern and
-// the event catalogue. A moved file or a renamed constant fails the reads
-// below instead of passing on an empty list.
 const ENGINE_SRC = resolve(import.meta.dir, "../../../engine/src");
 const SEEDED_EVENT_PATTERN =
   /DEFAULT_CLI_INBOX_EVENT_PATTERN =\s*"([^"]+)"/.exec(
@@ -57,7 +48,6 @@ describe("rules", () => {
     expect(eventPatternLabels("*", de)).toEqual([
       { text: de("notifications.events.all"), machine: false },
     ]);
-    // A list that holds `*` matches every event, whatever else it names.
     expect(eventPatternLabels("execution.failed, *", de)).toEqual([
       { text: de("notifications.events.all"), machine: false },
     ]);
@@ -94,8 +84,6 @@ describe("rules", () => {
   });
 
   test("a list is read part by part, as the engine matches it", () => {
-    // Spaces and empty entries are the engine's to ignore; only the unknown
-    // part is the machine value.
     expect(
       eventPatternLabels(" execution.failed ,, vendor.custom_event, connector.* ", de),
     ).toEqual([
@@ -149,7 +137,6 @@ describe("rules", () => {
       target_channel_id: "C1",
     };
     expect(ruleTarget(rule, [SLACK])).toEqual({ kind: "channel", channel: SLACK });
-    // Channels appear on the first delivery; until then the rule is not broken.
     expect(ruleTarget({ ...rule, target_channel_id: "C9" }, [SLACK])).toEqual({ kind: "pending" });
   });
 });

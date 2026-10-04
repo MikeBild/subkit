@@ -1,7 +1,3 @@
-// Template-enrichment — propagation of operator_quirks from template
-// to connector draft. Pinned in unit tests so the per-category merge
-// (user wins / template fills) cannot regress.
-
 import { describe, expect, test } from "bun:test";
 import { enrichConnectorFromTemplate } from "./template-enrichment.ts";
 import type { ConnectorTemplate } from "./templates.ts";
@@ -72,10 +68,6 @@ describe("enrichConnectorFromTemplate — operator_quirks propagation", () => {
 });
 
 describe("enrichConnectorFromTemplate — credential_hints follow the chosen auth_type", () => {
-  // Mirrors the real Jira template: native auth_type is oauth2 with
-  // client_id/client_secret hints, but the template ALSO offers API-token
-  // Basic auth via auth_options. A connector created with auth_type:"basic"
-  // must NOT inherit the OAuth2 hints.
   const oauthTemplate: ConnectorTemplate = {
     ...baseTemplate,
     auth_type: "oauth2",

@@ -1,14 +1,3 @@
-// HTTP surface for connector documentation ingestion + search.
-//
-//   POST   /v1/connectors/:id/docs/ingest          — run the pipeline now
-//   GET    /v1/connectors/:id/docs                  — list ingested sources
-//   GET    /v1/connectors/:id/docs/search           — tsvector search
-//   DELETE /v1/connectors/:id/docs/:document_id     — remove a source + chunks
-//
-// The route layer is thin: permission check, resolve connector, hand off
-// to the service. Request errors bubble through the shared error
-// middleware.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as connectorSvc from "../../connectors/index.ts";
@@ -139,9 +128,6 @@ const deleteRoute = createRoute({
 });
 
 export function registerConnectorDocsRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating: ingest/delete = connector:write, list/search = connector:read.
-  // The resource type is the parent connector so resource grants keyed
-  // off the connector row apply naturally.
   app.use("/v1/connectors/:id/docs", async (c, next) => {
     const id = c.req.param("id");
     if (c.req.method === "GET") {

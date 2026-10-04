@@ -1,12 +1,3 @@
-// HTTP integration tests for `GET /v1/chat/spaces/pending`.
-//
-// The route is a thin wrapper over `listPendingSpacesForPrincipal`
-// (apps/engine/src/chat/pending-spaces.ts) — see that module's
-// doc-block for the isolation model. These tests seed the SYSTEM
-// deny-pool audit row + the caller's own `chat_identities` row
-// directly against the test db (mirrors connector-discovery.test.ts's
-// harness usage) and assert the HTTP contract + RBAC gate.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
@@ -18,14 +9,8 @@ import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 const hex = createDeterministicHexFactory(0xc4a57_5eed);
 
 let ctx: HttpTestServer;
-// Non-admin caller in the SAME tenant, bound to a no-permission custom
-// role — proves the `chat_workspace:read` gate actually denies.
 let noopApiKey: string;
-// Built-in `member` role caller (holds `chat_workspace:read` per
-// rbac/seed.ts) — proves a non-admin WITH the permission still gets 200.
 let memberApiKey: string;
-// Second tenant's admin — no `chat_identities` row at all, so the
-// caller has no usable (global-id) identity and must see `items: []`.
 let secondTenantApiKey: string;
 
 async function mintApiKey(
@@ -50,8 +35,6 @@ async function mintApiKey(
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-spaces");
 
-  // The caller's own verified identity — the ONLY tenant-safe
-  // attribution key the pending-spaces query accepts.
   await ctx.db.insert(chatIdentities).values({
     tenant_id: ctx.tenantId,
     user_id: ctx.userId,
@@ -60,11 +43,6 @@ beforeAll(async () => {
     platform_user_id: "users/caller-1",
   });
 
-  // SYSTEM deny-pool row the chat.event worker would have written when
-  // the caller added the app to a named space it hasn't installed yet.
-  // Bound to the per-suite test db (2nd arg) — the default `audit()`
-  // executor is the shared production db client, which this suite's
-  // disposable database is not.
   await auditAwait(
     {
       tenant_id: SYSTEM_TENANT_ID,
@@ -86,7 +64,6 @@ beforeAll(async () => {
     ctx.db,
   );
 
-  // Non-admin, no-permission custom role — the 403 negative case.
   const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-chat-spaces", "no permissions");
   const [noopUser] = await ctx.db
     .insert(users)
@@ -99,8 +76,6 @@ beforeAll(async () => {
   if (!noopUser) throw new Error("seed noop user failed");
   noopApiKey = await mintApiKey(ctx.db, ctx.tenantId, noopUser.id);
 
-  // Built-in `member` role (no custom role_id) — the 200-with-non-admin
-  // positive case. rbac/seed.ts grants `chat_workspace:read` to member.
   const [memberUser] = await ctx.db
     .insert(users)
     .values({
@@ -112,7 +87,6 @@ beforeAll(async () => {
   if (!memberUser) throw new Error("seed member user failed");
   memberApiKey = await mintApiKey(ctx.db, ctx.tenantId, memberUser.id);
 
-  // Second tenant, own admin, deliberately NO chat_identities row.
   const [tenant2] = await ctx.db
     .insert(tenants)
     .values({ slug: "t-chat-spaces-b", display_name: "Tenant B" })
@@ -131,8 +105,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Drain fire-and-forget `api_key.used` audit inserts before the
-  // per-suite database tears down (mirrors connector-discovery.test.ts).
   // allow-wall-clock: real ms required to flush postgres write queue.
   await new Promise((r) => setTimeout(r, 250));
   // allow-wall-clock: wall-clock cap on cleanup to avoid Bun's 5s afterAll timeout.
@@ -167,12 +139,6 @@ describe("GET /v1/chat/spaces/pending", () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: unknown[] };
-    // This member user never DM'd the app, so they have no chat_identity
-    // of their own and legitimately see [] — pending spaces are scoped to
-    // the CALLER's own verified identity, not shared tenant-wide. The
-    // assertion here is the RBAC outcome (200, not 403); the admin test
-    // above (same permission, but WITH an owned identity) proves the
-    // positive data path.
     expect(body.items).toEqual([]);
   });
 

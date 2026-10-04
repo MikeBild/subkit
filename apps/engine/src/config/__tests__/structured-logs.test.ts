@@ -1,19 +1,3 @@
-// Structured-log assertions for the v3.5 config pipeline.
-//
-// Every operator-observable event the loader emits is captured and
-// checked here:
-//
-//   - `module:"config" action:"loaded"` once per boot, with a
-//     leaf-source tally
-//   - `module:"config" action:"setting.applied"` once per
-//     setConfigKey commit, with leaf path + scope + sensitive flag
-//     + restart flag + changed flag (NEVER the value)
-//   - `module:"config" msg:"auth.session.secret was empty…"` once
-//     per first boot
-//
-// The logs are captured by intercepting process.stdout.write so the
-// test harness sees the same bytes a downstream operator would.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,8 +22,6 @@ beforeEach(async () => {
   cfgPath = join(dir, "subkit.config.json");
   captured = [];
 
-  // Force ndjson mode so logs are JSON we can parse line by line.
-  // The logger reconfigure API was added in v3.5 (Phase 2 logger).
   const { reconfigureLogger } = await import("../../logging/logger.ts");
   reconfigureLogger({ format: "ndjson", level: "info" });
 
@@ -52,9 +34,7 @@ beforeEach(async () => {
       if (!trimmed.startsWith("{")) continue;
       try {
         captured.push(JSON.parse(trimmed) as CapturedLog);
-      } catch {
-        /* not a JSON line */
-      }
+      } catch {}
     }
     return origStdout(chunk);
   }) as typeof process.stdout.write;
@@ -65,9 +45,7 @@ beforeEach(async () => {
       if (!trimmed.startsWith("{")) continue;
       try {
         captured.push(JSON.parse(trimmed) as CapturedLog);
-      } catch {
-        /* not a JSON line */
-      }
+      } catch {}
     }
     return origStderr(chunk);
   }) as typeof process.stderr.write;
@@ -105,25 +83,17 @@ describe("config loader — structured logs", () => {
     expect(typeof entry.override).toBe("number");
     expect(typeof entry.global).toBe("number");
     expect(typeof entry.default).toBe("number");
-    // Sanity: the schema has ~76 leaves; on a fresh boot every leaf is
-    // either default or override (no file to populate the global yet).
     const sum = (entry.override as number) + (entry.global as number) + (entry.default as number);
     expect(sum).toBeGreaterThan(50);
   });
 
   test("config.loaded fires exactly once across loadConfig + reset + reload", async () => {
-    // Each loadConfig call documents its own boot. After
-    // _resetConfigForTests, a fresh loadConfig must emit a NEW
-    // config.loaded line — not zero, not two. Catches a regression
-    // where a second loadConfig silently re-uses cached state without
-    // re-emitting the boot event, or worse, accidentally fires twice.
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: cfgPath,
     });
     expect(logLines((l) => l.module === "config" && l.action === "loaded").length).toBe(1);
 
-    // Reset and reload. Should produce a SECOND loaded line, total = 2.
     _resetConfigForTests();
     await loadConfig({
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
@@ -160,7 +130,7 @@ describe("config loader — structured logs", () => {
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: cfgPath,
     });
-    captured.length = 0; // reset capture buffer to isolate the apply event
+    captured.length = 0;
 
     await setConfigKey("llm.api_key", "sk-secret-test", { force: true });
 
@@ -172,7 +142,6 @@ describe("config loader — structured logs", () => {
     expect(entry.sensitive).toBe(true);
     expect(entry.requires_restart).toBe(false);
     expect(entry.changed).toBe(true);
-    // Crucial: the secret value MUST NOT appear in the log.
     expect(JSON.stringify(entry)).not.toContain("sk-secret-test");
   });
 
@@ -198,18 +167,14 @@ describe("config loader — structured logs", () => {
       configPathOverride: cfgPath,
     });
     const { logger, reconfigureLogger } = await import("../../logging/logger.ts");
-    // Force a known starting point: info threshold, ndjson format.
     reconfigureLogger({ level: "info", format: "ndjson" });
     captured.length = 0;
 
-    // A debug line at info threshold should NOT appear.
     logger.debug({ module: "test", msg: "should-not-appear-pre" });
     expect(logLines((l) => l.msg === "should-not-appear-pre").length).toBe(0);
 
-    // Flip log.level to "debug" via setConfigKey.
     await setConfigKey("log.level", "debug", { force: true });
 
-    // The next debug line should now appear without a restart.
     logger.debug({ module: "test", msg: "should-appear-post" });
     expect(logLines((l) => l.msg === "should-appear-post").length).toBe(1);
   });
@@ -219,10 +184,8 @@ describe("config loader — structured logs", () => {
       env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
       configPathOverride: cfgPath,
     });
-    // First write — value flips from default → "kept".
     await setConfigKey("llm.api_key", "kept", { force: true });
     captured.length = 0;
-    // Second write — same value, changed should be false.
     await setConfigKey("llm.api_key", "kept", { force: true });
     const applied = logLines((l) => l.action === "setting.applied");
     expect(applied.length).toBe(1);

@@ -1,12 +1,3 @@
-// resolveConnectorOAuthConfigDetailed — typed incomplete-config reasons.
-//
-// Pre-fix every incomplete OAuth config collapsed into `null` and the
-// oauth/start route threw one generic "missing oauth2 config
-// (issuer_url + client_id)" — undiagnosable from the CLI when the real
-// cause was "the template expects tenant OAuth client credentials and
-// none were ever stored" (the by-far most common case: a template-bound
-// connector before `sk connector-templates set-oauth`).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -104,7 +95,6 @@ describe("resolveConnectorOAuthConfigDetailed", () => {
     );
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.missing).toBe("template_oauth_credentials");
-    // The presence-only projection stays null-shaped for capability callers.
     expect(
       await resolveConnectorOAuthConfig(
         testDb.db,

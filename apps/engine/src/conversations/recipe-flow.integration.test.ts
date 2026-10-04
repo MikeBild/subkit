@@ -1,15 +1,3 @@
-// Recipe-flow integration test.
-//
-// Pins the contract that `start_workflow_from_recipe` clones a recipe
-// from the live `templates.json` catalog into a draft document that
-// (a) preserves the recipe's `derived_from_skill` linkage,
-// (b) substitutes a placeholder `connector_id` when the operator
-//     supplied a real one (single-connector path), and
-// (c) rebinds every declared placeholder via `connector_bindings` for
-//     multi-connector recipes — refusing partial maps with a typed
-//     `connector_bindings_missing` error so the LLM cannot accidentally
-//     leave a placeholder UUID in a saved workflow.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
@@ -17,7 +5,6 @@ import { createEmptyDraftDocument } from "./authoring-state.ts";
 import { startWorkflowFromRecipeTool } from "./tools/start-workflow-from-recipe.ts";
 import type { DraftDocument } from "./types.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 let ctx: TestDb;
 let tenant_id: string;
@@ -61,8 +48,6 @@ function makeToolCtx(opts: {
     setDraft: async (next: DraftDocument) => {
       opts.draft.current = next;
     },
-    // The remaining ToolContext fields aren't used by
-    // start_workflow_from_recipe; we cast to satisfy the type.
   } as unknown as Parameters<typeof startWorkflowFromRecipeTool.execute>[0];
 }
 
@@ -89,8 +74,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     );
     expect(result.ok).toBe(true);
     const goal = (draft.current.workflow as { goal?: string }).goal;
-    // Derived from the recipe's title + description — the closest
-    // available statement of intent when the user picked a recipe.
     expect(typeof goal).toBe("string");
     expect(goal?.length ?? 0).toBeGreaterThan(0);
   });
@@ -177,8 +160,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(byId.fetch_stripe_customer).toBe(stripeConnector);
     expect(byId.upsert_hubspot_contact).toBe(hubspotConnector);
     expect(byId.notify_slack).toBe(slackConnector);
-    // The placeholder UUID must NOT appear anywhere — every
-    // placeholder declared in `required_connectors` is replaced.
     const serialized = JSON.stringify(draft.current.workflow);
     expect(serialized).not.toContain("11111111-1111-4111-8111-111111111111");
     expect(serialized).not.toContain("22222222-2222-4222-8222-222222222222");
@@ -193,7 +174,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
         template_slug: "stripe",
         recipe_slug: "new-customer-enrich-notify",
         connector_bindings: {
-          // only the stripe placeholder bound — hubspot + slack missing
           "11111111-1111-4111-8111-111111111111": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         },
       },
@@ -205,9 +185,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
       missing_placeholders?: Array<{ placeholder: string; template: string }>;
     };
     expect(data.missing_placeholders?.map((m) => m.template).sort()).toEqual(["hubspot", "slack"]);
-    // The draft must not have been seeded with the recipe shape — the
-    // empty draft's placeholder workflow (no steps) is the only state
-    // present when bindings are incomplete.
     expect(draft.current.workflow?.steps ?? []).toEqual([]);
   });
 
@@ -225,12 +202,6 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     if (result.ok) return;
     expect(result.error_code).toBe("connector_bindings_required");
   });
-
-  // Recipe-coverage tests for the three step kinds that
-  // were KNOWN_UNCOVERED until this change. Each test goes end-to-end
-  // through `start_workflow_from_recipe`, mirroring the postgres /
-  // stripe coverage above, so the new GitHub recipes are exercised by
-  // the same production tool path the LLM uses at runtime.
 
   test("CallStep recipe — delegated-triage-via-call clones with a `call` step", async () => {
     const draft: { current: DraftDocument } = { current: createEmptyDraftDocument() };
@@ -269,21 +240,12 @@ describe.skipIf(skip)("start_workflow_from_recipe", () => {
     expect(wait?.event_name).toBe("pr_approved");
     expect(wait?.timeout_ms).toBe(86_400_000);
 
-    // WaitForEventStep.on_timeout is declared in the
-    // schema but the runner does NOT honour it for routing — the
-    // workflow must branch explicitly on `timed_out`. The recipe
-    // models that pattern with a `branch` step gating merge vs
-    // abandon, so a future refactor that drops the branch (or
-    // re-introduces the on_timeout-only shape) fails this test
-    // before regressing the recipe.
     const branch = steps.find((s) => s.kind === "branch");
     expect(branch).toBeDefined();
     expect(branch?.when).toContain("timed_out");
     expect(branch?.then_steps).toEqual(["abandon_on_timeout"]);
     expect(branch?.else_steps).toEqual(["merge"]);
 
-    // Both downstream targets must exist, otherwise the branch
-    // points at non-existent step ids.
     expect(steps.find((s) => s.id === "merge")).toBeDefined();
     expect(steps.find((s) => s.id === "abandon_on_timeout")).toBeDefined();
   });

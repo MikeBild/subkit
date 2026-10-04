@@ -35,8 +35,6 @@ export function starterActionsForPersona(
   persona: string,
   probe?: PersonaProbe,
 ): readonly StarterAction[] {
-  // Pass the probe through so the rendered list is RBAC-filtered the same way
-  // the dispatch list is — render and dispatch must show the same entries.
   return starterTaskActionsForPersona(persona, probe).map(starterActionFromTask);
 }
 

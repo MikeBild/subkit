@@ -1,20 +1,7 @@
-// A stored workflow definition, read against today's schema.
-//
-// The definition schema moves on; what is stored does not. A dag written under
-// an earlier schema is still the workflow's record, so READING it must never
-// fail: a list, a workflow page and "how do I call this" all show what is
-// there and mark it `invalid`. ACTING on it is the opposite — a run or an
-// activation makes the stored dag the thing that executes, so there the schema
-// is enforced and a dag that no longer validates is refused by name.
-//
-// One reader for both, so "invalid" means the same thing wherever it is asked.
-
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 export interface VersionIssue {
-  /** Dotted path into the stored definition, e.g. `steps.0.language`. */
   path: string;
-  /** Id of the step the path points into, when it points into one. */
   step_id: string | null;
   message: string;
 }
@@ -53,7 +40,6 @@ export function retiredItemVarIssues(dag: unknown): VersionIssue[] {
   return issues;
 }
 
-/** The stored dag as a current definition, or what in it no longer validates. */
 export function readStoredDefinition(dag: unknown): StoredDefinition {
   const parsed = WorkflowDefSchema.safeParse(dag);
   const retired = retiredItemVarIssues(dag);
@@ -73,7 +59,6 @@ export function readStoredDefinition(dag: unknown): StoredDefinition {
   };
 }
 
-/** One sentence naming the first thing that no longer validates. */
 export function describeVersionIssues(issues: VersionIssue[]): string {
   const first = issues[0];
   const where = first
@@ -83,12 +68,6 @@ export function describeVersionIssues(issues: VersionIssue[]): string {
   return `${where}${more}`;
 }
 
-/**
- * The version a run or an activation was asked to execute is stored in an
- * earlier definition format. A refusal of that request, not a fault of the
- * engine: the code carries the `workflow_version_` prefix the run routes
- * answer with `409`, and `details.issues` names the steps to fix.
- */
 export class WorkflowVersionInvalidError extends Error {
   readonly code = "workflow_version_invalid";
   readonly details: { issues: VersionIssue[] };
@@ -102,20 +81,12 @@ export class WorkflowVersionInvalidError extends Error {
   }
 }
 
-/** The stored dag as the definition to execute, or `WorkflowVersionInvalidError`. */
 export function executableDefinition(dag: unknown): WorkflowDef {
   const stored = readStoredDefinition(dag);
   if (stored.invalid) throw new WorkflowVersionInvalidError(stored.issues);
   return stored.definition;
 }
 
-/**
- * The definition a READ shows for an invalid dag: the stored object as written,
- * so the page shows what is there. It did not pass the schema, so it carries
- * no parsed defaults — only readers take it, and `invalid` on the view tells
- * every one of them so. A dag that is not even an object with steps shows as
- * an empty definition under the workflow's name.
- */
 export function invalidDefinitionForRead(dag: unknown, name: string): WorkflowDef {
   const steps = (dag as { steps?: unknown } | null)?.steps;
   if (typeof dag === "object" && dag !== null && Array.isArray(steps)) return dag as WorkflowDef;

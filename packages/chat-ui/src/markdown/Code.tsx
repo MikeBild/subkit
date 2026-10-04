@@ -1,8 +1,3 @@
-// Syntax-highlighted code block. Reuses `cli-highlight` (already a
-// dep) for the language families the LLM emits (yaml, json,
-// typescript, sql, bash). Unknown languages fall through to dim
-// plain text. Line-number gutter shown only when caller asks for it.
-
 import { highlight } from "cli-highlight";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -11,9 +6,7 @@ import { useTheme } from "../theme/Provider.tsx";
 export interface CodeProps {
   code: string;
   language?: string;
-  /** When true, prepend 1-indexed line numbers. */
   showLineNumbers?: boolean;
-  /** When false, suppress the surrounding ```fence markers. */
   showFence?: boolean;
 }
 
@@ -46,9 +39,7 @@ export const Code: React.FC<CodeProps> = ({
   if (lang && SUPPORTED.has(lang)) {
     try {
       rendered = highlight(code, { language: lang, ignoreIllegals: true });
-    } catch {
-      // cli-highlight throws on some edge cases; fall back to raw.
-    }
+    } catch {}
   }
   const lines = rendered.split("\n");
   const gutterWidth = String(lines.length).length;

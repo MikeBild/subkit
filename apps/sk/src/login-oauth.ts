@@ -172,9 +172,6 @@ export async function runCliOAuthLogin(
 
   const state = randomBytes(32).toString("base64url");
   const listener = await startCallbackServer(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, state);
-  // Attach the rejection handler before opening the browser. A localhost
-  // callback can arrive while the launcher promise is still resolving; without
-  // this resolved-union wrapper runtimes may report that rejection as unhandled.
   const callbackOutcome = listener.callback.then(
     (value) => ({ ok: true as const, value }),
     (error: unknown) => ({

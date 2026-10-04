@@ -1,11 +1,3 @@
-// A workflow that starts another one can be approved, and what the child does
-// is part of that approval.
-//
-// The three production workflows this unblocks genuinely orchestrate: one
-// reads the child's output, one branches on it, one loops over it. Until now
-// every one of them ended at `unbound_workflow_call`, so the only honest
-// answer to "may this run on a schedule?" was no.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -21,7 +13,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A parent that starts a child, both bound to one auth-free connector. */
 async function fixture(
   opts: { childSteps?: unknown[]; parentCall?: Record<string, unknown> } = {},
 ) {
@@ -129,7 +120,6 @@ test("a workflow that starts another one becomes approvable, child effects inclu
       workflow_version_id: f.child.version.id,
     }),
   ]);
-  // The review names the workflow so a human reads a name, not an id.
   expect(result.execution_shape?.calls).toEqual([
     expect.objectContaining({ step_id: "run_child", workflow_name: "child", version: 1 }),
   ]);
@@ -139,16 +129,12 @@ test("a workflow that starts another one becomes approvable, child effects inclu
     ["collect", null],
     ["publish", "run_child"],
   ]);
-  // Resolution is deterministic, as it must be for a digest to mean anything.
   expect(await resolveWorkflowEffectManifest(f.input, ctx.db, { include_review: true })).toEqual(
     result,
   );
 });
 
 test("activating a new child version moves the parent's digest", async () => {
-  // This is what makes "the approval pins the version" true rather than a
-  // claim: the digest a live grant is bound to stops matching, so the next
-  // scheduled fire is refused and the schedule is held.
   const f = await fixture();
   const before = await resolveWorkflowEffectManifest(f.input, ctx.db);
   const [next] = await ctx.db
@@ -218,9 +204,6 @@ test("a call naming both a workflow and a slug is refused", async () => {
 });
 
 test("a child's unbindable step blocks the parent, marked as the child's", async () => {
-  // The reader of this workflow cannot repair a step inside another one, so
-  // the issue must say which workflow it belongs to. It still blocks here:
-  // approving a parent whose child cannot bind would approve a run that fails.
   const f = await fixture({
     childSteps: [
       {
@@ -241,9 +224,6 @@ test("a child's unbindable step blocks the parent, marked as the child's", async
 });
 
 test("a child never inherits the parent's proposal-derived permissions", async () => {
-  // A report or publication profile is reviewed for the context it was
-  // proposed in. The child is resolved with EMPTY maps, so it can neither
-  // receive one nor propose its own.
   const f = await fixture({
     childSteps: [
       {

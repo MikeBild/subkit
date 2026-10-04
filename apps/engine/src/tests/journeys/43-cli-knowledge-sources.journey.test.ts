@@ -1,18 +1,3 @@
-// User story: As an operator, I want to manage knowledge sources via the
-// `sk knowledge-sources` CLI so I can upload, inspect, update, and remove
-// documents without writing HTTP calls by hand.
-//
-// Acceptance criteria:
-//   - AC1: `knowledge-sources list --json` returns an array (may be empty).
-//   - AC2: `knowledge-sources create --file <path>` uploads a file and
-//          returns a record with id and name.
-//   - AC3: The created source appears in a subsequent `list` call.
-//   - AC4: `knowledge-sources get <id>` returns the correct record.
-//   - AC5: `knowledge-sources patch <id> --title <new>` updates the name.
-//   - AC6: `knowledge-sources delete <id>` outputs "deleted".
-//   - AC7: `knowledge-sources get <id>` after delete returns an error.
-// Spec refs: docs/authors/authoring-workflows.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,8 +10,6 @@ const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 let tmpFile: string;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -78,9 +61,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through to multi-line scan
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -97,9 +78,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue walking
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -190,8 +169,6 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// ---------- test state ----------
-
 let createdId = "";
 
 beforeAll(async () => {
@@ -211,14 +188,11 @@ describe("journey 43: sk knowledge-sources CLI", () => {
   test("AC1: knowledge-sources list returns an array (may be empty)", async () => {
     const { stdout } = await run(knowledgeSourcesCommand, ["list"]);
     const body = JSON.parse(extractLastJson(stdout));
-    // emitList with --json flag emits the items array directly or wrapped in {items}
     const items = (body as { items?: unknown[] }).items ?? body;
     expect(Array.isArray(items)).toBe(true);
   });
 
   test("AC2: knowledge-sources create uploads file and returns record with id and name", async () => {
-    // The CLI sets `name` to `args.title` if provided, otherwise the basename.
-    // The engine returns `name` (not `title`) in the response.
     const { stdout } = await run(
       knowledgeSourcesCommand,
       ["create"],
@@ -227,7 +201,6 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     const body = JSON.parse(extractLastJson(stdout));
     expect(typeof body.id).toBe("string");
     expect(body.id.length).toBeGreaterThan(0);
-    // The create command passes `name = args.title` to the engine; response uses `name`.
     expect(body.name).toBe("Test Doc");
     createdId = body.id as string;
   });
@@ -261,7 +234,6 @@ describe("journey 43: sk knowledge-sources CLI", () => {
 
   test("AC6: knowledge-sources delete outputs 'deleted'", async () => {
     const { stdout } = await runPlain(knowledgeSourcesCommand, ["delete", createdId]);
-    // The delete command emits picocolors green text; the word "deleted" is always present.
     expect(stdout).toContain("deleted");
   });
 
@@ -276,17 +248,12 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     ).toBe(true);
   });
 
-  // ---- tenant isolation ----
-
   test("AC8: knowledge source is not accessible without a valid api key", async () => {
-    // Attempt a GET with a bogus key — expect 401.
     const res = await fetch(`${ctx.baseUrl}/v1/knowledge-sources`, {
       headers: { authorization: "Bearer wf_live_boguskey" },
     });
     expect(res.status).toBe(401);
   });
-
-  // ---- bundle import (directory → one source, upsert by slug) ----
 
   let bundleDir = "";
   let bundleSourceId = "";
@@ -313,10 +280,8 @@ describe("journey 43: sk knowledge-sources CLI", () => {
       knowledge_source: { id: string; name: string; slug: string; tags: string[] };
     };
     expect(body.outcome).toBe("created");
-    // index.md skipped; deploy.md + notes.md ingested.
     expect(body.ingested_count).toBe(2);
     expect(body.skipped_files).toEqual(["/index.md"]);
-    // Name from the root index.md H1.
     expect(body.knowledge_source.name).toBe("Journey Wiki");
     expect(body.knowledge_source.tags).toContain("type:runbook");
     bundleSourceId = body.knowledge_source.id;
@@ -401,13 +366,11 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     expect(body.knowledge_source.name).toBe("Flagged Wiki");
     expect(body.knowledge_source.slug).toBe("flagged-wiki");
     expect(body.knowledge_source.description).toBe("flag mapping probe");
-    // Operator-supplied structural tag is honored (unlike frontmatter ones).
     expect(body.knowledge_source.tags).toContain("domain:journeys");
     expect(body.knowledge_source.tags).toContain("extra");
   });
 
   test("AC15: --json error discipline — slug conflict surfaces as structured error, not a crash", async () => {
-    // Seed a NON-bundle source owning a slug, then import onto it.
     const form = new FormData();
     form.append("file", new Blob(["# owned"], { type: "text/markdown" }), "owned.md");
     form.append("metadata", JSON.stringify({ name: "Owned doc", slug: "cli-owned-slug" }));

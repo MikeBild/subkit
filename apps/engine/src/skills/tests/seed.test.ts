@@ -1,15 +1,3 @@
-// Skill-seed loader tests.
-//
-// Coverage:
-//   - frontmatter parsing: happy path, missing keys, bad scope, bad yaml
-//   - content-hash drift detection: second apply of unchanged seed is a no-op
-//   - apply creates row with correct shape
-//   - apply updates body + gates_tools + bumps version when hash differs
-//   - per-tenant isolation: two tenants each get their own row
-//
-// The loader no longer reads from disk — every test feeds synthetic
-// seed content via `loadSkillSeedsFromContent`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { skills, tenants } from "../../db/schema/index.ts";
@@ -384,8 +372,6 @@ describe("loadSkillSeedsFromContent — migration 0006 contract", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
 
 async function oneByTenantSlug(
   ctx: TestDb,

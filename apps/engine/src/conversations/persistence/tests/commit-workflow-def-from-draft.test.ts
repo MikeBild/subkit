@@ -1,10 +1,3 @@
-// Pins the draft → WorkflowDef field projection used by
-// commitWorkflowAtomic. The previous in-line spread silently dropped
-// `trigger`, which broke chat-authored schedules end-to-end. Every
-// field added to WorkflowDraftDocument that is meant to persist must
-// flow through `workflowDefFromDraft`; if it does not, the contract
-// gap shows up here, not in production logs.
-
 import { describe, expect, it } from "bun:test";
 import type { WorkflowDraftDocument } from "../../types.ts";
 import { workflowDefFromDraft } from "../commit-workflow.ts";
@@ -98,13 +91,6 @@ describe("workflowDefFromDraft", () => {
   });
 
   it("single-source: projects any WorkflowDef schema field the draft carries", () => {
-    // The projection iterates the WorkflowDef schema field roster, not a
-    // hand-maintained spread. A schema field that the legacy spread never
-    // listed (e.g. `timeout_ms`, `validation_expression`) is carried through
-    // automatically the moment the draft holds it — so a persistable field
-    // can never silently drop on commit. Cast because these fields are not
-    // (yet) on the WorkflowDraftDocument surface; the projection reads them
-    // structurally.
     const draft = {
       name: "Schema-sourced",
       slug: "schema-sourced",
@@ -127,13 +113,6 @@ describe("workflowDefFromDraft", () => {
   });
 
   it("projects input_schema_sample so the payload-derived tier reaches SAVED workflows (W4)", () => {
-    // `input_schema_sample` is a persisted WorkflowDef field (an internal
-    // literal example payload, NOT the public MCP tool input schema). The
-    // single-source projection must carry it from the draft into the
-    // committed def, or `resolveWorkflowInputContract` only ever sees it on
-    // in-flight drafts and a saved workflow silently under-requires keys the
-    // structural synth can't observe (the render-upload-slides
-    // {markdown, filename} case).
     const def = workflowDefFromDraft({
       name: "Render upload slides",
       slug: "render-upload-slides",
@@ -150,8 +129,6 @@ describe("workflowDefFromDraft", () => {
   });
 
   it("does NOT project transient draft-only fields (e.g. goal)", () => {
-    // `goal` lives on the draft but is not a WorkflowDef schema field, so the
-    // single-source projection (keyed on the schema, not the draft) omits it.
     const draft = {
       name: "Has goal",
       slug: "has-goal",

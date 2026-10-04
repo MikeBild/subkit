@@ -1,6 +1,3 @@
-// The published next fire must be the moment the reconciler really fires —
-// including `every:N` schedules and calendar-gated days.
-
 import { describe, expect, test } from "bun:test";
 import { calendarGateSkipReason } from "./calendar-gates.ts";
 import { GATE_SEARCH_DAYS, nextScheduleFire } from "./next-fire.ts";
@@ -57,7 +54,6 @@ describe("nextScheduleFire", () => {
   });
 
   test("a business-days schedule on Friday evening next fires when Monday opens, not Saturday", () => {
-    // Friday 2026-03-13, 20:00 Berlin; last fire Friday 19:00 Berlin.
     const now = new Date("2026-03-13T19:00:00.000Z");
     const next = nextScheduleFire(
       {
@@ -69,8 +65,6 @@ describe("nextScheduleFire", () => {
       },
       now,
     );
-    // The Saturday 19:00 occurrence is gated, the schedule stays due, and the
-    // reconciler's first open tick is Monday 00:00 Berlin (Sunday 23:00 UTC).
     expect(next).toBe("2026-03-15T23:00:00.000Z");
     const at = new Date(next ?? "");
     expect(calendarGateSkipReason(at, "Europe/Berlin", { business_days_only: true })).toBeNull();

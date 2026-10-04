@@ -1,7 +1,3 @@
-// edit_workflow_patch — RFC 6902 over the workflow draft. The applied
-// patch must produce a draft that still validates against WorkflowDef Zod;
-// partial application is never persisted.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -42,13 +38,6 @@ function makeDraft(): DraftDocument {
         },
       ],
     },
-    // Minimal latest_preview so the transform-authoring gate is
-    // satisfied for the fixture's pre-existing `$scope.fetch.data`
-    // ref (v4.8.1). Without this, post-patch states that introduce
-    // new transforms would correctly be blocked — but the test
-    // intent is to exercise patch mechanics, not the gate. Pinning a
-    // preview here mirrors what every realistic production draft has
-    // by the time it reaches `edit_workflow_patch`.
     latest_preview: {
       ok: true,
       summary: "preview seeded for test fixture",
@@ -113,8 +102,6 @@ describe("edit_workflow_patch", () => {
       makeCtx(() => draftRef.current, draftRef),
       {
         patches: [
-          // Rename the first step + retarget the reference in the
-          // second step's expression. Two ops, applied as one.
           { op: "replace", path: "/steps/0/id", value: "load" },
           {
             op: "replace",
@@ -141,17 +128,12 @@ describe("edit_workflow_patch", () => {
     const result = await editWorkflowPatchTool.execute(
       makeCtx(() => draftRef.current, draftRef),
       {
-        patches: [
-          // Set kind to an unknown value — the discriminated union
-          // rejects this, so the patched draft fails validation.
-          { op: "replace", path: "/steps/0/kind", value: "totally_made_up_kind" },
-        ],
+        patches: [{ op: "replace", path: "/steps/0/kind", value: "totally_made_up_kind" }],
       },
     );
     expect(result.ok).toBe(false);
     const data = result.data as { error_code?: string };
     expect(data.error_code).toBe("patch_invalid");
-    // Draft must be byte-stable since the patch failed.
     expect(JSON.stringify(draftRef.current)).toBe(before);
   });
 
@@ -161,11 +143,7 @@ describe("edit_workflow_patch", () => {
     const result = await editWorkflowPatchTool.execute(
       makeCtx(() => draftRef.current, draftRef),
       {
-        patches: [
-          // Path points at a nonexistent field — fast-json-patch
-          // throws on `replace` against a missing path.
-          { op: "replace", path: "/steps/9999/id", value: "ghost" },
-        ],
+        patches: [{ op: "replace", path: "/steps/9999/id", value: "ghost" }],
       },
     );
     expect(result.ok).toBe(false);
@@ -173,12 +151,6 @@ describe("edit_workflow_patch", () => {
   });
 
   test("a patch that replaces steps with a non-array fails typed, not with a TypeError", async () => {
-    // Production, right after an in-band tool-call repair fed corrected args
-    // back into the loop: `steps` came back as an object, and the legacy
-    // item_var probe did `(patched.steps ?? []).some(...)`. `?? []` only
-    // covers null/undefined, so `.some` was undefined and the tool died with
-    // a raw "is not a function" TypeError — no error_code, nothing the model
-    // could act on, and the authoring turn dead-ended.
     const draftRef = { current: makeDraft() };
     const before = JSON.stringify(draftRef.current);
     const result = await editWorkflowPatchTool.execute(
@@ -189,7 +161,6 @@ describe("edit_workflow_patch", () => {
     const data = result.data as { error_code?: string; message?: string };
     expect(data.error_code).toBe("patch_invalid");
     expect(data.message).toContain("steps");
-    // Atomic, like every other rejected patch.
     expect(JSON.stringify(draftRef.current)).toBe(before);
   });
 
@@ -197,7 +168,6 @@ describe("edit_workflow_patch", () => {
     const draftRef = { current: makeDraft() };
     const ctxObj = makeCtx(() => draftRef.current, draftRef);
     expect(() => editWorkflowPatchTool.inputSchema.parse({ patches: [] })).toThrow();
-    // We don't call execute() — the inputSchema parse is the contract.
     void ctxObj;
   });
 

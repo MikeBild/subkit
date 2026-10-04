@@ -13,9 +13,7 @@ export interface SettingItem {
     requiresRestart: boolean;
     description?: string;
     kind: string;
-    /** The schema's default; absent where the engine has none to report. */
     default?: unknown;
-    /** An enum's allowed values, in the engine's order. */
     enum_values?: string[];
   };
 }
@@ -42,57 +40,30 @@ const SETTING_META_KEYS: Readonly<Record<string, TranslationKey>> = {
   workspace: "settings.meta.workspace",
 };
 
-/** Where a setting's value came from, or which scope it applies to. */
 export function settingMetaLabel(value: string, t: Translate): CatalogLabel {
   return catalogLabel(value, SETTING_META_KEYS[value.toLowerCase()], t);
 }
 
-/**
- * Whether a row names where its value came from. Almost every setting is the
- * installation's own value or the engine's default; a chip saying so on 145
- * rows said nothing. The chip stands only where the value comes from
- * somewhere else — the environment, this workspace, an override — and says
- * nothing where it is the plain installation value.
- */
 export function settingSourceIsNotable(source: string): boolean {
   return !["global", "default"].includes(source.toLowerCase());
 }
 
-/**
- * Whether a row says what the value applies to ("Gilt für: Arbeitsbereich").
- * Almost every setting applies to the whole installation, and a line saying
- * so on every row said nothing. It stands only where a setting can differ per
- * workspace — the leaf is tenant-scoped — or where a workspace's own value
- * overrides the installation's right now.
- */
 export function settingAppliesToShown(
   meta: Pick<SettingItem["meta"], "scope" | "source">,
 ): boolean {
   return meta.scope.toLowerCase() === "tenant" || meta.source.toLowerCase() === "tenant";
 }
 
-/**
- * The setting a link opens the settings page at — `server.public_base_url` —
- * or nothing. `settingsHref` in app/links.ts writes it. A leaf is a dotted
- * path of plain words; anything else could not name a setting and is dropped
- * rather than searched for.
- */
 export function settingsLeafFromUrl(search: string): string | null {
   const raw = new URLSearchParams(search).get("leaf")?.trim() ?? "";
   return raw.length <= 128 && /^[a-z0-9_]+(\.[a-z0-9_]+)*$/i.test(raw) ? raw : null;
 }
 
-/**
- * Everything the settings page keeps in its address: the leaf a link opened it
- * at, the section and the search. A reload or a shared link lands on the same
- * view; a section name that could not be one is dropped rather than searched for.
- */
 export type SettingsFilter = "all" | "changed";
 
 export interface SettingsView {
   leaf: string | null;
   section: string | null;
-  /** `?filter=changed` shows only settings that differ from their default. */
   filter: SettingsFilter;
 }
 
@@ -106,11 +77,6 @@ export function settingsViewFromUrl(search: string): SettingsView {
   };
 }
 
-/**
- * What a `?leaf=` address points at among the settings on screen: the setting
- * itself, or — for a group such as `llm.providers.anthropic` — its first
- * setting. `null` only when nothing lives under that path.
- */
 export function settingLeafTarget(
   paths: readonly string[],
   leaf: string,
@@ -121,26 +87,10 @@ export function settingLeafTarget(
   return first >= 0 ? { index: first, kind: "group" } : null;
 }
 
-/**
- * The section a setting lives in: its first path segment. `tokens.monthly_budget`
- * opens on `tokens`.
- */
 export function settingSectionOf(path: string): string {
   return path.split(".")[0] || "other";
 }
 
-/**
- * A setting's name in the reader's language, keyed by its whole dotted path.
- *
- * The engine describes each leaf but does not label it. The page first guessed
- * a label from keywords ("Schwellenwert", "Konfigurationswert"), then used the
- * last path segment in English — nine settings read "Api key" on a German
- * page. Every leaf the engine has is named in the catalogue
- * (`settings.leaf.<path>`, held against the engine's own walk by
- * settings-leaf-coverage.test.ts), with its parent where a section holds several
- * of a kind ("Anthropic · API-Schlüssel"). A path this build does not know is
- * the path itself, marked as a machine value.
- */
 export function settingLabel(path: string, t: Translate): CatalogLabel {
   const key = `settings.leaf.${path}`;
   return Object.hasOwn(CATALOGS.en, key)
@@ -148,7 +98,6 @@ export function settingLabel(path: string, t: Translate): CatalogLabel {
     : { text: path, machine: true };
 }
 
-/** Every top-level section the engine's configuration has, by its name. */
 export const SETTING_SECTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   auth: "settings.section.auth",
   connectors: "settings.section.connectors",
@@ -172,7 +121,6 @@ export const SETTING_SECTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   ui: "settings.section.ui",
 };
 
-/** A section's name; one this build does not know is its key, marked as such. */
 export function settingSectionLabel(section: string, t: Translate): CatalogLabel {
   return catalogLabel(section, SETTING_SECTION_KEYS[section], t);
 }
@@ -186,15 +134,6 @@ export type SettingGroupId =
   | "operations"
   | "other";
 
-/**
- * The sections, grouped by what an operator comes to change.
- *
- * Twenty sections side by side were a tab strip twice as wide as the page,
- * scrolled sideways to find "Token-Budget". Grouped and stacked, every section
- * is on screen at once. Every section the engine has is placed here —
- * settings-model.test.ts walks the engine's configuration and fails on one
- * that is not.
- */
 export const SETTING_GROUPS: readonly {
   id: Exclude<SettingGroupId, "other">;
   label: TranslationKey;
@@ -222,12 +161,6 @@ export interface SettingNavGroup {
   sections: string[];
 }
 
-/**
- * The section list for the settings the engine reported: each group with the
- * sections that have settings, in the declared order. A section a newer engine
- * adds and this build has not placed yet stands in a trailing group rather
- * than vanishing.
- */
 export function settingNavigation(present: readonly string[]): SettingNavGroup[] {
   const have = new Set(present);
   const placed = new Set(SETTING_GROUPS.flatMap((group) => group.sections));
@@ -242,12 +175,6 @@ export function settingNavigation(present: readonly string[]): SettingNavGroup[]
   return groups;
 }
 
-/**
- * What the page asks of the reader before any section: settings saved but
- * waiting for a restart, and a last change that failed to activate. Nothing
- * when neither holds — the revision numbers and a count of resolved settings
- * used to stand here as four tiles on every visit, with nothing to do.
- */
 export interface SettingsAttention {
   restart: string[];
   notActivated: boolean;
@@ -262,16 +189,10 @@ export function settingsAttention(
   return restart.length > 0 || notActivated ? { restart, notActivated } : null;
 }
 
-/** A setting nobody set: the engine sends null, which is not a value to show. */
 export function isUnset(item: Pick<SettingItem, "value">): boolean {
   return item.value === null || item.value === undefined;
 }
 
-/**
- * What a text field shows: the unsaved draft, else the stored value. A secret
- * never shows, and an unset setting reads as an empty field with a
- * "nicht gesetzt" placeholder — never as the word "null".
- */
 export function settingFieldValue(
   item: Pick<SettingItem, "value" | "meta">,
   draft: string | undefined,
@@ -281,7 +202,6 @@ export function settingFieldValue(
   return typeof item.value === "string" ? item.value : JSON.stringify(item.value);
 }
 
-/** Two setting values are the same when their JSON is, whatever the key order. */
 export function sameSettingValue(a: unknown, b: unknown): boolean {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonical);
@@ -296,29 +216,20 @@ export function sameSettingValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
 
-/** Whether the engine reported a default for this setting at all. */
 export function settingHasDefault(item: Pick<SettingItem, "meta">): boolean {
   return Object.hasOwn(item.meta, "default");
 }
 
-/** A secret the engine holds a value for: it reports `***`, never the value. */
 export function settingSecretStored(item: Pick<SettingItem, "value" | "meta">): boolean {
   return item.meta.sensitive && !isUnset(item) && item.value !== "";
 }
 
-/**
- * Whether the stored value differs from the schema's default — what the
- * "Geändert" filter shows. A stored secret counts: its default is none. A
- * setting without a reported default is never "changed"; there is nothing to
- * compare it with.
- */
 export function settingIsChanged(item: SettingItem): boolean {
   if (item.meta.sensitive) return settingSecretStored(item);
   if (!settingHasDefault(item)) return false;
   return !sameSettingValue(item.value, item.meta.default);
 }
 
-/** The text a field holds for a value: strings as they are, everything else as JSON. */
 export function settingDraftText(value: unknown): string {
   if (value === null || value === undefined) return "";
   return typeof value === "string" ? value : JSON.stringify(value);
@@ -328,11 +239,6 @@ function isNumberSetting(item: Pick<SettingItem, "value" | "meta">): boolean {
   return item.meta.kind === "number" || typeof item.value === "number";
 }
 
-/**
- * The value a draft stands for, by the setting's kind. `undefined` when the
- * draft is no value of that kind — an empty or non-numeric number, broken
- * JSON — so its row flags it and it is never sent as a silent 0.
- */
 export function parseSettingDraft(item: Pick<SettingItem, "value" | "meta">, raw: string): unknown {
   const kind = item.meta.kind;
   if (kind === "boolean" || typeof item.value === "boolean") return raw === "true";
@@ -342,7 +248,6 @@ export function parseSettingDraft(item: Pick<SettingItem, "value" | "meta">, raw
     const number = Number(trimmed);
     return Number.isFinite(number) ? number : undefined;
   }
-  // An enum set to "nicht gesetzt" drafts the empty string: the engine's null.
   if (kind === "enum") return raw === "" ? null : raw;
   if (
     kind === "json" ||
@@ -360,7 +265,6 @@ export function parseSettingDraft(item: Pick<SettingItem, "value" | "meta">, raw
   return raw;
 }
 
-/** Why a draft cannot be saved, or null when it can. */
 export function settingDraftError(
   item: Pick<SettingItem, "value" | "meta">,
   raw: string | undefined,
@@ -370,29 +274,17 @@ export function settingDraftError(
   return isNumberSetting(item) ? "settings.invalidNumber" : "settings.invalidJson";
 }
 
-/**
- * Whether the value on screen — the draft, else the stored value — differs
- * from the default; the row then says "Geändert · Standard: X · Zurücksetzen".
- * Never for a secret (its row says whether one is stored) and never for a
- * setting without a reported default.
- */
 export function settingDiffersFromDefault(item: SettingItem, draft: string | undefined): boolean {
   if (item.meta.sensitive || !settingHasDefault(item)) return false;
   const value = draft === undefined ? item.value : parseSettingDraft(item, draft);
   return value === undefined || !sameSettingValue(value, item.meta.default);
 }
 
-/**
- * The draft "Zurücksetzen" writes: the default, as the field would hold it.
- * Null where nothing is safe to draft — a secret, whose empty default would
- * erase a stored credential, or a setting without a reported default.
- */
 export function settingResetDraft(item: SettingItem): string | null {
   if (item.meta.sensitive || !settingHasDefault(item)) return null;
   return settingDraftText(item.meta.default);
 }
 
-/** A value as a row names it: "An"/"Aus", "Nicht gesetzt", "leer", or itself, shortened. */
 export function settingValueText(value: unknown, t: Translate): string {
   if (value === null || value === undefined) return t("settings.unset");
   if (typeof value === "boolean") return t(value ? "settings.value.on" : "settings.value.off");
@@ -402,11 +294,6 @@ export function settingValueText(value: unknown, t: Translate): string {
   return text.length > 60 ? `${text.slice(0, 57)}…` : text;
 }
 
-/**
- * The unit a number setting counts in, read from its name: `…_ms` is
- * milliseconds, `…_bytes` bytes. Null where the name does not say — a count,
- * a fraction — rather than a guess.
- */
 export function settingUnit(path: string): TranslationKey | null {
   const leaf = path.split(".").pop() ?? "";
   if (path === "tokens.monthly_budget") return "settings.unit.tokens";
@@ -420,22 +307,11 @@ export function settingUnit(path: string): TranslationKey | null {
   return null;
 }
 
-/**
- * What to know before changing a setting, in the reader's language, or
- * nothing. Keyed by the whole path (`settings.help.<path>`); a row without an
- * entry shows no help. settings-leaf-coverage.test.ts names which settings
- * must have one.
- */
 export function settingHelpKey(path: string): TranslationKey | null {
   const key = `settings.help.${path}`;
   return Object.hasOwn(CATALOGS.en, key) ? (key as TranslationKey) : null;
 }
 
-/**
- * The one request a save sends: every draft on the page, against the revision
- * the page was read at. A secret travels as the `secret://` reference of the
- * version created for it just before; its plaintext never enters the patch.
- */
 export interface SettingsPatch {
   expected_revision: number;
   changes: Record<string, unknown>;
@@ -464,24 +340,14 @@ export function settingsPatch(
   return { expected_revision: data.saved_revision, changes, scope: "global" };
 }
 
-/**
- * Where the revision a save produced is activated. The engine saves a PATCH
- * without activating it; a setting that needs a restart stays saved and the
- * activation reports `restart_required`, which the status line then names.
- */
 export function settingsActivationPath(saved: { saved_revision: number }): string {
   return `/v1/settings/revisions/${saved.saved_revision}/activate`;
 }
 
-/** The secret name a setting's value is stored under — the engine's own settings naming. */
 export function settingSecretName(path: string): string {
   return `settings.${path}`;
 }
 
-/**
- * How a failed save reads. A 409 is somebody else's newer revision: the page
- * says so and keeps the drafts. Anything else is a plain failure.
- */
 export function settingsSaveFailure(error: unknown): "conflict" | "failed" {
   return (error as { status?: unknown } | null)?.status === 409 ? "conflict" : "failed";
 }

@@ -1,13 +1,3 @@
-// Ad-hoc HTTP / GraphQL invocation against a persisted connector:
-//   POST /v1/connectors/{id}/call
-//
-// Mirrors the call_connector conversation tool: applies the saved
-// credential, audits as connector.invoked, and returns
-// {status, headers, body, latency_ms} with truncation flags for
-// response bodies > 8KB. Driver coverage is HTTP and GraphQL only —
-// Postgres / SFTP / S3 connectors return a 422 envelope pointing at
-// workflow-step authoring.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import {
@@ -58,10 +48,6 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
       tenant_id: principal.tenant_id,
       actor_id: principal.id,
       connector_id: id,
-      // The flat schema accepts an optional method (Postgres / SFTP have
-      // no notion of HTTP verbs). For HTTP/GraphQL drivers we default to
-      // GET when nothing is supplied — same convention as the
-      // conversation tool path.
       method: (body.method ?? "GET") as CallConnectorMethod,
       path: body.path ?? "",
       ...(body.query ? { query: body.query } : {}),
@@ -89,7 +75,6 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Map the structured service error onto a typed HTTP error.
     switch (result.error_code) {
       case "connector_not_found":
         throw new NotFoundError("connector");
@@ -98,11 +83,6 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
       case "driver_not_supported_for_call_connector":
       case "invalid_input":
       case "call_failed": {
-        // 422 is the right code for "the request was understood but
-        // the resource state (switched off / no credential / wrong driver /
-        // bad GraphQL body / upstream failure) makes it unprocessable".
-        // The structured `error_code` is in details so SDK callers can
-        // disambiguate without parsing the message.
         const details: Record<string, unknown> = {
           error_code: result.error_code,
           driver: result.driver,

@@ -1,12 +1,3 @@
-// SSE-on-POST streaming for chat turns.
-//
-// Verifies that POST /v1/conversations and POST /:id/messages return
-// `text/event-stream` when the client sends `Accept: text/event-stream`,
-// and that frames carry per-tool lifecycle events (tool_call_start,
-// tool_call_end, tool_result, committed, completed). The buffered JSON
-// branch is exercised by the existing streaming.test.ts and the
-// auto-persist suite.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   connectors,
@@ -130,10 +121,6 @@ describe("http/conversations POST SSE", () => {
     }
     expect(firstEvent).toBe("conversation_started");
     expect(frameCount).toBeGreaterThan(2);
-    // Stream must have arrived in ≥ 2 read chunks for our assertion
-    // that frames flush incrementally to be meaningful. With a
-    // single-chunk read every frame would have been buffered server-
-    // side — the very condition this fix prevents.
     expect(chunkCount).toBeGreaterThanOrEqual(2);
   });
 
@@ -156,17 +143,14 @@ describe("http/conversations POST SSE", () => {
     const frames = await readSse(res);
     const eventTypes = frames.map((f) => f.event);
 
-    // Meta frames bracket the turn.
     expect(eventTypes[0]).toBe("conversation_started");
     expect(eventTypes[eventTypes.length - 1]).toBe("outcome");
 
-    // Live tool lifecycle visible in the stream.
     expect(eventTypes).toContain("message");
     expect(eventTypes).toContain("tool_call_start");
     expect(eventTypes).toContain("tool_call_end");
     expect(eventTypes).toContain("completed");
 
-    // conversation_started carries the row id immediately.
     const startFrame = frames.find((f) => f.event === "conversation_started");
     expect(startFrame).toBeDefined();
     if (startFrame) {
@@ -177,7 +161,6 @@ describe("http/conversations POST SSE", () => {
       expect(parsed.conversation.tenant_id).toBe(http.tenantId);
     }
 
-    // outcome carries the final status.
     const outcomeFrame = frames.find((f) => f.event === "outcome");
     expect(outcomeFrame).toBeDefined();
     if (outcomeFrame) {
@@ -206,7 +189,6 @@ describe("http/conversations POST SSE", () => {
   });
 
   test("POST /v1/conversations/:id/messages with Accept: text/event-stream streams the turn live", async () => {
-    // Seed a conversation via JSON path so we have an id.
     const seed = await fetch(`${http.baseUrl}/v1/conversations`, {
       method: "POST",
       headers: {
@@ -218,7 +200,6 @@ describe("http/conversations POST SSE", () => {
     const seedBody = (await seed.json()) as { conversation: { id: string } };
     const conversationId = seedBody.conversation.id;
 
-    // Now drive the next turn over SSE.
     const res = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
       headers: {
@@ -234,27 +215,12 @@ describe("http/conversations POST SSE", () => {
     const frames = await readSse(res);
     const eventTypes = frames.map((f) => f.event);
 
-    // conversation_started is NOT emitted on append (the client already
-    // has the id from the path); outcome is the terminal frame.
     expect(eventTypes).not.toContain("conversation_started");
     expect(eventTypes[eventTypes.length - 1]).toBe("outcome");
     expect(eventTypes).toContain("completed");
   });
 });
 
-// Regression coverage for two bugs an e2e citations-footer run surfaced:
-//   1. `harvestCitations` (conversations/citations.ts) read
-//      `tool_result.output.data.hits`, but `normalizeToolResultPayload`
-//      (conversations/tools/result-payload.ts) unwraps a successful
-//      `ToolResult` down to just `.data` before any event is built — a
-//      real tool_result's `output` is `{ hits: [...] }`, never
-//      `{ ok, data: { hits } }`. `harvestCitations` never matched a live
-//      event.
-//   2. Even with (1) fixed, `GET /:id/stream` (a REPLAY built from
-//      persisted messages/tool_calls — see stream.ts) never re-derived
-//      the `citations` frame, because it is not persisted anywhere; a
-//      client that only sees the replay (any non-SSE turn, e.g. `sk -p`)
-//      never received it.
 describe("http/conversations citations replay", () => {
   async function seedKnowledgeChunk(
     http: HttpTestServer,
@@ -313,8 +279,6 @@ describe("http/conversations citations replay", () => {
       { tool: "search_knowledge", args: { query: token } },
     ]);
 
-    // Buffered JSON append — no `Accept: text/event-stream`, exactly the
-    // path `sk -p` (headless.ts) and the plain readline REPL use.
     const appendRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/messages`, {
       method: "POST",
       headers: { authorization: `Bearer ${http.apiKey}`, "content-type": "application/json" },
@@ -323,8 +287,6 @@ describe("http/conversations citations replay", () => {
     expect(appendRes.status).toBe(200);
     expect(appendRes.headers.get("content-type") ?? "").toMatch(/application\/json/);
 
-    // Replay — the same GET the CLI opens after a buffered append to
-    // reconstruct its transcript.
     const streamRes = await fetch(`${http.baseUrl}/v1/conversations/${conversationId}/stream`, {
       headers: { authorization: `Bearer ${http.apiKey}`, accept: "text/event-stream" },
     });
@@ -340,9 +302,6 @@ describe("http/conversations citations replay", () => {
     expect(parsed.citations[0]?.source_type).toBe("knowledge_chunk");
     expect(parsed.citations[0]?.source_name).toBe(sourceName);
 
-    // The citations frame must anchor to the LAST assistant message the
-    // replay emits, not an earlier one — a multi-step turn's tool call
-    // typically anchors to an earlier (pre-text) assistant message.
     const assistantMessageIds = frames
       .filter(
         (f) =>
@@ -372,9 +331,6 @@ describe("http/conversations citations replay", () => {
   });
 
   test("a tool-only turn (grounded but no assistant prose) replays NO citations frame", async () => {
-    // Mirror the live gate: a turn that fired search_knowledge but was
-    // cancelled before producing final text emits no footer live, so replay
-    // must not manufacture one from the persisted hit.
     const conversationId = await seedConversation(http);
     await http.db.insert(conversationMessages).values({
       tenant_id: http.tenantId,
@@ -388,7 +344,6 @@ describe("http/conversations citations replay", () => {
         tenant_id: http.tenantId,
         conversation_id: conversationId,
         role: "assistant",
-        // Tool-only anchor: no prose (the turn never produced a final answer).
         content: { parts: [] },
       })
       .returning();

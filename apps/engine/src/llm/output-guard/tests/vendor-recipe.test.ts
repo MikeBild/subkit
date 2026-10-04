@@ -1,5 +1,3 @@
-// Unit tests for the vendor-recipe gate scanner.
-
 import { describe, expect, it } from "bun:test";
 import { vendorRecipeScanner } from "../scanners/vendor-recipe.ts";
 

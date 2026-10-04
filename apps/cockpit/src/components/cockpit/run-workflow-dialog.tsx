@@ -74,22 +74,11 @@ type Failure =
   | { kind: "approval"; environment: RunEnvironment }
   | { kind: "failed"; executionId: string | null };
 
-/**
- * Whether the same press would be refused the same way: the cause is not in
- * this dialog, so "Ausführen" is not offered again until it changed. A version
- * in an earlier format is refused in every environment; a connector or a
- * missing approval in the one that was tried.
- */
 function refusedAgain(failure: Failure | null, environment: RunEnvironment | null): boolean {
   if (!failure || failure.kind === "failed") return false;
   return failure.kind === "legacy" || failure.environment === environment;
 }
 
-/**
- * Whether each environment can run the version POST /v1/executions runs, as
- * the authority preview says — a read, never a run, asked only while the
- * dialog is open.
- */
 function useRunAvailability(
   workflowId: string,
   versionId: string | null,
@@ -107,8 +96,6 @@ function useRunAvailability(
     })),
   });
   return {
-    // Without a version there is nothing to ask; a failed read is settled too
-    // and blocks nothing.
     settled: versionId === null || previews.every((preview) => !preview.isPending),
     blocked: {
       dev: blockingConnector(previews[0]?.data),
@@ -117,14 +104,8 @@ function useRunAvailability(
   };
 }
 
-/** The value that means "not given" in a select — a select has no empty item. */
 const UNSET = "__unset";
 
-/**
- * One input field, as the control its type calls for: a number field, a
- * yes/no choice, a select of the allowed values, a JSON area for an object or
- * a list — never a text field for everything.
- */
 function InputFieldControl({
   field,
   index,
@@ -218,16 +199,6 @@ function InputFieldControl({
   );
 }
 
-/**
- * Runs the workflow that is actually stored, in a chosen environment — as
- * opposed to the test run, which executes a temporary copy. Production is
- * never one click away: it takes a stated confirmation first.
- *
- * Before anything runs, each environment is checked against the version the
- * run would use. One whose connector cannot serve it is offered disabled with
- * the reason and the way to fix it — the dialog used to let the run start and
- * print the engine's "internal error" instead.
- */
 export function RunWorkflowDialog({
   workflowId,
   workflowName,
@@ -237,7 +208,6 @@ export function RunWorkflowDialog({
   workflowId: string;
   workflowName: string;
   version: string | null;
-  /** The record's `current_version_id` — what POST /v1/executions runs, not the draft. */
   versionId: string | null;
 }) {
   const { t } = useI18n();
@@ -260,13 +230,10 @@ export function RunWorkflowDialog({
   });
   const form = inputForm(schema.data?.schema ?? null);
   const fields = formFields(form);
-  // What the form holds: the schema's own defaults under whatever was typed.
   const filled = { ...initialInputValues(fields), ...values };
   const missing = missingRequired(fields, filled);
   const invalid = invalidInputs(fields, filled);
   const availability = useRunAvailability(workflowId, versionId, open);
-  // The reader's choice stands; until there is one, the first environment that
-  // can run — decided once both answers are in, never guessed before.
   const environment =
     chosen ?? (availability.settled ? defaultEnvironment(availability.blocked) : null);
   const blockedHere = environment ? availability.blocked[environment] : null;
@@ -284,7 +251,6 @@ export function RunWorkflowDialog({
     mutationFn: (target: RunEnvironment) =>
       apiRequest<RunOutcome>("/v1/executions", {
         method: "POST",
-        // The environment travels as a header; the run body has no field for it.
         headers: { "x-subkit-environment": target },
         body: JSON.stringify({
           source: "saved",
@@ -297,8 +263,6 @@ export function RunWorkflowDialog({
     onSuccess: (result) => {
       setConfirming(false);
       setFailure(null);
-      // A run spends one of the approved runs and is the newest run on the
-      // page: the panel, the steps' last results and the run list look again.
       void invalidateWorkflowAutomation(queryClient, workflowId);
       for (const queryKey of [
         ["workflow-recent-runs", workflowId],
@@ -306,7 +270,6 @@ export function RunWorkflowDialog({
         ["workflow", workflowId],
       ])
         void queryClient.invalidateQueries({ queryKey });
-      // Engine statuses are English identifiers; they get a word first.
       setOutcome({
         status: result.status ? statusLabel(t, result.status) : t("run.started"),
         executionId: result.execution_id ?? null,
@@ -315,8 +278,6 @@ export function RunWorkflowDialog({
     onError: (error, target) => {
       setConfirming(false);
       setOutcome(null);
-      // Never the engine's own message: a sentence the reader can act on, and
-      // the run itself when one was recorded.
       const refused = refusedConnector(error);
       if (refused) {
         setFailure({
@@ -380,7 +341,6 @@ export function RunWorkflowDialog({
             onValueChange={(next) => {
               setChosen(next as RunEnvironment);
               setConfirming(false);
-              // A version in an earlier format is refused in every environment.
               setFailure((current) => (current?.kind === "legacy" ? current : null));
             }}
           >
@@ -405,7 +365,6 @@ export function RunWorkflowDialog({
               </SelectGroup>
             </SelectContent>
           </Select>
-          {/* A closed select hides its options, so the reason stands here too. */}
           {RUN_ENVIRONMENTS.map((value) => {
             const blocked = availability.blocked[value];
             if (!blocked) return null;
@@ -541,7 +500,6 @@ export function RunWorkflowDialog({
                 : t("run.action")}
           </Button>
         </DialogFooter>
-        {/* Why the button is off: the refusal above would simply repeat. */}
         {repeats && (
           <p className="text-xs text-muted-foreground" data-testid="workflow-run-repeats">
             {t("run.refusedAgain")}

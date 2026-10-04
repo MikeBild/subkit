@@ -2,11 +2,6 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ContextHelp, CopyField, SegmentedControl } from "./patterns";
 
-/**
- * The fields of a FormDialog (P14): a label, the control, one line of help
- * behind (?), and the error the control carries. Native controls, styled like
- * the rest of the cockpit, so a form needs nothing from the primitives.
- */
 const CONTROL =
   "w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 text-base outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive md:text-sm dark:bg-input/30";
 
@@ -79,7 +74,6 @@ export function TextField({
   );
 }
 
-/** A value the reader takes from the form, not into it: shown whole, with a copy button. */
 export function CopyValueField({
   id,
   label,
@@ -166,7 +160,6 @@ export function SelectField({
   );
 }
 
-/** A labelled segmented choice: two to five options, all visible at once. */
 export function ChoiceField<T extends string>({
   label,
   value,
@@ -179,7 +172,6 @@ export function ChoiceField<T extends string>({
   value: T;
   onChange(value: T): void;
   options: { value: T; label: string }[];
-  /** One sentence behind (?). */
   help?: string;
   testId: string;
 }) {

@@ -52,7 +52,6 @@ describe("identity schema", () => {
       .returning();
     expect(apiKey).toBeDefined();
 
-    // read back by joining on the tenant
     const tenantRow = await ctx.db
       .select()
       .from(tenants)

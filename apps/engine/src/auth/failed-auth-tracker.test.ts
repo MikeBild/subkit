@@ -1,13 +1,3 @@
-// In-memory failed-auth tracker — pins the brute-force threshold
-// (exactly one WARN at the 10th failure within the window), the
-// per-IP isolation (one IP's count never leaks into another's), and
-// that a threshold already crossed doesn't re-alert on every
-// subsequent failure.
-//
-// The tracker's failure map is process-wide module state, so every
-// test in this file uses its own unique IP literal to stay isolated
-// from the others regardless of execution order.
-
 import { describe, expect, spyOn, test } from "bun:test";
 import { logger } from "../logging/logger.ts";
 import { recordAuthFailure } from "./failed-auth-tracker.ts";
@@ -76,7 +66,6 @@ describe("recordAuthFailure — threshold alerting", () => {
 
       for (let i = 0; i < 10; i++) recordAuthFailure(ipB);
       expect(warnCallsFor(warnSpy.mock.calls, ipB).length).toBe(1);
-      // ipA is still below its own threshold and unaffected by ipB's alert.
       expect(warnCallsFor(warnSpy.mock.calls, ipA).length).toBe(0);
     } finally {
       warnSpy.mockRestore();

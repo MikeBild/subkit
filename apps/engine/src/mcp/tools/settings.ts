@@ -1,9 +1,3 @@
-// MCP parity for SubKit's immutable, revision-backed runtime configuration.
-//
-// These tools deliberately use the same PostgreSQL revision service as the
-// HTTP settings routes. Hot-safe changes activate after replica prepare/ACK;
-// restart-sensitive writes remain saved until a coordinated process restart.
-
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AuditAction, auditAwait, SYSTEM_TENANT_ID } from "../../audit/index.ts";
@@ -155,8 +149,6 @@ export async function handleSubkitSettings(
     };
   }
 
-  // The reader GET /v1/settings answers from: the same entries (unset reads
-  // null, `meta.requiresRestart`), the same revision state and diagnostics.
   if (path) {
     const item = readSettingEntry(path, tenant_id);
     if (!item) {

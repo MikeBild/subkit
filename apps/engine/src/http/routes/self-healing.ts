@@ -1,30 +1,3 @@
-// Admin-only self-healing HTTP surface.
-//
-// Routes:
-//   POST   /v1/self-healing/scans          — trigger a proactive drift scan
-//   GET    /v1/self-healing/scans          — list past scans
-//   GET    /v1/self-healing/scans/{id}     — fetch one scan
-//
-// The POST endpoint is admin-gated because triggering a scan can
-// produce LLM repair calls (proposing patches) and writes Patch
-// Candidate rows. The list / read routes are also admin-gated to
-// keep the operator surface consistent — proposed candidates are
-// already reachable via the existing patch-candidates routes for
-// reviewers.
-//
-// Proactive scans NEVER auto-apply. The route hard-wires
-// `allowAutoApply: false` into every `processDriftSignal` call so a
-// classification='safe' candidate with a passing fixture dry-run
-// still lands in `status='proposed'` and waits for operator review
-// via POST /v1/patch-candidates/{id}/approve.
-//
-// `Idempotency-Key` header (RFC draft "Idempotency-Key for HTTP"):
-// when supplied, a replayed POST within 24h with the same key for
-// the same tenant returns the persisted scan row's prior result
-// with status 202 (Accepted, no work performed). The dedupe is
-// backed by the unique index on (tenant_id, idempotency_key) in
-// `self_healing_scans`.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
@@ -89,24 +62,10 @@ const ScanResponse = z
     scan_id: z.string().uuid(),
     signals_detected: z.number().int(),
     candidates_created: z.number().int(),
-    /** Count of drift signals the scanner could not anchor to a
-     *  workflow (hook surfaces, orphan connectors). The detail
-     *  list lives in `unanchored`; this count is also persisted on
-     *  `self_healing_scans.unanchored_detected` so the count is
-     *  available on idempotent replay even when the detail array
-     *  is empty. */
     unanchored_detected: z.number().int(),
     duration_ms: z.number().int(),
     candidates: z.array(ScanCandidateSchema),
-    /** Drift detected but not promoted to a Patch Candidate because
-     *  no workflow anchor exists (hook surfaces, or connectors no
-     *  workflow references). Empty on idempotent replay — the per-
-     *  entry detail is not persisted on the scan row, only the
-     *  count via `unanchored_detected`. */
     unanchored: z.array(UnanchoredEntry),
-    /** True when the response was served from the idempotency cache;
-     *  the candidates listed below are the ones the original scan
-     *  produced — no additional work was performed. */
     idempotent_replay: z.boolean().optional(),
   })
   .openapi("SelfHealingScanResponse");
@@ -229,23 +188,12 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const idempotencyKey = c.req.header("idempotency-key") ?? null;
 
-    // Tenant scoping comes from the authenticated principal, never
-    // the request body. Admins cannot scan another tenant via this
-    // endpoint — that's a privilege escalation surface we deliberately
-    // do not expose. The scheduler reconciler is the only path that
-    // fans out across tenants, and it runs as `actor_type: 'system'`
-    // with no HTTP auth context.
     const filters = {
       tenant_id: principal.tenant_id,
       ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
       ...(body.connector_id ? { connector_id: body.connector_id } : {}),
     };
 
-    // Replay-cache lookup. If the same key was used in the last 24h
-    // for the same tenant AND the prior scan reached a terminal
-    // status, return that result without doing any work. A still-
-    // `running` row (rare — only if a prior call crashed mid-scan)
-    // is treated as no hit so the caller's retry runs a fresh scan.
     async function findIdempotentHit(): Promise<typeof selfHealingScans.$inferSelect | undefined> {
       if (!idempotencyKey) return undefined;
       const cutoff = new Date(Date.now() - IDEMPOTENCY_REPLAY_WINDOW_MS);
@@ -292,15 +240,6 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
     const hit = await findIdempotentHit();
     if (hit) return replayResponse(hit);
 
-    // Insert running record. The unique-index on
-    // (tenant_id, idempotency_key) closes the SELECT-then-INSERT race
-    // with a concurrent request that arrived between our cache lookup
-    // and our insert: that request's INSERT wins, our INSERT goes to
-    // no-op via ON CONFLICT, and we then re-read the winner's row and
-    // return it as a (possibly still-running) replay. If the winner
-    // is still in flight, we surface that to the caller as a 202 with
-    // the running row's (zero) counters — the caller can poll
-    // GET /v1/self-healing/scans/{id} for the final result.
     const started = new Date();
     const inserted = await db
       .insert(selfHealingScans)
@@ -318,8 +257,6 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
       .returning();
     const scanRow = inserted[0];
     if (!scanRow) {
-      // INSERT was a no-op — concurrent caller already won this key.
-      // Re-read and replay (including the still-running case).
       const concurrent = await db
         .select()
         .from(selfHealingScans)
@@ -355,10 +292,6 @@ export function registerSelfHealingRoutes(app: OpenAPIHono<AppEnv>): void {
     }> = [];
 
     try {
-      // The TRIGGERED audit lives inside the try block so an audit-
-      // insert failure flows into the same error-handling path that
-      // finalises the scan row, rather than leaving an orphan
-      // `status='running'` row visible via GET /v1/self-healing/scans.
       await auditAwait(
         {
           tenant_id: principal.tenant_id,

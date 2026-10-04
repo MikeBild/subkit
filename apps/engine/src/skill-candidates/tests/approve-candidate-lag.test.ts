@@ -1,13 +1,3 @@
-// Integration test for the drift→skill lag computation inside
-// `approveSkillCandidate` (the loop's promotion edge). This is the
-// one new emit site whose correctness lives in DB behaviour the unit test
-// (observability/tests/loop-closure-metrics.test.ts) cannot exercise:
-//   * the two-hop join skill_candidate_evidence → patch_candidates,
-//   * `orderBy(asc(created_at)).limit(1)` selecting the EARLIEST linked patch
-//     (the load-bearing "true drift→skill journey" claim), and
-//   * the no-patch-evidence branch leaving the lag histogram untouched.
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { patchCandidates } from "../../db/schema/executions.ts";
 import { tenants, workflows } from "../../db/schema/index.ts";
@@ -31,8 +21,6 @@ const skip = process.env.REQUIRES_PG === "0";
 let testDb: TestDb;
 let tenantId: string;
 let workflowId: string;
-
-// --- metrics snapshot helpers (mirrors loop-closure-metrics.test.ts) --------
 
 function counterSample(metricName: string, labels: Record<string, string>): number | undefined {
   const series = getMetrics()
@@ -112,21 +100,16 @@ afterAll(async () => {
 }, 30_000);
 
 afterEach(() => {
-  // The service reads time through the production clock seam (`now()`); restore
-  // wall-clock after each test so a frozen clock never leaks across tests.
   restoreClock(null);
 });
 
 describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", () => {
   test("lag anchors to the EARLIEST linked patch candidate", async () => {
     resetMetricsRegistryForTests();
-    // Freeze the clock the service reads, so the lag is exact and reproducible.
     installClock(createDeterministicClock(FROZEN_NOW));
 
-    // Two patch candidates at different ages. The lag must track the OLDER
-    // one (drift first detected 2h ago), not the 10-min-old one.
-    const earlyCreatedAt = new Date(FROZEN_NOW - 7200 * 1000); // 2 hours ago
-    const lateCreatedAt = new Date(FROZEN_NOW - 600 * 1000); // 10 minutes ago
+    const earlyCreatedAt = new Date(FROZEN_NOW - 7200 * 1000);
+    const lateCreatedAt = new Date(FROZEN_NOW - 600 * 1000);
 
     const [patchEarly] = await testDb.db
       .insert(patchCandidates)
@@ -176,7 +159,6 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
     );
     expect(result).not.toBeNull();
 
-    // Promotion counter fired exactly once for this tenant.
     expect(
       counterSample(METRIC_NAMES.LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL, {
         tenant_id: tenantId,
@@ -184,15 +166,12 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
       }),
     ).toBe(1);
 
-    // Exactly one lag observation, anchored to the EARLIEST patch (~7200s).
     expect(
       histogramCount(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS, { tenant_id: tenantId }),
     ).toBe(1);
     const sum = histogramSum(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS, {
       tenant_id: tenantId,
     });
-    // Frozen clock → exact lag to the 2h-old patch (7200s), proving asc+limit 1
-    // selected the EARLIEST linked patch, not the 10-min-old one (600s).
     expect(sum).toBe(7200);
   });
 
@@ -201,7 +180,6 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
     installClock(createDeterministicClock(FROZEN_NOW));
 
     const candidateId = await seedProposedCandidate("success_pattern", "success");
-    // Evidence with NO patch link (success pattern → execution-only evidence).
     await testDb.db.insert(skillCandidateEvidence).values({
       skill_candidate_id: candidateId,
       patch_candidate_id: null,
@@ -215,14 +193,12 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
     );
     expect(result).not.toBeNull();
 
-    // Promotion counter still fires...
     expect(
       counterSample(METRIC_NAMES.LOOP_SKILL_CANDIDATE_PROMOTED_TOTAL, {
         tenant_id: tenantId,
         source: "auto-suggested",
       }),
     ).toBe(1);
-    // ...but the lag histogram records nothing (no true drift→skill journey).
     expect(
       histogramCount(METRIC_NAMES.LOOP_DRIFT_TO_SKILL_LAG_SECONDS, { tenant_id: tenantId }),
     ).toBe(0);

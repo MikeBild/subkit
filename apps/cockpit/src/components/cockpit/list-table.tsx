@@ -3,12 +3,6 @@ import type { ReactNode } from "react";
 import { type CockpitColumn, DataTable } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 
-/**
- * A short list a page holds in full — keys, apps, rules, channels: the
- * `DataTable` without paging, sorting or a search of its own, with the
- * table's labels filled in once. Each table is its own action scope, so two
- * of them on one view may each offer their column picker.
- */
 export function ListTable<TData extends RowData>({
   id,
   columns,
@@ -28,10 +22,8 @@ export function ListTable<TData extends RowData>({
   rows: TData[];
   pending: boolean;
   failed: boolean;
-  /** What did not load, for "{Was} konnte nicht geladen werden." */
   resource: string;
   onRetry(): void;
-  /** "Noch keine {Objekte}." */
   empty: string;
   emptyAction?: ReactNode;
   onOpen?(row: TData): void;

@@ -4,12 +4,6 @@ import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-// The installation pages name roles, permissions and where a setting came
-// from. Each of these used to answer "Unbekannt" for a value it had no word
-// for — a word §2 bans, about a value the engine had recorded exactly. What
-// this build knows is named; the rest is the engine's own value, marked as a
-// machine value so it renders as one (`LabelText`).
-
 const ROLE_KEYS: Readonly<Record<string, TranslationKey>> = {
   config: "settings.meta.configuration",
   admin: "role.admin",
@@ -87,14 +81,6 @@ const PERMISSION_ACTION_KEYS: Readonly<Record<string, TranslationKey>> = {
   write: "permission.action.write",
 };
 
-/**
- * `workflow:run` as "Workflows · Ausführen"; a part this build cannot name
- * keeps the whole token.
- *
- * A third segment narrows the permission's reach — `stats:read:all` reads
- * EVERYONE's usage where `stats:read` reads one's own. Dropping it, as the
- * two-part split did, gave the two rights one name.
- */
 export function permissionLabel(permission: string, t: Translate): CatalogLabel {
   const [resource, action, reach, ...rest] = permission.split(":");
   const resourceKey = resource ? PERMISSION_RESOURCE_KEYS[resource] : undefined;
@@ -106,13 +92,9 @@ export function permissionLabel(permission: string, t: Translate): CatalogLabel 
   return { text: permission, machine: true };
 }
 
-/** What kind of thing a permission or grant is about — `connector` as "Connectoren". */
 export function resourceTypeLabel(resourceType: string, t: Translate): CatalogLabel {
   return catalogLabel(resourceType, PERMISSION_RESOURCE_KEYS[resourceType], t);
 }
-
-// ---------------------------------------------------------------------------
-// Roles as a person holds them.
 
 export interface RoleLike {
   id: string;
@@ -120,7 +102,6 @@ export interface RoleLike {
   is_builtin: boolean;
 }
 
-/** The three roles the identity API assigns itself; every other role goes through RBAC. */
 export const PERSON_ROLES = ["admin", "member", "enduser"] as const;
 export type PersonRole = (typeof PERSON_ROLES)[number];
 
@@ -128,14 +109,6 @@ export function isPersonRole(name: string): name is PersonRole {
   return (PERSON_ROLES as readonly string[]).includes(name);
 }
 
-/**
- * A role by its name — a built-in one in the reader's language, a custom one
- * by the name its author gave it.
- *
- * A custom role's name IS its name. Showing it as a machine value (or, before
- * that, as "Unbekannt") treated the one role an administrator named on purpose
- * as the one the cockpit could not read.
- */
 export function roleName(
   name: string,
   roles: readonly RoleLike[] | undefined,
@@ -148,14 +121,6 @@ export function roleName(
   return { text: name, machine: true };
 }
 
-/**
- * The roles a PERSON can be given, in the order a reader looks for them.
- *
- * The three person roles, then every role this workspace defined. The other
- * built-ins are left out on purpose: `metrics_scraper` and `portal_token_user`
- * back machine principals — a Prometheus scraper, a portal token — and a
- * person holding one is a misconfiguration, not a choice to offer.
- */
 export function assignableRoles<T extends RoleLike>(roles: readonly T[]): T[] {
   const people = PERSON_ROLES.flatMap((name) =>
     roles.filter((role) => role.is_builtin && role.name === name),
@@ -166,15 +131,6 @@ export function assignableRoles<T extends RoleLike>(roles: readonly T[]): T[] {
   return [...people, ...custom];
 }
 
-/**
- * What a role change does beyond its permission list.
- *
- * People and role management are checked by the role NAME `admin`, not by a
- * permission: a custom role holding every permission still cannot manage
- * people. So leaving `admin` always takes that away, whatever the diff says —
- * and "the rights stay the same" would be false. Changing one's own role is
- * said as such, because the reader is the one who loses it.
- */
 export type RoleChangeNote = "leavesAdmin" | "self" | "selfLeavesAdmin";
 
 export function roleChangeNotes(change: {
@@ -194,10 +150,6 @@ const REFUSAL_KEYS: Readonly<Record<string, TranslationKey>> = {
   not_found: "people.refusal.notFound",
 };
 
-/**
- * Why the engine refused a change to a person, in words: the known codes
- * translated, anything else the engine's own sentence, never a bare "failed".
- */
 export function personRefusal(
   error: { code?: string | null; message?: string } | null | undefined,
   t: Translate,
@@ -209,7 +161,6 @@ export function personRefusal(
     : t("people.roleUpdateFailed");
 }
 
-/** What a person gains and loses when one role replaces another. */
 export function roleChange(
   from: readonly string[],
   to: readonly string[],
@@ -222,18 +173,6 @@ export function roleChange(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Grants on a single record.
-
-/**
- * The record types this page can grant on, each with a list to pick from.
- *
- * The engine checks a grant wherever a route names the record it guards —
- * workflows, connectors, skills, runs and a few more. A picker needs a list of
- * names; these two have one here, and the page says in a sentence that the
- * rest are granted through the API rather than pretending a workflow picker
- * covers them.
- */
 export const GRANT_RESOURCE_TYPES = ["workflow", "connector"] as const;
 export type GrantResourceType = (typeof GRANT_RESOURCE_TYPES)[number];
 
@@ -241,20 +180,10 @@ export function isGrantResourceType(value: string): value is GrantResourceType {
   return (GRANT_RESOURCE_TYPES as readonly string[]).includes(value);
 }
 
-/**
- * The sections of Personen & Rechte this reader may read, in page order. The
- * people list is behind `identity:read`; roles, groups and grants behind
- * `rbac:read`. A section the reader cannot read is absent, not a failed load.
- */
 export function readablePeopleSections(can: { identity: boolean; rbac: boolean }): PeopleSection[] {
   return PEOPLE_SECTIONS.filter((section) => (section === "people" ? can.identity : can.rbac));
 }
 
-/**
- * The section the page opens at: the one the address names when the reader
- * may read it, else the first one they may. Null only for a reader who may
- * read none of them.
- */
 export function openPeopleSection(
   requested: PeopleSection | null,
   readable: readonly PeopleSection[],

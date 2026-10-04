@@ -1,12 +1,3 @@
-// `/install-space` REPL slash — list pending chat spaces
-// (added-but-not-installed) and install one by id. Non-interactive
-// (banner model): no args lists the candidates; `/install-space <id>`
-// installs a listed one with the caller's verified installer id. Slack /
-// manual installs (which need a bot token) stay in `sk chat install-space`.
-//
-// Lives in its own module so `handler.ts` stays under the file-size cap;
-// the dispatcher contract test permits a `case` that delegates here.
-
 import type { PendingChatSpaceWire } from "../../../engine-client/chat.ts";
 import type { SlashHandlerContext } from "../handler.ts";
 

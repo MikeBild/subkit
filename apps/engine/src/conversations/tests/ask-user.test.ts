@@ -1,11 +1,3 @@
-// Schema contract tests for the ask_user_* tool family. Guards the input
-// shapes we stream to the client in the `tool_call_start` frame and persist
-// into `conversation_elicitations.input`.
-//
-// The `connector_auth_unset` gate tests at the bottom exercise the RC-4
-// gate in `ask_user_form.execute`. The pure gate path needs no DB; the
-// companion (gate passes → normal pause) is integration and uses a real DB.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -171,13 +163,8 @@ describe("askUser tool identity", () => {
   });
 });
 
-// RC-4: ask_user_form gate — sensitive field + active connector draft with
-// auth_type null/undefined → { ok:false, error_code:"connector_auth_unset" }.
-
 import type { ConnectorDraftDocument } from "../types.ts";
 
-/** Minimal context carrying a draft with the given connector shape.
- *  The gate fires before any DB call, so the DB is intentionally absent. */
 function buildGatedCtx(connector: ConnectorDraftDocument): ToolContext {
   const draft: DraftDocument = {
     mode: "connector_authoring",
@@ -198,15 +185,12 @@ function buildGatedCtx(connector: ConnectorDraftDocument): ToolContext {
 }
 
 describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
-  // auth_type omitted (undefined) — the gate uses `== null` so both
-  // undefined and null trigger it. We test it here with the property absent.
   test("password field + connector draft with auth_type unset → connector_auth_unset", async () => {
     const ctx = buildGatedCtx({
       name: "test",
       slug: "test",
       driver: "http",
       environment: "dev",
-      // auth_type intentionally absent → undefined at runtime.
     });
     const result = await askUserFormTool.execute(ctx, {
       question: "Enter your API key",
@@ -219,10 +203,6 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
-  // auth_type set to null at runtime (deserialized from JSON).
-  // The gate checks `== null` so both undefined and null fire it.
-  // Cast through unknown to thread null past TypeScript's strict optional check —
-  // the gate is a runtime guard that must handle JSON-deserialized nulls too.
   test("sensitive:true field + connector draft with auth_type null → connector_auth_unset", async () => {
     const nullAuthConnector = {
       name: "test",
@@ -242,9 +222,6 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
-  // Companion: same form when auth_type IS set passes the gate.
-  // The tool will call pauseForUserInput which inserts into conversation_elicitations,
-  // so a real DB + conversation row is required.
   test("password field + connector draft with auth_type bearer → gate passes (pauses for input)", async () => {
     if (!integrationDb || !integrationTenantId) throw new Error("db not ready");
     const [conv] = await integrationDb.db
@@ -283,17 +260,12 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
       fields: [{ name: "token", label: "Token", type: "password" }],
     });
 
-    // Gate must pass — no connector_auth_unset error.
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.pause?.tool_name).toBe("ask_user_form");
     }
   });
 
-  // Canonical credential field names are enforced at form CREATION.
-  // The gate fires before pauseForUserInput, so a stub ctx with no DB
-  // works for the classic auth modes (seed-mode resolution only touches
-  // the DB for templated oauth2/aws_sigv4 drafts — and tolerates failure).
   test("basic draft + single `basic_auth` field → credential_form_mismatch (session 97679846 repro)", async () => {
     const ctx = buildGatedCtx({
       name: "jira",
@@ -356,11 +328,6 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     }
   });
 
-  // RC3(a) — the mismatch envelope must name the EXPECTED field set,
-  // not just what's missing, so the model corrects on the first retry
-  // instead of thrashing (conversation 68b5c87e: 4 rejected forms).
-  // `data` is what reaches the model as the tool-result payload, so the
-  // prose message must live there too.
   test("ambiguous bearer form mismatch carries expected_fields + message", async () => {
     const ctx = buildGatedCtx({
       name: "t",
@@ -405,7 +372,6 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const data = result.data as { missing?: string[]; expected_fields?: string[] };
-      // Only `username` is missing, but the full expected set is named.
       expect(data.missing).toEqual(["username"]);
       expect(data.expected_fields).toEqual(["username", "password"]);
     }
@@ -419,8 +385,6 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
       environment: "dev",
       auth_type: "header",
     });
-    // Gate passes → the tool reaches pauseForUserInput which throws on
-    // the absent DB. Same pattern as the non-sensitive gate test below.
     try {
       const result = await askUserFormTool.execute(ctx, {
         question: "Enter your API key",
@@ -434,17 +398,11 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
       if (!result.ok) {
         expect(result.error_code).not.toBe("credential_form_mismatch");
       }
-    } catch {
-      // Reached pauseForUserInput (past the gate) — expected with no DB.
-    }
+    } catch {}
   });
 
-  // Non-sensitive form fields (no password, no sensitive:true) must not trigger
-  // the gate even when auth_type is unset.
   test("text field without sensitive:true + auth_type unset → gate not triggered", async () => {
     const ctx = buildGatedCtx({ name: "test", slug: "test", driver: "http", environment: "dev" });
-    // No DB context — if this reaches pauseForUserInput it will throw.
-    // But it should not trigger the gate so we check the result is NOT connector_auth_unset.
     let result: Awaited<ReturnType<typeof askUserFormTool.execute>> | undefined;
     try {
       result = await askUserFormTool.execute(ctx, {
@@ -452,11 +410,8 @@ describe("ask_user_form — connector_auth_unset gate (RC-4)", () => {
         fields: [{ name: "name", label: "Name", type: "text" }],
       });
     } catch {
-      // The tool reached pauseForUserInput (past the gate), which threw due to no DB.
-      // That means the gate correctly did not fire. This is the expected path.
       return;
     }
-    // If we get here without throwing, the gate should not have fired.
     if (result && !result.ok) {
       expect((result as { error_code?: string }).error_code).not.toBe("connector_auth_unset");
     }

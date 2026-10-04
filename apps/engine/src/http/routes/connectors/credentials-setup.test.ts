@@ -1,23 +1,3 @@
-// Integration tests for the credential-setup grant flow:
-//   GET  /v1/connectors/{id}/credentials/setup?grant=sksg_…
-//   POST /v1/connectors/{id}/credentials/setup
-//
-// Mirrors http/routes/connectors/oauth-start-grant.test.ts's coverage shape,
-// adapted for the two-hit (validate-then-consume) contract:
-//
-//   a) mint → GET renders the form and does NOT consume — a second GET with
-//      the same grant still returns 200.
-//   b) POST with the form fields → consumes the grant, upserts the
-//      credential, clears needs_reauth, and renders a thank-you page.
-//      grant_issued / grant_consumed audit rows are written.
-//   c) POST replay (same grant again) → 400, no second credential write.
-//   d) expired grant → 400 (GET and POST).
-//   e) valid grant + wrong connector path id → 400 AND grant still claimable
-//      at the correct connector id afterwards.
-//   f) GET without grant param → 400 (Zod validation), not 401.
-//   g) tenant is derived from the grant row — the request carries no bearer
-//      token at all.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { browserSessionCookie, signBrowserSession } from "../../../auth/browser-session.ts";
@@ -56,7 +36,6 @@ import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts"
 
 let server: HttpTestServer;
 let connectorId: string;
-// The configured address is process-wide; hand it back as it was found.
 let publicBaseUrlBefore = "";
 
 beforeAll(async () => {
@@ -139,12 +118,9 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     const html = await res.text();
     expect(html).toContain('name="token"');
     expect(html).toContain(`value="${token}"`);
-    // The page must name the external service on the heading, the explainer,
-    // and the secret field — operators must not read it as a sign-in page.
     expect(html).toContain("Reconnect Mock Setup Bearer");
     expect(html).toContain("API token / bearer token issued by Mock Setup Bearer");
     expect(html).toContain("not a sign-in for this page");
-    // The product's page shell, not a one-off card.
     expect(html).toContain('data-auth-contract="mcp-auth"');
 
     const german = await fetch(
@@ -155,13 +131,10 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     expect(germanHtml).toContain('<html lang="de">');
     expect(germanHtml).toContain("Mock Setup Bearer neu verbinden");
     expect(germanHtml).toContain("API-Token / Bearer-Token von Mock Setup Bearer");
-    // The plaintext grant appears EXACTLY once: the hidden form field.
     expect(html.split(token).length - 1).toBe(1);
 
-    // Grant row must still exist — GET validates only, never consumes.
     expect(await getGrantRow(token)).not.toBeNull();
 
-    // A second GET with the same grant must still succeed.
     const res2 = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup?grant=${encodeURIComponent(token)}`,
     );
@@ -183,10 +156,8 @@ describe("GET /v1/connectors/{id}/credentials/setup?grant=…", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.text();
-    // "Link", not "Sign-in link" — this page never was a sign-in.
     expect(body).toContain("Link expired");
     expect(body).not.toContain("Sign-in link");
-    // A one-time page names no terminal and no conversation.
     expect(body).toContain("Ask for a fresh link where you got this one.");
   });
 });
@@ -219,7 +190,6 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       })
       .returning();
     if (!elicitation) throw new Error("seed elicitation failed");
-    // Switched off by an operator, breaker open on the old credential.
     await server.db
       .update(connectors)
       .set({
@@ -238,28 +208,22 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("Credential saved");
-    // Storing a credential does not switch the connector on; the page says so.
     expect(html).toContain("switched off and stays off until someone switches it on");
     expect(html).toContain("You can close this page.");
 
-    // Grant burned.
     expect(await getGrantRow(token)).toBeNull();
 
-    // (g) Credential written under the tenant derived from the grant row —
-    // no bearer token was sent on this request at all.
     const cred = await getCredentialRow();
     expect(cred).not.toBeNull();
     expect(cred?.mode).toBe("bearer");
     expect(cred?.tenant_id).toBe(server.tenantId);
 
-    // needs_reauth cleared.
     const [connectorRow] = await server.db
       .select()
       .from(connectors)
       .where(eq(connectors.id, connectorId))
       .limit(1);
     expect(connectorRow?.needs_reauth).toBe(false);
-    // The breaker counted the replaced credential's failures: closed, clean.
     expect(connectorRow?.circuit_state).toBe("closed");
     expect(connectorRow?.circuit_failure_count).toBe(0);
     expect(connectorRow?.circuit_opened_at).toBeNull();
@@ -275,7 +239,6 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
         ),
       );
     expect(resetAudit.length).toBe(1);
-    // Attributed to the operator who asked for the link, like the flag's row.
     expect(resetAudit[0]?.actor_id).toBe(server.userId);
 
     const [completedElicitation] = await server.db
@@ -284,7 +247,6 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       .where(eq(conversationElicitations.id, elicitation.id));
     expect(completedElicitation?.delivery_last_error).toBe("url_completed");
 
-    // grant_consumed audit row present.
     const consumedAudit = await server.db
       .select()
       .from(auditLog)
@@ -296,7 +258,6 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
       );
     expect(consumedAudit.length).toBeGreaterThan(0);
 
-    // (c) Replay: grant is burned, second POST → 400.
     const replay = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -342,10 +303,8 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
     });
     expect(wrongRes.status).toBe(400);
 
-    // Grant must still exist (not burned by the wrong-id attempt).
     expect(await getGrantRow(token)).not.toBeNull();
 
-    // POST with the correct connector id must still succeed.
     const correctRes = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`,
       {
@@ -360,8 +319,6 @@ describe("POST /v1/connectors/{id}/credentials/setup", () => {
 });
 
 describe("pasted credential whitespace", () => {
-  // A key copied with a trailing newline used to be stored verbatim; sent as
-  // a header, the runtime then refused it with an error quoting the secret.
   test("the stored bearer token carries no surrounding whitespace", async () => {
     const token = await seedGrant();
     const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/credentials/setup`, {
@@ -456,7 +413,6 @@ describe("unsaved connector draft credential setup", () => {
     expect(form.status).toBe(200);
     const formHtml = await form.text();
     expect(formHtml).toContain('name="token"');
-    // Draft flow is a first-time connect, not a reauth.
     expect(formHtml).toContain("Connect Cloudflare Journey");
     expect(formHtml).toContain("API token / bearer token issued by Cloudflare Journey");
 

@@ -68,8 +68,6 @@ beforeAll(async () => {
   const addr = mockApi.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
 
-  // Seed a connector pointing at the mock server so workflow steps can
-  // route via `connector_id` exactly the way real authored workflows do.
   const createRes = await journeyFetch(ctx, "/v1/connectors", {
     method: "POST",
     body: JSON.stringify({
@@ -95,7 +93,6 @@ afterAll(async () => {
 
 describe("54: Loop body + request step + ${item.id} placeholder", () => {
   test("AC1+AC2: ${item.id} resolves per iteration; URLs hit the wire as plain ids", async () => {
-    // Reset the receive log so this test owns its assertions.
     RECEIVED_PATHS.length = 0;
 
     const createRes = await journeyFetch(ctx, "/v1/workflows", {
@@ -122,10 +119,6 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
             kind: "request",
             method: "GET",
             connector_id: connectorId,
-            // The bug: before the fix this literal text reached the wire
-            // as `/v2/projects/$%7Bitem.id%7D/resources` and the API
-            // returned 404. After the fix it must resolve per-iteration
-            // to `/v2/projects/proj-a/resources` etc.
             path: "/v2/projects/${item.id}/resources",
           },
         ],
@@ -142,12 +135,11 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
     const runBody = (await runRes.json()) as { status: string };
     expect(runBody.status).toBe("succeeded");
 
-    // The mock server saw exactly the resolved URLs — never the literal token.
     expect(RECEIVED_PATHS).toContain("/v2/projects");
     expect(RECEIVED_PATHS).toContain("/v2/projects/proj-a/resources");
     expect(RECEIVED_PATHS).toContain("/v2/projects/proj-b/resources");
     for (const p of RECEIVED_PATHS) {
-      expect(p).not.toContain("%24%7B"); // URL-encoded `${`
+      expect(p).not.toContain("%24%7B");
       expect(p).not.toContain("${item");
     }
   });
@@ -198,16 +190,6 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
       output?: unknown;
     };
 
-    // Loop bodies that fail don't fail the overall workflow today —
-    // the loop wraps per-iteration failures in its envelope. What
-    // matters is the inner body step row records a structured
-    // placeholder_unresolved error so diagnose_run / the LLM can see
-    // exactly what was wrong.
-    //
-    // The loop records step_key as `${bodyStep.id}[${itemIdx}]`, but
-    // the surfaced steps array might either expose those rows directly
-    // or hand back the loop's iteration envelope. Check the inner
-    // step row first; fall back to the loop's per-iteration envelope.
     const failedInner = runBody.steps.find(
       (s) => s.step_key.startsWith("bad_inner") && s.status === "failed",
     );
@@ -224,7 +206,6 @@ describe("54: Loop body + request step + ${item.id} placeholder", () => {
       expect(innerErrors[0]).toBe("placeholder_unresolved");
     }
 
-    // Never reached the wire for the bad inner step.
     for (const p of RECEIVED_PATHS) {
       expect(p).not.toContain("does_not_exist");
       expect(p).not.toContain("%24%7B");

@@ -1,5 +1,3 @@
-// Unit tests for the conversation-scoped dry-run cache.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import type { RunResult } from "../../../execution/types.ts";
 import {
@@ -72,12 +70,6 @@ describe("dry-run cache", () => {
   });
 });
 
-// Step-level prefix cache — the layer that makes "edit only the
-// downstream transform → upstream replays from fixture" work. The
-// test enforces the key invariant: two drafts that share their leading
-// step but differ in step 1 produce the SAME prefix hash at index 0
-// (so the cached upstream envelope is reused) and DIFFERENT prefix
-// hashes at index 1 (so the changed transform re-executes).
 describe("step prefix cache", () => {
   test("identical step-0 + different step-1 → same step-0 hash, different step-1 hash", () => {
     const tenant_id = "t1";
@@ -138,7 +130,7 @@ describe("step prefix cache", () => {
   test("isStepKindCacheable allows GET request, transform, query GraphQL — rejects others", () => {
     expect(isStepKindCacheable("transform", {})).toBe(true);
     expect(isStepKindCacheable("request", { method: "GET" })).toBe(true);
-    expect(isStepKindCacheable("request", {})).toBe(true); // default GET
+    expect(isStepKindCacheable("request", {})).toBe(true);
     expect(isStepKindCacheable("request", { method: "POST" })).toBe(false);
     expect(isStepKindCacheable("request", { method: "DELETE" })).toBe(false);
     expect(isStepKindCacheable("graphql", { operation: "query" })).toBe(true);

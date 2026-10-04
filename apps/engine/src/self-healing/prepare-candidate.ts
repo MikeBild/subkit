@@ -10,7 +10,6 @@ import { readPatchReadiness } from "./candidate-readiness.ts";
 import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
-/** Persist an immutable review target. Neither activation nor execution is performed. */
 export async function preparePatchCandidate(
   params: {
     tenant_id: string;

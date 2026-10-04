@@ -1,21 +1,3 @@
-// The re-sign-in link a conversation hands out opens the connector's OWN
-// sign-in route, and an MCP server's route has a browser-openable door.
-//
-// What the tests pin:
-//   1. The link builders derive the route from `sign_in`: a web service's
-//      link opens `/oauth/start`, an MCP server's `/mcp/authorize`; a
-//      connector with no browser sign-in (a key, a Cognito password grant, a
-//      client-credentials exchange) gets no link.
-//   2. GET /v1/connectors/{id}/mcp/authorize?grant=… — opened by a browser
-//      with no API key — consumes the single-use grant and redirects to the
-//      authorization server, with the same protections as the
-//      `/oauth/start?grant=` door: the tenant comes from the claimed grant, a
-//      wrong connector id does not burn it, a used or expired grant is the
-//      link-expired page, and the flow is recorded as started in a chat.
-//   3. A grant for a connector whose sign-in is not this route starts nothing.
-//   4. The MCP `authenticate` tool, which runs the `/oauth/start` flow, refuses
-//      a connector that does not sign in there — by the same predicate.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { and, eq } from "drizzle-orm";
@@ -48,7 +30,6 @@ let webId = "";
 let cognitoId = "";
 let machineId = "";
 let keyId = "";
-// Every authorization the fake driver was asked to begin.
 let begun: string[] = [];
 
 beforeAll(async () => {
@@ -56,8 +37,6 @@ beforeAll(async () => {
   publicBaseUrlBefore = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
 
-  // Stand in for PRM → AS discovery → DCR → PKCE: persist what the real
-  // driver persists through the provider, and ask for the browser step.
   __setSdkAuthForTests((async (provider: OAuthClientProvider) => {
     begun.push("authorize");
     await provider.saveCodeVerifier("verifier-from-fake");
@@ -140,13 +119,11 @@ async function seedGrant(connector_id: string, expires_at = new Date(now() + 5 *
   return plaintext;
 }
 
-// No API key, no session, no redirect following: a browser opening a link.
 const open = (id: string, grant: string) =>
   fetch(`${server.baseUrl}/v1/connectors/${id}/mcp/authorize?grant=${encodeURIComponent(grant)}`, {
     redirect: "manual",
   });
 
-/** Whether this one grant can still be claimed. */
 async function stillHeld(grant: string): Promise<boolean> {
   const rows = await server.db
     .select()
@@ -183,7 +160,6 @@ describe("the link opens the connector's own sign-in route", () => {
       method: "oauth2",
       reauth_url: `${server.baseUrl}/v1/connectors/${webId}/oauth/start`,
     });
-    // A Cognito password grant is re-issued, never signed in.
     expect(buildReauthUrl(await view(cognitoId))).toMatchObject({
       method: "portal_setup",
       reauth_url: `${server.baseUrl}/v1/connectors/${cognitoId}/credentials`,
@@ -202,8 +178,6 @@ describe("GET /v1/connectors/{id}/mcp/authorize?grant=…", () => {
     expect(begun).toEqual(["authorize"]);
     expect(await stillHeld(new URL(minted.url).searchParams.get("grant") ?? "")).toBe(false);
 
-    // The in-flight authorization belongs to the grant's tenant, was begun in
-    // a chat, and is attributed to nobody: the browser is not a principal.
     const states = await server.db
       .select()
       .from(mcpOauthStates)
@@ -255,7 +229,6 @@ describe("GET /v1/connectors/{id}/mcp/authorize?grant=…", () => {
     expect(res.status).toBe(400);
     expect(await res.text()).toContain("Link expired");
     expect(await stillHeld(grant)).toBe(true);
-    // Still good where it belongs.
     expect((await open(mcpId, grant)).status).toBe(302);
   });
 

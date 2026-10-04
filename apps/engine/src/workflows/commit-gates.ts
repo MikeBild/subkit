@@ -1,10 +1,3 @@
-// DB-backed commit gates shared by `createWorkflow` / `updateWorkflow`
-// (service.ts). Pure-structural validation lives in `validator.ts`; the
-// checks here need a DB read to answer "does this reference resolve
-// against what the tenant actually has saved". Extracted from service.ts
-// (which owns workflow CRUD) so neither file drifts past the 1000-LOC
-// audit ceiling — same split rationale as `trigger-bindings.ts`.
-
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { connectors, skills as skillsTable } from "../db/schema/index.ts";
@@ -12,15 +5,6 @@ import { log } from "../logging/logger.ts";
 import type { WorkflowDef } from "./types.ts";
 import { validateOutputSchemaSuperset } from "./validator.ts";
 
-/**
- * Skill-schema gate. When the workflow declares `derived_from_skill_id`,
- * load the referenced skill and require the workflow's `output_schema`
- * to structurally cover the skill's. The proof-before-save invariant
- * means a recipe-cloned workflow cannot silently narrow its public
- * contract away from the skill's promise. Returns `{ok:true}` when
- * either the skill is missing (treated as if no contract was promised)
- * or the gate passes — typed errors only on actual narrowing.
- */
 export async function applySkillSchemaGate(
   tenant_id: string,
   def: WorkflowDef,
@@ -50,19 +34,6 @@ export async function applySkillSchemaGate(
   };
 }
 
-/**
- * Storage-binding gate (audit M4). A request step carrying an `s3` block
- * dispatches through the S3 driver, which hard-requires the referenced
- * connector to (a) exist, (b) be an `s3`-driver connector, and (c) carry
- * `config.bucket` (`drivers/s3.ts` throws `missing config.bucket`;
- * a wrong bucket name surfaces at runtime as an opaque `s3_error
- * "Bucket not found"`). Every one of those was committable and only
- * failed on the first live run. Resolve the bindings at commit time so
- * the author gets a typed error against the step instead. The bucket's
- * remote EXISTENCE is deliberately not probed — commit must not make
- * network calls; an existing-but-misconfigured bucket still fails at
- * runtime, but the binding itself can no longer dangle.
- */
 export async function applyStorageBindingGate(
   tenant_id: string,
   def: WorkflowDef,

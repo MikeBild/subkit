@@ -1,7 +1,3 @@
-// Notion page-id normaliser tests. The conversation-661e7ad1 regression
-// fixture (app.notion.com/p/SubKit-Strategie-<id> → dashed id) is the
-// canonical example; the rest covers the URL/id forms a user might paste.
-
 import { describe, expect, it } from "bun:test";
 import { normalizeNotionPageId, parseNotionResourceUrl } from "./notion-page-id.ts";
 
@@ -33,7 +29,6 @@ describe("normalizeNotionPageId", () => {
   });
 
   it("takes the trailing id when the slug also contains hex-looking text", () => {
-    // The id always trails the slug, so the last 32-hex run wins.
     expect(normalizeNotionPageId(`https://notion.so/deadbeef-Title-${RAW}`)).toBe(DASHED);
   });
 

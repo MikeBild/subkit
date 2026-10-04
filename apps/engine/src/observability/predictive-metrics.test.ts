@@ -1,10 +1,3 @@
-// Phase 2 predictive-maintenance metrics — invocation contract tests.
-//
-// Mirrors files-metrics.test.ts: verifies each helper from
-// `instrumentation.ts` records the expected sample(s), collapses unknown
-// label values per the allow-list, and never throws. The RSS high-water
-// helper additionally asserts its climb-only semantics.
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   _resetRssHighWaterForTests,
@@ -176,13 +169,10 @@ describe("recordProcessRssHighWater", () => {
 
 describe("boundedConnectorSlug (cardinality cap)", () => {
   test("passes through known slugs and collapses overflow to 'other'", () => {
-    // First 200 distinct slugs each keep their identity.
     for (let i = 0; i < 200; i++) {
       expect(boundedConnectorSlug(`slug-${i}`)).toBe(`slug-${i}`);
     }
-    // An already-seen slug still passes through (idempotent).
     expect(boundedConnectorSlug("slug-0")).toBe("slug-0");
-    // The 201st DISTINCT slug overflows the budget → "other".
     expect(boundedConnectorSlug("slug-200")).toBe("other");
   });
 });
@@ -202,16 +192,16 @@ describe("sampleTransientRetryRate (windowed)", () => {
   test("charts the delta over the elapsed window (retries ÷ minutes)", () => {
     sampleTransientRetryRate({ nowMs: 0 });
     for (let i = 0; i < 6; i++) recordDbTransientRetry({ label: "drift_scan" });
-    sampleTransientRetryRate({ nowMs: 120_000 }); // 6 retries over 2 min → 3/min
+    sampleTransientRetryRate({ nowMs: 120_000 });
     expect(rateGauge()).toBe(3);
   });
 
   test("a quiet window decays the rate back to 0 (no latch)", () => {
     sampleTransientRetryRate({ nowMs: 0 });
     for (let i = 0; i < 10; i++) recordDbTransientRetry({ label: "drift_scan" });
-    sampleTransientRetryRate({ nowMs: 60_000 }); // 10/min
+    sampleTransientRetryRate({ nowMs: 60_000 });
     expect(rateGauge()).toBe(10);
-    sampleTransientRetryRate({ nowMs: 120_000 }); // no new retries → 0
+    sampleTransientRetryRate({ nowMs: 120_000 });
     expect(rateGauge()).toBe(0);
   });
 });

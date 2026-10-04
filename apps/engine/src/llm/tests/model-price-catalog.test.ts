@@ -1,13 +1,3 @@
-// The built-in price catalog, and the guards that keep every release priced.
-//
-// Two promises are pinned here. First, the models SubKit chooses on its own —
-// schema defaults, the invoke primary and fallback, the model-init default,
-// and everything the step router escalates them to — always have a price, so
-// a release that moves a default without pricing it fails here instead of in
-// front of an operator. Second, the catalog is a read-time default: the
-// operator's `tokens.prices` wins per model, and the catalog never lands in
-// the stored configuration.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,7 +20,6 @@ const catalogIds = (): Set<string> => new Set(MODEL_PRICE_CATALOG.map((p) => p.m
 const isPriced = (model: string): boolean =>
   catalogIds().has(model) || catalogIds().has(bareModelId(model));
 
-/** Every non-empty string the parsed default config holds under a key ending in `model`. */
 function configDefaultModelIds(): string[] {
   const parsed = ConfigSchema.parse({ database: { url: "postgres://x:y@127.0.0.1:5432/z" } });
   const found: string[] = [];
@@ -47,7 +36,6 @@ function configDefaultModelIds(): string[] {
 
 const LADDER_PROVIDERS: LlmProviderKind[] = ["anthropic", "openai", "gemini"];
 
-/** The defaults plus every model the step router can escalate them to. */
 function modelsSubKitChooses(): string[] {
   const seen = new Set<string>([
     ...configDefaultModelIds(),
@@ -71,14 +59,7 @@ function modelsSubKitChooses(): string[] {
   return [...seen].sort();
 }
 
-/**
- * Models SubKit knows by name but ships no price for — the ladders' older
- * tiers the vendors no longer list a price for. Listed exactly: a new known model without
- * a price, or a price added without removing the name here, both fail.
- */
 const KNOWN_BUT_UNPRICED = [
-  // Retired and no longer on the vendors' price lists — no primary source to
-  // quote, so no price rather than a remembered one.
   "claude-3-5-sonnet",
   "claude-3-opus",
   "gemini-1.5-flash",
@@ -91,8 +72,6 @@ const KNOWN_BUT_UNPRICED = [
 describe("the catalog itself", () => {
   test("every entry is a valid tokens.prices entry, non-negative, with a traceable source", () => {
     for (const entry of MODEL_PRICE_CATALOG) {
-      // The long-context tier is the catalog's own: an operator entry is one
-      // flat rate, so the tier is checked beside the schema, not through it.
       const { source, long_context, ...price } = entry;
       expect(ModelPriceSchema.parse(price)).toEqual(price);
       for (const rate of [
@@ -114,7 +93,6 @@ describe("the catalog itself", () => {
       if (long_context) {
         expect(Number.isInteger(long_context.threshold_prompt_tokens)).toBe(true);
         expect(long_context.threshold_prompt_tokens).toBeGreaterThan(0);
-        // A tier that is cheaper than the base is a typo, not a discount.
         expect(long_context.input_per_mtok).toBeGreaterThan(price.input_per_mtok);
       }
       expect(source).toMatch(/^https:\/\//);
@@ -133,7 +111,6 @@ describe("the catalog itself", () => {
 
 describe("every release stays priced", () => {
   test("the sources this guard reads are not empty", () => {
-    // A guard over an empty list passes forever.
     expect(configDefaultModelIds().length).toBeGreaterThan(0);
     expect(modelsSubKitChooses()).toContain(DEFAULT_PRIMARY_MODEL);
     expect(ladderModelIds().length).toBeGreaterThan(0);
@@ -184,9 +161,6 @@ describe("effective prices", () => {
   });
 
   test("an override on a base model also wins over the catalog's dated alias of it", () => {
-    // The catalog lists `claude-haiku-4-5-20251001` exactly. Without this, a
-    // call recorded under the dated id would hit that catalog entry first and
-    // never reach the operator's `claude-haiku-4-5` price.
     const result = priceCalls(
       [
         {
@@ -255,8 +229,6 @@ describe("effective prices", () => {
   });
 
   test("a row with cache reads and writes is costed from the catalog", () => {
-    // 1M prompt = 400k uncached + 500k cache read + 100k cache write.
-    // Sonnet 4.6: 0.4·3 + 0.5·0.30 + 0.1·6 + 0.2·15 = 1.2 + 0.15 + 0.6 + 3.0 (1h cache write)
     const result = priceCalls(
       [
         {
@@ -292,12 +264,10 @@ describe("effective prices", () => {
       "USD",
     );
     expect(result.unpriced_models).toEqual([]);
-    expect(result.amount).toBeCloseTo(8, 6); // 5 + 3
+    expect(result.amount).toBeCloseTo(8, 6);
   });
 
   test("a snapshot the vendor prices apart keeps its own price, not its base model's", () => {
-    // gpt-4o-2024-05-13 is 5 per million input; gpt-4o, which its bare id
-    // falls back to, is 2.50.
     const result = priceCalls(
       [
         {
@@ -340,8 +310,6 @@ describe("the catalog never reaches the stored configuration", () => {
     expect(rates.length).toBe(MODEL_PRICE_CATALOG.length);
     expect(getConfig().tokens.prices).toEqual([]);
 
-    // A settings write persists the in-memory config; the catalog must not
-    // ride along into the file.
     await setConfigKey(["tokens", "monthly_budget"], 1_000, { force: true });
     const stored = JSON.parse(readFileSync(cfgPath, "utf8")) as {
       tokens?: { prices?: unknown[] };
@@ -352,9 +320,6 @@ describe("the catalog never reaches the stored configuration", () => {
 });
 
 describe("Anthropic long context", () => {
-  // Every Claude call carries the context-1m beta header. The vendor's price
-  // list bills Claude 4.6 and later at standard rates across the whole 1M
-  // window; the older catalog models have a 200k window.
   test("no Anthropic entry carries a long-context tier", () => {
     const claude = MODEL_PRICE_CATALOG.filter((p) => p.model.startsWith("claude-"));
     expect(claude.length).toBeGreaterThan(0);

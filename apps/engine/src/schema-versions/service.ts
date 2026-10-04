@@ -1,27 +1,9 @@
-// Schema-version tracking.
-//
-// A successful request accumulates a canonical response contract per
-// connector, endpoint, workflow, and step. The raw observation stays
-// alongside it for migration tooling; reactive repair reads the exact
-// provenance-specific contract back on failure.
-
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { schemaVersions } from "../db/schema/index.ts";
 import type { SchemaShape } from "../self-healing/types.ts";
 
-/**
- * Derive a SchemaShape from an arbitrary JSON value. The result is a
- * recursive description of the shape, *not* the data — scalars become
- * `{type: "string"}` etc., arrays become `{type: "array", items:
- * <shape>}`, and objects become `{type: "object", properties: {…}}`.
- *
- * Arrays collapse to the first element's shape. A mixed-type array
- * (e.g. `[1, "two"]`) widens to `{type: "unknown"}` for safety — the
- * canonical ordering of JSON Schema is out of scope for a drift
- * detector that just wants to know whether a field disappeared.
- */
 export function deriveShape(value: unknown): SchemaShape {
   if (value === null) return { type: "null" };
   const t = typeof value;
@@ -49,18 +31,6 @@ export function deriveShape(value: unknown): SchemaShape {
   return { type: "unknown" };
 }
 
-/**
- * Accumulate observed response evidence without treating an omitted
- * property as a contract removal. Incompatible concrete types widen
- * to unknown so proactive drift can still flag the type change once.
- *
- * "Once" is why a widened root heals: a single non-JSON body — an error page
- * on a 200, an empty response — collapses the whole contract to `unknown`,
- * and without recovery every later observation merges back to `unknown`, no
- * new row is ever written, and the drift scan re-reports the same collapse
- * forever. Adopting the next concrete shape keeps the one flag and lets the
- * endpoint describe itself again.
- */
 export function mergeObservedShapes(previous: SchemaShape, observed: SchemaShape): SchemaShape {
   return mergeShapes(previous, observed, true);
 }
@@ -114,15 +84,6 @@ function shapesEqual(left: SchemaShape, right: SchemaShape): boolean {
   return true;
 }
 
-/**
- * Operation-aware endpoint key for GraphQL requests. Every GraphQL
- * call shares one URL, so keying shapes (and the patch-candidate
- * dedup fingerprint) on the path alone would collapse ALL queries
- * into a single identity — one recorded shape per connector instead
- * of one per operation. The reactive repair enqueue derives the same
- * key from the persisted request_meta.operation_name; keep the two
- * in sync through this single helper.
- */
 export function graphqlEndpointKey(operation_name: string): string {
   return `POST /graphql#${operation_name || "anonymous"}`;
 }
@@ -136,10 +97,6 @@ export interface RecordShapeParams {
   value: unknown;
 }
 
-/**
- * Record the accumulated contract and raw observation of a successful
- * response. Called from each request driver's happy path.
- */
 export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor): Promise<string> {
   const db: Executor = exec ?? getDb();
   const observed = deriveShape(p.value);
@@ -149,8 +106,6 @@ export async function recordSuccessShape(p: RecordShapeParams, exec?: Executor):
   const stepCondition = p.step_id
     ? eq(schemaVersions.step_id, p.step_id)
     : isNull(schemaVersions.step_id);
-  // The steady state stores one row per accumulated contract change,
-  // not one row per execution.
   const latest = await db
     .select({ id: schemaVersions.id, schema: schemaVersions.schema })
     .from(schemaVersions)
@@ -202,17 +157,6 @@ export interface LatestEndpointShape {
   seen_at: Date;
 }
 
-/**
- * List the most recent recorded shape for each endpoint of a connector,
- * newest first. The multi-endpoint sibling of `getLatestShape` — the
- * authoring context's "Recorded endpoint samples" section reads this to
- * put observed payload shapes in front of the model BEFORE it writes
- * request paths and transforms.
- *
- * `recordSuccessShape` dedups inserts per shape *change*, so the row
- * volume per connector stays small — a newest-first scan + in-memory
- * endpoint dedupe is sufficient (no DISTINCT ON needed at this volume).
- */
 export async function listLatestShapes(
   p: { tenant_id: string; connector_id: string; max_endpoints?: number },
   exec?: Executor,
@@ -271,17 +215,6 @@ export async function getLatestShape(
   return row.schema as unknown as SchemaShape;
 }
 
-/**
- * Diff two schema shapes at the top level. Produces three sets:
- *   - `added`   keys present on `after` but not `before`
- *   - `removed` keys present on `before` but not `after`
- *   - `widened` keys whose `before` type disagrees with `after`
- *
- * The diff is *shallow* — we only look at the first level of object
- * keys. Deeper drift shows up as a `widened` entry because the child
- * shape object-compares unequal. The detector layer renders this into
- * a human-readable line for the LLM prompt.
- */
 export function diffShapes(
   before: SchemaShape,
   after: SchemaShape,
@@ -307,14 +240,6 @@ export function diffShapes(
   return { added, removed, widened };
 }
 
-/**
- * Deep diff — walks both shapes recursively and emits path-qualified
- * entries. Paths use dot notation (`user.address.city`) and `[]` for
- * array element shapes (`orders[].id`). The shallow `diffShapes` is
- * still preferred when callers only care about the top-level surface
- * (drift detection); `diffShapesDeep` powers the migration tooling
- * where path-level detail matters.
- */
 export function diffShapesDeep(
   before: SchemaShape,
   after: SchemaShape,
@@ -358,21 +283,11 @@ export function diffShapesDeep(
   return { added, removed, widened };
 }
 
-/* ------------------------------------------------------------------ */
-/* Schema-evolution / migration tooling                                */
-/* ------------------------------------------------------------------ */
-
 export interface ShapeHistoryEntry {
   schema: SchemaShape;
   seen_at: Date;
 }
 
-/**
- * Walk every recorded shape for an endpoint in chronological order.
- * Powers "how has this endpoint changed over time?" — answerable only
- * because every observed shape is versioned. Caller decides the depth
- * (default 50).
- */
 export async function listShapeHistory(
   p: GetLatestShapeParams & { limit?: number },
   exec?: Executor,
@@ -397,35 +312,20 @@ export async function listShapeHistory(
 }
 
 export interface MigrationStep {
-  /** Action category — informational; rename/add are usually safe to
-   *  auto-apply, remove is a breaking change that needs operator review. */
   kind: "rename" | "add" | "remove" | "widen";
   path: string;
-  /** For `rename`, the previous key the migration retargets from. */
   from?: string;
-  /** For `widen`, the new type observed (e.g. "string" → "number"). */
   to_type?: SchemaShape["type"];
-  /** Whether this step is safe to auto-apply (rename/add/widen) or
-   *  needs manual review (remove). */
   safe: boolean;
 }
 
 export interface MigrationPlan {
-  /** First → latest summary, with one entry per detected change. */
   steps: MigrationStep[];
-  /** True when EVERY step is safe to auto-apply. Dashboards / repair
-   *  tooling can use this as the green-light signal. */
   fully_safe: boolean;
-  /** Echoed for caller convenience. */
   before: SchemaShape;
   after: SchemaShape;
 }
 
-/**
- * Levenshtein distance between two strings — used by the rename
- * heuristic to weight name similarity alongside type compatibility.
- * Pure function; bounded loop. Returns 0 for identical inputs.
- */
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const al = a.length;
@@ -446,12 +346,6 @@ function levenshtein(a: string, b: string): number {
   return prev[bl]!;
 }
 
-/**
- * Score a rename candidate. Higher is better. Combines:
- *   - name similarity (Levenshtein, normalised to length)
- *   - same type bonus
- *   - tail-match bonus (`user_id` ↔ `id`, `order_id` ↔ `orderId`, etc.)
- */
 function renameScore(
   from: string,
   to: string,
@@ -463,35 +357,19 @@ function renameScore(
   const similarity = maxLen === 0 ? 0 : 1 - lev / maxLen;
   let score = similarity * 100;
   if (fromType && fromType === toType) score += 30;
-  // Tail match — common API rename pattern (foo_id ↔ id).
   const fl = from.toLowerCase();
   const tl = to.toLowerCase();
   if (fl.endsWith(tl) || tl.endsWith(fl)) score += 25;
-  // Camel/snake equivalence
   const norm = (s: string): string => s.toLowerCase().replace(/[_-]/g, "");
   if (norm(from) === norm(to)) score += 50;
   return score;
 }
 
-/**
- * Compare the FIRST recorded shape with the LATEST shape and emit a
- * structured migration plan. The deep-diff variant captures
- * path-qualified changes for nested objects and array element shapes.
- *
- * Renames are detected via combined name-similarity + type-compatibility
- * scoring (not just type-only): `user_id` → `id` pairs even when both
- * are integers in a sea of other integer fields, because the tail-match
- * bonus dominates a same-type-by-coincidence pairing.
- *
- * Empty plan (`steps: []`) means the endpoint is shape-stable across
- * its history — nothing to migrate.
- */
 export async function proposeSchemaMigration(
   p: GetLatestShapeParams,
   exec?: Executor,
 ): Promise<MigrationPlan | null> {
   const history = await listShapeHistory(p, exec);
-  // history is ordered newest → oldest; pick first-recorded vs latest.
   const newest = history[0];
   const oldest = history[history.length - 1];
   if (!newest || !oldest) return null;
@@ -499,8 +377,6 @@ export async function proposeSchemaMigration(
   const before = oldest.schema;
   const { added, removed, widened } = diffShapesDeep(before, after);
 
-  // Helper to pick a property's type by deep path. Returns undefined
-  // if any segment doesn't resolve as an object property.
   const lookupType = (shape: SchemaShape, path: string): SchemaShape["type"] | undefined => {
     const parts = path.split(".").filter(Boolean);
     let cur: SchemaShape = shape;
@@ -523,10 +399,6 @@ export async function proposeSchemaMigration(
     return cur.type;
   };
 
-  // Pair up rename candidates with the new scoring heuristic. For
-  // each removed path, score every available added path; pick the
-  // best match above a threshold (60 — empirically chosen so an
-  // unrelated rename doesn't drag through random adds/removes).
   const RENAME_THRESHOLD = 60;
   const renamedFrom = new Set<string>();
   const renamedTo = new Set<string>();
@@ -577,21 +449,6 @@ export async function proposeSchemaMigration(
   };
 }
 
-/**
- * Apply a migration plan to a sample value, returning a transformed
- * copy. Renames retarget keys (deep-path), adds inject `null` at the
- * target path so downstream consumers can branch on presence, removes
- * delete keys, and widens are no-ops on the data (the schema widened,
- * but values that fit the old type still fit the new one — the type
- * change is metadata).
- *
- * Plans whose `safe` is false (i.e. include any `remove`) still apply,
- * but the caller should gate behind operator approval.
- *
- * Pure function — input is not mutated. Designed for the workflow
- * `output_transform` use case: operators can paste this transformation
- * into a transform step or use it to migrate cached fixtures.
- */
 export function applyMigration<T>(plan: MigrationPlan, value: T): T {
   const cloned = JSON.parse(JSON.stringify(value)) as T;
 
@@ -653,15 +510,12 @@ export function applyMigration<T>(plan: MigrationPlan, value: T): T {
         deletePath(cloned, step.from);
       }
     } else if (step.kind === "add") {
-      // Inject null only when the path doesn't already exist; never
-      // overwrite a real value.
       if (getPath(cloned, step.path) === undefined) {
         setPath(cloned, step.path, null);
       }
     } else if (step.kind === "remove") {
       deletePath(cloned, step.path);
     }
-    // widen is a no-op on the data plane.
   }
   return cloned;
 }

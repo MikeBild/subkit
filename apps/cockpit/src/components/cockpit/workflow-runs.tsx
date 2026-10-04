@@ -31,16 +31,10 @@ type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 const PAGE_SIZE = 25;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * Only what is a run. A 200 that carries something else — a proxy's page, a
- * partial row — must not reach the status label, where a missing `status`
- * took the whole page down instead of leaving one line out.
- */
 function runsOf(list: ExecutionList | undefined): ExecutionListItem[] {
   return (list?.items ?? []).filter((item): item is ExecutionListItem => isExecutionRecord(item));
 }
 
-/** How the last seven days went, in one sentence. */
 function useWeek(workflowId: string): string | null {
   const { t } = useI18n();
   const [from] = useState(() => new Date(Date.now() - WEEK_MS).toISOString());
@@ -61,10 +55,6 @@ function useWeek(workflowId: string): string | null {
   });
 }
 
-/**
- * "Verlauf": the runs of this workflow, newest first, each opening its sheet
- * on this page (`?run=`). The engine pages and narrows them.
- */
 export function WorkflowRuns({ workflowId }: { workflowId: string }) {
   const { t, dateTime, locale } = useI18n();
   const sheets = useOpenRunSheet();

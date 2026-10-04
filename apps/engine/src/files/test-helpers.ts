@@ -1,25 +1,3 @@
-// Test helpers for the unified files resource.
-//
-// Inserts a `files` row + `file_links` row directly so attachment-aware
-// tests don't have to spin up the full HTTP route. The bytes land in
-// the configured object store (in-process MemoryObjectStore in tests,
-// the test overrode it via `setObjectStoreForTesting`), keeping the
-// content read path identical to production — `requireFileForTenant`
-// + `openRead` see the same shape they'd see for a real upload.
-//
-// IMPORTANT: this helper bypasses the HTTP route layer — no `audit_log`
-// row is written at attach time. Tests that assert on `audit_log` must
-// drive uploads via the real route (fetch `/v1/files/inline`) to
-// exercise the emission path.
-//
-// Used by:
-//   - `apps/engine/src/conversations/tests/attachments-resolver.test.ts`
-//   - `apps/engine/src/conversations/tests/save-connector-draft-analysis.test.ts`
-//   - `apps/engine/src/llm/flows/tests/analyze-conversation-attachments.test.ts`
-//
-// Returns the canonical wire-format file id (`fid_<uuid>`) so callers
-// can splice it into `$file` refs the same way production clients do.
-
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { toFileId } from "../api/files-schemas.ts";
@@ -40,13 +18,9 @@ export interface AttachInlineForTestParams {
 }
 
 export interface AttachInlineForTestResult {
-  /** Wire-format file id (`fid_<uuid>`). */
   file_id: string;
-  /** Raw UUID (no `fid_` prefix) for direct DB joins. */
   file_uuid: string;
-  /** Storage backend key the bytes were written under. */
   storage_key: string;
-  /** Slug attached to the link row. */
   slug: string;
 }
 
@@ -72,22 +46,12 @@ function slugify(filename: string): string {
   return sanitised.length === 0 ? `file-${Date.now().toString(36)}` : sanitised.slice(0, 48);
 }
 
-/**
- * Attach a file to a conversation through the production path: write
- * bytes to the object store, insert a `files` row, link it via
- * `file_links`. Returns the wire-format file id so tests can splice it
- * into `$file` refs or assert against `lookupSlugsToFileIds`.
- */
 export async function attachInlineForTest(
   p: AttachInlineForTestParams,
 ): Promise<AttachInlineForTestResult> {
   const bytes = typeof p.content === "string" ? new TextEncoder().encode(p.content) : p.content;
   const sha256 = createHash("sha256").update(bytes).digest("hex");
 
-  // Same (tenant_id, sha256) dedup as the production pipeline — a second
-  // attach of identical bytes reuses the existing row instead of
-  // violating files_tenant_sha256_uq (knowledge/discovery persistence
-  // also creates files rows now, so identical fixture bytes collide).
   const existing = await p.db
     .select()
     .from(files)
@@ -106,8 +70,6 @@ export async function attachInlineForTest(
         role: "attachment",
       })
       .onConflictDoNothing();
-    // local://<key> carries the key verbatim; s3://<bucket>/<key> nests
-    // it one segment deeper.
     const uri = existing[0].storage_uri;
     const storage_key = uri.startsWith("s3://")
       ? uri.replace(/^s3:\/\/[^/]+\//, "")

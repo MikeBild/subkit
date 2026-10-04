@@ -1,27 +1,3 @@
-// Audit-contract guard + writer tests for the external-MCP-client
-// feature.
-//
-// An external MCP server is a connector whose driver is `mcp`, so its
-// configuration lifecycle rides the `connector.*` actions and only the
-// events a negotiated SESSION produces have their own constants. Those
-// constants are reserved so the writer cannot mint free-string action
-// values. The recorders that emit each action land in
-// `apps/engine/src/audit/recorders/mcp-server.ts`; this file asserts:
-//
-//   1. the reserved action-string constants still hold their values
-//      (a future cleanup that renamed one would silently break SIEM
-//      queries built on the literal);
-//   2. each recorder writes exactly its action string plus the key
-//      metadata fields — round-tripped through the real audit write
-//      path against a Postgres test DB;
-//   3. no recorder ever lands a full URL, query string, token, or raw
-//      byte count in metadata (only `issuer_host` + a coarse size bucket).
-//
-// `external_provider.*` constants stay reserved for the first opt-in,
-// connector-shaped external-call writer (per-connector issues); their
-// presence-check below fails-fast if a future cleanup removes them
-// before a writer has switched to them.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, tenants } from "../../db/schema/index.ts";
@@ -61,7 +37,6 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-/** Fetch the single audit row for a given action + resource_id. */
 async function rowFor(action: string, resource_id: string) {
   const rows = await ctx.db
     .select({
@@ -112,9 +87,6 @@ describe("reserved audit-action constants", () => {
   });
 
   it("no longer reserves any mcp_server.* lifecycle constant", () => {
-    // The lifecycle moved onto `connector.*`. A leftover constant here
-    // would be a vocabulary nothing writes — the exact shape of an audit
-    // action a SIEM rule can wait on forever.
     const actions = Object.values(AuditAction) as string[];
     expect(actions.filter((a) => a.startsWith("mcp_server."))).toEqual([]);
   });
@@ -134,7 +106,6 @@ describe("external MCP session audit writers", () => {
       executor: ctx.db,
     });
     const row = await rowFor("connector.mcp_handshake_ok", connector_id);
-    // The resource IS the connector — one resource_type for one row.
     expect(row.resource_type).toBe("connector");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
@@ -179,8 +150,6 @@ describe("external MCP session audit writers", () => {
     const row = await rowFor("connector.mcp_client_registered", connector_id);
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.client_id).toBe("dcr-issued-client");
-    // The params carry no secret at all, so there is nothing to redact —
-    // this asserts the shape stays that way.
     expect(JSON.stringify(meta)).not.toContain("client_secret");
   });
 
@@ -200,19 +169,13 @@ describe("external MCP session audit writers", () => {
       executor: ctx.db,
     });
     const row = await rowFor("mcp_external_tool.invoked", connector_id);
-    // Distinct resource_type so invocation volume aggregates apart from
-    // the connector configuration rows.
     expect(row.resource_type).toBe("mcp_external_tool");
     expect(row.result).toBe("success");
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.remote_tool).toBe("search_pages");
-    // Which MCP method was issued — a tool and a prompt can share a name.
     expect(meta.operation).toBe("tools/call");
     expect(meta.outcome).toBe("success");
     expect(meta.duration_ms).toBe(842);
-    // Coarse bucket, never the raw byte count. Bind to the live function so
-    // a future bucket-boundary change keeps the assertion honest instead of
-    // pinning a stale string literal.
     expect(meta.byte_count_bucket).toBe(bucketSize(2_000_000));
     expect(meta.byte_count).toBeUndefined();
   });
@@ -238,9 +201,6 @@ describe("external MCP session audit writers", () => {
   });
 
   it("recordMcpExternalToolPaletteAssemblyFailed writes palette_assembly_failed with typed reason + detail in metadata", async () => {
-    // resource_id is the tenant id (no single connector to attribute to) —
-    // use the seeded tenant so the row is queryable by it. `reason` is the
-    // typed failure class; the pre-redacted message rides in metadata.detail.
     await recordMcpExternalToolPaletteAssemblyFailed({
       tenant_id,
       actor_id,
@@ -275,7 +235,6 @@ describe("external MCP session audit writers", () => {
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.connector_slug).toBe("rovo");
     expect(meta.request_source).toBe("cli");
-    // Host-only — no scheme, path, query, or state leaked.
     expect(meta.issuer_host).toBe("auth.atlassian.example.com");
     const metaStr = JSON.stringify(meta);
     expect(metaStr).not.toContain("SECRET456");
@@ -300,7 +259,6 @@ describe("external MCP session audit writers", () => {
     const meta = row.metadata as Record<string, unknown>;
     expect(meta.connector_slug).toBe("rovo");
     expect(meta.issuer_host).toBe("auth.atlassian.example.com");
-    // Never the full token endpoint URL.
     expect(JSON.stringify(meta)).not.toContain("/token");
   });
 

@@ -1,6 +1,3 @@
-// Conversation-attachments HTTP integration tests against the
-// unified `files` + `file_links` resource (Wave-C Step 6).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, conversations, fileLinks } from "../../db/schema/index.ts";
@@ -70,7 +67,6 @@ describe("POST /v1/conversations/:id/attachments", () => {
   });
 
   test("oversized body returns 413", async () => {
-    // 6 MB utf8 payload — over the 5 MB inline cap.
     const big = "a".repeat(6 * 1024 * 1024);
     const res = await api("POST", `/v1/conversations/${conversation_id}/attachments`, {
       filename: "big.txt",
@@ -134,7 +130,6 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
     const { slug } = (await up.json()) as { slug: string };
     const del = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);
     expect(del.status).toBe(204);
-    // The link row is gone.
     const remaining = await srv.db
       .select()
       .from(fileLinks)
@@ -147,7 +142,6 @@ describe("DELETE /v1/conversations/:id/attachments/:slug", () => {
         ),
       );
     expect(remaining.length).toBe(0);
-    // Follow-up DELETE is 404 (unlink is idempotent at the slug surface).
     const again = await api("DELETE", `/v1/conversations/${conversation_id}/attachments/${slug}`);
     expect(again.status).toBe(404);
   });

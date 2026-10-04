@@ -1,5 +1,3 @@
-// GET / POST / DELETE /v1/identity/portal-tokens
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
@@ -93,10 +91,6 @@ function serialize(p: identity.PortalTokenView) {
 }
 
 export function registerPortalTokenRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC is enforced by the `requirePermission(...)` middleware below
-  // (portal_token:read / portal_token:write / portal_token:revoke). The
-  // legacy `enforce(adminOnly)` calls inside the handlers are strict
-  // duplicates kept as defense-in-depth.
   app.use("/v1/identity/portal-tokens", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("portal_token:read")(c, next);
     if (c.req.method === "POST") return requirePermission("portal_token:write")(c, next);

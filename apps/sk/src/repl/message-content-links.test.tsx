@@ -1,10 +1,3 @@
-// Fix 4 (plan review-last-login-thu-velvet-fiddle): URLs in assistant
-// prose must be clickable in sk. MessageContent pipes text parts (and
-// the no-parts fallback) through the shared OSC 8 helper; code blocks
-// and tables stay byte-exact. The test env is non-TTY, so OSC 8 is
-// forced on (same discipline as the ConfirmPrompt hyperlink tests) and
-// the cache reset keeps detection deterministic.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetHyperlinkSupportCacheForTests } from "@chat-ui/index.ts";
 import { render } from "ink-testing-library";
@@ -22,13 +15,12 @@ afterEach(() => {
   resetHyperlinkSupportCacheForTests();
 });
 
-/** Every OSC 8 link target in `frame`, in order of appearance. */
 function linkTargets(frame: string): string[] {
   const targets: string[] = [];
   // biome-ignore lint/suspicious/noControlCharactersInRegex: matching ESC + BEL by design — OSC 8 sequences are literal control bytes.
   const re = /\x1b\]8;;([^\x07]*)\x07/g;
   for (const m of frame.matchAll(re)) {
-    if (m[1]) targets.push(m[1]); // closers carry an empty target
+    if (m[1]) targets.push(m[1]);
   }
   return targets;
 }
@@ -51,8 +43,6 @@ describe("MessageContent · OSC 8 linkification", () => {
 
   test("the no-parts fallback path linkifies too", () => {
     const url = "https://example.com/docs";
-    // No `parts` prop → content is parsed; a bare prose line stays a
-    // text part and must come out linkified either way.
     const r = render(<MessageContent content={`See ${url} for details.`} width={200} />);
     const frame = r.lastFrame() ?? "";
     expect(frame).toContain(`${OSC8_START}${url}${OSC8_END}`);
@@ -69,8 +59,6 @@ describe("MessageContent · OSC 8 linkification", () => {
       />,
     );
     const frame = r.lastFrame() ?? "";
-    // normalizeInlineMarkdown removes the backticks; the bare URL then
-    // becomes a link whose target carries no backtick residue.
     expect(frame).toContain(`${OSC8_START}${url}${OSC8_END}`);
     r.unmount();
   });
@@ -86,16 +74,11 @@ describe("MessageContent · OSC 8 linkification", () => {
       />,
     );
     const frame = r.lastFrame() ?? "";
-    // The visible text may wrap, but ink/wrap-ansi must re-open the
-    // hyperlink per visual line — every non-empty OSC 8 target is the
-    // FULL unsplit URL, so clicking any segment opens the right page.
     const targets = linkTargets(frame);
     expect(targets.length).toBeGreaterThan(0);
     for (const target of targets) {
       expect(target).toBe(url);
     }
-    // Balanced escapes: every `\x1b]8;;…` start has a BEL terminator,
-    // i.e. no start marker was split mid-sequence by the wrapper.
     const starts = frame.split(OSC8_START).length - 1;
     const ends = frame.split(OSC8_END).length - 1;
     expect(starts).toBe(ends);
@@ -115,7 +98,6 @@ describe("MessageContent · OSC 8 linkification", () => {
       />,
     );
     const frame = r.lastFrame() ?? "";
-    // Exactly ONE link (the text part); the code block keeps the raw URL.
     const targets = linkTargets(frame);
     expect(targets).toEqual([url]);
     r.unmount();

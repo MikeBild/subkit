@@ -1,13 +1,3 @@
-// Dispatcher pipeline tests.
-//
-// The dispatcher orchestrates: resolve → visibility → rbac → policy →
-// audit → execute → normalize → log. Descriptor-level RBAC runs
-// BEFORE the policy gate so an unauthorized caller never produces an
-// APPROVAL_REQUESTED audit row; the "RBAC denial path" describe-block
-// below pins this ordering. Per-tool RBAC declarations live on each
-// provider's descriptor (see providers/conversation.ts:RBAC_OVERRIDES
-// and providers/static.ts entries).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { AuditAction, ToolDispatchPolicyDeniedMetadataSchema } from "../../audit/types.ts";
@@ -28,8 +18,6 @@ import {
 import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
 
-// A bare-minimum ResolvedPrincipal stub — the dispatcher only reads
-// id and tenant_id for the audit + log envelopes.
 const PRINCIPAL: ResolvedPrincipal = {
   kind: "user",
   id: "00000000-0000-0000-0000-000000000001",
@@ -42,15 +30,6 @@ const PRINCIPAL: ResolvedPrincipal = {
   // biome-ignore lint/suspicious/noExplicitAny: stub for tests
 } as any;
 
-// The dispatcher hits auditAwait() on confirm paths; we pass a stub `db`
-// that satisfies the type without exercising real Postgres. The audit
-// helper logs on failure rather than throwing.
-// The zero-row update chain matters: the needs_confirm path calls
-// `mintApprovalGrantUrl` whenever the AMBIENT config/env carries a
-// public_base_url — under bun's parallel test files another suite's
-// beforeAll/afterAll window (mcp-oauth audience tests) can set one
-// concurrently, so this stub must survive that path instead of exploding
-// with "db.update is not a function" depending on scheduling.
 // biome-ignore lint/suspicious/noExplicitAny: drizzle chain shape
 const UPDATE_STUB: any = {
   set: () => UPDATE_STUB,
@@ -64,13 +43,8 @@ const DB_STUB: any = {
   update: () => UPDATE_STUB,
 };
 
-// Deterministic replacement for crypto.randomUUID() — same seed, same
-// sequence, every run (determinism contract in apps/engine/AGENTS.md).
 const nextId = createDeterministicUuidFactory(2);
 
-// `consumeApproval` is DB-backed (a real CAS + AES-256-GCM round trip on
-// `tool_approvals`) — a stub `db` can no longer stand in for it. The
-// confirm-lifecycle tests below share one disposable Postgres database.
 let testDb: TestDb;
 let dbTenantId: string;
 
@@ -87,17 +61,11 @@ afterAll(async () => {
   await testDb.cleanup();
 });
 
-/** ResolvedPrincipal scoped to the real tenant `tool_approvals` FK-checks
- *  against. `principal_id` carries no FK (polymorphic), so only tenant_id
- *  needs to be real. */
 function dbPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   // biome-ignore lint/suspicious/noExplicitAny: mirrors the PRINCIPAL stub above
   return { ...(PRINCIPAL as any), tenant_id: dbTenantId, ...overrides } as ResolvedPrincipal;
 }
 
-/** Audit rows keyed by `resource_id` (the confirm/approval id) — used to
- *  assert the APPROVAL_REQUESTED / APPROVAL_APPROVED lifecycle joins on a
- *  single id. */
 async function approvalAuditRows(
   approval_id: string,
 ): Promise<Array<{ action: string; resource_id: string | null; metadata: unknown }>> {
@@ -136,8 +104,6 @@ describe("tools/dispatcher (active)", () => {
     }
   });
 
-  // A client annotation cannot establish authority. The real database must
-  // contain a pending decision before a gated MCP call can execute.
   test("MCP tenant_write waits for a local human approval before invoking the executor", async () => {
     let executed = false;
     const watchedDescriptor: ToolDescriptor = {
@@ -240,10 +206,6 @@ describe("tools/dispatcher (active)", () => {
           : undefined,
     };
     const registry = buildRegistry([watchedProvider]);
-    // On MCP the confirm marker must reference a real, GRANTED, un-consumed
-    // APPROVAL_REQUESTED. `consumeApproval` is a DB-backed CAS claim — seed
-    // one for real via `requestApproval`, then grant it as the human would
-    // via the approval portal, instead of stubbing the lookup.
     const principal = dbPrincipal();
     const confirmId = nextId();
     await requestApproval({
@@ -456,10 +418,8 @@ describe("tools/dispatcher (active)", () => {
     const body = JSON.parse(refused.content[0]?.text ?? "{}") as Record<string, unknown>;
     expect(body.error_code).toBe("workflow_activation_required");
     expect(body.message).toBe("The saved change needs human review.");
-    // The rest of the refusal stays where it was: nothing is dropped.
     expect(body.details).toEqual(payload);
 
-    // A refusal that names no code still says it failed — never an empty code.
     payload = { status: "failed" };
     const bare = JSON.parse((await overMcp()).content[0]?.text ?? "{}") as Record<string, unknown>;
     expect(bare.error_code).toBe("tool_failed");
@@ -468,10 +428,6 @@ describe("tools/dispatcher (active)", () => {
 });
 
 describe("tools/dispatcher — draft-dependency (requires_draft) stub-ctx guard", () => {
-  // A tenant_read tool marked requires_draft: it reads the conversation's
-  // working draft. On the MCP stub-context path that draft is EMPTY, so the
-  // dispatcher must reject the call with not_available_on_surface instead of
-  // letting the executor run against nothing (the silent empty-draft no-op).
   function draftDependentProvider(onExecute: () => void): ToolProvider {
     const descriptor: ToolDescriptor = {
       name: "_test_requires_draft",
@@ -513,7 +469,6 @@ describe("tools/dispatcher — draft-dependency (requires_draft) stub-ctx guard"
         db: DB_STUB,
         principal: PRINCIPAL,
         mcpMode: "authoring",
-        // The MCP adapter always supplies a stub-ctx builder off-chat.
         buildMcpStubCtx: () => ({}) as never,
       },
       { surface: "mcp", name: "_test_requires_draft", args: {} },
@@ -522,7 +477,6 @@ describe("tools/dispatcher — draft-dependency (requires_draft) stub-ctx guard"
     if (envelope.status === "not_available_on_surface") {
       expect(envelope.reason).toBe(DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON);
     }
-    // The empty-draft no-op never happened.
     expect(executed).toBe(false);
   });
 
@@ -549,11 +503,6 @@ describe("tools/dispatcher — draft-dependency (requires_draft) stub-ctx guard"
 
 describe("tools/dispatcher — RBAC denial path", () => {
   test("descriptor.rbac deny → status:'error' error_code:'policy_denied' AND POLICY_DENIED audit row", async () => {
-    // Track audit-insert calls so we can assert one POLICY_DENIED row
-    // was emitted before execute() was skipped. The stub also has to
-    // satisfy `can()`'s permission catalog walk — returning an empty
-    // permissions row makes the check decline cleanly (no permission
-    // by that name → no grant → deny).
     const captured: Array<{
       action?: string | undefined;
       resource_type?: string | undefined;
@@ -630,25 +579,17 @@ describe("tools/dispatcher — RBAC denial path", () => {
     if (envelope.status === "error") {
       expect(envelope.error_code).toBe("policy_denied");
     }
-    // Execute was skipped.
     expect(executed).toBe(false);
-    // Exactly one POLICY_DENIED audit row was written, with the
-    // resource details from the descriptor's resource() callback.
     const policyDenied = captured.filter((r) => r.action === "policy.denied");
     expect(policyDenied.length).toBe(1);
     expect(policyDenied[0]?.resource_type).toBe("test");
     expect(policyDenied[0]?.resource_id).toBe("abc");
-    // The denial carries the approval-lifecycle args fingerprint (hash
-    // only, never raw values) and conforms to the pinned emitter schema.
     const metadata = policyDenied[0]?.metadata ?? {};
     expect(metadata.args_hash).toBe(hashToolArgs({ id: "abc" }));
     expect(ToolDispatchPolicyDeniedMetadataSchema.parse(metadata)).toBeTruthy();
   });
 
   test("RBAC runs BEFORE policy gate — denied tenant_write does NOT emit APPROVAL_REQUESTED", async () => {
-    // The reordering of the pipeline puts RBAC before the policy gate.
-    // A tenant_write tool with descriptor.rbac denied must not produce
-    // an APPROVAL_REQUESTED audit row — only POLICY_DENIED.
     const captured: Array<{ action?: string | undefined }> = [];
     // biome-ignore lint/suspicious/noExplicitAny: stub for tests
     const emptySelectChain: any = {
@@ -704,22 +645,12 @@ describe("tools/dispatcher — RBAC denial path", () => {
     );
 
     expect(envelope.status).toBe("error");
-    // No APPROVAL_REQUESTED — the deny short-circuits before the
-    // policy gate would emit it. Exactly one POLICY_DENIED.
     expect(captured.filter((r) => r.action === "approval.requested").length).toBe(0);
     expect(captured.filter((r) => r.action === "policy.denied").length).toBe(1);
   });
 });
 
 describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (real Postgres)", () => {
-  // `consumeApproval` is a real DB CAS claim, so these exercise it against
-  // `testDb` (seeded via `beforeAll` above) rather than a select-stub. A
-  // tenant_write tool with no descriptor.rbac, executor captures the args
-  // it actually received — the property under test throughout this block
-  // is WHICH args reach the executor, not what the caller sent.
-  //
-  // These fixtures isolate the single-use claim from the initial request.
-  // The real MCP transport suite covers the full request/grant/replay chain.
   function tenantWriteProvider(
     name: string,
     onExecute?: (args: Record<string, unknown>) => void,
@@ -751,10 +682,6 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
   }
 
   test("MCP sk_confirm WITHOUT sk_confirm_id → rejected, not executed, db untouched", async () => {
-    // A model-suppliable confirm marker with no id can't be tied to any
-    // APPROVAL_REQUESTED, so it must be rejected rather than executed —
-    // otherwise it's a gate bypass. `consumeApproval` short-circuits before
-    // touching the db (see approval.test.ts), so the plain DB_STUB suffices.
     let executed = false;
     const registry = buildRegistry([
       tenantWriteProvider("_test_confirm_no_id", () => (executed = true)),
@@ -827,19 +754,9 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
     expect(executed).toBe(true);
     const rows = await approvalAuditRows(confirmId);
     expect(rows.filter((r) => r.action === AuditAction.APPROVAL_APPROVED)).toHaveLength(1);
-    // resource_id IS the carried tool_call_id → joins APPROVAL_REQUESTED.
     expect(rows.every((r) => r.resource_id === confirmId)).toBe(true);
   });
 
-  // Rewrite of the old "confirmation_args_mismatch" test. The published
-  // `confirm_tool_call` schema carries only `tool` + `confirm_id` — MCP's
-  // handler always dispatches the confirmed re-issue with `args: {}`
-  // (mcp/capabilities/tools.ts), so there is no client-supplied payload
-  // left to "mismatch". The new contract: whatever a caller puts in `args`
-  // at confirm time is IGNORED — `consumeApproval` hands back the args it
-  // was granted at request time, and the dispatcher replaces `execArgs`
-  // with those unconditionally. Proven here by smuggling a DIFFERENT `id`
-  // at confirm time and asserting the executor still saw the granted one.
   test("MCP confirm ignores any args sent alongside it — the STORED (granted) args execute", async () => {
     const received: Array<Record<string, unknown>> = [];
     const principal = dbPrincipal();
@@ -871,9 +788,6 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
       {
         surface: "mcp",
         name: "_test_confirm_args",
-        // A buggy/hostile client smuggling a DIFFERENT id at confirm time —
-        // the MCP responder never actually sends this (args: {} always),
-        // but the dispatcher must not trust it even if something did.
         args: { id: "B" },
         meta: { sk_confirm: true, sk_confirm_id: confirmId },
       },
@@ -883,9 +797,6 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
   });
 
   test("CHAT confirm follows the same stored-args contract as MCP", async () => {
-    // Chat carries the confirm id inside `args` (no transport `_meta`). The
-    // claim binds the surface (a chat approval is not claimable over MCP), but
-    // the replay contract is identical: the STORED args execute.
     const received: Array<Record<string, unknown>> = [];
     const principal = dbPrincipal();
     const registry = buildRegistry([
@@ -927,11 +838,6 @@ describe("tools/dispatcher — MCP confirmation + APPROVAL_APPROVED lifecycle (r
 });
 
 describe("tools/dispatcher — run_workflow canonicalization", () => {
-  // Uses run_workflow's REAL Zod schema (not a stand-in `{type:"object"}`
-  // descriptor) so the `.transform()` on `input` and the `.default("dev")`
-  // on `environment` are the actual ones canonicalizeArgs() runs against.
-  // The executor is a stub — this block tests the dispatcher's
-  // canonicalization step, not run_workflow's business logic.
   function runWorkflowStub(onExecute: (args: Record<string, unknown>) => void): ToolProvider {
     const descriptor: ToolDescriptor = {
       name: "run_workflow",
@@ -964,9 +870,6 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
     const inputObject = { city: "Berlin" };
 
-    // `environment: "dev"` keeps run_workflow's TOOL_POLICIES predicate at
-    // no_confirm (see conversations/tool-policies.ts) so both calls proceed
-    // straight to the executor — the canonical args are observable directly.
     const envelope1 = await dispatchTool(
       { registry, db: DB_STUB, principal: PRINCIPAL, conversationCtx: {} as never },
       {
@@ -991,17 +894,12 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
     expect(envelope1.status).toBe("ok");
     expect(envelope2.status).toBe("ok");
     expect(received).toHaveLength(2);
-    // Same canonical shape reached the executor both times — the object
-    // form was never re-serialized, and the string form was parsed back
-    // into an object, not left stringified.
     expect(received[0]?.input).toEqual(inputObject);
     expect(received[1]?.input).toEqual(inputObject);
     expect(received[0]).toEqual(received[1]);
   });
 
   test("input as a JSON STRING vs an OBJECT produce the SAME args_hash on the paused approval", async () => {
-    // An explicit ask mode pauses starts; ordinary starts delegate to durable
-    // authority admission. Compare canonical args on the requested audit rows.
     const principal = dbPrincipal();
     const registry = buildRegistry([runWorkflowStub(() => {})]);
     const inputObject = { city: "Berlin" };
@@ -1052,8 +950,6 @@ describe("tools/dispatcher — run_workflow canonicalization", () => {
   });
 
   test("run_workflow preserves an omitted environment for schedule-aware execution admission", async () => {
-    // Canonicalization must not insert dev before the workflow has been resolved.
-    // The execution layer inherits its saved schedule and enforces local authority.
     const received: Array<Record<string, unknown>> = [];
     const registry = buildRegistry([runWorkflowStub((args) => received.push(args))]);
     const envelope = await dispatchTool(

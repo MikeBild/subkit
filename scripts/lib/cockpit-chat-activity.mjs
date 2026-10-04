@@ -1,4 +1,3 @@
-/** Exercise the real SSE consumer with a controllable browser ReadableStream. */
 export async function verifyChatActivity(page, stand, conversation, locale, capture) {
   await stand.visit(page, `chat/${conversation.id}`);
   const input = page.getByTestId("chat-composer-input");

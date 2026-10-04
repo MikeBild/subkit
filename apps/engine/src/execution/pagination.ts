@@ -1,13 +1,3 @@
-// Pagination loop helpers. The request step driver hands each page-fetch
-// call back to a strategy object that decides:
-//   - the URL/query or JSON body parameters for the next page
-//   - whether to stop (empty page, page count cap, missing cursor)
-// All three strategies cap at 1,000 requests per step.
-//
-// Checkpointing records progress for diagnostics. A retry restarts at page 1
-// until accumulated page data itself has durable storage; skipping pages from
-// a cursor-only checkpoint would otherwise return an incomplete result.
-
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -17,8 +7,6 @@ import { applySelector } from "./selectors.ts";
 export const MAX_PAGES = 1000;
 export const PAGE_PROGRESS_INTERVAL = 50;
 
-/** Pages between progress-checkpoint writes. Tunable to balance diagnostic
- *  granularity against write amplification. */
 export const PAGINATION_CHECKPOINT_INTERVAL: number = (() => {
   const raw = process.env.PAGINATION_CHECKPOINT_INTERVAL;
   if (!raw) return 50;
@@ -40,27 +28,19 @@ export interface NextPage {
 export interface PaginationStrategyState {
   next(prevResponse: unknown, pageIdx: number): NextPage;
   merge(acc: unknown[], pageBody: unknown): unknown[];
-  /** Snapshot of progress after `merge()`. `lastBody` lets cursor strategies
-   *  record the next cursor without using it to skip unstored page data. */
   snapshot(lastBody: unknown): PaginationCheckpointState;
 }
 
-/** Strategy-specific progress observed during a paginated request. */
 export type PaginationCheckpointState =
   | { kind: "offset"; offset: number }
   | { kind: "page"; page: number }
   | { kind: "cursor"; cursor: string | null };
 
-/** Progress persisted to `execution_steps.request_meta.pagination_checkpoint`. */
 export interface PaginationCheckpoint {
   state: PaginationCheckpointState;
-  /** Count of successfully fetched pages at checkpoint time. */
   page_idx: number;
-  /** Number of records collected in `acc` so far. */
   accumulated_count: number;
-  /** Hash of URL, query, body and pagination configuration. */
   signature: string;
-  /** ISO-8601 timestamp the checkpoint was written. */
   written_at: string;
 }
 
@@ -151,7 +131,6 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
             [spec.limit_param]: spec.page_size,
           });
         }
-        // Stop when the previous response was empty / shorter than page size.
         const arr = extractArray(prev, spec.items_path ?? spec.stop_when_empty_path);
         if (!arr || arr.length === 0 || arr.length < spec.page_size) {
           return { url: "", done: true };
@@ -213,9 +192,6 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
       },
     };
   }
-  // cursor
-  // The cursor snapshot records the next cursor as progress evidence. Runtime
-  // retries still restart at the origin until page data is durably accumulated.
   let cursor: string | null = null;
   return {
     next(prev, idx) {
@@ -247,7 +223,6 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
       return acc;
     },
     snapshot(lastBody) {
-      // Record the next cursor from the most recently fetched response.
       let nextCursor: string | null = cursor;
       if (lastBody !== null && lastBody !== undefined) {
         try {
@@ -255,9 +230,7 @@ export function makeStrategy(spec: PaginationSpec, ctx: PageContext): Pagination
           if (v != null && v !== "" && !(Array.isArray(v) && v.length === 0)) {
             nextCursor = String(Array.isArray(v) ? v[0] : v);
           }
-        } catch {
-          // Selector failures fall through to the existing `cursor` value.
-        }
+        } catch {}
       }
       return { kind: "cursor", cursor: nextCursor };
     },
@@ -285,12 +258,6 @@ function buildNextPage(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Checkpoint persistence — read/write helpers for the request step.
-// ---------------------------------------------------------------------------
-
-/** Read the current pagination checkpoint for a step row. Returns null when
- *  no row exists, no `request_meta`, or no checkpoint subkey. */
 export async function readPaginationCheckpoint(
   tenant_id: string,
   step_row_id: string,
@@ -305,9 +272,6 @@ export async function readPaginationCheckpoint(
   if (!meta || typeof meta !== "object") return null;
   const cp = (meta as Record<string, unknown>).pagination_checkpoint;
   if (!cp || typeof cp !== "object") return null;
-  // Trust the persisted shape — it was written by writePaginationCheckpoint
-  // from this same module. Defensive parse instead of zod to keep the hot
-  // path allocation-light.
   const parsed = cp as Partial<PaginationCheckpoint>;
   if (
     !parsed.state ||
@@ -320,11 +284,6 @@ export async function readPaginationCheckpoint(
   return parsed as PaginationCheckpoint;
 }
 
-/** Merge a `pagination_checkpoint` blob into `execution_steps.request_meta`,
- *  preserving every other key that was already there. We fetch + merge +
- *  update to keep this code-path drizzle-pure (no raw SQL); the row is
- *  point-locked by primary key so the merge is contention-safe in the steady
- *  state of one-writer-per-step. */
 export async function writePaginationCheckpoint(
   tenant_id: string,
   step_row_id: string,
@@ -353,7 +312,6 @@ function extractArray(body: unknown, path?: string): unknown[] | null {
     if (v == null) return [];
     throw new Error(`pagination items path ${path} did not select an array`);
   }
-  // Heuristic: pick the first array property.
   if (typeof body === "object") {
     for (const v of Object.values(body as Record<string, unknown>)) {
       if (Array.isArray(v)) return v;

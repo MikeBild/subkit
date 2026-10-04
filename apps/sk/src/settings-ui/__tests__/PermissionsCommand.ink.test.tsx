@@ -1,6 +1,3 @@
-// Verifies /permissions opens a SinglePane (sk permissions) and not the
-// SettingsModal — see PermissionsCommand.tsx and ink-app.tsx wiring.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
@@ -56,7 +53,6 @@ describe("PermissionsCommand — /permissions SinglePane", () => {
     try {
       await ui.waitFor((t) => t.includes("sk permissions"));
       await ui.press("esc");
-      // The SinglePane's useInput fires synchronously on the press.
       await ui.waitFor(() => dismissed.length > 0, { tries: 50, sleepMs: 10 });
       expect(dismissed.length).toBe(1);
     } finally {

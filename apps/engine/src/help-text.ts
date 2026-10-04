@@ -1,17 +1,3 @@
-// `engine --help`.
-//
-// Extracted from `index.ts` because that file sits at its 1000-LOC
-// invariant ceiling (`file_size` in `apps/engine/scripts/audit-invariants.ts`)
-// and a help text is the part of an entrypoint that grows with every flag.
-// Keeping it here means adding a flag costs the entrypoint one import, not
-// five lines — and the text stays in one place instead of drifting into a
-// per-subsystem fragment nobody prints.
-//
-// The flag list is deliberately hand-maintained rather than derived: the
-// dispatch in `index.ts` is a sequence of `process.argv.includes()` checks
-// with no registry to read, and a generator over that would be more
-// machinery than the thing it generates.
-
 import { PREFLIGHT_HELP } from "./preflight/cli-entry.ts";
 
 export function engineHelp(version: string): string {

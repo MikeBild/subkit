@@ -1,11 +1,3 @@
-// Version history and restore for a saved workflow.
-//
-// History is a read-only view of what was stored: each version's definition
-// comes back as it was saved, and a version that no longer passes the current
-// workflow schema is marked `invalid` rather than failing the list. Restore
-// makes a stored definition live, so it is strict — an invalid version is
-// refused with `version_not_restorable`.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../workflows/index.ts";
@@ -22,19 +14,14 @@ const VersionSchema = z
     version: z.number(),
     note: z.string().nullable(),
     created_at: z.string(),
-    /** The stored definition, returned as it was saved. */
     dag: z.unknown(),
-    /** True when the stored definition no longer passes the current workflow
-     *  schema. Such a version can be read but not restored. */
     invalid: z.boolean(),
   })
   .openapi("WorkflowVersion");
 
 const VersionListResponse = z
   .object({
-    /** Newest version first. */
     items: z.array(VersionSchema),
-    /** Exact count of the workflow's versions (ignores limit/offset). */
     total: z.number().int().nonnegative(),
   })
   .openapi("WorkflowVersionListResponse");

@@ -1,6 +1,3 @@
-// Matcher tests — glob patterns, severity floors, request-source
-// filters, multiple-rule matches.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { notificationRules } from "../../db/schema/notifications.ts";
 import { matchGlob, matchRules, severityMeets } from "../matcher.ts";
@@ -38,8 +35,6 @@ describe("notifications: matcher helpers", () => {
 
 describe("notifications: matchRules", () => {
   test("returns every rule whose filters accept the event", async () => {
-    // Seed four rules with different filters. Two should match an
-    // `execution.failed` event, two should not.
     await ctx.db.insert(notificationRules).values([
       {
         tenant_id: ctx.tenant_id,
@@ -96,8 +91,6 @@ describe("notifications: matchRules", () => {
   });
 
   test("workflow_pattern and request_source_filter narrow the match", async () => {
-    // A rule that only fires for one specific workflow and only when
-    // the request came from the MCP surface.
     await ctx.db.insert(notificationRules).values({
       tenant_id: ctx.tenant_id,
       name: "mcp-only-one-wf",

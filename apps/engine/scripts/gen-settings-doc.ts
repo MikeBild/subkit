@@ -1,23 +1,7 @@
-// Generate docs/admins/settings-reference.md from ConfigSchema.
-//
-// Walks every leaf in apps/engine/src/config/schema.ts and emits a
-// markdown table per top-level section: dotted path, type, default,
-// scope, sensitive, requiresRestart, description.
-//
-// Output is byte-stable: sections in declared SECTION_ORDER, leaves
-// alphabetically sorted within each section. No timestamps, no env
-// strings, no absolute paths.
-//
-// Wired into `bun run verify` as the docs drift gate (see package.json).
-//
-// Usage:
-//   bun run apps/engine/scripts/gen-settings-doc.ts > docs/admins/settings-reference.md
-
 import { ConfigSchema, SECTION_ORDER } from "../src/config/schema.ts";
 import { type ConfigLeaf, dottedPath, listConfigLeaves } from "../src/config/walk.ts";
 
 function defaultValueFor(leaf: ConfigLeaf): string {
-  // Walk the leaf's def chain to find a default-wrapped node, if any.
   let cursor: { def?: { type?: string; defaultValue?: unknown; innerType?: unknown } } =
     leaf.schema as never;
   for (let guard = 0; guard < 32; guard += 1) {

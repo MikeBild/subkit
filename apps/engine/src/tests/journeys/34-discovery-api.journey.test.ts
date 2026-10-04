@@ -1,8 +1,3 @@
-// Journey 34: Discovery API lifecycle via REST.
-//
-// Create a discovery run, verify file tracking, seed artifacts
-// manually, approve and reject artifacts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, discoveryArtifacts } from "../../db/schema/index.ts";
@@ -66,7 +61,6 @@ describe("journey: discovery API lifecycle", () => {
   });
 
   test("AC4: seed + approve an artifact", async () => {
-    // Seed a connector artifact directly (analysis would normally do this)
     const [artifact] = await ctx.db
       .insert(discoveryArtifacts)
       .values({
@@ -91,7 +85,6 @@ describe("journey: discovery API lifecycle", () => {
     const body = (await res.json()) as { approved: boolean };
     expect(body.approved).toBe(true);
 
-    // Verify audit
     const audits = await ctx.db
       .select()
       .from(auditLog)
@@ -119,7 +112,6 @@ describe("journey: discovery API lifecycle", () => {
     });
     expect(res.status).toBe(200);
 
-    // Verify status
     const getRes = await journeyFetch(ctx, `/v1/discovery/artifacts/${artifact!.id}`);
     expect(getRes.status).toBe(200);
     const body = (await getRes.json()) as { status: string; rejection_reason: string };

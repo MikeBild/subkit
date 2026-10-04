@@ -1,5 +1,3 @@
-// Thin wrapper: register the webhook.deliver worker.
-
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";

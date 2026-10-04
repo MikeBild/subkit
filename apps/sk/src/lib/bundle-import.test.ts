@@ -1,6 +1,3 @@
-// Unit tests for the knowledge-bundle directory walker shared by the CLI
-// import command and the /knowledge REPL slash.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

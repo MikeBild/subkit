@@ -1,7 +1,3 @@
-// Unit tests for <StatusPane> — label-value modal content used by
-// `/status`. Verifies row rendering, em-dash fallback for empty
-// values, and Esc dismissal.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { StatusPane } from "../StatusPane.tsx";

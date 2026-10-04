@@ -1,13 +1,3 @@
-// Integration test: multipart `$file` part whose `size_bytes` exceeds
-// `SPOOL_THRESHOLD_BYTES`.
-//
-// Guards against a regression where the step-runner's spool branch
-// reads from the raw row UUID instead of the storage key
-// (`<tenant>/<yyyy>/<mm>/<dd>/<uuid>`). The resolver-bound `openRead`
-// is the authoritative read path; an object-store lookup keyed off the
-// bare UUID would 404 (local) / NoSuchKey (S3) and surface as a step
-// failure even though the file row + bytes are both present.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -75,12 +65,9 @@ const FAKE_CONV_ID = "00000000-0000-0000-0000-000000000777";
 
 describe("workflow file-input: large multipart `$file` exceeds SPOOL_THRESHOLD_BYTES", () => {
   test("multipart upload of a file > SPOOL_THRESHOLD_BYTES succeeds (spool reads via ResolvedFile.openRead)", async () => {
-    // Build a payload one byte over the spool threshold. The runner
-    // routes anything past the threshold through the tmpfile spool
-    // path; we keep the buffer just above the cutoff to stay fast.
     const overflow = SPOOL_THRESHOLD_BYTES + 1;
-    const prefix = Buffer.from(nextHex(16), "hex"); // sha256-uniqueness anchor
-    const filler = Buffer.alloc(overflow - prefix.length, 0x41); // 'A' padding
+    const prefix = Buffer.from(nextHex(16), "hex");
+    const filler = Buffer.alloc(overflow - prefix.length, 0x41);
     const fileContent = Buffer.concat([prefix, filler]);
     expect(fileContent.byteLength).toBe(overflow);
 
@@ -114,19 +101,12 @@ describe("workflow file-input: large multipart `$file` exceeds SPOOL_THRESHOLD_B
       input: null,
     });
 
-    // Pre-fix this would fail with ENOENT / NoSuchKey because the
-    // store was queried by raw UUID instead of the storage key.
     expect(result.status).toBe("succeeded");
 
     const captured = srv.last();
     expect(captured).not.toBeNull();
     expect(captured!.contentType).toContain("multipart/form-data");
-    // The full payload landed: body envelope must be at least as large
-    // as the file plus a small multipart preamble.
     expect(captured!.contentLength).toBeGreaterThanOrEqual(overflow);
-    // First 16 bytes (the deterministic prefix) must appear verbatim
-    // in the multipart body — proves bytes round-tripped through the
-    // spool tmpfile path without truncation.
     expect(captured!.body.toString("binary")).toContain(prefix.toString("binary"));
   }, 120_000);
 });

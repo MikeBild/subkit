@@ -1,10 +1,3 @@
-// What the installation pages call a role and a permission.
-//
-// Each of these answered "Unbekannt" for a value it had no word for. §2 bans
-// the word; §15.2 names the replacement — the machine value, recognisably as
-// such. These pin both halves: the named case stays prose, the rest is the
-// engine's own value flagged as one.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -46,8 +39,6 @@ describe("permissions", () => {
   });
 
   test("a half this build cannot name keeps the whole token", () => {
-    // Showing "Workflows: frobnicate" would invent half a sentence; the
-    // token is what an operator can look up.
     expect(permissionLabel("workflow:frobnicate", de)).toEqual({
       text: "workflow:frobnicate",
       machine: true,
@@ -59,11 +50,6 @@ describe("permissions", () => {
   });
 });
 
-// Every permission the engine can hold, named — read from the engine's own
-// catalogue, so a permission added there without a name here fails this file.
-// This is the one coverage test for permission names: the rights on a role,
-// a grant and an API key's scopes (`scopeLabel`) all read through
-// `permissionLabel`.
 const ENGINE_PERMISSIONS = (
   JSON.parse(
     readFileSync(resolve(import.meta.dir, "../../../engine/src/rbac/permissions.json"), "utf8"),
@@ -85,8 +71,6 @@ describe("the engine's permission catalogue", () => {
     });
 
     test(`no two permissions share a ${locale} name`, () => {
-      // `stats:read:all` and `stats:read` are two rights; a two-part split
-      // named them the same.
       const seen = new Map<string, string>();
       for (const name of ENGINE_PERMISSIONS) {
         const text = permissionLabel(name, t).text;
@@ -146,8 +130,6 @@ describe("roles a person holds", () => {
 
 describe("what a role change says beyond its permissions", () => {
   test("leaving admin always says people and role management go with it", () => {
-    // Admin-only routes check the role NAME: a custom role with every
-    // permission is still not "admin", so "the rights stay the same" was false.
     expect(roleChangeNotes({ from: "admin", to: "Revision", isSelf: false })).toEqual([
       "leavesAdmin",
     ]);

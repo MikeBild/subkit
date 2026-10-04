@@ -1,7 +1,3 @@
-// Integration tests for the `session_learning` capture loop:
-// proposeLearning → fingerprint dedup → coexistence (no supersede) →
-// reject blocks re-proposal → approve carries domain tags to the skill.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { proposeLearning } from "../../agent/sessions.ts";
 import type { Db } from "../../db/client.ts";
@@ -16,7 +12,6 @@ import {
   rejectSkillCandidate,
 } from "../service.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip in environments without a DB.
 const skip = process.env.REQUIRES_PG === "0";
 
 let testDb: TestDb;
@@ -95,8 +90,6 @@ describe.skipIf(skip)("session_learning capture loop", () => {
   });
 
   test("deleting a promoted skill nulls the candidate reference instead of failing", async () => {
-    // Regression: promoted_skill_id had no onDelete rule — DELETE on any
-    // promoted skill hit the FK and 500'd on prod.
     const proposal = await propose("Löschbare Regel");
     const approved = await approveSkillCandidate(
       { tenant_id: tenantId, candidate_id: proposal.candidate_id ?? "", actor_id: null },

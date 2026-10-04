@@ -1,9 +1,3 @@
-// Read-side execution surface — list / get / list-steps.
-//
-//   GET /v1/executions
-//   GET /v1/executions/{id}
-//   GET /v1/executions/{id}/steps
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -48,7 +42,6 @@ const listExecutionsRoute = createRoute({
         workflow_id: z.string().uuid().optional(),
         status: z.string().optional(),
         request_source: z.string().optional(),
-        /** Free text, matched against the name or slug of the workflow. */
         q: z.string().trim().min(1).max(200).optional(),
         started_from: z
           .string()
@@ -62,7 +55,6 @@ const listExecutionsRoute = createRoute({
           .datetime({ offset: true })
           .optional()
           .describe("Only runs that started before this instant (ISO 8601, exclusive)."),
-        /** Lineage filter: list the reruns spawned from this execution. */
         parent_execution_id: z.string().uuid().optional(),
       })
       .openapi("ListExecutionsQuery"),
@@ -99,9 +91,6 @@ const getStepsRoute = createRoute({
 });
 
 export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
-  // Read-side RBAC: tenant-wide read for the index, resource-scoped
-  // grant for /:id and /:id/steps. The stream sub-resource is on the
-  // same scope; it's wired here so the gate stays per-file.
   app.use("/v1/executions/:id", async (c, next) => {
     const id = c.req.param("id");
     if (c.req.method === "GET") {
@@ -122,8 +111,6 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
-    // Canonical list service: same filter surface as the conversation
-    // tool + in-process EngineClient, exact `total` in the same query.
     const { rows, total, next_cursor } = await listExecutions(
       principal.tenant_id,
       {
@@ -141,8 +128,6 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    // Name join in one pass, mirroring the schedules route: consumers
-    // render WHAT ran, not an opaque workflow_id.
     const ids = [...new Set(rows.map((r) => r.workflow_id).filter((v): v is string => v !== null))];
     const [named, failures] = await Promise.all([
       ids.length
@@ -207,18 +192,6 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ items: rows.map(serializeStep) }, 200);
   });
 
-  // -----------------------------------------------------------------
-  // GET /v1/executions/{id}/stream — per-execution SSE follow.
-  //
-  // Gated by the resource-scoped `execution:read` middleware above —
-  // following your own run must not require the `audit:read`
-  // compliance permission the tenant-wide /v1/events/stream carries.
-  // Replays the execution's full event history (queued → step frames
-  // → terminal status), then tails live and closes right after the
-  // terminal frame so followers of a finished run exit immediately.
-  // Hand-rolled outside the openapi() surface like /v1/events/stream
-  // (documented in docs/developers/input-surfaces.md).
-  // -----------------------------------------------------------------
   app.get("/v1/executions/:id/stream", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");

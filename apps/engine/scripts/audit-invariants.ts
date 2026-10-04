@@ -1,27 +1,10 @@
 #!/usr/bin/env bun
-//
-// Audit-invariants — the single CI gate enforcing the engine's
-// architectural invariants (file size, tenant filtering, route layering,
-// coverage floors, ...).
-//
-// Runs every check from the invariant list and exits non-zero
-// on any failure. The same script is invoked from:
-//   - .github/workflows/audit-invariants.yml      (PR + nightly CI)
-//   - package.json scripts (`bun run audit:invariants`)            (release gate)
-//   - apps/engine/scripts/audit-loop/             (closed-loop driver)
-//
-// Output format is line-oriented and parseable: each check prints
-//   PASS  <id>  <message>
-//   FAIL  <id>  <message>
-//   SKIP  <id>  <reason>          (only when explicitly tolerant; rare)
-// Final summary: counts + non-zero exit if any FAIL.
-//
-// New checks: add a function below, append to CHECKS, document in the
-// audit doc. Do not silence checks; if a check is wrong, fix it.
 
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { COMMENT_EXEMPT, COMMENT_SCOPE, findComments } from "./audit/comments.ts";
 import { auditTenantFilter } from "./audit/tenant-filter-ast.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -77,11 +60,7 @@ function readAllowlist(filename: string): Set<string> {
   return out;
 }
 
-// ---------- structural ----------
-
 function checkSubsystemCount(): Result {
-  // Defer to the existing contract test for the actual assertion; this
-  // keeps a single source of truth for the canonical count.
   const path = join(REPO, "tests/contract/subsystem-count.test.ts");
   try {
     statSync(path);
@@ -100,11 +79,6 @@ function checkSubsystemCount(): Result {
 }
 
 function checkNoNewSubsystem(): Result {
-  // The subsystem-count contract test already enforces that the count in
-  // AGENTS.md matches the directory count. This check exists as a
-  // surface marker for the closed-loop driver: if the directory count
-  // changes, the contract test fails and the loop must STOP per
-  // .audit-loop-policy.md item 4.
   const dirs = readdirSync(ENGINE_SRC).filter((n) => statSync(join(ENGINE_SRC, n)).isDirectory());
   return {
     id: "no_new_subsystem",
@@ -113,13 +87,7 @@ function checkNoNewSubsystem(): Result {
   };
 }
 
-// ---------- import boundaries ----------
-
 function checkAiSdkLocality(): Result {
-  // Bans runtime imports of the LLM provider packages — the actual harm
-  // is a non-llm/core/ file calling a real provider directly, bypassing
-  // invoke.ts. Type-only imports from @ai-sdk/provider and test mocks
-  // from `ai/test` do NOT have that risk and are exempt.
   const PROVIDER_VALUE_IMPORT =
     /(?:^|\n)\s*import\s+(?!type\s)[^"';]+from\s+["'](?:@ai-sdk\/(?:anthropic|openai|google|azure|google-vertex|amazon-bedrock)|@anthropic-ai\/sdk)["']/;
   const violations: string[] = [];
@@ -147,10 +115,6 @@ function checkAiSdkLocality(): Result {
 }
 
 function checkJsonataLocality(): Result {
-  // Bans runtime evaluator usage outside jsonata-engine.ts. Type-only
-  // imports (`import type { Expression } from "jsonata"`) are exempt
-  // because they cannot evaluate; the harm is bypassing the central
-  // engine for runtime evaluation.
   const allowed = "apps/engine/src/execution/jsonata-engine.ts";
   const VALUE_IMPORT = /(?:^|\n)\s*import\s+(?!type\s)[^"';]+from\s+["']jsonata["']/;
   const violations: string[] = [];
@@ -177,32 +141,12 @@ function checkJsonataLocality(): Result {
 }
 
 function checkConversationModelSelection(): Result {
-  // The conversation path must never name a premium model in code.
-  //
-  // A hard-coded `claude-opus-4-8` seed lived in
-  // `conversations/loop/authoring-intent.ts` and was applied whenever the
-  // user's message matched an authoring word pattern. It overrode the
-  // configured `llm.model` silently, in the one direction that costs
-  // money, and it survived long after the bug it was added for had been
-  // fixed structurally. Measured on production before its removal: a
-  // quarter of conversations tripped it, and it carried roughly four
-  // fifths of the month's LLM spend.
-  //
-  // Which model a turn runs on is a configuration decision
-  // (`llm.model` / `llm.fallback_model` / per-conversation override).
-  // Escalating one is the step-router's job, in `llm/core/step-router.ts`,
-  // on earned signals — not the conversation loop's, on a regex.
-  //
-  // A literal naming a CHEAP floor stays legal (e.g. a suggestion-flow
-  // fallback): it cannot silently inflate a bill. Only the
-  // upgrade-direction literals are banned here.
   const PREMIUM_LITERAL = /["'`]claude-(?:opus|sonnet)[a-z0-9.-]*["'`]/;
   const root = join(ENGINE_SRC, "conversations");
   const violations: string[] = [];
   for (const f of listFiles(root, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"))) {
     const text = readFileSync(f, "utf8");
     for (const [i, line] of text.split("\n").entries()) {
-      // Prose in comments may name a model when explaining history.
       const code = line.replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, "");
       if (PREMIUM_LITERAL.test(code)) {
         violations.push(`${relative(REPO, f)}:${i + 1}`);
@@ -226,10 +170,6 @@ function checkConversationModelSelection(): Result {
 }
 
 function checkRouteLayering(): Result {
-  // routes/<f>.ts may import from a subsystem's index.ts only — i.e.
-  // relative paths of the form `../../<sub>/index` or `../../<sub>`
-  // (resolved to index.ts) are OK; deeper paths into subsystem
-  // internals are flagged.
   const routeFiles = listFiles(
     join(ENGINE_SRC, "http/routes"),
     (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"),
@@ -274,9 +214,6 @@ function checkRouteLayering(): Result {
       const fullPath = match[1]!;
       const subsystem = match[2]!;
       if (!knownExternalSubsystems.has(subsystem)) continue;
-      // JSON imports are data, not module surface — they can't go
-      // through the TS barrel and exempt naturally. Same for any
-      // non-.ts file (currently only json).
       if (fullPath.endsWith(".json")) continue;
       const tail = fullPath.split(`/${subsystem}/`)[1] ?? "";
       const isIndex = tail === "index" || tail === "index.ts" || tail === "";
@@ -300,15 +237,8 @@ function checkRouteLayering(): Result {
 }
 
 function checkInternalLayering(): Result {
-  // `_internal/` directories are package-private. Same-package siblings
-  // can reach in (e.g. `apps/engine/src/conversations/loop.ts` → `./_internal/abort-merge.ts`),
-  // but a file outside the package must NOT import from another
-  // package's `_internal/` path. The directory is the file-system
-  // enforcement of layering; this check makes the contract observable
-  // at PR time instead of after a refactor widens the surface.
   const allFiles = listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") && !p.endsWith(".test.ts"));
   const violations: string[] = [];
-  // Match both `from "…/_internal/…"` and `import("…/_internal/…")` forms.
   const importRe = /(?:from|import)\s*\(?\s*["']([^"']*?\/_internal\/[^"']+)["']/g;
   for (const f of allFiles) {
     const rel = relative(REPO, f);
@@ -317,15 +247,8 @@ function checkInternalLayering(): Result {
     importRe.lastIndex = 0;
     for (const match of text.matchAll(importRe)) {
       const importPath = match[1] ?? "";
-      // Resolve the import to an absolute path. Only relative imports
-      // can target `_internal/` paths; bare-package imports of
-      // `_internal/` would already be a separate problem the routing
-      // catches.
       if (!importPath.startsWith(".")) continue;
       const resolved = resolve(fileDir, importPath);
-      // The package boundary is the directory that contains the
-      // `_internal/` segment. Same-package consumers live in or under
-      // the parent of that segment; cross-package imports do not.
       const segIdx = resolved.lastIndexOf("/_internal/");
       if (segIdx === -1) continue;
       const packageRoot = resolved.slice(0, segIdx);
@@ -348,14 +271,9 @@ function checkInternalLayering(): Result {
   };
 }
 
-// ---------- size ceilings ----------
-
 function checkFileSize(): Result {
   const allowlist = readAllowlist(".size-allowlist.txt");
   const violations: string[] = [];
-  // The ceiling covers every production source root — engine, sk, and the
-  // shared packages — with one allowlist. Test files are exempt: table-
-  // driven suites legitimately grow long and splitting them hurts reading.
   const SIZE_ROOTS = [
     ENGINE_SRC,
     join(REPO, "apps/sk/src"),
@@ -368,7 +286,7 @@ function checkFileSize(): Result {
     !p.endsWith(".test.ts") &&
     !p.endsWith(".test.tsx") &&
     !p.includes("/tests/") &&
-    !p.includes("/engine-api/"); // generated OpenAPI client
+    !p.includes("/engine-api/");
   for (const root of SIZE_ROOTS) {
     for (const f of listFiles(root, isProdSource)) {
       const rel = relative(REPO, f);
@@ -412,8 +330,6 @@ function checkRouteSize(): Result {
       message: "no http/routes/**/*.ts > 600 LOC outside .size-allowlist.txt",
     };
   }
-  // The check is currently ADVISORY: it reports oversized route files
-  // without failing the audit.
   return {
     id: "route_size",
     status: "PASS",
@@ -421,15 +337,7 @@ function checkRouteSize(): Result {
   };
 }
 
-// ---------- safety ----------
-
 function checkTenantFilter(): Result {
-  // AST scan (replacing the prior regex heuristic). The scan walks
-  // every Drizzle query chain (`select`/`update`/`delete`/`insert`/`with`
-  // → `.from(table)` → optional `.where(...)`) and asserts a
-  // `tenant_id` predicate is present in the where argument tree —
-  // either as a literal identifier reference or via a helper whose
-  // name matches /tenant/i. Site-level opt-outs use the comment
   // marker `// tenant-filter:exempt — <reason>` (leading or
   // trailing-on-same-line). The table allowlist
   // (.tenant-filter-allowlist.txt) covers truly tenant-agnostic
@@ -505,8 +413,6 @@ function checkNoLiveLlm(): Result {
   };
 }
 
-// ---------- coverage ----------
-
 function checkCoverageFloor(): Result {
   const path = join(REPO, "apps/engine/.coverage-floor.json");
   let text: string;
@@ -530,10 +436,6 @@ function checkCoverageFloor(): Result {
       message: ".coverage-floor.json has no subsystems declared",
     };
   }
-  // Validate each entry has the required shape — `bun run check:coverage-floor`
-  // is the script that actually runs `bun test --coverage` per subsystem
-  // and enforces the numbers. This check is the structural gate; the
-  // numeric gate is wired into `bun run verify` via check:coverage-floor.
   const malformed: string[] = [];
   for (const [name, entry] of entries) {
     if (typeof entry.line_min !== "number" || typeof entry.branch_min !== "number") {
@@ -554,13 +456,7 @@ function checkCoverageFloor(): Result {
   };
 }
 
-// ---------- cadence ----------
-
 function checkRegressionIsolation(): Result {
-  // Regression journey tests (`*-regression*.test.ts` under
-  // tests/journeys/) must not appear in the inner-loop `test:unit`
-  // script in package.json. They run via `test:regression` and the
-  // broader `bun test apps/` in verify, but never in the dev inner loop.
   const journeysDir = join(REPO, "apps/engine/src/tests/journeys");
   let regressionFiles: string[] = [];
   try {
@@ -599,13 +495,6 @@ function checkRegressionIsolation(): Result {
 }
 
 function checkTestSeamsGated(): Result {
-  // Underscore-prefixed test-only exports must be imported through
-  // the corresponding `test-helpers/<x>.ts` re-export shim, never
-  // directly from the production module. Direct imports let a
-  // future refactor accidentally swap a production code path for
-  // the non-fatal test variant. Each entry maps a production-module
-  // suffix to its required test-helpers shim suffix and the
-  // underscore symbol's name.
   const SEAMS = [
     {
       symbol: "_validateBootDependenciesForTests",
@@ -637,15 +526,10 @@ function checkTestSeamsGated(): Result {
         !p.endsWith(".test.tsx"),
     );
     for (const f of files) {
-      // Each shim re-exports its own symbol — that import is allowed.
       const shimWhitelist = SEAMS.some((s) => f.endsWith(s.shimEnding));
       if (shimWhitelist) continue;
       const raw = readFileSync(f, "utf8");
       for (const seam of SEAMS) {
-        // Escape EVERY regex metachar in the seam's productionModule
-        // (today's entries have only `/`, but a future addition like
-        // `connectors/foo.bar` would silently match wrong files —
-        // `.` is "any char" — without this).
         const escapedModule = seam.productionModule.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
         const importsFromProd = new RegExp(`from\\s+["'][^"']*${escapedModule}(\\.ts)?["']`).test(
           raw,
@@ -672,13 +556,6 @@ function checkTestSeamsGated(): Result {
 }
 
 function checkEngineHomedirAbsence(): Result {
-  // Engine production code MUST NOT read `homedir()` or `process.env.HOME` —
-  // the repo-root `bunfig.toml` preloads `setup-isolated-home.ts` for every
-  // `bun test` process, which redirects HOME to a tempdir. If engine code
-  // ever starts reading HOME (e.g. a credential cache, an MCP server's
-  // .netrc lookup, an LLM client config probe), test runs would silently
-  // see an empty $HOME and miss the misconfiguration.
-  //
   // Allow-list a use via `// homedir-allowed: <reason>` on the same line.
   const violations: string[] = [];
   for (const f of listFiles(ENGINE_SRC, (p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {
@@ -712,14 +589,6 @@ function checkEngineHomedirAbsence(): Result {
 }
 
 function checkNoGlobalFetchStubInTests(): Result {
-  // Engine tests MUST NOT stub `globalThis.fetch` — `bun test` runs files
-  // concurrently in one process, so a global stub leaks mid-flight into
-  // sibling suites (caught live: CI run 27425002067, a 404 probe observing
-  // a sibling's always-200 mock). Tests intercept driver/credential egress
-  // via the AsyncLocalStorage seam (`test-helpers/driver-fetch.ts`
-  // `withDriverFetchForTests`), or spin up a real `Bun.serve` loopback
-  // when the code under test runs in another async root (server context).
-  //
   // Allow-list a use via `// global-fetch-allowed: <reason>` on the same line.
   const STUB_PATTERNS = [
     /\bglobalThis\.fetch\s*=(?!=)/,
@@ -728,13 +597,11 @@ function checkNoGlobalFetchStubInTests(): Result {
   const violations: string[] = [];
   const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
   const files = [
-    // engine test files (suites + helpers under tests/ dirs)
     ...listFiles(
       ENGINE_SRC,
       (p) =>
         isTs(p) && (p.includes(".test.") || p.includes("/tests/") || p.includes("/__tests__/")),
     ),
-    // the eval harness is test infrastructure end-to-end
     ...listFiles(join(REPO, "apps/engine/eval"), isTs),
   ];
   for (const f of files) {
@@ -764,16 +631,6 @@ function checkNoGlobalFetchStubInTests(): Result {
 }
 
 function checkCompileBuildsKeepNodeEnvDynamic(): Result {
-  // Every `bun build --compile` invocation MUST carry the identity define
-  // `process.env.NODE_ENV=process.env.NODE_ENV`. Without it the bundler
-  // INLINES the build-machine's NODE_ENV ("development" on a bare dev box
-  // or CI runner) as a compile-time constant, silently freezing every
-  // runtime NODE_ENV gate in the shipped binary. Production impact when
-  // this regressed: the @ai-sdk/devtools middleware ran on the production
-  // host (a 397MB .devtools/generations.json re-serialized on every
-  // LLM step — the ~700MB/step external-memory transient and the
-  // event-loop GC blips), the connector egress guard ran "permissive"
-  // instead of "strict", and OIDC cookies were missing `Secure`.
   const IDENTITY_DEFINE = "process.env.NODE_ENV=process.env.NODE_ENV";
   const SOURCES = ["package.json", "Dockerfile"];
   const violations: string[] = [];
@@ -784,8 +641,6 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
       const line = lines[i] ?? "";
       if (!line.includes("--compile")) continue;
       if (line.trimStart().startsWith("#") || line.trimStart().startsWith("//")) continue;
-      // The compile command may wrap across lines (YAML `\` continuations) —
-      // scan a small window from the `--compile` line for the define.
       const window = lines.slice(i, i + 8).join("\n");
       if (!window.includes(IDENTITY_DEFINE)) {
         violations.push(`${rel}:${i + 1}`);
@@ -808,10 +663,6 @@ function checkCompileBuildsKeepNodeEnvDynamic(): Result {
 }
 
 function checkExecutorCanonical(): Result {
-  // The DB `Executor` type has ONE canonical definition in db/client.ts.
-  // It was previously redeclared in ~53 files; a structural re-declaration
-  // typechecks fine, so a future copy would silently re-introduce the
-  // drift class. Ban any `type Executor =` outside the canonical file.
   const allowed = "apps/engine/src/db/client.ts";
   const DECL = /(?:^|\n)\s*(?:export\s+)?type\s+Executor\s*=/;
   const violations: string[] = [];
@@ -834,23 +685,7 @@ function checkExecutorCanonical(): Result {
   };
 }
 
-// ---------- driver ----------
-
 function checkAuditLogSingleWriter(): Result {
-  // `audit_log` is append-only and rides the ndjson export, so its payload
-  // scrub has to be a property of the TABLE, not of one writer's manners.
-  // The scrub therefore sits in `db/audit.ts#writeAudit`, at the insert.
-  //
-  // That only holds while `writeAudit` really is the only insert. It was not:
-  // `EngineClient.audit_write` carried its own `insert(auditLog)` and ~32
-  // conversation write tools wrote `prompt` and `api_token` through it
-  // verbatim (LOCAL-SK-ZWEITER-AUDIT-SCHREIBER). A second call to the
-  // scrubber at that second site would have fixed that ONE site; this check
-  // is what stops the third one, because a new direct insert now fails here
-  // instead of shipping.
-  //
-  // Tests may insert directly — they seed rows on purpose and never carry a
-  // real secret. Production source may not.
   const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
   const isTestFile = (p: string) =>
     p.includes(".test.") || p.includes("/tests/") || p.includes("/__tests__/");
@@ -858,7 +693,6 @@ function checkAuditLogSingleWriter(): Result {
     ...listFiles(ENGINE_SRC, (p) => isTs(p) && !isTestFile(p)),
     ...listFiles(join(REPO, "packages"), (p) => isTs(p) && !isTestFile(p)),
   ];
-  // The one legitimate writer.
   const WRITER = join(ENGINE_SRC, "db", "audit.ts");
   const INSERT = /\.insert\s*\(\s*auditLog\s*\)|INSERT\s+INTO\s+audit_log/gi;
 
@@ -890,42 +724,6 @@ function checkAuditLogSingleWriter(): Result {
 }
 
 function checkTestServersBindLoopback(): Result {
-  // A test HTTP server MUST bind the same address the test dials.
-  //
-  // `Bun.serve({ port: 0 })` binds the WILDCARD address (0.0.0.0) and the
-  // tests then dial `http://127.0.0.1:<port>`. Those are not the same
-  // socket: when another process already holds a SPECIFIC binding on
-  // 127.0.0.1 at that port, the specific binding wins and the test talks
-  // to the stranger. The ephemeral range that `port: 0` draws from is
-  // exactly where sibling products publish their Docker containers, so
-  // this is not hypothetical — measured on this machine: the connector
-  // draft probe reached 127.0.0.1:55492 and was answered by WorkKit's
-  // Postgres container ("socket connection was closed unexpectedly"),
-  // turning the release gate red with nothing wrong in subkit.
-  //
-  // The dangerous half is the other outcome: a suite that binds wildcard
-  // and dials loopback can just as easily go GREEN against a foreign
-  // service. `test-helpers/local-http.ts` already does this right
-  // (`server.listen(0, "127.0.0.1")`); the `Bun.serve` call sites must
-  // match. Pin the hostname and the OS can only hand out a port that is
-  // free ON THAT ADDRESS.
-  //
-  // BOTH `serve` FUNCTIONS COUNT (LOCAL-SK-SERVE-REGEL-ZWEI-LESER). The
-  // first version of this check matched `Bun.serve(` only, and the suites
-  // that actually broke the gate do not use it: `@hono/node-server` exports
-  // a bare `serve({ fetch, port: 0 })`, and that is what
-  // `http/tests/setup.ts` — the harness behind every HTTP and MCP suite —
-  // calls. Ten call sites stayed wildcard-bound behind a green invariant,
-  // and two full gate runs died on it: one suite reached 127.0.0.1:55492
-  // and was answered by WorkKit's Postgres, another reached
-  // 127.0.0.1:55432 and was answered by ContentKit's. Same defect, same
-  // day, a rule that only covered one of its two readers.
-  //
-  // The bare form is matched with a boundary that excludes a leading `.`
-  // or word character, so `observe(` / `preserve(` / `foo.serve(` do not
-  // trip it while `Bun.serve(` still does.
-  //
-  // Allow-list a deliberate wildcard bind via
   // `// bind-wildcard-allowed: <reason>` on the `serve(` line.
   const LOOPBACK = /hostname\s*:\s*["'`](?:127\.0\.0\.1|localhost|::1)["'`]/;
   const isTs = (p: string) => p.endsWith(".ts") || p.endsWith(".tsx");
@@ -941,16 +739,10 @@ function checkTestServersBindLoopback(): Result {
   for (const f of files) {
     const rel = relative(REPO, f);
     const src = readFileSync(f, "utf8");
-    // The call must be followed by an options OBJECT. Without that, the bare
-    // form also matched `serve()` written in a COMMENT ("read at boot only by
-    // serve()") and then balanced braces from some unrelated literal far below
-    // it — a false positive that would have to be annotated as if it were a
-    // real bind.
     const marker = /(?:\bBun\.serve|(?<![.\w])serve)\s*\(\s*\{/g;
     let m = marker.exec(src);
     while (m !== null) {
       const lineNo = src.slice(0, m.index).split("\n").length;
-      // The marker line OR the three lines above it. A trailing
       // `// bind-wildcard-allowed:` on the `serve(` line does not survive the
       // formatter — biome moves it onto the next line — so requiring it there
       // let a formatting pass silently disarm the allow-list. Reading the
@@ -959,8 +751,6 @@ function checkTestServersBindLoopback(): Result {
       const lines = src.split("\n");
       const scope = lines.slice(Math.max(0, lineNo - 4), lineNo).join("\n");
       if (!scope.includes("bind-wildcard-allowed:")) {
-        // Balance braces from the option object so a nested literal
-        // (routes, tls, fetch handler) cannot end the scan early.
         const open = src.indexOf("{", m.index);
         if (open !== -1) {
           let depth = 0;
@@ -995,6 +785,34 @@ function checkTestServersBindLoopback(): Result {
   };
 }
 
+function checkNoComments(): Result {
+  const files = execFileSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" })
+    .split("\n")
+    .filter((f) => COMMENT_SCOPE.test(f) && !COMMENT_EXEMPT.test(f));
+  const violations: string[] = [];
+  for (const file of files) {
+    let text: string;
+    try {
+      text = readFileSync(join(REPO, file), "utf8");
+    } catch {
+      continue;
+    }
+    for (const hit of findComments(file, text)) violations.push(`${file}:${hit.line} ${hit.text}`);
+  }
+  if (violations.length === 0) {
+    return {
+      id: "no_comments",
+      status: "PASS",
+      message: `no comments outside tool directives in ${files.length} files`,
+    };
+  }
+  return {
+    id: "no_comments",
+    status: "FAIL",
+    message: `${violations.length} comment(s); only tool directives are allowed:\n  ${violations.slice(0, 20).join("\n  ")}`,
+  };
+}
+
 const CHECKS: Array<() => Result> = [
   checkSubsystemCount,
   checkNoNewSubsystem,
@@ -1017,6 +835,7 @@ const CHECKS: Array<() => Result> = [
   checkCompileBuildsKeepNodeEnvDynamic,
   checkExecutorCanonical,
   checkTestServersBindLoopback,
+  checkNoComments,
 ];
 
 const results: Result[] = [];

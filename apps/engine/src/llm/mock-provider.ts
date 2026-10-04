@@ -1,20 +1,3 @@
-// Deterministic in-process mock LLM provider.
-//
-// The mock is the *only* provider tests ever touch. It never opens a
-// network socket and never imports `@ai-sdk/anthropic`. Tests set
-// `LLM_PROVIDER=mock` (or the per-tenant `llm_provider = 'mock'`) and the
-// provider registry reads back a MockCall array describing everything
-// that would have been sent to the real SDK.
-//
-// The mock supports two operations matching the provider interface:
-//   - `generateText(prompt)` → `{ text, usage }`
-//   - `generateObject(prompt)` → `{ object, usage }`
-//
-// Each flow has a canned canned response that is influenced by the last
-// user turn so tests can assert on grounding. A mutable `failureMode`
-// flag lets the routing test simulate `rate_limit` / `overloaded`
-// errors on the primary model.
-
 import { logger } from "../logging/logger.ts";
 import { LlmProviderError } from "./errors.ts";
 import type { EnhancedPrompt, LlmFlow } from "./types.ts";
@@ -34,10 +17,6 @@ export interface MockResult<T = unknown> {
   object?: T;
   prompt_tokens: number;
   completion_tokens: number;
-  /**
-   * Anthropic ephemeral cache metrics. Mock provider reports 0/0; real
-   * provider pulls from `providerMetadata.anthropic`.
-   */
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
 }
@@ -48,12 +27,6 @@ export type MockFailure =
   | "overloaded"
   | "context_length_exceeded";
 
-/**
- * One item in the canned conversation tool-call plan. The loop reads
- * these one at a time and feeds each tool result back before asking
- * the mock for the next step. When the plan is empty the mock emits
- * `{ done: true }` and the loop ends.
- */
 export interface ConverseMockStep {
   tool: string;
   args: Record<string, unknown>;
@@ -62,37 +35,13 @@ export interface ConverseMockStep {
 class MockProvider {
   calls: MockCall[] = [];
   toolChoices: Array<{ type: string; toolName?: string } | undefined> = [];
-  /** The tool palette each converse call offered the model, as name and
-   *  description — what the model actually reads, after every layer
-   *  between the palette assembly and the provider call has had its say. */
   toolPalettes: Array<Array<{ name: string; description: string }>> = [];
-  /** When set, the very next call with this model fails with this kind. */
   failureByModel: Map<string, MockFailure> = new Map();
-  /** Canned generator overrides by flow — tests may patch these. */
   generateOverrides: Partial<Record<LlmFlow, (last: string) => unknown>> = {};
-  /**
-   * Per-conversation converse plans. Each call into the converse flow
-   * advances its conversation's plan cursor by one. When a plan matches
-   * the user message pattern, subsequent calls pick up where the last
-   * left off — even across approval pauses. Keyed by `conversation_id`
-   * so tests with multiple concurrent conversations don't cross-talk.
-   */
   conversePlans: Map<string, ConverseMockStep[]> = new Map();
   converseCursors: Map<string, number> = new Map();
-  /**
-   * Per-(model, flow) cache-state tracking used by `call()` to simulate
-   * prompt-cache write-on-first-turn + read-on-subsequent-turns semantics.
-   * Real providers report `cache_creation_tokens` the first time a stable
-   * block lands and `cache_read_tokens` on every reuse; the mock mirrors
-   * that shape so tests can assert the accounting without needing a live
-   * provider.
-   */
   cacheSeenKey: Set<string> = new Set();
-  /** One-shot guard so the critic_authoring default-pass warning fires
-   *  at most once per process. Reset alongside the rest of the mock
-   *  state in `reset()` so per-test isolation still works. */
   defaultCriticPassWarned = false;
-  /** Same one-shot guard for the preview-judge default pass. */
   defaultJudgePassWarned = false;
 
   reset(): void {
@@ -136,7 +85,6 @@ class MockProvider {
     }
     switch (flow) {
       case "generate": {
-        // Synthesize a small WorkflowDef draft grounded in the user ask.
         const slug =
           lastUser
             .toLowerCase()
@@ -166,7 +114,6 @@ class MockProvider {
         return { text: JSON.stringify(obj), object: obj };
       }
       case "extract": {
-        // Canned schema + data for the sample.
         const obj = {
           schema: {
             fields: [
@@ -179,9 +126,6 @@ class MockProvider {
         return { text: JSON.stringify(obj), object: obj };
       }
       case "repair": {
-        // Canned PatchProposal. Shape matches PatchProposalSchema so the
-        // real-provider code path (`generateObject` with the schema)
-        // sees the same envelope as the mock short-circuit.
         const obj = {
           classification: "safe" as const,
           kind: "update_field_path" as const,
@@ -192,16 +136,10 @@ class MockProvider {
         return { text: JSON.stringify(obj), object: obj };
       }
       case "converse": {
-        // The loop reads `nextConverseStep()` directly after the
-        // provider call to pull the next planned tool call — this
-        // canned branch just acknowledges. Older single-turn tests
-        // relied on this shape so we preserve it.
         const text = `Acknowledged: ${lastUser.slice(0, 200)}. (mock)`;
         return { text, object: { text } };
       }
       case "discover": {
-        // Canned DiscoverEnvelope so generateObject returns a real
-        // object even when LLM_PROVIDER=mock.
         const obj = {
           artifacts: [
             {
@@ -222,13 +160,6 @@ class MockProvider {
         return { text, object: { summary: text } };
       }
       case "critic_authoring": {
-        // Default: pass with no repairs. Tests that exercise critic
-        // behaviour install an override via
-        // `generateOverrides.critic_authoring`. Without that, a test
-        // that intended to assert on the critic silently sees a pass —
-        // emit a one-time `logger.warn` the first time the default
-        // fires per process so missed overrides surface in CI output.
-        // Real-LLM code never hits this branch.
         if (!this.defaultCriticPassWarned) {
           this.defaultCriticPassWarned = true;
           logger.warn({
@@ -245,11 +176,6 @@ class MockProvider {
         return { text: JSON.stringify(obj), object: obj };
       }
       case "judge": {
-        // Default: passes. Tests that exercise judge behaviour install
-        // an override via `generateOverrides.judge`. Mirrors the
-        // critic_authoring default-pass pattern, including the one-time
-        // warn so a missed override surfaces in CI output instead of
-        // silently reading as a passing verdict.
         if (!this.defaultJudgePassWarned) {
           this.defaultJudgePassWarned = true;
           logger.warn({
@@ -273,7 +199,6 @@ class MockProvider {
   private maybeFail(model: string, prompt: EnhancedPrompt): void {
     const fail = this.failureByModel.get(model);
     if (!fail) return;
-    // Consume — fail fires exactly once so fallback tests are simple.
     this.failureByModel.delete(model);
     if (fail === "rate_limit") {
       throw new LlmProviderError("rate_limit", `mock: rate limit on ${model}`);
@@ -315,12 +240,6 @@ class MockProvider {
     const canned = this.canned(args.flow, lastUser);
     const completion_tokens = Math.max(16, Math.min(400, Math.floor(canned.text.length / 4)));
 
-    // Simulate Anthropic-style prompt-cache accounting. First call for a
-    // given (model, flow) with cache enabled and a non-trivial stable
-    // block produces `cache_creation_tokens`; subsequent calls produce
-    // `cache_read_tokens` covering the same stable span. Tests asserting
-    // cache hit rate use `LLM_PROVIDER=mock` + `enable_prompt_cache=true`
-    // and read the recorded metric.
     const stableTokens = Math.max(0, Math.floor(args.prompt.token_counts.system / 2));
     let cache_creation_tokens = 0;
     let cache_read_tokens = 0;
@@ -351,20 +270,10 @@ export function getMockProvider(): MockProvider {
   return singleton;
 }
 
-/**
- * Canned "list users" plan — the loop walks through this sequence when
- * the user asks to list users from an API. Covers author (via
- * edit_workflow_patch, the whole-draft editor) → validate_draft →
- * ask_user_confirm → save_workflow_draft. The preview step runs a pure
- * transform over sample input so the commit gate stays deterministic in
- * hermetic CI.
- */
 export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
     { tool: "fetch_connector_docs", args: { query: "users" } },
-    // Assemble the whole draft in one edit_workflow_patch call: name +
-    // slug + the request/transform steps.
     {
       tool: "edit_workflow_patch",
       args: {
@@ -398,9 +307,6 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
     },
     { tool: "inspect_workflow_draft", args: {} },
     { tool: "validate_draft", args: {} },
-    // Preview a pure transform step before asking for commit approval.
-    // This keeps the authoring loop deterministic even when request
-    // endpoints are unreachable in CI.
     {
       tool: "dry_run_step",
       args: {
@@ -421,29 +327,14 @@ export function cannedListUsersPlan(connector_id?: string): ConverseMockStep[] {
         summary: "commit 2-step workflow",
       },
     },
-    // Resume after the user answers. No confirm marker exists on any tool
-    // schema: the resolved `ask_user_confirm` IS the durable approval
-    // `findPriorSaveWorkflowApproval` matches, so the post-rebuild tool-policy
-    // gate proceeds without pausing a second time.
     { tool: "save_workflow_draft", args: {} },
   ];
 }
 
-/**
- * Canned "list my private GitHub repos" authoring plan. Assembles a
- * `request` step against the GitHub connector plus a tail transform in
- * one edit_workflow_patch call, validates, dry-runs on a fixture
- * payload, asks for save confirmation, then commits. The dry-run input
- * is sealed in-plan so hermetic CI never reaches out to api.github.com.
- */
 export function cannedListPrivateGithubReposPlan(connector_id?: string): ConverseMockStep[] {
   return [
     { tool: "list_skills", args: {} },
     { tool: "fetch_connector_docs", args: { query: "github private repos" } },
-    // Tail transform so the auto-commit preview targets a pure transform
-    // rather than the live HTTP request — mirrors cannedListUsersPlan.
-    // The shape is what an operator typically asks for: a slim repo
-    // summary rather than the raw GitHub envelope.
     {
       tool: "edit_workflow_patch",
       args: {
@@ -508,15 +399,6 @@ export function resetMockProvider(): void {
   singleton.reset();
 }
 
-/**
- * Canned "open-meteo weather" authoring plan. Drives the conversation
- * loop through: get_engine_status → list_connectors → start_connector_from_description
- * → edit_workflow_patch (Berlin forecast) → validate_draft → ask_user_confirm
- * → save_workflow_draft. Intentionally grounded in the open-meteo forecast
- * endpoint which needs no API key:
- *   https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&daily=temperature_2m_max,temperature_2m_min&forecast_days=2
- * The final step filters tomorrow's row via a transform step.
- */
 export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
   return [
     { tool: "get_engine_status", args: {} },
@@ -568,8 +450,6 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
       },
     },
     { tool: "validate_draft", args: {} },
-    // Preview the transform output over the forecast scope so save_workflow_draft
-    // clears the preview-before-commit gate.
     { tool: "dry_run_step", args: { step_id: "tomorrow-only" } },
     {
       tool: "ask_user_confirm",
@@ -579,11 +459,6 @@ export function cannedOpenMeteoBerlinPlan(): ConverseMockStep[] {
         summary: "commit weather workflow",
       },
     },
-    // After the operator confirms (test-side or canned), the resolved
-    // ask_user_confirm is the durable approval the save path's prior-approval
-    // predicate matches, so the post-rebuild tool-policy gate does NOT pause
-    // again — otherwise turn-2 resume tests sit in awaiting_input forever
-    // waiting on a phantom second confirm.
     { tool: "save_workflow_draft", args: {} },
   ];
 }
@@ -605,9 +480,6 @@ export function cannedConnectorWorkflowPlan(baseUrl: string): ConverseMockStep[]
     { tool: "validate_connector_draft", args: {} },
     { tool: "probe_connector_draft", args: { method: "GET", path: "/health" } },
     { tool: "inspect_connector_draft", args: {} },
-    // One call. It pauses on the policy gate's ask_user_confirm, whose
-    // commit_intent the harness dispatches on approve — the model does not, and
-    // cannot, re-issue it.
     { tool: "save_connector_draft", args: {} },
     {
       tool: "edit_workflow_patch",

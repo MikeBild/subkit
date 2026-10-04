@@ -1,20 +1,3 @@
-// Edge-case lint for individual tool inputs that have historically
-// or could plausibly produce surprising JSON-Schema output:
-//
-//   - z.discriminatedUnion (edit_workflow_patch.PatchOp) → must be
-//     wrapped in an object so the root stays type:"object"
-//   - z.record (suggest_jsonata_paths step_config-like, build_workflow.input_schema)
-//     → must NOT collapse into additionalProperties:any losing required fields
-//   - z.unknown / z.any → MUST appear inside an object property,
-//     never at the root
-//   - z.never / fields that should be impossible to reach
-//   - very large enum lists should pass-through cleanly
-//   - default values shouldn't exclude the field from `properties`
-//
-// This test suite picks specific tools known to exercise each case
-// and asserts the precise shape rather than the general pattern, so
-// a future refactor that swaps schema types breaks loudly.
-
 import { describe, expect, test } from "bun:test";
 import type { ZodType } from "zod";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
@@ -40,7 +23,6 @@ describe("input-schema edge cases · per tool", () => {
     expect(j.anyOf).toBeUndefined();
     expect(j.oneOf).toBeUndefined();
     const props = j.properties as Record<string, unknown>;
-    // Both modes' fields are reachable from the root.
     expect(props.mode).toBeDefined();
     expect(props.actor_id).toBeDefined();
     expect(props.expression).toBeDefined();
@@ -99,7 +81,6 @@ describe("input-schema edge cases · per tool", () => {
       const props = j.properties as Record<string, unknown>;
       expect(props.query).toBeDefined();
       expect(props.limit).toBeDefined();
-      // query is optional → should NOT appear in required
       const req = (j.required ?? []) as string[];
       expect(req).not.toContain("query");
     }

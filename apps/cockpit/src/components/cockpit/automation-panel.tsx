@@ -49,7 +49,6 @@ import {
 } from "@/lib/workflow-strip";
 import { isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
 
-/** The words of a catalogue label, machine value or not. */
 const catalogText = (label: { text: string }) => label.text;
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
@@ -58,36 +57,24 @@ const REFRESH_MS = AUTOMATION_REFRESH_MS;
 
 export interface WorkflowAutomation {
   workflowId: string;
-  /** Null until the reads it rests on have answered. */
   state: AutomationState | null;
-  /** The approvals could not be read — the state would be a guess. */
   failed: boolean;
   retry: () => void;
   diagnosis: WorkflowDiagnosis | null;
-  /** The versions this page can name by number. */
   versions: ReadonlyMap<string, number>;
   now: number;
   canWrite: boolean;
   canRun: boolean;
   canChat: boolean;
   history: { hasMore: boolean; loading: boolean; more: () => void };
-  /** Opens the approval dialog; every caller opens the same one. */
   openGrant: () => void;
   grantRequest: number;
   resume: { pending: boolean; failed: boolean; run: (scheduleIds: readonly string[]) => void };
-  /** The steps whose computed repair was refused: only an author can change them now. */
   rejectedRepairs: readonly string[];
   noteRejectedRepair: (stepId: string) => void;
-  /** Re-reads everything the state rests on, after it was changed. */
   refresh: () => void;
 }
 
-/**
- * The reads behind a workflow's automation state, and the one decision made
- * from them (`lib/automation-state.ts`). Called once per page: the panel
- * shows the state and carries its action, and whatever else on the page speaks
- * about the state reads this object instead of deciding again.
- */
 export function useWorkflowAutomation(
   workflowId: string,
   workflow: AutomationWorkflow,
@@ -118,8 +105,6 @@ export function useWorkflowAutomation(
       apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`),
     refetchInterval: REFRESH_MS,
   });
-  // The verified answer needs `schedule:read`. Without it the state is decided
-  // from the schedules and approvals alone, never assumed to be fine.
   const mayReadStatus = permissions.includes("schedule:read");
   const status = useQuery({
     queryKey: ["workflow-automation-status", workflowId],
@@ -134,8 +119,6 @@ export function useWorkflowAutomation(
   const prepared =
     typeof workflow.draft_version_id === "string" &&
     workflow.draft_version_id !== workflow.current_version_id;
-  // Only for the number in the sentence — which version the approval judges is
-  // already decided by the record.
   const draft = useQuery({
     queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
     enabled: prepared,
@@ -145,8 +128,6 @@ export function useWorkflowAutomation(
       ),
   });
 
-  // An answer of another shape is a failed read, never an empty list: "no
-  // approvals" and "no schedules" are states the page acts on.
   const items = useMemo(() => {
     const pages = authorities.data?.pages;
     if (!pages || pages.some((page) => !Array.isArray(page?.items))) return null;
@@ -182,11 +163,7 @@ export function useWorkflowAutomation(
     ...workflowDiagnosisQuery(workflowId, environment),
     enabled: environment !== null && mayDiagnose,
   });
-  // A read that is never made is not one to wait for.
   const ready = settled && environment !== null && (!mayDiagnose || !diagnosis.isPending);
-  // A read that was made and did not answer — an error, or an answer of
-  // another shape — is not the same as one the reader may not make: the
-  // state then says "not verified" instead of deciding without it.
   const unanswered = {
     status: mayReadStatus && !status.isPending && verified === null,
     diagnosis:
@@ -198,8 +175,6 @@ export function useWorkflowAutomation(
   const decided = ready
     ? automationState({ ...inputs, diagnosis: diagnosis.data ?? null, unanswered })
     : null;
-  // The approval in force can lie behind the first page of newer ones; read on
-  // until it is found rather than say "approved" with nothing to show for it.
   const approvalOutOfSight =
     decided !== null && automationNeedsMoreApprovals(decided, Boolean(authorities.hasNextPage));
   const { fetchNextPage, isFetchingNextPage } = authorities;
@@ -263,7 +238,6 @@ function useEnvironmentWord() {
     t(environment === "prod" ? "authority.production" : "authority.development");
 }
 
-/** The facts beside the state word — what a reader decides by. */
 function useHeadline(state: AutomationState | null): string | null {
   const { t, dateTime } = useI18n();
   const environmentWord = useEnvironmentWord();
@@ -316,8 +290,6 @@ function useHeadline(state: AutomationState | null): string | null {
     case "invalid":
       return t("automation.headline.invalid");
     case "paused":
-      // Paused with nothing to resume: only a hook is stopped, and the engine
-      // has no act that switches one back on. Said, instead of a dead button.
       return state.primaryAction === null
         ? t("automation.hookOff")
         : t("automation.headline.paused");
@@ -330,7 +302,6 @@ function useHeadline(state: AutomationState | null): string | null {
   }
 }
 
-/** What starts the workflow on its own, as words — the summary of "Verwenden". */
 export function useTriggerWords(): (
   triggers: readonly AutomationTrigger[],
   hiddenHooks: number,
@@ -352,17 +323,11 @@ export function useTriggerWords(): (
   };
 }
 
-/**
- * The newest failed run of this workflow and an open repair — the two facts
- * beside the automation decision that the strip orders it against.
- */
 function useRunHealth(workflowId: string, health: string | null, permissions: readonly string[]) {
   const unhealthy = Boolean(health) && health !== "ok";
   const runs = useQuery({
     queryKey: ["workflow-latest-failed-run", workflowId],
     enabled: unhealthy && permissions.includes("execution:read"),
-    // The list filters by ONE status, and the engine counts three as failed
-    // (failed, timed_out, aborted): the newest twenty are read and judged here.
     queryFn: () =>
       apiRequest<ExecutionList>(
         `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&limit=20`,
@@ -383,7 +348,6 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
   };
 }
 
-/** The sentence a failing workflow's strip says: where its newest failed run stopped. */
 function useFailingLine(): (
   failure: { cause_class?: string | null; step_key?: string | null } | null,
   health: string,
@@ -399,7 +363,6 @@ function useFailingLine(): (
   };
 }
 
-/** The first connector this workflow uses whose sign-in is gone (R7). */
 export function useWaitingConnector(
   steps: readonly { connectorId: string | null; connector: string | null }[],
 ): WaitingConnector | null {
@@ -422,13 +385,6 @@ export function useWaitingConnector(
   return null;
 }
 
-/**
- * A workflow's state in one line (P3) — whether it is switched on, may run
- * on its own, waits for a connector, fails, or has a repair waiting — and the
- * one action of the top state (D15). The approval dialog it opens is mounted
- * here, once; the gate's own diagnosis stands right below it while a step is
- * refused (R5).
- */
 export function WorkflowStatus({
   automation,
   workflow,
@@ -442,9 +398,7 @@ export function WorkflowStatus({
   automation: WorkflowAutomation;
   workflow: AutomationWorkflow;
   workflowName: string;
-  /** The engine's run health of the workflow. */
   health: string | null;
-  /** The workflow is switched off. */
   disabled: boolean;
   lastRunAt: string | null;
   waitingConnector: WaitingConnector | null;
@@ -458,7 +412,6 @@ export function WorkflowStatus({
   const runHealth = useRunHealth(automation.workflowId, health, permissions);
   const failingLine = useFailingLine();
   const headline = useHeadline(state);
-  // Switched on at once; put back if the engine refuses.
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", automation.workflowId],
     mutationFn: () =>
@@ -483,8 +436,6 @@ export function WorkflowStatus({
     waitingConnector,
     rights: { write: automation.canWrite, chat: automation.canChat },
   });
-  // A link that names the strip lands on it. The browser's own jump happens
-  // before the record has loaded and the strip exists, so it is made here.
   const anchor = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (window.location.hash === `#${WORKFLOW_AUTOMATION_ANCHOR}`)
@@ -517,7 +468,6 @@ export function WorkflowStatus({
           ? t("automation.hookOff")
           : t("workflowStrip.line.paused");
       case "stopped":
-        // The environment that lost its approval — not always production.
         return t("workflowStrip.line.stopped", {
           environment: environmentWord(state?.environment ?? "prod"),
         });
@@ -654,8 +604,6 @@ export function WorkflowStatus({
           action={action ?? undefined}
         />
       </div>
-      {/* Why the gate holds it and what removes that — one row per refused
-          step, each with its own fix, right under the strip (R5). */}
       {state && !invalid && !disabled ? (
         <WorkflowGateDiagnosis
           workflowId={automation.workflowId}

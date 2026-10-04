@@ -1,7 +1,3 @@
-// Conversation test scaffolding. Each test file gets its own
-// disposable database, a seeded tenant + connector + skills + docs,
-// and the mock LLM provider wired in.
-
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,29 +18,11 @@ import { registerConversationAbort, unregisterConversationAbort } from "../abort
 import { type AnswerActor, MODEL_RELAYED_ANSWER } from "../answer-actor.ts";
 import * as svc from "../service.ts";
 
-/**
- * A unit test stands in for a person at a keyboard: `answer_actor` defaults to
- * the acting user, answering through the chat channel. Tests that assert the
- * relay contract (a model-driven resume grants nothing) pass `MODEL_RELAYED_ANSWER`
- * explicitly. The default lives HERE and nowhere in `src/` — every production
- * surface must state the channel itself or fail to compile.
- */
 function testAnswerActor(actor_id: string | null | undefined, override?: AnswerActor): AnswerActor {
   if (override) return override;
   return actor_id ? { kind: "human", user_id: actor_id, via: "chat" } : MODEL_RELAYED_ANSWER;
 }
 
-// ── Test helpers: create / append + drive the turn in one call ───────────────
-//
-// Production `createConversation` / `appendUserMessage` STOP after
-// persisting the user message row — the model loop runs separately via
-// `runConversationTurn` (inline on the HTTP/SSE route, or in the
-// `conversation.run-turn` worker for the MCP async-Tasks path). Most
-// unit tests want the old "call once, get the turn outcome" ergonomics;
-// these helpers compose the split + register an AbortController so the
-// test reads the `ConversationTurnOutcome` directly.
-
-/** create the conversation, persist the first message, run the turn. */
 export async function createConversationWithTurn(
   params: svc.CreateConversationParams &
     Pick<svc.RunConversationTurnParams, "onEvent" | "runtime_context" | "principal"> & {
@@ -80,7 +58,6 @@ export async function createConversationWithTurn(
   }
 }
 
-/** resolve an elicitation + resume the loop, with a registered abort controller. */
 export async function respondElicitationForTest(
   params: Omit<svc.RespondElicitationParams, "turn_abort_ctrl" | "answer_actor"> & {
     answer_actor?: AnswerActor;
@@ -102,7 +79,6 @@ export async function respondElicitationForTest(
   }
 }
 
-/** persist the appended message, run the turn. */
 export async function appendMessageWithTurn(
   params: svc.AppendMessageParams &
     Pick<
@@ -146,17 +122,11 @@ export async function appendMessageWithTurn(
   }
 }
 
-// Ensure the v3.5 config loader is bootstrapped so getConfig() calls
-// inside the conversation pipeline don't 500 with "called before
-// loadConfig()". Idempotent — running tests load config once per
-// process and subsequent calls no-op.
 async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not yet loaded — fall through.
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-conv-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/conv-test", NODE_ENV: "test" },

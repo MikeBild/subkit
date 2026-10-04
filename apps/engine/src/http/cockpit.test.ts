@@ -63,12 +63,6 @@ describe("cockpit browser boundary", () => {
   });
 
   test("serves the app icon under the cockpit base path, as an image", async () => {
-    // §6 of the family convention: the tab carries the same mark as the
-    // sidebar. What is measured here is the SERVING side of that promise,
-    // because the trap lives here and not in the bundle: every unknown path
-    // under /cockpit/ falls back to the SPA shell, so a wrong href answers 200
-    // with text/html and looks exactly like success. Status alone proves
-    // nothing — the content type is the assert that separates the two.
     const app = createOpenApiApp();
     registerCockpitRoutes(app);
 
@@ -81,8 +75,6 @@ describe("cockpit browser boundary", () => {
     expect(icon.headers.get("content-type")).toBe("image/svg+xml");
     expect(await icon.text()).toContain("<svg");
 
-    // The counter-example, pinned so nobody "fixes" the href by writing the
-    // base path into the source: this is what the doubled path really does.
     const doubled = await app.request("http://subkit.test/cockpit/cockpit/favicon.svg");
     expect(doubled.status).toBe(200);
     expect(doubled.headers.get("content-type")).toBe("text/html; charset=utf-8");
@@ -222,7 +214,6 @@ describe("cockpit browser boundary", () => {
     expect(accepted.status).toBe(302);
     expect(accepted.headers.get("location")).toStartWith("/v1/identity/login/start?login_state=");
 
-    // The start page's overlays live in its query: a run link is a cockpit page.
     const overlay = await app.request(
       `http://subkit.test/v1/identity/cockpit-login?return_to=${encodeURIComponent("/cockpit?run=abc")}`,
     );

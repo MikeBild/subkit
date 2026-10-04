@@ -1,18 +1,3 @@
-// User story: As an operator, I want execution failures to notify my on-call
-// channel with per-channel rate limits and a circuit breaker in front of
-// the adapter, so a misbehaving receiver can't drown the engine.
-// Acceptance criteria:
-//   - AC1: Create notification_channels + notification_rules matching
-//          `execution.failed`.
-//   - AC2: Register a fake chat adapter that records every call.
-//   - AC3: Emit a synthetic `execution.failed` via the outbox.
-//   - AC4: Assert adapter received exactly one call.
-//   - AC5: Fire 70 events in 1 s; assert the rate limiter dropped >=10.
-//   - AC6: Configure the receiver to always throw; 10 consecutive
-//          failures open the breaker; next delivery is skipped with
-//          `status: "circuit_open"`.
-// Spec refs: docs/operators/notifications.md, docs/operators/notifications.md
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ChatAdapter } from "../../chat/adapter.ts";
@@ -28,11 +13,6 @@ import { __resetRateLimiter } from "../../notifications/rate-limit.ts";
 import { dispatchEvent, type NotificationAdapter } from "../../notifications/service.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
-/**
- * Minimal `ChatAdapter` stub. Records every call so the test can count
- * deliveries and can flip behaviour mid-test to drive the circuit
- * breaker open. No real Slack/Teams/Google adapter is touched.
- */
 class RecordingAdapter implements ChatAdapter {
   readonly platform = "slack" as const;
   readonly sends: ChatDelivery[] = [];
@@ -150,7 +130,6 @@ describe("journey 17: notifications rules", () => {
     await seedChannelAndRule({
       workspace: "W_RATE",
       channel: "C_BURST",
-      // Default capacity of 60 tokens per minute matches the rule.
       rate_limit_per_minute: 60,
     });
 
@@ -165,8 +144,6 @@ describe("journey 17: notifications rules", () => {
         {
           db: ctx.db,
           resolveAdapter: () => adapter as unknown as NotificationAdapter,
-          // Pin `now` so refill math can't accidentally leak tokens
-          // into the window under test.
           now: () => t0,
         },
         syntheticFailureEvent(),
@@ -196,8 +173,6 @@ describe("journey 17: notifications rules", () => {
     const adapter = new RecordingAdapter();
     adapter.mode = "throw";
 
-    // Drive FAILURE_THRESHOLD back-to-back failures. Every outcome
-    // should be `failed` until the breaker opens.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const t0 = Date.now();
     for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
@@ -219,9 +194,6 @@ describe("journey 17: notifications rules", () => {
     expect(channel?.circuit_state).toBe("open");
     expect(channel?.consecutive_failures).toBe(FAILURE_THRESHOLD);
 
-    // Next dispatch is gated by the breaker and must not reach the
-    // adapter even though `mode` is still `throw`. Stop forcing
-    // failures so we can prove the skip comes from the breaker.
     adapter.mode = "ok";
     const sentBefore = adapter.sends.length;
     const blocked = await dispatchEvent(

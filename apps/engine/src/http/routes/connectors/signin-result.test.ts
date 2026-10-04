@@ -1,7 +1,3 @@
-// The page a person reads when a connector sign-in comes back from outside
-// the product. It says what is the case — and only names the surface the
-// person actually came from.
-
 import { describe, expect, test } from "bun:test";
 import { renderResultPage } from "../oauth/ui.ts";
 import { signedInPage, signInFailedPage } from "./signin-result.ts";
@@ -79,7 +75,6 @@ describe("signedInPage", () => {
       href: BACKLINK,
       label: "Open the connector",
     });
-    // A Cockpit flow that could not be redirected is going BACK there.
     expect(signedInPage("de", "cockpit", FACTS, BACKLINK).link?.label).toBe("Zurück zum Konnektor");
   });
 });

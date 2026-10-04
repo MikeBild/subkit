@@ -1,24 +1,4 @@
 #!/usr/bin/env bun
-// One command from nothing to a green execution.
-//
-// `bun run start:local` starts the Compose stack, completes first-run setup
-// without asking a single question, runs one of the seeded starter workflows,
-// and prints the Cockpit URL. It is the zero-config path a newcomer follows;
-// `docker compose up -d` plus the interactive wizard remains the explicit path
-// for an operator who wants to make each choice themselves.
-//
-// Why it exists: a baseline run on 2026-09-02, from a fresh machine with no
-// repository access, needed 31 steps and about 40 minutes to reach a first
-// execution. Three of the detours are removed here — setup no longer prompts
-// when it was told not to, the bootstrap key no longer has to be scraped out of
-// the container logs, and the fresh tenant is no longer empty.
-//
-// Idempotent. A second run reuses the existing .env, skips setup that is
-// already complete, and runs the demo workflow again.
-//
-// Flags:
-//   --skip-run   provision only; do not execute the demo workflow
-//   --quiet      only print the final summary
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -35,8 +15,6 @@ import {
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const ENV_FILE = join(ROOT, ".env");
-// Exported so a contract test can hold them against docker-compose.yml and the
-// seeded starter workflows without executing this script.
 export const COMPOSE_SERVICE = "engine";
 export const DEMO_WORKFLOW = "demo-httpbin-echo";
 export const DEFAULT_HOST_PORT = "3000";
@@ -63,7 +41,6 @@ function run(cmd: string, argv: string[], opts: { capture?: boolean } = {}) {
   });
 }
 
-/** Read one assignment out of .env without printing the value anywhere. */
 function envValue(name: string): string {
   if (!existsSync(ENV_FILE)) return "";
   for (const line of readFileSync(ENV_FILE, "utf8").split("\n")) {
@@ -78,21 +55,6 @@ function requireDocker(): void {
   }
 }
 
-/**
- * The engine mints a one-time bootstrap token at first boot and prints it in a
- * banner. Scripting against a log banner is brittle, so pin the value up front:
- * SUBKIT_BOOTSTRAP_KEY makes the engine adopt this token instead of generating
- * one, and docker-compose.yml passes it through when it is set.
- *
- * Deliberately NOT written to .env. Bun loads that file into process.env for
- * every `bun test` run in this repository, and a fixed bootstrap key there
- * makes the engine mint the same token twice — which fails the test that
- * asserts a re-minted token differs from the expired one. A value that only
- * this process and its compose child can see has no such reach.
- *
- * A fresh value per run is fine: the token matters only for a database that has
- * never completed setup, and on a second run setup is already done.
- */
 function newBootstrapKey(): string {
   return randomBytes(32).toString("hex");
 }
@@ -124,9 +86,6 @@ function composeExec(argv: string[], opts: { capture?: boolean } = {}) {
 async function main(): Promise<void> {
   requireDocker();
 
-  // ensure-env.sh creates .env from .env.example with a generated MASTER_KEY
-  // and stamps the version; compose:up calls it. Call it first so the
-  // bootstrap key can be appended to a file that already exists.
   say("→ preparing .env");
   if (run("sh", ["scripts/ensure-env.sh"], { capture: true }).status !== 0) {
     fail("scripts/ensure-env.sh failed");
@@ -147,13 +106,6 @@ async function main(): Promise<void> {
   await waitForReady(port);
 
   say("→ completing first-run setup");
-  // Every field is passed explicitly rather than via `sk init --defaults`.
-  // The `sk` this execs is the one baked into the pinned engine image, which is
-  // always at least one release behind this source tree — a script that depended
-  // on a flag added here would fail until the next image ships, and it would
-  // fail by dropping into an interactive prompt, which reads as a hang.
-  // `--defaults` is the ergonomic form for a human; these four flags are the
-  // form that works on every version. Both read the same constants.
   const init = composeExec(
     [
       "sk",
@@ -179,9 +131,6 @@ async function main(): Promise<void> {
     process.stderr.write(initOutput);
     fail("sk init failed");
   }
-  // Print what setup said even on success. A step that works silently and a step
-  // that fails silently look identical, and this script exists precisely because
-  // that ambiguity cost a newcomer half an hour.
   if (!QUIET && initOutput.trim().length > 0) {
     process.stdout.write(
       initOutput
@@ -204,11 +153,6 @@ async function main(): Promise<void> {
       ranDemo = true;
       say("  execution succeeded");
     } else if (/no workflow found/i.test(execOutput)) {
-      // The starter workflows are seeded by the engine at setup. The image this
-      // stack runs is pinned and can predate that, in which case the tenant is
-      // simply empty — the stack itself is healthy and usable. Say so plainly
-      // instead of failing: a newcomer who sees a red error assumes the whole
-      // command failed, and it did not.
       say(
         `  this engine image has no starter workflows yet — the tenant is empty.\n` +
           `  Everything else is up; author one, or pull a newer image.`,

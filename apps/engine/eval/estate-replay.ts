@@ -103,12 +103,9 @@ export async function replayEstateCase(
     const newResult = await runJs({
       code: testCase.new_javascript.code,
       input: testCase.new_javascript.input ?? null,
-      // Equivalence-replay harness — no live execution instant, constant.
       clock: null,
     });
     const new_output = newResult.output;
-    // JSONata returns null-prototype records. Replay compares JSON values,
-    // not the host object prototypes of the two expression runtimes.
     const output_equal = isDeepStrictEqual(old_output, new_output, true);
     const side_effects_equal = testCase.side_effects
       ? isDeepStrictEqual(

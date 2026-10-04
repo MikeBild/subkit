@@ -1,15 +1,3 @@
-// Integration tests for stats route bucket-window validation via HTTP.
-//
-// Covers:
-//   - Window cap rejections for each bucket unit (400 + reason).
-//   - to <= from rejection (400 + reason).
-//   - Retention horizon: when `from` predates the oldest audit row,
-//     `truncated_at` is set on the connector/events response envelopes.
-//   - Retention horizon: when the entire window predates the oldest audit
-//     row, the endpoint returns 400 from_before_retention_horizon.
-//   - /v1/stats/executions and /v1/stats/llm (not audit-backed) do NOT
-//     clamp nor reject based on retention horizon.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/types.ts";
 import { auditLog } from "../../db/schema/index.ts";
@@ -21,12 +9,10 @@ const uuid = createDeterministicUuidFactory(0x02);
 
 let srv: HttpTestServer;
 
-// The oldest audit row we will seed.
 const OLDEST_AUDIT_TS = "2026-01-10T00:00:00.000Z";
 
 beforeAll(async () => {
   srv = await createHttpTestServer("stats-bucket-val");
-  // Seed one audit row so there is a retention horizon.
   await srv.db.insert(auditLog).values({
     id: uuid(),
     ts: new Date(OLDEST_AUDIT_TS),
@@ -49,10 +35,7 @@ function authedFetch(path: string): Promise<Response> {
   });
 }
 
-// ---- Window-cap rejections (400 + details.reason=bucket_window_too_large) ---
-
 describe("window cap rejections", () => {
-  // We use the connectors route as the HTTP vehicle; the caps apply to all routes.
   const cases: Array<[string, number]> = [
     ["minute", WINDOW_CAP_MS.minute + 1],
     ["hour", WINDOW_CAP_MS.hour + 1],
@@ -77,8 +60,6 @@ describe("window cap rejections", () => {
   }
 });
 
-// ---- to <= from (400 window_empty) -----------------------------------------
-
 describe("to <= from rejection", () => {
   const TS = "2026-01-15T12:00:00.000Z";
 
@@ -99,13 +80,10 @@ describe("to <= from rejection", () => {
   });
 });
 
-// ---- Retention horizon (audit-backed routes: /connectors, /events) ---------
-
 describe("retention horizon — truncated_at", () => {
-  // from is before OLDEST_AUDIT_TS but to is after it → should clamp and set truncated_at.
   test("/v1/stats/connectors with from before oldest audit row sets truncated_at", async () => {
-    const fromBefore = "2026-01-05T00:00:00.000Z"; // before OLDEST_AUDIT_TS
-    const toAfter = "2026-01-15T00:00:00.000Z"; // after OLDEST_AUDIT_TS
+    const fromBefore = "2026-01-05T00:00:00.000Z";
+    const toAfter = "2026-01-15T00:00:00.000Z";
     const res = await authedFetch(
       `/v1/stats/connectors?bucket=hour&from=${encodeURIComponent(fromBefore)}&to=${encodeURIComponent(toAfter)}`,
     );
@@ -113,7 +91,6 @@ describe("retention horizon — truncated_at", () => {
     const body = (await res.json()) as { truncated_at?: string; from: string };
     expect(body.truncated_at).toBeDefined();
     expect(body.truncated_at).toBe(new Date(OLDEST_AUDIT_TS).toISOString());
-    // The envelope `from` is clamped to the oldest audit row.
     expect(body.from).toBe(new Date(OLDEST_AUDIT_TS).toISOString());
   });
 
@@ -129,7 +106,6 @@ describe("retention horizon — truncated_at", () => {
   });
 
   test("/v1/stats/executions does NOT use retention horizon (no truncated_at)", async () => {
-    // Even with from well before any data, executions should 200 with no truncated_at.
     const fromBefore = "2026-01-01T00:00:00.000Z";
     const toAfter = "2026-01-15T00:00:00.000Z";
     const res = await authedFetch(
@@ -153,13 +129,10 @@ describe("retention horizon — truncated_at", () => {
 });
 
 describe("retention horizon — from_before_retention_horizon", () => {
-  // When the entire window predates the oldest audit row, expect 400.
   test("/v1/stats/connectors with window entirely before oldest audit row → 400", async () => {
-    const fromWayBefore = "2026-01-01T00:00:00.000Z"; // before OLDEST_AUDIT_TS
-    const toBeforeOldest = "2026-01-08T00:00:00.000Z"; // also before OLDEST_AUDIT_TS
+    const fromWayBefore = "2026-01-01T00:00:00.000Z";
+    const toBeforeOldest = "2026-01-08T00:00:00.000Z";
 
-    // This window is 7 days; use bucket=day which caps at 366 days, so the
-    // window cap itself is not the blocker.
     const res = await authedFetch(
       `/v1/stats/connectors?bucket=day&from=${encodeURIComponent(fromWayBefore)}&to=${encodeURIComponent(toBeforeOldest)}`,
     );
@@ -168,8 +141,6 @@ describe("retention horizon — from_before_retention_horizon", () => {
     expect(body.code).toBe("bad_request");
   });
 });
-
-// ---- Response envelope shape integrity -------------------------------------
 
 describe("response envelope shape", () => {
   const validWin = "bucket=hour&from=2026-01-15T06:00:00.000Z&to=2026-01-15T12:00:00.000Z";
@@ -194,13 +165,6 @@ describe("response envelope shape", () => {
     expect(body.totals).toBeDefined();
   });
 });
-
-// ---- group_by validation on /v1/stats/llm ----------------------------------
-//
-// The aggregator groups by at most two dimensions. The route used to filter
-// silently: a third dimension and an unrecognised name both disappeared, and
-// the response said nothing about it. These pin the refusal instead — the same
-// contract /v1/stats/usage has always had.
 
 describe("/v1/stats/llm group_by validation", () => {
   const win = "bucket=day&from=2026-01-10T00:00:00.000Z&to=2026-01-15T00:00:00.000Z";

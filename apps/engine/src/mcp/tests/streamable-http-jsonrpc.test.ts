@@ -1,9 +1,3 @@
-// Streamable HTTP JSON-RPC discipline.
-//
-// These tests pin the raw wire behavior for parser errors, unknown methods,
-// invalid params, ping, and batch requests. SDK clients hide most of these
-// details behind exceptions; compliance needs the HTTP/SSE envelope itself.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 

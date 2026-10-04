@@ -1,11 +1,3 @@
-// Which conversations the dormant-title sweep is allowed to rename.
-//
-// The sweep runs a model over rows a person may have named by hand, so its
-// selection rule is the whole safety story. That rule is a pure function and is
-// tested as one. The walk around it gets two ticks and no more — enough to make
-// the keyset cursor run, few enough that this suite is not paging through a
-// table while its neighbours wait for a connection.
-
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { deriveConversationTitle } from "../../conversations/title.ts";
@@ -79,11 +71,6 @@ describe("isStillOpeningLine", () => {
   });
 });
 
-// The walk itself, twice, so the keyset branch actually runs.
-//
-// The first tick returns every seeded row and leaves a cursor; the second has
-// to use that cursor, which is where the composite `(updated_at, id) <` lives.
-// A malformed predicate fails here rather than silently on an installation.
 describe("runConversationTitleSweep — the walk", () => {
   test("a completed v3 walk does not suppress the repaired v4 walk", async () => {
     await srv.db
@@ -172,9 +159,6 @@ describe("runConversationTitleSweep — the walk", () => {
   }, 60_000);
 });
 
-// The form that reached production: titles written before the excerpt helper
-// stopped at a word boundary were cut mid-word at the same length. The first
-// walk skipped every one of them and reported itself complete.
 describe("isStillOpeningLine — the older clip", () => {
   const LONG =
     "Erstelle den Workflow guard-probe-replay (slug: guard-probe-replay). Ein transformierender Schritt.";

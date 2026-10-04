@@ -1,12 +1,3 @@
-// Global per-test-process HOME isolation.
-//
-// Wired from the repo-root `bunfig.toml` `[test] preload` so every
-// `bun test` worker — engine + sk + packages — starts with HOME pointed
-// at a unique tempdir. The redirection is safe for engine tests because
-// production engine code never reads `homedir()` / `process.env.HOME`
-// (verified with `grep -r 'homedir()|process.env.HOME' apps/engine/src`).
-// That invariant is pinned by the `engine_homedir_absent` check in
-// `apps/engine/scripts/audit-invariants.ts` — a future engine feature
 // that legitimately needs HOME must add `// homedir-allowed: <reason>`
 // AND consider whether the preload still covers its test surface.
 // Note: this preload also affects `packages/*` test runs. If a future
@@ -34,6 +25,4 @@ import { join } from "node:path";
 
 const SK_HOME = mkdtempSync(join(tmpdir(), "sk-test-home-"));
 process.env.HOME = SK_HOME;
-// Some macOS bun builds resolve homedir() from USERPROFILE first; cover
-// both for safety. The cost is one extra env write per process.
 process.env.USERPROFILE = SK_HOME;

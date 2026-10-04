@@ -52,8 +52,6 @@ describe("planUtf8EncoderFix", () => {
   });
 
   test("anything less exact is left to the author", () => {
-    // Two encoders, a template around the reference, a lookalike identifier,
-    // a non-JavaScript transform.
     expect(planUtf8EncoderFix(dag(`${ENCODE}\nsk.base64UrlEncode(x);`), "send")).toBeNull();
     // biome-ignore lint/suspicious/noTemplateCurlyInString: an authored workflow placeholder
     expect(planUtf8EncoderFix(dag(ENCODE, "x${scope.compose.data.raw}"), "send")).toBeNull();

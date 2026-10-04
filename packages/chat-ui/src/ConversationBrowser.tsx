@@ -1,10 +1,3 @@
-// Modal browser for picking a past conversation to resume.
-//
-// Rendered by the host when the user hits `/resume`. Arrow keys
-// navigate the list, Enter selects, Esc dismisses. The list is
-// host-provided (the engine returns it) so we don't have to know
-// anything about how conversations are fetched or paginated.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useMemo, useState } from "react";
@@ -23,13 +16,6 @@ export interface ConversationItem {
 export interface AssistantTurnRef {
   message_id: string;
   excerpt: string;
-  /**
-   * Nullable so the host can encode "engine-side timestamp not
-   * propagated yet" explicitly rather than smuggling that meaning
-   * through the empty string. The renderer falls back to an em-dash
-   * for both `null` and `""`; new call sites should prefer `null`
-   * for "missing".
-   */
   created_at: string | null;
 }
 
@@ -39,11 +25,6 @@ export interface ConversationBrowserProps {
   onDismiss?: () => void;
   title?: string;
   inputDisabled?: boolean;
-  /**
-   * When supplied, the rewind sub-mode shows a real assistant-turn
-   * timeline and lets the operator fork a new conversation from any
-   * prior turn.
-   */
   currentTurns?: readonly AssistantTurnRef[];
   onForkFromTurn?: (message_id: string) => void;
 }
@@ -92,10 +73,6 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
   const theme = useTheme();
   const [focused, setFocused] = useState(0);
   const [filter, setFilter] = useState("");
-  // `t` toggles between the session-list view and the current-session
-  // turn-timeline. When `currentTurns` is provided, the timeline
-  // lists each assistant turn; selecting one calls `onForkFromTurn`
-  // which posts to the engine fork-from-message route.
   const [view, setView] = useState<"list" | "turns">("list");
   const [turnIdx, setTurnIdx] = useState(0);
 
@@ -112,8 +89,6 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
 
   useInput(
     (ch, key) => {
-      // Single-char `t` toggles the rewind view BEFORE the filter input
-      // captures it; only react on a one-char input outside the filter.
       if (ch === "t" && filter.length === 0) {
         setView((v) => (v === "list" ? "turns" : "list"));
         return;
@@ -148,9 +123,6 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
         setFilter((f) => f.slice(0, -1));
         return;
       }
-      // Accept multi-char chunks too (ink-testing-library batches
-      // sequential writes into a single `input` event); filter out
-      // control-byte noise so Esc / Enter / arrow keys don't leak in.
       if (
         ch &&
         ch.length > 0 &&
@@ -199,11 +171,6 @@ export const ConversationBrowser: React.FC<ConversationBrowserProps> = ({
                     </Text>
                   </Box>
                   <Box marginLeft={2}>
-                    {/* Empty `created_at` renders as `—` rather than
-                        fabricating a relative time. The CLI doesn't
-                        currently propagate the engine-side timestamp
-                        through MessageState; falsified "moments ago"
-                        labels would be worse than honest dashes. */}
                     <Text color={theme.severity.dim}>
                       {turn.created_at ? formatRelativeTime(turn.created_at) : "—"}
                     </Text>

@@ -1,16 +1,3 @@
-// Locks the chat-native workflow metadata patch contract:
-//
-//   - update_workflow with name only changes the display name
-//   - update_workflow with slug renames in place; slug uniqueness
-//     is enforced; collisions return slug_conflict_with_live_workflow
-//   - update_workflow with lifecycle archives in place
-//   - audit emits WORKFLOW_UPDATED with metadata.kind="metadata"
-//     plus from/to snapshots — no new audit-action enum entry.
-//
-// subkit's chat-first contract requires rename + lifecycle ops to be
-// reachable as a chat tool, not only as HTTP datastore ops. See
-// `apps/engine/src/conversations/tools/engine-api/writes/update-workflow.ts`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog, conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -115,9 +102,6 @@ function buildToolCtx(params?: {
           tenant_id: ctx.tenant_id,
           actor_type: "user",
           actor_id: ctx.user_id,
-          // Funnel the test stub's free-form action into the existing
-          // WORKFLOW_UPDATED action — the production audit_write helper
-          // does the same mapping; we keep tests within the typed enum.
           action: AuditAction.WORKFLOW_UPDATED,
           resource_type: String(entry.resource_type),
           resource_id: String(entry.resource_id),
@@ -164,7 +148,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(data.workflow.slug).toBe("fresh-slug-rn");
     expect(data.workflow.name).toBe("Fresh Name");
 
-    // The workflow row was patched in place — id unchanged.
     const refetched = await ctx.testDb.db
       .select({ slug: workflows.slug, name: workflows.name })
       .from(workflows)
@@ -173,14 +156,12 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(refetched[0]?.slug).toBe("fresh-slug-rn");
     expect(refetched[0]?.name).toBe("Fresh Name");
 
-    // No new workflow_versions row was added (metadata-only patch).
     const vrows = await ctx.testDb.db
       .select({ version: workflowVersions.version })
       .from(workflowVersions)
       .where(eq(workflowVersions.workflow_id, wf.id));
     expect(vrows.length).toBe(1);
 
-    // Audit emits WORKFLOW_UPDATED with metadata.kind="metadata".
     const auditRows = await ctx.testDb.db
       .select({ action: auditLog.action, metadata: auditLog.metadata })
       .from(auditLog)
@@ -216,7 +197,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     expect(data.error).toBe("slug_conflict_with_live_workflow");
     expect(data.conflict?.workflow_id).toBe(taken.id);
 
-    // The target workflow was NOT mutated.
     const refetched = await ctx.testDb.db
       .select({ slug: workflows.slug })
       .from(workflows)
@@ -303,8 +283,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
   test("rejects an empty patch (no slug, name, description, or lifecycle)", async () => {
     const wf = await seedLiveWorkflow("empty-patch-uw", "Untouched");
 
-    // The Zod refinement is enforced at the dispatch boundary, not inside
-    // `execute` — the executor no longer re-parses its own input.
     const parsed = updateWorkflowTool.inputSchema.safeParse({ id: wf.id });
     expect(parsed.success).toBe(false);
     if (!parsed.success) {
@@ -328,7 +306,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     const data = result.data as { workflow: { description: string | null } };
     expect(data.workflow.description).toBe(richDescription);
 
-    // Persisted to the column, not the DAG, and no new version row.
     const refetched = await ctx.testDb.db
       .select({ description: workflows.description })
       .from(workflows)
@@ -341,9 +318,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
       .where(eq(workflowVersions.workflow_id, wf.id));
     expect(vrows.length).toBe(1);
 
-    // The `wf_<slug>` catalog now surfaces the column description (not the
-    // bland name) — this is the regression the live `update_workflow`
-    // repair-loop produced.
     const { listWorkflowToolsForTenant } = await import("../../workflows/catalog.ts");
     const catalog = await listWorkflowToolsForTenant({
       db: ctx.testDb.db,
@@ -353,7 +327,6 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     const entry = catalog.find((c) => c.slug === "describe-me-uw");
     expect(entry?.description).toBe(richDescription);
 
-    // Audit from/to carries the description transition.
     const auditRows = await ctx.testDb.db
       .select({ action: auditLog.action, metadata: auditLog.metadata })
       .from(auditLog)

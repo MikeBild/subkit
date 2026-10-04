@@ -1,10 +1,3 @@
-// POST /v1/ai/generate — natural-language workflow draft.
-//
-// Body: { description, connector_id?, workflow_id?, preview? }
-// Query: ?stream=1 → SSE frames with partial JSON chunks (v1 emits 3–4
-//   frames lifted from the returned draft; the real streamObject wiring
-//   from the SDK drops in at the same seam in a later iteration).
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -60,17 +53,11 @@ function shouldStream(q: { stream?: string | undefined }): boolean {
 }
 
 export function registerAiGenerateRoute(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gate runs ahead of the SSE-detection middleware so both the
-  // streaming and JSON shapes share the same permission check.
   app.use("/v1/ai/generate", async (c, next) => {
     if (c.req.method !== "POST") return next();
     return requirePermission("workflow:write")(c, next);
   });
 
-  // SSE streaming variant is wired as a path-scoped middleware that
-  // only claims the request when `?stream=1`. Otherwise it yields to
-  // the openapi JSON handler below. This keeps both shapes behind the
-  // same URL.
   app.use("/v1/ai/generate", async (c, next) => {
     if (c.req.method !== "POST") return next();
     const url = new URL(c.req.url);
@@ -127,8 +114,6 @@ export function registerAiGenerateRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
     const q = c.req.valid("query");
-    // Stream requests are handled by the raw post handler above; when
-    // the openapi handler fires we know stream is disabled.
     void shouldStream(q);
     const result = await runGenerateFlow(
       {

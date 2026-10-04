@@ -81,8 +81,6 @@ describe("validateWorkflowDef — item_var rejection", () => {
       steps: [
         baseSteps[0],
         { id: "iter", kind: "loop", over: "get_numbers.data", body: ["double"] },
-        // bare `num` is unbound for definitions without item_var — the
-        // rule must flag the body as never referencing the item.
         { id: "double", kind: "transform", expression: "num * 2" },
       ],
     });
@@ -107,9 +105,6 @@ describe("validateWorkflowDef — item_var rejection", () => {
 });
 
 describe("validateBareIterationIdentifiers — authoring lint", () => {
-  // Transforms are JavaScript-only and exempt from this JSONata lint; the
-  // surviving JSONata slots a loop body can carry are `branch.when` and a
-  // nested `loop.over`, so the bare-item lint is exercised through `branch.when`.
   test("bare `item` in loop-body branch.when → did_you_mean carries the $item rewrite", () => {
     const errors = validateBareIterationIdentifiers([
       { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
@@ -124,8 +119,6 @@ describe("validateBareIterationIdentifiers — authoring lint", () => {
   });
 
   test("a JavaScript transform in a loop body is NOT bare-item-linted", () => {
-    // A JS transform addresses the item as `input.scope.$item`; the bare-item
-    // JSONata lint does not apply to it.
     const errors = validateBareIterationIdentifiers([
       { id: "get", kind: "transform", language: "javascript", expression: "return [1];" },
       { id: "iter", kind: "loop", over: "get.data", body: ["shape"] },

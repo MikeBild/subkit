@@ -58,14 +58,11 @@ describe("workflows + versions", () => {
       })
       .returning();
 
-    // point current version at v2
     await ctx.db
       .update(workflows)
       .set({ current_version_id: v2!.id, lifecycle: "active" })
       .where(eq(workflows.id, wf!.id));
 
-    // restore by writing a v3 row that duplicates v1's dag (the "restore"
-    // operation is always an additive new version, never a rewrite)
     const [v3] = await ctx.db
       .insert(workflowVersions)
       .values({
@@ -82,7 +79,6 @@ describe("workflows + versions", () => {
       .set({ current_version_id: v3!.id })
       .where(eq(workflows.id, wf!.id));
 
-    // verify
     const latest = await ctx.db
       .select()
       .from(workflowVersions)

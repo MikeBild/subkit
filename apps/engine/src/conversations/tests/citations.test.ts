@@ -1,14 +1,3 @@
-// Citation harvesting — deterministic.
-//
-// `tool_result.output` fixtures here use the FLAT shape a real turn
-// actually produces: `normalizeToolResultPayload`
-// (conversations/tools/result-payload.ts) unwraps a successful
-// `ToolResult` down to its `.data` before the event is built, so `output`
-// is `{ hits: [...] }`, never `{ ok: true, data: { hits: [...] } }`. An
-// e2e run through the mock LLM provider caught the drift when the earlier
-// fixtures here (wrapped in `{ok, data}`) kept this suite green while the
-// live event never carried a harvestable shape at all.
-
 import { describe, expect, test } from "bun:test";
 import { harvestCitations, harvestCitationsFromPersisted } from "../citations.ts";
 import type { TurnEvent } from "../types.ts";
@@ -25,7 +14,6 @@ describe("harvestCitations", () => {
           { id: "k2", source_name: "Repo Guide", snippet: "list repositories" },
         ],
       }),
-      // A second search re-surfaces k1 — must dedup.
       toolResult("search_knowledge", { hits: [{ id: "k1", source_name: "Payments Guide" }] }),
     ];
     const citations = harvestCitations(events);
@@ -60,7 +48,6 @@ describe("harvestCitations", () => {
           { id: "d2", title: "Stripe · Refunds", snippet: "POST /v1/refunds" },
         ],
       }),
-      // search_docs re-surfaces d1 — must dedup.
       toolResult("search_docs", { hits: [{ id: "d1", title: "Stripe · Charges" }] }),
     ];
     const citations = harvestCitations(events);
@@ -90,16 +77,11 @@ describe("harvestCitations", () => {
       toolResult("search_docs", { hits: [{ id: "d2", title: "Payments API" }] }),
     ];
     const cites = harvestCitations(events);
-    // title null → path names the source (not the raw chunk id).
     expect(cites[0]?.source_name).toBe("/v1/customers");
-    // title present → title wins.
     expect(cites[1]?.source_name).toBe("Payments API");
   });
 
   test("strips ts_headline <b> highlight markup from excerpts (both kinds)", () => {
-    // Postgres ts_headline wraps matched terms in <b>…</b>; the excerpt must
-    // be faithful source text so the anti-drift quote check can match a
-    // verbatim quote against it.
     const events: TurnEvent[] = [
       toolResult("search_knowledge", {
         hits: [{ id: "k1", source_name: "S", snippet: "to <b>create</b> a <b>customer</b>" }],
@@ -125,10 +107,6 @@ describe("harvestCitationsFromPersisted", () => {
   });
 
   test("reproduces the model-visible array cap on a large payload (no over-count)", () => {
-    // 40 hits push the persisted output past the char cap; the model-visible
-    // truncation caps the array (to well under 40) yet keeps the hits inline,
-    // so the replay footer names the same capped set the model saw — not all
-    // 40 sources.
     const hits = Array.from({ length: 40 }, (_, i) => ({
       id: `k${i}`,
       source_name: `Source ${i}`,

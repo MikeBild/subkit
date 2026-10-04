@@ -1,12 +1,3 @@
-// The RFC 8693 token exchange has to be VISIBLE everywhere a machine caller
-// looks before it ever sends a request: the discovery document, the
-// committed OpenAPI contract, the host CLI's --help, the docs. This pins the
-// four together — dropping the grant from one of them without the others is
-// the drift this test refuses.
-//
-// Runtime behaviour (mint, use, revoke) lives in
-// apps/engine/src/http/tests/token-exchange.test.ts.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

@@ -1,15 +1,3 @@
-// Chat-paste secret scrub + capture chokepoint in `appendUserMessage`
-// (service/append.ts).
-//
-// Contract (user decision, session 97679846): a secret pasted into
-// chat (i) never persists raw — the conversation_messages row is
-// scrubbed; (ii) the returned in-flight `message` equals the persisted
-// text so the model never sees the raw secret either; and (iii) when an
-// auth-required connector draft is active and the paste maps
-// unambiguously onto its credential shape, the secret is captured into
-// the draft credential cache and the text gains a marker telling the
-// agent to probe instead of re-collecting.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import { conversationMessages } from "../../db/schema/index.ts";
@@ -36,7 +24,6 @@ afterEach(() => {
   _resetDraftCredentialCacheForTests();
 });
 
-// Shaped to trip SECRET_PATTERNS without being real secrets.
 const FAKE_ATLASSIAN_TOKEN = "ATATTfake3xBfGH0aaaabbbbccccdddd1234";
 const FAKE_GITHUB_TOKEN = "ghp_fakeFAKEfakeFAKEfakeFAKEfake123456";
 
@@ -99,19 +86,16 @@ describe("appendUserMessage — secret scrub + capture", () => {
       ctx.testDb.db,
     );
 
-    // Captured into the draft credential cache as a basic credential.
     expect(getDraftCredential(conversation_id)).toEqual({
       mode: "basic",
       username: "mike@example.com",
       password: FAKE_ATLASSIAN_TOKEN,
     });
-    // Raw secret never persists and never reaches the in-flight turn.
     expect(result.message).not.toContain(FAKE_ATLASSIAN_TOKEN);
     expect(result.message).toContain("***REDACTED:");
     expect(result.message).toContain(
       "[secret captured: cached as draft credential (mode=basic) — do not re-collect; probe directly]",
     );
-    // The persisted row equals the returned in-flight message.
     expect(await readLastUserMessageText(conversation_id)).toBe(result.message);
   });
 

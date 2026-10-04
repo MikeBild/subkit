@@ -1,8 +1,3 @@
-// Contract test for the TURN-ONE DISCIPLINE behaviour skill that the
-// MAIN agent preloads on every converse turn. The literal lives in
-// `apps/engine/src/conversations/agent/skills/content/turn-one-discipline.md`;
-// the registry wires it via `MAIN.preloadedSkills`.
-
 import { describe, expect, it } from "bun:test";
 import { basePromptFor } from "../context-assembler.ts";
 

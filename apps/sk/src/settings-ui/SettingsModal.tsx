@@ -1,21 +1,3 @@
-// Settings palette — outer 5-tab shell. Status / Config / Usage plus
-// subkit's two AI-pipeline surfaces (Skills / Knowledge) at the same depth.
-//
-// Operator surfaces (`Permissions`, `Profile`, `Admin`) are not tabs
-// here — each is its own slash command mounted via SinglePane:
-// `/permissions`, `/profile`, `/admin`. The activity heatmap that
-// used to live in a `Stats` tab is now embedded in `Status`.
-//
-// Esc semantics (two-step, `ownsEsc` pattern):
-//   1. If the active tab "owns Esc" — i.e. has an inner state that
-//      should be cleared first (search, editor, confirm prompt) —
-//      that tab fires its own Esc handler and reports the active
-//      state through `onInnerEscape`. Outer Esc is suppressed until
-//      the next keystroke.
-//   2. Otherwise, outer Esc closes the modal.
-//
-// Outer tab navigation: leftarrow / rightarrow OR `[` / `]`.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -27,9 +9,6 @@ import { SkillsTab } from "./tabs/SkillsTab.tsx";
 import { StatusTab } from "./tabs/StatusTab.tsx";
 import { UsageTab } from "./tabs/UsageTab.tsx";
 
-// Single source of truth for the tab list. `OuterTabName` is derived
-// from `ALL_TABS` via `(typeof ALL_TABS)[number]` so future additions
-// only touch the array literal, not a parallel string-union.
 export const ALL_TABS = ["Status", "Config", "Usage", "Skills", "Knowledge"] as const;
 export type OuterTabName = (typeof ALL_TABS)[number];
 
@@ -41,12 +20,6 @@ interface Props {
   initialTab?: string;
   client: EngineClient;
   onExit: (code: number) => void;
-  /**
-   * Optional REPL-state props — when /settings is opened from the
-   * sk REPL, the host passes these so the Status tab renders real
-   * values instead of "—". The `sk settings` standalone CLI doesn't
-   * supply them; StatusTab still works by falling back to "—".
-   */
   sessionId?: string | null | undefined;
   sessionTitle?: string | null | undefined;
   permissionMode?: "ask" | "auto" | "plan" | "yolo" | undefined;
@@ -60,8 +33,6 @@ export function pickInitialOuter(
 ): number {
   if (!initialTab) return 0;
   const idx = tabs.findIndex((t) => t.toLowerCase() === initialTab.toLowerCase());
-  // Unknown / legacy names (e.g. "Settings", engine-section names) fall
-  // back to Status (index 0) — no error, no shim.
   return idx >= 0 ? idx : 0;
 }
 
@@ -80,16 +51,8 @@ export const SettingsModal: React.FC<Props> = ({
   weekTokens,
 }) => {
   const [outerIdx, setOuterIdx] = useState(() => pickInitialOuter(initialTab, ALL_TABS));
-  // The active tab reports whether it "owns Esc" — i.e. has any
-  // inner state (search, edit, confirm, …) that the next Esc keystroke
-  // should clear instead of dismissing the modal. Two-step Esc:
-  //   1. inner state cleared by the active tab's own Esc handler
-  //   2. outer Esc dismisses the modal
   const [innerOwnsEsc, setInnerOwnsEsc] = useState(false);
 
-  // Tab switch resets the flag — the previous tab unmounts without
-  // firing its `(false)` cleanup, and the next tab fires its own
-  // initial effect on mount so the new value is authoritative.
   useEffect(() => {
     setInnerOwnsEsc(false);
   }, [outerIdx]);

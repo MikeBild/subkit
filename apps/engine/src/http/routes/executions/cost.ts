@@ -1,16 +1,3 @@
-// GET /v1/executions/{id}/cost — per-execution cost + token attribution.
-//
-// A separate sub-resource (like /{id}/steps), not an extension of
-// serializeExec: cost rolls up the `llm_usage` and `external_call_metering`
-// ledgers filtered to this execution. Both ledgers now carry an
-// `execution_id` attribution column (nullable; old rows read as 0).
-//
-// TENANT ISOLATION: the existence check on `executions` is tenant-scoped and
-// runs BEFORE any aggregation — a caller can only read cost for an execution
-// in their own tenant. Both aggregates keep `tenant_id` as the FIRST
-// predicate and add `eq(execution_id, id)`. `llm_usage` has no monetary
-// column; only `external_call_metering.cost_usd` is money.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -51,9 +38,6 @@ const ExecutionCost = z
           currency: z.string(),
           unpriced_models: z.array(z.string()),
           unpriced_calls: z.number().int(),
-          // Which rate priced each model: SubKit's built-in catalog, the
-          // catalog reached through a Bedrock/Vertex id (the platform may
-          // charge more), or the operator's `tokens.prices` entry, which wins.
           price_sources: z.array(
             z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
           ),
@@ -84,7 +68,6 @@ const getCostRoute = createRoute({
 });
 
 export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
-  // Path-specific RBAC gate: the `/:id` gate does not match `/:id/cost`.
   app.use("/v1/executions/:id/cost", async (c, next) => {
     const id = c.req.param("id");
     return requirePermission("execution:read", () => ({ type: "execution", id }))(c, next);
@@ -95,8 +78,6 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
 
-    // Tenant-isolation chokepoint: confirm the execution exists in THIS
-    // tenant before aggregating either ledger. Mirrors list.ts get-by-id.
     const exec = await db
       .select({ id: executions.id })
       .from(executions)
@@ -104,7 +85,6 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (!exec[0]) throw new NotFoundError("execution");
 
-    // --- LLM ledger, grouped by flow -------------------------------------
     const llmRows = await db
       .select({
         flow: llmUsage.flow,
@@ -119,11 +99,6 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(llmUsage.tenant_id, principal.tenant_id), eq(llmUsage.execution_id, id)))
       .groupBy(llmUsage.flow);
 
-    // A second grouping, by model, because a price needs one and `flow` does
-    // not carry it: a single purpose can span several models at very different
-    // rates. Pricing the flow rollup would multiply tokens by whichever model
-    // happened to be named first. The reader also splits each model's calls at
-    // its long-context threshold, which only a per-call comparison can do.
     const cost = await readLlmCost(
       db,
       principal.tenant_id,
@@ -160,14 +135,10 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
       },
     );
 
-    // Cache-hit rate: cached input read vs. total input (fresh prompt +
-    // cached read). Bounded 0–100 — the same definition the REPL footer's
-    // `cache N%` chip uses, so per-run and per-conversation surfaces agree.
     const cache_input = llm.prompt_tokens + llm.cache_read_tokens;
     const cache_read_pct =
       cache_input > 0 ? Math.round((llm.cache_read_tokens / cache_input) * 1000) / 10 : 0;
 
-    // --- external-call metering ------------------------------------------
     const extRows = await db
       .select({
         calls: sql<number>`count(*)::int`,
@@ -195,9 +166,6 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
           cache_read_pct,
           latency_ms: llm.latency_ms,
           by_flow,
-          // Money for the model calls, and a plain account of what could not
-          // be priced. `llm_usage` has no monetary column, so this is computed
-          // from the configured rates at read time and says so.
           cost,
         },
         external: {

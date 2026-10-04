@@ -1,6 +1,3 @@
-import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
-// Workflow CRUD + history routes.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
@@ -38,24 +35,9 @@ import {
   WorkflowListResponse,
   WorkflowSchema,
 } from "./workflow-representation.ts";
+import { ScheduleEntry } from "./workflow-schedule-schemas.ts";
 import { registerWorkflowVersionRoutes } from "./workflow-versions.ts";
 
-// Create/update request body. This is the full workflow definition the
-// caller submits — `createWorkflow`/`updateWorkflow` pass it straight to
-// `validateWorkflowDef` (the canonical `WorkflowDefSchema` gate) and to
-// `applyTriggerBindings`. Historically this schema was a hand-maintained
-// PARTIAL copy of the def that omitted `trigger`, `output_transform`,
-// `response_filters`, and the validation_* fields — so a `schedule`
-// trigger submitted via the HTTP API (and the `sk` CLI on top of it) was
-// SILENTLY STRIPPED here before the save, and no schedule ever bound
-// (the trigger-on-save path is the only binding path — there is no
-// separate schedule endpoint). The GET serializer already round-trips
-// all of these fields, so the request shape was also asymmetric with the
-// response. Fix: declare the headline authoring fields explicitly (for an
-// accurate OpenAPI contract, symmetric with `serializeWorkflow`) AND
-// `.passthrough()` so EVERY other `WorkflowDef` field survives to
-// `validateWorkflowDef` — the single source of truth — instead of the
-// HTTP layer drifting out of sync with the def and dropping fields.
 const CreateBody = z
   .object({
     name: z.string(),
@@ -66,7 +48,6 @@ const CreateBody = z
     steps: z.array(z.record(z.string(), z.unknown())),
     timeout_ms: z.number().int().positive().optional(),
     max_llm_tokens_per_run: z.number().int().positive().optional(),
-    // Previously-dropped definition fields — now preserved end to end.
     trigger: TriggerSchema.optional(),
     output_transform: z.string().optional(),
     output_transform_function: z.string().optional(),
@@ -74,8 +55,6 @@ const CreateBody = z
     validation_function: z.string().optional(),
     response_filters: z.array(z.record(z.string(), z.unknown())).optional(),
   })
-  // Any other WorkflowDef field (e.g. payload) passes through to
-  // validateWorkflowDef rather than being silently stripped here.
   .passthrough()
   .openapi("CreateWorkflowBody");
 
@@ -161,11 +140,6 @@ const updateRoute = createRoute({
   },
 });
 
-// Metadata-only patch (slug / name / description / lifecycle). Unlike PUT
-// (which rewrites the DAG and rolls a new version), this never rotates a
-// version — it is the governed rename surface. A slug rename done by raw SQL
-// skips the audit log; this route routes through `updateWorkflowMetadata`
-// which writes a `WORKFLOW_UPDATED { kind: "metadata" }` audit row.
 const WorkflowMetadataPatchBody = z
   .object({
     slug: z.string().min(1).optional(),
@@ -217,11 +191,6 @@ const ScheduleInputSchema = z.union([
   z.array(z.unknown()),
   z.record(z.string(), z.unknown()),
 ]);
-/**
- * A saved draft that is not the version a schedule runs. The reader of a held
- * schedule needs it: the running version is exactly the one that could not be
- * approved, and without this the repair waiting next to it stays invisible.
- */
 const preparedVersionId = (
   wf: { draft_version_id?: string | null; current_version_id: string | null } | null | undefined,
 ) =>
@@ -232,7 +201,6 @@ const preparedVersionId = (
 const ScheduleListResponse = z
   .object({
     schedules: z.array(ScheduleEntry),
-    /** Exact tenant-scoped count under the same filters. */
     total: z.number().int().nonnegative(),
   })
   .openapi("ScheduleListResponse");
@@ -254,21 +222,13 @@ const listSchedulesRoute = createRoute({
   },
 });
 
-// Schedule write surface. The repo layer upserts on (tenant_id,
-// workflow_id) — one schedule per workflow, same invariant the inline
-// trigger path enforces — so POST on an already-scheduled workflow
-// updates the existing row instead of multiplying fire times.
 const ScheduleCreateBody = z
   .object({
     workflow_id: z.string().uuid(),
-    /** 5-field cron or the `every:<seconds>` dev shorthand. */
     cron: z.string().min(1),
     timezone: z.string().optional(),
-    /** Connector environment for unattended runs; production is the safe
-     *  operational default for a durable schedule. */
     execution_mode: z.enum(["dev", "prod"]).optional(),
     paused: z.boolean().optional(),
-    /** Input payload passed to every scheduled run. */
     input: ScheduleInputSchema.optional(),
   })
   .openapi("ScheduleCreateBody");
@@ -396,10 +356,6 @@ const validateRoute = createRoute({
 
 const InputSchemaResponse = z
   .object({
-    /** "declared" when the workflow has an explicit `input_schema`,
-     *  "synthesized" when the schema was inferred from `${input.X}`
-     *  placeholders + JSONata `$input.X` references in the steps,
-     *  "none" when no inputs are referenced anywhere. */
     source: z.enum(["declared", "synthesized", "none"]),
     schema: z.record(z.string(), z.unknown()).nullable(),
   })
@@ -426,16 +382,11 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   registerWorkflowInvocationRoutes(app);
   registerWorkflowDraftRoutes(app);
   registerWorkflowVersionRoutes(app);
-  // Pass-2 C5: RBAC gating. Every mutation + run goes through
-  // `requirePermission` which calls the `can()` evaluator. Admin
-  // principals short-circuit, so existing tests keep passing.
   app.use("/v1/workflows", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
     if (c.req.method === "POST") return requirePermission("workflow:write")(c, next);
     return next();
   });
-  // /v1/workflows/validate is a read-only utility; operators that can read
-  // workflows can validate a draft without write perms.
   app.use("/v1/schedules", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
     if (c.req.method === "POST") return requirePermission("workflow:write")(c, next);
@@ -487,8 +438,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.category !== undefined) opts.category = q.category;
     if (q.connector !== undefined) opts.connector = q.connector;
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
-    // Derived over the whole catalog, not the page, so a workflow reports the
-    // same block whether or not the caller filtered or paged.
     const [categories, connectorRefs, bindings] = await Promise.all([
       loadCategoryIndex(principal.tenant_id, db),
       listConnectorRefs(principal.tenant_id, db),
@@ -503,8 +452,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       category: categories.get(w.slug) ?? UNCATEGORIZED,
       connectors: connectorRefs.get(w.id) ?? [],
     }));
-    // Blocks describe the catalog, not the page: a chip row derived from the
-    // filtered page would collapse to the chip the caller just picked.
     const blocks = groupByCategory(
       [...categories.values()].map((category) => ({ category })),
       (i) => i.category,
@@ -517,8 +464,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const q = c.req.valid("query");
     const { rows, total } = await listSchedules(db, principal.tenant_id, q.workflow_id);
-    // Resolve workflow slugs/names in one pass so `sk schedules` can show
-    // WHAT fires, not just an opaque workflow_id.
     const ids = [...new Set(rows.map((r) => r.workflow_id))];
     const named = ids.length
       ? await Promise.all(ids.map((id) => svc.getWorkflow(principal.tenant_id, id, db)))
@@ -549,8 +494,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     );
   });
 
-  // Shared serializer for the schedule write handlers — same shape the
-  // list route emits so `sk schedules` renders all four uniformly.
   const serializeSchedule = async (
     c: { get(key: "db"): unknown },
     tenant_id: string,
@@ -682,7 +625,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    // Fetch before delete so the audit entry carries the workflow id.
     const before = await getSchedule(db, principal.tenant_id, id);
     const ok = await deleteSchedule(db, principal.tenant_id, id);
     if (!ok) throw new NotFoundError("schedule");
@@ -740,9 +682,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const wf = await svc.getWorkflow(principal.tenant_id, id, db);
     if (!wf) throw new NotFoundError("workflow");
 
-    // Declared schema wins. When absent, synthesize from the steps —
-    // same code path the MCP tool listing uses, so the two surfaces
-    // stay in lockstep.
     return c.json(resolveWorkflowInputSchema(wf.definition), 200);
   });
 
@@ -791,8 +730,6 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if ("workflow" in result && result.workflow) {
       return c.json(await serializeOne(result.workflow, principal.tenant_id, db), 200);
     }
-    // Error variant. Map a slug collision to 409, missing workflow to 404,
-    // everything else (bad slug shape, no-op) to 400.
     if (result.conflict) {
       throw new ConflictError("slug already in use by a live workflow", {
         errors: result.errors,

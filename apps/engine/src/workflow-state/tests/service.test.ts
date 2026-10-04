@@ -1,6 +1,3 @@
-// Workflow run state service: tenant-encrypted read/write, AAD
-// binding, tenant-leakage isolation.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -128,11 +125,8 @@ describe("workflow-state service", () => {
       key: "aad_check",
       value: "plain-A",
     });
-    // Reading at the right (tenant_id, workflow_id, key) succeeds.
     const ok = await readWorkflowState(ctx.db, tenantA, workflowA, "aad_check");
     expect(ok?.value).toBe("plain-A");
-    // Cross-tenant lookup returns undefined (no row at that PK), not a
-    // ciphertext lift — confirms PK-level isolation.
     const cross = await readWorkflowState(ctx.db, tenantB, workflowA, "aad_check");
     expect(cross).toBeUndefined();
   });

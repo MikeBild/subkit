@@ -78,7 +78,6 @@ describe("TaskList", () => {
     const ui = renderPhases(phases);
     const out = snapshot(ui);
     expect(out).toContain("Probe");
-    // The detail separator ' · ' must not appear when detail is absent
     expect(out).not.toContain(" · ");
     ui.unmount();
   });

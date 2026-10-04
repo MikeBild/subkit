@@ -1,8 +1,3 @@
-// The dry run refuses a draft only over references it introduces over the
-// active version, and the notice about the inherited ones stays out of the
-// preview's warnings: those are replayed to the author next turn as failures
-// to repair, which is the one thing this notice must not cause.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";

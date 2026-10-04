@@ -102,11 +102,6 @@ describe("Footer mode and view", () => {
 });
 
 describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
-  // Pre-fix the ctx gauge divided the turn-CUMULATIVE tokens by the
-  // per-prompt cap and showed `ctx 464k/180k (100%)`. Post-fix the
-  // gauge numerator is `prompt_tokens_last_call` (the final LLM call's
-  // prompt — comparable to the cap) and the cumulative spend renders
-  // as a separate `turn <N>` figure.
   function renderBudgetFooter(props: Partial<React.ComponentProps<typeof Footer>> = {}) {
     return render(
       <Footer
@@ -132,7 +127,6 @@ describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
     const frame = stripAnsi(instance.lastFrame() ?? "");
     expect(frame).toContain("ctx 90k/180k");
     expect(frame).toContain("turn 3.9M");
-    // 50% — below the 80% warning line, so no percentage chip.
     expect(frame).not.toContain("(50%)");
     instance.unmount();
     cleanup();
@@ -203,10 +197,6 @@ describe("Footer budget line — honest cost telemetry (Fix 7)", () => {
 });
 
 describe("Footer connection chip layout", () => {
-  // Repro of session f00b8d1c at 101 cols: full identity (60 chars) +
-  // " · ⟳ reconnecting · Unable to connect…<37 char reason>" (58 chars)
-  // overflows the line, so Ink wraps mid-word. The picker MUST drop
-  // back to a compact chip in this case so neither line wraps.
   test("long reconnect reason at moderate width falls back to compact chip", () => {
     const layout = layoutFooterLines({
       user: "user@example.com",
@@ -220,7 +210,6 @@ describe("Footer connection chip layout", () => {
       columns: 101,
     });
     expect(layout.connectionVariant).toBe("compact");
-    // Full identity should still fit since chip is compact (~17 chars).
     expect(layout.identityPrefix).toContain("@ default");
     expect(layout.identityPrefix).toContain("· localhost:3000");
   });
@@ -252,7 +241,6 @@ describe("Footer connection chip layout", () => {
       connectionReason: null,
       columns: 30,
     });
-    // The chip stays at minimum compact; identity collapses to fit.
     expect(layout.connectionVariant).toBe("compact");
   });
 
@@ -271,10 +259,6 @@ describe("Footer connection chip layout", () => {
   });
 
   test("identity + compact chip width never exceeds the available columns", () => {
-    // Property-style: across a range of widths and reason lengths,
-    // the picked layout should never push the rendered line past
-    // the column budget. We approximate the rendered line as
-    // identity + chip(compact|full).
     const reasons = [
       null,
       "Unable to connect",
@@ -299,8 +283,6 @@ describe("Footer connection chip layout", () => {
           layout.identityPrefix.length +
           layout.identityHighlight.length +
           layout.identitySuffix.length;
-        // Estimate chip width: compact = 17 chars (" · ⟳ reconnecting"),
-        // full adds " · " + truncated reason capped at 38.
         const compact = 17;
         const full = compact + 3 + Math.min(reason?.length ?? 0, 38);
         const chipWidth = layout.connectionVariant === "full" ? full : compact;

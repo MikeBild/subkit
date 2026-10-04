@@ -66,8 +66,6 @@ describe("audit resource relations", () => {
   });
 
   test("a run leads to the run it names", () => {
-    // The row naming a run is where an investigation starts. A run's address
-    // is its sheet over Übersicht.
     expect(auditResourceHref("execution", "018f4b4a-6d33-7b3a-9c2d-123456789abc")).toBe(
       "/cockpit?run=018f4b4a-6d33-7b3a-9c2d-123456789abc",
     );
@@ -78,10 +76,6 @@ describe("audit resource relations", () => {
   });
 
   test("every type that gets a link lands on a route this cockpit registers", () => {
-    // Resolution, not plausibility. The parameter is not spelled the same on
-    // every route — a conversation's segment is `$conversationId` — so what is
-    // checked is the SHAPE: the target must be a registered path whose final
-    // segment is the parameter this id fills.
     const detailPrefixes = new Set(
       ALL_ROUTE_PATHS.filter((path) => /\/\$[A-Za-z]+$/.test(path)).map((path) =>
         path.replace(/\/\$[A-Za-z]+$/, ""),
@@ -90,7 +84,6 @@ describe("audit resource relations", () => {
     for (const type of LINKED_RESOURCE_TYPES) {
       const href = auditResourceHref(type, "018f4b4a-6d33-7b3a-9c2d-123456789abc");
       expect(href, `${type} is mapped but builds no link`).not.toBeNull();
-      // A run is a sheet, addressed in the query of the start page.
       if (href?.startsWith("/cockpit?run=")) continue;
       const prefix = (href ?? "").replace(/^\/cockpit/, "").replace(/\/[^/]+$/, "");
       expect(detailPrefixes.has(prefix), `${type} points at ${href}, which no route matches`).toBe(
@@ -100,13 +93,6 @@ describe("audit resource relations", () => {
   });
 
   test("a type with only a list page stays a word, not a guessed path", () => {
-    // Each of these reaches the log and each has a page — `/people`,
-    // `/access`, `/api-access`, `/connections`, `/settings`. None of them
-    // takes an id, so appending one would build an address no route matches,
-    // and a link to a page that does not exist is worse than the plain text
-    // it replaced. Nor is the list itself an honest target: it resolves
-    // whether or not the row recorded an id, which is precisely the fact
-    // `auditResourceHref` refuses to paper over.
     for (const type of [
       "user",
       "role",
@@ -145,7 +131,6 @@ describe("audit vocabulary", () => {
       ["mcp_oauth_client", "audit.resource.oauthClient"],
       ["mcp_oauth_code", "audit.resource.oauthCode"],
       ["mcp_oauth_token", "audit.resource.oauthToken"],
-      // The outbound connections the engine audits under `connection.*`.
       ["connection", "apiAccess.section.grants"],
     ];
     for (const [type, key] of named)
@@ -153,8 +138,6 @@ describe("audit vocabulary", () => {
   });
 
   test("a type it does not know is the machine value, never a word for unknown", () => {
-    // "Unbekannt" and "Weitere Ressource" both claimed the log recorded
-    // something indistinct; it recorded exactly this token (§2, §15.2).
     expect(actorTypeLabel("robot", deText)).toEqual({ text: "robot", machine: true });
     expect(auditResourceLabel("robot", deText)).toEqual({ text: "robot", machine: true });
     expect(auditResultLabel("teapot", deText)).toEqual({ text: "teapot", machine: true });
@@ -164,8 +147,6 @@ describe("audit vocabulary", () => {
       auditResultLabel("teapot", deText),
     ])
       expect(label.text).not.toBe(deText("common.unknown"));
-    // The machine value itself, marked as one — not a word claiming the log
-    // recorded something indistinct.
     expect(auditActionLabel("robot.started")).toEqual({
       kind: "machine",
       value: "robot.started",
@@ -185,9 +166,6 @@ describe("audit vocabulary", () => {
       kind: "named",
       key: "audit.action.credentialRefreshed",
     });
-    // A held schedule and a released one are one action; which of the two it
-    // is, is the row's own denied/allowed. So one word covers both — and it
-    // has to be a word, not the engine's string.
     expect(auditActionLabel("schedule.admission.changed")).toEqual({
       kind: "named",
       key: "audit.action.scheduleAdmissionChanged",
@@ -196,10 +174,6 @@ describe("audit vocabulary", () => {
 });
 
 describe("the decision trail is named", () => {
-  // The log exists so a human decision can be traced. These verbs ARE that
-  // trail, and every one of them read "Weiterer Vorgang" — a phrase that
-  // claims the log recorded something indistinct, about the rows that matter
-  // most. §15.2 forbids exactly that reading.
   const MUST_BE_NAMED = [
     "approval.requested",
     "approval.granted",
@@ -217,12 +191,6 @@ describe("the decision trail is named", () => {
     "workflow.deleted",
     "secret.version_revoked",
     "external_write",
-    // Added from the running installation rather than from the enum. A count
-    // of "how many verbs are named" says nothing about a reader's screen: the
-    // enum's long tail is housekeeping nobody opens, while these ten are
-    // written by the thousand on a real tenant and are either a person's act
-    // or the first thing someone looks for after an incident. Measured there:
-    // 182 distinct verbs written, 96.8 % of rows now carrying a name.
     "conversation.run_workflow",
     "tool_policy.confirmation_required",
     "credential.updated",
@@ -233,16 +201,10 @@ describe("the decision trail is named", () => {
     "wait.started",
     "wait.completed",
     "webhook.trigger.failed_verification",
-    // Written by the engine, as the system, for every repair it proves it
-    // cannot make — one row per closure, so on a live tenant it is common.
     "patch_candidate.closed_inapplicable",
-    // The housekeeping sweep hides OAuth registrations nobody uses; the row
-    // is the reason behind the Cockpit's "N stillgelegt" and must say so.
     "mcp_oauth.client_retired",
     "mcp_oauth.client_reactivated",
     "mcp_oauth.client_disabled",
-    // A restart someone asked for from the settings page, and how it ended —
-    // the toast after the restart links straight to these rows.
     "engine.restart.requested",
     "engine.restart.completed",
     "engine.restart.failed",
@@ -254,8 +216,6 @@ describe("the decision trail is named", () => {
   });
 
   test("an unnamed verb is the engine's token, marked as one", () => {
-    // Not prose. A reader must be able to tell "this has no name yet" from
-    // "the log recorded something vague".
     expect(auditActionLabel("some.future.verb")).toEqual({
       kind: "machine",
       value: "some.future.verb",
@@ -263,7 +223,6 @@ describe("the decision trail is named", () => {
   });
 
   test("both languages name every verb this build claims to name", () => {
-    // A key in the map with no German is an English word on a German screen.
     for (const action of MUST_BE_NAMED) {
       const label = auditActionLabel(action);
       if (label.kind !== "named") continue;
@@ -278,10 +237,6 @@ describe("the decision trail is named", () => {
 
 describe("the two halves of the log", () => {
   test("decisions and operations are filtered on different axes", () => {
-    // Different questions. A person changing a setting is a decision whoever
-    // typed it — that is the ACTION. The engine refreshing a token is
-    // housekeeping whatever it touched — that is the ACTOR. Folding both onto
-    // one axis loses one of the two questions.
     expect(auditScopeParams("decisions")).toHaveProperty("action");
     expect(auditScopeParams("operations")).toEqual({ actor_type: "system" });
     expect(auditScopeParams("all")).toEqual({});
@@ -304,8 +259,6 @@ describe("the two halves of the log", () => {
   });
 
   test("every verb in the decision scope has a name", () => {
-    // A scope called "decisions" that renders machine tokens would defeat its
-    // own purpose — a reader cannot audit what they cannot read.
     const unnamed = (auditScopeParams("decisions").action?.split(",") ?? []).filter(
       (action) => auditActionLabel(action).kind !== "named",
     );
@@ -319,11 +272,6 @@ describe("the two halves of the log", () => {
 });
 
 describe("searching what the reader can see", () => {
-  // The box narrows the rows already fetched — the engine matches `action`
-  // exactly, so it cannot honestly become a query parameter. What it MATCHED
-  // was the defect: the raw token, while the cell renders the German name. A
-  // reader who saw "Freigabe erteilt" and typed it found nothing and had to
-  // know the engine spells it `approval.granted`.
   const matches = (needle: string, action: string): boolean => {
     const n = needle.trim().toLowerCase();
     if (action.toLowerCase().includes(n)) return true;
@@ -337,7 +285,6 @@ describe("searching what the reader can see", () => {
   });
 
   test("still finds a row by the engine's own token", () => {
-    // Whoever is quoting one into a ticket types the token, not the prose.
     expect(matches("approval.granted", "approval.granted")).toBe(true);
     expect(matches("rbac.", "rbac.permission_revoked")).toBe(true);
   });
@@ -354,8 +301,6 @@ describe("the correlation key a link carries", () => {
   });
 
   test("refuses what could not be one", () => {
-    // Forwarded to the engine as an exact match, a junk value narrows to
-    // nothing and reads like an empty log rather than a bad query.
     for (const bad of ["", "?trace_id=", "?trace_id=%20", "?trace_id=a b", "?trace_id=a/b"]) {
       expect(auditTraceFromUrl(bad)).toBeNull();
     }
@@ -363,7 +308,6 @@ describe("the correlation key a link carries", () => {
   });
 
   test("accepts the shapes the engine actually emits", () => {
-    // `cli-…` from the CLI, a bare hex span from the HTTP path.
     expect(auditTraceFromUrl("?trace_id=88d319e7e605b113183f5de6ca2745f9")).toBe(
       "88d319e7e605b113183f5de6ca2745f9",
     );
@@ -373,10 +317,6 @@ describe("the correlation key a link carries", () => {
 
 describe("the record behind a row", () => {
   test("an answer that is not a record is refused, not displayed", () => {
-    // Every one of these arrives with a 200: a mistyped path, a proxy's
-    // courtesy page, the visual fixture's catch-all. The row already holds the
-    // whole record, so taking one of them for the answer would blank a sheet
-    // the page could have filled — and blame the log for it.
     for (const junk of [
       null,
       undefined,
@@ -402,8 +342,6 @@ describe("the evidence the table dropped on the floor", () => {
   const kinds = (value: AuditEntry) => auditEvidenceBlocks(value).map((block) => block.kind);
 
   test("an empty metadata object renders nothing at all", () => {
-    // Not an empty box. A drawn block claims the engine recorded something
-    // inside it, and `{}` is the shape almost every row carries.
     expect(auditEvidenceBlocks(entry({ metadata: {} }))).toEqual([]);
   });
 
@@ -414,8 +352,6 @@ describe("the evidence the table dropped on the floor", () => {
   });
 
   test("a change is two blocks, before first", () => {
-    // Read as one statement. The same pair in the other order says the
-    // opposite of what happened.
     const blocks = auditEvidenceBlocks(
       entry({ before: { retention_days: 30 }, after: { retention_days: 90 } }),
     );
@@ -434,10 +370,6 @@ describe("the evidence the table dropped on the floor", () => {
   });
 
   test("recorded emptiness is evidence; only absence is absent", () => {
-    // A flag cleared to `false`, a limit set to `0`, a note blanked to `""`,
-    // a list emptied to `[]`: each is what the engine wrote down, and each
-    // falls out of a falsy test. `{}` is deliberately NOT the metadata rule
-    // here — as a snapshot it is a state, as metadata it is an empty box.
     for (const recorded of [false, 0, "", [], {}]) {
       expect(
         kinds(entry({ before: recorded })),
@@ -454,8 +386,6 @@ describe("what one record says about itself", () => {
     (key: TranslationKey): string =>
       translate(locale, key);
   const de = catalogue("de");
-  // Stands in for the surface's own absolute formatter, so the assertion is
-  // about WHICH value is formatted rather than about a locale's punctuation.
   const dateTime = (value: string | Date): string => `absolute:${value.toString()}`;
   const labelled = (facts: ReturnType<typeof auditDetailFacts>, key: TranslationKey) =>
     facts.find((fact) => fact.label === de(key));
@@ -475,8 +405,6 @@ describe("what one record says about itself", () => {
     ] as const) {
       expect(labelled(facts, key)?.value, `${key} is not reported as unrecorded`).toBeNull();
     }
-    // Whatever IS printed is something to read. An empty string would reach
-    // the page as a blank line that looks like a rendering fault.
     for (const fact of facts) {
       if (fact.value === null) continue;
       expect(fact.value.trim().length, `${fact.label} prints nothing`).toBeGreaterThan(0);
@@ -499,10 +427,6 @@ describe("what one record says about itself", () => {
   });
 
   test("every id is labelled and marked as a machine value", () => {
-    // A bare identifier in prose is banned on every surface a person reads.
-    // These are not prose: they are what a reader copies into `sk audit show`
-    // or a ticket, so the page prints them as machine values — and cannot,
-    // unless the model says which ones they are.
     const facts = auditDetailFacts(
       entry({ resource_id: "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb" }),
       de,
@@ -522,8 +446,6 @@ describe("what one record says about itself", () => {
     expect(labelled(facts, "audit.detail.resourceId")?.value).toBe(
       "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb",
     );
-    // Actor and resource are each a kind AND an id. One without the other is
-    // either a word that names nobody or an id that says nothing about itself.
     expect(labelled(facts, "audit.column.actor")?.value).toBe(de("audit.actor.user"));
     expect(labelled(facts, "audit.column.resource")?.value).toBe(de("nav.settings"));
   });
@@ -535,9 +457,6 @@ describe("what one record says about itself", () => {
   });
 
   test("no two facts share a label, in either language", () => {
-    // The surface renders this list keyed by label. Two labels that read the
-    // same would silently collapse into one row, and the fact that vanished
-    // would be an id — the half of the record nothing else on the page shows.
     for (const locale of ["en", "de"] as const) {
       const labels = auditDetailFacts(ENTRY, catalogue(locale), dateTime).map((fact) => fact.label);
       expect(new Set(labels).size, `a label is used twice in ${locale}: ${labels.join(", ")}`).toBe(
@@ -547,9 +466,6 @@ describe("what one record says about itself", () => {
   });
 
   test("the verb is not a fact in the list — it is the heading", () => {
-    // A sheet titled with an id tells a reader nothing about what happened, so
-    // the operation is the title. Repeating it here would make the heading
-    // look like decoration rather than the statement it is.
     const facts = auditDetailFacts(ENTRY, de, dateTime);
     expect(facts.some((fact) => fact.value === ENTRY.action)).toBe(false);
     expect(
@@ -569,9 +485,6 @@ describe("what one record says about itself", () => {
   });
 
   test("both languages carry every word this sheet prints", () => {
-    // Type-checking proves a German key EXISTS; it cannot tell an English
-    // sentence pasted into the German block from a translation. None of these
-    // words is spelled the same in both languages, so equality is the tell.
     for (const key of [
       "audit.detail.actorId",
       "audit.detail.resourceId",
@@ -595,9 +508,6 @@ describe("what one record says about itself", () => {
 
 describe("identifiers a reader is shown", () => {
   test("a UUID is shortened, never printed whole", () => {
-    // `konvention:check` reads `body.innerText()` and refuses UUID-shaped
-    // text with NO exemption for a fenced block — that exemption belongs to
-    // the visual sweep. Assuming it applied here failed the gate.
     const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
     const shown = shortIdentifier(id);
     expect(shown).toBe("018f4b4a…");
@@ -606,8 +516,6 @@ describe("identifiers a reader is shown", () => {
   });
 
   test("leaves alone what is not a UUID", () => {
-    // A trace id, an IP and a user agent are not UUIDs and are the whole
-    // point of the row — shortening them would destroy the evidence.
     for (const value of [
       "cli-949cacce25ff4379",
       "203.0.113.7",
@@ -619,7 +527,6 @@ describe("identifiers a reader is shown", () => {
   });
 
   test("keeps enough to match a row against a log line", () => {
-    // Eight characters is what the CLI prints for a session.
     expect(shortIdentifier("018f4b4a-6d33-7b3a-9c2d-123456789abc")).toContain("018f4b4a");
   });
 });
@@ -670,8 +577,6 @@ describe("the narrowing a link brings to the log", () => {
         tsTo: null,
       }),
     ).toEqual({ resource_type: "workflow", resource_id: id });
-    // Scope is not a parameter of its own: it becomes `action`/`actor_type`
-    // through `auditScopeParams`, and sending it twice would be two sources.
     expect(
       auditLinkParams({
         resourceType: null,
@@ -686,7 +591,6 @@ describe("the narrowing a link brings to the log", () => {
   });
 
   test("the verbs a link names arrive as the engine's own comma list", () => {
-    // The overview's repair rate links to the decided repairs exactly this way.
     const filter = auditFilterFromUrl(
       "?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected",
     );
@@ -807,10 +711,6 @@ describe("whether the audit page asks for the directory", () => {
   });
 });
 
-// Every resource type the engine writes to the log, named — read from the
-// engine's own recorders, so a type added there without a name here fails
-// this file. The engine has no enum for `resource_type`; the recorders are
-// the catalogue. `runtime_secret` reached the "Art" column raw in production.
 const ENGINE_SRC = resolve(import.meta.dir, "../../../engine/src");
 
 function engineSources(dir: string): string[] {
@@ -818,7 +718,6 @@ function engineSources(dir: string): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      // Tests invent resource types; the schema declares the column itself.
       if (["tests", "test", "test-helpers", "schema"].includes(entry.name)) continue;
       files.push(...engineSources(path));
     } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
@@ -828,12 +727,6 @@ function engineSources(dir: string): string[] {
   return files;
 }
 
-/**
- * Written through a variable rather than a literal at the recorder: the
- * approval surface (`resourceTypeOf`), the object-storage bridge
- * (`args.resourceType`) and the fallbacks in `audit.ts`, `dispatcher.ts` and
- * `require-permission.ts`.
- */
 const WRITTEN_THROUGH_A_VARIABLE = [
   "mcp_tool_call",
   "conversation_tool_call",
@@ -849,8 +742,6 @@ function engineResourceTypes(): string[] {
   for (const file of engineSources(ENGINE_SRC)) {
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/(?<![a-z_])resource_type:\s*([^,\n}]+)/g)) {
-      // `surface === "mcp" ? "mcp_tool_call" : …` — the operand of a
-      // comparison is not a value the recorder writes.
       const written = (match[1] ?? "").replace(/[!=]==?\s*"[^"]*"/g, "");
       for (const literal of written.matchAll(/"([a-z][a-z0-9_]*)"/g))
         if (literal[1]) types.add(literal[1]);

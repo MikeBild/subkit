@@ -1,18 +1,3 @@
-// The truncated-view contract of the tool wrapper (issue: multi-GB
-// per-turn transient).
-//
-// invoke.ts documents: "persist the FULL output to the
-// conversation_tool_calls row, but feed only a TRUNCATED view back to
-// the model". Pre-fix only the CLI events stream received the truncated
-// view — the SDK return carried the full payload, so a single large tool
-// output rode the cumulative prompt on EVERY subsequent step of the turn
-// (plus the SDK's response-message clone): the dominant driver of the
-// within-step memory transient the heap brackets localized.
-//
-// These tests pin the contract end-to-end: the wrapped execute() result
-// is truncated with recovery markers, control-flow fields survive, and
-// the persisted row still holds the FULL payload.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -79,7 +64,6 @@ function makeToolCtx(): ToolContext {
   };
 }
 
-/** A read-only tool whose payload the test controls. */
 function bigOutputTool(payload: unknown): ConversationTool {
   return {
     name: "test_big_output",
@@ -124,17 +108,14 @@ describe("sdk-wrap — truncated view goes back to the model, full payload persi
 
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
-    // The model-visible view is truncated and recoverable.
     expect(data._truncated).toBe(true);
     expect(typeof data._raw_ref).toBe("string");
     expect(typeof data._note).toBe("string");
     expect(JSON.stringify(data).length).toBeLessThan(20_000);
-    // The raw store can hand the full payload back to get_raw_result.
     const raw = getRawResult(data._raw_ref as string) as typeof payload;
     expect(raw.big.length).toBe(60_000);
     expect(raw.rows).toHaveLength(50);
 
-    // The persisted tool-call row holds the FULL output (audit/replay).
     const [rowDb] = await ctx.testDb.db
       .select({ output: conversationToolCalls.output })
       .from(conversationToolCalls)
@@ -148,14 +129,11 @@ describe("sdk-wrap — truncated view goes back to the model, full payload persi
 
   test("control-flow markers survive truncation (stop conditions + stall fingerprint)", async () => {
     const payload = {
-      // The bulk that forces truncation.
       step_trace: Array.from({ length: 40 }, (_, i) => ({ i, dump: "z".repeat(800) })),
-      // Scalars the loop's stop conditions read.
       requires_repair: true,
       classification: "needs_repair",
       already_persisted: true,
       version_changed: false,
-      // Branches the stall fingerprint reads — pass-2-protected keys.
       judge: { missing: ["output_schema", "trigger"] },
       warnings: [{ code: "loop_body_empty" }, { code: "output_contract_violation" }],
     };

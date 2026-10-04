@@ -1,16 +1,3 @@
-// Tenant summary block — the concise "here is what exists in this
-// tenant right now" manifest injected into the converse system prompt.
-//
-// Rationale: without a summary, the model has to call `list_workflows`
-// and `list_connectors` just to answer "what do I have?". That's the
-// exact loop observed in session 4e6696e3: three list_workflows calls
-// (no filter, status=draft, status=archived) before the loop-guard
-// fired and the turn collapsed to an empty response. A few hundred
-// bytes of summaries here replace multiple round-trips of tool calls.
-//
-// Only the `converse` flow uses this. Generate / repair / extract keep
-// their prior one-shot behaviour.
-
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { totalOverWindow } from "../../db/list-result.ts";
@@ -25,14 +12,8 @@ export interface TenantSummary {
     name: string;
     lifecycle: string;
     is_tool: boolean;
-    /** Derived catalog block (`workflows/categorize.ts`), over the WHOLE catalog. */
     category?: string;
   }>;
-  /**
-   * Every catalog block with its exact size, derived over the whole catalog —
-   * not over the trimmed page — so a block whose members fall past the cap is
-   * still named with its true count.
-   */
   workflow_categories?: ReadonlyArray<{ category: string; count: number }>;
   connectors: ReadonlyArray<{
     id: string;
@@ -41,24 +22,13 @@ export interface TenantSummary {
     driver: string;
     environment: string;
   }>;
-  /** Exact live row counts — the "… and N more" trim line renders from
-   *  these so the numbers always agree with `list_workflows` /
-   *  `list_connectors` totals (ground-truth cardinality contract). */
   workflows_total: number;
   connectors_total: number;
 }
 
-/** Hard cap — if a tenant has more rows than this, the block trims. */
 export const MAX_WORKFLOWS_IN_SUMMARY = 40;
 export const MAX_CONNECTORS_IN_SUMMARY = 40;
 
-/**
- * Whether the snapshot lists EVERY row of each kind. A trimmed snapshot is a
- * page, not ground truth: answering an enumeration from it is how "which
- * notion workflows do I have?" came back empty while eight existed past the
- * cap. The converse loop reads this before it withholds tools for an
- * enumeration question.
- */
 export interface SnapshotCoverage {
   workflows_complete: boolean;
   connectors_complete: boolean;
@@ -74,7 +44,6 @@ export function snapshotCoverage(summary: {
   };
 }
 
-/** Coverage from two counts — cheaper than loading the snapshot rows. */
 export async function loadSnapshotCoverage(
   tenant_id: string,
   exec: Executor,
@@ -109,10 +78,6 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
       })
       .from(workflows)
       .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
-      // Slug order, and not for tidiness. Without an ORDER BY the rows arrive
-      // in whatever order the heap hands them over, which shifts when a row is
-      // updated — a scheduled run touching `last_executed_at` was enough to
-      // reorder this block between two turns of the same conversation.
       .orderBy(asc(workflows.slug))
       .limit(MAX_WORKFLOWS_IN_SUMMARY),
     exec
@@ -143,19 +108,8 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
   };
 }
 
-/**
- * Render the tenant-summary block. Returns null when both lists are
- * empty so the assembler skips emitting a dead header.
- *
- * Shape: compact one-line-per-row entries. Keep each line short — the
- * model uses this only to know *what* exists and pick an id; details
- * are fetched on demand via `get_workflow(id)` / `get_connector(id)`.
- */
 export function renderTenantSummaryBlock(summary: TenantSummary): string | null {
   const lines: string[] = [];
-  // True tenant-wide counts. `workflows_total` comes from the same
-  // window-counted query as the rows, so the "… and N more" line and
-  // the list_workflows tool's `total` can never disagree.
   const workflowsTotal = Math.max(summary.workflows_total, summary.workflows.length);
   const workflowsShown = summary.workflows.slice(0, MAX_WORKFLOWS_IN_SUMMARY);
   const workflowsComplete = workflowsTotal <= workflowsShown.length;
@@ -193,9 +147,6 @@ export function renderTenantSummaryBlock(summary: TenantSummary): string | null 
     }
   }
   if (lines.length === 0) return null;
-  // The "answer from the lines above, do not list" rule is only true of a
-  // kind the block lists completely. A trimmed kind is a page: forbidding
-  // the list call there made the model deny workflows that sat past the cap.
   const complete = [
     ...(workflowsComplete ? ["workflows"] : []),
     ...(connectorsComplete ? ["connectors"] : []),

@@ -2,7 +2,6 @@ import type { ComponentProps } from "react";
 import { useI18n } from "@/lib/i18n-context";
 import { SIGN_IN_LINK_PATH } from "./chat-reauth";
 
-/** Keep one-use sign-in targets intact, but keep their tokens out of link labels. */
 export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a">) {
   const { t } = useI18n();
   let signIn = false;
@@ -12,9 +11,7 @@ export function ChatMessageLink({ href, children, ...props }: ComponentProps<"a"
       url.hostname === window.location.hostname &&
       SIGN_IN_LINK_PATH.test(url.pathname) &&
       Boolean(url.searchParams.get("grant"));
-  } catch {
-    /* Ordinary malformed links remain subject to the markdown renderer. */
-  }
+  } catch {}
   return (
     <a
       {...props}

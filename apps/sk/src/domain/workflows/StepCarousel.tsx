@@ -1,14 +1,3 @@
-// Three-tab carousel for inspecting a workflow run.
-//
-// Tabs: payload (the input that started the run), steps (each step's
-// input/output/status), transform (the output transform JSONata + final
-// shape). Arrow keys / Tab cycle tabs; left/right within "steps" cycle
-// the active step.
-//
-// The carousel does not own data fetching — the parent passes the
-// `WorkflowRun` snapshot (or partial state mid-run). The component only
-// renders. Mid-stream updates show "running" badges where applicable.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
@@ -20,11 +9,8 @@ export interface WorkflowStepSnapshot {
   name: string;
   kind: string;
   status: StepStatus;
-  /** Captured input for the step. */
   input?: unknown;
-  /** Captured output (or partial output for streaming steps). */
   output?: unknown;
-  /** Engine error message — set when status === "failed". */
   error?: string | null;
 }
 
@@ -42,7 +28,6 @@ export interface StepCarouselProps {
   run: WorkflowRunSnapshot;
   active: StepCarouselTab;
   onTab: (tab: StepCarouselTab) => void;
-  /** Index of the active step within the steps tab. */
   activeStep?: number;
   onActiveStepChange?: (i: number) => void;
   onAbort?: () => void;

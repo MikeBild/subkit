@@ -1,11 +1,3 @@
-// OIDC device-authorization flow shared by `sk login` and any packaged
-// CLI compatibility aliases.
-//
-// The function is pure / testable: a caller can inject a custom fetch,
-// a scope, and a polling-interval override. It never touches process.
-// stdout when `quiet: true` — the CLI-level command wrappers own the
-// human-facing prompts.
-
 import * as oauth from "openid-client";
 import pc from "picocolors";
 
@@ -15,11 +7,8 @@ export interface DeviceFlowOptions {
   client_id: string;
   engine_url: string;
   scope?: string;
-  /** Optional fetch override for tests. */
   fetchImpl?: typeof fetch;
-  /** Suppress prompt UI in tests. */
   quiet?: boolean;
-  /** Override the `interval` advertised by the IdP (seconds). */
   pollIntervalOverrideSeconds?: number;
 }
 
@@ -34,7 +23,6 @@ const DEFAULT_SCOPE = "openid profile email offline_access";
 
 export async function runDeviceFlow(opts: DeviceFlowOptions): Promise<DeviceFlowResult> {
   const issuerUrl = new URL(opts.issuer_url);
-  // Allow http:// for local mock servers (tests + dev IdP).
   const discoveryOptions: oauth.DiscoveryRequestOptions =
     issuerUrl.protocol === "http:" ? { execute: [oauth.allowInsecureRequests] } : {};
   const config = await oauth.discovery(
@@ -73,7 +61,6 @@ export async function runDeviceFlow(opts: DeviceFlowOptions): Promise<DeviceFlow
     throw new Error("device flow returned no identity assertion");
   }
 
-  // Exchange the identity assertion for a personal API key minted by the engine.
   const fetchImpl = opts.fetchImpl ?? fetch;
   const exchangeRes = await fetchImpl(
     `${opts.engine_url.replace(/\/$/, "")}/v1/identity/sessions`,

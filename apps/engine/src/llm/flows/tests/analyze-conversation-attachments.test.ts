@@ -1,9 +1,3 @@
-// analyzeConversationAttachments — bridges conversation attachments
-// (via the unified `files` + `file_links` resource) to
-// runDocumentAnalysisFlow. Real DB; bytes flow through the
-// in-process test object store so the read path matches what the
-// engine sees at runtime.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -17,8 +11,6 @@ import { attachInlineForTest } from "../../../files/test-helpers.ts";
 import { createDeterministicHexFactory } from "../../../test-helpers/determinism/ids.ts";
 import { analyzeConversationAttachments } from "../analyze-conversation-attachments.ts";
 
-// Deterministic 4-byte tag source: keeps the `x-test-tag` distinct per
-// fixture so sha256 differs from earlier tests that share STRIPE_OPENAPI.
 const nextHex = createDeterministicHexFactory(0xa11ac0);
 
 let ctx: TestDb;
@@ -79,7 +71,6 @@ afterAll(async () => {
 
 describe("analyzeConversationAttachments", () => {
   test("returns null when conversation has no attachments", async () => {
-    // Use a freshly created conversation so prior tests can't pollute.
     const [emptyConv] = await ctx.db
       .insert(conversations)
       .values({ tenant_id, status: "active" })
@@ -129,14 +120,11 @@ describe("analyzeConversationAttachments", () => {
   });
 
   test("respects slugs filter — only analyzes the requested attachments", async () => {
-    // Fresh conversation so the filter test starts from a clean state.
     const [conv] = await ctx.db
       .insert(conversations)
       .values({ tenant_id, status: "active" })
       .returning();
     const tag = nextHex(4);
-    // Parse + re-serialise with a unique `x-test-tag` field so sha256 differs
-    // from earlier tests that used the same STRIPE_OPENAPI literal.
     const stripeTagged = JSON.stringify({
       ...JSON.parse(STRIPE_OPENAPI),
       "x-test-tag": `${tag}-a`,

@@ -1,6 +1,3 @@
-// Ink-component coverage for StarterActions + the persona-scoped
-// action picker.
-
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_STARTER_ACTIONS,

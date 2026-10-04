@@ -1,12 +1,3 @@
-// Unit tests for discover_connector_endpoints.
-//
-// Covers:
-//   - cache miss → calls discovery, persists to knowledge_sources, returns "fresh"
-//   - cache hit (within TTL) → returns "cache" and skips discovery
-//   - force_refresh → bypasses cache even when fresh row exists
-//   - DiscoveryError surfaces as structured tool error
-//   - tenant isolation: tenant A's cached discovery is not returned for tenant B
-
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import * as discoveryModule from "../../connectors/discovery/index.ts";
@@ -100,7 +91,6 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
-  // Wipe cached rows between tests so each scenario starts clean.
   await ctx.db.delete(knowledgeChunks);
   await ctx.db.delete(knowledgeSources);
 });
@@ -137,7 +127,6 @@ describe("discover_connector_endpoints — cache miss", () => {
       expect(data.result.endpoints[0]?.path).toBe("/v2/account");
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0]?.[0]).toMatchObject({ template_id: "digitalocean" });
-      // The persisted row should exist + chunk content should be the JSON.
       const rows = await ctx.db
         .select()
         .from(knowledgeSources)
@@ -179,7 +168,6 @@ describe("discover_connector_endpoints — cache miss", () => {
 
 describe("discover_connector_endpoints — cache hit", () => {
   test("returns source=cache without invoking discovery when row is fresh", async () => {
-    // Seed a fresh cache row.
     const seed = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
     );
@@ -189,7 +177,6 @@ describe("discover_connector_endpoints — cache hit", () => {
     });
     seed.mockRestore();
 
-    // Now the next call must NOT touch discovery.
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockRejectedValue(
       new Error("must not be called"),
     );
@@ -209,7 +196,6 @@ describe("discover_connector_endpoints — cache hit", () => {
   });
 
   test("expired cache (older than TTL) re-fetches", async () => {
-    // Seed an expired cache row directly.
     const stale = new Date(TEST_NOW_MS - KNOWLEDGE_SOURCE_TTL_MS - 1000);
     const [row] = await ctx.db
       .insert(knowledgeSources)
@@ -258,7 +244,6 @@ describe("discover_connector_endpoints — cache hit", () => {
 
 describe("discover_connector_endpoints — force_refresh", () => {
   test("bypasses fresh cache and re-invokes discovery", async () => {
-    // Seed a fresh cache row.
     const seed = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
     );
@@ -314,8 +299,6 @@ describe("discover_connector_endpoints — connector_id resolution", () => {
         force_refresh: false,
       });
       expect(r.ok).toBe(true);
-      // Discovery ran against the connector's own base_url — the agent never
-      // had to re-type the URL or (wrongly) pass the slug as template_id.
       expect(spy.mock.calls[0]?.[0]).toMatchObject({
         base_url: "https://api.example.test/graphql",
       });
@@ -387,7 +370,6 @@ describe("discover_connector_endpoints — DiscoveryError", () => {
 
 describe("discover_connector_endpoints — tenant isolation", () => {
   test("tenant A's cached discovery is not returned for tenant B", async () => {
-    // Tenant A populates the cache.
     const seed = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
     );
@@ -397,7 +379,6 @@ describe("discover_connector_endpoints — tenant isolation", () => {
     });
     seed.mockRestore();
 
-    // Tenant B asks for the same key — must miss and re-fetch.
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue({
       ...SAMPLE_RESULT,
       title: "Tenant B's view",
@@ -419,7 +400,6 @@ describe("discover_connector_endpoints — tenant isolation", () => {
       expect(data.source).toBe("fresh");
       expect(data.result.title).toBe("Tenant B's view");
       expect(spy).toHaveBeenCalledTimes(1);
-      // Tenant A's row remains intact.
       const aRows = await ctx.db
         .select()
         .from(knowledgeSources)
@@ -430,7 +410,6 @@ describe("discover_connector_endpoints — tenant isolation", () => {
           ),
         );
       expect(aRows).toHaveLength(1);
-      // Tenant B got their own row.
       const bRows = await ctx.db
         .select()
         .from(knowledgeSources)

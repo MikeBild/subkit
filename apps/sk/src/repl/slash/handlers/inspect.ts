@@ -1,15 +1,3 @@
-// Read-only inspection slashes: `/skills`, `/mcp`, `/knowledge`,
-// `/permissions`, `/audit`. Each is a thin `client.listX() →
-// render → panify` shape, the same pattern as `admin-lists.ts`
-// but for the non-admin tier. Extracted from handler.ts
-// so the main switch keeps focus on stateful /
-// interactive cases.
-//
-// Returns:
-//   - `string | null` if the command was handled (string = banner,
-//     null = pane was opened)
-//   - `undefined` if the name doesn't belong to this group
-
 import { panify, type SlashHandlerContext } from "../handler.ts";
 
 export async function dispatchInspectSlash(
@@ -18,9 +6,6 @@ export async function dispatchInspectSlash(
 ): Promise<string | null | undefined> {
   switch (name) {
     case "skills": {
-      // Deep-link into the SettingsModal Skills tab when an Ink host is
-      // available — interactive activation/archive lives there. Readline
-      // hosts get the legacy read-only list.
       if (ctx.openPane) {
         ctx.openPane({ kind: "settings", initialTab: "Skills" });
         return null;
@@ -48,10 +33,6 @@ export async function dispatchInspectSlash(
       return panify(ctx, "mcp catalog", lines);
     }
     case "permissions": {
-      // Ink host present → mount the SinglePane PermissionsCommand so
-      // the user can change repl.permissionMode interactively. The
-      // readline fallback below preserves the read-only "list granted
-      // permissions" behavior used in scripted environments.
       if (ctx.openPane) {
         const tenant = ctx.statusSnapshot?.tenant.slug ?? null;
         ctx.openPane({ kind: "permissions", tenant });
@@ -86,9 +67,6 @@ export async function dispatchInspectSlash(
       return panify(ctx, "audit log", lines, `latest ${rows.length}`);
     }
     case "knowledge": {
-      // Deep-link into the SettingsModal Knowledge tab when an Ink host
-      // is available — ingest / delete / inspect live there. Readline
-      // hosts get the legacy read-only list.
       if (ctx.openPane) {
         ctx.openPane({ kind: "settings", initialTab: "Knowledge" });
         return null;

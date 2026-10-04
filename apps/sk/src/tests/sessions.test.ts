@@ -1,6 +1,3 @@
-// Unit tests for apps/sk/src/sessions.ts — the ~/.sk/sessions/*.json
-// local metadata cache.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,8 +11,6 @@ import {
   sessionsDir,
 } from "../sessions.ts";
 
-// Redirect the cache to a fresh scratch dir via SK_HOME so we never
-// touch the user's real ~/.sk folder.
 let tmpHome: string;
 let origSkHome: string | undefined;
 
@@ -46,9 +41,6 @@ describe("sk sessions store", () => {
     expect(loaded).not.toBeNull();
     expect(loaded?.conversation_id).toBe(id);
     expect(loaded?.title).toBe("first session");
-    // Under SK_HOME override, sessionPath + sessionsDir live under the
-    // tmp dir. Assert the filename shape and sessions/ sub-dir instead
-    // of a fixed `.sk/` segment.
     expect(sessionPath(id)).toContain(`sessions/${id}.json`);
     expect(sessionsDir()).toContain("sessions");
   });

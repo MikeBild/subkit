@@ -1,9 +1,3 @@
-// Diagnostics + observability surfaces of the engine client: health,
-// version/drift posture, log tailing, engine error ring, setup
-// validation, runtime snapshot, audit log, and the composite status
-// snapshot. Method group merged into `EngineClient` by
-// `../engine-client.ts`.
-
 import {
   DIAGNOSTICS_DRIFT_PATH,
   DIAGNOSTICS_LOG_STREAM_PATH,
@@ -12,8 +6,6 @@ import {
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineClient } from "../engine-client.ts";
 
-// Aliased from the generated OpenAPI surface so command surfaces have a
-// single import site and the snake_case wire shape stays authoritative.
 export type DiagnosticsRuntime = components["schemas"]["DiagnosticsRuntime"];
 
 export interface EngineErrorEntry {
@@ -79,12 +71,7 @@ export interface StatusSummary {
   tokens_month: number;
   monthly_budget_tokens: number | null;
   remaining_monthly_budget_tokens: number | null;
-  /**
-   * The month against its cap, as the engine reads it (75 % tightening, 90 %
-   * critical). Absent from an engine that predates it; null when uncapped.
-   */
   monthly_budget_state?: "ample" | "tightening" | "critical" | null;
-  /** The caller's own figures (null for system_account principals). */
   tokens_today_user: number | null;
   tokens_month_user: number | null;
   user_monthly_budget_tokens: number | null;
@@ -93,7 +80,6 @@ export interface StatusSummary {
 }
 
 export const diagnosticsMethods = {
-  // --------------------------- Health + Health-like ---------------------------
   health(this: EngineClient): Promise<{
     status: "ok";
     service: "subkit";
@@ -111,13 +97,6 @@ export const diagnosticsMethods = {
     return this.request("GET", "/ready");
   },
 
-  // --------------------------- Version diagnostics ---------------------------
-  /**
-   * Engine version + update + schema-drift posture. Backed by
-   * `/v1/diagnostics/version`, which requires `audit:read`. The
-   * public `/health` deliberately omits these fields so the engine
-   * does not leak operational posture to unauthenticated callers.
-   */
   diagnosticsVersion(this: EngineClient): Promise<{
     engine_version: string;
     latest_version?: string;
@@ -156,13 +135,6 @@ export const diagnosticsMethods = {
     return this.request("GET", "/v1/diagnostics/integrations");
   },
 
-  // --------------------------- Drift diagnostics ---------------------------
-  /**
-   * Detailed schema-drift report. Backed by `/v1/diagnostics/drift`,
-   * which requires `audit:read`. Surfaces the rows in
-   * `drizzle.__drizzle_migrations` that are unknown to the engine
-   * binary, accepted pre-squash history, and missing embedded identities.
-   */
   driftReport(this: EngineClient): Promise<{
     engine_version: string;
     embedded_migration_count: number;
@@ -184,13 +156,6 @@ export const diagnosticsMethods = {
     return this.request("GET", DIAGNOSTICS_DRIFT_PATH);
   },
 
-  // --------------------------- Engine log tail ---------------------------
-  /**
-   * Pull a window of the engine's in-memory log ring buffer. Returns
-   * raw JSON-line entries (each already structured with module / action
-   * / msg). Backed by `/v1/diagnostics/logs?since=<unix_ms>&limit=<n>`,
-   * which requires `audit:read`.
-   */
   logsTailWindow(
     this: EngineClient,
     opts: {
@@ -223,12 +188,6 @@ export const diagnosticsMethods = {
     return this.request("GET", `${DIAGNOSTICS_LOG_TAIL_PATH}${qs ? `?${qs}` : ""}`);
   },
 
-  /**
-   * Returns the absolute URL the SSE stream lives at. The caller wires
-   * up its own `EventSource`/fetch-stream because each consumer
-   * (Ink REPL, headless CLI tail) has different lifetime semantics.
-   * Bearer auth must be added by the caller.
-   */
   logsTailStreamUrl(
     this: EngineClient,
     opts: {
@@ -247,17 +206,10 @@ export const diagnosticsMethods = {
     return `${this.base}${DIAGNOSTICS_LOG_STREAM_PATH}${qs ? `?${qs}` : ""}`;
   },
 
-  // --------------------------- Status snapshot ---------------------------
-  /**
-   * Composite status snapshot used by the Ink status-line ticker and the
-   * `/status` pane. One round-trip instead of fanning out to /connectors
-   * + /skills + /usage. Tenant-scoped by the engine.
-   */
   statusSummary(this: EngineClient): Promise<StatusSummary> {
     return this.request("GET", "/v1/status");
   },
 
-  // --------------------------- Audit (admin only) ---------------------------
   tailAuditLog(
     this: EngineClient,
     query: { actor_id?: string; action?: string; limit?: number } = {},
@@ -265,7 +217,6 @@ export const diagnosticsMethods = {
     return this.request("GET", "/v1/audit-log", undefined, query);
   },
 
-  // --------------------- Diagnostics (engine error ring) --------------------
   tailEngineErrors(
     this: EngineClient,
     query: { limit?: number; since?: string; trace_id?: string } = {},
@@ -277,14 +228,6 @@ export const diagnosticsMethods = {
     return this.request("GET", "/v1/diagnostics/setup");
   },
 
-  /**
-   * Live process-runtime snapshot — uptime, memory (rss / heap /
-   * external MB), DB-pool saturation, and event-loop lag. Backed by
-   * `/v1/diagnostics/runtime`. Surfaced by `sk health` so an operator
-   * can see engine pressure (the OOM / event-loop-stall symptoms) from
-   * the CLI without shelling onto the host. Return shape is the
-   * generated OpenAPI schema.
-   */
   diagnosticsRuntime(this: EngineClient): Promise<DiagnosticsRuntime> {
     return this.request("GET", "/v1/diagnostics/runtime");
   },
@@ -293,7 +236,6 @@ export const diagnosticsMethods = {
     return this.request("GET", "/v1/diagnostics/llm");
   },
 
-  // -------------------- Audit Log (extended) --------------------
   queryAuditLog(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},

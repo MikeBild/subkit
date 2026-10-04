@@ -1,14 +1,3 @@
-// HTTP and MCP answer the same facts with the same numbers.
-//
-// Each case reads one fact over the public HTTP route and over the MCP tool
-// that names it, from the same seeded tenant, and compares the answers whole
-// — not a field the test happened to think of. Where the cockpit composes a
-// figure from raw stats routes (the Übersicht's operations bar), the case also
-// recomputes it from those routes, so the figure an MCP client reads is the
-// one on screen. Every fixture holds something on both sides of each
-// boundary: a run outside the window, a model without a price, a protocol
-// scope, a setting nobody set. An empty answer would match anything.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AuditAction } from "../../audit/index.ts";
 import {
@@ -26,7 +15,6 @@ import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 
-// A fixed window, far from "now": nothing the suite's own traffic writes lands in it.
 const FROM = "2026-01-10T00:00:00.000Z";
 const TO = "2026-01-11T00:00:00.000Z";
 const at = (iso: string) => new Date(iso);
@@ -53,9 +41,6 @@ beforeAll(async () => {
   const db = suite.http.db;
   const tenant_id = suite.http.tenantId;
 
-  // Runs: four started in the window (two succeeded, one failed, one still
-  // running — counted in the total, but neither success nor failure: the rate
-  // is over the three that ended), one before it.
   const run = (status: "succeeded" | "failed" | "running", started: string) => ({
     tenant_id,
     status,
@@ -75,9 +60,6 @@ beforeAll(async () => {
       run("failed", "2026-01-09T23:00:00.000Z"),
     ]);
 
-  // Repairs decided in the window: two applied (one by a person, one on its
-  // own), one rejected; one proposal, which is not a decision; one approval
-  // after the window.
   const decision = (action: string, ts: string) => ({
     id: uuid(),
     tenant_id,
@@ -97,7 +79,6 @@ beforeAll(async () => {
       decision(AuditAction.PATCH_CANDIDATE_APPROVED, "2026-01-12T00:00:00.000Z"),
     ]);
 
-  // Connectors: one healthy, one degraded, one disabled (not counted).
   const healthy = await suite.seedConnector({ slug: "parity-ok" });
   const degraded = await suite.seedConnector({ slug: "parity-degraded" });
   const disabled = await suite.seedConnector({ slug: "parity-off" });
@@ -109,9 +90,6 @@ beforeAll(async () => {
     .where(eq(connectors.id, degraded.id));
   await db.update(connectors).set({ enabled: false }).where(eq(connectors.id, disabled.id));
 
-  // LLM calls in the window: a catalog-priced model under two spellings and
-  // one no price covers, by the reader; one more by nobody in particular,
-  // which a per-user answer must leave out.
   const call = (model: string, ts: string, user_id: string | null = suite.http.userId) => ({
     tenant_id,
     user_id,
@@ -135,8 +113,6 @@ beforeAll(async () => {
       call("gpt-5.6-sol", "2026-01-10T11:00:00.000Z", null),
     ]);
 
-  // An outbound connection that renews itself, requested with the protocol
-  // scope, used by the degraded connector's credential.
   const [connection] = await db
     .insert(outboundConnections)
     .values({
@@ -212,7 +188,6 @@ describe("operations figures of the Übersicht", () => {
     const enabled = await rest<{ total: number }>("/v1/connectors?enabled=true&limit=1");
     const notOk = await rest<{ total: number }>("/v1/connectors?health=not_ok&limit=1");
 
-    // The cockpit's arithmetic (apps/cockpit/src/pages/operations-figures.ts).
     const count = execs.totals.executions.count;
     const byStatus = execs.totals.executions.by_status as Record<string, number | undefined>;
     const succeeded = byStatus.succeeded ?? 0;
@@ -231,7 +206,6 @@ describe("operations figures of the Übersicht", () => {
     const figures = await mcp<Figures>("get_operating_figures", { from: FROM, to: TO });
     expect(figures.runs.total).toBe(count);
     expect(figures.runs.success_rate_percent).toBe(Math.round((succeeded / finished) * 100));
-    // The running run does not count against the rate: 2 of 3 ended, not 2 of 4.
     expect(figures.runs.success_rate_percent).toBe(67);
     expect(figures.repairs.decided).toBe(byAction(decided));
     expect(figures.repairs.applied).toBe(byAction(applied));
@@ -283,7 +257,6 @@ describe("cost", () => {
     });
     expect(tool.cost).toEqual(http.cost);
     expect(tool.window).toEqual({ from: FROM, to: TO });
-    // The catalog prices both spellings of the model; only the house model is unpriced.
     expect(http.cost.amount).toBeGreaterThan(0);
     expect(http.cost.unpriced_models).toEqual(["house-model-7"]);
     expect(http.cost.price_sources.every((s) => s.price_source === "catalog")).toBe(true);
@@ -308,8 +281,6 @@ describe("monthly token budget", () => {
       },
     );
     expect(put.status).toBe(200);
-    // 89.6 % spent: tightening on the exact share. A surface that rounded to a
-    // whole percent first would call it critical.
     await suite.http.db.insert(llmUsage).values({
       tenant_id: suite.http.tenantId,
       flow: "chat",
@@ -341,7 +312,6 @@ describe("monthly token budget", () => {
     });
     expect(status.monthly_budget_state).toBe("tightening");
 
-    // The attention list reads the same state: tightening is not a budget item.
     invalidateAttention();
     const attention = await rest<{ items: Array<{ id: string }> }>("/v1/attention");
     expect(attention.items.some((item) => item.id === "budget")).toBe(false);
@@ -378,8 +348,6 @@ describe("settings", () => {
     const http = await rest<SettingsList>("/v1/settings");
     const tool = await mcp<SettingsList>("subkit_settings", {}, plaintext);
     expect(tool).toEqual(http);
-    // A setting nobody set carries its key, as null, on both — an absent key
-    // is what a client renders as "undefined" or skips.
     const keyless = http.items.filter((item) => !Object.hasOwn(item, "value"));
     expect(keyless.map((item) => item.path)).toEqual([]);
     expect(http.items.some((item) => item.value === null)).toBe(true);

@@ -1,14 +1,3 @@
-// Discovery for outbound connections: what does the server at <base_url> say
-// about itself? Two documents, both optional, both read with the driver
-// egress seam so tests can intercept exactly this traffic.
-//
-//   <base_url>/.well-known/oauth-authorization-server   RFC 8414
-//   <base_url>/.well-known/openid-configuration          the OIDC spelling of the same
-//   <base_url>/.well-known/service-descriptor.json       a display name, if published
-//
-// The authorization document decides whether "Verbinden" is possible at all;
-// the descriptor only decides what the Cockpit calls the thing.
-
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import {
   type AuthorizationServerMetadata,
@@ -21,11 +10,6 @@ import {
 
 const DISCOVERY_TIMEOUT_MS = 10_000;
 
-/**
- * The one shape a base URL may have: http(s), a host, an optional path, no
- * query and no fragment; plaintext only to localhost. What comes back has no
- * trailing slash, so `${base}/.well-known/…` is always one slash.
- */
 export function normalizeBaseUrl(input: string): string {
   let url: URL;
   try {
@@ -96,8 +80,6 @@ async function discoverDescriptor(baseUrl: string): Promise<ServiceDescriptor | 
   try {
     body = await fetchJson(`${baseUrl}/.well-known/service-descriptor.json`);
   } catch {
-    // Optional by contract: a server that does not publish one, or publishes
-    // one that does not answer, is still a server one can connect to.
     return null;
   }
   if (body === null) return null;
@@ -120,10 +102,6 @@ export async function discoverService(rawBaseUrl: string): Promise<DiscoveryResu
   return { base_url, authorization, descriptor };
 }
 
-/**
- * The part of a discovery result "Verbinden" needs: metadata present, PKCE
- * S256 not ruled out, a registration endpoint to register at.
- */
 export function requireConnectable(result: DiscoveryResult): AuthorizationServerMetadata {
   if (!result.authorization) {
     throw new ConnectionError(

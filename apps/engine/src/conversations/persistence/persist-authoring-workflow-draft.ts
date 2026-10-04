@@ -10,7 +10,6 @@ import type { DraftDocument } from "../types.ts";
 import type { WorkflowDefFromDraft } from "./commit-workflow.ts";
 import { proposeAuthoringCapabilityCandidate } from "./commit-workflow-skill-candidate.ts";
 
-/** Saving authoring work has no activation, trigger or execution side effect. */
 export async function persistAuthoringWorkflowDraft(input: {
   ctx: ToolContext;
   fullDraft: DraftDocument;
@@ -146,8 +145,6 @@ export async function persistAuthoringWorkflowDraft(input: {
       and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
     );
   await ctx.setDraft(nextDraft);
-  // The described interface is drafting context, bound to the saved draft —
-  // not a decision, so the turn does not announce it as one.
   if (changed)
     await proposeAuthoringCapabilityCandidate({
       db: ctx.db,
@@ -196,14 +193,6 @@ export async function persistAuthoringWorkflowDraft(input: {
       next_best_actions: ["inspect_workflow_draft", "dry_run_workflow"],
       next_prompt: [
         scheduleWarning,
-        // Saying "saved" for a version that already existed reads as a fresh
-        // write, and a reader who has just corrected something concludes the
-        // correction was dropped. It was not: the stored definition carries
-        // values the schema fills in (a request step without `error_policy` is
-        // stored with `"none"`), so an unchanged definition and its saved
-        // version differ textually while being the same thing. An hour went
-        // into re-saving and then digging through the database over exactly
-        // this sentence being absent.
         changed
           ? null
           : `No new version was written: this definition already IS version ${saved.version}, once the values the schema fills in are applied. The edits are in that version — saving again cannot produce a different result.`,

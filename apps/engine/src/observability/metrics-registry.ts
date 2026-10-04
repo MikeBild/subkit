@@ -1,14 +1,3 @@
-// Hand-rolled Prometheus-compatible metrics REGISTRY (the mechanism).
-//
-// The metric data structure + label normalization + Prometheus text render.
-// Split out of `metrics.ts` so the catalog (METRIC_NAMES + buildRegistry, which
-// grows by a few lines per new metric) and the registry engine stay each under
-// the file-size ceiling. `metrics.ts` re-exports `MetricsRegistry` so existing
-// importers are unaffected.
-//
-// Concurrency: Bun runs every request on the same thread, so we get safe
-// arithmetic without mutexes.
-
 import { logger } from "../logging/logger.ts";
 import type { LabelValues, MetricDefinition, SampleSnapshot, SeriesSnapshot } from "./types.ts";
 
@@ -49,8 +38,6 @@ function normalizeLabels(
     }
     result[k] = String(v ?? "");
   }
-  // Fill missing allow-list keys with an empty string so the series
-  // shape stays consistent across writes.
   for (const k of metric.labels) {
     if (!(k in result)) result[k] = "";
   }
@@ -75,12 +62,12 @@ interface GaugeSeries {
 
 interface HistogramSeries {
   def: MetricDefinition;
-  buckets: number[]; // ascending, no +Inf
+  buckets: number[];
   values: Map<
     string,
     {
       labels: Record<string, string>;
-      counts: number[]; // length == buckets.length + 1 (+Inf)
+      counts: number[];
       sum: number;
       count: number;
     }
@@ -163,10 +150,6 @@ export class MetricsRegistry {
       if (value <= upper) {
         entry.counts[i] = (entry.counts[i] ?? 0) + 1;
         landed = true;
-        // Buckets are cumulative — `_bucket{le="x"}` includes everything
-        // that landed in any earlier bucket, so we need to bump every
-        // bucket from this index upwards. We do that during render so we
-        // only pay it on scrape.
         break;
       }
     }
@@ -175,11 +158,6 @@ export class MetricsRegistry {
     }
   }
 
-  /** Sum a gauge across all its label-sets. The predictive-maintenance
-   *  digest reads single-series gauges (no labels) and label-partitioned
-   *  ones (e.g. `dlq_job_count{queue}`) through this, treating the
-   *  whole-series total as the risk signal. Returns 0 for an unknown or
-   *  never-written gauge. */
   gaugeSum(name: string): number {
     const series = this.gauges.get(name);
     if (!series) return 0;
@@ -188,8 +166,6 @@ export class MetricsRegistry {
     return total;
   }
 
-  /** Max gauge value across all label-sets (e.g. the worst-saturated of a
-   *  partitioned gauge). Returns 0 for an unknown/empty gauge. */
   gaugeMax(name: string): number {
     const series = this.gauges.get(name);
     if (!series) return 0;
@@ -198,8 +174,6 @@ export class MetricsRegistry {
     return max;
   }
 
-  /** Sum a counter across all its label-sets. Returns 0 for an unknown or
-   *  never-incremented counter. */
   counterSum(name: string): number {
     const series = this.counters.get(name);
     if (!series) return 0;
@@ -208,9 +182,6 @@ export class MetricsRegistry {
     return total;
   }
 
-  /** Sum a counter across label-sets that match `predicate` on the
-   *  label values. Used to split a partitioned counter (e.g. the non-`ok`
-   *  share of `connector_call_total{health}`). */
   counterSumWhere(name: string, predicate: (labels: Record<string, string>) => boolean): number {
     const series = this.counters.get(name);
     if (!series) return 0;
@@ -219,9 +190,6 @@ export class MetricsRegistry {
     return total;
   }
 
-  /** Total observation count of a histogram across all label-sets — the
-   *  denominator for rate ratios (e.g. LLM-fallback fraction over total
-   *  LLM calls). Returns 0 for an unknown/empty histogram. */
   histogramCount(name: string): number {
     const series = this.histograms.get(name);
     if (!series) return 0;
@@ -230,7 +198,6 @@ export class MetricsRegistry {
     return total;
   }
 
-  /** Returns the structured snapshot. Mostly used by tests + render(). */
   snapshot(): SeriesSnapshot[] {
     const out: SeriesSnapshot[] = [];
     for (const c of this.counters.values()) {
@@ -250,7 +217,6 @@ export class MetricsRegistry {
     for (const h of this.histograms.values()) {
       const samples: SampleSnapshot[] = [];
       for (const entry of h.values.values()) {
-        // Cumulative bucket counts.
         let running = 0;
         for (let i = 0; i < h.buckets.length; i++) {
           running += entry.counts[i] ?? 0;
@@ -282,14 +248,12 @@ export class MetricsRegistry {
     return out;
   }
 
-  /** Render in the Prometheus text exposition format (v0.0.4). */
   render(): string {
     const parts: string[] = [];
     for (const series of this.snapshot()) {
       parts.push(`# HELP ${series.name} ${series.help}`);
       parts.push(`# TYPE ${series.name} ${series.kind}`);
       if (series.samples.length === 0) {
-        // Print a zero sample so scrape tools show the series exists.
         parts.push(`${series.name} 0`);
         continue;
       }
@@ -308,7 +272,6 @@ export class MetricsRegistry {
     return `${parts.join("\n")}\n`;
   }
 
-  /** Test helper — wipes every series. */
   reset(): void {
     for (const c of this.counters.values()) c.values.clear();
     for (const g of this.gauges.values()) g.values.clear();

@@ -1,10 +1,3 @@
-// Provider-neutral S3 object store used by every binary payload path.
-//
-// The runtime contract deliberately excludes local disk, CopyObject,
-// presigned URLs, ACLs, tagging, object locking, bucket versioning and S3
-// checksum headers. Object keys are immutable; PostgreSQL owns active
-// pointers and application SHA-256 metadata.
-
 import { createHash } from "node:crypto";
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getConfig, isConfigLoaded } from "../config/loader.ts";
@@ -414,7 +407,6 @@ export class S3ObjectStore implements ObjectStore {
   }
 }
 
-/** In-memory test double; never selected in a production process. */
 export class MemoryObjectStore implements ObjectStore {
   private readonly objects = new Map<string, Uint8Array>();
 

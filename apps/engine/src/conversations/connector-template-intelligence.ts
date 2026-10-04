@@ -69,7 +69,6 @@ export function scoreConnectorTemplate(
       else if (candidate.includes(token)) score += 2;
     }
   }
-  // Keyword scoring: exact keyword hit scores higher than substring.
   for (const kw of template.keywords) {
     const kwl = kw.toLowerCase();
     if (kwl === q) score += 10;
@@ -183,15 +182,7 @@ export function inferAuthTypeFromDescription(description?: string | null): AuthT
   if (!description) return null;
   const d = description.toLowerCase();
   if (/\boauth\b|\boauth2\b/.test(d)) return "oauth2";
-  // "email" signals basic auth: the dominant "API token" providers that
-  // pair a token with an email (Atlassian Jira/Confluence, Zendesk, …)
-  // use HTTP Basic with email as the username — session 97679846 had
-  // "API token" inferred as bearer and every probe 401'd.
   if (/\bbasic auth\b|\busername\b|\bpassword\b|\bemail\b/.test(d)) return "basic";
-  // Bare "token" / "api key" is deliberately NOT bearer: vendors split
-  // roughly evenly between bearer, basic-with-token-password, and
-  // header schemes. Returning null lets the template's auth_options or
-  // the operator decide instead of locking in a coin-flip guess.
   if (/\bbearer\b|\bpersonal access token\b/.test(d)) return "bearer";
   if (/\bquery\b/.test(d)) return "query";
   if (/\bheader\b/.test(d)) return "header";

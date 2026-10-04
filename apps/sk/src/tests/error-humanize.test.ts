@@ -18,11 +18,6 @@ describe("humanizeValidationError", () => {
   });
 
   it("recognises an Anthropic quota error and surfaces a provider-specific label + retry hint", () => {
-    // Reproduces the issue from the screenshot: engine returns
-    // `code: "internal", message: "You have reached your specified
-    // API usage limits…"`. Pre-fix the CLI rendered this under
-    // "validation errors · internal" and the operator hunted for a
-    // workflow bug that didn't exist.
     const r = humanizeValidationError({
       path: "internal",
       message:
@@ -114,9 +109,6 @@ describe("summarizeToolFailure", () => {
   });
 
   it("maps authoring_stage_violation to the repair-stage explanation", () => {
-    // Stage-gated repair tool (edit_workflow_patch) refuses with this
-    // code while the draft has no preview / recorded-eval evidence.
-    // The operator must read "use author_workflow first", not the raw code.
     const r = summarizeToolFailure("edit_workflow_patch", {
       error: "authoring_stage_violation",
       error_code: "authoring_stage_violation",
@@ -195,7 +187,6 @@ describe("humanizeRequestError surfaces hints", () => {
     const out = humanizeRequestError(err);
     expect(out).toContain("HTTP 403");
     expect(out).toContain("read-only access to connector conn-1");
-    // The curated server hint wins over the generic 403 → "auth refresh" pattern.
     expect(out).not.toContain("auth refresh");
   });
 
@@ -203,7 +194,6 @@ describe("humanizeRequestError surfaces hints", () => {
     const err = new EngineError(403, { code: "forbidden", message: "policy_denied" });
     const out = humanizeRequestError(err);
     expect(out).toContain("HTTP 403 forbidden");
-    // No server hint → no fabricated connector wording.
     expect(out).not.toContain("read-only");
   });
 
@@ -258,10 +248,6 @@ describe("humanizeRequestError surfaces hints", () => {
   });
 
   test("transient socket drop renders a non-alarming recovery hint", () => {
-    // Long LLM turns can exceed bun-fetch's keep-alive window.
-    // When that happens, we want a calm "recovering" message, not
-    // a red "cannot reach engine" block — the engine kept running
-    // server-side and the next user prompt will resync state.
     const cause = new Error(
       "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()",
     );
@@ -270,18 +256,12 @@ describe("humanizeRequestError surfaces hints", () => {
     const out = humanizeRequestError(err);
     expect(out).toContain("engine connection dropped");
     expect(out).toContain("recovering");
-    // Bun-fetch verbose hint must be stripped — it's CLI-internal
-    // noise that makes the user think they did something wrong.
     expect(out).not.toContain("verbose: true");
     expect(out).not.toContain("second argument to fetch()");
-    // The "cannot reach engine" framing is reserved for non-transient
-    // failures (engine actually unreachable).
     expect(out).not.toContain("cannot reach engine");
   });
 
   test("ECONNREFUSED is NOT classified as transient socket drop", () => {
-    // Distinct from ECONNRESET: ECONNREFUSED means the engine isn't
-    // listening at all, so the "engine unreachable" framing is right.
     const cause = new Error("fetch failed: ECONNREFUSED");
     (cause as { code?: string }).code = "ECONNREFUSED";
     const err = new TransportError(cause);
@@ -292,8 +272,6 @@ describe("humanizeRequestError surfaces hints", () => {
   });
 
   test("verbose-fetch suffix is stripped from any transport error message", () => {
-    // Even non-transient transport errors should not leak the bun
-    // verbose-fetch hint into the operator-visible banner.
     const err = new TransportError(
       new Error(
         "getaddrinfo ENOTFOUND. For more information, pass `verbose: true` in the second argument to fetch()",

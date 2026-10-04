@@ -1,21 +1,3 @@
-// User story: As an admin iterating on a workflow, I get an
-// `elicit_request` frame for `ask_user_confirm`, respond with the
-// POST /elicitations/:id/respond endpoint, and the engine resumes
-// the loop (on confirmed) or parks the conversation (on rejected)
-// with the correct audit trail.
-//
-// Acceptance criteria:
-//
-//   AC1. Confirming a save_workflow_draft elicitation unblocks the loop:
-//        the conversation transitions from `awaiting_input` to
-//        `active`, an `approval.approved` audit row fires, and a new
-//        inert workflow draft is created without a committed audit event.
-//   AC2. Rejecting the elicitation drives a new turn with the
-//        negative result; the conversation does NOT commit, the
-//        stored output carries `{ confirmed: false }`, and the
-//        reason is persisted on the elicitation row.
-//   AC3. Responding to an unknown elicitation returns 4xx/5xx.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import * as conversationsSvc from "../../conversations/service.ts";
@@ -26,11 +8,6 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch }
 let ctx: JourneyCtx;
 
 async function countAudit(action: string, resourceId: string): Promise<number> {
-  // The harness emits a SECOND `approval.approved` row tagged with
-  // `reason: "auto_persist_on_confirmation"` after the canonical user-side
-  // approval. For the journey-level lifecycle assertions we only care
-  // about the canonical row (reason=null) — the dual-audit pattern is
-  // already covered by the unit tests in audit-trail.test.ts.
   const rows = await ctx.db
     .select({ id: auditLog.id })
     .from(auditLog)
@@ -58,9 +35,6 @@ describe("journey: sk-cli elicitation lifecycle", () => {
     conversationId: string;
     elicitationId: string;
   }> {
-    // createConversation is insert-only; the turn runs via
-    // runConversationTurn. createConversationWithTurn composes both so
-    // the mock provider's queued elicitation actually lands.
     const outcome = await createConversationWithTurn(
       {
         permission_mode: "ask",

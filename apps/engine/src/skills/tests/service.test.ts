@@ -56,13 +56,10 @@ describe("skills/service", () => {
     expect(global.version).toBe(1);
     expect(global.examples).toEqual(["GET /users?cursor=..."]);
 
-    // scope validation
     await expect(
       createSkill({ tenant_id, input: { scope: "connector", title: "x", body: "x" } }, ctx.db),
     ).rejects.toThrow(/connector_id/);
 
-    // Create a connector-scoped and workflow-scoped pair, plus an archived
-    // connector skill that should be filtered out by retrieval.
     const fakeConnectorId = crypto.randomUUID(); // allow-random: legacy; review before changing
     const fakeWorkflowId = crypto.randomUUID();
     const connectorSkill = await createSkill(
@@ -103,13 +100,11 @@ describe("skills/service", () => {
       ctx.db,
     );
 
-    // get + list
     const fetched = await getSkill(tenant_id, global.id, ctx.db);
     expect(fetched?.id).toBe(global.id);
     const all = await listSkills({ tenant_id }, ctx.db);
     expect(all.length).toBeGreaterThanOrEqual(4);
 
-    // update bumps version, preserves fields
     const patched = await updateSkill(
       tenant_id,
       global.id,
@@ -129,11 +124,9 @@ describe("skills/service", () => {
       ),
     ).rejects.toMatchObject({ status: 409, code: "conflict" });
 
-    // activate is idempotent
     const reactivated = await activateSkill(tenant_id, patched!.id, null, ctx.db);
     expect(reactivated?.status).toBe("active");
 
-    // retrieval: global → connector → workflow, archived dropped
     const applicable = await retrieveApplicableSkills(
       { tenant_id, connector_ids: [fakeConnectorId], workflow_ids: [fakeWorkflowId] },
       ctx.db,
@@ -143,14 +136,12 @@ describe("skills/service", () => {
     expect(ids).toContain(connectorSkill.id);
     expect(ids).toContain(workflowSkill.id);
     expect(ids).not.toContain(archivedConnector.id);
-    // ordering: global first, then connector, then workflow
     const globalIdx = ids.indexOf(patched!.id);
     const connectorIdx = ids.indexOf(connectorSkill.id);
     const workflowIdx = ids.indexOf(workflowSkill.id);
     expect(globalIdx).toBeLessThan(connectorIdx);
     expect(connectorIdx).toBeLessThan(workflowIdx);
 
-    // delete
     const ok = await deleteSkill(tenant_id, workflowSkill.id, null, ctx.db);
     expect(ok).toBe(true);
     const gone = await getSkill(tenant_id, workflowSkill.id, ctx.db);
@@ -186,9 +177,6 @@ describe("skills/service", () => {
 
   test("getSkill rejects non-UUID input without throwing", async () => {
     const tenant_id = await seedTenant();
-    // The skills.id column is uuid-typed. Earlier callers passed slugs
-    // here and Postgres threw mid-request; getSkill must return null
-    // instead so the caller can fall through to a slug lookup.
     const result = await getSkill(tenant_id, "workflow-authoring", ctx.db);
     expect(result).toBeNull();
   });
@@ -206,8 +194,6 @@ describe("skills/service", () => {
       },
       ctx.db,
     );
-    // createSkill does not write `slug`; backfill the column directly to
-    // mirror what the seed loader does.
     await ctx.db
       .update(skills)
       .set({ slug: "workflow-authoring", seed_source: "test-fixture" })

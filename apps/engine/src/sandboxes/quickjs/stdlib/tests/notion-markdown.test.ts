@@ -1,12 +1,3 @@
-// sk.documentToMarkdown — document shapes behind ONE generic entry
-// point (the vendor format — today Notion's blocks/rich_text wire
-// format — is detected by shape, never named by the caller). The
-// silent-loss incident class these pin: ad-hoc transforms over
-// `results[].rich_text` drop every annotation (bold/links/code), and a
-// hand-rolled block renderer returns "" for unhandled block types — the
-// canonical "green run, lossy document" shape named in
-// transform-warnings. Tests run inside the real QuickJS sandbox.
-
 import { describe, expect, test } from "bun:test";
 import { runJs } from "../../runtime.ts";
 

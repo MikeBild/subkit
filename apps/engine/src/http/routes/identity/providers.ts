@@ -1,20 +1,3 @@
-// GET /v1/identity/providers — public, sanitised inventory of the ways a person
-// or a program can sign in here.
-//
-// PUBLIC IS A FAMILY RULE, decided 2026-09-04, not a local preference. A caller
-// that has no credential yet is exactly the caller that needs to know which
-// credentials exist, so requiring one is circular. This route answered 401 for
-// a while, on the reasoning that an installation-specific list should not be
-// disclosed before authentication; that reasoning survives here as WHAT is
-// disclosed rather than WHO may ask.
-//
-// What leaves this route: the protocol, the adapter id, and a GENERIC label for
-// the protocol. What never leaves it: issuer URLs, client ids, allow lists,
-// scopes, tenant slugs — and the operator's own wording. An operator-typed
-// label can carry the name of a company, and the anonymous answer is not the
-// place to publish it. That is also why the answer is identical whether or not
-// the caller is signed in: two different answers would make this route a probe
-// for whether a credential is valid.
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppEnv } from "../../openapi.ts";
 
@@ -34,7 +17,6 @@ const ProvidersResponse = z
   .strict()
   .openapi("ProvidersResponse");
 
-/** The only labels this route emits — one per protocol, never the operator's. */
 const LABELS: Record<"api_key" | "oidc", string> = {
   oidc: "SSO",
   api_key: "API key",

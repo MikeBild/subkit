@@ -1,20 +1,3 @@
-// Generator for the blog-de retrieval golden set's pinned vectors.
-//
-// The eval gate runs under plain `bun run`, where the engine's embedded
-// onnxruntime WASM deliberately does not load (compiled-binary-only —
-// see embeddings/embedded-assets.ts). So the golden set pins the REAL
-// MiniLM geometry instead: this script embeds the fixture's corpus and
-// queries with the same model/dtype/pooling the engine uses
-// (Xenova/paraphrase-multilingual-MiniLM-L12-v2, q8, mean+normalize)
-// and writes them into the fixture. The validator is then pure cosine
-// math — deterministic and model-load-free.
-//
-// Re-run whenever the fixture's texts change or the engine's
-// EMBEDDING_MODEL moves (the validator pins the model name and fails
-// loudly on drift):
-//
-//   bun run apps/engine/eval/gen-blogde-golden-vectors.ts && bun run lint:fix
-
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EMBEDDING_MODEL } from "../src/embeddings/local-provider.ts";

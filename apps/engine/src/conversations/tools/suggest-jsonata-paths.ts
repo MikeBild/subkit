@@ -1,26 +1,3 @@
-// suggest_jsonata_paths — read-only tool that returns concrete JSONata
-// path candidates for a step's recorded output_preview.
-//
-// Pre-fix the LLM had to guess at `$scope.X.data.Y.Z` paths from the
-// connector docs. When the path was wrong the workflow failed
-// silently (loop produced 0 rows / transform produced empty array)
-// and the LLM cycled through 4–9 path variants. This tool walks the
-// most recent dry_run preview for a step and returns ranked path
-// candidates so the LLM picks one that actually resolves.
-//
-// Inputs:
-//   - step_id          : the upstream step to read paths from
-//   - search_value?    : optional substring; when set, only paths whose
-//                        terminal value contains this substring are
-//                        returned (case-insensitive). Useful for
-//                        "where is the customer email?".
-//   - search_key?      : optional regex; when set, only paths whose
-//                        last segment matches are returned. Useful for
-//                        "where is the .id of each item?".
-//
-// Returns up to 10 paths in the form `$scope.<step_id>.<path>`,
-// already prefixed for direct copy into a transform / loop.
-
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { executionSteps, executions, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -57,10 +34,6 @@ const inputSchema = z
   .openapi("SuggestJsonataPathsToolInput");
 
 function readPathValue(root: unknown, path: string): unknown {
-  // Walks a `a.b[0].c` path. Returns undefined for any unreadable
-  // segment. Wildcards (`[*]`) aren't readable here — they're a
-  // documentation artifact for the LLM and never returned as the
-  // primary value.
   if (path === "") return root;
   let cur: unknown = root;
   const segments = path.split(/\.|(\[\d+\])/g).filter((s) => s && s.length > 0);
@@ -98,27 +71,14 @@ export const suggestJsonataPathsTool: ConversationTool = {
   requires_skill: "workflow-authoring",
   inputSchema,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = ctx.getDraft();
 
-    // Resolution order:
-    //   1. latest_preview.step_traces — current draft, in-memory
-    //   2. workflow_versions.scope_index — most recent committed
-    //      version, populated at commit time from step_traces
-    //   3. execution_steps.output_preview — most recent successful
-    //      execution row (covers re-author of a saved workflow that
-    //      was committed before scope_index existed)
     let preview: unknown;
     let trace: WorkflowDraftStepPreview | undefined;
     let source: "latest_preview" | "scope_index" | "execution_steps" | null = null;
-    /** True when the live draft has step_traces but none match the
-     * requested step_id. Surfaced as `step_not_in_preview` ONLY when
-     * none of the fallbacks have any data for this step either —
-     * otherwise the fallbacks render the request answerable. */
     let draftHadTracesButNoMatch = false;
 
     const traces = draft.latest_preview?.step_traces;
@@ -132,12 +92,6 @@ export const suggestJsonataPathsTool: ConversationTool = {
       }
     }
 
-    // Resolve the workflow id to consult for the persisted-version
-    // fallbacks. During pre-commit authoring `ctx.workflow_id` is
-    // null but `draft.summary.active_target.id` carries the target
-    // when the conversation has previously bound a persisted
-    // workflow. Honour the active_target so the fallback works
-    // during repair authoring (most common case for this tool).
     const activeTarget = draft.summary?.active_target;
     const resolvedWorkflowId =
       ctx.workflow_id ??
@@ -147,11 +101,6 @@ export const suggestJsonataPathsTool: ConversationTool = {
         ? activeTarget.id
         : null);
 
-    // Fallback A — committed workflow version's persisted scope_index.
-    // This is a step_id → ScopeAtStep map, not a full preview, so we
-    // can short-circuit the path enumeration and return its
-    // available_paths directly. Only consulted when no live preview
-    // exists.
     if (preview === undefined && resolvedWorkflowId) {
       try {
         const rows = await ctx.db
@@ -175,10 +124,6 @@ export const suggestJsonataPathsTool: ConversationTool = {
           | undefined;
         const entry = idx?.[args.step_id];
         if (entry) {
-          // Synthesise a candidates list straight from the persisted
-          // index — we don't have the raw value to readPathValue
-          // against, so sample_value is null. The path strings are
-          // still copy-paste valid.
           const limited = entry.available_paths.slice(0, args.limit);
           return {
             ok: true,
@@ -198,13 +143,9 @@ export const suggestJsonataPathsTool: ConversationTool = {
             },
           };
         }
-      } catch {
-        // DB blip → fall through to execution_steps fallback.
-      }
+      } catch {}
     }
 
-    // Fallback B — most recent successful execution_steps row for
-    // the (workflow_id, step_id) pair.
     if (preview === undefined && resolvedWorkflowId) {
       try {
         const rows = await ctx.db
@@ -229,9 +170,7 @@ export const suggestJsonataPathsTool: ConversationTool = {
           preview = op;
           source = "execution_steps";
         }
-      } catch {
-        // DB blip — final fallback below.
-      }
+      } catch {}
     }
 
     if (preview === undefined) {
@@ -303,9 +242,6 @@ export const suggestJsonataPathsTool: ConversationTool = {
       if (reason) ranked.push({ path: p, readable_value: value, reason });
     }
 
-    // Stable order: key_match > value_match > direct, then by path
-    // length (shorter paths preferred — they're the canonical
-    // address).
     const order: Record<Candidate["reason"], number> = {
       key_match: 0,
       value_match: 1,

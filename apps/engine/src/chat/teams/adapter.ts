@@ -1,15 +1,3 @@
-// Microsoft Teams chat adapter.
-//
-//   - Inbound verification: Bot Framework JWTs signed by AAD's JWKS.
-//     P12 exposes `issuer` + `jwksUrl` + `audience` as injectable
-//     options so tests point them at a local mock. Real deployments
-//     pass the Bot Framework values.
-//   - Outbound auth: client_credentials via `TeamsAuth` at the
-//     injectable `tokenEndpoint`. Token cache reuses the same access
-//     token for `expires_in - 60s`.
-//   - Outbound send: POST to `${serviceUrl}/v3/conversations/${id}/activities`.
-//   - Approval prompt: Adaptive Card 1.5 with two Action.Submit buttons.
-
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { logger } from "../../logging/logger.ts";
 import type { ChatAdapter } from "../adapter.ts";
@@ -17,13 +5,9 @@ import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../ty
 import { TeamsAuth, type TeamsAuthOptions } from "./auth.ts";
 
 export interface TeamsAdapterOptions extends TeamsAuthOptions {
-  /** Bot Framework serviceUrl — base for outbound activity posts. */
   serviceUrl: string;
-  /** JWKS URL for inbound verification. Injectable for tests. */
   jwksUrl?: string;
-  /** Expected issuer — injectable for tests. */
   issuer?: string;
-  /** Expected audience (usually the bot's app id). */
   audience?: string;
 }
 
@@ -54,8 +38,6 @@ export class TeamsAdapter implements ChatAdapter {
       return null;
     }
     if (!this.jwks) {
-      // Skipping verification (trusted transport). Tests that do not
-      // set jwksUrl still need a way in — return the parsed body.
       try {
         return { platform: "teams", raw: JSON.parse(body) };
       } catch {

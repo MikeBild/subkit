@@ -1,9 +1,3 @@
-// `sk files` verb coverage — every verb exercised via mocked EngineClient.
-//
-// Tests call the command functions' underlying client methods directly
-// rather than spawning the binary. The EngineClient is replaced with a
-// mock `fetchImpl` so no real engine is needed.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,8 +53,6 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// ---------- list ----------
-
 describe("sk files list", () => {
   test("returns item array — happy path", async () => {
     const row = makeFileRow();
@@ -115,8 +107,6 @@ describe("sk files list", () => {
   });
 });
 
-// ---------- get ----------
-
 describe("sk files get", () => {
   test("returns file metadata", async () => {
     const row = makeFileRow({ sha256: "deadbeef" });
@@ -153,8 +143,6 @@ describe("sk files get", () => {
   });
 });
 
-// ---------- upload (inline) ----------
-
 describe("sk files upload — inline path (≤5 MB)", () => {
   test("small file calls uploadInline, returns FileWire", async () => {
     const row = makeFileRow({ size_bytes: 5 });
@@ -172,7 +160,6 @@ describe("sk files upload — inline path (≤5 MB)", () => {
       },
     });
 
-    // Write a tiny file to disk.
     const fp = join(tmpDir, "small.txt");
     writeFileSync(fp, "hello world");
 
@@ -183,8 +170,6 @@ describe("sk files upload — inline path (≤5 MB)", () => {
     expect(result.id).toBe(row.id);
   });
 });
-
-// ---------- download ----------
 
 describe("sk files download", () => {
   test("streams bytes and returns metadata", async () => {
@@ -198,13 +183,11 @@ describe("sk files download", () => {
         const url = String(input);
         callCount++;
         if (callCount === 1) {
-          // getFile call
           return new Response(JSON.stringify(row), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
         }
-        // content streaming call
         expect(url).toContain("/content");
         return new Response(new Uint8Array([1, 2, 3, 4, 5]), {
           status: 200,
@@ -219,8 +202,6 @@ describe("sk files download", () => {
     expect(dl.stream).toBeDefined();
   });
 });
-
-// ---------- delete ----------
 
 describe("sk files delete", () => {
   test("soft-delete returns 204 (no body)", async () => {
@@ -254,8 +235,6 @@ describe("sk files delete", () => {
   });
 });
 
-// ---------- link ----------
-
 describe("sk files link", () => {
   test("links file to conversation resource", async () => {
     const link = makeLinkRow();
@@ -283,23 +262,13 @@ describe("sk files link", () => {
   });
 
   test("link to unknown resource type is a client-side error", async () => {
-    // The command-layer guard `parseResourceRef` rejects unknown
-    // resource_type values locally so a typo fails before any HTTP
-    // call. The guard is the public contract that keeps a typo like
-    // `--to conversaton:<uuid>` from being sent to the engine just to
-    // bounce back as 400 — verify it throws with a message that names
-    // the offending type.
     const { parseResourceRef } = await import("../../commands/files.ts");
     expect(() => parseResourceRef("bogus_type:00000000-0000-0000-0000-000000000001")).toThrow(
       /bad resource_type 'bogus_type'/,
     );
-    // Missing colon is also rejected with a distinct message so the
-    // operator can tell shape errors from enum errors.
     expect(() => parseResourceRef("no-colon-here")).toThrow(/bad resource ref 'no-colon-here'/);
   });
 });
-
-// ---------- stats ----------
 
 describe("sk files stats", () => {
   test("returns structured aggregate counters", async () => {

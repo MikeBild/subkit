@@ -1,21 +1,3 @@
-// Two-step Esc contract (`ownsEsc` pattern).
-//
-// Every tab + sub-tab that consumes Esc for inner state (search,
-// editor, switcher, create form, confirm prompt) must fire
-// `onInnerEscape(true)` so the outer shell (SettingsModal /
-// SinglePane) suppresses its own Esc handler. The first Esc clears
-// the inner state; the second Esc dismisses the pane.
-//
-// These tests cover each surface that owns Esc:
-//   - ConfigTab: search + edit + pendingRestart
-//   - KnowledgeTab: search + ingest + delete-confirm
-//   - SkillsTab: search
-//   - ProfileTab: tenantPickerOpen
-//   - AdminTab → GenericListSubTab: createOpen
-//
-// Plus an end-to-end SettingsModal regression: editor → first Esc
-// closes the editor (modal stays mounted), second Esc dismisses.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
@@ -75,12 +57,10 @@ describe("two-step Esc — onInnerEscape contract", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("Type to filter"));
-      // Initial: no inner state → false.
       expect(calls[0]).toBe(false);
       await ui.type("/");
       await ui.waitFor(() => calls.includes(true));
       expect(calls.at(-1)).toBe(true);
-      // Clearing search restores false.
       await ui.press("esc");
       await ui.waitFor(() => calls.at(-1) === false, { tries: 50, sleepMs: 10 });
       expect(calls.at(-1)).toBe(false);
@@ -97,7 +77,6 @@ describe("two-step Esc — onInnerEscape contract", () => {
     try {
       await ui.waitFor((t) => t.includes("log.level"));
       expect(calls.at(-1)).toBe(false);
-      // Enter opens the FieldEditor.
       await ui.press("enter");
       await ui.waitFor(() => calls.at(-1) === true, { tries: 50, sleepMs: 10 });
       expect(calls.at(-1)).toBe(true);
@@ -133,11 +112,9 @@ describe("two-step Esc — onInnerEscape contract", () => {
     try {
       await ui.waitFor((t) => t.includes("Knowledge sources"));
       expect(calls.at(-1)).toBe(false);
-      // 'i' opens the ingest prompt.
       await ui.type("i");
       await ui.waitFor(() => calls.at(-1) === true);
       expect(calls.at(-1)).toBe(true);
-      // Esc closes the prompt → flag returns to false.
       await ui.press("esc");
       await ui.waitFor(() => calls.at(-1) === false, { tries: 50, sleepMs: 10 });
       expect(calls.at(-1)).toBe(false);
@@ -160,15 +137,11 @@ describe("two-step Esc — onInnerEscape contract", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("Type to filter"));
-      // Open the FieldEditor on the only row (log.level). The editor's
-      // body header includes the field path + kind, e.g. "log.level (text)".
       await ui.press("enter");
       await ui.waitFor((t) => t.includes("log.level (text)"));
-      // First Esc → editor closes, modal stays mounted.
       await ui.press("esc");
       await ui.waitFor((t) => !t.includes("log.level (text)"), { tries: 100, sleepMs: 10 });
       expect(exits.length).toBe(0);
-      // Second Esc → modal dismisses.
       await ui.press("esc");
       await ui.waitFor(() => exits.length > 0, { tries: 100, sleepMs: 10 });
       expect(exits[0]).toBe(0);
@@ -183,11 +156,9 @@ describe("two-step Esc — onInnerEscape contract", () => {
     try {
       await ui.waitFor((t) => t.includes("Profile"));
       expect(calls.at(-1)).toBe(false);
-      // 't' opens the tenant switcher.
       await ui.type("t");
       await ui.waitFor(() => calls.at(-1) === true);
       expect(calls.at(-1)).toBe(true);
-      // Esc closes the switcher → flag returns to false.
       await ui.press("esc");
       await ui.waitFor(() => calls.at(-1) === false, { tries: 50, sleepMs: 10 });
       expect(calls.at(-1)).toBe(false);

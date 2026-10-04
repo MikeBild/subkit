@@ -1,13 +1,3 @@
-// `sk stats <executions|connectors|events|llm|http|chat|mcp|conversations>`
-// over the tenant-scoped runtime stats surface. Zero-config: each
-// subcommand has a sensible default bucket + window so it "just works"
-// with no flags. Human ASCII table + sparkline by default; `--json`
-// emits the raw, stable engine response for cron/CI/ETL.
-//
-// Client-side validation mirrors the server's window caps so we fail
-// fast with a helpful, cap-naming message instead of round-tripping a
-// guaranteed 400. A 403 renders as "needs stats:read" guidance.
-
 import { exitCodeFor } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -24,8 +14,6 @@ import {
 } from "../engine-client.ts";
 import { humanMs } from "../render/format.ts";
 
-// --- bucket grammar + caps (kept in lock-step with the engine's --------
-//     apps/engine/src/http/routes/stats/bucket-window.ts) ----------------
 export const BUCKETS = ["minute", "hour", "day", "month", "year"] as const;
 export type Bucket = (typeof BUCKETS)[number];
 
@@ -48,8 +36,6 @@ const CAP_HINT: Record<Bucket, string> = {
 
 export class ValidationError extends Error {}
 
-/** Resolve a `--from`/`--to` value. Accepts ISO-8601 plus the relative
- *  forms `now`, `now-24h`, `now-7d`, `now-30m`, and `startOfMonth`. */
 export function resolveTime(raw: string, nowMs: number): Date {
   const v = raw.trim();
   if (v === "now") return new Date(nowMs);
@@ -78,8 +64,6 @@ interface Defaults {
   from: string;
 }
 
-/** Validate + assemble the query. Throws ValidationError on bad input
- *  (caller maps to a non-zero exit). */
 export function buildQuery(
   args: Record<string, unknown>,
   defaults: Defaults,
@@ -114,8 +98,6 @@ export function buildQuery(
   return q;
 }
 
-// --- rendering helpers -----------------------------------------------------
-
 const SPARK = "▁▂▃▄▅▆▇█";
 
 function sparkline(values: number[]): string {
@@ -137,7 +119,6 @@ function num(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-/** Right-align a column of cells to a fixed width. */
 function padNum(s: string, width: number): string {
   return s.padStart(width);
 }
@@ -171,8 +152,6 @@ function handleError(err: unknown): never {
   }
   const e = err as { status?: number; message?: string };
   if (e && e.status === 403) {
-    // Reading another user's usage or a cross-user breakdown (group-by=user)
-    // needs stats:read:all; the plain operator stats surface needs stats:read.
     const needsReadAll = (e.message ?? "").includes("stats:read:all");
     const perm = needsReadAll ? "stats:read:all" : "stats:read";
     const detail = needsReadAll
@@ -187,8 +166,6 @@ function handleError(err: unknown): never {
   process.stderr.write(`${pc.red("error")}: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(exitCodeFor(err));
 }
-
-// --- subcommands -----------------------------------------------------------
 
 const commonArgs = {
   bucket: { type: "string" as const, description: "minute|hour|day|month|year" },
@@ -362,8 +339,6 @@ const llmCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      // `--mine` resolves the caller's own user id from /v1/status so the
-      // user never has to know their uuid. Explicit `--user-id` wins.
       let userId = args["user-id"] as string | undefined;
       if (args.mine && !userId) {
         const status = await client.statusSummary();
@@ -505,8 +480,6 @@ const conversationsCommand = usageCommand(
   "Conversation calls, streams, disconnects, and outcomes",
 );
 
-// --- renderers -------------------------------------------------------------
-
 function renderExecutions(res: StatsExecutionsResponse): void {
   envelopeNote(res);
   const t = res.totals;
@@ -524,8 +497,6 @@ function renderExecutions(res: StatsExecutionsResponse): void {
   process.stdout.write(
     `  duration:     total=${humanMs(d.total)} avg=${humanMs(d.avg)} p50=${humanMs(d.p50)} p95=${humanMs(d.p95)} p99=${humanMs(d.p99)} max=${humanMs(d.max)}\n`,
   );
-  // Sparkline: per-bucket run counts of the first group (or summed if
-  // ungrouped, the single synthetic group already carries every bucket).
   const buckets = res.groups[0]?.buckets ?? [];
   if (buckets.length > 0) {
     process.stdout.write(
@@ -602,8 +573,6 @@ function renderLlm(res: StatsLlmResponse): void {
   process.stdout.write(`  cache hit:    ${hitRate}% (cache_read / prompt)\n`);
   if (res.cost) {
     const c = res.cost;
-    // The engine's priced figure: SubKit's list price per model unless an
-    // override replaces it. An unpriced model is named, never counted as free.
     const sources = c.price_sources.map((s) => `${s.model}=${s.price_source}`).join(" · ");
     process.stdout.write(
       `  cost:         ${c.amount.toFixed(4)} ${c.currency}${sources ? pc.dim(` (${sources})`) : ""}\n`,

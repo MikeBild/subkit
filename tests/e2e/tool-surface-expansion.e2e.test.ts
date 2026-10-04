@@ -1,10 +1,3 @@
-// E2E verification for the expanded tool surface + observability
-// wiring. Covers:
-//   1. New conversation tool surface is reachable via sk --p
-//   2. OTel counters for conversation tool calls increment via /metrics
-//   3. Audit rows are correctly labelled (actor_type = system_account)
-//   4. MCP tenant.* tool list exposes populated input schemas
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, cli, type E2EEnv, shutdown } from "./setup.ts";
 
@@ -57,8 +50,6 @@ describe("tool surface expansion", () => {
   }, 30_000);
 
   test("/metrics exposes conversation_tool_calls_total counter", async () => {
-    // /metrics is ungated inside the product; the admin bearer is sent
-    // only to mirror how the deployed scrape path reaches it.
     const r = await fetch(`${env.baseUrl}/metrics`, {
       headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },
     });

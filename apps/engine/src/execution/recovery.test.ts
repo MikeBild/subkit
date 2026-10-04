@@ -1,13 +1,3 @@
-// Crash recovery sweep test.
-//
-// Asserts the boot-time `recoverCrashedExecutions` reaper:
-//   1. Promotes a `running` execution older than the workflow's
-//      `timeout_ms × 1.5` window to `timed_out`.
-//   2. Writes an `execution.crash_recovered` audit row with the
-//      timing context.
-//   3. Leaves a `running` execution well under the threshold alone.
-//   4. Honours the env-var override threshold.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
@@ -23,12 +13,6 @@ import { loadExecutionOutcome } from "./outcome.ts";
 import { recoverCrashedExecutions, resolveCrashRecoveryThresholdMs } from "./recovery.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./tests/setup.ts";
 
-// Recovery sweep reads real `Date.now()` to compute age; tests must
-// pin their reference clock against today's wall clock or every
-// "1h ago" insertion ages indefinitely past the 9h threshold and
-// gets reaped (the prior hard-coded TEST_NOW_MS = 1_700_000_000_000
-// expired in Nov 2023 + the test silently broke as soon as CI ran
-// past that date).
 const TEST_NOW_MS = getTestNow();
 
 let ctx: EngineTestCtx;
@@ -73,8 +57,6 @@ describe("recoverCrashedExecutions", () => {
       timeout_ms: 1_000,
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
-    // No running step row: the worker died after one step finished and
-    // before the next one started.
     const stuckId = await insertRunningExecution(workflow_id, version_id, 5_000);
     await recoverCrashedExecutions(ctx.testDb.db, { now: new Date(TEST_NOW_MS) });
     const row = (
@@ -132,12 +114,10 @@ describe("recoverCrashedExecutions", () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-wf-1",
       slug: "crash-recovery-wf-1",
-      // 6h workflow timeout — threshold is 9h.
       timeout_ms: 6 * 60 * 60 * 1000,
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
 
-    // Started 12h ago — well past the 9h grace window.
     const stuckId = await insertRunningExecution(workflow_id, version_id, 12 * 60 * 60 * 1000);
     const [stuckStep] = await ctx.testDb.db
       .insert(executionSteps)
@@ -152,7 +132,6 @@ describe("recoverCrashedExecutions", () => {
       })
       .returning({ id: executionSteps.id });
     if (!stuckStep) throw new Error("step insert failed");
-    // Started 1h ago — well under the threshold.
     const liveId = await insertRunningExecution(workflow_id, version_id, 60 * 60 * 1000);
 
     const { recovered } = await recoverCrashedExecutions(ctx.testDb.db);
@@ -177,7 +156,6 @@ describe("recoverCrashedExecutions", () => {
     expect(liveRow?.status).toBe("running");
     expect(liveRow?.finished_at).toBeNull();
 
-    // Audit row written with the right shape.
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -348,13 +326,10 @@ describe("recoverCrashedExecutions", () => {
     const { workflow_id, version_id } = await createWorkflowRow(ctx, {
       name: "crash-recovery-wf-2",
       slug: "crash-recovery-wf-2",
-      // No timeout_ms — engine falls back to 6h × 1.5 = 9h.
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
 
-    // 8h is under the 9h default — should NOT be reaped.
     const safeId = await insertRunningExecution(workflow_id, version_id, 8 * 60 * 60 * 1000);
-    // 10h is over — should be reaped.
     const reapedId = await insertRunningExecution(workflow_id, version_id, 10 * 60 * 60 * 1000);
 
     const { recovered } = await recoverCrashedExecutions(ctx.testDb.db);

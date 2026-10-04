@@ -1,33 +1,7 @@
-// Unit tests for validateElicitationAnswer.
-//
-// What's covered:
-//   - ask_user_form:
-//       required field missing → field error
-//       json field with invalid JSON string → error (via validateFormFieldValue)
-//       valid submission → ok:true
-//       output wrapped as {values:{...}} AND flat map both supported
-//       decline {confirmed:false} always ok:true
-//   - ask_user_text:
-//       validation_regex mismatch on {text} and {value} shapes → error
-//       regex match → ok
-//       invalid regex pattern → ok (passes open)
-//   - ask_user_choice:
-//       out-of-options value → error
-//       valid → ok
-//   - ask_user_multi:
-//       value outside options → error
-//       min violation → error
-//       max violation → error
-//       valid → ok
-//
-// Pure functions — no DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import { classifyChatElicitError } from "../../../chat/elicit-routing.ts";
 import { ElicitationValidationError } from "../../service/elicit.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
-
-// ── ask_user_form ────────────────────────────────────────────────────────────
 
 const formInput = {
   question: "Credentials",
@@ -63,7 +37,6 @@ describe("validateElicitationAnswer — ask_user_form", () => {
 
   test("a sensitive json field's parse error never quotes the submitted token", () => {
     const secret = "hunter2SecretValue";
-    // Precondition: the runtime's parser does echo the token.
     expect(() => JSON.parse(`{"key": ${secret}}`)).toThrow(secret);
     const input = {
       question: "Service account",
@@ -76,7 +49,6 @@ describe("validateElicitationAnswer — ask_user_form", () => {
     if (result.ok) return;
     expect(result.field_errors).toEqual([{ name: "key_json", message: "invalid JSON" }]);
     expect(JSON.stringify(result)).not.toContain(secret);
-    // The same errors become the HTTP/SSE error body and the chat reply.
     const err = new ElicitationValidationError("e1", result.field_errors, {
       id: "e1",
       tool_name: "ask_user_form",
@@ -122,7 +94,6 @@ describe("validateElicitationAnswer — ask_user_form", () => {
   });
 
   test("optional field absent → no error", () => {
-    // nickname is optional; username + config_json filled
     const result = validateElicitationAnswer("ask_user_form", formInput, {
       username: "alice",
       config_json: "{}",
@@ -135,8 +106,6 @@ describe("validateElicitationAnswer — ask_user_form", () => {
     expect(validateElicitationAnswer("ask_user_form", undefined, undefined).ok).toBe(true);
   });
 });
-
-// ── ask_user_text ────────────────────────────────────────────────────────────
 
 describe("validateElicitationAnswer — ask_user_text", () => {
   const regexInput = { question: "Enter a date", validation_regex: "^\\d{4}-\\d{2}-\\d{2}$" };
@@ -191,8 +160,6 @@ describe("validateElicitationAnswer — ask_user_text", () => {
   });
 });
 
-// ── ask_user_choice ──────────────────────────────────────────────────────────
-
 describe("validateElicitationAnswer — ask_user_choice", () => {
   const choiceInput = {
     question: "Pick",
@@ -224,8 +191,6 @@ describe("validateElicitationAnswer — ask_user_choice", () => {
   });
 });
 
-// ── ask_user_multi ───────────────────────────────────────────────────────────
-
 describe("validateElicitationAnswer — ask_user_multi", () => {
   const multiInput = {
     question: "Which?",
@@ -247,7 +212,6 @@ describe("validateElicitationAnswer — ask_user_multi", () => {
   });
 
   test("min violation → error", () => {
-    // min=1 but zero selections
     const result = validateElicitationAnswer("ask_user_multi", multiInput, { values: [] });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -257,7 +221,6 @@ describe("validateElicitationAnswer — ask_user_multi", () => {
   });
 
   test("max violation → error", () => {
-    // max=2 but three selections
     const result = validateElicitationAnswer("ask_user_multi", multiInput, {
       values: ["a", "b", "c"],
     });
@@ -278,8 +241,6 @@ describe("validateElicitationAnswer — ask_user_multi", () => {
     expect(result.ok).toBe(true);
   });
 });
-
-// ── unknown tool name ────────────────────────────────────────────────────────
 
 describe("validateElicitationAnswer — unknown tool", () => {
   test("unknown tool_name always returns ok:true", () => {

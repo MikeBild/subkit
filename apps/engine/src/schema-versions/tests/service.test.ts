@@ -88,8 +88,6 @@ describe("schema-versions/service", () => {
 
   test("subsequent record returns the newer shape", async () => {
     const db = testDb.db;
-    // Avoid tying the ordering to millisecond clock precision: insert
-    // the second row with a brief yield.
     await recordSuccessShape(
       {
         tenant_id: tenantId,
@@ -113,7 +111,6 @@ describe("schema-versions/service", () => {
       { tenant_id: tenantId, connector_id: connectorId, endpoint_key: "GET /users/list" },
       db,
     );
-    // Newer shape carries the extra `email` key.
     expect(latest).toMatchObject({
       type: "object",
       properties: {
@@ -238,15 +235,12 @@ describe("schema-versions/service", () => {
   });
 
   test("a collapsed root describes itself again on the next concrete response", () => {
-    // One non-JSON body (an error page on a 200) collapses the whole contract.
     const collapsed = mergeObservedShapes(
       deriveShape({ data: { search: { nodes: [] } } }),
       deriveShape("<html>rate limited</html>"),
     );
     expect(collapsed).toEqual({ type: "unknown" });
 
-    // Without recovery the row never changes again and the drift scan reports
-    // the same collapse on every pass, forever.
     const healed = mergeObservedShapes(collapsed, deriveShape({ data: { ok: true } }));
     expect(healed).toMatchObject({ type: "object" });
   });
@@ -273,6 +267,6 @@ describe("schema-versions/service", () => {
     const diff = diffShapes(before, after);
     expect(diff.added).toContain("email");
     expect(diff.removed).toContain("name");
-    expect(diff.widened).toContain("id"); // number -> string
+    expect(diff.widened).toContain("id");
   });
 });

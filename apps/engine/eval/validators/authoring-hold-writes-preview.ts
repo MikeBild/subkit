@@ -1,21 +1,3 @@
-// Authoring scenario (Fix E / CI mode): side-effect-safe previews
-// (Fix G). Previews default to hold-writes — read steps run live,
-// write-classified steps (the POST/send) are fully RESOLVED from real
-// upstream data but NEVER dispatched. Two layers pinned, both with the
-// global-fetch egress tripwire at 0:
-//
-//   1. Engine contract (`runExecution` with `hold_writes`, the exact
-//      call `dry_run_workflow` makes for a draft preview): the send
-//      step carries `held: true` plus the MATERIALIZED `held_request`
-//      (method/url/body with placeholders substituted against the live
-//      transform output — the artifact the preview judge reads), and
-//      the dependent step is labeled `skipped_dependency_held`.
-//   2. Conversation surface (`dry_run_workflow`): the green
-//      hold-preview marks the held step in its trace
-//      (`request_meta.extras.held`), labels the dependent skipped, and
-//      still auto-commits in explicit permission_mode `auto`;
-//      previews never publish.
-
 import { dryRunWorkflowTool } from "../../src/conversations/tools/dry-run-workflow.ts";
 import type { DraftDocument } from "../../src/conversations/types.ts";
 import { runExecution } from "../../src/execution/engine.ts";
@@ -47,7 +29,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   return withAuthoringEvalEnv("hold_writes", async (env) => {
     const c = new Checks();
 
-    // ── 1. Engine contract: held + materialized + dependent skipped ──
     const { result: run, fetch_calls: engineFetchCalls } = await withEgressTripwire(() =>
       runExecution({
         db: env.db,
@@ -90,12 +71,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     );
     if (c.failed) return { pass: false, reason: c.failed };
 
-    // ── 2. Conversation surface: dry_run_workflow hold-preview ──
-    // The draft carries a stashed goal so the post-preview judge runs and a
-    // green hold-preview auto-commits (T4: auto-persist is gated on a judged
-    // goal — a bare verification dry-run with no goal yields green_pending_save,
-    // not a commit). The default mock judge passes (content-driven; override
-    // only when asserting judge behaviour).
     const toolCtx = {
       ...env.makeToolCtx({
         workflow: {
@@ -128,8 +103,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       confirmTrace?.error_code === input.expect.skipped_error_code,
       `dependent trace carries ${String(confirmTrace?.error_code)}, expected ${input.expect.skipped_error_code}`,
     );
-    // Green + held + judged-against-a-goal auto-commits because this fixture
-    // explicitly selected permission_mode auto.
     c.check(data.auto_committed === true, "green hold-writes preview did not auto-commit");
 
     if (c.failed) return { pass: false, reason: c.failed };

@@ -1,7 +1,3 @@
-// `/permissions` slash command — single-pane modal wrapping the
-// existing PermissionsTab. Lifted out of /settings as part of the
-// 5-tab refactor; the tab body is unchanged.
-
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
 import { SinglePane } from "./SinglePane.tsx";

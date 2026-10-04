@@ -1,7 +1,3 @@
-// Notification deliveries — REST surface.
-//
-//   GET /v1/notifications/deliveries?limit=&offset=&status=
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { notificationDeliveries } from "../../../db/schema/notifications.ts";

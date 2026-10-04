@@ -1,6 +1,3 @@
-// Pure unit tests for the cursor-aware input buffer. Every edit is
-// deterministic so these run with plain `bun test` — no ink or React.
-
 import { describe, expect, test } from "bun:test";
 import {
   apply,
@@ -84,7 +81,7 @@ describe("input-buffer: word-wise kill + move", () => {
 
   test("moveWordLeft jumps to the previous word start", () => {
     const s = apply(b("foo bar baz"), { type: "moveWordLeft" });
-    expect(s.cursor).toBe(8); // `b` of `baz`
+    expect(s.cursor).toBe(8);
   });
 
   test("moveWordRight jumps to the next word start", () => {

@@ -1,21 +1,3 @@
-// Integration tests: commitWorkflowAtomic creates and maintains skill-candidates.
-// Case (v) from the regression test plan for workflow-authoring hardening.
-//
-// Contracts verified:
-//   D.1  First commit → exactly ONE skill_candidate row with
-//        status "proposed", pattern_kind "authoring_capability",
-//        scope "workflow", workflow_id = the committed workflow.
-//   D.2  Re-committing the same workflow with a different step body
-//        (same schemas, same workflow_id) → version bump on the ONE
-//        existing candidate; no duplicate row created.
-//   D.3  No skills row with lifecycle "active" is created by the commit
-//        path. Active skills are only created via the explicit approve gate.
-//   D.4  The commit result's next_prompt does not announce the candidate:
-//        it is advisory drafting context (reviewable: false), not a
-//        decision, so no approve invitation reaches the conversation.
-//
-// Requires Postgres — set REQUIRES_PG=0 to skip.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { conversations, skillCandidates, skills } from "../../db/schema/index.ts";
@@ -43,13 +25,6 @@ afterAll(async () => {
   await ctx?.cleanup();
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// Helpers — shared with commit-workflow-gates pattern
-// ---------------------------------------------------------------------------
-
-/** Build a fully ready draft that passes all commit gates (inspection +
- *  validation + successful preview). `skipPriorApprovalCheck: true` bypasses
- *  the approval elicitation so these tests focus on skill-candidate behavior. */
 function readyDraft(
   slug: string,
   name = slug,
@@ -80,7 +55,6 @@ function readyDraft(
   return draft;
 }
 
-/** Build a ready draft that includes declared input/output schemas. */
 function readyDraftWithSchemas(
   slug: string,
   name = slug,
@@ -148,10 +122,6 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
   };
 }
 
-// ---------------------------------------------------------------------------
-// D.1 First commit creates exactly one proposed skill candidate
-// ---------------------------------------------------------------------------
-
 describe.skipIf(skip)(
   "D.1 — first commit creates exactly one proposed authoring_capability candidate",
   () => {
@@ -169,7 +139,6 @@ describe.skipIf(skip)(
       const workflowId = (result.data as Record<string, unknown>).workflow_id as string;
       expect(workflowId).toBeDefined();
 
-      // Exactly one skill_candidate for this workflow.
       const candidates = await ctx.testDb.db
         .select()
         .from(skillCandidates)
@@ -186,7 +155,6 @@ describe.skipIf(skip)(
       expect(candidate.pattern_kind).toBe("authoring_capability");
       expect(candidate.scope).toBe("workflow");
       expect(candidate.workflow_id).toBe(workflowId);
-      // Initial version is always 1.
       expect(candidate.version).toBe(1);
       expect(candidate.body).toContain(
         "This candidate describes preparation, not an active capability",
@@ -202,17 +170,12 @@ describe.skipIf(skip)(
   },
 );
 
-// ---------------------------------------------------------------------------
-// D.2 Re-commit same workflow → version bump, no duplicate
-// ---------------------------------------------------------------------------
-
 describe.skipIf(skip)(
   "D.2 — re-commit same workflow (same schemas, different step body) bumps version, no duplicate",
   () => {
     test("two commits → one skill_candidate row, version incremented", async () => {
       const conversationId = await freshConversation();
 
-      // First commit: establish the workflow and the initial skill candidate.
       const firstDraft = readyDraftWithSchemas("sc-recommit", "SC Recommit", "return input.input;");
       const firstCtx = stubToolCtx(conversationId, firstDraft);
       const first = await commitWorkflowAtomic({
@@ -222,7 +185,6 @@ describe.skipIf(skip)(
       expect(first.ok).toBe(true);
       const workflowId = (first.data as Record<string, unknown>).workflow_id as string;
 
-      // Verify initial candidate state.
       const beforeCandidates = await ctx.testDb.db
         .select()
         .from(skillCandidates)
@@ -236,20 +198,13 @@ describe.skipIf(skip)(
       const v1 = beforeCandidates[0]!;
       expect(v1.version).toBe(1);
 
-      // Second commit: same slug + schemas, different step expression.
-      // The def hash changes (different step), so `isUnchangedFromCurrentVersion`
-      // returns false → a new workflow version is written. But the skill-candidate
-      // fingerprint (workflow_id + schemas) is identical → upsertFromSignal
-      // updates the existing row rather than inserting a new one.
       const secondDraft = readyDraftWithSchemas(
         "sc-recommit",
         "SC Recommit v2",
-        "return input.input ?? null;", // different expression
+        "return input.input ?? null;",
       );
       if (!secondDraft.state) throw new Error("ready draft state missing");
       secondDraft.state.persisted_resources = firstCtx.getDraft().state?.persisted_resources ?? [];
-      // Use the same conversationId — `target_workflow_id` was written there
-      // by the first commit and is picked up automatically.
       const secondCtx = stubToolCtx(conversationId, secondDraft);
       const second = await commitWorkflowAtomic({
         ctx: secondCtx,
@@ -257,7 +212,6 @@ describe.skipIf(skip)(
       });
       expect(second.ok).toBe(true);
 
-      // Still exactly one candidate for this workflow — no duplicate created.
       const afterCandidates = await ctx.testDb.db
         .select()
         .from(skillCandidates)
@@ -269,25 +223,18 @@ describe.skipIf(skip)(
         );
       expect(afterCandidates).toHaveLength(1);
 
-      // Version was bumped.
       const v2 = afterCandidates[0]!;
-      expect(v2.id).toBe(v1.id); // same row
+      expect(v2.id).toBe(v1.id);
       expect(v2.version).toBeGreaterThan(v1.version);
-      // Status remains proposed — approve is never triggered by commit.
       expect(v2.status).toBe("proposed");
     }, 60_000);
   },
 );
 
-// ---------------------------------------------------------------------------
-// D.3 No active skills row created by the commit path
-// ---------------------------------------------------------------------------
-
 describe.skipIf(skip)(
   "D.3 — no skills row with lifecycle:active created by workflow commit",
   () => {
     test("active skills count is unchanged after commit", async () => {
-      // Count active skills BEFORE the commit (only the pre-seeded rows).
       const [before] = await ctx.testDb.db
         .select({ n: count() })
         .from(skills)
@@ -302,24 +249,16 @@ describe.skipIf(skip)(
       });
       expect(result.ok).toBe(true);
 
-      // Count active skills AFTER the commit.
       const [after] = await ctx.testDb.db
         .select({ n: count() })
         .from(skills)
         .where(and(eq(skills.tenant_id, ctx.tenant_id), eq(skills.lifecycle, "active")));
       const countAfter = after?.n ?? 0;
 
-      // The commit path must never write a skill row — only a skill_candidate.
-      // Active skills are created only when an operator explicitly approves a
-      // candidate via POST /v1/skill-candidates/<id>/approve.
       expect(countAfter).toBe(countBefore);
     }, 60_000);
   },
 );
-
-// ---------------------------------------------------------------------------
-// D.4 Commit result next_prompt does not announce the advisory candidate
-// ---------------------------------------------------------------------------
 
 describe.skipIf(skip)(
   "D.4 — commit result next_prompt does not invite approving the candidate",
@@ -336,13 +275,10 @@ describe.skipIf(skip)(
       const data = result.data as Record<string, unknown>;
       const nextPrompt = data.next_prompt as string | undefined;
 
-      // The candidate is advisory: no surface offers it as a decision, so the
-      // turn must not hand the user an approve URL for it.
       expect(typeof nextPrompt).toBe("string");
       expect(nextPrompt).not.toContain("/v1/skill-candidates/");
       expect(nextPrompt).not.toContain("Skill-Candidate");
 
-      // The candidate itself is still filed, as drafting context.
       const workflowId = data.workflow_id as string;
       const candidateRows = await ctx.testDb.db
         .select({ id: skillCandidates.id })

@@ -1,6 +1,3 @@
-// Connector instantiation from a connector template:
-//   POST /v1/connectors/from-template/{slug}
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";
@@ -99,15 +96,6 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Endpoint discovery pre-seed. The authoring pipeline grounds
-    // `author_workflow` in the discovered endpoint index; the
-    // conversation path (`start_connector_from_template`) already runs
-    // this, but a connector installed over HTTP (sk `/install`) had no
-    // index until the first authoring turn explicitly discovered it —
-    // fail-open grounding is exactly how invented paths slip through.
-    // Backgrounded because discovery can take tens of seconds and is
-    // best-effort: the 24h cache in `runDiscoveryCached` makes a later
-    // authoring turn pick up the result either way.
     if (template.ingestion_url) {
       void runDiscoveryCached(
         { db, tenant_id: principal.tenant_id, actor_id: principal.id },
@@ -137,7 +125,6 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
         });
     }
 
-    // Seed the default skill for this connector from template-skills.json.
     if (template.default_skill) {
       const skillDef = (templateSkillsJson as Record<string, unknown>)[template.default_skill] as
         | {
@@ -168,13 +155,10 @@ export function registerFromTemplateRoutes(app: OpenAPIHono<AppEnv>): void {
             },
             db,
           );
-        } catch {
-          // Skill seeding is best-effort — don't fail connector creation.
-        }
+        } catch {}
       }
     }
 
-    // Add a second audit row that captures the template_slug provenance.
     await auditAwait(
       {
         tenant_id: principal.tenant_id,

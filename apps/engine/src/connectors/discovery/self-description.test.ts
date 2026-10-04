@@ -1,6 +1,3 @@
-// Pure unit tests for the self-description link mapping + the cache
-// usefulness gate (two-tier TTL input). No DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import { isUsefulDiscovery, selfDescriptionLinksFromResult } from "./service.ts";
 import type { DiscoveryResult } from "./types.ts";

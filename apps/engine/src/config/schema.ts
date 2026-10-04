@@ -122,9 +122,6 @@ const LogSection = z
   .prefault({})
   .describe("Logging");
 
-// Helper for "either an empty string OR a valid URL" — the schema's
-// pattern for optional URL leaves that ship empty until the operator
-// configures them.
 const optionalUrl = z.union([z.literal(""), z.string().url()]);
 
 const ServerSection = z
@@ -430,8 +427,6 @@ const PlatformSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true })),
-        // App-level Chat-app service account (one per engine, like
-        // Slack's signing secret): outbound REST auth via JWT assertion.
         client_email: z
           .string()
           .default("")
@@ -440,21 +435,10 @@ const PlatformSection = z
           .string()
           .default("")
           .meta(global({ requiresRestart: true, secret: true })),
-        // Inbound JWT audience. The Chat-app console setting
-        // "Authentication Audience" MUST be "Project Number" — this is
-        // that number (a numeric string). In the alternative
-        // "HTTP endpoint URL" mode Google signs a different token shape
-        // the adapter deliberately does not speak.
         audience: z
           .string()
           .default("")
           .meta(global({ requiresRestart: true })),
-        // Bounded wait for the inline synchronous Google-Chat turn before
-        // the route acks and falls back to detached async delivery. Google
-        // renders "[app] is not responding" unless the synchronous webhook
-        // response is a valid Chat Message, so a fast turn returns its
-        // reply as the HTTP body; a slow one detaches. Max 29_000 keeps us
-        // inside Google's ~30s sync window including network.
         sync_turn_timeout_ms: z
           .number()
           .int()
@@ -564,11 +548,6 @@ const ObservabilitySection = z
   .object({
     langfuse: z
       .object({
-        // 4.2.0: requiresRestart=false — setConfigKey() hot-reloads the
-        // OTel SDK + resets the langfuse-spans cache via
-        // reconfigureTracing(). Operators see `sk settings set
-        // observability.langfuse.secret_key '"…"'` take effect on the
-        // next span.
         host: optionalUrl.default("").meta(global()),
         public_key: z.string().default("").meta(global()),
         secret_key: z
@@ -596,10 +575,6 @@ const ObservabilitySection = z
         "Deployment identity used for the OpenTelemetry deployment.environment.name resource attribute.",
       )
       .meta(global()),
-    // Phase 1 (logging) per-field string cap, now config-driven. The
-    // logger hot-reloads this via reconfigureObservability() on any
-    // observability.* write; it falls back to 2048 when the loader is not
-    // initialised (boot, unit tests).
     field_truncation_chars: z
       .number()
       .int()
@@ -610,11 +585,6 @@ const ObservabilitySection = z
         "Per-field cap (in characters / UTF-16 code units, not bytes) applied to structured log fields after redaction.",
       )
       .meta(global()),
-    // Phase 2 predictive-maintenance thresholds. These are the leading
-    // indicators the operator health-digest evaluates against the live
-    // gauges/counters; tuning them is an operator decision, not a code
-    // change. They are advisory inputs — the metrics flow to /metrics
-    // unconditionally regardless of these values.
     predictive: z
       .object({
         pool_saturation_pct: z
@@ -732,11 +702,6 @@ const SpecSection = z
 
 const QueueSection = z
   .object({
-    // How many executions one replica runs at a time. Global and
-    // restart-required because it becomes a pg-boss worker option at boot: a
-    // per-tenant value could not be expressed against a single shared worker,
-    // and this leaf carried `tenant` scope for a long time while nothing read
-    // it at all — the effective concurrency was a hard-coded 1.
     concurrency: z
       .number()
       .int()
@@ -780,30 +745,6 @@ const QueueSection = z
   .prefault({})
   .describe("Queue worker");
 
-/**
- * What a million tokens costs, per model.
- *
- * The engine measures tokens and has never known a price: `llm_usage` carries
- * no monetary column, and `pricing.ts` holds cache weights, not money. So the
- * only honest money figure anywhere was `external_call_metering.cost_usd`, and
- * the question an operator actually asks — what does this automation cost —
- * could not be answered at all.
- *
- * Rates are applied at READ time, never stored on the ledger. Storing them
- * would freeze a price onto history; recomputing with today's rates and
- * SAYING so is the honest version, and it is why every cost answer carries
- * the basis it was computed on.
- *
- * These entries are overrides on top of the built-in catalog
- * (`llm/model-price-catalog.ts`), applied per model. The catalog is never
- * copied into the stored configuration, so a release that corrects a list
- * price reaches every model the operator has not priced themselves.
- *
- * A model with neither an override nor a catalog price is not free. It is unpriced, and a surface
- * that meets one reports its tokens and names it as unpriced rather than
- * adding zero — a nought that means "not measured" is the costliest reading
- * in the product.
- */
 export const ModelPriceSchema = z.object({
   model: z.string().min(1).describe("Model identifier as it appears in `llm_usage.model`."),
   input_per_mtok: z.number().nonnegative().describe("Price per 1M uncached input tokens."),
@@ -865,15 +806,6 @@ const OperationsSection = z
   .prefault({})
   .describe("Startup operations");
 
-// QuickJS sandbox limits for user-authored JavaScript (transforms,
-// validation/output-transform functions, loop/for_each selectors). These
-// are the GENERAL-tier defaults; before-request hooks keep their own
-// tighter, security-fixed limits in auth/hooks.ts and do NOT track these.
-//
-// `tick_budget` is an interrupt-tick budget, NOT an opcode count: QuickJS
-// fires the interrupt handler on an internal counter at loop back-edges and
-// function calls, so this is a coarse runaway backstop — the wall-clock and
-// memory caps are the real guards. See sandboxes/quickjs/QUICKJS.md.
 const SandboxSection = z
   .object({
     memory_bytes: z
@@ -918,26 +850,13 @@ const SandboxSection = z
   .prefault({})
   .describe("QuickJS JS sandbox limits");
 
-// sk REPL session preferences. Tenant-scoped so each operator picks a
-// default permission mode that the next REPL run honors at startup.
-// The four-value union mirrors PermissionMode in the CLI; the
-// Permissions tab in /settings writes here.
 const ReplSection = z
   .object({
     permissionMode: z
       .enum(["ask", "auto", "plan", "yolo"])
       .default("auto")
-      .describe(
-        // Keep the description to data semantics; sk-specific UI
-        // hints (slash names, key chords) belong in the slash registry
-        // / docs, not the OpenAPI surface.
-        "Default REPL permission mode for the principal: ask, auto, plan, or yolo.",
-      )
+      .describe("Default REPL permission mode for the principal: ask, auto, plan, or yolo.")
       .meta(tenant()),
-    // Operator-tunable `/session` portal-token TTL instead of a
-    // hardcoded 15 minutes in the slash handler. Tenant-scoped so
-    // different tenants can pick different security/usability
-    // tradeoffs without a CLI release.
     portalTokenTtlMin: z
       .number()
       .int()
@@ -950,15 +869,6 @@ const ReplSection = z
   .prefault({})
   .describe("sk REPL session preferences");
 
-// sk REPL push-notification preferences. Tenant-scoped so each
-// operator picks their own threshold + opt-in. `quietHoursStart` and
-// `quietHoursEnd` are 24h "HH:MM" wall-clock strings (local timezone)
-// that the CLI uses to suppress emits. An empty string disables the
-// time-window check.
-//
-// Single source of truth for the HH:MM-or-empty regex. The base
-// section + the tenant overlay both reuse this — a future change to
-// the format only edits one place.
 const QuietHoursStringSchema = z
   .string()
   .regex(/^$|^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM (24h, leading-zero hour) or empty");
@@ -980,14 +890,6 @@ const NotificationsSection = z
           .default(30)
           .describe("Minimum elapsed turn seconds before a notification fires.")
           .meta(tenant()),
-        // Regex-constrain the wall-clock string at the engine
-        // boundary. Bare `z.string()` lets `"99:99"` or `"foo"`
-        // round-trip through the API silently; the CLI's `parseHHMM`
-        // then quietly falls back to "no quiet hours". Constraining
-        // here makes the OpenAPI surface honest and protects every
-        // other consumer (chat adapter, future workflow steps) from
-        // the same trap. Pinned shape lives in
-        // `QuietHoursStringSchema` above.
         quietHoursStart: QuietHoursStringSchema.default("")
           .describe("Quiet-hours window start (HH:MM, local TZ). Empty disables the window.")
           .meta(tenant()),
@@ -998,9 +900,6 @@ const NotificationsSection = z
       .prefault({}),
     inbox: z
       .object({
-        // Nothing deletes an inbox row on the request path any more —
-        // `ack` marks read instead of deleting — so this window is the
-        // only thing bounding the table.
         retention_days: z
           .number()
           .int()
@@ -1017,10 +916,6 @@ const NotificationsSection = z
   .prefault({})
   .describe("sk REPL notification preferences");
 
-// UI value pickers (theme, personality, title, statusline). Tenant-
-// scoped so each operator's REPL runs with their preferred chrome.
-// The Config tab opens the matching ValuePicker component when one
-// of these rows is selected.
 const UiSection = z
   .object({
     theme: z
@@ -1055,11 +950,6 @@ const UiSection = z
   .prefault({})
   .describe("REPL chrome preferences");
 
-// Every tunable the web-scraper connector introduces lives here
-// with a useful default, so `sk connectors create web-scraper --slug=<x>`
-// is a zero-arg command. Operators tune via `sk settings set
-// connectors.web_scraper.<leaf> <value>` or the /settings → Config tab;
-// the /v1/settings routes and CLI auto-discover by walking the schema.
 const WebScraperRuntime = z
   .object({
     respect_robots: z
@@ -1214,8 +1104,6 @@ const ConnectorsHttpSection = z
       .int()
       .min(1_048_576)
       .max(1_073_741_824)
-      // Keep this default in sync with DEFAULT_MAX_RESPONSE_BYTES in
-      // connectors/drivers/http.ts (used when config isn't yet loaded).
       .default(104_857_600)
       .describe(
         "Max bytes read from a single HTTP/GraphQL connector response before it is rejected as response_too_large. OOM guard; generous default (100 MB).",
@@ -1225,17 +1113,6 @@ const ConnectorsHttpSection = z
   .prefault({})
   .describe("HTTP/GraphQL connector transport limits (shared by the http + graphql drivers).");
 
-// External MCP client-pool budgets. An external MCP server is a connector
-// whose driver is `mcp`, so its tunables belong beside the other
-// per-driver sections rather than under the inbound `mcp` section, which
-// configures the MCP server subkit HOSTS. The defaults mirror the
-// module-level constants in `mcp/client/pool.ts`, which stay as the
-// fallback when the config loader is not initialised (unit tests).
-// Exported so the retired-section boot check can ask what the budgets default
-// to instead of restating the numbers. A leftover `mcp.client` that merely
-// repeats these values carries no operator intent, and refusing to boot over it
-// would stop a deploy to protect nothing — so the check needs the real defaults,
-// from here, or it drifts the moment one of them changes.
 export const ConnectorsMcpSection = z
   .object({
     per_server_manifest_byte_cap: z
@@ -1341,8 +1218,6 @@ const TenantOverlaySchema = z
           .object({
             enabled: z.boolean().optional(),
             thresholdSec: z.number().int().positive().max(3600).optional(),
-            // Mirror the regex from `NotificationsSection` via the
-            // shared `QuietHoursStringSchema` constant.
             quietHoursStart: QuietHoursStringSchema.optional(),
             quietHoursEnd: QuietHoursStringSchema.optional(),
           })
@@ -1365,8 +1240,6 @@ const TenantOverlaySchema = z
           .optional(),
       })
       .optional(),
-    // Web-scraper connector — only the tenant-scoped leaves; the robots_cache.*
-    // and optimization.scan_cron are global and may not appear here.
     connectors: z
       .object({
         web_scraper: z
@@ -1402,8 +1275,6 @@ const TenantOverlaySchema = z
             max_response_bytes: z.number().int().min(1_048_576).max(1_073_741_824).optional(),
           })
           .optional(),
-        // External MCP client-pool budgets. Mirrors `ConnectorsMcpSection`
-        // (same bounds, every leaf optional).
         mcp: z
           .object({
             per_server_manifest_byte_cap: z.number().int().min(1_000).max(1_000_000).optional(),

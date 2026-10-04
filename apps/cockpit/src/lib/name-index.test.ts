@@ -21,8 +21,6 @@ describe("resolveTargetName", () => {
   });
 
   test("returns null — never the id — for anything it cannot name", () => {
-    // The caller renders an em dash. Returning the id would put a UUID on
-    // screen, which is both meaningless to a reader and a gate failure.
     expect(resolveTargetName(index, "workflow", "wf-3")).toBeNull();
     expect(resolveTargetName(index, "workflow", "wf-unknown")).toBeNull();
     expect(resolveTargetName(index, "workflow", null)).toBeNull();

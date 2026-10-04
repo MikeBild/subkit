@@ -23,7 +23,6 @@ describe("matchTemplateByUrl", () => {
   test("GitHub GraphQL URL matches github-graphql or github template", () => {
     const result = matchTemplateByUrl("https://api.github.com/graphql");
     expect(result).not.toBeNull();
-    // should match a github-related template
     expect(result!.template.slug).toMatch(/github/);
   });
 
@@ -62,7 +61,6 @@ describe("matchTemplateByUrl", () => {
 
   test("postgres DSN matches postgres template", () => {
     const result = matchTemplateByUrl("postgres://user:pass@host:5432/db");
-    // May match or not depending on template patterns — if it does match, driver must be postgres
     if (result !== null) {
       expect(result.template.driver).toBe("postgres");
     }

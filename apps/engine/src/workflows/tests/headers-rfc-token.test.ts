@@ -59,11 +59,6 @@ describe("RequestStepSchema headers — RFC 7230 token guard", () => {
   });
 });
 
-// Regression: audit anti-pattern B1. Same lenient string/object-union
-// pattern as headers, but on the GraphQL config slot. Without the
-// guard `step.graphql = '{"query":"{ me { id } }"}'` would be accepted
-// as a literal GraphQL document, sent to the server, and rejected as a
-// syntax error — leading the LLM into a re-serialise loop.
 describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
   test("accepts an object form", () => {
     const r = RequestStepSchema.safeParse({
@@ -86,7 +81,6 @@ describe("RequestStepSchema graphql — JSON-encoded string guard", () => {
     });
     expect(r.success).toBe(true);
     if (!r.success) return;
-    // The transform unwraps the bare string into `{ query }`.
     const g = r.data.graphql as { query: string } | undefined;
     expect(g?.query).toContain("me");
   });

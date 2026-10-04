@@ -1,8 +1,3 @@
-// Knowledge Sources HTTP surface (programmatic / SDK access).
-//
-// The primary UX is conversational (file attachments in conversations).
-// These endpoints exist for SDK consumers, CI/CD pipelines, and admin tools.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
@@ -161,11 +156,6 @@ const analyzeRoute = createRoute({
   },
 });
 
-// Web-scraper — JSON inline ingestion. The legacy
-// POST /v1/knowledge-sources stays on multipart/form-data (file
-// uploads); recipes that produce extracted markdown POST to this
-// route instead so the OpenAPI surface advertises the JSON contract
-// and Zod validates the body before the handler runs.
 const createInlineRoute = createRoute({
   method: "post",
   path: "/v1/knowledge-sources/inline",
@@ -191,17 +181,10 @@ const createInlineRoute = createRoute({
   },
 });
 
-// Bare `{ error, hint }` envelope the multipart handler has always
-// returned — documented as-is (deliberately NOT ErrorSchema) so the
-// wire contract stays byte-identical for existing SDK consumers.
 const KnowledgeSourceUploadError = z
   .object({ error: z.string(), hint: z.string().optional() })
   .openapi("KnowledgeSourceUploadError");
 
-// Multipart form shape. `file` is the raw document; `metadata` is a
-// JSON-encoded string matching CreateKnowledgeSourceSchema. The handler
-// parses `c.req.formData()` itself — the schema exists for the OpenAPI
-// document, not for validation.
 const KnowledgeSourceUploadForm = z
   .object({
     file: z.any().openapi({
@@ -243,11 +226,6 @@ const createUploadRoute = createRoute({
   },
 });
 
-// Knowledge bundle — a directory of markdown files as one JSON body
-// (`sk knowledge-sources import`, REPL `/knowledge import`, workflows).
-// Upsert by slug: unchanged content is a no-op, changed content
-// re-ingests in place. Frontmatter is read tolerantly (OKF-compatible);
-// nothing is ever rejected for missing/unknown frontmatter.
 const KnowledgeBundleUpsertResponse = z
   .object({
     knowledge_source: KnowledgeSourceSchema,
@@ -419,9 +397,6 @@ const searchRoute = createRoute({
   },
 });
 
-// A source read from an address: the engine fetches the page (through the
-// egress guard), stores its text and keeps the address, so it can be read
-// again on request.
 const CreateKnowledgeSourceFromUrlBody = CreateKnowledgeSourceSchema.extend({
   name: z.string().min(1).max(200).optional(),
   url: z.string().url().max(2048),
@@ -477,7 +452,6 @@ const refreshRoute = createRoute({
   },
 });
 
-/** The address-reading failures, as the HTTP errors a client can act on. */
 function urlError(error: unknown): never {
   if (error instanceof svc.KnowledgeUrlFetchError)
     throw new UnprocessableEntityError(error.message, { reason: error.code });
@@ -562,7 +536,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ items, total }, 200);
   });
 
-  // Search must be registered before :id to avoid path collision
   app.openapi(searchRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -588,8 +561,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ hits }, 200);
   });
 
-  // Chunk read — registered before the bare :id route (same collision
-  // discipline as /search above).
   app.openapi(chunksRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -659,7 +630,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // Registered before the bare :id route (same collision discipline as /search).
   app.openapi(createFromUrlRoute, async (c) => {
     const principal = requireAuth(c);
     const { url, ...input } = c.req.valid("json");
@@ -747,13 +717,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ deleted: true }, 200);
   });
 
-  // JSON inline path — separate OpenAPI route so Zod validates
-  // the body up-front and the spec advertises the JSON contract.
-  // 422 is the documented validation-failure status on `createInlineRoute`.
-  // Without this `defaultHook`, Hono's zod-openapi returns 400 on Zod
-  // failure, drifting from the OpenAPI spec and forcing clients to
-  // branch on both codes. The hook normalises to 422 + a typed error
-  // envelope that matches `ErrorSchema`.
   app.openapi(
     createInlineRoute,
     async (c) => {
@@ -808,10 +771,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     },
   );
 
-  // Bundle upsert. Budget errors surface as 413 and slug conflicts as 409
-  // via typed errors from the service — the canonical serialization the
-  // service fingerprints is what the budget is enforced against, so the
-  // route does not pre-measure a second, subtly different byte count.
   app.openapi(
     bundleRoute,
     async (c) => {
@@ -872,9 +831,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     },
   );
 
-  // Multipart upload route. The OpenAPI spec documents the form shape;
-  // the handler keeps its own formData() parsing (multipart fields are
-  // not Zod-validated — `metadata` is a JSON string decoded below).
   app.openapi(createUploadRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -922,13 +878,6 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // Interactive auto-enrich (best-effort): generate a description + tags
-    // ONLY when the upload landed with neither. Supplying explicit tags (or a
-    // description) opts out entirely — auto-analysis would otherwise overwrite
-    // the operator's authoritative tags, contradicting the `--tags` contract
-    // ("omit to auto-generate"). Runs after the create commits, outside its
-    // transaction. Any failure (incl. LlmQuotaExhausted) leaves the source
-    // created/un-enriched and never fails the upload.
     if (source.description === null && source.tags.length === 0) {
       try {
         const enriched = await svc.analyzeKnowledgeSource(

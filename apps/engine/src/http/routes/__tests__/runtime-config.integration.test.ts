@@ -242,8 +242,6 @@ describe("runtime configuration HTTP contract", () => {
   });
 
   test("one save is one revision: every change lands together or none does", async () => {
-    // The settings page saves all its drafts as one PATCH against the revision
-    // GET /v1/settings reported — that number must be the PATCH's base.
     const listed = (await (await authedFetch("/v1/settings")).json()) as {
       saved_revision: number;
     };
@@ -272,7 +270,6 @@ describe("runtime configuration HTTP contract", () => {
     expect(revision.document.log.level).toBe("debug");
     expect(revision.document.tokens.monthly_budget).toBe(500);
 
-    // One invalid change rejects the whole save: no revision, nothing half-written.
     const invalid = await authedFetch("/v1/settings", {
       method: "PATCH",
       body: JSON.stringify({
@@ -282,7 +279,6 @@ describe("runtime configuration HTTP contract", () => {
       }),
     });
     expect(invalid.status).toBe(422);
-    // A writer still holding the old number conflicts instead of overwriting.
     const stale = await authedFetch("/v1/settings", {
       method: "PATCH",
       body: JSON.stringify({

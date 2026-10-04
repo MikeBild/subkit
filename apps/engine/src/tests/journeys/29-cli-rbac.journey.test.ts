@@ -1,23 +1,3 @@
-// User story: As an operator, I want to manage roles, permissions,
-// grants, and groups via the `subkit rbac` CLI so I can automate
-// authorization changes without writing curl.
-// Acceptance criteria:
-//   - AC1: `subkit rbac permissions list --json` returns >= 50 permissions
-//          including workflow:run, audit:read, rbac:write.
-//   - AC2: `subkit rbac roles list --json` includes the 5 built-in roles.
-//   - AC3: `subkit rbac roles create <name>` creates a tenant role.
-//   - AC4: `subkit rbac roles grant <role_id> <permission>` attaches a
-//          permission to the role.
-//   - AC5: `subkit rbac users assign <user_id> <role_id>` changes the
-//          user's role_id.
-//   - AC6: `subkit rbac grants create` issues a resource grant;
-//          `subkit rbac can` subsequently returns allow.
-//   - AC7: `subkit rbac groups create` + `add-member` + `assign-role`
-//          materialise group rows.
-//   - AC8: `subkit rbac roles delete` on the admin built-in returns 409.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/developers/input-surfaces.md
-//            (Pass-2 Stream C — fully integrated RBAC)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { rbacCommand } from "../../../../sk/src/commands/rbac.ts";
@@ -31,8 +11,6 @@ import {
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -66,9 +44,6 @@ function patchStd(): Captured & { restore: () => void } {
   };
 }
 
-// Reject objects that look like ndjson log lines — they have
-// `{ts, level, module, action, msg}`. The CLI emits rows that never
-// have `level`.
 function isLogLine(v: unknown): boolean {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
@@ -87,9 +62,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -106,17 +79,13 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue
-        }
+        } catch {}
         end = -1;
       }
     }
   }
   return stdout.trim();
 }
-
-// ---------- run a subcommand ----------
 
 function withEnv(url: string, apiKey: string, fn: () => Promise<void>): Promise<void> {
   const prevUrl = process.env.SUBKIT_ENGINE_URL;
@@ -158,9 +127,6 @@ async function run(path: string[], extraArgs: Record<string, string> = {}): Prom
   return { stdout: cli.stdout, stderr: cli.stderr };
 }
 
-// `runCommand` throws a citty UsageError on argument parse failures +
-// HTTP errors surface as `EngineError` from our engine-client. We swallow
-// them here and return the captured stderr so assertions can verify.
 async function runExpectError(
   path: string[],
   extraArgs: Record<string, string> = {},
@@ -212,10 +178,6 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(names).toContain("member");
     expect(names).toContain("enduser");
     expect(names).toContain("metrics_scraper");
-    // Negative assertion: the migration-driven cleanup in
-    // 0014_drop_tunnels.sql must have removed the legacy `tunnel_agent`
-    // builtin role on upgraded DBs. This trips if the cleanup block
-    // is dropped or the seeder reintroduces the role.
     expect(names).not.toContain("tunnel_agent");
   });
 
@@ -227,13 +189,10 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(role.name).toBe("ops-engineer");
     expect(role.id).toBeTruthy();
 
-    // Grant workflow:run via the CLI.
     await run(["roles", "grant", role.id, "workflow:run"]);
 
-    // Verify the role has the permission via the engine.
     const fetched = await run(["roles", "get", role.id]);
     const parsed = JSON.parse(extractLastJson(fetched.stdout));
-    // listRolePermissions returns string[], not objects.
     const perms: string[] = (parsed.permissions ?? []).map((p: unknown) =>
       typeof p === "string" ? p : ((p as { name: string }).name ?? ""),
     );
@@ -241,7 +200,6 @@ describe("journey 29: subkit rbac CLI", () => {
   });
 
   test("AC5: users assign role", async () => {
-    // Create a fresh user directly in the DB.
     const [u] = await ctx.db
       .insert(users)
       .values({
@@ -251,7 +209,6 @@ describe("journey 29: subkit rbac CLI", () => {
       })
       .returning();
 
-    // Find the ops-engineer role id (created in AC3).
     const [role] = await ctx.db
       .select({ id: roles.id })
       .from(roles)
@@ -266,7 +223,6 @@ describe("journey 29: subkit rbac CLI", () => {
   });
 
   test("AC6: grants create + can allow", async () => {
-    // Create a fresh user who will receive a single resource grant.
     const [u] = await ctx.db
       .insert(users)
       .values({
@@ -276,7 +232,6 @@ describe("journey 29: subkit rbac CLI", () => {
       })
       .returning();
 
-    // Grant workflow:run on a synthetic workflow id.
     const workflowId = "00000000-0000-0000-0000-0000000000aa";
     await run(["grants", "create"], {
       subject: `user:${u!.id}`,
@@ -291,7 +246,6 @@ describe("journey 29: subkit rbac CLI", () => {
       .limit(1);
     expect(row.length).toBe(1);
 
-    // can() query the same combo via CLI.
     const can = await run(["can", u!.id, "workflow:run", `workflow:${workflowId}`]);
     const decision = JSON.parse(extractLastJson(can.stdout));
     expect(decision.allow).toBe(true);
@@ -304,9 +258,7 @@ describe("journey 29: subkit rbac CLI", () => {
     const group = JSON.parse(extractLastJson(created.stdout));
     expect(group.name).toBe("oncall");
 
-    // Add the seeded admin user as a member.
     await run(["groups", "add-member", group.id, ctx.userId]);
-    // Assign the member built-in role to the group.
     await run(["groups", "assign-role", group.id, ctx.rbacRoleIds.member]);
 
     const memberRows = await ctx.db
@@ -320,14 +272,12 @@ describe("journey 29: subkit rbac CLI", () => {
       .where(eq(groupRoleAssignments.group_id, group.id));
     expect(assignRows.length).toBe(1);
 
-    // Verify the group is listed.
     const listed = await run(["groups", "list"]);
     const groupList = JSON.parse(extractLastJson(listed.stdout));
     expect(groupList.map((g: { name: string }) => g.name)).toContain("oncall");
   });
 
   test("AC8: deleting a built-in role returns an error", async () => {
-    // Look up the admin built-in id.
     const [adminRole] = await ctx.db
       .select({ id: roles.id })
       .from(roles)
@@ -336,8 +286,6 @@ describe("journey 29: subkit rbac CLI", () => {
     expect(adminRole).toBeTruthy();
 
     const { message, captured } = await runExpectError(["roles", "delete", adminRole!.id, "--yes"]);
-    // Either the CLI throws with a 409/forbidden message or prints it
-    // on stderr — accept either path.
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
     expect(
       combined.includes("built-in") ||
@@ -347,7 +295,6 @@ describe("journey 29: subkit rbac CLI", () => {
         combined.includes("immutable"),
     ).toBe(true);
 
-    // Built-in is still there.
     const still = await ctx.db
       .select({ id: roles.id })
       .from(roles)

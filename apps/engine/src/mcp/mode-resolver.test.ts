@@ -1,12 +1,3 @@
-// MCP catalog visibility — RBAC-derived snapshot.
-//
-// The `tools/list` payload shape varies by the principal's role:
-// subkit narrows the surface based on `mcp:admin` / `mcp:authoring`
-// scopes derived from RBAC roles rather than exposing the full tool
-// palette to every API key. This test pins the resolution + flag
-// matrix so a future change can't silently widen the catalog for
-// product-tier callers.
-
 import { describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { modeFlags, resolveMcpMode } from "./mode-resolver.ts";
@@ -39,17 +30,6 @@ describe("MCP catalog visibility · resolveMcpMode", () => {
     expect(resolveMcpMode(principal(["mcp:authoring", "mcp:admin"]))).toBe("admin");
   });
 
-  // The wildcard `*` asserts "no narrowing — full role-derived access"
-  // (auth/scopes.ts). It is the default minted key scope, the admin-key scope
-  // and the OIDC session scope, so treating it as consent to author made
-  // authoring the default for every credential ever issued — including the
-  // ones pasted into clients that cannot carry a human through an authoring
-  // turn.
-  //
-  // Breadth of role is not consent to author. A credential authors when
-  // someone wrote `mcp:authoring` on it, and the read-and-execute tier the
-  // wildcard now lands in is not a punishment: it carries every read plus the
-  // run tools.
   test("wildcard `*` scope resolves to the read-and-execute tier, not authoring", () => {
     expect(resolveMcpMode(principal(["*"]))).toBe("product");
   });
@@ -59,7 +39,6 @@ describe("MCP catalog visibility · resolveMcpMode", () => {
   });
 
   test("an explicit `mcp:authoring` on a wildcard credential does opt in", () => {
-    // The opt-in has to be reachable, or the boundary becomes a wall.
     expect(resolveMcpMode(principal(["*", "mcp:authoring"]))).toBe("authoring");
   });
 
@@ -111,9 +90,6 @@ describe("MCP catalog visibility · modeFlags", () => {
 });
 
 describe("MCP catalog visibility · per-mode is strict superset", () => {
-  // Snapshot-style: every flag that's true in `product` is also true
-  // in `authoring`, and every flag that's true in `authoring` is also
-  // true in `admin`. The catalog is monotonic in privilege.
   test("authoring is a superset of product", () => {
     const product = modeFlags("product", false);
     const authoring = modeFlags("authoring", false);

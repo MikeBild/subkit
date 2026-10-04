@@ -1,13 +1,3 @@
-// Strategy #3: last-resort HTML scrape.
-//
-// Used when neither the original URL nor an embedded Swagger UI bundle
-// reveals a spec. We fetch the HTML, look for any anchor or attribute
-// that points at something OpenAPI-shaped, and also try a small list of
-// well-known paths under the same origin. First strategy that returns a
-// recognisable spec wins.
-//
-// Pure fetch + regex; no Playwright, no headless browser.
-
 import { log } from "../../logging/logger.ts";
 import { getDriverFetch } from "../drivers/fetch-seam.ts";
 import { scrubUrl } from "../egress.ts";
@@ -78,10 +68,6 @@ async function fetchHtml(url: string, opts: DiscoveryStrategyOptions): Promise<s
   }
 }
 
-/**
- * Pull every plausible spec href out of the HTML, resolved against
- * `baseUrl`. Order of return is the order of first appearance.
- */
 export function extractSpecHrefs(html: string, baseUrl: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -100,9 +86,7 @@ export function extractSpecHrefs(html: string, baseUrl: string): string[] {
           seen.add(resolved);
           out.push(resolved);
         }
-      } catch {
-        // skip malformed
-      }
+      } catch {}
       match = re.exec(html);
     }
   }
@@ -153,13 +137,10 @@ class HtmlScrapeStrategy implements DiscoveryStrategy {
       }
     };
 
-    // Try the page itself for embedded hrefs first.
     let html: string | null = null;
     try {
       html = await fetchHtml(url, opts);
     } catch (err) {
-      // html-too-large bubbles up with its code; other failures fall
-      // through to well-known paths.
       if (err instanceof DiscoveryError) {
         log.debug({
           module: "connector",
@@ -176,7 +157,6 @@ class HtmlScrapeStrategy implements DiscoveryStrategy {
       for (const href of extractSpecHrefs(html, url)) push(href);
     }
 
-    // Then well-known paths under the same origin.
     const origin = originOf(url);
     if (origin) {
       for (const p of WELL_KNOWN_PATHS) push(`${origin}${p}`);

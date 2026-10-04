@@ -1,13 +1,3 @@
-// Regression tests for the SHARED save-workflow approval predicate.
-//
-// This predicate is the single source of truth both the commit gate
-// (`commitWorkflowAtomic`) and the policy gate (`sdk-wrap/invoke.ts`)
-// authorize on. The production bug it fixes: a stuck conversation whose
-// only valid approval carried `input.kind = "generic"` but
-// `input.commit_intent.kind = "save_workflow_draft"` — the old gates
-// keyed on the cosmetic top-level `kind` and rejected it, dead-ending
-// `conversation_commit` with "conversation has no committed workflow".
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations } from "../../../db/schema/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../../llm/tests/setup.ts";
@@ -37,8 +27,6 @@ async function freshConversation(): Promise<string> {
 
 describe("rowAuthorizesSaveWorkflow — pure predicate", () => {
   test("authorizes a generic-kind confirm carrying commit_intent.kind=save_workflow_draft", () => {
-    // The EXACT production row: cosmetic top-level kind is `generic`,
-    // but the authoritative commit_intent.kind is `save_workflow_draft`.
     expect(
       rowAuthorizesSaveWorkflow({
         status: "resolved",
@@ -117,14 +105,6 @@ describe("rowAuthorizesSaveWorkflow — pure predicate", () => {
 describe("findPriorSaveWorkflowApproval — production multi-turn scenario", () => {
   test("the exact stuck-conversation rows resolve to an authorizing approval", async () => {
     const conversation_id = await freshConversation();
-    // Reproduce the DB-proven elicitation history of the stuck
-    // conversation, oldest → newest:
-    //   1. external_write — resolved
-    //   2. external_write — cancelled
-    //   3. review_after_execution — resolved
-    //   4. generic + commit_intent.kind=save_workflow_draft — resolved, confirmed
-    // Explicit, monotonically increasing created_at — deterministic row
-    // ordering without a wall-clock sleep between inserts.
     const base = new Date("2026-05-22T12:00:00.000Z").getTime();
     let seq = 0;
     const seed = async (

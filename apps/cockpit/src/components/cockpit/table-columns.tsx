@@ -5,26 +5,14 @@ import { Badge } from "@/components/ui/badge";
 import type { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 
-/** A value nobody sent (CUI-SEV-2). Never `0`, never an empty cell. */
 export const MISSING = "—";
 
-/**
- * A scalar as a word.
- *
- * An empty array used to render as `0`, so a workflow that reaches no
- * connector at all claimed a measured count of zero connections. An unmeasured
- * fact and a measured zero read differently (CUI-SEV-2).
- */
 export function stringValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return MISSING;
   if (Array.isArray(value)) return value.length === 0 ? MISSING : String(value.length);
   return String(value);
 }
 
-/**
- * A byte count as a word. `null` is unmeasured and reads `—`; `0` is a
- * measured, empty file and reads `0 B`. They are different facts.
- */
 export function bytes(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return MISSING;
   if (value < 1024) return `${value} B`;
@@ -33,31 +21,17 @@ export function bytes(value: unknown): string {
 }
 
 export interface Relation {
-  /** `null` renders the label as plain text: a link to nowhere is worse than a word. */
   href: string | null;
   label: string;
 }
 
 interface ColumnOptions {
   sortable?: boolean;
-  /** A Tailwind width class; declared widths are what keep the table `table-fixed`. */
   width?: string;
-  /**
-   * The cell places the row's link itself (`<RowName>`), because it holds more
-   * than the name — a link of its own must not end up inside the row's link.
-   */
   ownsRowLink?: boolean;
-  /** The cell holds links or controls of its own; the row's link must not wrap it. */
   interactive?: boolean;
 }
 
-/**
- * The cell vocabulary every list shares.
- *
- * Each list picks its own columns, but a date, a state and a relation must
- * look and behave the same on all of them — that sameness is the whole point
- * of the refactor these helpers came out of.
- */
 export function tableColumns<TRow extends RowData>({
   t,
   dateTime,
@@ -104,10 +78,6 @@ export function tableColumns<TRow extends RowData>({
         cell: ({ getValue }) => {
           const value = getValue();
           if (value === null || value === undefined || value === "") return MISSING;
-          // The badge primitive is `whitespace-nowrap` by default, which is
-          // right for a one-word chip and wrong here: a state word can be
-          // "Zugangsdaten abgelehnt", and in a `table-fixed` cell a pill that
-          // refuses to wrap paints over the next column instead of growing.
           const label = statusLabel(t, String(value));
           return (
             <Badge
@@ -149,7 +119,6 @@ export function tableColumns<TRow extends RowData>({
       });
     },
 
-    /** A single relation. Following it must not also open the row. */
     link(
       id: string,
       get: (row: TRow) => Relation | null,
@@ -176,7 +145,6 @@ export function tableColumns<TRow extends RowData>({
       });
     },
 
-    /** A list of relations. An empty list is `—`, never `0`. */
     chips(
       id: string,
       get: (row: TRow) => Relation[],
@@ -229,7 +197,6 @@ export function tableColumns<TRow extends RowData>({
       });
     },
 
-    /** Anything the shared vocabulary does not cover, still with a declared width. */
     custom(
       id: string,
       get: (row: TRow) => unknown,

@@ -1,18 +1,3 @@
-// S3 driver. Uses @bradenmacdonald/s3-lite-client to talk to any
-// S3-compatible store (AWS S3, MinIO, R2, etc.). The driver speaks the
-// same {status, headers, body} shape the HTTP driver uses so JSONata
-// expressions and response selectors keep working unchanged.
-//
-// Connector config: { region, endpoint?, bucket, force_path_style? }
-// Credentials carry { access_key_id, secret_access_key, session_token? }
-// (sourced from the credential layer; for header-mode creds the keys
-// land on `headers.x-access-key-id` / `headers.x-secret-access-key`).
-//
-// `request` step contract:
-//   method: "GET" | "PUT" | "HEAD" | "LIST" | "DELETE"
-//   path:   "/<key>"     (LIST treats path as a prefix, "/" means root)
-//   body:   string | Buffer | Uint8Array (PUT only)
-
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -48,20 +33,11 @@ export interface S3Response {
   status: number;
   headers: Record<string, string>;
   body: string | Buffer | unknown;
-  /** Credential row id used for this call, or null when none. Surfaces
-   *  through to the egress audit (`CREDENTIAL_ACCESSED`). */
   credential_id: string | null;
 }
 
 export type S3Method = "GET" | "PUT" | "HEAD" | "LIST" | "DELETE";
 
-/**
- * Thrown when the stored credential cannot produce S3 signing material.
- * Signing silently with no keys is never acceptable — an unsigned request
- * surfaces as an upstream "Missing signature"/403 that hides the real
- * cause from the operator, so every unusable-credential shape throws
- * with a machine-branchable `error_code` instead.
- */
 export class S3CredentialError extends Error {
   constructor(
     message: string,
@@ -86,28 +62,10 @@ function parseConfig(connector: ConnectorView): S3ConnectorConfig {
   return out;
 }
 
-/**
- * Pull S3 credentials from the credentials store. Two stored shapes can
- * sign S3 requests: `aws_sigv4` (the canonical AWS identity — keys land
- * directly on the credential value) and `header` (the connector-layer
- * convention carrying the keys as `x-access-key-id` /
- * `x-secret-access-key` / `x-session-token` pseudo-headers). For
- * `auth_type=none` (anonymous / public buckets), inline config keys are
- * still accepted so test fixtures keep working.
- *
- * When `auth_type !== "none"` the inline config branch is bypassed — credentials
- * must come from the encrypted credential row to close the draft-auth shortcut.
- *
- * Every stored shape that cannot yield signing material throws
- * `S3CredentialError` — returning null here would send unsigned requests
- * whose upstream rejection masks the real cause.
- */
 async function resolveS3Credentials(
   db: Db,
   tenant_id: string,
   connector: ConnectorView,
-  /** Stands in for the persisted row when the connector is not saved yet.
-   *  `undefined` keeps the lookup; `null` means "no credential". */
   override?: DecryptedCredential | null,
 ): Promise<{
   creds: S3Credentials | null;
@@ -116,8 +74,6 @@ async function resolveS3Credentials(
 }> {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   if (connector.auth_type === "none") {
-    // Anonymous / public-bucket path: accept inline keys on config only when
-    // auth_type is explicitly none. This covers test fixtures and public S3 buckets.
     if (
       typeof cfg.access_key_id === "string" &&
       typeof cfg.secret_access_key === "string" &&
@@ -132,9 +88,6 @@ async function resolveS3Credentials(
     }
     return { creds: null, credential_id: null, credential_revision: null };
   }
-  // auth_type !== "none": credentials come from the encrypted store, or from
-  // the caller when probing a connector that has not been saved yet. The
-  // override is never written anywhere — it signs this one request.
   const row =
     override !== undefined
       ? override && {
@@ -182,10 +135,6 @@ async function resolveS3Credentials(
   return { creds: out, credential_id: row.row.id, credential_revision: row.row.authority_revision };
 }
 
-/**
- * Build an S3 client for a connector. Tests can pass a pre-resolved
- * credential bag instead of going through the credential store.
- */
 export function buildS3Client(p: {
   connector: ConnectorView;
   credentials?: S3Credentials | null;
@@ -205,14 +154,6 @@ export function buildS3Client(p: {
   return new S3Client(opts as ConstructorParameters<typeof S3Client>[0]);
 }
 
-/**
- * A removal that cannot do what it was written to do must fail, not succeed
- * quietly. S3 answers 204 whether or not the key existed, so a DELETE aimed at
- * a folder prefix — or one carrying the keys it meant to remove in a body this
- * driver never reads — reports success while deleting nothing. New drafts of
- * that shape are refused by the workflow validator; this guards stored
- * versions that predate that rule.
- */
 export function assertRemovableObject(key: string, body: unknown): void {
   if (body !== undefined && body !== null)
     throw new Error(
@@ -236,11 +177,6 @@ function headersFromResponse(res: Response): Record<string, string> {
   return out;
 }
 
-/**
- * Execute one S3 operation. Translates the connector-level method into
- * the right s3-lite-client call and normalises the result back into the
- * driver-shared `{status, headers, body}` envelope.
- */
 export async function executeS3Request(p: {
   before_dispatch?: (
     credential: Pick<
@@ -257,32 +193,14 @@ export async function executeS3Request(p: {
   method: S3Method;
   path: string;
   body?: string | Uint8Array | Buffer | AsyncIterable<Uint8Array> | null;
-  /** Content-Type for PUT. Forwarded to the s3-lite-client putObject. */
   contentType?: string;
-  /** Object metadata for PUT. Each entry rides as `x-amz-meta-<key>`. */
   metadata?: Record<string, string>;
-  /** LIST cap. Defaults to 1000; capped to 10 000 to keep scope bounded. */
   maxKeys?: number;
-  /** When true, walk continuation tokens until `maxKeys` is reached
-   *  or the bucket is exhausted. When false (default), the driver
-   *  returns at most one batch (still bounded by `maxKeys`). */
   paginate?: boolean;
-  /** Override the multipart-upload threshold in MiB. The driver
-   *  switches to multipart upload when the body exceeds this size.
-   *  Defaults to 8 (s3-lite-client's default). When `multipart: false`
-   *  the threshold is forced to a value larger than the body so a
-   *  single PUT is used regardless. */
   multipart?: boolean;
   multipartThresholdMb?: number;
-  /** RFC 7233 byte-range expression for partial GETs. Forwarded as a
-   *  Range request header. */
   range?: string;
-  /** When set, the operation is *not* executed; the driver returns a
-   *  presigned URL that grants temporary access to the operation
-   *  caller. Supported on GET / PUT. */
   presignExpiresIn?: number;
-  /** See `probeConnector` — signs this request with a credential the caller
-   *  supplies instead of the stored row, for a connector that is not saved yet. */
   credential_override?: DecryptedCredential | null;
 }): Promise<S3Response> {
   const {
@@ -334,7 +252,6 @@ async function executeS3Operation(ctx: {
   const { client, method, key, credential_id, p } = ctx;
   switch (method) {
     case "GET": {
-      // Presigned URL path — operator wants delegated read access.
       if (p.presignExpiresIn !== undefined) {
         const url = await client.getPresignedUrl("GET", key, {
           expirySeconds: p.presignExpiresIn,
@@ -350,10 +267,6 @@ async function executeS3Operation(ctx: {
           credential_id,
         };
       }
-      // s3-lite-client's getObject doesn't accept custom headers, so
-      // when a range is requested we fall through to its signed-URL
-      // helper + a direct fetch with the Range header. This keeps
-      // partial-GET semantics without forking the client.
       let res: Response;
       if (p.range) {
         const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
@@ -361,15 +274,8 @@ async function executeS3Operation(ctx: {
       } else {
         res = await client.getObject(key);
       }
-      // Surface raw bytes when the caller wants them. `arrayBuffer()`
-      // is preferred over `.text()` because it preserves binary
-      // payloads losslessly; the request-step driver decides how to
-      // hand them off (text / base64 / bytes / auto).
       const buffer = Buffer.from(await res.arrayBuffer());
       const headers = headersFromResponse(res);
-      // For text-y content types, also expose the decoded string so a
-      // caller without `parse_as` set still sees readable output (the
-      // historical behaviour). Binary content stays as Buffer.
       const ct = (headers["content-type"] ?? "").toLowerCase();
       const isText =
         ct.startsWith("text/") ||
@@ -388,7 +294,6 @@ async function executeS3Operation(ctx: {
       if (p.body === undefined || p.body === null) {
         throw new Error("s3 PUT requires a body");
       }
-      // Presigned URL path on PUT — caller uploads directly to S3.
       if (p.presignExpiresIn !== undefined) {
         const url = await client.getPresignedUrl("PUT", key, {
           expirySeconds: p.presignExpiresIn,
@@ -404,14 +309,6 @@ async function executeS3Operation(ctx: {
           credential_id,
         };
       }
-      // Stream AsyncIterable bodies (typically `ResolvedFile.openRead`)
-      // directly to S3. s3-lite-client's `putObject` accepts a
-      // `ReadableStream<Uint8Array>` (see node_modules/@bradenmacdonald/
-      // s3-lite-client/client.ts streamOrData branch); wrapping the
-      // async iterable into a stream lets the client drive its multipart
-      // machinery without buffering the whole body in process memory.
-      // Sync bodies (string / Uint8Array / Buffer) take the legacy
-      // single-shot path.
       let data: string | Uint8Array | ReadableStream<Uint8Array>;
       let streamedBody = false;
       if (
@@ -437,9 +334,7 @@ async function executeS3Operation(ctx: {
             if (typeof iterator.return === "function") {
               try {
                 await iterator.return(reason);
-              } catch {
-                /* best-effort */
-              }
+              } catch {}
             }
           },
         });
@@ -459,24 +354,10 @@ async function executeS3Operation(ctx: {
         const metaHeaders: Record<string, string> = {};
         if (p.contentType) metaHeaders["Content-Type"] = p.contentType;
         for (const [k, v] of Object.entries(p.metadata)) {
-          // S3 prefixes user-defined metadata with `x-amz-meta-` on the
-          // wire. The s3-lite-client passes `metadata` straight into
-          // the headers, so we apply the prefix ourselves to avoid
-          // collisions with reserved Content-* headers.
           metaHeaders[`x-amz-meta-${k.toLowerCase()}`] = v;
         }
         putOpts.metadata = metaHeaders;
       }
-      // Multipart configuration. The s3-lite-client switches on size by
-      // default; explicit `multipart: false` forces a single PUT by
-      // raising the threshold above the body size, and an explicit
-      // threshold MiB overrides the default 8 MiB.
-      //
-      // For streamed bodies we have no `dataSize` until the iterator
-      // completes — log a warning so operators can chart unbounded
-      // uploads from a connector call without a workflow-side size
-      // hint. The client still streams correctly; the warning is an
-      // observability signal, not a hard cap.
       const dataSize: number | null =
         typeof data === "string"
           ? Buffer.byteLength(data, "utf8")
@@ -515,10 +396,6 @@ async function executeS3Operation(ctx: {
           etag: info.etag,
           version_id: info.versionId,
           key,
-          // For a stream we cannot cheaply know whether the client
-          // ultimately multipart-uploaded; report `null` rather than
-          // a misleading `false`. Sync bodies still get the precise
-          // boolean.
           multipart:
             dataSize === null ? null : typeof partSize === "number" && partSize <= dataSize,
         },
@@ -545,11 +422,6 @@ async function executeS3Operation(ctx: {
       const prefix = key.length > 0 ? key : "";
       const cap = Math.min(p.maxKeys ?? 1000, 10_000);
       const items: Array<{ key: string; size: number; etag: string; last_modified: string }> = [];
-      // The s3-lite-client iterator already follows continuation
-      // tokens internally; we just decide when to stop walking. With
-      // `paginate: true` the iterator runs until either the bucket is
-      // exhausted or `cap` is hit. Without it, a single LIST batch is
-      // collected so callers can opt-in to the heavier traversal.
       const stopAt = p.paginate === true ? cap : Math.min(cap, 1000);
       for await (const obj of client.listObjects({ prefix })) {
         if (obj.type !== "Object") continue;
@@ -584,23 +456,14 @@ async function executeS3Operation(ctx: {
   }
 }
 
-/**
- * Health probe: run the same LIST flow that the request executor uses.
- * This keeps probe behavior aligned with real authoring-time validation
- * and works against S3-compatible endpoints that do not implement the
- * lighter `bucketExists` shortcut.
- */
 export async function probeS3Connector(p: {
   db: Db;
   tenant_id: string;
   connector: ConnectorView;
-  /** See `probeConnector` — a credential for a connector that is not saved yet. */
   credential_override?: DecryptedCredential | null;
 }): Promise<DriverProbeResult> {
   const start = Date.now();
   try {
-    // Guard: auth-required connectors need a credential — the stored row, or
-    // the caller's override when the connector is not saved yet.
     if (p.connector.auth_type !== "none") {
       const row =
         p.credential_override !== undefined
@@ -627,8 +490,6 @@ export async function probeS3Connector(p: {
       connector: p.connector,
       method: "LIST",
       path: "/",
-      // Sign with the same material the guard above accepted, so a probe of an
-      // unsaved connector does not fall back to an anonymous request.
       ...(p.credential_override !== undefined
         ? { credential_override: p.credential_override }
         : {}),

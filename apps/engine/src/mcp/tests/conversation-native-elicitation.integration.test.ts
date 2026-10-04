@@ -29,12 +29,6 @@ import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { startLocalTargetServer } from "../../test-helpers/local-http.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
-// The wire arm of `deliverPendingNativeElicitationCore` is NON-BLOCKING:
-// `conversation_get` fires `elicitation/create`, holds the call open at
-// most ELICITATION_DELIVERY_GRACE_MS (~1s), and returns this envelope
-// while a detached continuation stages the human's answer and resumes
-// the conversation. Every wire-delivery test below asserts this exact
-// shape on the first poll — including that NO `error_code` key exists.
 function parseEnvelope(result: unknown): Record<string, unknown> {
   const r = result as { content?: Array<{ type: string; text?: string }> };
   const item = r.content?.[0];
@@ -72,8 +66,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     getMockProvider().setConversePlan(conversationId, []);
   }
 
-  /** Seed a conversation paused at `awaiting_input` with one pending
-   *  elicitation row and the finished `start` task the poll rides on. */
   async function seedPendingPrompt(p: {
     tool_name?: string;
     summary: string;
@@ -192,9 +184,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       arguments: { conversation_id: conversationId },
     });
     expect(result.isError).toBe(false);
-    // Non-blocking contract: the poll hands back `input_required` even
-    // though the SDK client answered within the delivery grace — the
-    // answer travels through the detached continuation, never the poll.
     expect(parseEnvelope(result)).toEqual({
       status: "input_required",
       conversation_id: conversationId,
@@ -214,8 +203,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(stored.output).toEqual({ value: "canary", option_index: 0 });
     expect(stored.delivery_attempts).toBe(1);
     await waitForResumedTask(conversationId);
-    // The worker's respondElicitation resolves the row and audits the
-    // approval — the accept must land as `approval.approved`.
     const resolved = await waitFor(
       async () => {
         const row = await readElicitationRow(elicitationId);
@@ -295,8 +282,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       arguments: { conversation_id: conversationId },
     });
     expect(result.isError).toBe(false);
-    // Exact shape: the old contract surfaced an `error_code` on transport
-    // failure — the non-blocking poll must NOT carry one.
     expect(parseEnvelope(result)).toEqual({
       status: "input_required",
       conversation_id: conversationId,
@@ -314,12 +299,9 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(stored.status).toBe("pending");
     expect(stored.output).toBeNull();
     expect(stored.decision_reason).toBeNull();
-    // Lease released — the row is claimable again by a later poll.
     expect(stored.delivery_lease_id).toBeNull();
     expect(stored.delivery_lease_expires_at).toBeNull();
-    // The conversation is NOT destroyed: it stays awaiting_input.
     expect(await readConversationStatus(conversationId)).toBe("awaiting_input");
-    // Audit honesty: a transport break is not a human rejection.
     expect(await listAuditRows(elicitationId, "approval.rejected")).toHaveLength(0);
   }, 15_000);
 
@@ -354,7 +336,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       },
       { tries: 500, sleepMs: 10, label: "fast-cancel delivery release" },
     );
-    // NOT resolved as user_cancelled — the client never rendered the form.
     expect(stored.status).toBe("pending");
     expect(stored.output).toBeNull();
     expect(stored.decision_reason).toBeNull();
@@ -364,9 +345,7 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
   }, 15_000);
 
   test("a client that never answers still gets input_required within the delivery grace", async () => {
-    const silentClient = await suite.connectElicitation(
-      () => new Promise(() => {}), // never settles — form left unanswered
-    );
+    const silentClient = await suite.connectElicitation(() => new Promise(() => {}));
     const { conversationId, elicitationId } = await seedPendingPrompt({
       summary: "Silent rollout",
       input: {
@@ -375,18 +354,12 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
       },
     });
 
-    // Genuine wall-clock latency measurement — the assertion IS about real
-    // elapsed time (the old code blocked 60s; the new contract returns
-    // after the ~1s delivery grace), so a frozen clock would defeat it.
     const startedAt = Date.now(); // allow-wall-clock
     const result = await silentClient.callTool({
       name: "conversation_get",
       arguments: { conversation_id: conversationId },
     });
     const elapsedMs = Date.now() - startedAt; // allow-wall-clock
-    // The root-cause property: the poll must NOT block on the human. The
-    // old code held the call for the SDK's 60s request timeout; the new
-    // contract returns after the ~1s delivery grace.
     expect(elapsedMs).toBeLessThan(10_000);
     expect(result.isError).toBe(false);
     expect(parseEnvelope(result)).toEqual({
@@ -399,7 +372,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     const row = await readElicitationRow(elicitationId);
     expect(row?.status).toBe("pending");
     expect(row?.output).toBeNull();
-    // The delivery lease is still held by the in-flight round-trip.
     expect(row?.delivery_lease_id).not.toBeNull();
     expect(await readConversationStatus(conversationId)).toBe("awaiting_input");
   }, 15_000);
@@ -477,8 +449,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     });
 
     expect(result.isError).toBe(false);
-    // Wire delivery is non-blocking for URL mode too: the poll returns
-    // the awaiting envelope while the accept is acknowledged detached.
     expect(parseEnvelope(result)).toEqual({
       status: "input_required",
       conversation_id: conversationId,
@@ -496,8 +466,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(accepted.output).toBeNull();
     expect(accepted.protocol_native).toBe(true);
 
-    // A poll AFTER the acknowledgement short-circuits with the
-    // external-interaction envelope — no second elicitation/create.
     const parked = await urlClient.callTool({
       name: "conversation_get",
       arguments: { conversation_id: conversationId },
@@ -524,8 +492,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     }
     expect(completionNotifications).toBe(1);
 
-    // URL replay arm stays SYNCHRONOUS: the completed interaction is
-    // staged + resumed inside this poll.
     const resumed = await urlClient.callTool({
       name: "conversation_get",
       arguments: { conversation_id: conversationId },
@@ -666,9 +632,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
         arguments: { conversation_id: conversation.id },
       });
       expect(firstPoll.isError).toBe(false);
-      // Non-blocking poll: the URL round-trip (including the form POST
-      // inside the handler) continues detached; the setup completion is
-      // observed on the row, not in this response.
       const firstBody = parseEnvelope(firstPoll);
       expect(firstBody.status).toBe("input_required");
       expect(firstBody.pending_elicitation_id).toBe(elicitationId);
@@ -772,12 +735,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     });
     expect(append.isError).toBe(false);
 
-    // Wait for the first worker to persist the pause, then make exactly one
-    // public poll: that poll delivers the native form and stages the accepted
-    // answer. Hammering conversation_get every 50 ms competes with the resume
-    // worker for the same DB pool and made this assertion depend on scheduler
-    // luck. The durable mcp_tasks result is the completion signal; after it is
-    // present, one final public read proves the client-facing projection.
     await waitFor(
       async () => {
         const [row] = await suite.http.db
@@ -801,11 +758,6 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
     expect(parseEnvelope(delivery).status).toBe("input_required");
     await waitForResumedTask(conversation.id);
 
-    // The native resume reuses the original MCP task row. Under a busy
-    // scheduler the first worker can finish writing its parked result while
-    // that row is being re-armed, so the task row alone is not the business
-    // completion signal. Wait for the gated write itself before taking the
-    // one final client-facing projection below.
     const storedWorkflow = await waitFor(
       async () => {
         const [row] = await suite.http.db

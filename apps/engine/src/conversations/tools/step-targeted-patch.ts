@@ -9,7 +9,6 @@ export const StepPatchSchema = z.discriminatedUnion("op", [
   z.object({ ...target, op: z.literal("test"), value: z.unknown() }).strict(),
 ]);
 
-/** Resolve against the current draft, never an LLM-guessed list position. */
 export function resolveStepPatches(
   steps: ReadonlyArray<Record<string, unknown>>,
   operations: ReadonlyArray<z.infer<typeof StepPatchSchema>>,

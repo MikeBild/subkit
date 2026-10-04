@@ -1,5 +1,3 @@
-// Shared, script-free OAuth UI contract used by the SubKit MCP authorization server.
-
 import { createHash } from "node:crypto";
 import { escapeHtml } from "./shared.ts";
 
@@ -23,22 +21,10 @@ const TOKENS = `
   /*mcp-auth:end*/
 `;
 
-/** Reuse the family palette for other script-free human decision pages. */
 export const AUTH_UI_STYLES = TOKENS;
 
-/**
- * The contract marker, derived from the bytes it describes.
- *
- * It used to be a hand-typed `content="2"`, in four repositories. Four products
- * can all claim version 2 while their CSS quietly diverges — a marker that could
- * not be wrong because it said nothing about the bytes. This one is computed from
- * TOKENS, so two products serving different CSS announce different strings, in
- * the DOM, in every screenshot. There is no version to keep in step because there
- * is no version: the bytes are the identity.
- */
 export const AUTH_UI_DIGEST = `sha256-${createHash("sha256").update(sharedRegion(TOKENS)).digest("hex").slice(0, 12)}`;
 
-/** The bytes between the sentinels — what the family shares, not what this file contains. */
 function sharedRegion(css: string): string {
   return css.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
 }
@@ -54,15 +40,11 @@ export function resolveAuthLocale(acceptLanguage: string | undefined): AuthLocal
   return "en";
 }
 
-/** Product styles for pages that are not part of the family's sign-in
- *  contract. They stand outside the `mcp-auth` sentinels on purpose: the
- *  digest above describes the shared bytes only. */
 const PRODUCT_STYLES = `
   input[type=text]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--input);border-radius:var(--radius-md);background:var(--card);color:var(--foreground);font:inherit}
   .result p+p{margin-top:10px}.result .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;overflow-wrap:anywhere}
 `;
 
-/** What the footer says the page belongs to. */
 const DEFAULT_CONTEXT = "OAuth 2.1";
 
 function page(
@@ -86,11 +68,6 @@ function page(
 </html>`;
 }
 
-/**
- * A page in the family shell whose body the caller wrote. `body` is HTML and
- * is NOT escaped here: every value a caller interpolates into it goes through
- * `escapeHtml` first.
- */
 export function renderShellPage(
   title: string,
   body: string,
@@ -100,21 +77,12 @@ export function renderShellPage(
   return page(title, body, locale, context);
 }
 
-/**
- * How a browser flow that left the product ended — a sign-in at a provider, a
- * credential entered on a one-time page. One statement, the qualifications
- * that keep it truthful, and at most one way on.
- */
 export interface ResultPage {
   kind: "success" | "error";
   title: string;
-  /** Short paragraphs: the statement first, then what qualifies it. */
   lines: readonly string[];
-  /** A command worth typing, shown as one. */
   command?: string | null;
-  /** The one link the page offers. Built by the server, never from a request. */
   link?: { href: string; label: string } | null;
-  /** The product area, for the footer. */
   context: string;
 }
 
@@ -215,7 +183,6 @@ export function renderApiKeyLogin(
 
 export function renderConsentPage(opts: {
   clientName: string;
-  /** The client's own base address from its registration (RFC 7591 `client_uri`), when it gave one. */
   clientUri?: string | null;
   tenantName: string;
   userEmail: string;
@@ -230,9 +197,6 @@ export function renderConsentPage(opts: {
 }): string {
   const locale = opts.locale ?? "en";
   const de = locale === "de";
-  // What each scope lets the client do, in the person's language. The
-  // scope's machine name stays beside it: it is what the client asked for,
-  // and what the audit row will say.
   const labels: Record<string, [string, string]> = de
     ? {
         "mcp:read": ["Lesen", "Veröffentlichte Inhalte, Ressourcen und Kennzahlen lesen"],

@@ -1,8 +1,3 @@
-// Pure-function tests for the turn-level loop budget stop condition and
-// the empty-text fallback synthesizer. No DB / no provider — these
-// helpers are the critical safety net when the model loops, so they
-// must be deterministic and covered.
-
 import { describe, expect, test } from "bun:test";
 import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "../turn-helpers.ts";
 import type { TurnEvent } from "../types.ts";
@@ -119,10 +114,6 @@ describe("synthesizeFallbackMessage", () => {
   });
 
   test("find_workflow read-only turn renders a match count, not a field dump", () => {
-    // A chat turn that ends silently right after find_workflow must not
-    // surface the raw envelope keys ("fields: matches, total, truncated").
-    // find_* tools return `{ matches, total }`, so the summary should read
-    // as the same "N of M entries" line its list_* siblings get.
     const events: TurnEvent[] = [
       {
         type: "tool_result",
@@ -182,11 +173,6 @@ describe("synthesizeFallbackMessage", () => {
   });
 
   test("ran-the-same-tool-N-times header when the loop fired but every call succeeded", () => {
-    // Session d34e5858 regression: "starte mit übermorgen" → 5 parallel
-    // run_workflow calls, all succeeded, the loop guard fired, the old
-    // fallback claimed "I stopped this turn early" — misleading,
-    // because every call actually completed. The fan-out branch should
-    // surface the real shape instead.
     const events: TurnEvent[] = Array.from({ length: 5 }).map((_, i) => ({
       type: "tool_result" as const,
       call_id: `c${i}`,
@@ -222,18 +208,10 @@ describe("synthesizeFallbackMessage", () => {
     ];
     const msg = synthesizeFallbackMessage({ events, loopWarnings: 0 });
     expect(msg).toContain("list_workflows: 2 entries");
-    // Earlier single-entry line must not leak in.
     expect(msg).not.toContain("1 entries");
   });
 });
 
-// RC3(b) — the synthesized empty-turn fallback is operator-facing prose.
-// Forensic root cause (conversation 68b5c87e): two turns ended with the
-// synthesized text "ask_user_form: error_code: credential_form_mismatch"
-// — a raw machine token shown to a human. Failed tool results must
-// render their hint/message prose plus the corrective detail
-// (missing / expected_fields / setup_instructions) and NEVER the bare
-// `error_code:` token.
 describe("synthesizeFallbackMessage — error envelopes render as prose", () => {
   test("failed result with message + missing + expected_fields → prose with corrective detail", () => {
     const events: TurnEvent[] = [

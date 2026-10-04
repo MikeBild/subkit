@@ -1,22 +1,3 @@
-// Generate docs/catalog.md from the shipped connector-template catalog in
-// apps/engine/src/connectors/templates.json.
-//
-// Two halves:
-//   1. Connector templates, grouped by category — name, slug, driver, auth,
-//      one-line description.
-//   2. Recipes, grouped by template — slug, what it does, trigger kind, and
-//      any additional connectors beyond the template's own.
-//
-// Categories render in a fixed order; templates and recipes sort
-// alphabetically by slug within their group so the output is byte-stable —
-// no timestamps, no machine-specific paths.
-//
-// Wired into `bun run gen:catalog` (writes the file) and
-// `bun run check:catalog-drift` (regenerates + git-diff gate).
-//
-// Usage:
-//   bun run scripts/gen-catalog.ts > docs/catalog.md
-
 import templates from "../apps/engine/src/connectors/templates.json";
 
 type Recipe = {
@@ -39,7 +20,6 @@ type Template = {
   recipes?: Recipe[];
 };
 
-// Fixed rendering order: customer-facing categories first, infrastructure last.
 const CATEGORY_ORDER: readonly string[] = [
   "crm",
   "payments",
@@ -117,8 +97,6 @@ function main(): void {
     bucket.push(t);
     byCategory.set(t.category, bucket);
   }
-  // Any category missing from CATEGORY_ORDER still renders (alphabetically,
-  // at the end) rather than silently disappearing from the catalog.
   const unknown = [...byCategory.keys()].filter((c) => !CATEGORY_ORDER.includes(c)).sort();
   const order = [...CATEGORY_ORDER.filter((c) => byCategory.has(c)), ...unknown];
 

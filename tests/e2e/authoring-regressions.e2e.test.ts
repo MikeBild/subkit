@@ -20,25 +20,15 @@ beforeAll(async () => {
   env = await boot("authoring-regressions", { llm: "mock" });
   httpServer = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
-      // Suffix matching: each connector-creating test uses a DISTINCT
-      // base_url prefix (e.g. /papi, /zxqp) on this one server, because a
-      // green probe AUTO-PERSISTS its connector and
-      // start_connector_from_description dedupes by base_url — two tests
-      // sharing the exact base_url would short-circuit into the reuse
-      // envelope instead of exercising a fresh draft.
       if (url.pathname.endsWith("/health"))
         return Response.json({ ok: true, source: "authoring-e2e" });
       if (url.pathname.endsWith("/protected")) {
         return Response.json({ error: "unauthorized" }, { status: 401 });
       }
       if (url.pathname.endsWith("/slow")) {
-        // Simulates a 250ms upstream RTT — must exceed the 100ms probe
-        // timeout used by the probe-timeout test below, and long enough
-        // to let the cancel-race test (line ~470) preempt the request.
         await new Promise((resolve) => setTimeout(resolve, 250)); // allow-wall-clock: simulates slow upstream for probe-timeout + cancel-race tests
         return Response.json({ ok: true, delayed: true });
       }
@@ -47,7 +37,6 @@ beforeAll(async () => {
   });
   graphqlServer = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     async fetch(req) {
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
@@ -443,26 +432,6 @@ describe("authoring regressions", () => {
     expect(detail.draft?.latest_preview?.summary.length).toBeGreaterThan(0);
   });
 
-  // SYNC-REGISTER CONTRACT (cancel-race e2e cover).
-  //
-  // The unit-level contract for the abort registry lives at
-  // `apps/engine/src/conversations/abort.test.ts` ("SSE
-  // ownership-transfer", "cross-tenant displacement"). Those cases
-  // are the authoritative regression guard against the cancel race.
-  // This e2e is the *integration cover* — it pins that the full
-  // HTTP → cancel registry → loop abort path keeps the contract
-  // end-to-end on a real engine.
-  //
-  // The test deliberately fires POST /messages and POST /cancel
-  // back-to-back without an intervening sleep: the post-A4
-  // sync-register guarantees the cancel always finds a controller
-  // because registration happens on the synchronous frame of
-  // request-accept. If a future refactor regresses register back
-  // inside an async hop, the e2e will fail intermittently (cancel
-  // arrives after the regressed register on a fast loopback) — but
-  // the unit test in `abort.test.ts` will fail cleanly, so don't
-  // chase intermittent e2e failures here without checking the unit
-  // suite first.
   test("sync-register contract — cancelling a slow preview abandons the turn without surfacing a 500", async () => {
     const created = await createConversation({ title: "preview-cancel" });
     const conversationId = created.conversation.id;

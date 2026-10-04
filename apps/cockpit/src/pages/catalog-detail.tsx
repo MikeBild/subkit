@@ -10,7 +10,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { type RecordValue, recordPurpose, recordTitle } from "@/pages/catalog-model";
 import { returnedFromSignIn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
-/** The records this page builds; Wissen's records have pages of their own. */
 type DetailResource = "workflows" | "connectors";
 
 const ENDPOINTS: Record<DetailResource, string> = {
@@ -23,11 +22,6 @@ const PERMISSIONS: Record<DetailResource, { read: string; write: string }> = {
   connectors: { read: "connector:read", write: "connector:write" },
 };
 
-/**
- * A record's page: a workflow (V4) or a connector (V6), each a page of its
- * own. Sources, skills and files have pages of their own too. This reads the
- * record and says when it cannot.
- */
 export function CatalogDetailPage({
   resource,
   permissions,
@@ -37,10 +31,6 @@ export function CatalogDetailPage({
 }) {
   const { t } = useI18n();
   const id = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).at(-1) ?? "");
-  // The engine's sign-in callback sends the browser back here with a flag.
-  // Read it once and drop it from the address, so a reload does not repeat
-  // the sentence. The return is a full page load: connector, credential and
-  // runtime are all read fresh, and what the page then says comes from them.
   const [returned] = useState(
     () => resource === "connectors" && returnedFromSignIn(window.location.search),
   );
@@ -72,8 +62,6 @@ export function CatalogDetailPage({
         />
       </div>
     );
-  // `record` is narrowed below by the view, not by a second test of it: a 200
-  // that carries no object is a failed read, the same as a 500.
   const view = queryView(query, () => false);
   if (view === "loading")
     return (

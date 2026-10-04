@@ -1,9 +1,3 @@
-// resolveDefaultEnvironmentForConnector — the keyless-connector test file
-// only exercises the "no credential anywhere" path. This covers the
-// actual resolution branches: a dev-only grant, a prod-only grant, and
-// resolveDryRunEnvironment picking up an existing credential silently
-// (no "no credential found" warning).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

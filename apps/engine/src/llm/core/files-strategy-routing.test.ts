@@ -1,10 +1,3 @@
-// `chooseFileStrategy` decision-matrix tests.
-//
-// Two outcomes only — `file_part` (inline request bytes) and
-// `text_extract` (parsed text). There is deliberately no provider
-// Files-API upload lane: customer files stay in subkit's object store.
-// No I/O, no LLM calls.
-
 import { describe, expect, test } from "bun:test";
 import {
   chooseFileStrategy,
@@ -50,7 +43,6 @@ describe("chooseFileStrategy — size ladder for native media", () => {
     expect(chooseFileStrategy(anthropicCaps, 100 * 1024, PDF)).toBe("file_part");
     expect(chooseFileStrategy(anthropicCaps, 5 * MB, PDF)).toBe("file_part");
     expect(chooseFileStrategy(anthropicCaps, 20 * MB, PNG)).toBe("file_part");
-    // anthropic.maxFileSizeMB = 32 — the boundary is inclusive
     expect(chooseFileStrategy(anthropicCaps, 32 * MB, PDF)).toBe("file_part");
   });
 
@@ -82,9 +74,6 @@ describe("chooseFileStrategy — size ladder for native media", () => {
 describe("chooseFileStrategy — media gate", () => {
   test("non-native media always parses to text, regardless of size", () => {
     const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    // The provider SDKs throw UnsupportedFunctionalityError for a raw
-    // file part with these media types — they must never ride the
-    // raw-bytes lane.
     expect(chooseFileStrategy(anthropicCaps, 100 * 1024, DOCX)).toBe("text_extract");
     expect(chooseFileStrategy(anthropicCaps, 6 * MB, DOCX)).toBe("text_extract");
     expect(chooseFileStrategy(anthropicCaps, 100 * 1024, "text/csv")).toBe("text_extract");

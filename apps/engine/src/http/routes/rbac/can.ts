@@ -1,8 +1,3 @@
-// Permission-check endpoint:
-//   POST /v1/rbac/can
-//
-// GOTCHA: `can` is a query, so it is gated on `rbac:read` — not write.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { can, type PermissionCheck } from "../../../rbac/index.ts";
@@ -54,9 +49,6 @@ export function registerCanRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-    // Build a synthetic principal to query. For simplicity we look
-    // up the user row and use its role. Custom roles are honored
-    // because the api-key provider now reads rolesTable.name.
     const queryPrincipal = await buildQueryPrincipal(db, principal.tenant_id, body.principal_id);
     if (!queryPrincipal) throw new NotFoundError("principal");
     const check: PermissionCheck = {

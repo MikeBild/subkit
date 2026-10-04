@@ -1,47 +1,7 @@
-// Read-only palette adapters over a remote MCP server's resources and
-// prompts.
-//
-// A remote MCP server offers three things: tools, resources and prompts.
-// Only the first reached the chat palette, so a server whose whole value
-// is a document catalogue was invisible to the model even while connected.
-// These adapters close that, as synthetic entries per server —
-// `list_resources`, `list_resource_templates`, `read_resource`,
-// `list_prompts`, `get_prompt`.
-//
-// THEY ARE READS BY THE ENGINE'S OWN KNOWLEDGE, NOT BY THE SERVER'S.
-// Each adapter is pinned to one wire method that the specification defines
-// as a retrieval, and none of them can reach `tools/call` — that is a fact
-// about the code here, not a claim a remote made about itself. This is the
-// one place a read/write distinction over MCP is safe to draw, which is
-// exactly why `classifyMcpToolSideEffect` refuses to draw it from a
-// server's `readOnlyHint`.
-//
-// MINTED ONLY WHERE DECLARED. An adapter appears only when the server's
-// negotiated capabilities include the matching capability. Offering the
-// model `read_resource` against a tools-only server would put an entry in
-// the palette whose every call is a protocol error, and the model would
-// spend turns discovering that.
-//
-// THEY STILL ASK. These go through the same governed pipeline and the same
-// confirm gate as a remote tool call: `isDangerousTool` keys on the `mcp_`
-// prefix and there is deliberately no carve-out for a name the engine
-// happens to have minted. A carve-out is a real security decision — it
-// would have to be keyed on adapter identity and defended against a
-// server that names a TOOL `read_resource` — and it is not one this change
-// makes.
-//
-// THE SERVER'S OWN TOOLS WIN A NAME. A server may ship a TOOL called
-// `read_resource` — and some do, as the way to reach data that is not an
-// MCP resource at all. The palette keeps that tool and drops the adapter of
-// the same name (`paletteSpecsFor`): the server supplies that path itself,
-// and an adapter under its name would hide the only door the server
-// documented.
-
 import type { NegotiatedServerCapabilities } from "../../../mcp/client/pool.ts";
 import type { RemoteCall } from "../../../mcp/client/remote-call.ts";
 import type { PaletteOperationSpec } from "./external-mcp-tools.ts";
 
-/** Free-text `cursor` argument shared by the two list adapters. */
 const CURSOR_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
@@ -57,13 +17,6 @@ function optionalCursor(args: Record<string, unknown>): string | undefined {
   return typeof args.cursor === "string" && args.cursor.length > 0 ? args.cursor : undefined;
 }
 
-/**
- * The adapters a server has earned, given what it declared.
- *
- * `capabilities` is `null` when the client could not be asked what the
- * server serves. That mints nothing: an unanswered question is not a yes,
- * and the cost of guessing wrong is a palette entry that cannot work.
- */
 export function readOnlyPaletteSpecs(
   namespace: string,
   capabilities: NegotiatedServerCapabilities | null,
@@ -115,9 +68,6 @@ export function readOnlyPaletteSpecs(
       },
       toCall: (args) => {
         const uri = args.uri;
-        // Refused rather than coerced: `String(undefined)` would send the
-        // remote the literal "undefined" and the failure would arrive as
-        // the server's puzzled error rather than ours.
         if (typeof uri !== "string" || uri.length === 0) {
           return { ok: false, error: "uri is required and must be a non-empty string" };
         }

@@ -1,14 +1,3 @@
-// DOCX strategy — Office Open XML word document → markdown.
-//
-// Two-step pipeline:
-//   1. `mammoth.convertToHtml({buffer})` — DOCX → HTML, preserving
-//      headings, lists, tables, and inline formatting.
-//   2. `NodeHtmlMarkdown.translate(html)` — HTML → markdown.
-//
-// Embedded images are stripped (replaced with an empty `src`) to keep
-// the output text-only — keeps RawChunks small. mammoth doesn't expose
-// `convertToMarkdown` in its TS types so we go through HTML explicitly.
-
 import mammoth from "mammoth";
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import {

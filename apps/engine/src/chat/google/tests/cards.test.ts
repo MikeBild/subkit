@@ -1,9 +1,3 @@
-// Pure-function tests for the Google Chat cardsV2 / Dialog renderers.
-// No DB, no Google — assert on the exact card JSON the dispatcher will
-// post and the DIALOG actionResponse the route's sync fast path returns.
-// Every action value must hit the EXISTING routeChatInteraction parser
-// branches, so the envelope JSON shapes are asserted exactly.
-
 import { describe, expect, test } from "bun:test";
 import type { ChatElicitation } from "../../types.ts";
 import {
@@ -59,14 +53,12 @@ describe("renderElicitationCard — confirm", () => {
     expect(buttons).toHaveLength(2);
     expect(param(buttons[0]!, "action_id")).toBe("elicit:elic-1:confirm");
     expect(param(buttons[1]!, "action_id")).toBe("elicit:elic-1:confirm");
-    // Exact envelope JSON — parseEnvelope reads {c,o} verbatim.
     expect(param(buttons[0]!, "value")).toBe(
       JSON.stringify({ c: "conv-1", o: { confirmed: true } }),
     );
     expect(param(buttons[1]!, "value")).toBe(
       JSON.stringify({ c: "conv-1", o: { confirmed: false } }),
     );
-    // Neither confirm button opens a dialog.
     expect(buttons[0]?.onClick.action.interaction).toBeUndefined();
   });
 
@@ -114,8 +106,6 @@ describe("renderElicitationCard — multi", () => {
       type: string;
       items: Array<{ text: string; value: string }>;
     };
-    // `name: "values"` is load-bearing: receive() maps
-    // common.formInputs.values → form_values.values.
     expect(selection.name).toBe("values");
     expect(selection.type).toBe("CHECK_BOX");
     expect(selection.items).toEqual([
@@ -160,12 +150,9 @@ describe("buildElicitationDialog — text", () => {
     const dialog = buildElicitationDialog(baseElicitation({ kind: "text", summary: "Your name?" }));
     expect((dialog as DialogShape).actionResponse.type).toBe("DIALOG");
     const sections = dialogSections(dialog);
-    // No body → [fields, submit].
     expect(sections).toHaveLength(2);
     const fieldWidgets = sections[0]!.widgets;
     expect(fieldWidgets).toHaveLength(1);
-    // Named `answer` — routeChatInteraction's view_submission text
-    // branch reads fv.answer.
     expect(fieldWidgets[0]?.textInput).toEqual({
       name: "answer",
       label: "Your name?",
@@ -198,7 +185,6 @@ describe("buildElicitationDialog — form", () => {
       }),
     );
     const sections = dialogSections(dialog);
-    // body + fields + submit.
     expect(sections).toHaveLength(3);
     expect(sections[0]?.widgets[0]).toEqual({ textParagraph: { text: "Fill this in" } });
     const widgets = sections[1]!.widgets;
@@ -223,7 +209,6 @@ describe("buildElicitationDialog — form", () => {
       type: "MULTIPLE_LINE",
       hintText: "Optional notes",
     });
-    // email keeps a plain SINGLE_LINE textInput with the default value.
     expect(widgets[3]?.textInput).toEqual({
       name: "email",
       label: "email",

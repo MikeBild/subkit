@@ -1,29 +1,10 @@
-// Unit tests for extractCodebaseArchive.
-// Builds a tiny zip in-memory using yazl, then round-trips through the
-// extractor to verify filtering + entry caps.
-
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yauzl from "yauzl";
 import { extractCodebaseArchive } from "../archive.ts";
-
-// Minimal zip writer — we don't need a library to produce a valid zip
-// with a handful of stored (uncompressed) entries. But yauzl can read
-// deflate/store equally, so the easiest path is to use node's native
-// zlib to write a STORE-only zip. Here we ship a precomputed fixture
-// for one test and also shell out to `zip` if available. To keep the
-// test hermetic we produce fixtures programmatically via yazl when
-// available, falling back to a minimal hand-crafted approach.
-
-// Since yazl isn't installed, use a pragmatic workaround: build the
-// archive with `child_process.spawn` against the system `zip` binary
-// available on macOS / Linux CI. If the binary is missing, skip the
-// test with a clear message.
-
-import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
 
 function makeZip(entries: Record<string, string>): Buffer {
   const dir = mkdtempSync(join(tmpdir(), "archive-test-"));
@@ -63,12 +44,10 @@ describe("extractCodebaseArchive", () => {
     expect(names).toContain("src/util.ts");
     expect(names).toContain("README.md");
     expect(names).toContain("package.json");
-    // Filtered out:
     expect(names).not.toContain("package-lock.json");
     expect(names.some((n) => n.startsWith("node_modules/"))).toBe(false);
     expect(names.some((n) => n.startsWith("dist/"))).toBe(false);
     expect(names).not.toContain("logo.png");
-    // Skip counters should reflect at least lockfile + binary + generated dirs.
     expect(out.skipped_count).toBeGreaterThan(0);
   });
 

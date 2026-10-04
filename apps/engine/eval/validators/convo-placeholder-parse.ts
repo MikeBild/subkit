@@ -1,8 +1,3 @@
-// Conversation-quality fixture: placeholder parser extracts all five
-// token families and leaves escapes untouched. Scored as "did it
-// cleanly identify the tokens the LLM is supposed to emit for secret-
-// safe authoring".
-
 import { parsePlaceholders } from "../../src/llm/substitution/parser.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

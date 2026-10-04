@@ -1,9 +1,3 @@
-// Round-trip coverage for the serializePlain/deserializePlain modes that
-// service.test.ts doesn't exercise (it only covers bearer + oauth2).
-// Every CredentialMode has its own switch-case on both the encrypt and
-// decrypt path; an uncovered case here is an untested wire shape for a
-// real connector auth type (aws_sigv4, token_mint, oauth2_private_key, …).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

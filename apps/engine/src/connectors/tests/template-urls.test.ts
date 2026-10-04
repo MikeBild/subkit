@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loadBuiltinTemplates } from "../templates.ts";
 
-// URL reachability tests are opt-in: set CHECK_URLS=1 to run them.
-// They hit external APIs and may fail due to rate limits or network issues.
 const RUN_URL_CHECKS = !!process.env.CHECK_URLS;
 
 describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
@@ -24,10 +22,6 @@ describe.skipIf(!RUN_URL_CHECKS)("connector template ingestion URLs", () => {
           signal: controller.signal,
           redirect: "follow",
         });
-        // Several real servers (Google Discovery on `*.googleapis.com`,
-        // some GitHub raw paths) respond 4xx to HEAD even when GET
-        // returns 200. Retry on any 4xx (not just 403/405) so the
-        // probe surfaces genuine link rot, not protocol quirks.
         if (res.status >= 400 && res.status < 500) {
           const getRes = await fetch(url, {
             method: "GET",

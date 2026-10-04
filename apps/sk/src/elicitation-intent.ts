@@ -1,21 +1,3 @@
-// Classify free-text user input as an elicitation answer (confirm / reject /
-// pick) or a non-answer.
-//
-// The CLI uses this to decide whether the user typed an answer to an open
-// `askUser.*` elicitation or whether they meant to start a new conversational
-// turn. Used by both the ink TUI (`ink-app.tsx`) and the headless REPL
-// (`repl.ts`).
-//
-// Design rules:
-//   - Allow common compound affirmatives ("save it", "go ahead", "do it").
-//   - Allow compound rejections ("no thanks", "never mind").
-//   - Allow option picks: "1", "option 2", "yes for option 2".
-//   - Never claim intent for ambiguous text ("tell me more", "what about X").
-//
-// Failing safe is the goal: if intent isn't unambiguous, return
-// `{ kind: "ambiguous" }` so the caller can show a hint instead of
-// guessing.
-
 export type ElicitationIntent =
   | { kind: "confirm" }
   | { kind: "reject" }
@@ -57,18 +39,6 @@ export function classifyElicitationIntent(rawText: string): ElicitationIntent {
   return { kind: "ambiguous" };
 }
 
-/**
- * Detect "Reply 'yes' to commit"-style assistant prose where the LLM
- * is asking for explicit confirmation but hasn't actually emitted an
- * elicit_request event. When this pattern appears in the last
- * assistant message AND `session.pendingElicitation` is null, the
- * user's "yes" gets forwarded as a plain prompt and the engine never
- * routes it as an approval — they see "nothing happened".
- *
- * Surfaces a one-line warning so the failure mode is loud, not
- * silent. Used by both repl.ts and ink-app.tsx before forwarding a
- * plain prompt.
- */
 const ASSISTANT_CONFIRM_REQUEST_RE =
   /\b(reply|type|say|answer|respond|confirm)\s+(?:with\s+)?["'`]?(yes|y|ok|okay|confirm|approve|save|proceed|do\s+it|go\s+ahead)["'`]?/i;
 export function looksLikeAssistantConfirmRequest(text: string | null | undefined): boolean {

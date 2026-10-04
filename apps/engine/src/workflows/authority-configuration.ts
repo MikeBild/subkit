@@ -13,14 +13,10 @@ type AuthorityConnector = Pick<
   | "template_version"
   | "template_snapshot"
 > & {
-  // Hash the actual stored discriminator, including legacy credential modes.
   auth_type: string;
   driver: string;
 };
 
-/** Shared by human review and dispatch. Hash the connector actually loaded for
- * the request, not a later database reread that can hide an A → B → A change.
- * Operational health counters are deliberately not authorization boundaries. */
 export function authorityConnectorConfiguration(connector: AuthorityConnector | null | undefined) {
   return connector
     ? {

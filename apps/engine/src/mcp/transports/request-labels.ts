@@ -1,12 +1,3 @@
-// Turning an MCP request and its response into telemetry labels.
-//
-// Separated from the transport because it is a vocabulary, not a mechanism:
-// the transport owns sessions, leases and streaming, while these functions
-// decide what a request is CALLED in a metric. Keeping them together matters
-// because the labels must stay a bounded set — an unbounded label explodes
-// the metric's cardinality — and that bound is only visible when the
-// allow-list and the classifier sit side by side.
-
 export interface McpRequestClass {
   operation: string;
   taskPhase?: "working" | "cancelled" | "none" | undefined;

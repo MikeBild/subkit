@@ -19,7 +19,6 @@ import { chatAutomationTool } from "@/pages/chat-automation-tool";
 
 type AutomationRecord = AutomationWorkflow & { steps?: unknown[]; trigger?: unknown };
 
-/** The workflow a review is about, with its saved change when one waits. */
 function useAutomationWorkflow(workflowId: string) {
   return useQuery({
     queryKey: ["chat-automation-workflow", workflowId],
@@ -28,10 +27,6 @@ function useAutomationWorkflow(workflowId: string) {
       const current = await apiRequest<AutomationRecord>(
         `/v1/workflows/${encodeURIComponent(workflowId)}`,
       );
-      // A saved change waits only when the draft is another version than the
-      // running one (`reviewTarget`). The record names the running version as
-      // its draft once a change was applied; reading that as a pending change
-      // offered to "apply" the version that already runs.
       const pending =
         typeof current.draft_version_id === "string" &&
         current.draft_version_id !== current.current_version_id;
@@ -52,16 +47,6 @@ function useAutomationWorkflow(workflowId: string) {
   });
 }
 
-/**
- * A `review_workflow_automation` result as the card a person acts on — the
- * same card in the chat and in the side panel. Null when the result is not a
- * card, so the caller renders what it would otherwise.
- *
- * The tool result only says THAT there is something to review. What the card
- * says and offers is read now, from the same decision the workflow's page
- * makes (`lib/automation-state.ts`): a card in a transcript is read long after
- * the tool ran, and it must not offer yesterday's step.
- */
 export function AutomationToolCard({
   tool,
   onAdjust,
@@ -69,11 +54,6 @@ export function AutomationToolCard({
 }: {
   tool: ToolPart;
   onAdjust?: (workflowId: string) => void;
-  /**
-   * Hands a single run to the conversation, where the review cannot permit
-   * repeated ones. The card is the transcript's one way into the review, so
-   * whatever the review can lead to is reachable from it.
-   */
   onPrepareSingleRun?: (workflowId: string) => void;
 }) {
   const { t } = useI18n();
@@ -102,7 +82,6 @@ export function AutomationToolCard({
   );
 }
 
-/** The state could not be read: say so, and offer to read again. Never a guess. */
 function CardUnread({ onRetry }: { onRetry: () => void }) {
   const { t } = useI18n();
   return (
@@ -156,9 +135,6 @@ function AutomationCardBody({
           <GrantOpeningNotice notice={notice} />
         </div>
       ) : null}
-      {/* One decision, one button. Two only when starts in both halves of the
-          installation wait at once — then each says which half it is. */}
-      {/* Not a decision: the page's own act for the state, or none at all. */}
       {card.act === "resume" && state.primaryAction?.kind === "resume" && automation.canWrite ? (
         <Button
           variant="outline"
@@ -223,13 +199,6 @@ function AutomationCardBody({
   );
 }
 
-/**
- * The approval of a workflow's automatic runs, opened where the hold is seen:
- * the chat, the side panel, a held webhook's card.
- *
- * The saved draft is the review target; never silently authorize the older
- * active version.
- */
 export function AutomationGrant({
   workflowId,
   environment,
@@ -242,9 +211,7 @@ export function AutomationGrant({
   workflowId: string;
   environment: "dev" | "prod";
   testId: string;
-  /** What the opening button says where it is mounted; the chat's wording otherwise. */
   triggerLabel?: string;
-  /** Filled where it is the one decision; `outline` for a second one beside it. */
   triggerVariant?: "default" | "outline";
   onPrepareSingleRun?: () => void;
   onAdjust?: () => void;

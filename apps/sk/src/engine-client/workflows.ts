@@ -1,7 +1,3 @@
-// Workflow CRUD + version history + schedule surfaces of the engine
-// client. Method group merged into `EngineClient` by
-// `../engine-client.ts`.
-
 import type { EngineClient } from "../engine-client.ts";
 
 export interface ScheduleEntry {
@@ -29,7 +25,6 @@ export type WorkflowVersionEntry = {
   invalid: boolean;
 };
 
-/** The engine's answer to "how is this workflow called" — the fields `sk` reads. */
 export interface WorkflowInvocation {
   workflow_id: string;
   slug: string;
@@ -39,15 +34,9 @@ export interface WorkflowInvocation {
   };
 }
 
-// The engine returns history one page at a time; this is the largest page it
-// serves.
 const VERSION_PAGE_SIZE = 200;
 
 export const workflowsMethods = {
-  // --------------------------- Workflow versions ---------------------------
-  /** Every committed version of a workflow, newest first. The engine pages
-   *  the history, so this reads page after page until it has all of it.
-   *  `invalid` marks a version that can be read but no longer restored. */
   async listWorkflowVersions(
     this: EngineClient,
     workflowId: string,
@@ -68,11 +57,9 @@ export const workflowsMethods = {
     } while (items.length < total);
     return { items, total };
   },
-  /** How the workflow is called: the engine's own snippets and public address. */
   getWorkflowInvocation(this: EngineClient, workflowId: string): Promise<WorkflowInvocation> {
     return this.request("GET", `/v1/workflows/${encodeURIComponent(workflowId)}/invocation`);
   },
-  /** Restore a prior workflow version as a new current version. */
   restoreWorkflowVersion(
     this: EngineClient,
     workflowId: string,
@@ -84,7 +71,6 @@ export const workflowsMethods = {
     );
   },
 
-  // -------------------- Workflows --------------------
   listWorkflows(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -121,13 +107,11 @@ export const workflowsMethods = {
     return this.request("DELETE", `/v1/workflows/${encodeURIComponent(id)}`);
   },
 
-  // -------------------- Schedules --------------------
   listSchedules(
     this: EngineClient,
     query: { workflow_id?: string } = {},
   ): Promise<{
     schedules: ScheduleEntry[];
-    /** Exact tenant-scoped count under the same filters. */
     total: number;
   }> {
     const qs = query.workflow_id ? `?workflow_id=${encodeURIComponent(query.workflow_id)}` : "";

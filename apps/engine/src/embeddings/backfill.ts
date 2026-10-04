@@ -1,17 +1,3 @@
-// Embedding backfill — populates the chunk `embedding` columns out-of-band.
-//
-// Ingest writes chunks without vectors so neither the inline HTTP create
-// nor a large ingest blocks on model load + per-chunk inference (FTS is
-// available immediately). This pass fills the gap: it scans chunks with a
-// NULL embedding, embeds them in batches, and updates the row. It is
-// idempotent (the WHERE clause only sees un-embedded rows) and bounded
-// (batch size + optional maxBatches), and it stops cleanly when the model
-// is unavailable rather than spinning.
-//
-// Run it as a one-shot over existing data, on a schedule, or triggered
-// after an ingest. Title is prepended to the embedded text so the
-// highest-signal words survive the model's 512-token truncation.
-
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectorDocumentChunks } from "../db/schema/connector_docs.ts";
@@ -20,8 +6,6 @@ import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { log } from "../logging/logger.ts";
 import { EMBEDDING_MODEL, embedChunkTextsPaced } from "./local-provider.ts";
 
-/** Extract the user's text from a conversation_messages.content jsonb, which
- *  may be a bare string, a `{ text }` object, or an array of content parts. */
 function extractMessageText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -44,14 +28,6 @@ function extractMessageText(content: unknown): string {
   return "";
 }
 
-// Per-call embedding batch. Kept small on purpose: the in-process WASM
-// embedder allocates transformer activations for the whole batch at once and
-// its linear-memory arena only grows (never shrinks), so a large batch sets a
-// high, permanent RSS water mark. 16 keeps the per-call activation footprint
-// modest while still amortising the model call across rows. Within each batch
-// the bulk embedding is paced in sub-batches of EMBED_SUBBATCH (see
-// embedChunkTextsPaced) so no single synchronous WASM block stalls the event
-// loop while a backlog drains.
 const BATCH = 16;
 
 export interface BackfillResult {
@@ -63,8 +39,6 @@ export interface BackfillOptions {
   tenant_id?: string;
   knowledge_source_id?: string;
   connector_id?: string;
-  /** Cap the number of batches (each up to BATCH=16 chunks). Default:
-   *  unbounded until no un-embedded chunk remains. */
   maxBatches?: number;
 }
 
@@ -97,7 +71,7 @@ async function backfillKnowledge(db: Executor, opts: BackfillOptions): Promise<B
     if (rows.length === 0) break;
     scanned += rows.length;
     const vecs = await embedChunkTextsPaced(rows.map((r) => embedInput(r.title, r.content)));
-    if (vecs.every((v) => v === null)) break; // model unavailable — stop, don't spin
+    if (vecs.every((v) => v === null)) break;
     for (let i = 0; i < rows.length; i++) {
       const vec = vecs[i];
       if (!vec) continue;
@@ -150,10 +124,6 @@ async function backfillDocs(db: Executor, opts: BackfillOptions): Promise<Backfi
   return { scanned, embedded };
 }
 
-/** Backfill the per-conversation topic embedding (first user message +
- *  title) used by suggest-related-conversations routing. Only scans
- *  conversations that have a user message — the EXISTS guard keeps an empty
- *  conversation from being re-scanned forever (no topic anchor to embed). */
 async function backfillConversationTopics(
   db: Executor,
   opts: BackfillOptions,
@@ -210,13 +180,6 @@ async function backfillConversationTopics(
   return { scanned, embedded };
 }
 
-/** Backfill embeddings for knowledge + connector-doc chunks AND
- *  conversation topics. Returns per-target counts. Best-effort: when the
- *  model is unavailable every target reports what it scanned with
- *  `embedded: 0`. A `knowledge_source_id`-scoped call touches ONLY that
- *  source's knowledge chunks — the tenant-wide docs and conversation-topic
- *  backlogs belong to the capped scheduler sweep, never to a per-source kick
- *  on the request path. */
 export async function backfillEmbeddings(
   opts: BackfillOptions = {},
   exec?: Executor,

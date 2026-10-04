@@ -68,8 +68,6 @@ describe("suggestNextMessage — offer-parse fast path", () => {
   });
 
   test("offer-parse output that fails the filter collapses to 'filtered'", async () => {
-    // Pattern matches "Want me to ...?" but the captured action triggers
-    // the claude-voice filter rule.
     const result = await suggestNextMessage({
       tenant_id: "t",
       conversation_id: "c",
@@ -88,10 +86,6 @@ describe("suggestNextMessage — model fallback", () => {
   ];
 
   test("passes the caller's tenant_id into the model invocation", async () => {
-    // Regression: the default invoker forwards call.tenant_id to
-    // initializeModel so the suggestion model resolves the tenant-scoped
-    // provider/key. Omitting it threw `invalid x-api-key` every turn
-    // (conversation 661e7ad1). Assert the seam carries the tenant.
     const seenTenants: string[] = [];
     const invoker: SuggestNextModelInvoker = async (call) => {
       seenTenants.push(call.tenant_id);

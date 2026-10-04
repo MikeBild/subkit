@@ -1,10 +1,3 @@
-// Unit tests for recordAuthoringGateBlock with code="principal_required".
-//
-// The fix added "principal_required" to AUTHORING_GATE_CODES so that
-// run_workflow.no_principal events land on a named label bucket rather
-// than collapsing to "other". This test asserts that the named bucket is
-// incremented correctly and that an unknown code still collapses to "other".
-
 import { beforeEach, describe, expect, it } from "bun:test";
 import { recordAuthoringGateBlock } from "../instrumentation.ts";
 import { getMetrics, METRIC_NAMES, resetMetricsRegistryForTests } from "../metrics.ts";
@@ -38,9 +31,7 @@ describe("recordAuthoringGateBlock — principal_required code", () => {
 
   it("does NOT collapse principal_required to the other bucket", () => {
     recordAuthoringGateBlock({ code: "principal_required", tool: "run_workflow" });
-    // The named bucket should have 1.
     expect(counterSample({ code: "principal_required", tool: "run_workflow" })).toBe(1);
-    // The "other" code bucket must be absent for this call.
     expect(counterSample({ code: "other", tool: "run_workflow" })).toBeUndefined();
   });
 
@@ -56,7 +47,6 @@ describe("recordAuthoringGateBlock — principal_required code", () => {
     recordAuthoringGateBlock({ code: "workflow_cycle_detected", tool: "author_workflow" });
     expect(counterSample({ code: "principal_required", tool: "run_workflow" })).toBe(1);
     expect(counterSample({ code: "workflow_cycle_detected", tool: "author_workflow" })).toBe(1);
-    // No cross-contamination.
     expect(counterSample({ code: "principal_required", tool: "author_workflow" })).toBeUndefined();
     expect(
       counterSample({ code: "workflow_cycle_detected", tool: "run_workflow" }),
@@ -72,7 +62,6 @@ describe("recordAuthoringGateBlock — principal_required code", () => {
   });
 
   it("principal_required is in the allow-list alongside other recognized codes", () => {
-    // Verify all codes in the original allow-list still land on named buckets.
     const knownCodes = [
       "workflow_cycle_detected",
       "workflow_unresolved_step_reference",

@@ -1,11 +1,3 @@
-// Unit tests for find_workflow's description precedence (P3).
-//
-// Regression guard for the split that surfaced live: `update_workflow` writes
-// the editable workflow-ROW description, but find_workflow used to read only
-// the authoring-time `definition.description`, so a metadata-only edit left the
-// MCP catalog showing stale text. The catalog must be row-first — same
-// precedence as the HTTP surface (routes/workflows.ts) and MCP resources.
-
 import { describe, expect, test } from "bun:test";
 import { summarize } from "./find-workflow.ts";
 

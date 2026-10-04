@@ -1,20 +1,3 @@
-// Integration tests for detectRepairPatterns (the reworked repair-pattern
-// detector). Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-//
-// The detector:
-//   • Inner-joins patch_candidates → execution_fixtures on fixture_id + tenant_id.
-//   • Reads kind from diff.proposal.kind (rows without proposal are skipped).
-//   • Groups by (connector_id, endpoint_key, kind); threshold >= 3 → one signal.
-//   • Emitted signal: scope:"connector", connector_id set, no workflow_id,
-//     fingerprint = sha256(`repair:<conn>:<ep>:<kind>`).slice(0,32).
-//
-// Note on clock usage: detectRepairPatterns reads time through the `now()`
-// clock seam (utils/clock.ts), which falls back to Date.now() when no test
-// override is installed — as here. Tests therefore insert created_at values
-// close to wall-clock time so rows fall inside the 30-day lookback window
-// relative to the seam's value when the test runs. (A future test that needs
-// frozen time can install a clock override and seed created_at relative to it.)
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { connectors } from "../../db/schema/connectors.ts";
@@ -24,12 +7,10 @@ import { workflows } from "../../db/schema/workflows.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { detectRepairPatterns } from "../detectors/repair-pattern.ts";
 
-// A timestamp well within the 30-day lookback window (1 day ago relative to
-// wall-clock time when the test file is loaded).
 // allow-wall-clock: anchor for patch created_at — the detector computes its
 // cutoff via now() (falls back to Date.now() with no override installed), so
 // tests must stay within the real 30-day window.
-const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000); // 1 day ago
+const RECENT_TS = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
 const skip = process.env.REQUIRES_PG === "0";
 
@@ -38,7 +19,6 @@ let tenantId: string;
 let otherTenantId: string;
 let connectorId: string;
 
-// Three distinct workflow ids (cross-workflow grouping tests).
 const workflowIds: string[] = [];
 
 beforeAll(async () => {
@@ -93,12 +73,10 @@ afterAll(async () => {
 
 afterEach(async () => {
   if (skip) return;
-  // Clean up variable-per-test rows between tests (keep tenant/connector/workflows).
   await testDb.db.delete(patchCandidates);
   await testDb.db.delete(executionFixtures);
 });
 
-/** Seed one execution_fixture for the shared connector + endpoint. */
 async function seedFixture(endpointKey: string): Promise<string> {
   const [fix] = await testDb.db
     .insert(executionFixtures)
@@ -114,7 +92,6 @@ async function seedFixture(endpointKey: string): Promise<string> {
   return fix.id;
 }
 
-/** Real diff shape from self-healing/service.ts:537-557. */
 function realDiff(kind: string, path?: string) {
   return {
     proposal: {
@@ -132,10 +109,6 @@ function realDiff(kind: string, path?: string) {
     source: "test",
   };
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe.skipIf(skip)("detectRepairPatterns", () => {
   test("THRESHOLD: 3 applied patches on same interface emit exactly 1 signal", async () => {
@@ -193,7 +166,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
     const s = signals[0]!;
     expect(s.connector_id).toBe(connectorId);
     expect(s.workflow_id).toBeUndefined();
-    // Evidence must reference each of the 3 patch candidate ids.
     const evidencePatchIds = s.evidence.map((e) => e.patch_candidate_id);
     for (const id of patchIds) {
       expect(evidencePatchIds).toContain(id);
@@ -221,7 +193,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
   });
 
   test("NULL FIXTURE: patches with fixture_id=null are excluded (inner join drops them)", async () => {
-    // Seed 3 patches with null fixture_id — they can never join to execution_fixtures.
     for (let i = 0; i < 3; i++) {
       await testDb.db.insert(patchCandidates).values({
         tenant_id: tenantId,
@@ -241,7 +212,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
 
   test("MISSING PROPOSAL: rows with legacy/no proposal key do not contribute", async () => {
     const ep = "update_contact";
-    // 2 valid patches + 1 legacy-shape patch (no proposal key) → below threshold.
     for (let i = 0; i < 2; i++) {
       const fixId = await seedFixture(ep);
       await testDb.db.insert(patchCandidates).values({
@@ -255,7 +225,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
         updated_at: RECENT_TS,
       });
     }
-    // Legacy shape — diff has no `proposal` key.
     const legacyFixId = await seedFixture(ep);
     await testDb.db.insert(patchCandidates).values({
       tenant_id: tenantId,
@@ -268,7 +237,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
       updated_at: RECENT_TS,
     });
 
-    // 2 valid + 1 legacy = 2 valid → below threshold of 3.
     const signals = await detectRepairPatterns(tenantId, testDb.db);
     expect(signals).toHaveLength(0);
   });
@@ -294,7 +262,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
       if (!pc) throw new Error("seed failed");
       validIds.push(pc.id);
     }
-    // Legacy row that should be skipped.
     const legacyFixId = await seedFixture(ep);
     await testDb.db.insert(patchCandidates).values({
       tenant_id: tenantId,
@@ -341,7 +308,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
     expect(second).toHaveLength(1);
     expect(first[0]!.fingerprint).toBe(second[0]!.fingerprint);
 
-    // The fingerprint must match the documented formula.
     const expected = createHash("sha256")
       .update(`repair:${connectorId}:${ep}:rename_param`)
       .digest("hex")
@@ -350,7 +316,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
   });
 
   test("TENANT ISOLATION: fixture + patch under a different tenant are not pulled in", async () => {
-    // Seed a connector + workflow for the other tenant.
     const [otherConnector] = await testDb.db
       .insert(connectors)
       .values({
@@ -374,7 +339,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
     if (!otherWorkflow) throw new Error("seed other workflow failed");
 
     const ep = "search";
-    // Seed 3 applied patches for the OTHER tenant (same endpoint key, same kind).
     for (let i = 0; i < 3; i++) {
       const [fix] = await testDb.db
         .insert(executionFixtures)
@@ -400,7 +364,6 @@ describe.skipIf(skip)("detectRepairPatterns", () => {
       });
     }
 
-    // Running the detector for the primary tenant must see 0 signals.
     const signals = await detectRepairPatterns(tenantId, testDb.db);
     expect(signals).toHaveLength(0);
   });

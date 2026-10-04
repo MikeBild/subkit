@@ -1,10 +1,3 @@
-// Collection-level + per-resource CRUD on connectors:
-//   GET    /v1/connectors
-//   POST   /v1/connectors
-//   GET    /v1/connectors/{id}
-//   PATCH  /v1/connectors/{id}
-//   DELETE /v1/connectors/{id}
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
@@ -21,15 +14,6 @@ import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { ConnectorListResponse, ConnectorSchema, serialize } from "./schemas.ts";
 
-/** OPT-D: warm a GraphQL connector's schema at creation. A GraphQL API is
- *  introspectable, so the moment a connector is created we run `__schema`
- *  introspection and ingest the SDL as searchable knowledge (and record its
- *  self-description LINK) — the authoring agent then has the relay/enum/filter
- *  shapes in context WITHOUT a discover_connector_endpoints round-trip. Bounded +
- *  non-fatal. HTTP connectors are deliberately NOT warmed here: their
- *  self-description LINKS are captured lazily on the first
- *  `discover_connector_endpoints` call (which forwards connector_id) and enriched
- *  by the self-healing scheduler pass — no synchronous network cost on create. */
 async function warmGraphqlSchema(
   db: AppEnv["Variables"]["db"],
   tenant_id: string,
@@ -136,9 +120,6 @@ const patchRoute = createRoute({
   },
 });
 
-/** Enable / disable share one response shape and one handler; the path
- *  segment is the only difference, so they are built from one factory
- *  rather than copied. */
 function enablementRoute(segment: "enable" | "disable") {
   return createRoute({
     method: "post",
@@ -191,11 +172,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...serialize(r),
       category: connectorSvc.categoryOfConnector(r),
     }));
-    // Blocks describe the catalog, not the page: a chip row derived from the
-    // filtered page would collapse to the chip the caller just picked.
     const counts = await connectorSvc.connectorCategoryCounts(principal.tenant_id, db);
-    // Biggest block first, ties by name — a connector's category is its driver,
-    // so the catch-all block `groupByCategory` sorts last never occurs here.
     const blocks = [...counts.entries()]
       .map(([category, count]) => ({ category, count }))
       .sort((a, b) => (a.count !== b.count ? b.count - a.count : a.category < b.category ? -1 : 1));
@@ -210,8 +187,6 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       { tenant_id: principal.tenant_id, input: body, actor_id: principal.id },
       db,
     );
-    // OPT-D: introspect + ingest the schema for a GraphQL connector so the SDL
-    // is searchable knowledge before any authoring. Bounded + non-fatal.
     await warmGraphqlSchema(db, principal.tenant_id, principal.id, created);
     return c.json(serialize(created), 201);
   });
@@ -222,11 +197,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const found = await connectorSvc.getConnector(principal.tenant_id, id, db);
     if (!found) throw new NotFoundError("connector");
-    // Embed redacted credential summaries so `sk credentials list` (and any GET
-    // consumer) can see what's attached — no secret material is included.
     const rows = await connectorSvc.listConnectorCredentials(principal.tenant_id, id, db);
-    // The grant a credential sends is named with its state, so an expired
-    // Kontoverbindung shows on the connector that depends on it.
     const connections = await credsvc.summarizeConnections(
       db,
       principal.tenant_id,

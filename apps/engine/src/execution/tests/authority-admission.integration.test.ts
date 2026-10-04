@@ -161,8 +161,6 @@ async function fixture(
     ctx.db,
   );
   const now = await databaseNow(ctx.db);
-  // Human grant verification has its own service/HTTP tests. This fixture
-  // installs the real server-resolved boundary to test execution admission.
   const [authority] = await ctx.db
     .insert(workflowExecutionAuthorities)
     .values({
@@ -216,7 +214,6 @@ test("successive runs automatically use the matching authority without another g
   expect(first.execution_authority_id).toBe(f.authority.id);
   expect(second.execution_authority_id).toBe(f.authority.id);
   expect(await reservations(f.authority.id)).toBe(2);
-  // Exhaustion prevents a NEW reservation, not either already-reserved run.
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, first.execution_id);
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, second.execution_id);
   await expect(admitAuthorizedWorkflowExecution(f.params, ctx.db)).rejects.toMatchObject({
@@ -233,7 +230,6 @@ test("an approval without run limit or end date admits every run and still count
   expect(await reservations(f.authority.id)).toBe(12);
   for (const run of runs)
     await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id);
-  // A database clock far in the future does not end it either.
   const [later] = await ctx.db
     .select({ live: sql<boolean>`${authorityLive(sql`clock_timestamp() + interval '50 years'`)}` })
     .from(workflowExecutionAuthorities)
@@ -272,7 +268,6 @@ test("cron queue retries reuse one authorized reservation and stop at its run li
   const sends: { execution_id: string; job_id: string }[] = [];
   const boss = {
     async send(queue: string, job: { execution_id: string }, options: { id: string }) {
-      // The held schedule also asks for one gate diagnosis; only runs count here.
       if (queue !== EXECUTION_RUN_QUEUE) return null;
       sends.push({ execution_id: job.execution_id, job_id: options.id });
       if (sends.length === 1) throw new Error("fixture queue unavailable");
@@ -294,8 +289,6 @@ test("cron queue retries reuse one authorized reservation and stop at its run li
 });
 
 test("a held schedule is filed as a refusal, and its release as an admission", async () => {
-  // Drives the reconciler, not `recordScheduleAdmission` — the hold is only
-  // real if the scheduler's own refusal path produces it.
   const f = await fixture(1);
   const now = await databaseNow(ctx.db);
   const [schedule] = await ctx.db
@@ -331,24 +324,19 @@ test("a held schedule is filed as a refusal, and its release as an admission", a
       )
       .orderBy(auditLog.ts);
 
-  // The single approved run is spent here, so the next firing has nothing left.
   await scheduler.reconcileWorkflowSchedules(now);
-  expect(await rows()).toHaveLength(0); // an admitted firing that changed nothing writes nothing
+  expect(await rows()).toHaveLength(0);
   await scheduler.reconcileWorkflowSchedules(new Date(now.getTime() + 70_000));
 
   const held = await rows();
   expect(held).toHaveLength(1);
-  // `result` is what the audit list, the filters and every SIEM read. A hold
-  // that files itself as a success is a refusal nobody can find.
   expect(held[0]?.result).toBe("denied");
   expect(held[0]?.reason).toBe("execution_authority_unavailable");
-  // The older reader is not broken by the move.
   expect((held[0]?.metadata as Record<string, unknown> | undefined)?.reason_code).toBe(
     "execution_authority_unavailable",
   );
   expect((held[0]?.metadata as Record<string, unknown> | undefined)?.state).toBe("held");
 
-  // A fresh grant releases it — and the release is NOT a refusal.
   const preview = await previewWorkflowAuthority(
     {
       tenant_id: f.params.tenant_id,
@@ -628,8 +616,6 @@ for (const driver of ["http", "graphql"] as const) {
                   ),
                 );
             }
-            // The driver has already captured B. A fresh database-only check
-            // now sees approved A again, but must not authorize the queued B.
             if (change === "configuration")
               await ctx.db
                 .update(connectors)
@@ -663,12 +649,6 @@ for (const driver of ["http", "graphql"] as const) {
         expect(checked).toBe(1);
         expect(result.status).toBe(changed ? "failed" : "succeeded");
         expect(sent - before).toBe(changed && !redirect ? 0 : 1);
-        // The governance code, not the blanket one: a step row saying
-        // `authority_invalid` is invisible to the audit trail, and what
-        // changed here is the manifest.
-        // Two different refusals, and the trail must be able to tell them
-        // apart: a manifest that moved, and a redirect to somewhere nobody
-        // approved. Both used to arrive as the same blanket `authority_invalid`.
         if (changed)
           expect(result.error?.code).toBe(
             redirect ? "authority_redirect_denied" : "execution_authority_changed",
@@ -730,9 +710,6 @@ test("expiry after admission still blocks dispatch", async () => {
   const f = await fixture(1, undefined, expires);
   const run = await admitAuthorizedWorkflowExecution(f.params, ctx.db);
   await assertExecutionAuthorityCurrent(ctx.db, f.params.tenant_id, run.execution_id);
-  // The database owns expiry. A host-clock sleep with a 10 ms margin can
-  // finish before PostgreSQL crosses the boundary (VM clock/timer skew).
-  // Observe that prerequisite directly, then assert denial independently.
   await waitFor(async () => (await databaseNow(ctx.db)).getTime() >= expires.getTime(), {
     tries: 200,
     sleepMs: 25,

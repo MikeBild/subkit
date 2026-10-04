@@ -8,7 +8,6 @@ const QueryInput = z
     resource_id: z.string().optional(),
     action: z.string().optional(),
     limit: z.number().int().min(1).max(100).optional(),
-    /** Opaque `next_cursor` from a previous page, passed back verbatim. */
     cursor: z.string().min(1).max(128).optional(),
   })
   .openapi("QueryAuditToolInput");

@@ -1,11 +1,3 @@
-// Docker bootstrap smoke — gate-critical (runs on every PR).
-//
-// Proves the production image boots against external PostgreSQL, migrates, passes
-// its own healthcheck, completes first-run onboarding (POST /v1/setup), and
-// answers both `sk` and HTTP over the published port. Catches Dockerfile /
-// entrypoint / binary-packaging / PostgreSQL-connectivity / binding regressions
-// the in-process e2e track structurally cannot see.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
 import {
@@ -20,11 +12,8 @@ import {
 let env: DockerEnv;
 beforeAll(async () => {
   env = await dockerBoot();
-}, 600_000); // image build + PostgreSQL startup on a cold runner.
+}, 600_000);
 
-// Container teardown is owned by the CI job (`compose:test:down`, if:always)
-// so it survives across both docker test files in one run. We only snapshot
-// the engine's ndjson log here for the failure artifact.
 afterAll(() => {
   collectContainerLogs(path.resolve(import.meta.dir, "../../engine-docker.log"));
 }, 60_000);

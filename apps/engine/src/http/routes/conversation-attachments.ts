@@ -1,39 +1,3 @@
-// Conversation attachments HTTP surface — thin wrapper over the
-// unified `files` + `file_links` resource.
-//
-//   POST   /v1/conversations/:id/attachments              — upload (inline JSON body)
-//   GET    /v1/conversations/:id/attachments              — list linked files
-//   DELETE /v1/conversations/:id/attachments/:slug        — unlink (does NOT delete the file)
-//
-// The cockpit chat uploads and lists through this conversation-scoped
-// path. Under the hood every call goes through the canonical `files` +
-// `file_links` tables:
-//
-//   - POST decodes the JSON body, dedups + inserts a `files` row
-//     (sha256-scoped to the tenant), then attaches a `file_links` row
-//     pointing the file at the conversation under the derived slug.
-//     Emits `FILE_CREATED` + `FILE_SCAN_COMPLETED` + `FILE_LINK_ADDED`
-//     symmetric with the canonical `/v1/files/inline` route.
-//   - GET joins `file_links` with `files` filtered by the conversation.
-//   - DELETE removes the `file_links` row only — the `files` row stays
-//     for any other conversation / resource that still references it,
-//     and the cleanup cron eventually GCs orphans.
-//
-// Permission asymmetry vs the canonical /v1/files/* surface: this
-// wrapper gates on `conversation:write`/`conversation:read`, while
-// the canonical surface requires `file:write`/`file:read`. A portal-
-// scoped user that holds only conversation permissions can still
-// upload through this route. This is intentional — the wrapper exists
-// so portal-only personas keep their attachment ergonomics without
-// having to grant the broader file vocabulary.
-//
-// Body schema: either an `InlineUpload` ({ filename, content_base64 })
-// or a `{ $file: "fid_..." }` ref pointing at an existing file the
-// caller already uploaded via `/v1/files/inline`. The historic
-// `content` + `content_encoding` body shape is no longer accepted —
-// the CLI emits `content_base64` exclusively and there is no other
-// known caller.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -69,9 +33,6 @@ import type { AppEnv } from "../openapi.ts";
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });
 
-/** Accepts either an inline JSON+base64 upload or an existing-file
- *  ref. The route resolves either to a canonical `files` row +
- *  `file_links` row. */
 const UploadBody = z
   .union([
     FileRefSchema,
@@ -92,15 +53,10 @@ const ListResponse = z
   .object({ attachments: z.array(AttachmentSchema) })
   .openapi("ConversationAttachmentList");
 
-/** The slug a file is linked into a conversation under: its tenant-wide
- *  reference, so `@attachment:<slug>` reads the same on the files page and
- *  in the chat. */
 function linkSlug(row: typeof files.$inferSelect): string {
   return row.slug ?? slugifyFilename(row.filename);
 }
 
-/** Wire-shape projection — extends the canonical `FileSchema` with the
- *  per-conversation slug that the chat-text rewriter resolves. */
 function toAttachmentWire(row: typeof files.$inferSelect, slug: string): AttachmentWire {
   return {
     id: toFileId(row.id),
@@ -166,11 +122,7 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json({ code: "not_found", message: "conversation not found" }, 404);
     }
 
-    // Branch 1: `$file` ref — caller already uploaded via /v1/files/*.
-    // We just link it into the conversation.
     if ("$file" in body) {
-      // body.$file already validated by Zod (`FileIdSchema` via `FileRefSchema`);
-      // `OrThrow` asserts the invariant — a null here indicates a Zod regression.
       const fid_uuid = parseFileIdOrThrow(body.$file);
       let fileRow: typeof files.$inferSelect;
       try {
@@ -213,8 +165,6 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json(toAttachmentWire(fileRow, slug), 201);
     }
 
-    // Branch 2: inline upload — `content_base64` is the only accepted
-    // shape. The handler upstream already rejected `$file`-ref bodies.
     const filename = body.filename;
     const content_type = body.content_type ?? null;
     let bytes: Uint8Array;
@@ -240,10 +190,6 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       bytes,
     });
     if (dedup) {
-      // Persisted per-tenant counter — the canonical /v1/files/inline
-      // path bumps on every dedup short-circuit; this wrapper does too
-      // so the `dedup_hits` stat is symmetric regardless of which
-      // entry point landed the bytes.
       await recordFilesDedupSeen(db, tenant_id);
     }
     const slug = linkSlug(row);
@@ -259,14 +205,6 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       })
       .onConflictDoNothing();
 
-    // Audit the create + scan + link as three separate rows — mirrors
-    // the canonical `/v1/files/inline` route. `FILE_SCAN_COMPLETED`
-    // fires only on fresh inserts (dedup hits short-circuited before
-    // the scanner ran); skipping it on dedup matches the canonical
-    // route which never re-scans an existing row. A downstream SIEM
-    // query on `FILE_CREATED` + `FILE_SCAN_COMPLETED` therefore returns
-    // a consistent shape regardless of which entry point landed the
-    // bytes.
     await auditAwait(
       {
         tenant_id,
@@ -298,9 +236,6 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
           action: AuditAction.FILE_SCAN_COMPLETED,
           resource_type: "file",
           resource_id: row.id,
-          // `timeout` is an operational failure (scanner backend slow / wedged),
-          // not a security verdict — log it as `error`. Mirrors the
-          // canonical files.ts inline handler.
           result:
             scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
           metadata: FileScanCompletedMetadataSchema.parse({
@@ -406,12 +341,6 @@ export function registerConversationAttachmentRoutes(app: OpenAPIHono<AppEnv>): 
       return c.json({ code: "not_found", message: "attachment not found" }, 404);
     }
     await db.delete(fileLinks).where(eq(fileLinks.id, link.id));
-    // Unlinking does NOT delete the file row — that's the cleanup
-    // cron's job once the row is orphaned (no remaining `file_links`).
-    // Emit `FILE_LINK_REMOVED` so the audit ledger keeps a symmetric
-    // attach/detach pair (paired with `FILE_LINK_ADDED` emitted by the
-    // POST handler above and by the canonical `/v1/files/:id/links`
-    // route).
     await auditAwait(
       {
         tenant_id: principal.tenant_id,

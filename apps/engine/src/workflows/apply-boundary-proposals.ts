@@ -1,18 +1,3 @@
-// Turning what SubKit worked out into something a human can put into service.
-//
-// A derived boundary is worth nothing while it lives in a response body. This
-// writes it where the rest of the system already looks: a new DRAFT version,
-// through the same `saveWorkflowDraft` every other authoring path uses, with
-// the same overwrite protection and the same audit row. Nothing is activated,
-// nothing is authorized, and the version that runs is untouched — the human
-// still decides, they just no longer have to type the answer.
-//
-// A boundary only ever NARROWS what a step may do: before it, the step may go
-// anywhere its placeholders resolve to; after it, only where the rule allows.
-// That is why deriving one is safe to offer, and why replacing an existing one
-// is not — someone approved that text, and moving it from history would change
-// a reviewed rule without anyone deciding to.
-
 import type { Executor } from "../db/client.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import { proposeBoundaries } from "./boundary-proposal.ts";
@@ -20,11 +5,6 @@ import { getWorkflowDraft, type SaveWorkflowDraftResult, saveWorkflowDraft } fro
 import { getWorkflow } from "./service.ts";
 import type { WorkflowDef } from "./types.ts";
 
-/**
- * The definition a repair should start from: the pending draft when there is
- * one, else what is running. Starting from the draft is what keeps two repairs
- * in a row from throwing away the first.
- */
 export async function currentOrDraftDefinition(
   tenant_id: string,
   workflow_id: string,
@@ -68,24 +48,13 @@ export async function applyBoundaryProposals(
   const steps = definition.steps.map((step) => {
     const proposal = byStep.get(step.id);
     if (!proposal || step.kind !== "request") return step;
-    // A correction replaces the contradicted folder; it never merges with it,
-    // because half of a wrong statement is still wrong.
     applied.push(step.id);
-    // Conditional spread throughout: a present-but-undefined key is a different
-    // definition to the digest than an absent one, and the digest is what every
-    // live approval is pinned to.
     if (proposal.s3_scope && step.s3)
       return { ...step, s3: { ...step.s3, scope: proposal.s3_scope } };
-    // A page cap belongs to the step's own pagination block, not to the
-    // boundary: it is how many requests the ENGINE makes, and the boundary
-    // compiler reads it from there.
     const paged =
       proposal.max_pages !== undefined && step.pagination
         ? { pagination: { ...step.pagination, max_pages: proposal.max_pages } }
         : {};
-    // The same request, written so it can be reviewed. Offered only where an
-    // URL this step really sent proves the two forms agree, so applying it
-    // changes how the request is spelled and not where it goes.
     const rewritten = proposal.path_rewrite
       ? { path: proposal.path_rewrite.path, query: proposal.path_rewrite.query }
       : {};

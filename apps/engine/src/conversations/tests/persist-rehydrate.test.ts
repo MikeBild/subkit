@@ -1,11 +1,3 @@
-// Persist rehydration test.
-//
-// Regression gate for Gap #2: `buildModelMessages` must splice the
-// `confirmation_state` and `interaction_log` columns into the tool
-// result payload the model sees on next turn. Without this, the model
-// has no way to distinguish "tested" from "applied" on a re-issued
-// tool call.
-
 import { beforeAll, describe, expect, it, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -25,8 +17,6 @@ let tool_call_id: string;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("persist-rehydrate");
-  // Seed a conversation + one tool_call row with a real confirmation
-  // state and interaction_log entries.
   const [conv] = await ctx.testDb.db
     .insert(conversations)
     .values({ tenant_id: ctx.tenant_id, status: "active" })
@@ -109,7 +99,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
 
   it("splices confirmation_state + interaction_log into the tool-result payload", async () => {
     const msgs = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id);
-    // Find the tool-result message.
     const toolResult = msgs.find((m) => {
       if (m.role !== "tool") return false;
       // biome-ignore lint/suspicious/noExplicitAny: ModelMessage content shape is a union
@@ -126,10 +115,8 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     expect(Array.isArray(payload.interactionLog)).toBe(true);
     const log = payload.interactionLog as Array<{ type: string }>;
     expect(log.map((e) => e.type)).toEqual(["user_proposed", "user_partial"]);
-    // Original tool output stays readable.
     expect(payload.ok).toBe(true);
     expect(payload.execution_id).toBe("exec-1");
-    // Reference to the tool_call_id is unchanged.
     const call = parts[0] as { toolCallId?: string };
     expect(call.toolCallId).toBe(tool_call_id);
   });
@@ -237,13 +224,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
     expect(msgs.length).toBeLessThan(30);
   });
 
-  // Regression: session 64861a59 produced
-  //   "HTTP 503 llm_provider_unavailable — messages.0.content.0:
-  //    unexpected `tool_use_id` found in `tool_result` blocks: fb0b8efb-..."
-  // because a probe call's tool-result and a later orphaned ask-user
-  // call were emitted without their tool_use blocks adjacent. The
-  // persist replay must guarantee every `tool_use` is immediately
-  // followed by a `tool_result` for the same id.
   it("pairs every tool_use with an adjacent tool_result for the same id", async () => {
     const [conv] = await ctx.testDb.db
       .insert(conversations)
@@ -251,7 +231,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       .returning({ id: conversations.id });
     const conversation_id = conv!.id;
 
-    // Probe call (succeeded — has output) at T0.
     const [probeCall] = await ctx.testDb.db
       .insert(conversationToolCalls)
       .values({
@@ -264,9 +243,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       })
       .returning({ id: conversationToolCalls.id });
 
-    // Assistant text turn between calls — would have separated the
-    // probe's tool-call from any later tool message under the buggy
-    // chronological emission.
     await ctx.testDb.db.insert(conversationMessages).values({
       tenant_id: ctx.tenant_id,
       conversation_id,
@@ -275,9 +251,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       created_at: new Date("2026-04-26T08:00:01.000Z"),
     });
 
-    // Orphaned ask_user_form call — output null, elicitation
-    // pending/superseded. Without the fix this emits a `tool-call`
-    // with no following `tool-result`, breaking pairing.
     const [orphanCall] = await ctx.testDb.db
       .insert(conversationToolCalls)
       .values({
@@ -292,9 +265,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
 
     const msgs = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, conversation_id);
 
-    // Walk the stream and assert: for every assistant message that
-    // contains a tool-call part, the very next message is a tool
-    // message whose tool-result references the same toolCallId.
     for (let i = 0; i < msgs.length; i++) {
       const m = msgs[i];
       if (m?.role !== "assistant" || !Array.isArray(m.content)) continue;
@@ -317,8 +287,6 @@ describe("buildModelMessages — interaction_log rehydration", () => {
       }
     }
 
-    // The orphan call gets a synthetic abandoned tool-result so the
-    // pair stays balanced; the probe call uses its real output.
     const orphanResult = msgs.find((m) => {
       if (m?.role !== "tool" || !Array.isArray(m.content)) return false;
       // biome-ignore lint/suspicious/noExplicitAny: union
@@ -396,7 +364,6 @@ describe("parked prose question answers", () => {
     const replay = await buildModelMessages(ctx.testDb.db, ctx.tenant_id, id);
     expect(replay.filter((m) => m.role === "user" && m.content === answer)).toHaveLength(1);
     const text = replay.filter((m) => typeof m.content === "string").map((m) => m.content);
-    // Provider replay intentionally drops the trailing assistant prefill.
     expect(text).toEqual(["Which colour?", answer]);
     const toolResults = JSON.stringify(replay.filter((m) => m.role === "tool"));
     expect(toolResults).toContain("older answer");
@@ -497,7 +464,6 @@ test("answered text tools show the answer and a completed card after reloading",
     outcome: "ok",
     output: { status: "resolved", elicitation_id: answer!.id },
   });
-  // The UI projection must not rewrite the original pause/audit payload.
   const [stored] = await ctx.testDb.db
     .select()
     .from(conversationToolCalls)

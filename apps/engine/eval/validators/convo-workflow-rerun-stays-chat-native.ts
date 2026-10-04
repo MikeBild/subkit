@@ -49,10 +49,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
     },
   );
 
-  // The post-rerun chat-first contract assumes the workflow-authoring
-  // skill is in scope so `run_workflow` stays visible. Pass the slug
-  // explicitly — the production loop auto-loads it on conversation
-  // bootstrap (see `loop.ts`).
   const visible = filterByAuthoringPalette(listTools(), draft, new Set(["workflow-authoring"])).map(
     (tool) => tool.name,
   );

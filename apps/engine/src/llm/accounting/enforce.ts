@@ -1,60 +1,15 @@
-// Per-run LLM-token budget accounting.
-//
-// Distinct from the per-tenant monthly budget in `apps/engine/src/llm/budgets.ts`:
-//   - monthly budget gates the tenant's aggregate usage across all runs
-//     and persists to `llm_usage`; it covers calls issued by engine-internal
-//     flows (generate / extract / repair / converse / discover).
-//   - per-run budget gates a single execution's cumulative LLM-provider
-//     spend so a runaway loop or a prompt-bloat regression in an AI-augmented
-//     recipe cannot silently rack up four-figure bills before the monthly cap
-//     trips. Lives only in memory for the lifetime of the run.
-//
-// The per-run accumulator wraps the workflow's HTTP request steps that
-// target a known LLM-provider host. Token counts are extracted from the
-// provider's response envelope (OpenAI: `usage.prompt_tokens` /
-// `usage.completion_tokens`; Anthropic: `usage.input_tokens` /
-// `usage.output_tokens`; both include `total_tokens` when the provider
-// reports it).
-//
-// Pre-call check semantics:
-//   - When `current + estimated_call_tokens > cap`, the executor refuses
-//     to dispatch the call and surfaces `llm_budget_exceeded`.
-//   - The estimate uses `Math.max(prompt_floor, request_body_chars / 4)`
-//     so the floor is always honored even on a tiny first call. A real
-//     LLM call almost always emits a non-trivial completion, so a small
-//     floor (256 tokens) guards against a "fits exactly under the cap
-//     pre-call but overruns post-call" hole.
-
 import { getConfig } from "../../config/loader.ts";
 import type { RequestStep } from "../../workflows/types.ts";
 
-/** Approximate tokens per character. Tighter than 1/4 for ASCII English
- *  prose and looser for non-ASCII; budgets are hints, not metering. */
 const CHARS_PER_TOKEN = 4;
 
-/** Minimum estimated tokens for any single LLM call. Prevents a
- *  zero-body call from being waved through under a hard cap. Kept
- *  modest so a tiny prompt (e.g. an embedding lookup with a one-word
- *  query) still passes a low cap when the running total is well under;
- *  the post-call accounting is the authoritative ledger. */
 const PROMPT_FLOOR_TOKENS = 50;
 
-/** Hosts whose responses follow the OpenAI- or Anthropic-shaped
- *  `usage` envelope. Match by hostname (case-insensitive); subdomains
- *  must match exactly to avoid false-positive accounting on
- *  customer-owned proxies that happen to embed a provider name in the
- *  path.
- *
- *  Additional hosts come from the hot-reloadable
- *  `egress.provider_hosts_extra` setting (for example `127.0.0.1` for
- *  an in-process integration-test provider). */
 const LLM_PROVIDER_HOSTS = new Set<string>([
   "api.openai.com",
   "api.anthropic.com",
   "generativelanguage.googleapis.com",
   "gateway.ai.cloudflare.com",
-  // AI Gateway (Vercel AI SDK) — proxies multiple providers behind one
-  // host. Token usage is normalised in the response envelope.
   "ai-gateway.vercel.sh",
 ]);
 
@@ -63,9 +18,7 @@ function extraHosts(): Set<string> {
   try {
     const list = getConfig().egress.provider_hosts_extra ?? [];
     merged.push(...list);
-  } catch {
-    /* loader not initialised */
-  }
+  } catch {}
   return new Set(merged.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0));
 }
 
@@ -87,12 +40,6 @@ export class LlmBudgetExceededError extends Error {
 }
 
 export interface LlmCallUsage {
-  /**
-   * INCLUSIVE of cache reads and creations, which is the convention the rest
-   * of the engine stores and `weightedTotalTokens` subtracts back out. The
-   * providers disagree about this, so `parseLlmUsage` normalises rather than
-   * passing each one's number through.
-   */
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
@@ -100,7 +47,6 @@ export interface LlmCallUsage {
   cache_creation_tokens: number;
 }
 
-/** Per-run accumulator. One instance per `runExecution` invocation. */
 export class RunLlmBudget {
   private running = 0;
   constructor(readonly cap: number | null) {}
@@ -109,8 +55,6 @@ export class RunLlmBudget {
     return this.running;
   }
 
-  /** Pre-call gate. Throws `LlmBudgetExceededError` when the projected
-   *  total would exceed the cap. No-op when `cap` is null. */
   checkPreCall(estimated_call_tokens: number): void {
     if (this.cap == null) return;
     if (this.running + estimated_call_tokens > this.cap) {
@@ -122,16 +66,11 @@ export class RunLlmBudget {
     }
   }
 
-  /** Account a completed call's tokens. Always called after dispatch,
-   *  regardless of whether the cap is set — operators rely on the
-   *  `total_llm_tokens` audit field even on uncapped runs. */
   account(usage: LlmCallUsage): void {
     this.running += Math.max(0, usage.total_tokens);
   }
 }
 
-/** Hostname check. Case-insensitive; subdomains must match an exact
- *  entry in `LLM_PROVIDER_HOSTS` or `egress.provider_hosts_extra`. */
 export function isLlmProviderUrl(url: string | URL | null | undefined): boolean {
   if (!url) return false;
   try {
@@ -144,21 +83,11 @@ export function isLlmProviderUrl(url: string | URL | null | undefined): boolean 
   }
 }
 
-/** Heuristic for "this `request` step targets an LLM provider".
- *  Probes `step.url` first (raw HTTP path) and then any plausible
- *  hint embedded in the body — connector-routed steps need the
- *  resolved URL which only the dispatcher knows, so connector recipes
- *  rely on `isLlmProviderUrl` against the post-substitution URL once
- *  it's resolved. */
 export function stepLooksLikeLlmCall(step: RequestStep): boolean {
   if (step.url && isLlmProviderUrl(step.url)) return true;
   return false;
 }
 
-/** Estimate the upper bound on the call's prompt tokens from the raw
- *  request body. Used by the pre-call gate when the actual usage is
- *  not yet known. Falls back to `PROMPT_FLOOR_TOKENS` when the body
- *  is empty or unmeasurable. */
 export function estimateLlmCallTokens(body: unknown): number {
   if (body === undefined || body === null) return PROMPT_FLOOR_TOKENS;
   let chars = 0;
@@ -175,11 +104,6 @@ export function estimateLlmCallTokens(body: unknown): number {
   return Math.max(PROMPT_FLOOR_TOKENS, fromBody);
 }
 
-/** Parse the `usage` envelope from an LLM provider response. Recognises
- *  the OpenAI-shaped `{ prompt_tokens, completion_tokens, total_tokens }`
- *  and the Anthropic-shaped `{ input_tokens, output_tokens }`. Returns
- *  `null` when the body has no recognisable usage block — the caller
- *  treats that as "no LLM-token cost recorded for this call". */
 export function parseLlmUsage(body: unknown): LlmCallUsage | null {
   if (!body || typeof body !== "object") return null;
   const root = body as Record<string, unknown>;
@@ -187,8 +111,6 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
   if (!usage || typeof usage !== "object") return null;
   const u = usage as Record<string, unknown>;
 
-  // Chat-Completions shape — `prompt_tokens` + `completion_tokens`, with the
-  // cached slice already inside `prompt_tokens`.
   const promptChat = numberish(u.prompt_tokens);
   const completionChat = numberish(u.completion_tokens);
   if (promptChat !== null || completionChat !== null) {
@@ -205,17 +127,12 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
     };
   }
 
-  // Both remaining shapes spell the counters `input_tokens`/`output_tokens`
-  // and then disagree about what `input_tokens` MEANS, so the cache detail
-  // object is the discriminator rather than the counter names.
   const inputTokens = numberish(u.input_tokens);
   const outputTokens = numberish(u.output_tokens);
   if (inputTokens === null && outputTokens === null) return null;
   const input = inputTokens ?? 0;
   const completion = outputTokens ?? 0;
 
-  // Responses shape — `input_tokens` ALREADY includes the cached and
-  // cache-written slices (measured: 22800 = 1531 + 21266 + 3 fresh).
   const responseDetails = asRecord(u.input_tokens_details);
   if (responseDetails) {
     return {
@@ -227,8 +144,6 @@ export function parseLlmUsage(body: unknown): LlmCallUsage | null {
     };
   }
 
-  // Messages shape — `input_tokens` EXCLUDES both cache slices, so they are
-  // added in to reach the inclusive convention.
   const cacheRead = numberish(u.cache_read_input_tokens) ?? 0;
   const cacheCreate = numberish(u.cache_creation_input_tokens) ?? 0;
   const prompt = input + cacheRead + cacheCreate;

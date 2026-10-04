@@ -1,7 +1,3 @@
-// Egress wrapper unit tests. Pin the contracts that close the
-// CONNECTOR_INVOKED + CREDENTIAL_ACCESSED + URL-scrub + W3C trace
-// propagation findings from the deep review.
-
 import { describe, expect, mock, test } from "bun:test";
 import { withContext } from "../../logging/context.ts";
 import { injectTraceContext, scrubUrl, withEgressAudit } from "../egress.ts";
@@ -57,8 +53,6 @@ describe("injectTraceContext", () => {
       injectTraceContext(headers);
     });
     expect(headers.traceparent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
-    // Engine trace ids are 12 hex chars; padded left to 32 → trace_id
-    // is encoded with leading zeros.
     expect(headers.traceparent).toContain("abc123def456");
   });
 
@@ -79,11 +73,6 @@ describe("injectTraceContext", () => {
 
 describe("withEgressAudit", () => {
   test("returns the inner result verbatim and emits CONNECTOR_INVOKED on success", async () => {
-    // Spy the audit module by mocking it before import. We can't easily
-    // intercept the dynamic import of audit() here, so we rely on the
-    // integration journey test (cross-tenant + audit completeness) to
-    // assert the actual rows. This unit test checks the wrapper does
-    // not corrupt the inner result and does not throw.
     const result = await withEgressAudit(
       {
         tenant_id: "tenant-x",
@@ -159,10 +148,6 @@ describe("withEgressAudit", () => {
   });
 
   test("late-bound credential_id from the result is honoured", async () => {
-    // The driver's response carries `credential_id` — the wrapper
-    // should pick it up and emit CREDENTIAL_ACCESSED post-call. We can
-    // only assert behavioural invariants here; the journey test asserts
-    // the actual audit row.
     const result = await withEgressAudit(
       {
         tenant_id: "tenant-x",
@@ -170,7 +155,7 @@ describe("withEgressAudit", () => {
         connector_id: "cn-1",
         connector_slug: "cn-test",
         driver: "graphql",
-        credential_id: null, // unknown at call time
+        credential_id: null,
       },
       async () => ({ status: 200, credential_id: "cred-late" }),
       (r) => ({ status: r.status }),
@@ -180,5 +165,4 @@ describe("withEgressAudit", () => {
   });
 });
 
-// silence the lint bot — `mock` is only used when we extend coverage.
 void mock;

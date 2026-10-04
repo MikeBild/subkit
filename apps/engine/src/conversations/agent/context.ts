@@ -1,13 +1,3 @@
-// Agent system-prompt generator — composes the literal persona + the
-// preloaded skill bodies + per-surface verbosity + per-turn authoring
-// focus block into a single system message. The conversation loop
-// passes the result straight to the LLM.
-//
-// Live-data injection (TENANT SNAPSHOT, RUNTIME CONTEXT, included
-// docs/knowledge, user memory, prior failures) still lives in
-// `context-assembler.ts`; this module owns only the structural
-// behaviour body, which is identical across turns for a given agent.
-
 import type { AuthoringPromptHint } from "../../llm/types.ts";
 import type { AuthoringSurfaceMode } from "../types.ts";
 import {
@@ -29,29 +19,13 @@ import {
 import { loadAgentSkills, resolveAgentSkillsForMode } from "./skills/index.ts";
 import type { AgentSystemPromptInput, AgentSystemPromptResult } from "./types.ts";
 
-/**
- * Pick the persona variant for the current turn. Headless surface wins
- * over mode (the user is parsing output programmatically, regardless
- * of what authoring stage we're in). Otherwise the authoring mode
- * decides: workflow/connector → AUTHORING, execution → EXECUTION,
- * diagnosis → DIAGNOSIS. Default falls back to AUTHORING (the historical
- * shape — no behaviour change for chats without a mode hint).
- */
 function personaFor(
   surface: AgentSystemPromptInput["surface"],
   mode: AuthoringSurfaceMode | null | undefined,
   scope?: "rbac" | undefined,
 ): string {
-  // RBAC sub-mode wins over the primary mode — when the operator is
-  // editing a role policy the persona must emphasise propose-don't-
-  // apply and the test_rbac_expression preview loop, regardless of
-  // whether the conversation is otherwise in workflow / connector
-  // / execution mode.
   if (scope === "rbac") return RBAC_EDITING_PERSONA;
   if (surface === "sk_headless") return CLI_HEADLESS_PERSONA;
-  // Chat surface wins over mode like sk_headless does: the channel is
-  // structurally read-only, so no authoring-mode persona may ever
-  // promise draft/edit/commit behaviour there.
   if (surface === "chat") return CHAT_PERSONA;
   switch (mode) {
     case "execution":
@@ -176,11 +150,6 @@ function authoringFocusPrompt(hint?: AuthoringPromptHint): string {
   }
 }
 
-/**
- * Compose the MAIN agent's system prompt: persona + general rules +
- * skill-loading directive + verbosity + authoring focus + every
- * preloaded behaviour skill body.
- */
 export async function generateMainAgentSystemPrompt(
   input: AgentSystemPromptInput,
 ): Promise<AgentSystemPromptResult> {
@@ -192,37 +161,14 @@ export async function generateMainAgentSystemPrompt(
     SKILL_LOADING_INSTRUCTIONS,
     `VERBOSITY:\n- ${verbosityFor(input.surface)}`,
   ];
-  // sk install/run/update grounding only on user-facing answer surfaces
-  // (chat, mcp, web). Kept OUT of GENERAL_RULES so the authoring/CLI base
-  // prompt stays at its pinned size (the assembler drop-ladder tests run
-  // with no surface, so their base is unaffected); real MCP/chat/web turns
-  // still get the rule, so the install answer is grounded there too.
   if (input.surface === "chat" || input.surface === "mcp" || input.surface === "web") {
     sections.push(SK_INSTALL_GROUNDING);
     sections.push(SK_CONCEPT_GROUNDING);
     sections.push(SK_COUNT_HYGIENE);
     sections.push(SK_STATUS_GROUNDING);
   }
-  // Action honesty on EVERY real surface — the REPL (sk_interactive) is
-  // where the claimed-but-never-performed "deleted the conversation"
-  // fabrication was observed. Surface-less assembly (the drop-ladder
-  // tests' pinned base) stays unchanged.
   if (input.surface) sections.push(SK_ACTION_HONESTY);
-  // The chat surface never authors — an authoring-focus block would
-  // instruct the model to progress a draft it has no tools for.
-  // Returned SEPARATELY rather than pushed into the body: this block names the
-  // current authoring stage, its checkpoints and the next required action, so
-  // it changes on every turn. Inside the body it sat in the cached prefix and
-  // invalidated everything behind it — the base prompt, every skill index and
-  // every loaded skill body — once per turn.
   const focusBlock = input.surface === "chat" ? "" : authoringFocusPrompt(input.authoring_hint);
-  // Mode-aware behaviour skill loading: always-load core + the
-  // mode-specific bodies for the current authoring mode (workflow /
-  // connector / execution / diagnosis). conversational-authoring is
-  // the only body large enough to be worth gating; everything else
-  // is universal. The chat surface always resolves as mode-less: its
-  // palette carries no authoring tools, so authoring behaviour bodies
-  // would only instruct the model toward tools it cannot call.
   sections.push(loadAgentSkills(resolveAgentSkillsForMode(input.surface === "chat" ? null : mode)));
   return {
     content: sections.join("\n\n"),

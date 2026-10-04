@@ -1,11 +1,3 @@
-// Contract test: every route in `apps/engine/src/http/routes/identity/`
-// either calls `requirePermission(...)` somewhere in its source OR
-// appears in `SELF_INTROSPECTION_ROUTES`. This promotes the
-// previously-comment-only carve-out at `sk-bootstrap.ts` into a
-// hard contract — a future contributor adding a state-mutating
-// route under `identity/` cannot inherit the "self-introspection"
-// pass by copy-pasting the comment block. R5-S1 review fix.
-
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,9 +6,6 @@ import { SELF_INTROSPECTION_ROUTES } from "../../rbac/index.ts";
 const IDENTITY_ROUTES_DIR = "apps/engine/src/http/routes/identity";
 const ROUTES_DIR = "apps/engine/src/http/routes";
 
-// Map filename → expected route slug used in `SELF_INTROSPECTION_ROUTES`.
-// Keep the slug stable across renames; if a file is renamed without
-// updating this map, the test fails loudly.
 const FILE_TO_SLUG: Record<string, string> = {
   "whoami.ts": "whoami",
   "permissions.ts": "identity-permissions",
@@ -28,26 +17,18 @@ const FILE_TO_SLUG: Record<string, string> = {
   "cli-session.ts": "identity-cli-session",
 };
 
-// R6-S5: top-level routes that the carve-out also covers (health,
-// metrics) — they don't live under `identity/` but are listed in
-// `SELF_INTROSPECTION_ROUTES`, so the contract test must reach them
-// too. Without this, the entries in the constant were decorative
-// w.r.t. the test.
 const TOP_LEVEL_FILE_TO_SLUG: Record<string, string> = {
   "health.ts": "health",
   "metrics.ts": "metrics",
 };
 
-// Files in `routes/identity/` that are NOT route modules (Zod
-// schema bundles, type re-exports, helpers). They don't ship over
-// HTTP, so the carve-out doesn't apply.
 const NON_ROUTE_FILES = new Set<string>(["schemas.ts"]);
 
 describe("self-introspection carve-out is a contract, not just a comment", () => {
   test("every identity/ route either gates with requirePermission OR is on the carve-out list", () => {
     const files = readdirSync(IDENTITY_ROUTES_DIR)
       .filter((f) => f.endsWith(".ts"))
-      .filter((f) => !f.endsWith(".test.ts")) // test files are not route modules
+      .filter((f) => !f.endsWith(".test.ts"))
       .filter((f) => !NON_ROUTE_FILES.has(f));
     const violations: string[] = [];
     for (const file of files) {
@@ -70,9 +51,6 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
     expect(violations).toEqual([]);
   });
 
-  // R6-S5: extend the contract to top-level health/metrics so their
-  // entries in `SELF_INTROSPECTION_ROUTES` are real and not just
-  // decorative.
   test("health.ts and metrics.ts at the route root are on the carve-out list (not gated)", () => {
     const violations: string[] = [];
     for (const [file, slug] of Object.entries(TOP_LEVEL_FILE_TO_SLUG)) {
@@ -97,9 +75,6 @@ describe("self-introspection carve-out is a contract, not just a comment", () =>
   });
 
   test("each carve-out slug names a real, stable family", () => {
-    // Hand-pinned. If a slug here ever needs to change, the change
-    // should land via a deliberate edit + a follow-up that updates
-    // any consumer test, not via a silent rename.
     expect([...SELF_INTROSPECTION_ROUTES].sort()).toEqual([
       "cockpit-bootstrap",
       "health",

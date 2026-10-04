@@ -57,9 +57,6 @@ describe("engine schema loader", () => {
     );
   });
 
-  // R7-S4: dropped the `permissive: true` escape hatch — no in-tree
-  // caller used it. Re-add when a real bug-report path needs the
-  // fallback shape.
   test("unknown field types throw", () => {
     expect(() =>
       materializeSchema({

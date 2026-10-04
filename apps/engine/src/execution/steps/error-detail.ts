@@ -1,26 +1,5 @@
-// Structured error detail builder shared by every driver path.
-//
-// Pre-fix the engine collapsed driver failures to `{ code, message }` and
-// `String(err)` produced `"[object Object]"` whenever the cause was a non-
-// Error value. The LLM author saw `http 404` or `[object Object]` in chat
-// and could not tell whether the path was wrong, the credential expired,
-// or a placeholder failed to substitute. Session f00b8d1c spent 19 of
-// its 109 DigitalOcean calls on that blind 404 → re-author cycle.
-//
-// `buildStepErrorDetail` extracts whatever the failure already knows
-// (resolved URL from request_meta, response body + status from
-// `RequestError.meta`, original `err.cause`) and returns a flat envelope
-// the dry-run / RunResult surface persists verbatim.
-//
-// Privacy: cookie / authorization / x-api-key / set-cookie headers are
-// dropped from `response_headers`. Credential placeholder previews are
-// always rendered as `***`.
-
 import type { RequestMeta, StepErrorDetail } from "../types.ts";
 
-/** Auth-bearing header names (lowercase) that must never surface with
- *  their values on any diagnostic / preview surface. Shared with the
- *  hold-writes `held_request.headers_redacted` scrub. */
 export const SAFE_HEADER_DENYLIST = new Set([
   "authorization",
   "cookie",
@@ -31,7 +10,6 @@ export const SAFE_HEADER_DENYLIST = new Set([
   "x-amz-security-token",
 ]);
 
-/** First 4 KB of an opaque body, JSON-serialised when shaped, raw text otherwise. */
 function bodyExcerpt(body: unknown, maxBytes = 4096): string | undefined {
   if (body === undefined || body === null) return undefined;
   let text: string;
@@ -46,7 +24,6 @@ function bodyExcerpt(body: unknown, maxBytes = 4096): string | undefined {
   }
   if (text.length === 0) return undefined;
   if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  // Fast path: byte-truncate then trim trailing partial UTF-8.
   const buf = Buffer.from(text, "utf8");
   return `${buf.subarray(0, maxBytes).toString("utf8")} …[truncated]`;
 }
@@ -127,24 +104,12 @@ function pickUnresolvedPlaceholders(
 
 export interface BuildStepErrorOptions {
   code: string;
-  /** Original thrown value. */
   err: unknown;
-  /** Last `request_meta` snapshot the dispatcher published before the failure. */
   request_meta?: RequestMeta | null;
-  /** Optional override message — used when the call site already has a
-   *  curated string (e.g. "request exceeded 60000ms"). When omitted the
-   *  helper prefers `err.message`, then `err.cause.message`, then a
-   *  driver-shaped fallback that NEVER returns `[object Object]`. */
   message?: string;
 }
 
-/** Render a non-Error throwable into a useful string.
- *  Replaces the historic `String(err)` → `"[object Object]"` fallback. */
 function safeMessage(err: unknown, fallback: string): string {
-  // Belt-and-suspenders: even when err is a proper Error, its `.message`
-  // can be the literal "[object Object]" if upstream code template-stringed
-  // an object into the Error constructor. Treat that as no-detail and try
-  // the cause/JSON paths below instead of propagating the useless string.
   if (err instanceof Error) {
     const direct = err.message;
     if (typeof direct === "string" && direct.length > 0 && direct !== "[object Object]") {
@@ -167,9 +132,7 @@ function safeMessage(err: unknown, fallback: string): string {
     try {
       const json = JSON.stringify(o);
       if (json && json !== "{}") return json;
-    } catch {
-      // fall through
-    }
+    } catch {}
   }
   return fallback;
 }
@@ -201,10 +164,6 @@ export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDeta
     const headers = safeHeaders(reqMeta.headers);
     if (headers) detail.response_headers = headers;
   }
-  // Connector-health verdict + actionable hint attached at the dispatch
-  // throw site (`meta.health_hint`). This is what turns a bare `http 410`
-  // in chat into "the vendor removed this endpoint — check docs for the
-  // replacement" — the LLM/operator can act instead of guessing.
   const healthHint = pickHealthHint(err);
   if (healthHint) {
     detail.health = healthHint.health;
@@ -220,9 +179,6 @@ export function buildStepErrorDetail(opts: BuildStepErrorOptions): StepErrorDeta
   if (resolvedUrl) detail.resolved_url = resolvedUrl;
   const unresolved = pickUnresolvedPlaceholders(request_meta);
   if (unresolved) detail.resolved_placeholders = unresolved;
-  // Surface err.cause.message when the immediate `err.message` was generic
-  // (e.g. `"request_error"` or empty). Cause is a common Node.js convention
-  // for upstream connection failures.
   if ((!detail.message || detail.message === fallbackMessage) && err && typeof err === "object") {
     const cause = (err as { cause?: unknown }).cause;
     if (cause && typeof cause === "object") {

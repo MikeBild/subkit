@@ -18,10 +18,6 @@ const part = (output: unknown) =>
     input: { workflow_id: id },
     output,
   }) as ToolPart;
-// What the card SAYS — approved, repair, review, apply — is no longer read from
-// the tool result: it is the workflow's current state, decided in
-// `lib/automation-state.ts` and covered by its tests. Here: whether a result
-// is a card at all, and for which workflow.
 test("a webhook-only workflow is a card", () => {
   const hook = {
     workflow_id: id,
@@ -107,7 +103,6 @@ test("only the newest review of a workflow is a live card", () => {
   const live = liveAutomationReviews([
     call("first", id),
     call("other", other),
-    // Not a card at all: it does not displace the review before it.
     part({ ok: false, error: { code: "not_found" } }),
     call("second", id),
   ]);

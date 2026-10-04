@@ -1,8 +1,3 @@
-// Unit tests for the ServiceMetadata value object. Verifies that the
-// schema rejects malformed input, that buildServiceMetadata mints a
-// trace_id when the caller does not provide one, and that valid input
-// passes through unchanged.
-
 import { describe, expect, test } from "bun:test";
 import { buildServiceMetadata, mintTraceId, ServiceMetadataSchema } from "../service-metadata.ts";
 

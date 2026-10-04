@@ -1,17 +1,3 @@
-// Shared mock HTTP server for tests that need a local loopback origin
-// with a swappable, canned-response handler.
-//
-// `createMockServer` is a thin wrapper around `node:http` so a test can
-// queue up canned responses for sequential calls and inspect the call
-// count. It lives under `test-helpers/` (not `execution/tests/`) so both
-// the `execution/` integration suite and the `tests/journeys/` layer can
-// import it without crossing a subsystem boundary into another layer's
-// scaffolding.
-//
-// Distinct from `local-http.ts` (`startLocalTargetServer`): that helper
-// is a one-shot Request→Response handler; this one supports a mutable
-// handler plus a call counter for multi-call assertions.
-
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -46,11 +32,6 @@ export async function createMockServer(initial: Handler): Promise<MockServer> {
     callCount: () => count,
     close: () =>
       new Promise<void>((resolve) => {
-        // Force-drain any still-open sockets first. `server.close()` alone
-        // waits for in-flight connections to end, so a test that
-        // intentionally leaves a response open (e.g. a client-timeout
-        // regression) would hang `afterAll` forever. No-op when there are
-        // no open connections.
         server.closeAllConnections?.();
         server.close(() => resolve());
       }),

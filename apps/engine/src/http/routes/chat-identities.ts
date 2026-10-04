@@ -1,13 +1,3 @@
-// Chat identity link CRUD (admin route).
-//
-// The chat dispatcher requires an *explicit* `chat_identities` row to
-// map a platform user (Slack `U…`, Teams AAD id, …) to a subkit user.
-// Unknown chat senders are rejected with a `chat.message.denied`
-// audit row — there is no implicit elevation. The installing operator
-// is linked at workspace install via
-// `POST /v1/chat/workspaces.installer_platform_user_id`; every other
-// chat user is linked here.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
@@ -49,8 +39,6 @@ function rowToOutput(row: typeof chatIdentities.$inferSelect): z.infer<typeof Ch
     id: row.id,
     tenant_id: row.tenant_id,
     user_id: row.user_id,
-    // pgEnum already constrains the column to the three values; the
-    // narrowing cast is the documented contract, not a wildcard.
     platform: row.platform as "slack" | "teams" | "google_chat",
     workspace_id: row.workspace_id,
     platform_user_id: row.platform_user_id,
@@ -141,14 +129,6 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
 
-    // Verify `body.workspace_id` is a chat_workspaces row installed in
-    // THIS tenant. The `chat_identities` unique key
-    // (platform, workspace_id, platform_user_id) is GLOBAL — without
-    // this check a T_A admin can insert a row keyed on T_B's team_id,
-    // and when T_B later installs that workspace the dispatcher's
-    // (platform, workspace_id, platform_user_id) lookup matches A's
-    // row under tenant B (audit poisoning + cross-tenant actor on
-    // every B-side message from that Slack user).
     const [ws] = await db
       .select({ id: chatWorkspaces.id })
       .from(chatWorkspaces)
@@ -162,14 +142,6 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (!ws) throw new NotFoundError("chat_workspace");
 
-    // Verify `body.user_id` exists in THIS tenant before linking. The
-    // `chat_identities.user_id` FK only constrains existence — not
-    // tenant — so without this check a T_A admin could insert a row
-    // binding a real Slack user to a T_B user_id. RBAC still closes
-    // the door at run time (`dispatcher.ts` preloads roles by
-    // `(tenant_id, user_id)` and finds nothing), but the audit trail
-    // would record the cross-tenant id as `actor_id` on every message
-    // — the wrong identity to log a denied audit against.
     const [user] = await db
       .select({ id: users.id })
       .from(users)
@@ -177,9 +149,6 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .limit(1);
     if (!user) throw new NotFoundError("user");
 
-    // Insert + audit inside a tx so a process crash between the link
-    // INSERT and the audit row can't strand a committed link with no
-    // forensic trail (AGENTS.md: "Never bypass the audit log").
     let row: typeof chatIdentities.$inferSelect | undefined;
     await db.transaction(async (tx) => {
       const insertResult = await tx
@@ -237,8 +206,6 @@ export function registerChatIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(chatIdentities.tenant_id, principal.tenant_id), eq(chatIdentities.id, id)))
       .limit(1);
     if (!row) throw new NotFoundError("chat_identity");
-    // DELETE + audit inside a tx so a crash between them can't leave
-    // a removed identity with no audit row.
     await db.transaction(async (tx) => {
       await tx
         .delete(chatIdentities)

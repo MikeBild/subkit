@@ -1,11 +1,3 @@
-// Integration: attach command flow via mocked engine client.
-//
-// Drives `uploadPath` + `client.linkFile` (the two calls that
-// `sk attach` makes) with a controlled fetch mock and asserts the
-// link record has the expected shape. The REPL slash handler is
-// implemented on top of the same two primitives so the test also
-// covers that path indirectly.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,7 +86,6 @@ describe("integration: attach flow (upload + link)", () => {
     expect(link.resource_id).toBe(CONV_ID);
     expect(link.role).toBe("attachment");
 
-    // Upload call happened first, then the link call.
     expect(calls[0]?.url).toContain("/v1/files/inline");
     expect(calls[1]?.url).toContain("/links");
     expect((calls[1]!.body as Record<string, unknown>)?.resource_type).toBe("conversation");
@@ -130,7 +121,6 @@ describe("integration: attach flow (upload + link)", () => {
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
-        // Second call (link) returns 403 — wrong tenant.
         return new Response(JSON.stringify({ code: "forbidden", message: "forbidden" }), {
           status: 403,
           headers: { "content-type": "application/json" },
@@ -165,9 +155,7 @@ describe("integration: attach flow (upload + link)", () => {
       },
     });
 
-    // uploadPath throws on engine error.
     await expect(uploadPath(client, fp, { quiet: true })).rejects.toBeInstanceOf(EngineError);
-    // The link endpoint must never have been reached.
     expect(linkCalled).toBe(false);
   });
 });

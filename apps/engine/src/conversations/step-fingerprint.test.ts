@@ -1,11 +1,3 @@
-// Fingerprint-keyed preview evidence. Pins:
-//   - fingerprint stability (canonical JSON — key order irrelevant)
-//   - mutation-time pruning drops exactly the changed/removed steps
-//   - `withLatestPreview` merges instead of replacing: a blocked
-//     dry-run ("Preview blocked until the workflow draft validates
-//     cleanly") must not destroy recorded evidence — the wipe that
-//     deadlocked session 784c1b02.
-
 import { describe, expect, test } from "bun:test";
 import { withLatestPreview, withWorkflowDraft } from "./authoring-state.ts";
 import { pruneTracesForMutation, stepFingerprint } from "./step-fingerprint.ts";
@@ -97,8 +89,6 @@ describe("withLatestPreview — fingerprint-keyed merge", () => {
 
   test("a blocked preview (no step_traces) does NOT destroy recorded evidence", () => {
     const draft = draftWithEvidence();
-    // The exact wipe path: dry_run refuses while the draft is mid-edit
-    // invalid and records a trace-less "Preview blocked …" preview.
     const blocked = withLatestPreview(draft, {
       ok: false,
       step_id: "fetch",

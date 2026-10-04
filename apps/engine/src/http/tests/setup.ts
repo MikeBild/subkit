@@ -1,12 +1,3 @@
-// HTTP integration test scaffolding.
-//
-// Each test file calls `createHttpTestServer('label')` which:
-//   1. spins up a per-suite disposable Postgres database via the P1 helper
-//   2. seeds a tenant + admin user + system account + api key
-//   3. constructs a Hono app bound to that database
-//   4. starts the app on a random port using @hono/node-server
-//   5. returns { baseUrl, apiKey, ..., cleanup }
-
 import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -21,19 +12,11 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 
-// Ensure the config loader is bootstrapped so route handlers that
-// call getConfig() see a valid Config object. v3.5 routes assume
-// loadConfig() ran in the boot path; tests that don't explicitly
-// call it would 500 on the first getConfig() — this helper closes
-// that gap idempotently. Subsequent tests can override values via
-// setConfigKey() without re-bootstrapping.
 async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not yet loaded — fall through.
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-http-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/http-test", NODE_ENV: "test" },
@@ -50,8 +33,6 @@ export async function loadAuthProvidersForTest(
 ): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), "sk-auth-providers-test-"));
   const file = join(dir, "subkit.config.json");
-  // The JIT scenarios in the identity suites predate the auth.enable_signup
-  // gate (production default false); gate coverage opts out explicitly.
   const enable_signup = opts.enableSignup ?? true;
   await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
   await loadConfig({
@@ -83,8 +64,6 @@ export interface HttpTestServer {
 }
 
 export interface CreateHttpTestServerOptions {
-  /** Extra `createApp` options merged over the scaffold defaults —
-   *  e.g. an `agentSessionEnqueue` stub for routes that enqueue jobs. */
   appOptions?: Partial<Parameters<typeof createApp>[0]>;
 }
 
@@ -95,7 +74,6 @@ export async function createHttpTestServer(
   await ensureConfigLoaded();
   const testDb = await createTestDb(`http-${label}`);
 
-  // Seed minimal identity rows.
   const [tenant] = await testDb.db
     .insert(tenants)
     .values({ slug: `t-${label}`, display_name: `Test ${label}` })
@@ -135,15 +113,7 @@ export async function createHttpTestServer(
     .returning();
   if (!apiKey) throw new Error("seed api_key failed");
 
-  // Build the Hono app bound to this db. We construct the registry
-  // explicitly so the api_key provider also points at the test db.
   const registry = buildDefaultRegistry(testDb.db);
-  // Bump the in-memory rate-limit ceiling for tests. The sweep suites
-  // PUT every ConfigSchema leaf (~110 leaves and growing); the prod
-  // default of 100 req/60s would 429 the trailing leaves and
-  // pollute the assertions that drive `every leaf round-trips`. The
-  // override is plain middleware parameterisation — no env flag, no
-  // production code path branched.
   const app = createApp({
     db: testDb.db,
     registry,
@@ -151,9 +121,7 @@ export async function createHttpTestServer(
     ...(opts?.appOptions ?? {}),
   });
 
-  // Bind a free port. Passing port=0 asks the kernel to pick.
   const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
-  // node-server returns a node http.Server; pull the port from address().
   const addr = (server as unknown as { address: () => { port: number } | null }).address();
   if (!addr || typeof addr !== "object") {
     throw new Error("failed to determine test server port");
@@ -161,13 +129,6 @@ export async function createHttpTestServer(
   const baseUrl = `http://127.0.0.1:${addr.port}`;
 
   const cleanup = async () => {
-    // Force-close idle keep-alive sockets BEFORE close(): native bun
-    // fetch holds keep-alive sockets in a pool and the server's
-    // close() waits for them. On a small suite (3 tests) the pool
-    // drains quickly enough that close() returns sub-second; on a
-    // larger suite (10+) close() can hang past the default 5s
-    // afterAll hook timeout. closeAllConnections() (Node 18+) drops
-    // the pool synchronously so close() then completes immediately.
     type CloseableServer = {
       close: (cb: () => void) => void;
       closeIdleConnections?: () => void;

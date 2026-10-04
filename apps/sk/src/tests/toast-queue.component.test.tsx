@@ -138,8 +138,6 @@ describe("<ToastQueue> component", () => {
       api!.push({ title: "bravo", level: "info" });
       api!.push({ title: "charlie", level: "info" });
       await ui.waitFor((t) => t.includes("alpha") && t.includes("bravo"));
-      // Newest "charlie" was pushed but should not display because the
-      // FIFO order keeps the older two visible up to maxVisible.
       expect(ui.text()).toContain("alpha");
       expect(ui.text()).toContain("bravo");
       expect(ui.text()).not.toContain("charlie");

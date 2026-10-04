@@ -1,8 +1,3 @@
-// Unit tests for <ConversationBrowser> — the `/resume` modal. Checks
-// list rendering, arrow-key navigation, Enter selection, and type-to-
-// filter. Mirrors the keyboard contract described in the component's
-// footer hint.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { ConversationBrowser, type ConversationItem } from "../ConversationBrowser.tsx";
@@ -50,12 +45,7 @@ describe("ConversationBrowser", () => {
   test("lists every item with title, excerpt and metadata", async () => {
     const instance = render(
       <ThemeProvider>
-        <ConversationBrowser
-          items={ITEMS}
-          onSelect={() => {
-            /* noop */
-          }}
-        />
+        <ConversationBrowser items={ITEMS} onSelect={() => {}} />
       </ThemeProvider>,
     );
     await tick();
@@ -92,7 +82,6 @@ describe("ConversationBrowser", () => {
       </ThemeProvider>,
     );
     await tick();
-    // Ink-testing-library passes DOWN as CSI B.
     instance.stdin.write("\u001b[B");
     await tick(20);
     instance.stdin.write("\r");
@@ -104,12 +93,7 @@ describe("ConversationBrowser", () => {
   test("typing filters the list by title substring", async () => {
     const instance = render(
       <ThemeProvider>
-        <ConversationBrowser
-          items={ITEMS}
-          onSelect={() => {
-            /* noop */
-          }}
-        />
+        <ConversationBrowser items={ITEMS} onSelect={() => {}} />
       </ThemeProvider>,
     );
     await tick();
@@ -125,12 +109,7 @@ describe("ConversationBrowser", () => {
   test("typing filters the list by excerpt substring too", async () => {
     const instance = render(
       <ThemeProvider>
-        <ConversationBrowser
-          items={ITEMS}
-          onSelect={() => {
-            /* noop */
-          }}
-        />
+        <ConversationBrowser items={ITEMS} onSelect={() => {}} />
       </ThemeProvider>,
     );
     await tick();

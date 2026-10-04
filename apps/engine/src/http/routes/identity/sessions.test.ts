@@ -1,16 +1,3 @@
-// POST /v1/identity/sessions — provider-neutral security regression suite.
-//
-// This route is public (no API key needed — the signed assertion is the authn) and
-// mints a personal API key. Before the E0 hardening it accepted ANY issuer,
-// performed no audience check, and rebound an existing user's identity
-// to whatever `email` claim the token carried — an unauthenticated account
-// takeover. These tests pin the closed contract:
-//   1. provider_id must identify one configured adapter;
-//   2. an unconfigured provider → 403 (route is inert, not open);
-//   3. audience must equal that adapter's client_id;
-//   4. an unverified `email` claim cannot link to (hijack) another account;
-//   5. a verified email already bound to a different OIDC subject is refused.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -56,8 +43,6 @@ async function writeOidcConfig(
         },
       ]
     : [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }];
-  // Most cases exercise the JIT path; the signup-gate suite flips this to the
-  // production default (false) explicitly.
   const enable_signup = opts.enableSignup ?? true;
   await writeFile(file, JSON.stringify({ auth: { providers, enable_signup } }));
   await loadConfig({
@@ -94,16 +79,12 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     await mock.stop();
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   if (testDb) await testDb.cleanup();
   _resetConfigForTests();
 });
 
 afterEach(async () => {
-  // Reset the allow-list to the configured mock between tests and drop any
-  // users created by a test so email-uniqueness doesn't bleed across cases.
   flushDiscoveryCache();
   await writeOidcConfig(mock.url, CLIENT_ID);
   await testDb.db.delete(users).where(eq(users.tenant_id, defaultTenantId));
@@ -122,22 +103,11 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
   });
 
   test("a login start without a state is a fresh sign-in, not a dead end", async () => {
-    // This test used to pin the opposite, and the opposite was a closed loop.
-    // The error page's only way forward is "Sign in again" pointing at
-    // /v1/identity/login/start with no state — which arrived here, found no
-    // state, and rendered the same page again. Reported from production: the
-    // one button whose job is to lead out of the dead end led back into it.
-    //
-    // A login state carries ONE thing, where to return to afterwards. Missing
-    // means "no particular destination", not "malformed request".
     const res = await app.request("http://127.0.0.1/v1/identity/login/start");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    // The sign-in screen, not the failure page.
     expect(html).not.toContain("<h1>Sign-in failed</h1>");
-    // And it carries a state, so choosing a provider from here works rather
-    // than bouncing off the next check.
     expect(html).toMatch(/login_state=[^"&]+/);
   });
 
@@ -225,7 +195,6 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
 
 describe("POST /v1/identity/sessions — account-takeover guards", () => {
   test("unverified email cannot hijack an existing account", async () => {
-    // Seed a victim admin whose email the attacker will claim.
     const [admin] = await testDb.db
       .insert(users)
       .values({
@@ -245,7 +214,6 @@ describe("POST /v1/identity/sessions — account-takeover guards", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as { principal_id: string; email: string | null };
 
-    // The attacker got their OWN account, not the admin's.
     expect(json.principal_id).not.toBe(admin.id);
     expect(json.email).toBeNull();
     const [adminAfter] = await testDb.db.select().from(users).where(eq(users.id, admin.id));

@@ -108,11 +108,9 @@ describe("webhook execution authority admission", () => {
     });
     const first = await hold();
     expect(first?.reason_code).toBe("execution_authority_unavailable");
-    // The same refusal again is the same standing state, not a new one.
     await receive(delivery("refused-2", '{"invoice":2}', 60));
     expect(await hold()).toEqual(first);
 
-    // The workflow's automation status names the hook, in a schedule's words.
     const [status] = await inboundHookAutomationView(
       ctx.tenantId,
       ctx.workflowId,
@@ -131,7 +129,6 @@ describe("webhook execution authority admission", () => {
     });
     expect(status?.last_refused_at).not.toBeNull();
 
-    // Every place that counts what needs a person counts it.
     const overview = await getOperationalOverview(ctx.db, ctx.tenantId);
     expect(overview.core.blocked.value).toBe(1);
     expect(

@@ -1,7 +1,3 @@
-// Role management service — list/get/create/update/delete roles and
-// grant/revoke permissions on them. Built-in roles (`is_builtin=true`)
-// are read-only and trip the `builtin_immutable` error.
-
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import {
@@ -49,7 +45,6 @@ export class PermissionNotFoundError extends Error {
   }
 }
 
-/** List built-in roles + any roles scoped to the given tenant. */
 export async function listRoles(db: Db, tenant_id: string): Promise<RoleRow[]> {
   const rows = await db
     .select()
@@ -176,7 +171,6 @@ export async function revokePermissionFromRole(
   return del.length > 0;
 }
 
-/** Id of a built-in (global) role. Throws when the catalog is not seeded. */
 export async function builtinRoleId(exec: Executor, name: string): Promise<string> {
   // tenant-filter:exempt — built-in roles are global RBAC catalog rows.
   const [row] = await exec
@@ -201,5 +195,4 @@ export async function findRoleByName(
   return rows[0] ?? null;
 }
 
-// Suppress unused-import warning for `inArray` used indirectly.
 void inArray;

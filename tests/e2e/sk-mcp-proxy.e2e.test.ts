@@ -1,8 +1,3 @@
-// `sk mcp` stdio proxy E2E.
-//
-// Drives the compiled CLI through the official MCP client transport so the
-// local stdio proxy is covered as a real MCP server, not as a direct import.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -83,9 +78,6 @@ describe("sk mcp stdio proxy", () => {
         "sk_conversation_get",
         "sk_conversation_list",
       ]);
-      // MCP tool names must match the dot-free charset Anthropic/claude.ai
-      // accept — the same invariant the engine surface asserts in
-      // tools-list.test.ts. The proxy previously shipped dotted names.
       const MCP_TOOL_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
       for (const tool of byName.values()) {
         expect(tool.name).toMatch(MCP_TOOL_NAME);

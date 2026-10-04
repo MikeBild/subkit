@@ -54,8 +54,6 @@ describe("connectors/service", () => {
     const fetched = await getConnector(tenant_id, created.id, ctx.db);
     expect(fetched?.id).toBe(created.id);
 
-    // Same name in a different environment should succeed thanks to the
-    // composite (tenant, slug, environment) key.
     const prod = await createConnector(
       {
         tenant_id,
@@ -76,7 +74,6 @@ describe("connectors/service", () => {
 
     const devList = await listConnectors(tenant_id, { environment: "dev" }, ctx.db);
     expect(devList.rows.map((c) => c.environment)).toEqual(["dev"]);
-    // `total` respects the same filters as the page (ground truth).
     expect(devList.total).toBe(1);
 
     const prodList = await listConnectors(tenant_id, { environment: "prod" }, ctx.db);
@@ -113,7 +110,6 @@ describe("connectors/service", () => {
       config: {},
     };
     const created = await createConnector({ tenant_id, input, actor_id: null }, ctx.db);
-    // The same slug again is an upsert, and says so.
     await createConnector({ tenant_id, input, actor_id: null }, ctx.db);
     await updateConnector(tenant_id, created.id, { name: "Live Two" }, null, ctx.db);
     await setConnectorEnabled(tenant_id, created.id, false, null, ctx.db);
@@ -162,7 +158,6 @@ describe("connectors/service", () => {
     );
     expect(patched?.operator_quirks.auth).toBe("always send ?api-version=2025-01-01");
 
-    // Empty object clears every category in one go.
     const cleared = await updateConnector(
       tenant_id,
       created.id,

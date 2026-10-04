@@ -1,6 +1,5 @@
 import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
 
-/** Chat stays on the exact saved draft through review, conflict and completion. */
 export async function verifyChatActivation(page, stand, conversation, locale) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(
@@ -97,9 +96,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       total: completed ? 0 : 1,
     }),
   );
-  // Übersicht's badge counts the held schedule as one entry until it is granted.
-  // One entry per subject: the base answer's own entry for this workflow is
-  // replaced by the held one, or the list would carry the workflow twice.
   const baseAnswer = await page.evaluate(async () => (await fetch("/v1/attention")).json());
   const baseAttention = {
     ...baseAnswer,
@@ -148,8 +144,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       webhooks_active: 0,
     }),
   );
-  // The verified row, as the engine answers it: the card reads the workflow's
-  // CURRENT state from here, not from the tool result it was rendered for.
   await route(`**/v1/workflows/${workflowId}/automation-status`, (r) =>
     fulfill(r, {
       schedules: [
@@ -188,7 +182,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
   await route(`**/v1/workflows/${workflowId}/versions/*/authority-preview?*`, (r) => {
     if (!r.request().url().includes(draftId))
       throw new Error("Chat reviewed the older active version");
-    // Use one instant so the suggested duration is exactly 24 whole hours.
     const preparedAt = Date.now();
     return fulfill(r, {
       digest: "a".repeat(64),
@@ -213,11 +206,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
                   content_type: "text/html",
                 },
               },
-              // A reviewed folder that REMOVES files. The dialog once labelled
-              // every non-PUT storage operation "read", so a removal was
-              // presented to its approver as a read. The assertions below are
-              // hostile on purpose: the word must be there, the ceiling must
-              // be there, and the read label must be absent.
               {
                 step_id: "purge",
                 effect: "destructive",
@@ -234,11 +222,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
                   max_deletes: 4321,
                 },
               },
-              // An author-declared request boundary. The numbers are unusual on
-              // purpose so the assertions cannot pass on a number that merely
-              // happens to be on the page. The panel has to show where the
-              // request goes, the only value the variable may take, both
-              // ceilings, and that the content is NOT what was approved.
               {
                 step_id: "retire",
                 effect: "write",
@@ -255,9 +238,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
                   max_calls: 7,
                 },
               },
-              // A value CLASS and a query value that varies. A class approves a
-              // FORM, not a list: the panel has to say so in words, and a rule
-              // it does not know must never look harmless.
               {
                 step_id: "stats",
                 effect: "read",
@@ -297,9 +277,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
                   max_calls: 1,
                 },
               },
-              // A POST its author marked destructive (it retires records). The
-              // mark may only ever make the panel more cautious — it once had
-              // no effect at all on anything that was not a DELETE.
               {
                 step_id: "archive",
                 effect: "write",
@@ -409,8 +386,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
   });
   const decisionCount = async () => {
     const count = page.getByTestId("nav-overview-count");
-    // A refetch can briefly remove the badge. It does not mean the viewport
-    // became mobile: toggling the desktop sidebar then would hide the result.
     const mobile = page.viewportSize().width < 768;
     const sidebar = page.locator('[data-slot="sidebar"]');
     const needsOpen = mobile
@@ -549,9 +524,6 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     opaque = true;
     await page.reload();
     await action.waitFor();
-    // The review card stands in the chronological transcript and is the one
-    // way into the approval there: the held-schedule hand-off, which would
-    // open the same review under another name, is not rendered beside it.
     if (
       (await page.getByTestId("chat-transcript").getByTestId("chat-automation-tool").count()) !== 1
     )
@@ -584,12 +556,9 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     messages = 0;
     opaque = false;
     await page.reload();
-    // The card's review leads to everything the review can lead to.
     const singleRunEntry = action;
     await singleRunEntry.waitFor();
     await singleRunEntry.click();
-    // "Nur in Betrieb nehmen" does only that: the version goes into service,
-    // and no single run is prepared — that is the other button's act.
     await page.getByTestId("authority-activate-only").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     if (activations !== 1 || messages !== 0 || grants !== 3)

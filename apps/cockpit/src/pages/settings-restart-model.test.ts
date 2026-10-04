@@ -1,6 +1,3 @@
-// The restart offer on the settings page and how the page reads the engine
-// while it restarts.
-
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "@/api/client";
 import { translate } from "@/lib/i18n";
@@ -98,7 +95,6 @@ describe("the offer once this save lands", () => {
     expect(restartOfferAfterSave("manual", "true")).toBe("restart");
     expect(restartOfferAfterSave("restart", "false")).toBe("manual");
     expect(restartOfferAfterSave("manual", undefined)).toBe("manual");
-    // The permission is not a setting.
     expect(restartOfferAfterSave("ask_admin", "true")).toBe("ask_admin");
   });
 });

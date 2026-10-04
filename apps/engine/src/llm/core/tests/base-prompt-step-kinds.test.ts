@@ -1,21 +1,6 @@
-// Guards the WORKFLOW STEP KINDS behaviour skill body + the cleanup /
-// product-help skill body. Without the kind enumeration the model
-// invents dotted step namespaces (`trigger.manual` / `flow.approval`)
-// that propose_step rejects, causing self-reinforcing tool failures.
-// Without the cleanup section the model falls back to "this isn't
-// supported" prose for delete_workflow / revoke_api_key requests.
-//
-// `workflow-step-kinds` and `placeholder-rules` are mode-specific
-// since the chat execution-UX unification — they ship in workflow /
-// connector / diagnosis mode (where the LLM proposes / repairs steps)
-// and stay out of execution-mode turns (where the LLM only dispatches
-// already-saved workflows). The assertions below cover both code paths.
-
 import { describe, expect, it } from "bun:test";
 import { basePromptFor } from "../context-assembler.ts";
 
-// 4.2.0: dropped `tool` (docker-based sandbox retired; subkit is a
-// data-workflow engine, not a container runtime).
 const ALL_KINDS = ["request", "transform", "call", "wait", "branch", "parallel", "loop"] as const;
 
 describe("base prompts — step-kind enumeration + cleanup facts", () => {
@@ -78,10 +63,6 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
   });
 
   it("converse prompt (execution mode) does NOT inline placeholder-rules", async () => {
-    // Mode-gated skill trim moved both workflow-step-kinds AND
-    // placeholder-rules out of always-loaded. An execution-mode turn
-    // must NOT carry the `${cred|connector|input|scope.*}` grammar so
-    // the token saving is real.
     const p = (
       await basePromptFor("converse", "sk_interactive", {
         mode: "execution",
@@ -97,17 +78,11 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
       })
     ).content;
     expect(p).not.toContain("PLACEHOLDER RULES");
-    // Defence-in-depth: the placeholder grammar's anchor phrases must
-    // also be absent. A future split of the skill body that keeps the
-    // grammar but renames the header would otherwise sneak through.
     expect(p).not.toContain("${cred:");
     expect(p).not.toContain("${connector.");
   });
 
   it("converse prompt (diagnosis mode) still loads BOTH step-kinds AND placeholder-rules", async () => {
-    // Diagnosis-mode turns can still propose / patch steps in response
-    // to an execution failure — the dotted-namespace guardrail must
-    // stay loaded so the model never invents `type` / `trigger.*`.
     const p = (
       await basePromptFor("converse", "sk_interactive", {
         mode: "diagnosis",
@@ -133,8 +108,6 @@ describe("base prompts — step-kind enumeration + cleanup facts", () => {
 
   it("generate prompt does NOT mention the retired `tool` kind", async () => {
     const p = (await basePromptFor("generate")).content;
-    // Single bare-word match — "tool" appears in unrelated phrases like
-    // "tool calling", so anchor to the kinds-list comma sequence.
     expect(p).not.toContain("loop, tool");
   });
 

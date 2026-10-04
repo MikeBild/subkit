@@ -71,10 +71,8 @@ test("an external MCP tool approval is phrased from the connector and tool, not 
       tool: "search",
       server_claim: "Search saved questions and dashboards",
     },
-    // The server's claim is shown once, attributed — not again as details.
     description: null,
   });
-  // Another decision never borrows the subject.
   detail.resume_summary!.pending_approval!.prompt!.intent_kind = "execute_confirmed_tool_call";
   expect(chatApproval(detail)?.externalTool).toBeUndefined();
 });

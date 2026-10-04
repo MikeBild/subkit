@@ -1,77 +1,14 @@
-// Tool result truncation for LLM context.
-//
-// Long tool outputs (e.g. `list_executions` with 50 rows of complex
-// payloads, or `inspect_workflow_draft` returning a 1MB nested workflow)
-// blow the prompt budget on subsequent turns. We truncate the structured
-// output before feeding it back to the model, and stash the raw payload
-// under an in-memory ref so a follow-up `get_raw_result` tool call can
-// retrieve it on demand.
-//
-// Each truncation event emits a structured `truncate.applied` log line
-// (level: debug) so operators can see when the budget bites and tune
-// MAX_JSON_CHARS / MAX_STEP_PREVIEW_CHARS without instrumenting every
-// callsite manually.
-//
-// Two-pass shrink:
-//   1. `truncateNode` clips top-level arrays to `MAX_ARRAY_LEN` and
-//      nested arrays (depth ≥ 2) to `MAX_NESTED_ARRAY_LEN`.
-//   2. If the result is still over `MAX_JSON_CHARS`, the heaviest
-//      string/object branches are replaced with a labeled primitive
-//      stub (`[omitted: <n> chars — get_raw_result(ref="…")]`) and a
-//      sibling-tracked omission count is rolled up into a single
-//      top-level `_truncation_note` string — never `__omitted_chars`
-//      or `__raw_ref` keys (leaked to end-user output once) and never
-//      bare `null` (read as "the step produced nothing" — the
-//      `array[4]<null>` loop-preview incident). The full payload is
-//      still recoverable via the `raw_ref` returned alongside the
-//      truncated data and the `get_raw_result` tool.
-//
-// The previous implementation only used pass 1; deeply nested payloads
-// (workflow steps carrying snapshots) blew past the cap by 50–100×
-// because the per-element budget was unbounded. The bug surfaced as
-// "tool output truncated from 1225917 → 482877 chars" — successful
-// reduction, still way too large for the prompt budget.
-
 import { logger } from "../../logging/logger.ts";
 import { summarizeScopeShape } from "../../workflows/scope-shape.ts";
 
 const MAX_JSON_CHARS = 8000;
 const MAX_ARRAY_LEN = 20;
 const MAX_NESTED_ARRAY_LEN = 10;
-// Per-step cap for `step_trace[i].output_preview` in run_workflow /
-// dry_run_workflow envelopes. Sized well below MAX_JSON_CHARS so the
-// outer envelope (workflow `output`, `warnings_banner`, every other
-// step's preview) still fits comfortably under the LLM cap. Without
-// this, a single inline step preview at the 10 KB offload threshold
-// (apps/engine/src/execution/offload.ts STEP_RESULT_DB_BYTES) was
-// enough to push the envelope over MAX_JSON_CHARS, at which point the
-// outer pass would replace the workflow's actual `output` field with
-// an `__omitted_chars` / `__raw_ref` marker — exactly the cascade the
-// run_workflow that produced "output keys: omitted_chars, raw_ref"
-// went through. dry_run_workflow.ts already documents the contract
-// ("output_preview is already capped"); this is the missing cap.
 const MAX_STEP_PREVIEW_CHARS = 1500;
 
-// Only annotate the omission stub with a shape summary for branches large
-// enough that (a) the structure is genuinely worth surfacing and (b) the
-// extra ~40 chars per stub can't multiply across many small siblings and
-// blow the step-preview cap. Targets the case that actually misleads the
-// LLM/judge: a multi-KB offloaded payload omitted as one opaque blob.
 const SHAPE_STUB_MIN_CHARS = 1024;
 
-// Raw-ref retention. Refs are looked up by `get_raw_result` later in the
-// same conversation, so eviction must be driven by AGE, not by a small
-// FIFO size cap — a busy session could otherwise drop an active ref
-// before the model fetched it, surfacing as `raw_ref_not_found`. We keep
-// each ref for RAW_REF_TTL_MS and only fall back to insertion-order
-// eviction once RAW_REF_MAX_ENTRIES is exceeded as a memory backstop.
-const RAW_REF_TTL_MS = 30 * 60_000; // 30 min
-// Backstop ceiling for the process-global store. Each entry can be a large
-// raw tool payload (>8 KB, sometimes 100s of KB), and this Map is shared
-// across every concurrent conversation in the process — so the ceiling is a
-// memory bound, not just a cleanliness cap. Kept conservative given the
-// engine's prior memory pressure; the per-set expired sweep frees stale
-// entries promptly so the resident set tracks "refs from the last TTL".
+const RAW_REF_TTL_MS = 30 * 60_000;
 const RAW_REF_MAX_ENTRIES = 512;
 
 interface RawEntry {
@@ -81,20 +18,12 @@ interface RawEntry {
 
 const rawStore = new Map<string, RawEntry>();
 
-/**
- * Insert a raw payload under `refId`, evicting expired entries first and
- * then trimming by insertion order if still over the backstop ceiling.
- * Shared by `truncateForLlm` and `rememberRaw` so the TTL + backstop
- * policy lives in exactly one place.
- */
 function storeRaw(refId: string, value: unknown): void {
   const now = Date.now();
   rawStore.set(refId, { value, expires_at: now + RAW_REF_TTL_MS });
-  // Evict by age first.
   for (const [key, entry] of rawStore) {
     if (entry.expires_at < now) rawStore.delete(key);
   }
-  // Memory backstop: drop oldest by insertion order until under ceiling.
   while (rawStore.size > RAW_REF_MAX_ENTRIES) {
     const firstKey = rawStore.keys().next().value;
     if (firstKey === undefined) break;
@@ -128,13 +57,6 @@ function truncateNode(value: unknown, arrayDepth = 0): unknown {
     const cap = arrayDepth === 0 ? MAX_ARRAY_LEN : MAX_NESTED_ARRAY_LEN;
     const { arr, dropped } = truncateArray(value, cap);
     const mapped = arr.map((v) => truncateNode(v, arrayDepth + 1));
-    // Use a single-leading-underscore key so the renderer's `_`/`__`
-    // filter strips it before it reaches the user. Pre-fix this was
-    // `__truncated` (double underscore, same prefix as the omitted-
-    // chars marker) and surfaced as a literal `__truncated: "+5 more
-    // items"` in fallback turns. Single-`_` keeps the marker
-    // identifiable for tools that re-walk the structure but ensures it
-    // never reaches the end-user view.
     if (dropped > 0) mapped.push({ _truncated: `+${dropped} more items (${value.length} total)` });
     return mapped;
   }
@@ -147,37 +69,12 @@ function truncateNode(value: unknown, arrayDepth = 0): unknown {
 
 interface BranchHandle {
   size: number;
-  /** One-line shape of the branch (`array[200]<object>`,
-   *  `object{messages[200],nextPageToken}`) embedded in the omission stub
-   *  so the LLM and the preview judge see the STRUCTURE that was omitted —
-   *  not an opaque byte count. Pre-fix a stub read as "no data here", so a
-   *  transform over `[omitted: 9123 chars]` looked empty and the judge
-   *  false-flagged a present-but-omitted payload as missing. */
   shape: string;
-  /** The container holding this branch — lets shrinkToCap detect that a
-   *  handle's subtree was already detached by an earlier (ancestor)
-   *  replacement, so it neither wastes a replace on an unreachable node
-   *  nor corrupts the running size estimate. */
   owner: object;
-  /** The branch value itself when it is an object/array (string branches
-   *  keep only `owner`). Used to register replaced subtrees. */
   node: object | null;
   replace: (marker: unknown) => void;
 }
 
-/**
- * One bottom-up pass computing the exact JSON length of every
- * object/array node, memoized per node. Replaces the previous per-node
- * `JSON.stringify(child)` calls in `collectHeaviestBranches`, whose total
- * transient was Σ|subtree JSON| ≈ payload size × average depth — the
- * dominant allocation site of the per-turn assembly (multi-GB class on
- * production payloads). Leaf strings still stringify once each (escaping
- * makes their JSON length data-dependent), so total work is O(payload).
- *
- * `undefined`/function/symbol values follow JSON semantics: skipped as
- * object entries, `null` (4 chars) as array items. Nodes with a custom
- * `toJSON` fall back to a real stringify for exactness.
- */
 function computeJsonSizes(root: unknown): Map<object, number> {
   const sizes = new Map<object, number>();
   function sizeOf(node: unknown): number {
@@ -187,13 +84,10 @@ function computeJsonSizes(root: unknown): Map<object, number> {
       const s = JSON.stringify(node);
       return s === undefined ? 4 : s.length;
     }
-    if (t !== "object") return 4; // undefined/function as array item → null
+    if (t !== "object") return 4;
     const obj = node as object;
     const cached = sizes.get(obj);
     if (cached !== undefined) return cached;
-    // Cycle guard: pre-seed before recursing (JSON.stringify would throw
-    // on a cycle; approxJsonLength maps that to Infinity — a pre-seeded 4
-    // keeps the walk terminating and the branch merely under-counted).
     sizes.set(obj, 4);
     if (typeof (obj as { toJSON?: unknown }).toJSON === "function") {
       const exact = approxJsonLength(obj);
@@ -224,21 +118,8 @@ function computeJsonSizes(root: unknown): Map<object, number> {
   return sizes;
 }
 
-// Root-level keys pass-2 must NEVER null when the envelope declares its
-// output as pre-sampled (`output_sampled: true`). The sampler already
-// bounded `output` to a few KB of REAL rows — pass-2 picking it as the
-// "heaviest branch" (it usually is) re-created the production
-// "status=succeeded · no output" failure with the sample in place. Step
-// traces and other branches are recoverable via inspect_execution_step;
-// the user's actual result is the one thing the envelope exists to carry.
 const SAMPLED_OUTPUT_PROTECTED_KEYS = new Set(["output", "output_note", "output_raw_ref"]);
 
-// Root-level keys pass-2 must never stub on ANY payload: the turn loop's
-// stop conditions and stall fingerprinting read them from the SDK-visible
-// tool result (`requires_repair`/`classification` are scalars and survive
-// regardless; `judge.missing` and `warnings` are branches a heavy envelope
-// could otherwise sacrifice — see loop/stop-conditions.ts). Pass-1 array
-// clipping still applies to them, only the branch-stub pass skips them.
 const ALWAYS_PROTECTED_ROOT_KEYS = new Set(["judge", "warnings"]);
 
 function collectHeaviestBranches(
@@ -297,8 +178,6 @@ function collectHeaviestBranches(
     }
   }
   walk(root, rootProtected);
-  // Heaviest first — replacing the biggest branch with a small marker
-  // gets us under cap fastest with the least information loss elsewhere.
   handles.sort((a, b) => b.size - a.size);
   return handles;
 }
@@ -309,10 +188,6 @@ interface ShrinkResult {
   charsOmitted: number;
 }
 
-// After an estimate first dips under cap, one real stringify verifies it
-// (the decrement model can be optimistic when replaced subtrees nested).
-// Bounded so a pathological shape cannot re-create the old
-// stringify-per-replacement cost.
 const SHRINK_VERIFY_MAX = 5;
 
 function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
@@ -324,9 +199,6 @@ function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
   if (current <= cap) return { data, branchesOmitted: 0, charsOmitted: 0 };
   const parents = new Map<object, object>();
   const handles = collectHeaviestBranches(data, sizes, parents);
-  // Subtrees already replaced by a stub. A handle whose owner sits inside
-  // one is detached — replacing it would touch an unreachable object and
-  // double-subtract its size from the running estimate.
   const replacedRoots = new Set<object>();
   const isDetached = (owner: object): boolean => {
     let node: object | undefined = owner;
@@ -343,67 +215,27 @@ function shrinkToCap(data: unknown, cap: number, rawRef: string): ShrinkResult {
   let verifies = 0;
   for (const handle of handles) {
     if (current <= cap) {
-      // The estimate says done — confirm with a real measurement (nested
-      // replacements can make the decrement optimistic). Correct and
-      // continue when it lied; trust it once the verify budget is spent.
       if (verifies >= SHRINK_VERIFY_MAX) break;
       verifies += 1;
       current = approxJsonLength(data);
       if (current <= cap) break;
     }
-    if (handle.size < 64) continue; // skip tiny branches; not worth it
+    if (handle.size < 64) continue;
     if (isDetached(handle.owner)) continue;
-    // Replace the heavy branch with a LABELED primitive stub, never a
-    // bare `null` and never an inline marker OBJECT.
-    //
-    //   - The first-generation marker `{__omitted_chars, __raw_ref}`
-    //     leaked raw envelope keys into user-visible output (session
-    //     0ac7593c) — objects are out.
-    //   - The second-generation `null` was indistinguishable from "the
-    //     step produced nothing": a loop preview whose fat iteration
-    //     objects were nulled rendered as `array[4]<null>` and the
-    //     model restructured a working workflow believing the loop
-    //     collapsed its body output (session 784c1b02). Bare null is
-    //     out too.
-    //
-    // The stub mirrors the `previewOffloadRefs` convention (a labeled
-    // primitive string): honest about WHY the value is absent and how
-    // to recover it, safe through every renderer.
     const stub =
       handle.size >= SHAPE_STUB_MIN_CHARS
         ? `[omitted: ${handle.size} chars · shape: ${handle.shape} — get_raw_result(ref="${rawRef}")]`
         : `[omitted: ${handle.size} chars — get_raw_result(ref="${rawRef}")]`;
-    // Replacing a branch with a stub LONGER than the branch would grow
-    // the payload — skip those; they're too small to matter anyway.
     if (handle.size <= stub.length + 16) continue;
     handle.replace(stub);
     if (handle.node !== null) replacedRoots.add(handle.node);
     branchesOmitted += 1;
     charsOmitted += handle.size;
-    // Estimate-decrement instead of the old full re-stringify per
-    // replacement (which was O(payload × replacements)). The stub lands
-    // as a JSON string: quoted, so +2 over its raw length.
     current -= handle.size - (stub.length + 2);
   }
   return { data, branchesOmitted, charsOmitted };
 }
 
-/**
- * Truncate a tool's output to fit LLM context. Stores the full payload
- * under an in-memory ref; callers surface `raw_ref` in the tool result
- * so the model can fetch the untruncated form via `get_raw_result`.
- *
- * `cap` overrides MAX_JSON_CHARS. Used by step-trace assembly to clip
- * each `output_preview` against the smaller MAX_STEP_PREVIEW_CHARS
- * budget before the outer envelope is itself passed through this same
- * function with the default cap.
- *
- * `opts.store` (default true) controls whether the full payload is minted
- * into the shared raw-ref store for later `get_raw_result`. Read-only
- * callers that only need the truncated SHAPE (e.g. re-deriving a display
- * view on replay) pass `store: false` so the read path never mutates the
- * process-global store — the returned `.data` is byte-identical either way.
- */
 export function truncateForLlm(
   output: unknown,
   cap: number = MAX_JSON_CHARS,
@@ -418,13 +250,6 @@ export function truncateForLlm(
   const pass1 = truncateNode(output);
   const { data: shortened, branchesOmitted, charsOmitted } = shrinkToCap(pass1, cap, refId);
   const shortenedLen = approxJsonLength(shortened);
-  // Roll the per-branch omission accounting into a single top-level
-  // `_truncation_note` on the visible payload when the result is an
-  // object. The LLM (and the fallback renderer) sees one underscore-
-  // prefixed string instead of N inline `{__omitted_chars, __raw_ref}`
-  // marker objects. The `_` prefix is filtered by describeToolOutput
-  // so it never reaches the end user, and the full payload remains
-  // available via `raw_ref`.
   if (
     branchesOmitted > 0 &&
     shortened !== null &&
@@ -453,23 +278,10 @@ export function truncateForLlm(
   };
 }
 
-/**
- * Per-step preview cap for `step_trace[i].output_preview`. Wraps
- * `truncateForLlm` with the smaller MAX_STEP_PREVIEW_CHARS budget so
- * a single inline step preview can't dominate the envelope. The full
- * preview remains in the engine's persisted step row and is reachable
- * via `inspect_execution_step` / `diagnose_latest_execution`.
- */
 export function truncateStepPreviewForLlm(value: unknown): TruncatedOutput {
   return truncateForLlm(value, MAX_STEP_PREVIEW_CHARS);
 }
 
-// Budget for the workflow `output` field inside the run_workflow /
-// dry_run_workflow envelope. Sized so a sampled output + step traces +
-// lifecycle fields fit comfortably under MAX_JSON_CHARS — pre-fix a large
-// output survived intact until the OUTER pass-2 nulled the whole field
-// ("status=succeeded · no output" for a 95-row result). Sampling keeps
-// REAL rows in front of the model/user with explicit in-band markers.
 const MAX_WORKFLOW_OUTPUT_CHARS = 5000;
 const SAMPLE_STRING_HEAD_CHARS = 400;
 
@@ -479,9 +291,6 @@ export interface SampledOutput {
   raw_ref?: string;
 }
 
-/** Recursively cap arrays/strings for display, marking what was sampled
- *  IN-BAND so the model (and the user reading the summary) knows the
- *  payload is partial — never mistaking the sample for the full result. */
 function sampleNode(value: unknown, maxItems: number): unknown {
   if (typeof value === "string") {
     return value.length > SAMPLE_STRING_HEAD_CHARS
@@ -505,13 +314,6 @@ function sampleNode(value: unknown, maxItems: number): unknown {
   return value;
 }
 
-/**
- * Shrink a workflow output to a chat-presentable sample. Small outputs
- * pass through untouched. Large ones return REAL leading rows with
- * explicit sampling markers plus a raw_ref to the full payload — the
- * model can answer "show me the top 5" from the sample directly and
- * fetch the rest via get_raw_result only when genuinely needed.
- */
 export function sampleWorkflowOutputForLlm(output: unknown): SampledOutput {
   if (output === null || output === undefined) return { value: output, sampled: false };
   let json: string;
@@ -542,8 +344,6 @@ export function sampleWorkflowOutputForLlm(output: unknown): SampledOutput {
       return { value: sampled, sampled: true, raw_ref };
     }
   }
-  // Pathological shape (single huge object, no arrays to sample) — fall
-  // back to a head excerpt rather than dropping the field entirely.
   return {
     value: `${json.slice(0, 2000)}… [output too large to inline]`,
     sampled: true,
@@ -565,12 +365,6 @@ export function clearRawStore(): void {
   rawStore.clear();
 }
 
-/**
- * Stash an arbitrary value under a fresh ref and return the ref. Used
- * by `persist.buildModelMessages` when eliding old tool outputs that
- * were originally small enough to skip `truncateForLlm` but are now
- * being replaced with a stub on replay.
- */
 export function rememberRaw(value: unknown): string {
   const refId = `raw_${crypto.randomUUID().slice(0, 8)}`;
   storeRaw(refId, value);

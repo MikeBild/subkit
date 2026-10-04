@@ -1,6 +1,3 @@
-// `extract` flow — unstructured sample → canonical schema + data.
-// Thin wrapper around `core/invoke.ts`.
-
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../core/invoke.ts";
@@ -26,15 +23,7 @@ export interface ExtractResult {
   tokens: EnhancedPrompt["token_counts"];
   model_used: string;
   fell_back: boolean;
-  /**
-   * Roundtrip status — does the inferred `schema` actually accept the
-   * inferred `data`? `ok` when the structural check passes, `fail`
-   * when a recognisable JSON-Schema shape rejects the sample, and
-   * `unverified` when the schema's shape is unrecognised (caller
-   * decides whether to trust it).
-   */
   roundtrip_status: "ok" | "fail" | "unverified";
-  /** Specific issues when `roundtrip_status === "fail"`. */
   roundtrip_issues: string[];
 }
 
@@ -45,12 +34,6 @@ interface JsonSchemaLike {
   items?: unknown;
 }
 
-/**
- * Minimal structural check: does the inferred JSON-Schema-like
- * `schema` accept its own `data`? Catches the common LLM shapes
- * without pulling Ajv into the engine bundle. Returns `unverified`
- * when the shape is unrecognised so the caller can decide.
- */
 export function validateExtractRoundtrip(
   schema: unknown,
   data: unknown,

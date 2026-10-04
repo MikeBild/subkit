@@ -1,13 +1,3 @@
-// Regression for session abeefb33: every auto-persist failure
-// surfaced as the prose "database error" → cannot_help → conversation
-// dead-ends with no question for the user. Postgres errors now
-// translate into typed envelopes (`slug_already_in_use`,
-// `in_use_by_dependent_rows`, `missing_required_field`,
-// `invalid_input_format`, `auto_persist_failed`) with concrete
-// `next_best_actions` so the LLM has a recovery path.
-//
-// Pure-function unit test against the translator — no DB needed.
-
 import { describe, expect, test } from "bun:test";
 import { translateAutoPersistError } from "./auto-persist.ts";
 
@@ -72,8 +62,6 @@ describe("translateAutoPersistError", () => {
     const out = translateAutoPersistError(err, "save_connector_draft");
     expect(out.error_code).toBe("auto_persist_failed");
     expect(out.message).toContain("unexpected runtime explosion");
-    // Critically, fallback STILL points at ask_user_text so the LLM
-    // surfaces the failure to the user instead of cannot_help'ing.
     expect(out.next_best_actions).toContain("ask_user_text");
   });
 

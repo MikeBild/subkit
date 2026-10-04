@@ -1,15 +1,3 @@
-// Observability surface — runtime log tail, trace correlation, redaction,
-// tenant scoping, and the audit trail the tail itself writes.
-//
-// The diagnostics log tail (GET /v1/diagnostics/logs) is the cross-surface
-// seam the rest of the e2e suites assert background work through. This file
-// pins that seam's own contract: it returns structured entries, correlates
-// a request's started/completed lines by trace_id, never leaks an API key
-// plaintext (redaction), scopes entries to the caller's tenant, and writes
-// a DIAGNOSTICS_LOGS_TAILED audit row on every read.
-//
-// LLM: none — boot mock to stay hermetic.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { seedWorkflow } from "./_helpers/factories.ts";
 import { apiClient } from "./_helpers/http.ts";
@@ -27,15 +15,12 @@ afterAll(async () => {
 describe("diagnostics log tail", () => {
   test("returns structured http entries and correlates a request by trace_id", async () => {
     const api = apiClient(env);
-    // Generate a deterministic, identifiable request.
     const { slug } = await seedWorkflow(env, { description: "trace probe" });
     expect(slug).toBeTruthy();
 
     const entries = await getLogEntries(api, { module: "http", limit: 500 });
     expect(entries.length).toBeGreaterThan(0);
 
-    // Find a path that produced BOTH a started and a completed line, then
-    // assert they share one trace_id — proving end-to-end correlation.
     const byPath = new Map<string, Set<string>>();
     for (const e of entries) {
       const path = e.fields.path as string | undefined;
@@ -60,15 +45,12 @@ describe("diagnostics log tail", () => {
     const entries = await getLogEntries(api, { limit: 500 });
     for (const e of entries) {
       const tenant = e.fields.tenant_id as string | null | undefined;
-      // Entries either carry THIS tenant or are system-scoped (tenant_id
-      // null/absent). They must never carry a different tenant's id.
       if (tenant !== undefined && tenant !== null) expect(tenant).toBe(env.tenantId);
     }
   }, 30_000);
 
   test("API key plaintext never appears in the log ring (redaction)", async () => {
     const api = apiClient(env);
-    // Drive a few authenticated requests so the key is exercised.
     await api.get("/v1/connectors?limit=1");
     await api.get("/v1/workflows?limit=1");
     const entries = await getLogEntries(api, { limit: 1000 });

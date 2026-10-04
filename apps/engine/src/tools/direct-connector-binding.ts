@@ -1,5 +1,3 @@
-// Server-owned connector provenance for exact, single-use tool decisions.
-// Preparation reads metadata only; runtime compares the rows actually loaded.
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
@@ -131,8 +129,6 @@ function referencedSlugs(value: unknown, found = new Map<string, boolean>()): Ma
   return found;
 }
 
-/** Missing targets yield no usable binding; a legacy or unresolved approval
- * can never authorize the latest mutable configuration at execution time. */
 export async function captureDirectConnectorBinding(p: {
   db: Executor;
   tenant_id: string;
@@ -213,9 +209,7 @@ export async function captureDirectConnectorBinding(p: {
     resolved.search = "";
     resolved.hash = "";
     url = resolved.toString();
-  } catch {
-    // An unresolved destination remains explicit rather than inventing a URL.
-  }
+  } catch {}
   return DirectConnectorBindingSchema.parse({
     schema_version: 1,
     tool: p.tool,
@@ -244,9 +238,6 @@ export class DirectConnectorBindingError extends Error {
   }
 }
 
-/** Called after credentials and placeholders resolve, immediately before the
- * outbound operation. Neither caller arguments nor a fresh lookup can replace
- * the recorded approval or the actual loaded credential generation. */
 export async function assertDirectConnectorBinding(p: {
   db: Db;
   tenant_id: string;

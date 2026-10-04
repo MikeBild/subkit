@@ -1,5 +1,3 @@
-// dry_run_transform tool tests.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,12 +19,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* fall through */
-  }
-  // Bootstrap config with `LLM_PROVIDER=mock` so the repair stage's
-  // `invoke()` goes through the in-process mock — the bootstrap env
-  // channel documented in env.ts, not a feature flag.
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-dry-run-transform-"));
   await loadConfig({
     env: {
@@ -104,8 +97,6 @@ describe("dry_run_transform — jsonata dialect", () => {
   });
 
   test("runtime timeout surfaces as timeout", async () => {
-    // JSONata doesn't easily produce a timeout from small expressions,
-    // so we pass timeout_ms=50 with a deep recursive expression.
     const deep = Array(2000).fill("x").join(".");
     const result = await dryRunTransformTool.execute(makeCtx(), {
       expression: deep,
@@ -113,10 +104,6 @@ describe("dry_run_transform — jsonata dialect", () => {
       dialect: "jsonata",
       timeout_ms: 50,
     });
-    // Either the expression parses to nothing (ok:true with null),
-    // times out, or syntax-errors — any of those three is a valid
-    // "did not take more than 50ms to bail" outcome. We only assert
-    // that the tool did not hang.
     expect(["syntax_error", "timeout", undefined]).toContain(
       result.ok ? undefined : (result.data as { error?: { code?: string } }).error?.code,
     );
@@ -146,7 +133,7 @@ describe("dry_run_transform — jsonpath dialect", () => {
 
   test("invalid jsonpath → syntax_error", async () => {
     const result = await dryRunTransformTool.execute(makeCtx(), {
-      expression: "items.foo", // must start with $
+      expression: "items.foo",
       sample_data: {},
       dialect: "jsonpath",
     });
@@ -189,11 +176,6 @@ describe("dry_run_transform — template dialect", () => {
   });
 });
 
-// Regression: session fb930dcb burned 12 identical Jira fetches because
-// the only way to iterate on a JSONata transform was `dry_run_workflow`
-// (which re-hits the upstream). `dry_run_transform` now resolves
-// `$scope` / `$scope.<step_id>` / `$input` from the per-conversation
-// preview store so authoring a transform costs zero upstream calls.
 describe("dry_run_transform — scope reference resolution", () => {
   test("resolves `$scope.<step_id>` from the last cached preview", async () => {
     const toolCtx = makeCtx();
@@ -224,10 +206,6 @@ describe("dry_run_transform — scope reference resolution", () => {
       value: Array<{ key: string; assignee?: string | null }>;
       metadata: { resolved_from_preview?: string };
     };
-    // The critical assertion: both rows are present (no null-thinning).
-    // JSONata's object constructor elides keys whose value is `null`, so
-    // the second row carries only `key` — `$exists(...)` still prevents
-    // the whole row from collapsing, which is the session-fb930dcb fix.
     expect(data.value).toHaveLength(2);
     expect(data.value[0]).toEqual({ key: "ACME-1", assignee: "Ada" });
     expect(data.value[1]?.key).toBe("ACME-2");
@@ -267,12 +245,6 @@ describe("dry_run_transform — scope reference resolution", () => {
   });
 });
 
-// Fix 6 (session 784c1b02): the sandbox must reproduce the EXACT
-// JSONata surface execution builds — `$scope`/`$steps` bindings via
-// buildJsonataBindings, and for a step inside a loop body the engine's
-// per-iteration childScope (`$item`, `$loop_index`).
-// Pre-fix those references returned `{}` here while working at runtime,
-// so the model "debugged" working expressions into broken ones.
 describe("dry_run_transform — execution-parity loop-body context", () => {
   function makeCtxWithDraft(steps: Array<Record<string, unknown>>): ToolContext {
     return {
@@ -293,8 +265,6 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
   ];
 
   function recordEnvelopePreview(toolCtx: ToolContext): void {
-    // Envelope-shaped scope — the exact shape dry_run_workflow records
-    // post-fix (`{ data, status_code, … }`, mirroring engine/envelope.ts).
     recordLastPreview({
       tenant_id,
       conversation_id: toolCtx.conversation_id,
@@ -413,14 +383,6 @@ describe("dry_run_transform — execution-parity loop-body context", () => {
   });
 });
 
-// `dialect: "javascript"` — the SAME parity contract as
-// execution: the authored FUNCTION BODY runs in the QuickJS sandbox
-// against the production context shape `{ scope, input }` (one `input`
-// value; data at `input.scope.<step_id>.data…`, workflow input at
-// `input.input`), including the loop-body childScope emulation, and
-// failures classify exactly like the recorded-eval JS pass
-// (compile_error / eval_error / empty) with the bounded repair riding
-// the result with `language: "javascript"`.
 describe("dry_run_transform — javascript dialect", () => {
   beforeEach(() => {
     resetMockProvider();
@@ -546,13 +508,9 @@ describe("dry_run_transform — javascript dialect", () => {
     };
     expect(data.error.code).toBe("compile_error");
     expect(data.metadata.dialect).toBe("javascript");
-    // The accepted candidate is JS-only syntax (`const`, `=>`) — it can
-    // ONLY verify through the QuickJS parse check, so `repaired: true`
-    // proves `language: "javascript"` was passed through to the repair.
     expect(data.repair?.repaired).toBe(true);
     expect(data.repair?.before).toBe(bad);
     expect(data.repair?.after).toBe(fixed);
-    // The repair prompt itself must be the JS prompt, not the JSONata one.
     expect(prompts[0]).toContain("JavaScript transform");
     expect(prompts[0]).toContain("FUNCTION BODY");
   });
@@ -590,7 +548,7 @@ describe("dry_run_transform — javascript dialect", () => {
 
 describe("dry_run_transform — audit hygiene", () => {
   test("audit metadata stores expression_hash, not raw expression", async () => {
-    const expression = "items.{ 'id': id }"; // benign
+    const expression = "items.{ 'id': id }";
     const toolCtx = makeCtx();
     await dryRunTransformTool.execute(toolCtx, {
       expression,
@@ -619,8 +577,6 @@ describe("dry_run_transform — audit hygiene", () => {
     expect(meta.dialect).toBe("jsonata");
     expect(meta.ok).toBe(true);
     expect(meta.expression_hash).toMatch(/^[a-f0-9]{16}$/);
-    // Critically: the raw expression text must not appear anywhere in
-    // the audit row.
     expect(JSON.stringify(row).includes(expression)).toBe(false);
   });
 });

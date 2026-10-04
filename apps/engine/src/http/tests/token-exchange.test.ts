@@ -1,10 +1,3 @@
-// Integration: RFC 8693 token exchange at POST /v1/oauth/token.
-//
-// Mint a key, exchange it, use the token everywhere the key is accepted
-// (whoami, /metrics, the operator-verify routes, /mcp, an audited write),
-// then revoke the key and prove the token — and a fresh exchange — are
-// refused. Also: scope narrowing, TTL cap, refusal codes, discovery.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
@@ -280,7 +273,6 @@ describe("the token is accepted exactly like the key", () => {
     expect(meta.expires_in).toBe(900);
     expect(JSON.stringify(meta)).not.toContain(ctx.apiKey);
 
-    // An audited state change made WITH the token: same actor, via marked.
     const issued = await fetch(`${ctx.baseUrl}/v1/identity/api-keys`, {
       method: "POST",
       headers: {
@@ -335,14 +327,12 @@ describe("revocation and tampering", () => {
   test("a rotated-out key's token dies with the key version", async () => {
     const key = await mintKey(["*"]);
     const { body } = await exchange(key.plaintext);
-    // Rotation ends the old row's life at rotating_out_at; force it into the past.
     await ctx.db
       .update(apiKeys)
       .set({ rotating_out_at: new Date(Date.now() - 1000) }) // allow-wall-clock
       .where(and(eq(apiKeys.id, key.id), eq(apiKeys.tenant_id, ctx.tenantId)));
     expect((await whoami(body.access_token ?? "")).status).toBe(401);
 
-    // A re-hashed row (new key material under the same id) is a new version.
     const fresh = await mintKey(["*"]);
     const { body: fresh2 } = await exchange(fresh.plaintext);
     await ctx.db

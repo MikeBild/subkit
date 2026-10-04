@@ -150,8 +150,6 @@ describe("scrub-secrets", () => {
       expect(json).not.toContain("topsecret");
       expect(json).not.toContain("X-Amz-Signature");
       expect(json).toContain("?<presign-redacted>");
-      // The non-query portion of the URL is preserved so an operator can
-      // still recognise the tenant + bucket from an audit row.
       expect(json).toContain("https://bucket.s3.amazonaws.com/key");
     });
   });
@@ -206,13 +204,11 @@ describe("scrub-secrets", () => {
       const b: Record<string, unknown> = { name: "b", a };
       a.b = b;
       const out = scrubSecrets(a);
-      // Just assert no throw + the cycle was broken to "[circular]".
       expect(JSON.stringify(out)).toContain("[circular]");
     });
 
     test("respects depth limit on pathological nesting", () => {
       let cur: Record<string, unknown> = { leaf: "ghp_abcdefghijklmnopqrstuvwxyz123456" };
-      // Wrap 30 levels deep (well past MAX_DEPTH=16).
       for (let i = 0; i < 30; i++) cur = { next: cur };
       const out = scrubSecrets(cur);
       expect(JSON.stringify(out)).toContain("[depth-exceeded]");

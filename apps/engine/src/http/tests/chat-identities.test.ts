@@ -1,8 +1,3 @@
-// HTTP integration tests for /v1/chat/identities — the admin route
-// that links a chat-platform user to a subkit user. Covers that unlink
-// emits the right audit action and that link rejects a body.user_id
-// that belongs to another tenant.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -30,9 +25,6 @@ function sha256Hex(v: string): string {
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-id");
 
-  // Seed a user in a different tenant. The link route accepts a
-  // body.user_id without auto-joining to the principal's tenant; this
-  // user lets us test that the new tenant check (W-2) actually fires.
   const [t2] = await ctx.db
     .insert(tenants)
     .values({ slug: `t-chat-id-other`, display_name: "Other Tenant" })
@@ -49,7 +41,6 @@ beforeAll(async () => {
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
 
-  // Provision a non-admin member in the SAME tenant for RBAC-deny tests.
   const [member] = await ctx.db
     .insert(users)
     .values({
@@ -109,14 +100,12 @@ describe("POST /v1/chat/identities", () => {
     });
     expect(res.status).toBe(404);
 
-    // No chat_identities row was created.
     const rows = await ctx.db
       .select()
       .from(chatIdentities)
       .where(eq(chatIdentities.platform_user_id, "U_INTRUDER"));
     expect(rows).toHaveLength(0);
 
-    // No CHAT_IDENTITY_LINKED audit was written.
     const audits = await ctx.db
       .select()
       .from(auditLog)
@@ -125,7 +114,6 @@ describe("POST /v1/chat/identities", () => {
   });
 
   test("happy path: link a chat user to a same-tenant subkit user", async () => {
-    // Workspace must exist in THIS tenant for the link to be accepted.
     await ctx.db.insert(chatWorkspaces).values({
       tenant_id: ctx.tenantId,
       platform: "slack",
@@ -156,11 +144,6 @@ describe("POST /v1/chat/identities", () => {
   });
 
   test("rejects a body.workspace_id that isn't installed in this tenant with 404", async () => {
-    // No chat_workspaces row for "T_FOREIGN" in our tenant. Without
-    // the workspace tenant-scoping check, the route would happily
-    // insert a row keyed on a foreign team_id and the dispatcher
-    // would later resolve cross-tenant actors when that workspace
-    // gets installed by another tenant.
     const res = await fetch(`${ctx.baseUrl}/v1/chat/identities`, {
       method: "POST",
       headers: authedHeaders(),
@@ -225,7 +208,6 @@ describe("RBAC negative — non-admin lacks chat_identity:write", () => {
 
 describe("DELETE /v1/chat/identities/{id}", () => {
   test("C-2: emits a chat_identity.unlinked audit row (not 'linked')", async () => {
-    // Seed an identity so we have something to unlink.
     const [seeded] = await ctx.db
       .insert(chatIdentities)
       .values({
@@ -244,8 +226,6 @@ describe("DELETE /v1/chat/identities/{id}", () => {
     });
     expect(res.status).toBe(200);
 
-    // The audit log must distinguish unlink from link — SIEM and the
-    // admin audit view both pivot on `action`.
     const unlinkAudits = await ctx.db
       .select()
       .from(auditLog)

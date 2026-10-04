@@ -1,6 +1,3 @@
-// Enqueue an execution.run job and wait for the worker to consume it +
-// mark the execution row as succeeded.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -94,9 +91,6 @@ describe("queue: execution.run worker", () => {
         .where(eq(executionSteps.execution_id, execution_id)),
     ).toHaveLength(0);
 
-    // No step ran, so the step-level trail has nothing to say. Without the
-    // admission row this refusal would exist only as a failed execution with
-    // no stated reason — the exact case "did the limit hold?" cannot answer.
     const refusals = await engineCtx.testDb.db
       .select()
       .from(auditLog)
@@ -182,7 +176,6 @@ describe("queue: execution.run worker", () => {
         },
       ],
     });
-    // HTTP layer would pre-create the execution row; mimic that here.
     const execution_id = await createExecution(engineCtx.testDb.db, {
       tenant_id: engineCtx.tenantId,
       workflow_id,
@@ -205,9 +198,6 @@ describe("queue: execution.run worker", () => {
     const jobId = await boss.send(EXECUTION_RUN_QUEUE, job);
     expect(jobId).toBeTruthy();
 
-    // Poll until the execution row reaches a terminal status.
-    // 60s budget: pg-boss worker polls at 1s, and when the whole suite runs
-    // in parallel each per-test database races to register ~14 queues.
     const db = engineCtx.testDb.db;
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 60_000;

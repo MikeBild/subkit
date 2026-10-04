@@ -49,17 +49,8 @@ const TOKEN_EXCHANGE_FLAG = "--token-exchange";
 const VERSION_FLAG = "--version";
 const HELP_FLAG = "--help";
 async function runServer(): Promise<void> {
-  // Boot-phase heartbeat: emit elapsed + rss every 5s until `ready`. A boot
-  // that stalls (binary page-fault-in under memory pressure, a hung await)
-  // is then visible as a growing trend rather than a silent multi-minute
-  // gap. Paired with the `bootPhase()` start/end markers below, which name
-  // the phase a freeze is stuck in. Stopped at `ready`. See
-  // project_engine_slow_boot_stall.
   const stopBootHeartbeat = startBootHeartbeat();
 
-  // Phase 1 logger is already live (hardcoded defaults). Load the
-  // config file before any subsystem reads it; reconfigure the logger
-  // immediately so subsequent boot logs honor the operator's settings.
   const { loadConfig, getConfig, recordBootConsumer, emitBootComplete } = await import(
     "./config/loader.ts"
   );
@@ -73,14 +64,6 @@ async function runServer(): Promise<void> {
     deployment_environment: cfg.observability.deployment_environment,
   });
   recordBootConsumer("logger");
-  // Scanner posture: `getScanner()` returns `NoopScanner` (reports every
-  // upload as clean). this is a DOCUMENTED, accepted risk (see
-  // "File scanning" under Architectural decisions in apps/engine/AGENTS.md):
-  // tenant uploads are not a primary attack surface today, so no clamd
-  // sidecar is wired (keeps the deployment self-contained). Recorded at INFO
-  // for traceability — it is a known posture, not an unhandled compliance
-  // hole. Revisit (wire a clamd-backed scanner via getConfig().storage.scanner.*)
-  // before tenant-uploaded binaries become a revenue/compliance surface.
   if (getScanner() === NoopScanner && process.env.NODE_ENV === "production") {
     logger.info({
       module: "files",
@@ -89,41 +72,16 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Bootstrap preflight — the first thing a production start does that
-  // touches its bootstrap, and the last point at which it can refuse for
-  // free: before crypto_assert, before migrations, before revision 1 is
-  // written, before the listener opens. A refusal prints one structured
-  // line and exits 3 having changed nothing, so a rollback stays possible.
-  // No-op outside production. See docs/admins/bootstrap-preflight.md.
   const { runProductionPreflightOrExit } = await import("./preflight/runner.ts");
   await bootPhase("preflight", () => runProductionPreflightOrExit(getDb(), cfg));
 
-  // Surfaces a bad MASTER_KEY in the boot log, before any request can
-  // reach an encrypt/decrypt path. Pre-fix this lived as a top-level
-  // call in crypto/aes-gcm.ts but that fired on every binary import,
-  // breaking arg-only flags like --smoke / --version.
   await bootPhase("crypto_assert", () => assertCryptoKeyOrExit());
   const db = getDb();
 
-  // Shared chat adapter registry — both the HTTP routes and the
-  // outbound fanout worker resolve chat adapters out of this single
-  // instance so notification dispatch can find adapters that were
-  // registered via the /chat/install flow.
   const chatRegistry = new ChatAdapterRegistry();
 
-  // The sk CLI inbox is a single process-global outbound sink: it is
-  // never installed per workspace (there is no `chat_workspaces` row for
-  // the reserved `_cli` workspace), so it is registered once here as the
-  // `sk_cli` fallback adapter. Per-tenant isolation happens at send time
-  // via `delivery.tenant_id` — the adapter writes one
-  // `cli_notification_inbox` row scoped to that tenant. Distinct from the
-  // chat_workspaces-driven hydration in `hydrate.ts`.
   chatRegistry.registerFallback("sk_cli", new SkCliAdapter(db));
 
-  // Apply embedded migrations BEFORE any subsystem touches a table.
-  // The migration set is compiled into this binary, so the engine and its
-  // schema lineage are one bit-for-bit artifact. Failure here is fatal: no
-  // subsystem is allowed to run against a partial schema.
   try {
     await bootPhase("migrations", () => runMigrationsFromUrl(cfg.database.url));
   } catch (err) {
@@ -137,12 +95,9 @@ async function runServer(): Promise<void> {
     process.exit(1);
   }
 
-  // The search path is a role default now, not a startup parameter; verify it
-  // resolved before any subsystem queries.
   const { assertSearchPathOrAbort } = await import("./db/assert-search-path-or-abort.ts");
   await bootPhase("search_path", assertSearchPathOrAbort);
 
-  // PostgreSQL owns the canonical snapshot; process input only seeds revision 1.
   const { initializeRuntimeConfig } = await import("./runtime-config/service.ts");
   const { RuntimeConfigCoordinator } = await import("./runtime-config/coordinator.ts");
   await bootPhase("runtime_config", () => initializeRuntimeConfig(db, cfg));
@@ -152,21 +107,14 @@ async function runServer(): Promise<void> {
   await bootPhase("restart_outcome", () => restart.answerRestartRequestAtBoot(db));
   recordBootConsumer("runtime-config");
 
-  // Non-fundamental consumers start only after the canonical snapshot lands.
   const stopTracing = await startTracing();
   recordBootConsumer("tracing");
 
-  // Non-blocking update check — use the canonical DB-backed snapshot, never
-  // the revision-1 environment seed that was needed to reach PostgreSQL.
   if (getConfig().operations.update_check_enabled) startEngineUpdateCheck(OPENAPI_INFO.version);
 
-  // Validate every external runtime dependency after self-migration has
-  // installed the database capabilities a fresh deployment requires.
   const { validateBootDependencies } = await import("./observability/boot-dependencies.ts");
   await bootPhase("boot_dependencies", () => validateBootDependencies(db));
 
-  // Drift detection is read-only; tagless pre-squash rows are retained history,
-  // while unknown tagged identities or missing embedded identities are actionable.
   let drift: DriftReport | null = null;
   try {
     drift = await detectDrift(db);
@@ -200,12 +148,6 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // First-run bootstrap probe.  Self-detects an empty `tenants` table +
-  // unset post-bootstrap sentinel, mints a one-time token, and prints a
-  // copy-paste `sk init --token <token>` banner.  Once the operator
-  // POSTs `/v1/setup`, the sentinel flips and this becomes a no-op on
-  // every subsequent boot.  Wrapped so a transient DB error never
-  // blocks the engine from coming up — the next boot retries.
   try {
     await bootstrap.run(db);
   } catch (err) {
@@ -217,31 +159,13 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Start pg-boss + register handlers before the HTTP server so enqueue
-  // requests hitting the first byte always find a live boss.
   const boss = await bootPhase("queue_start", () =>
     startBoss({ connectionString: getConfig().database.url }),
   );
   recordBootConsumer("queue");
   await bootPhase("queue_handlers", () => registerAllHandlers({ boss, db, chatRegistry }));
 
-  // Hydrate the chat adapter registry from `chat_workspaces` BEFORE the
-  // HTTP listener accepts traffic. Without this, the first Slack POST
-  // arrives at a route that can't find an adapter to verify with and
-  // returns 503 adapter_not_registered. Failures per workspace log but
-  // do not block boot (the workspace simply stays un-hydrated until
-  // re-installed or the next boot).
-  //
-  // We log the per-workspace outcome at info so the boot tail tells
-  // operators at a glance how many workspaces hydrated — without this
-  // a chat misconfiguration is silent until the first inbound event.
   try {
-    // Dynamic import keeps hydration failures isolated from
-    // module-load time. A static `import` at file head would surface a
-    // hydrate.ts parse / circular-dep error during the engine entry
-    // module's eval phase — long before this try/catch could mask it —
-    // and crash boot before the operator-friendly warn fires. The
-    // dynamic import lets the warn-then-continue contract above hold.
     const { hydrateChatRegistry } = await import("./chat/hydrate.ts");
     const outcome = await hydrateChatRegistry(db, chatRegistry);
     logger.info({
@@ -262,10 +186,6 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Crash-recovery sweep: promote any execution stuck in `running` past
-  // its workflow's `timeout_ms × 1.5` grace window into `timed_out`.
-  // Wrapped in try/catch so a sweep failure (e.g. transient DB blip)
-  // never blocks engine startup — the next boot will retry.
   try {
     const overrideThresholdMs = getConfig().queue.crash_recovery_threshold_ms;
     const { recovered, reconciled_steps } = await recoverCrashedExecutions(
@@ -290,12 +210,6 @@ async function runServer(): Promise<void> {
   const crashRecoveryMonitor = startCrashRecoveryMonitor(db);
   recordBootConsumer("crash-recovery");
 
-  // Reap orphaned wait checkpoints. Re-enqueues `execution.run`
-  // for every row in `workflow_waits` (`sendAfter:sleep_until_ts` for
-  // future deadlines, immediate for overdue ones), then drops the
-  // checkpoint row. Each reap emits `WAIT_COMPLETED { reason:
-  // "recovered" }` so the operator can correlate against the original
-  // `WAIT_STARTED` entry.
   try {
     const { reaped } = await reapOrphanedWaits(db, boss);
     if (reaped > 0) {
@@ -315,13 +229,6 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Warm the in-process embedding model in the BACKGROUND — deliberately not
-  // awaited. The model is a ~1.5 GB-RSS WASM load; blocking boot on it delays
-  // (and on a slow load, fails) the /health gate the deploy polls. Kicking
-  // it off detached lets the listener bind immediately, with the model
-  // becoming available a few seconds later; any retrieval before then simply
-  // uses FTS. Non-fatal — a load failure (e.g. a build without the fetched
-  // assets) degrades to FTS and must never affect boot.
   void warmEmbeddings()
     .then((ready) =>
       logger.info({
@@ -342,18 +249,11 @@ async function runServer(): Promise<void> {
       }),
     );
 
-  // Pub/sub listener — catch-up first, then LISTEN.
   const listener = await bootPhase("pubsub_listener", () =>
     startListener({ connectionString: getConfig().database.url, db }),
   );
   const abortMonitor = startAbortMonitor(db);
 
-  // Wire the listener into the event-fanout queue. Without this,
-  // `execution.failed` and self-healing `notification.emitted` events are
-  // received by the listener and silently dropped — notification rules and
-  // outbound webhook subscriptions never fire. Each hydrated event row
-  // becomes one `event.fanout` job; the worker is a cheap no-op when no
-  // subscription or rule matches.
   const fanoutUnsubscribers: Array<() => void> = [];
   for (const channel of ["execution.status", "notification.emitted"] as const) {
     fanoutUnsubscribers.push(
@@ -374,36 +274,23 @@ async function runServer(): Promise<void> {
     );
   }
 
-  // Cron reconciler — sync workflows_schedules -> pg-boss schedules.
   const reconciler = new SchedulerReconciler({ boss, db });
   await reconciler.start();
   recordBootConsumer("scheduler");
 
-  // Periodic warn for pending requiresRestart leaves — operator-grade
-  // reminder that a setConfigKey call has landed but the engine
-  // hasn't been restarted to pick it up yet. 5-minute cadence lines
-  // up with the ops cadence on the docs/observability dashboards.
   const restartReminderTimer = setInterval(
     () => {
       void (async () => {
         try {
           const { emitRequiresRestartPendingIfAny } = await import("./config/loader.ts");
           await emitRequiresRestartPendingIfAny();
-        } catch {
-          /* logger module not loaded yet */
-        }
+        } catch {}
       })();
     },
     5 * 60 * 1000,
   );
-  // Don't keep the event loop alive on this timer alone.
   if (typeof restartReminderTimer.unref === "function") restartReminderTimer.unref();
 
-  // RBAC essentials + (NODE_ENV-gated) dev fixtures. Idempotent.
-  // Failure is non-fatal: a transient DB blip might keep auth in a
-  // degraded state, but the next boot retries. Migrations have already
-  // run by this point, so the schema is guaranteed to match the seed
-  // queries — the "skill upsert vs. schema mismatch" path is gone.
   try {
     const seedResult = await seedAtBoot(db);
     for (const key of seedResult.issued_keys) {
@@ -425,11 +312,6 @@ async function runServer(): Promise<void> {
     });
   }
 
-  // Skill-seed pipeline. Loads the markdown skill library embedded in
-  // this binary and upserts each seeded skill into every tenant.
-  // Idempotent + content-hash-gated so unchanged seeds are a no-op on
-  // subsequent boots. Runs in the background so a large skill catalog
-  // never delays serving the first HTTP request.
   if (cfg.operations.seed_skills_at_boot) {
     void (async () => {
       try {
@@ -481,8 +363,6 @@ async function runServer(): Promise<void> {
     })();
   }
 
-  // Knowledge-Source seed pipeline (see knowledge/seed.ts). Background,
-  // always-on, non-fatal — mirrors the skill seed above.
   void seedKnowledgeAtBoot(db);
 
   const app = createApp({ db, chatRegistry });
@@ -500,9 +380,6 @@ async function runServer(): Promise<void> {
     module: "engine",
     action: "ready",
     msg: `engine listening on http://${opts.hostname}:${port}`,
-    // stamp the running version on the ready banner so a prod log line
-    // can be correlated to a release (previously impossible — the boot
-    // sequence never logged its own version).
     version: OPENAPI_INFO.version,
     port,
     hostname: opts.hostname,
@@ -510,16 +387,8 @@ async function runServer(): Promise<void> {
     rss_mb: Math.round((readMemoryUsage().rss / (1024 * 1024)) * 10) / 10,
   });
 
-  // Boot done — stop the heartbeat and switch to steady-state samplers.
-  // The memory sampler emits the rss/heap series + gauges every 60s (the
-  // in-process memory time-series that was entirely missing); the
-  // event-loop monitor flags loop blockage. Both timers are unref'd and
-  // stopped on shutdown.
   stopBootHeartbeat();
   const stopMemorySampler = startMemorySampler({
-    // Sample the shared Postgres-pool counts on the 60s memory tick so the
-    // predictive saturation gauges ride an existing ticker. node-postgres
-    // exposes these synchronous counters on the Pool.
     poolStats: () => {
       const pool = getPool();
       return {
@@ -531,19 +400,8 @@ async function runServer(): Promise<void> {
   });
   const stopEventLoopLagMonitor = startEventLoopLagMonitor();
 
-  // boot.complete: every subsystem above (logger, queue, http_server,
-  // tracing if started, …) called recordBootConsumer. Emit one summary
-  // line so an operator tailing the boot log can confirm the
-  // loader → consumer chain is fully wired.
   await emitBootComplete();
 
-  // See note above — we skip the audit row for system startup
-  // because audit_log.tenant_id is NOT NULL and we intentionally
-  // do not pin startup events to any tenant. logger.info above
-  // already captures the `engine.ready` line.
-
-  // Shutdown in reverse boot order. The drain budget covers non-idempotent
-  // conversation turns; any process supervisor's stop timeout must remain above it.
   const SHUTDOWN_DRAIN_TIMEOUT_MS = 120_000;
   let shutting = false;
   const shutdown = async (
@@ -552,8 +410,6 @@ async function runServer(): Promise<void> {
   ): Promise<void> => {
     if (shutting) return;
     shutting = true;
-    // Flip readiness to draining BEFORE closing the HTTP server so the load
-    // balancer / systemd gate stops routing here while in-flight turns finish.
     setHealthState({ draining: true });
     stopMemorySampler();
     stopEventLoopLagMonitor();
@@ -572,8 +428,6 @@ async function runServer(): Promise<void> {
     }, SHUTDOWN_DRAIN_TIMEOUT_MS + 20_000);
     (hardKill as unknown as { unref?: () => void }).unref?.();
     try {
-      // Stop accepting new HTTP requests first, but do not wait on persistent
-      // SSE/MCP sockets before draining the queue work those clients observe.
       const httpShutdown = beginHttpShutdown(server);
       await reconciler.stop();
       for (const off of fanoutUnsubscribers) off();
@@ -581,12 +435,7 @@ async function runServer(): Promise<void> {
       abortMonitor.stop();
       await stopListener();
       await runtimeConfigCoordinator.stop();
-      // Every producer is now stopped, so the graceful queue drain converges
-      // instead of racing fresh event.fanout jobs from the listener.
       await stopBoss(SHUTDOWN_DRAIN_TIMEOUT_MS);
-      // Queue-backed work has settled. Remaining sockets are long-lived
-      // transports rather than useful in-flight mutations; close them so the
-      // HTTP server's close callback cannot consume the hard-kill budget.
       httpShutdown.forceClose();
       const httpClosed = await httpShutdown.waitUntilClosed(1_000);
       if (!httpClosed) {
@@ -597,8 +446,6 @@ async function runServer(): Promise<void> {
           timeout_ms: 1_000,
         });
       }
-      // Drain every postgres-driver connection pool so the database
-      // doesn't observe abandoned connections after the engine exits.
       try {
         await closeAllPools();
       } catch (err) {
@@ -610,9 +457,6 @@ async function runServer(): Promise<void> {
         });
       }
       await closeDb();
-      // Flush + shutdown the OTel tracer last so any shutdown-related
-      // spans land at the exporter. Best-effort — exporter failure
-      // here cannot stop process exit.
       await stopTracing();
       logger.info({
         module: "engine",
@@ -632,28 +476,15 @@ async function runServer(): Promise<void> {
   };
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
-  // POST /v1/system/restart: the same drain, then exit 75 for the supervisor.
   restart.registerRestartTrigger(
     () => void shutdown("restart", restart.shutdownExitCode("restart")),
   );
 
-  // Touch the listener so the unused-var linter is happy.
   void listener;
 
-  // Park the main task — the http server keeps the process alive on its own.
   await new Promise<void>(() => {});
 }
 
-/**
- * Bootstrap shared by `runServer`, `runMigrateOnce`, and `runSeedOnce`.
- *
- * `config/loader.ts` is imported dynamically so the smoke / version
- * argv-only paths don't trigger the lazy `EnvSchema` parse that fires
- * on first property access. `logging/logger.ts` is dynamic for the
- * same reason — the configured level/format only matters once
- * config is loaded. Hoisted out of the per-flag helpers so the
- * dynamic-import pattern lives in one place.
- */
 async function loadConfigAndReconfigureLogger() {
   const { loadConfig, getConfig } = await import("./config/loader.ts");
   await loadConfig();
@@ -674,8 +505,6 @@ async function runMigrateOnce(): Promise<void> {
 
 async function runSeedOnce(): Promise<void> {
   const cfg = await loadConfigAndReconfigureLogger();
-  // Migrations run first — operators expect `engine --seed` to be safe
-  // against a fresh DB the same way the boot path is.
   await runMigrationsFromUrl(cfg.database.url);
   const db = getDb();
   const result = await seedAtBoot(db);
@@ -686,10 +515,6 @@ async function runSeedOnce(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // --version / --help: print and exit BEFORE any config/crypto/db work.
-  // The engine binary otherwise faults in loadConfig (`database.url is
-  // required`) when invoked with a bare flag from an unconfigured shell —
-  // a version probe must never need a configured environment.
   if (process.argv.includes(VERSION_FLAG)) {
     process.stdout.write(`${OPENAPI_INFO.version}\n`);
     process.exit(0);
@@ -700,7 +525,6 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // --check-update: check for updates without installing, exit.
   if (process.argv.includes(CHECK_UPDATE_FLAG)) {
     const info = await checkForUpdate(defaultUpdaterConfig("engine", OPENAPI_INFO.version), true);
     if (info) {
@@ -711,10 +535,6 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // --self-update: download newer binary, replace, exit. The update
-  // path writes audit/log/metric rows, so it opens a short-lived db
-  // handle — DATABASE_URL must be set in the shell environment
-  // (on systemd hosts, sourced from the unit's EnvironmentFile).
   if (process.argv.includes(SELF_UPDATE_FLAG)) {
     const { runSelfUpdate } = await import("./self-update.ts");
     try {
@@ -728,15 +548,9 @@ async function main(): Promise<void> {
     }
   }
 
-  // --rollback [--to=X.Y.Z]: swap to a previously retained signed
-  // binary. Same env requirement as --self-update (audit row needs db).
   if (process.argv.includes(ROLLBACK_FLAG)) {
     const { z } = await import("zod");
     const { runRollback } = await import("./self-update.ts");
-    // AGENTS.md "Every CLI input — schema first": even though the
-    // rollback flag is host-shell-only, the `--to=` value is operator
-    // input. Reject empty / whitespace and shell-suspicious characters
-    // up front so a typo can't end up as a forensic surprise.
     const RollbackTargetSchema = z
       .string()
       .min(1, "--to= must not be empty")
@@ -765,21 +579,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // The bootstrap-preflight operator commands (--preflight, --vault-check,
-  // --vault-set, --rewrap-master-key). Dispatched BEFORE --migrate so a
-  // preflight can never be the thing that applies a migration — the whole
-  // point of the contract is that a refusal has changed nothing. Wiring is
-  // in preflight/cli-entry.ts; the contract is docs/BOOTSTRAP-PREFLIGHT.md.
   const preflightCli = await import("./preflight/cli-entry.ts");
   if (preflightCli.isPreflightInvocation(process.argv)) {
     await preflightCli.runPreflightCliOrExit(process.argv.slice(2), loadConfigAndReconfigureLogger);
     return;
   }
 
-  // --migrate: apply embedded migrations and exit. Useful for blue/green
-  // deploys where the operator wants a pre-flight check without booting
-  // the HTTP listener. The default boot path also runs migrations, so
-  // this flag is a convenience, not a requirement.
   if (process.argv.includes(MIGRATE_FLAG)) {
     await withContext(
       {
@@ -806,12 +611,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --issue-admin-key [--tenant <slug>]: mint a fresh admin API key
-  // against an existing tenant + admin user, print the plaintext once,
-  // exit. Lets operators rotate or bootstrap the verify/diagnostics
-  // key on the host without needing the source repo + bun runtime
-  // (e.g. `sudo -u subkit /usr/local/bin/engine --issue-admin-key`).
-  // Does NOT run migrations or seed — safe on a live database.
   if (process.argv.includes(ISSUE_ADMIN_KEY_FLAG)) {
     await withContext(
       {
@@ -845,19 +644,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --token-exchange --key-file <path> [--scope …] [--ttl <s>]: swap an
-  // API key read from a file for a short-lived Bearer token (RFC 8693) and
-  // print it. Host-side twin of POST /v1/oauth/token for scripts that hold
-  // the key on disk. Does NOT run migrations or seed.
   if (process.argv.includes(TOKEN_EXCHANGE_FLAG)) {
     const { runTokenExchangeCli } = await import("./auth/oauth/token-exchange-cli.ts");
     await runTokenExchangeCli(process.argv.slice(2), loadConfigAndReconfigureLogger);
     return;
   }
 
-  // --seed: idempotent boot-time seed (RBAC + dev fixtures in non-prod).
-  // Replaces the deleted `bun run db:seed` script. Runs migrations
-  // first to keep parity with the default boot path.
   if (process.argv.includes(SEED_FLAG)) {
     await withContext(
       {

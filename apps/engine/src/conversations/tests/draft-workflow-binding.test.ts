@@ -226,7 +226,6 @@ describe("earlier saved-state reconciliation", () => {
     expect(
       changedRuntime.summary?.checkpoints.find((c) => c.key === "workflow_persisted")?.status,
     ).toBe("stale");
-    // Reproduce the old editor: change content without advancing its revision.
     const earlier = structuredClone(saved);
     earlier.workflow.name = "Revised report";
     await ctx.testDb.db

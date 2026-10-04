@@ -1,12 +1,3 @@
-// `sk auth` — MCP-parity authenticate tool as a CLI command.
-//
-// The MCP surface exposes reauthentication as a first-class tool so clients
-// can request a portal link without knowing about /v1/connectors/:id/oauth.
-// Mirror that shape from the CLI: `sk auth --connector-id X` prints the
-// authorization URL the user opens in a browser to (re)approve access. The
-// route is the connector's own (`sign_in` on its record): a web service and
-// an MCP server sign in on different routes, and the engine says which.
-
 import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -50,8 +41,6 @@ export const authCommand = defineCommand({
         return;
       }
 
-      // An empty URL: the engine finished the sign-in without a browser
-      // (a client-credentials exchange) — the credential is stored.
       if (!res.authorization_url) {
         process.stdout.write("signed in — no browser step was needed\n");
         return;

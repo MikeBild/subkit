@@ -51,8 +51,6 @@ describe("guided authoring smoke", () => {
           ...bearer(),
           "Content-Type": "application/json",
         },
-        // The new session defaults to autonomous preparation. This scenario
-        // deliberately selects manual review before the subsequent draft gate.
         body: JSON.stringify({ output: { confirmed: true }, permission_mode: "ask" }),
       },
     );
@@ -124,9 +122,6 @@ describe("guided authoring smoke", () => {
     expect(detail.tool_calls.map((call) => call.tool)).toEqual(
       expect.arrayContaining([
         "save_connector_draft",
-        // `build_workflow` was retired; the whole-draft authoring path is
-        // now `edit_workflow_patch` (the mock provider's onboarding script
-        // assembles the draft in one patch call).
         "edit_workflow_patch",
         "inspect_workflow_draft",
         "dry_run_step",

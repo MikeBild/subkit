@@ -1,16 +1,8 @@
-/**
- * A schedule as a person sets it (R11): daily, weekly on one day, or monthly
- * on the first — at one time. The engine stores cron; these two functions are
- * the only translation between the two, and a cron this form cannot express
- * is reported as such instead of being bent into the nearest rhythm.
- */
 export type Rhythm = "daily" | "weekly" | "monthly";
 
 export interface RhythmValue {
   rhythm: Rhythm;
-  /** 0 = Sunday … 6 = Saturday; only for `weekly`. */
   weekday: number;
-  /** HH:MM, 24 h. */
   time: string;
 }
 
@@ -22,7 +14,6 @@ export function validTime(time: string): boolean {
   return TIME.test(time);
 }
 
-/** The cron expression of a rhythm. */
 export function rhythmToCron(value: RhythmValue): string {
   const match = TIME.exec(value.time);
   if (!match) throw new Error(`invalid time: ${value.time}`);
@@ -35,7 +26,6 @@ export function rhythmToCron(value: RhythmValue): string {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** The rhythm a cron expression is, or null where the form cannot say it. */
 export function cronToRhythm(cron: string): RhythmValue | null {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return null;

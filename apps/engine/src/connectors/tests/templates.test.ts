@@ -121,7 +121,6 @@ describe("connector templates", () => {
     expect(drivers.has("graphql")).toBe(true);
     expect(drivers.has("postgres")).toBe(true);
     expect(drivers.has("s3")).toBe(true);
-    // The four executable drivers are the only ones templates may declare.
     expect(drivers).toEqual(new Set(["http", "graphql", "postgres", "s3"]));
   });
 
@@ -188,7 +187,6 @@ describe("connector templates", () => {
   });
 
   test("GET /v1/connector-templates returns built-ins + tenant override", async () => {
-    // Insert a tenant override row.
     const { connectorTemplates } = await import("../../db/schema/index.ts");
     await srv.db
       .insert(connectorTemplates)
@@ -285,7 +283,6 @@ describe("connector templates", () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe("unsupported_ingestion_source");
 
-    // Sanity-check the error class itself.
     const err = new UnsupportedIngestionSourceError("notion");
     expect(err.code).toBe("unsupported_ingestion_source");
     expect(err.slug).toBe("notion");

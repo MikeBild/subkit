@@ -1,18 +1,3 @@
-// Integration coverage for the draft-time credential injection path.
-//
-// Pre-fix symptom: `probe_connector_draft` issues an HTTP request via
-// `executeConnectorHttpRequest` against a synthetic `draft-<id>`
-// connector. `getCredentialForConnector` short-circuits non-UUID ids
-// to null, so no Authorization header is stamped — the upstream sees
-// an unauthenticated probe and returns 401 / "Last used: Never".
-//
-// Post-fix: an `ask_user_form` submission populates the in-memory
-// draft credential cache via `maybeCacheDraftCredentialFromElicitation`.
-// `probe_connector_draft` reads from the cache and threads the
-// credential through `executeConnectorHttpRequest` as a
-// `credential_override`. The HTTP driver applies it the same way it
-// would a stored credential.
-
 import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryService from "../../connectors/discovery/service.ts";
 import { createConnector, getConnector } from "../../connectors/service.ts";
@@ -112,12 +97,6 @@ async function buildToolCtx(conversation_id: string, draft: DraftDocument): Prom
       db: ctx.db,
     }),
     getDraft: () => liveDraft,
-    // Mirror production: a draft written by one turn is read by the
-    // next via loadDraft, which round-trips through
-    // normalizeDraftDocument. Keeping the raw object alive in memory
-    // masked a real bug — the normalize whitelist dropped the probe
-    // `fingerprint`, silently disabling the re-probe guard in
-    // production while this suite stayed green.
     setDraft: async (next) => {
       await appendSnapshot(tenant_id, conversation_id, next, ctx.db);
       liveDraft = await loadDraft(tenant_id, conversation_id, ctx.db);
@@ -126,13 +105,6 @@ async function buildToolCtx(conversation_id: string, draft: DraftDocument): Prom
 }
 
 describe("probe_connector_draft + draft credential", () => {
-  // Stub post-save auto-discovery so graphql connector saves in this
-  // describe block never launch a real browser (playwright-crawl) or make
-  // live network calls. The fire-and-forget `void runDiscoveryCached(...)`
-  // inside saveConnectorAtomic would otherwise become an unhandled rejection
-  // attributed to whichever test is in-flight when the browser spawn fails.
-  // The spy returns a minimal valid DiscoveryServiceResult that the
-  // `.then()` handler inside save-connector.ts consumes without throwing.
   let discoverySpy: ReturnType<typeof spyOn<typeof discoveryService, "runDiscoveryCached">>;
   beforeAll(() => {
     discoverySpy = spyOn(discoveryService, "runDiscoveryCached").mockResolvedValue({
@@ -140,8 +112,6 @@ describe("probe_connector_draft + draft credential", () => {
       cache_key: "url:stub",
       result: {
         source_url: "",
-        // Fixed timestamp — value is never asserted; a literal keeps the
-        // determinism lint happy (no `new Date()` in *.test.ts).
         fetched_at: "2023-11-14T22:13:20.000Z",
         strategy: "graphql-introspect",
         spec_version: null,
@@ -305,16 +275,6 @@ describe("probe_connector_draft + draft credential", () => {
   });
 
   test("returns authenticate_oauth_required envelope for an oauth2 BYO cache hit (no HTTP request)", async () => {
-    // After the gmail/google-* BYO fix the draft credential cache can
-    // legitimately hold an `{mode:"oauth2"}` seed. Probing that draft
-    // BEFORE authenticate_oauth completes the browser exchange can't
-    // succeed — the access token doesn't exist yet. The probe MUST
-    // surface a typed `authenticate_oauth_required` envelope rather
-    // than letting `toDecryptedCredential` throw the cryptic
-    // "oauth2 seed updates config.oauth only" Error string into
-    // turn-context. Also verifies no HTTP request reaches the
-    // upstream — the gate fires server-side before the connector
-    // call.
     let serverHit = false;
     const server = await startLocalTargetServer(() => {
       serverHit = true;
@@ -412,14 +372,9 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // RC-1: graphql-driver connector with a bearer draft credential in the
-  // cache. The tool must run the introspection probe (POSTs `{__typename}`)
-  // and reach the endpoint, NOT the raw-HTTP path which sends an empty body.
   test("graphql driver with bearer cache hit — introspection reaches the endpoint", async () => {
     const captured: { body: string | null; auth: string | null } = { body: null, auth: null };
     const server = await startLocalTargetServer(async (req) => {
-      // Only capture the first POST — fire-and-forget discovery sends GETs
-      // after the probe completes and would overwrite captured.body with "".
       if (req.method === "POST" && captured.body === null) {
         captured.auth = req.headers.get("authorization");
         const text = await req.text();
@@ -463,7 +418,6 @@ describe("probe_connector_draft + draft credential", () => {
       });
 
       expect(result.ok).toBe(true);
-      // The server received a GraphQL body (introspection), not an empty POST.
       expect(captured.body).toContain("__typename");
       expect(captured.auth).toBe("Bearer gql-test-token");
     } finally {
@@ -471,8 +425,6 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // RC-1: graphql-driver connector with NO cached credential and auth required.
-  // The gate must return credential_required before the server is hit.
   test("graphql driver without cached credential — credential_required, server never hit", async () => {
     let serverHit = false;
     const server = await startLocalTargetServer(() => {
@@ -503,7 +455,6 @@ describe("probe_connector_draft + draft credential", () => {
         "validated",
       );
       const toolCtx = await buildToolCtx(conversation_id, validated);
-      // Cache is empty (afterEach resets it).
 
       const result = await probeConnectorDraftTool.execute(toolCtx, {
         method: "GET",
@@ -521,15 +472,9 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // RC-1: cognito_user_password cache hit — probe mints an IdToken via
-  // Cognito and forwards it as a raw JWT (no "Bearer" prefix) to the graphql
-  // endpoint. runCognitoUserPasswordGrant is stubbed via the driver-fetch seam.
   test("graphql driver with cognito_user_password cache hit — minted JWT reaches endpoint as raw token", async () => {
     const capturedAuth: { value: string | null } = { value: null };
 
-    // Stand up a mock GraphQL server that records the auth header.
-    // Only capture from the first POST — discovery fire-and-forget sends GETs
-    // that would overwrite capturedAuth with null.
     const gqlServer = await startLocalTargetServer(async (req) => {
       if (req.method === "POST" && capturedAuth.value === null) {
         capturedAuth.value = req.headers.get("authorization");
@@ -540,15 +485,7 @@ describe("probe_connector_draft + draft credential", () => {
       });
     });
 
-    // Stub `runCognitoUserPasswordGrant` by intercepting the driver-fetch
-    // seam. The Cognito endpoint is cognito-idp.<region>.amazonaws.com so any
-    // fetch to that host returns our fake AuthenticationResult.
-    // Save a reference to the real fetch so the pass-through branch can
-    // reach the loopback graphql server.
     const realFetch = globalThis.fetch.bind(globalThis);
-    // Cast to `typeof fetch` via the async closure — the mock signature
-    // covers only the relevant subset (url + init) that Cognito + the
-    // graphql driver use.
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("cognito-idp")) {
@@ -562,7 +499,6 @@ describe("probe_connector_draft + draft credential", () => {
           { status: 200, headers: { "content-type": "application/x-amz-json-1.1" } },
         );
       }
-      // Real fetch for the graphql mock server.
       return realFetch(url, init);
     }) as typeof fetch;
 
@@ -610,7 +546,6 @@ describe("probe_connector_draft + draft credential", () => {
         });
 
         expect(result.ok).toBe(true);
-        // token_type is "none" for Cognito — the JWT is sent without a "Bearer" prefix.
         expect(capturedAuth.value).toBe("minted-id-token-jwt");
       });
     } finally {
@@ -618,15 +553,9 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // RC-1: graphql probe with an explicit path arg (e.g. path:"/graphql") still
-  // runs the {__typename} introspection — NOT an empty POST or a path-based HTTP
-  // request. The fix removed the `&& args.path === "/"` guard so any path arg
-  // causes the graphql probe branch to fire.
   test("graphql probe with explicit path arg still runs introspection (body contains __typename)", async () => {
     const captured: { body: string | null } = { body: null };
     const server = await startLocalTargetServer(async (req) => {
-      // Only record the first POST body — discovery fire-and-forget sends
-      // subsequent GETs that would overwrite captured.body with "".
       if (req.method === "POST" && captured.body === null) {
         const text = await req.text();
         captured.body = text;
@@ -668,7 +597,6 @@ describe("probe_connector_draft + draft credential", () => {
       });
 
       expect(result.ok).toBe(true);
-      // The request body must be a GraphQL query (introspection), never empty.
       expect(captured.body).not.toBe("");
       expect(captured.body).not.toBeNull();
       const parsed = JSON.parse(captured.body!) as { query?: string };
@@ -678,8 +606,6 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // RC-1: BYO oauth2 seed cached (mode "oauth2") on a graphql connector returns
-  // authenticate_oauth_required — same gate as the HTTP path.
   test("graphql driver with oauth2 seed cached returns authenticate_oauth_required, server never hit", async () => {
     let serverHit = false;
     const server = await startLocalTargetServer(() => {
@@ -733,9 +659,6 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // A credential cached for one auth shape must never drive a probe
-  // after the draft switched to another. The probe gate clears the
-  // stale entry and demands re-collection via ask_user_form.
   test("cached bearer credential on a basic draft → credential_mode_mismatch, cache cleared, server never hit", async () => {
     let serverHit = false;
     const server = await startLocalTargetServer(() => {
@@ -766,7 +689,6 @@ describe("probe_connector_draft + draft credential", () => {
         "validated",
       );
       const toolCtx = await buildToolCtx(conversation_id, validated);
-      // Stale bearer credential from before the auth_type switch.
       setDraftCredential(conversation_id, { mode: "bearer", token: "stale-bearer-token" });
 
       const result = await probeConnectorDraftTool.execute(toolCtx, {
@@ -780,17 +702,12 @@ describe("probe_connector_draft + draft credential", () => {
       const data = result.data as { error_code?: string; recommended_next?: string[] };
       expect(data.error_code).toBe("credential_mode_mismatch");
       expect(data.recommended_next).toContain("ask_user_form");
-      // The stale credential is gone — the next probe gates on
-      // credential_required until the form re-collects.
       expect(getDraftCredential(conversation_id)).toBeNull();
     } finally {
       await server.stop();
     }
   });
 
-  // An identical probe of an unchanged failed draft is refused
-  // without a network call. The fingerprint covers draft shape + probe
-  // args + credential digest.
   test("re-probing an unchanged failed draft returns probe_unchanged without hitting the network", async () => {
     let hits = 0;
     const server = await startLocalTargetServer(() => {
@@ -820,7 +737,6 @@ describe("probe_connector_draft + draft credential", () => {
         timeout_ms: 5_000,
       });
       expect(second.ok).toBe(false);
-      // No second network call — the guard returned the cached probe.
       expect(hits).toBe(1);
       const data = second.data as {
         error_code?: string;
@@ -832,8 +748,6 @@ describe("probe_connector_draft + draft credential", () => {
       expect(data.latest_probe?.status_code).toBe(403);
       expect(data.recommended_next).toContain("fetch_connector_docs");
 
-      // Changing the probe args changes the fingerprint — the network
-      // call fires again.
       const third = await probeConnectorDraftTool.execute(toolCtx, {
         method: "GET",
         path: "/v2/other",
@@ -846,12 +760,6 @@ describe("probe_connector_draft + draft credential", () => {
     }
   });
 
-  // graphql probes always fire the fixed `{ __typename }` introspection,
-  // so model-side arg jitter (different path / ad-hoc headers between
-  // turns) must NOT defeat the guard — the request on the wire is
-  // identical. Caught live in conversation 2f1f1463: "probe it again"
-  // re-fired an identical failed introspection because the raw args
-  // were hashed into the fingerprint.
   test("graphql re-probe with jittered args is still refused as probe_unchanged", async () => {
     let hits = 0;
     const server = await startLocalTargetServer(() => {
@@ -929,7 +837,6 @@ describe("probe_connector_draft + draft credential", () => {
       expect(first.ok).toBe(false);
       expect(hits).toBe(1);
 
-      // Identical retry IS allowed — a 503 can legitimately clear up.
       const second = await probeConnectorDraftTool.execute(toolCtx, {
         method: "GET",
         path: "/v2/projects",
@@ -959,12 +866,6 @@ describe("probe_connector_draft + draft credential", () => {
   });
 
   test("reuses the saved connector's stored credential when the draft is already persisted (empty cache)", async () => {
-    // Regression: a save clears the in-memory draft credential
-    // (`clearDraftCredential`). Re-probing the same draft afterwards
-    // found an empty cache and re-demanded the password — the operator
-    // had to retype it on every probe. Once the draft is bound to a
-    // saved connector, the credential lives in the encrypted vault;
-    // the probe must resolve it from there instead of gating.
     const captured: { auth: string | null } = { auth: null };
     const server = await startLocalTargetServer((req) => {
       captured.auth = req.headers.get("authorization");
@@ -1001,8 +902,6 @@ describe("probe_connector_draft + draft credential", () => {
       );
 
       const conversation_id = await seedConversation();
-      // The post-save draft state: bound to the saved connector, with
-      // the in-memory draft credential already cleared.
       const draft = buildBearerDraft(server.url);
       const boundDraft: DraftDocument = {
         ...draft,
@@ -1017,7 +916,6 @@ describe("probe_connector_draft + draft credential", () => {
         timeout_ms: 5_000,
       });
 
-      // No credential re-collection — the probe resolved the vault row.
       expect(result.ok).toBe(true);
       expect(captured.auth).toBe("Bearer VAULT-TOKEN");
     } finally {
@@ -1026,10 +924,6 @@ describe("probe_connector_draft + draft credential", () => {
   });
 
   test("a draft hydrated from a saved connector holds the mask, and the probe still sends the stored secret", async () => {
-    // The draft is conversation state, so it is hydrated from the public
-    // projection: a static header secret reads as the mask there. The
-    // probe is where that draft becomes a request — it must send what the
-    // saved connector stores, never the mask.
     const HEADER_SECRET = "fixture-header-secret-not-real";
     const captured: { key: string | null } = { key: null };
     const server = await startLocalTargetServer((req) => {

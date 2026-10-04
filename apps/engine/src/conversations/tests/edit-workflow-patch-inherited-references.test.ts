@@ -1,10 +1,3 @@
-// An unrelated field change is not refused over a read the RUNNING workflow
-// already has — and nothing else is relaxed.
-//
-// The baseline is the active version of the workflow the conversation targets.
-// Every other source would be model-writable, so each test below that still
-// expects a refusal names the wrong baseline it guards against.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversations, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -16,8 +9,6 @@ import type { DraftDocument } from "../types.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x1a4e_417ed);
-// Shared transform code: `window` belongs to a sibling workflow, and its read
-// sits in the else-branch of a test on ANOTHER step.
 const PLAN =
   "const current = input.scope.rollup_window\n  ? input.scope.rollup_window.data\n  : input.scope.window.data;\nreturn current;";
 const CLEAN = "return input.scope.rollup_window.data;";
@@ -102,7 +93,6 @@ async function patch(conversation_id: string, draft: DraftDocument, patches: unk
     conversation_id,
     actor_id: ctx.user_id,
     connector_id: null,
-    // Null on the human partial-accept path; the target must come from the row.
     workflow_id: null,
     engineClient: new EngineClient({
       tenant_id: ctx.tenant_id,
@@ -133,7 +123,6 @@ test("a field-only patch passes, leaves the transform byte-identical, and report
   expect(notice.references).toEqual([
     { step_id: "comparison_plan", field: "expression", absent_step: "window" },
   ]);
-  // A notice that suggests a repair gets the repair.
   expect(JSON.stringify(notice)).not.toMatch(/did_you_mean|did you mean|unresolved|fix/i);
 });
 
@@ -165,10 +154,6 @@ test("removing a step an UNGUARDED reader still names blocks", async () => {
 });
 
 test("removing a step only a GUARDED reader names does not block on that read", async () => {
-  // `PLAN` tests for `rollup_window` before using it, so its absence is a case
-  // the author already wrote code for — see reference-validator-guarded.test.ts.
-  // `window`, read unguarded in the else-branch, is inherited from the active
-  // version and stays a notice.
   const bound = await seed({ active: PLAN });
   const { data } = await patch(bound.conversation_id, draftOf(bound.slug, PLAN), [
     { op: "remove", path: "/steps/0" },
@@ -189,15 +174,12 @@ test("a target owned by another tenant vouches for nothing", async () => {
 });
 
 test("a dangling SAVED DRAFT vouches for nothing when the active version is clean", async () => {
-  // A saved draft is inert and model-writable: inheriting from it would turn
-  // an author's own typo into "already there" after one save.
   const bound = await seed({ active: CLEAN, savedDraft: PLAN });
   const { data } = await patch(bound.conversation_id, draftOf(bound.slug, PLAN), BUDGET);
   expect(data.error_code).toBe("workflow_unresolved_step_reference");
 });
 
 test("a draft of a different workflow than the conversation's target inherits nothing", async () => {
-  // Merely running a workflow can retarget a conversation.
   const bound = await seed({ active: PLAN });
   const { data } = await patch(bound.conversation_id, draftOf("some-other-workflow", PLAN), BUDGET);
   expect(data.error_code).toBe("workflow_unresolved_step_reference");

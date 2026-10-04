@@ -1,24 +1,10 @@
-// Structured diff renderer — takes a before/after JSON payload
-// (as emitted by `askUser.confirm { kind: save_workflow_draft }`) and
-// renders a hunk-style diff: + lines green, − lines red, unchanged
-// lines dim, with a path header.
-//
-// The input shape is flexible:
-//   { before: unknown, after: unknown }              — generic JSON diff
-//   { name, slug, description, steps, ... }           — a workflow draft
-// For workflow drafts we render the common fields as a structured
-// summary plus a JSON diff of `steps`.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { useTheme } from "../theme/Provider.tsx";
 
 export interface StructuredDiffProps {
-  /** Structured before/after payload. Either `{before, after}` or a flat draft. */
   diff: unknown;
-  /** Optional header label (e.g., workflow slug, file path). */
   header?: string;
-  /** Max lines shown before the body truncates with an ellipsis. */
   maxLines?: number;
 }
 
@@ -69,8 +55,6 @@ function renderDiffLines(diff: unknown, maxLines: number): DiffLine[] {
     lines.push({ kind: "header", text: `@@ ${b.length} ‑› ${a.length} lines @@` });
     lines.push(...computeHunks(b, a));
   } else {
-    // Treat as an after-only snapshot — render each field as an added
-    // line so the user still sees the shape.
     lines.push({ kind: "header", text: "new draft" });
     for (const line of jsonLines(diff)) {
       lines.push({ kind: "added", text: line });
@@ -110,12 +94,6 @@ function jsonLines(value: unknown): string[] {
   }
 }
 
-/**
- * Longest-common-subsequence hunk renderer. Small enough to inline
- * here — we expect diffs in the dozens of lines at most
- * (workflow-draft size). For bigger payloads the caller should pass
- * a pre-truncated `diff`.
- */
 function computeHunks(before: string[], after: string[]): DiffLine[] {
   const n = before.length;
   const m = after.length;

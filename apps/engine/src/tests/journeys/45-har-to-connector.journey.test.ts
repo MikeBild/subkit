@@ -1,15 +1,3 @@
-// User story: As an operator, I want to upload a HAR file and have the engine
-// extract real HTTP traffic endpoints deterministically, so that I can build
-// a connector from observed API traffic without writing specs by hand.
-//
-// Acceptance criteria:
-//   - AC1: `runDocumentAnalysisFlow` parses a HAR file and extracts endpoints.
-//   - AC2: Multiple entries for the same method+path are deduplicated, and all
-//          observed status codes are merged into `expected_statuses`.
-//   - AC3: POST entries with JSON postData produce a `request_schema`.
-//   - AC4: `source_format` is "har" and `confidence` is ≥ 90.
-// Spec refs: plan docs — Approach 2, Tier 1 HAR parser
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runDocumentAnalysisFlow } from "../../llm/flows/document-analysis.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
@@ -39,7 +27,6 @@ const EXAMPLE_HAR = JSON.stringify({
         },
         response: { status: 200, content: {} },
       },
-      // Duplicate GET /v1/charges with a different status — should be merged.
       {
         request: {
           method: "GET",
@@ -100,13 +87,11 @@ describe("45: HAR → connector endpoint extraction (deterministic parser)", () 
       ],
     });
 
-    // Exactly one GET /v1/charges (not two)
     const getCharges = result.endpoints.filter(
       (e) => e.method === "GET" && e.path === "/v1/charges",
     );
     expect(getCharges).toHaveLength(1);
 
-    // Both observed statuses (200 and 404) should be in expected_statuses.
     expect(getCharges[0]!.expected_statuses).toContain(200);
     expect(getCharges[0]!.expected_statuses).toContain(404);
   });

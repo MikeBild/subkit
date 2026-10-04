@@ -1,20 +1,3 @@
-// Predictive-maintenance risk signals — the leading-indicator half of the
-// operator health digest.
-//
-// The failure groups in `health-digest.ts` are LAGGING: a run already
-// failed. These signals are LEADING: they read the Phase-2 process gauges
-// and counters (pool saturation, DLQ depth, transient-DB-retry rate,
-// connector-call health mix, LLM fallback fraction, RSS high-water) against
-// the operator-tuned thresholds in `observability.predictive` and flag the
-// ones trending toward an incident BEFORE a workflow fails.
-//
-// Scope note: the metrics registry is process-scoped, not tenant-scoped —
-// the Postgres pool, the DLQs, and the engine RSS are shared infrastructure.
-// So these signals describe the engine the tenant is running on, not the
-// tenant's own workflows. That's the right altitude for an operator digest:
-// "your runs are fine, but the host is about to OOM" is exactly the warning
-// that the lagging failure groups can never give you in time.
-
 import { totalmem } from "node:os";
 import { and, eq, inArray, like, notInArray, or, sql } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
@@ -28,58 +11,30 @@ import {
 } from "../llm/accounting/index.ts";
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 
-// Only "warn" and "critical" are produced today — a signal either trends
-// toward the cliff (warn) or is over it (critical). No "info" tier until a
-// producer needs one; keeping it would be dead surface in the generated type.
 export type RiskSeverity = "warn" | "critical";
 
 export interface RiskSignal {
-  /** Stable machine kind — e.g. "pool_saturation", "llm_fallback". */
   kind: string;
   severity: RiskSeverity;
-  /** Outcome-first one-liner for the chat/banner surface. */
   headline: string;
-  /** The "why it matters / what to do" sentence. */
   detail: string;
-  /** The underlying metric name the signal reads. */
   metric: string;
-  /** Observed value (the same unit the threshold is in). */
   value: number;
-  /** The configured threshold the value was compared against. */
   threshold: number;
 }
 
 const SEVERITY_RANK: Record<RiskSeverity, number> = { warn: 1, critical: 2 };
 
-/** Highest-severity-first, then by how far past threshold (worst first). */
 function sortBySeverity(a: RiskSignal, b: RiskSignal): number {
   const bySev = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
   if (bySev !== 0) return bySev;
-  // Both relative to their own threshold so unlike units stay comparable.
   const aOver = a.threshold > 0 ? a.value / a.threshold : a.value;
   const bOver = b.threshold > 0 ? b.value / b.threshold : b.value;
   return bOver - aOver;
 }
 
-/**
- * Compute the current leading-indicator risk signals from the live metrics
- * registry against the configured predictive thresholds. Pure read — never
- * mutates a gauge, never throws (a config-read failure collapses to an empty
- * list so the digest still renders). Sorted highest-severity-first.
- */
-/**
- * What the caller knows that the metrics registry cannot.
- *
- * The month's token consumption is a database sum against a configured cap.
- * `llm_tokens_total` is a COUNTER since process start: it resets on restart
- * and knows nothing about a calendar month, so reading it here would produce
- * a signal that quietly lies after every deploy. The digest already holds
- * both figures; it passes them in rather than this function guessing.
- */
 export interface RiskInputs {
-  /** Weighted tokens consumed this calendar month. */
   monthTokens?: number;
-  /** The cap in force, or null when nothing bounds the workspace. */
   monthBudget?: number | null;
 }
 
@@ -88,34 +43,14 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
   try {
     predictive = getConfig().observability.predictive;
   } catch {
-    // Config not loaded (unit harness) — no thresholds, no signals.
     return [];
   }
   const reg = getMetrics();
   const signals: RiskSignal[] = [];
 
-  // 1. Postgres-pool saturation. The leading signal is `waiting > 0`; the
-  //    in-use percentage escalates it. Total 0 → pool not yet sampled.
   const poolTotal = reg.gaugeSum(METRIC_NAMES.DB_POOL_TOTAL_CONNECTIONS);
   const poolIdle = reg.gaugeSum(METRIC_NAMES.DB_POOL_IDLE_CONNECTIONS);
-  // The month's allowance, when the caller supplied both halves.
-  //
-  // This belongs here and NOT in the decisions queue. That queue's grammar is
-  // approve or reject — every position carries an id, an action and an audit
-  // row — and a budget running low has none of those: there is nothing to
-  // approve. §8.5b is explicit that a position with no consequence is not a
-  // decision. It is a leading indicator that needs a person and has a next
-  // step, which is what a risk signal is.
-  //
-  // A null cap raises nothing. An unbounded workspace is not at risk of
-  // hitting a limit; it is simply unmeasured, and warning about a ceiling
-  // that does not exist would be the zero that means "not measured".
   const { monthTokens, monthBudget } = inputs;
-  // The state is the shared one (`budgetState`), from the exact share: a
-  // percentage rounded before the comparison called 89.6 % critical here while
-  // the usage page, `/v1/status` and `get_token_budget` called it tightening.
-  // The shown percentage is floored for the same reason — it never reads a
-  // threshold the month has not reached.
   const state =
     typeof monthTokens === "number" && typeof monthBudget === "number"
       ? budgetState(monthTokens, monthBudget)
@@ -163,10 +98,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     }
   }
 
-  // 2. DLQ depth. A point read can't see per-window deltas, so we flag on the
-  //    standing parked count: a DLQ at or above the critical-depth threshold
-  //    means a worker is failing every attempt for some payload class and the
-  //    backlog won't drain on its own.
   const dlqDepth = reg.gaugeSum(METRIC_NAMES.DLQ_JOB_COUNT);
   if (dlqDepth >= predictive.dlq_critical_depth) {
     signals.push({
@@ -181,11 +112,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     });
   }
 
-  // 3. Transient-DB-retry rate. Read the WINDOWED per-minute gauge the memory
-  //    sampler maintains (retries since the previous 60s tick ÷ elapsed
-  //    minutes), not the cumulative total ÷ uptime — a lifetime average would
-  //    latch on an old blip (short uptime) or go deaf to a fresh spike (long
-  //    uptime). The gauge is a true leading indicator that decays per window.
   const retryRate = reg.gaugeSum(METRIC_NAMES.DB_TRANSIENT_RETRY_RATE_PER_MIN);
   if (retryRate >= predictive.transient_retry_rate) {
     signals.push({
@@ -200,9 +126,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     });
   }
 
-  // 4. Connectors trending unhealthy. The non-`ok` share of connector calls
-  //    is the leading drift signal, tuned by its OWN threshold so silencing a
-  //    pool alarm doesn't silently move the connector-drift floor.
   const connectorTotal = reg.counterSum(METRIC_NAMES.CONNECTOR_CALL_TOTAL);
   if (connectorTotal > 0) {
     const unhealthy = reg.counterSumWhere(
@@ -224,9 +147,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     }
   }
 
-  // 5. LLM fallback fraction. Fallback engagements over total LLM calls. A
-  //    rising fraction flags primary-model instability before it surfaces as
-  //    user-facing errors. Tuned by its own threshold (see connector note).
   const llmCalls = reg.histogramCount(METRIC_NAMES.LLM_CALL_DURATION_MS);
   if (llmCalls > 0) {
     const fallbacks = reg.counterSum(METRIC_NAMES.LLM_FALLBACK_INVOCATIONS_TOTAL);
@@ -245,11 +165,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
     }
   }
 
-  // 6. RSS high-water vs the host memory cap. The high-water gauge is
-  //    bytes; the host cap is the total physical memory. Crossing
-  //    `memory_cap_fraction` of it is the OOM-risk warning — production has
-  //    seen multi-GB transients drive MemoryHigh throttle → swap thrash →
-  //    dead-lettered turns (project_engine_memory_worker_expired).
   const rssHighWater = reg.gaugeMax(METRIC_NAMES.PROCESS_MEMORY_RSS_HIGH_WATER_BYTES);
   const hostCap = hostMemoryCapBytes();
   if (rssHighWater > 0 && hostCap > 0) {
@@ -271,9 +186,6 @@ export function computeRiskSignals(inputs: RiskInputs = {}): RiskSignal[] {
   return signals.sort(sortBySeverity);
 }
 
-/** Total physical host memory in bytes, the denominator for the RSS
- *  high-water OOM-risk fraction. Best-effort: returns 0 when `os` can't
- *  report it so the memory signal simply doesn't fire. */
 function hostMemoryCapBytes(): number {
   try {
     return totalmem();
@@ -282,32 +194,12 @@ function hostMemoryCapBytes(): number {
   }
 }
 
-/** The single highest-severity signal, or null when all clear. Used to fold
- *  risk into the digest headline. */
 export function topRisk(signals: RiskSignal[]): RiskSignal | null {
   return signals.length > 0 ? (signals[0] as RiskSignal) : null;
 }
 
-// Cross-replica edge tracker for critical-risk auditing. A standing critical
-// must be audited EXACTLY ONCE per false→true edge — not once per reader and
-// not once per tick. Edge state lives in the shared `risk_signal_edges` table;
-// every caller claims an edge through an atomic INSERT…ON CONFLICT…WHERE CAS,
-// so exactly one wins it.
-//
-// WHOSE edge it is depends on what the signal measures:
-//   * shared signals read state every process sees alike — the dead-letter
-//     queues live in Postgres, the month's allowance is a database sum. One
-//     edge row per kind for the whole deployment.
-//   * process-local signals read this process's own gauges — its connection
-//     pool, its RSS, its retries, its connector and model calls. Two processes
-//     can honestly disagree; one shared row would flip raise/clear on every
-//     tick as their passes alternate. Each process owns its own row
-//     (`<kind>@<instance>`) and only ever clears its own.
-
-/** Signals that read state every process shares; every other kind is process-local. */
 export const SHARED_RISK_KINDS: ReadonlySet<string> = new Set(["dlq_growth", "token_budget"]);
 
-/** The edge row a signal of `kind` is tracked under, for the process `instance`. */
 export function riskEdgeKey(kind: string, instance: string): string {
   return SHARED_RISK_KINDS.has(kind) ? kind : `${kind}@${instance}`;
 }
@@ -318,20 +210,10 @@ function kindOfEdgeKey(key: string): string {
 }
 
 export interface RiskEdges {
-  /** Signals that NEWLY crossed into `critical` since the last call. */
   raised: RiskSignal[];
-  /** Kinds that RECOVERED out of `critical` since the last call. */
   cleared: string[];
 }
 
-/**
- * Claim and return the critical-state EDGES since the last call for the
- * process `instance`, transitioning the shared `risk_signal_edges` table. The
- * caller audits RISK_SIGNAL_RAISED on each `raised` and RISK_SIGNAL_CLEARED on
- * each `cleared` IN THE SAME TRANSACTION, so an edge is never claimed without
- * its audit row. A persistent critical yields no edge on later calls, and a
- * recovered-then-recurring one re-fires once.
- */
 export async function takeRiskEdges(
   db: Executor,
   signals: RiskSignal[],
@@ -344,9 +226,6 @@ export async function takeRiskEdges(
     ),
   ];
 
-  // Claim the false→true edge for every currently-critical key. A row already
-  // `active=true` fails the set-where and is not returned, so a standing
-  // critical never re-audits and exactly one caller wins the edge.
   let raisedKeys: string[] = [];
   if (nowCriticalKeys.length > 0) {
     const rows = await db
@@ -361,8 +240,6 @@ export async function takeRiskEdges(
     raisedKeys = rows.map((r) => r.kind);
   }
 
-  // Clear what THIS caller owns and is no longer critical: the shared kinds and
-  // its own process-local rows — never another process's.
   const owned = or(
     inArray(riskSignalEdges.kind, [...SHARED_RISK_KINDS]),
     like(riskSignalEdges.kind, `%@${instance}`),
@@ -385,7 +262,6 @@ export async function takeRiskEdges(
   return { raised, cleared: clearedRows.map((r) => kindOfEdgeKey(r.kind)) };
 }
 
-/** Test-only: clear the shared risk-signal edge table between cases. */
 export async function _resetRiskSignalEdgesForTests(db: Executor): Promise<void> {
   await db.delete(riskSignalEdges);
 }

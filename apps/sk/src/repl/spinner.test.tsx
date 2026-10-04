@@ -1,16 +1,8 @@
-// Spinner regression tests for session 86de186b — the user saw
-// "thinking…" / "composing…" / "reviewing…" for 1m+ while the engine
-// ran multiple tool calls in the background, with no visibility into
-// what was happening. Spinner now accepts `currentTool` and replaces
-// the rotating verb with a concrete "running <tool_name>…" line.
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import { Spinner } from "./spinner.tsx";
 
 function snapshot(s: ReturnType<typeof render>): string {
-  // ink-testing-library's lastFrame returns the rendered text. We
-  // strip ANSI codes so assertions don't need to know about colour.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escapes
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
@@ -59,14 +51,6 @@ describe("Spinner · live tool-call progress", () => {
     r.unmount();
   });
 
-  // Regression — pre-fix sessions dcdcf246 / 86de186b: when
-  // every tool had returned but the LLM was still composing the
-  // human-readable answer, the spinner cycled through verbs
-  // ("considering" / "composing" / "reviewing") with no signal that
-  // tool work had finished. The label says "processing N tool
-  // result(s)…" — NOT "summarising": no summarization call exists in
-  // the engine, the old wording invented a step that never ran
-  // (session 784c1b02).
   test("renders 'processing N tool result(s)' when currentTool is null but tools have completed", () => {
     const r = render(
       <Spinner active={true} verbs={["thinking"]} currentTool={null} completedToolsThisTurn={3} />,
@@ -88,9 +72,6 @@ describe("Spinner · live tool-call progress", () => {
   });
 
   test("currentTool wins over completedToolsThisTurn when both are present", () => {
-    // While a tool is still in flight the rolling running-tool label
-    // is the most concrete signal — don't downgrade to the summary
-    // line just because earlier tools have already finished.
     const r = render(
       <Spinner
         active={true}

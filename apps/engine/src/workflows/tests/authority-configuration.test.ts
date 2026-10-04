@@ -44,7 +44,6 @@ test("configuration ordering and operational health never widen or invalidate a 
     enabled: true,
   };
   expect(authorityConnectorDigest(first)).toBe(authorityConnectorDigest(second));
-  // Availability is checked separately by admission, not inferred from this digest.
   expect(authorityConnectorDigest(null)).toBe(authorityConnectorDigest(undefined));
 });
 

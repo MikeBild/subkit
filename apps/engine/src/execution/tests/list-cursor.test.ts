@@ -1,8 +1,3 @@
-// Keyset paging of the execution list: a full walk reaches every row exactly
-// once, ties on `created_at` are broken by id, and runs that start while a
-// reader pages neither duplicate nor skip a row behind the cursor — which an
-// offset could not promise.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import { InvalidKeysetCursorError } from "../../db/keyset-cursor.ts";
@@ -49,8 +44,6 @@ beforeAll(async () => {
     .values({ slug: "t-exec-cursor", display_name: "Cursor" })
     .returning();
   tenant = t!.id;
-  // Seven runs sharing ONE created_at, so a page boundary lands inside the
-  // group, plus eight spread out before it.
   await ctx.db
     .insert(executions)
     .values([
@@ -82,14 +75,12 @@ describe("listExecutions — keyset cursor", () => {
     const ids = await walk(4, async () => {
       const [fresh] = await ctx.db
         .insert(executions)
-        // Newer than every seeded run: it lands on page one, ahead of the cursor.
         .values(row(new Date(TIE.getTime() + (inserted.length + 1) * 60_000)))
         .returning({ id: executions.id });
       inserted.push(fresh!.id);
     });
     expect(ids).toEqual(before);
     for (const id of inserted) expect(ids).not.toContain(id);
-    // Leave the fixture as seeded for the other tests.
     await ctx.db.delete(executions).where(inArray(executions.id, inserted));
   });
 

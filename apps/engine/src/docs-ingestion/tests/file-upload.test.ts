@@ -1,11 +1,3 @@
-// File-upload source ingestion test.
-//
-// Round-trips one fixture per supported format (JSON, CSV, YAML, XML,
-// Markdown, plaintext, HTML, and the binary office formats PDF/DOCX/
-// XLSX/PPTX) and asserts the orchestrator persists at least one chunk
-// for each. Genuinely-unknown formats (e.g. `.exe`) still surface as
-// `UnsupportedFileUploadError`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   buildDocxFixture,
@@ -69,7 +61,6 @@ describe("docs-ingestion/file-upload", () => {
       },
       ctx.testDb.db,
     );
-    // header chunk + 2 row chunks = 3
     expect(result.ingested_count).toBe(3);
   });
 

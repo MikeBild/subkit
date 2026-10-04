@@ -1,23 +1,8 @@
-// Positive-path coverage for the "preview warnings → commit proceeds"
-// flow. The earlier predicate conflated `warnings.length > 0` with
-// "preview failed"; the fix in `workflows.ts` decouples them — warnings
-// surface in the task list with `status: "warning"`, the create still
-// commits, and the summary card still renders.
-//
-// This test pins that contract: when runExecution returns succeeded +
-// warnings, we expect createWorkflow to be called (the commit) AND
-// renderTaskList to be called with a phase whose status is "warning"
-// and whose detail names the warning code.
-
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Capture real module shapes BEFORE we override them so we can restore
-// them in afterAll. `mock.restore()` does NOT undo `mock.module()`
-// (see Bun docs); without an explicit re-mock these stubs would leak
-// into every other sk test file in the same worker process.
 const realEngineClient = await import("../engine-client.ts");
 const realConfig = await import("../config.ts");
 const realRenderIndex = await import("../render/index.ts");
@@ -83,10 +68,6 @@ function getCreate(parent: unknown): CittySub {
   return sub.create;
 }
 
-// Silence stdout (createWorkflow result + printJson) so the test
-// output isn't polluted. The test does not assert on stdout content;
-// it asserts that the render mocks and the createWorkflow spy were
-// called with the right shapes.
 const origStdoutWrite = process.stdout.write.bind(process.stdout);
 const origStderrWrite = process.stderr.write.bind(process.stderr);
 
@@ -104,10 +85,6 @@ afterEach(() => {
   process.stderr.write = origStderrWrite;
 });
 
-// Restore module mocks so they don't leak into other files when Bun
-// runs files in parallel under --max-concurrency. `mock.restore()`
-// alone does NOT undo `mock.module()`, so we re-mock with the
-// originals captured at the top of this file.
 afterAll(() => {
   mock.module("../engine-client.ts", () => ORIGINAL_ENGINE_CLIENT);
   mock.module("../config.ts", () => ORIGINAL_CONFIG);
@@ -137,17 +114,10 @@ describe("sk workflows create · preview warnings → commit proceeds", () => {
     );
 
     const create = getCreate(workflowsCommand);
-    // No --json → narration on; the test asserts that warnings do NOT
-    // short-circuit the create. We do NOT assert exit code (it should
-    // be 0 / no process.exit call) — instead we verify the commit
-    // path executed end-to-end.
     await create.run!({ args: { file, json: false } });
 
-    // Commit happened.
     expect(createWorkflowSpy).toHaveBeenCalledTimes(1);
-    // Success card rendered.
     expect(renderSummaryMock).toHaveBeenCalledTimes(1);
-    // Task list received a "warning" phase with the warning code in detail.
     expect(renderTaskListMock).toHaveBeenCalled();
     const warningCall = renderTaskListMock.mock.calls.find((call) => {
       const phases = call[0] as Array<{ status: string; detail?: string }> | undefined;

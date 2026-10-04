@@ -93,8 +93,6 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
     case "string":
       return { kind: "string" };
     case "literal": {
-      // A bare `z.literal("")` is treated as a string leaf — used by
-      // the optional-URL helper as one branch of a union.
       const values = def.values ?? [];
       if (values.every((v) => typeof v === "string")) return { kind: "string" };
       return null;
@@ -115,22 +113,10 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
       const elementInner = unwrap(def.element).inner;
       const elementDef = (elementInner as { def?: { type?: string } }).def;
       if (elementDef?.type === "string") return { kind: "string-list" };
-      // Arrays of complex objects (a declarative
-      // list of server records) are STRUCTURAL config, set via the
-      // config file + boot reconcile, not scalar settings-panel leaves.
-      // Returning null drops them from listConfigLeaves so the settings
-      // GET/PUT surface, the per-leaf sweep, and the settings doc only
-      // ever cover values the scalar settings API can actually round-trip.
       if (elementDef?.type === "object") return null;
       return { kind: "string-array" };
     }
     case "union": {
-      // Union of literals + string subtypes (the optionalUrl pattern,
-      // and the "" | min(32) pattern for auth.session.secret). Walk
-      // each branch; if every branch resolves to "string"-ish, treat
-      // the union as a string leaf. Mixed-kind unions are not
-      // supported and return null so the walker drops them — caught
-      // by the schema-walk test in apps/sk/src/settings-ui.
       const options = def.options ?? [];
       if (options.length === 0) return null;
       const kinds = new Set<LeafKind>();
@@ -140,13 +126,7 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
         kinds.add(branch.kind);
       }
       if (kinds.size === 1) return { kind: [...kinds][0]! };
-      // String-ish union: literal("") + string-with-refinement → string.
-      if (
-        kinds.size === 2 &&
-        kinds.has("string") &&
-        // both still string-shaped, just different refinements
-        true
-      ) {
+      if (kinds.size === 2 && kinds.has("string") && true) {
         return { kind: "string" };
       }
       return null;
@@ -159,10 +139,6 @@ function classify(inner: z.ZodTypeAny): { kind: LeafKind; enumValues?: string[] 
 function walk(schema: z.ZodTypeAny, prefix: string[], out: ConfigLeaf[]): void {
   const { inner, nullable, meta, description } = unwrap(schema);
   if (meta.structural) {
-    // Structural records remain excluded by default. A schema may opt one
-    // complete value into the validated runtime settings surface explicitly;
-    // this keeps arrays such as auth.providers atomic and prevents partial,
-    // invalid records from being persisted field-by-field.
     if (!meta.runtimeEditable) return;
     const leaf: ConfigLeaf = {
       path: prefix,
@@ -204,8 +180,6 @@ let _leavesCache: ConfigLeaf[] | null = null;
 export function listConfigLeaves(): ConfigLeaf[] {
   if (_leavesCache !== null) return _leavesCache;
   const leaves: ConfigLeaf[] = [];
-  // Walk every section in the top-level config object.
-  // The `tenants` record is excluded: tenant overlays are walked separately.
   const def = (ConfigSchema as { def?: { shape?: Record<string, z.ZodTypeAny> } }).def;
   const shape = def?.shape ?? {};
   for (const [key, section] of Object.entries(shape)) {
@@ -216,15 +190,6 @@ export function listConfigLeaves(): ConfigLeaf[] {
   return leaves;
 }
 
-/**
- * What the settings surfaces (HTTP and MCP) report about a leaf beyond its
- * value: the schema's own default and, for an enum, its allowed values. Both
- * are read from the Zod schema — parsing `undefined` through the leaf applies
- * its `.default()` — so a changed default or a new enum member reaches every
- * surface without a second list. A leaf without a default (`database.url`)
- * reports none rather than an invented one; a secret's default is masked like
- * its value.
- */
 export function leafSchemaMeta(leaf: ConfigLeaf): { default?: unknown; enum_values?: string[] } {
   const out: { default?: unknown; enum_values?: string[] } = {};
   const parsed = leaf.schema.safeParse(undefined);

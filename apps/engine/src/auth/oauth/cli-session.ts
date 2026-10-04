@@ -1,9 +1,3 @@
-// One-time OAuth credential consumption for `sk login`.
-//
-// The short-lived OAuth access token is audience-bound to the CLI exchange
-// endpoint and consumed atomically. The CLI stores only the resulting personal
-// API key; the linked refresh family is revoked in the same transaction.
-
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -66,8 +60,6 @@ export async function consumeCliLoginToken(input: {
 
   try {
     return await input.db.transaction(async (tx) => {
-      // Claim exactly once. The extra tenant predicate makes the write boundary
-      // explicit even though the UUID is globally unique.
       const claimed = await tx
         .update(mcpOauthAccessTokens)
         .set({ revoked_at: checkedAt, last_used_at: checkedAt })
@@ -97,9 +89,6 @@ export async function consumeCliLoginToken(input: {
       if (tokenRow.refresh_token_id) {
         await revokeOAuthRefreshTokenFamily(tx, tokenRow.refresh_token_id, checkedAt);
       }
-      // The OAuth credential is spent even when the account was disabled
-      // between consent and exchange. Rolling the claim back here would let a
-      // later reactivation revive an already refused bearer credential.
       if (!user) return { ok: false as const, error: "invalid_token" as const };
 
       const issued = await issueApiKey(

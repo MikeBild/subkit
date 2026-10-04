@@ -1,7 +1,3 @@
-// Unit tests for the MCP adapter's envelope rendering.
-//
-// A pending approval is an actionable portal link, not successful execution.
-
 import { describe, expect, test } from "bun:test";
 import type { ToolResultPause } from "../conversations/tools/index.ts";
 import type { ConfirmEnvelope, ToolEnvelope } from "../tools/types.ts";

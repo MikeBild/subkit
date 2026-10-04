@@ -1,8 +1,3 @@
-// Skill-content coverage. Pins that key authoring affordances are
-// actually documented — a complementary lint to example-blocks.
-// Whenever a new schema-level field lands, add a presence check here
-// so the doc isn't silently behind the schema.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -119,25 +114,19 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("preview_stale_for_referenced_step");
     expect(body).toContain("recorded_eval");
     expect(body).toMatch(/fingerprint-keyed/i);
-    // The recovery recipe: one dry-run refreshes evidence; unchanged steps keep theirs.
     expect(body).toMatch(/unchanged steps keep their evidence/i);
   });
   test("documents the inside-a-loop-body addressing table ($item-only)", () => {
     expect(body).toContain("Inside a loop body — addressing table");
-    // $item in JSONata vs ${item.…} in request strings — item_var is retired
     expect(body).toContain(`\${item.name}`);
     expect(body).toContain("$item.name");
     expect(body).toMatch(/`item_var` is retired/);
     expect(body).not.toMatch(/"item_var":/);
-    // $item and $loop_index always bound
     expect(body).toMatch(/\$item.*always bound|ALWAYS bound/is);
     expect(body).toContain("$loop_index");
-    // sibling body step results + downstream loop output addressing
     expect(body).toContain("$scope.<body_step_id>.data");
     expect(body).toContain("$scope.<loop_id>.data.<body_step_id>.data");
-    // the compact worked example: request + transform in one body
     expect(body).toContain(`\${item.full_name}`);
-    // the body transform is JavaScript-only — sibling read via input.scope
     expect(body).toContain("input.scope.fetch_languages.data");
   });
   test("documents author_workflow as the builder and edit_workflow_patch as the editor", () => {
@@ -153,7 +142,6 @@ describe("workflow-authoring.md · field coverage", () => {
     expect(body).toContain("input.input");
     expect(body).toMatch(/must `return` its result/);
     expect(body).toMatch(/QuickJS/);
-    // JSONata is NOT a transform language; it survives only in the valid slots
     expect(body).toMatch(/JSONata is NOT a transform language/);
     expect(body).toMatch(/`language: "jsonata"` on a `transform` step is rejected/);
     expect(body).toMatch(/\*\*`\$item` ONLY\*\*/);
@@ -174,11 +162,8 @@ describe("workflow-authoring.md · field coverage", () => {
   });
   test("documents the JSONata flavour rules (:= blocks, dynamic keys, & concatenation)", () => {
     expect(body).toContain("JSONata flavour rules");
-    // := binding needs a parenthesized block, not a bare object-constructor value
     expect(body).toContain("( $t := $sum(items.price);");
-    // dynamic-key recipe via $merge($map(...))
     expect(body).toContain("$merge($map(");
-    // & is binary string concatenation, never unary
     expect(body).toMatch(/`&` is BINARY string concatenation/);
   });
 });
@@ -234,7 +219,6 @@ describe("browser-page-scrape-quirks.md · endpoint selection and reliability", 
   test("explains /chrome/function vs /chrome/content selection rule", () => {
     expect(body).toContain("/chrome/function");
     expect(body).toContain("/chrome/content");
-    // Must make clear that /chrome/content is wrong for late-rendered pages.
     expect(body).toMatch(/\/chrome\/content.*static|static.*\/chrome\/content/is);
   });
   test("documents page.waitForSelector running inside browserless (not swallowed)", () => {
@@ -254,15 +238,10 @@ describe("browser-page-scrape-quirks.md · endpoint selection and reliability", 
     expect(body).toContain("throw new Error");
   });
   test("documents time-format normalisation for abbreviated hours", () => {
-    // The '9:' -> '09:' pattern is a concrete documented quirk.
     expect(body).toMatch(/9:.*09:|single.digit|replace.*\\b.*\\d/is);
   });
 });
 
-// The bridge from a manifest issue code to the field that fixes it. Without
-// these strings the skill describes what a boundary IS but never says which
-// diagnosis it answers — which is how a model holding `dynamic_request` and a
-// page of report-delivery prose invented its own storage remedy.
 test("s3-connectors names the issue codes its boundary resolves", () => {
   const body = read("s3-connectors.md");
   expect(body).toContain("dynamic_request");
@@ -270,9 +249,6 @@ test("s3-connectors names the issue codes its boundary resolves", () => {
   expect(body).toContain("max_deletes");
 });
 
-// The same bridge for an http step. The skill has to name the patch path and
-// the limits of the capability: a model that is not told what `boundary` cannot
-// cover keeps adding it to steps that will never compile one.
 test("workflow-authoring names the request boundary, its patch path and its limits", () => {
   const body = read("workflow-authoring.md");
   expect(body).toContain("## Bounded requests");
@@ -280,7 +256,6 @@ test("workflow-authoring names the request boundary, its patch path and its limi
   expect(body).toContain("max_body_bytes");
   expect(body).toContain("max_calls");
   expect(body).toContain("destructive: true");
-  // What needs a minimal re-author, and what cannot be covered at all.
   expect(body).toContain("Re-author minimally");
   expect(body).toContain("Not coverable at all yet");
   expect(body).toContain("does not count yet");

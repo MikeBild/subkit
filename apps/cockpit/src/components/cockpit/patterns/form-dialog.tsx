@@ -27,18 +27,6 @@ import {
 
 export { type DialogSize, dialogWidthClass } from "./dialog-frame";
 
-/**
- * Create, rename, invite and approve (P14), in the one dialog anatomy (see
- * `dialog-frame`): head · body · error line · footer.
- *
- * A dialog of two steps keeps its width: its first step offers ChoiceCards
- * and only "Abbrechen" (no `submit`); its second has "‹ Zurück" (`back`)
- * above the title. `step` names the step shown; a new one fades in.
- *
- * A review that offers more than one way on (the approval dialog: re-check,
- * adjust, a smaller decision) puts them in `actions`, before the one filled
- * verb; `trigger` is the dialog's own opener where it has one.
- */
 export function FormDialog({
   open,
   onOpenChange,
@@ -60,9 +48,7 @@ export function FormDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
   title: string;
-  /** One line under the title. */
   description?: string;
-  /** Omitted: the step's choices proceed by themselves. */
   submit?: {
     label: string;
     pending?: boolean;
@@ -71,20 +57,15 @@ export function FormDialog({
     testId?: string;
   };
   onSubmit?(): void | Promise<void>;
-  /** The one error line, above the footer. */
   error?: string | null;
-  /** Back to the previous step. */
   back?: { label: string; onClick(): void; testId?: string };
   step?: string;
-  /** Further ways on, in the footer before the filled verb (outline). */
   actions?: ReactNode;
-  /** The dialog's own opener. */
   trigger?: ReactNode;
   titleTestId?: string;
   cancelTestId?: string;
   size?: DialogSize;
   testId: string;
-  /** The fields. */
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -95,8 +76,6 @@ export function FormDialog({
       <DialogContent
         className={cn(dialogWidthClass(size), DIALOG_FRAME)}
         showCloseButton={false}
-        // Focus lands on the dialog, not on its close ×: a focused × opens its
-        // tooltip, and the first Escape would close the tooltip, not the dialog.
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           (event.currentTarget as HTMLElement | null)?.focus();

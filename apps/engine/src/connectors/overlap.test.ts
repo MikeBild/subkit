@@ -1,14 +1,3 @@
-// Tests for the structural connector-overlap scorer.
-//
-// Design note: every `existingConnector(...)` call
-// builds the row from explicit fields, not by spreading `PROPOSED` as
-// a default. The earlier shape ("match everything by default, override
-// to differ") made it easy to write a regression where the helper's
-// implicit-match hid a real mismatch. The explicit shape forces every
-// dimension to be named on every test, so any future change to the
-// `ConnectorOverlapInput` interface trips every test instead of
-// silently inheriting from the proposed shape.
-
 import { describe, expect, it } from "bun:test";
 import { baseUrlHost, compareConnectorOverlap, scoreConnectorOverlap } from "./overlap.ts";
 
@@ -18,7 +7,6 @@ const PROPOSED = {
   auth_type: "basic",
 };
 
-// Always declare every dimension explicitly — no spread of PROPOSED.
 type ExistingRow = {
   id: string;
   driver: string;
@@ -132,21 +120,18 @@ describe("compareConnectorOverlap", () => {
   it("filters by minScore (default 2) and sorts by score descending", () => {
     const matches = compareConnectorOverlap(
       [
-        // Score 1 — should drop with default threshold.
         existingConnector({
           id: "weak",
           driver: "http",
           base_url: "https://example.com",
           auth_type: "none",
         }),
-        // Score 2 — auth_type differs.
         existingConnector({
           id: "auth-mismatch",
           driver: "http",
           base_url: "https://acme.atlassian.net",
           auth_type: "oauth2_authorization_code",
         }),
-        // Score 3 — full match.
         existingConnector({
           id: "exact",
           driver: "http",

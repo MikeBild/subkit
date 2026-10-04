@@ -65,7 +65,6 @@ describe("filterSuggestion", () => {
   });
 
   test("rejects suggestions ≥100 chars (multi-word, under 12)", () => {
-    // 5 words, 104 chars — slips past too_few_words and too_many_words.
     const s =
       "twentycharsofletters twentycharsofletters twentycharsofletters twentycharsofletters twentycharsofletters";
     expect(s.length).toBeGreaterThanOrEqual(100);
@@ -83,7 +82,6 @@ describe("filterSuggestion", () => {
   });
 
   test("rejects evaluative phrasing (rule fires after too_few_words)", () => {
-    // Multi-word phrases — single-word "thanks!" / "great" hit too_few_words first.
     expect(filterSuggestion("looks good")).toBe("evaluative");
     expect(filterSuggestion("thanks for that")).toBe("evaluative");
     expect(filterSuggestion("that works for me")).toBe("evaluative");
@@ -97,8 +95,6 @@ describe("filterSuggestion", () => {
   });
 
   test("rejects enumerate-a-resource suggestions for non-existent catalogs", () => {
-    // The reported bug: after "list my workflows / skills / …" the model
-    // extrapolates a plausible but non-existent next catalog.
     expect(filterSuggestion("list my agents")).toBe("unknown_catalog");
     expect(filterSuggestion("show my pipelines")).toBe("unknown_catalog");
     expect(filterSuggestion("list all bots")).toBe("unknown_catalog");
@@ -113,7 +109,6 @@ describe("filterSuggestion", () => {
   });
 
   test("does not over-filter free-form suggestions that start with a list verb", () => {
-    // No "my/all/the/our" possessive → not the enumerate-a-resource shape.
     expect(filterSuggestion("show me the diff")).toBeNull();
     expect(filterSuggestion("list of changes")).toBeNull();
   });

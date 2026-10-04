@@ -29,8 +29,6 @@ describe("findUnsupportedPlaceholders", () => {
     const found = findUnsupportedPlaceholders("/users/{{ orders }}");
     expect(found.length).toBe(1);
     expect(found[0]?.code).toBe("mustache");
-    // Single bare identifier becomes `${item.<path>}` — best guess is
-    // it's a loop alias.
     expect(found[0]?.did_you_mean).toBe("${item.orders}");
   });
 
@@ -59,9 +57,6 @@ describe("findUnsupportedPlaceholders", () => {
     const found = findUnsupportedPlaceholders("/users/${user.id}");
     expect(found.length).toBe(1);
     expect(found[0]?.code).toBe("bad_kind");
-    // 2+ segment dotted paths default to `${scope.<head>.<rest>}` —
-    // `user` is more likely a step id than a loop alias when a path
-    // exists, and `scope.user.id` parses cleanly.
     expect(found[0]?.did_you_mean).toBe("${scope.user.id}");
   });
 

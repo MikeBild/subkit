@@ -1,7 +1,3 @@
-// Import a connector draft from an API collection, an HTTP archive
-// (HAR), an OpenAPI/GraphQL spec, or a curl command:
-//   POST /v1/connector-templates/import
-
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { BadRequestError } from "../../errors.ts";
@@ -39,7 +35,6 @@ export function registerImportRoutes(app: OpenAPIHono<AppEnv>): void {
     const tool = await import("../../../conversations/tools/import-connector-from-spec.ts");
     try {
       const result = await tool.importConnectorFromSpecTool.execute(
-        // The tool only uses args — context is unused for the import operation.
         {} as Parameters<typeof tool.importConnectorFromSpecTool.execute>[0],
         body,
       );

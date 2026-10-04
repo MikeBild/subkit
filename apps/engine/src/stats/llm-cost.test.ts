@@ -1,14 +1,3 @@
-// Integration test: the cost query splits calls at long-context thresholds
-// per `llm_usage` row, before summing.
-//
-// A vendor bills a call whose prompt passes its long-context threshold at the
-// higher rate in full. Summing a model's tokens first and comparing the sum
-// would price two 150k prompts (300k together) as long, and a mix of short
-// and long calls as all-short or all-long. The query groups by model and by
-// how many thresholds each row exceeds, in one pass.
-//
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -90,7 +79,6 @@ describe.skipIf(skip)("long-context split in the cost query", () => {
 
   test("a prompt past gemini's threshold but under gpt-5.6-sol's is short for gpt-5.6-sol", async () => {
     await seed("gpt-5.6-sol", [250_000, 300_000], 10_000);
-    // 250k: base (4 in, 20 out); 300k: long (8 in, 30 out).
     expect(await cost()).toBeCloseTo(0.25 * 4 + 0.01 * 20 + 0.3 * 8 + 0.01 * 30, 6);
   });
 
@@ -102,7 +90,6 @@ describe.skipIf(skip)("long-context split in the cost query", () => {
       sql`llm_usage.tenant_id = ${tenantId}`,
       longContextThresholds(prices),
     );
-    // Both rows exceed both cut points, so they land in one group.
     expect(rows).toHaveLength(1);
     expect(rows[0]?.calls).toBe(2);
     expect(await cost()).toBeCloseTo(0.7 * 1, 6);
@@ -110,7 +97,6 @@ describe.skipIf(skip)("long-context split in the cost query", () => {
 });
 
 describe.skipIf(skip)("cost per group", () => {
-  // The per-group reader prices at the tenant's configured rates.
   let configDir = "";
   beforeAll(async () => {
     configDir = mkdtempSync(join(tmpdir(), "subkit-llm-cost-test-"));

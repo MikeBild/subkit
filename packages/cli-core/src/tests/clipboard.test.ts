@@ -1,6 +1,3 @@
-// OSC 52 clipboard helper — writes the correct escape sequence and
-// respects the TTY + size guards.
-
 import { describe, expect, test } from "bun:test";
 import { osc52Copy, ringBell } from "../clipboard.ts";
 
@@ -37,7 +34,6 @@ describe("osc52Copy", () => {
 
   test("returns false when the payload exceeds the byte cap", () => {
     const { stream } = makeMockStream(true);
-    // A 1MB payload; default cap is 512KB base64.
     const big = "x".repeat(1_000_000);
     expect(osc52Copy(big, { stream, maxBytes: 1024 })).toBe(false);
   });

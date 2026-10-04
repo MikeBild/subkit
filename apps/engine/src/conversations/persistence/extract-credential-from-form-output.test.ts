@@ -1,13 +1,3 @@
-// Pure-function tests for `extractCredentialFromFormOutput` — the
-// adapter that turns an `ask_user_form` submission into the typed
-// `AtomicCredentialInput` consumed by `saveConnectorAtomic`.
-//
-// Pre-fix the LLM frequently emitted `commit_intent.payload.credential
-// = { mode: "oauth2" }` (matching the connector's `auth_type`) and the
-// adapter fell through `default → null`. The connector saved without
-// any credential row → 401 on every subsequent call. Reproduces the
-// AppSync Cognito session bab50df1.
-
 import { describe, expect, it } from "bun:test";
 import { extractCredentialFromFormOutput } from "./auto-persist.ts";
 
@@ -18,11 +8,6 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
   });
 
   it("strips a leading `Bearer ` scheme word from a bearer token", () => {
-    // The HTTP driver emits `Authorization: Bearer ${token}` itself, so a
-    // token that already carries the scheme would be double-prefixed to
-    // `Bearer Bearer …` → 401 on a valid key. Accept the operator typing
-    // (or pasting) the scheme and normalise it away — case-insensitively,
-    // with any surrounding whitespace.
     expect(
       extractCredentialFromFormOutput("bearer", {}, { values: { token: "Bearer wf_live_abc123" } }),
     ).toEqual({ mode: "bearer", token: "wf_live_abc123" });
@@ -36,8 +21,6 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
   });
 
   it("keeps a pasted `Authorization: Bearer …` verbatim for header mode", () => {
-    // header/query values are written to the wire verbatim — the scheme is
-    // part of the header value there and must NOT be stripped.
     expect(
       extractCredentialFromFormOutput(
         "header",
@@ -52,8 +35,6 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
   });
 
   it("trims a pasted header's surrounding whitespace, keeping the value itself", () => {
-    // A trailing newline sent on the wire makes the runtime reject the request
-    // with an error that quotes the secret.
     expect(
       extractCredentialFromFormOutput(
         "header",
@@ -83,9 +64,6 @@ describe("extractCredentialFromFormOutput — bearer / basic / header / query", 
   });
 
   it("prefers an explicit username over an email decoy when both are present", () => {
-    // `email` is accepted as a username alias (Atlassian-style forms), but an
-    // explicit `username` field must win — an unrelated contact-email field
-    // surfaced next to the credential must never be picked as the username.
     const out = extractCredentialFromFormOutput(
       "basic",
       {},
@@ -141,12 +119,6 @@ describe("extractCredentialFromFormOutput — oauth2 → cognito routing", () =>
   });
 
   it("falls through to the BYO oauth2 branch when form provides client_id (no cognito hint)", () => {
-    // Without cognito hints + with client_id present, the extractor
-    // builds the AtomicCredentialInput.oauth2 seed — NOT cognito.
-    // {username,password} values without a client_id mean the form
-    // doesn't carry the right shape for the BYO oauth2 branch either,
-    // so the result is null. See the "oauth2 BYO authorization_code"
-    // describe block below for the positive case.
     const out = extractCredentialFromFormOutput(
       "oauth2",
       {},
@@ -227,11 +199,6 @@ describe("extractCredentialFromFormOutput — oauth2 BYO authorization_code", ()
   });
 
   it("rejects mustache placeholder client_secret in seedOverrides; form value wins", () => {
-    // The LLM authors `{{client_secret}}` into the commit_intent payload
-    // to mark "fill from form". The seed-side scrub in mergeFormIntoCredential
-    // strips the secret key, but `seedString` here also rejects any
-    // embedded placeholder so a leak through any path cannot poison
-    // the real form value.
     const out = extractCredentialFromFormOutput(
       "oauth2",
       { client_id: "id", client_secret: "{{client_secret}}" },
@@ -324,13 +291,6 @@ describe("extractCredentialFromFormOutput — aws_sigv4", () => {
 });
 
 describe("extractCredentialFromFormOutput — mustache placeholder rejection", () => {
-  // The LLM occasionally hands us mustache-shaped seed values
-  // (`{{password}}`, `{{secret_access_key}}`) that mean "form will
-  // fill this slot". Pre-fix the seedString helper only stripped
-  // whole-value matches; an embedded placeholder like
-  // `"Bearer {{token}}"` would persist verbatim and every request
-  // 401. Pass D3 widened the reject to any embedded `{{…}}`.
-
   it("cognito: form password wins over a whole-value mustache seed", () => {
     const out = extractCredentialFromFormOutput(
       "cognito_user_password",
@@ -371,10 +331,6 @@ describe("extractCredentialFromFormOutput — mustache placeholder rejection", (
 });
 
 describe("extractCredentialFromFormOutput — basic api_token / apitoken / token aliases", () => {
-  // Jira/Confluence and many other "Basic auth with an API token" providers label
-  // the secret `api_token`. Pre-fix an `api_token=…` form submission matched nothing
-  // and the credential was silently dropped → probe 401.
-
   it("accepts api_token as the password field (Jira/Confluence pattern)", () => {
     const out = extractCredentialFromFormOutput(
       "basic",
@@ -434,13 +390,6 @@ describe("extractCredentialFromFormOutput — defensive", () => {
 });
 
 describe("extractCredentialFromFormOutput — schema coverage cross-check", () => {
-  // Guard against the next "we forgot to wire a new auth mode" latent
-  // prod trip (which is exactly what bit gmail/google-*/msgraph for
-  // four engine versions). Every variant of AtomicCredentialInput must
-  // round-trip through extractCredentialFromFormOutput when given a
-  // minimal happy-path form output. If you add a new credential mode
-  // to AtomicCredentialInput, add it here AND wire the switch arm in
-  // credential-cache.ts in the same commit.
   const minimalInputs = [
     { seedMode: "bearer", output: { values: { token: "t" } } },
     { seedMode: "basic", output: { values: { username: "u", password: "p" } } },

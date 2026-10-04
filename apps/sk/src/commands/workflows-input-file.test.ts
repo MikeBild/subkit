@@ -1,8 +1,3 @@
-// Unit tests for the `--input @<path>` ergonomics of `sk workflows run`.
-// Tests focus on the file-reading path in workflows.ts:228-243.
-// No engine client needed — we test the argument parsing + file-reading
-// logic in isolation.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,14 +13,6 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
-// ---------------------------------------------------------------------------
-// Internal helper — mirrors the @<path> parsing logic from workflows.ts
-// ---------------------------------------------------------------------------
-
-/**
- * Mirrors the `--input @<path>` parsing in `workflows.ts:228-243`.
- * Returns the parsed value or throws with a descriptive message.
- */
 function parseInputArg(raw: string): unknown {
   if (raw.startsWith("@")) {
     const filePath = raw.slice(1);
@@ -34,10 +21,6 @@ function parseInputArg(raw: string): unknown {
   }
   return JSON.parse(raw);
 }
-
-// ---------------------------------------------------------------------------
-// Happy path: @<path> reads JSON from disk
-// ---------------------------------------------------------------------------
 
 describe("--input @<path> — happy path", () => {
   test("@./file.json reads and parses valid JSON", () => {
@@ -73,10 +56,6 @@ describe("--input @<path> — happy path", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Error cases: bad path / bad JSON
-// ---------------------------------------------------------------------------
-
 describe("--input @<path> — error cases", () => {
   test("@<non-existent-path> throws a file-not-found error", () => {
     const badPath = join(tempDir, "does-not-exist.json");
@@ -106,10 +85,6 @@ describe("--input @<path> — error cases", () => {
     expect(caught?.message.length).toBeGreaterThan(0);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Boundary cases
-// ---------------------------------------------------------------------------
 
 describe("--input @<path> — boundary cases", () => {
   test("empty JSON object {} is valid", () => {

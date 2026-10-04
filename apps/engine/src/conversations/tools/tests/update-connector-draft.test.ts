@@ -1,10 +1,3 @@
-// Unit tests for update_connector_draft credential-shape rejection.
-//
-// Credential-shape detection fires BEFORE any DB or draft mutation, so
-// rejection tests need only a minimal mock context. Clean-pass tests
-// exercise the full tool including template resolution and require a
-// live DB (createTestDb).
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";
@@ -13,11 +6,6 @@ import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { findAuthParamConfigKey, updateConnectorDraftTool } from "../update-connector-draft.ts";
 
-// ---------------------------------------------------------------------------
-// Pure unit tests — credential-shape rejection (no DB required)
-// ---------------------------------------------------------------------------
-
-// A minimal stub: only the fields the rejection path touches.
 const stubCtx = {
   conversation_id: "test-conv",
   tenant_id: "test-tenant",
@@ -29,8 +17,6 @@ const stubCtx = {
 } as unknown as ToolContext;
 
 describe("findAuthParamConfigKey — auth-param-name key detection", () => {
-  // Intended matches: a qualifier (auth_/query_ prefix OR a _name/_param/_key/
-  // _arg suffix) must be present.
   const positives = [
     "query_param_name",
     "query_parameter_name",
@@ -43,8 +29,6 @@ describe("findAuthParamConfigKey — auth-param-name key detection", () => {
     "query_arg_name",
     "key_name",
   ];
-  // Bare generic tokens and ordinary HTTP-config keys must NOT match, or the
-  // detector would mis-flag a real config key as the auth param name.
   const negatives = [
     "key",
     "token",
@@ -170,7 +154,6 @@ describe("update_connector_draft — credential-shape rejection", () => {
     await updateConnectorDraftTool.execute(ctx, {
       config: { token: "secret" },
     });
-    // setDraft was NOT called — draft remains the original empty document.
     expect(storedDraft).toBe(emptyDraft);
   });
 
@@ -180,24 +163,12 @@ describe("update_connector_draft — credential-shape rejection", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // error_code is machine-readable, message is human-readable.
       expect(typeof result.error_code).toBe("string");
       expect(typeof result.message).toBe("string");
       expect(Array.isArray(result.next_best_actions)).toBe(true);
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Pure unit tests — query-auth param-name in config rejection (no DB)
-// ---------------------------------------------------------------------------
-//
-// Reproduces production session aba4551f (the Browserless connector): the
-// model invented `config.query_param_name`, the `.strict()`
-// HttpConnectorConfig rejected it at save with the opaque "invalid http
-// connector config", and — given no actionable hint — the model re-added
-// the key and looped for minutes. The guard fails fast here with a
-// directed message so the model self-corrects in one turn.
 
 describe("update_connector_draft — query-auth param-name in config rejection", () => {
   const KEYS = [
@@ -219,7 +190,6 @@ describe("update_connector_draft — query-auth param-name in config rejection",
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error_code).toBe("auth_param_name_in_config");
-        // Message redirects to the credential's `param` field, not config.
         expect(result.message).toContain("param");
         expect(result.message).toContain(key);
         expect(result.next_best_actions).toEqual(
@@ -253,10 +223,6 @@ describe("update_connector_draft — query-auth param-name in config rejection",
     expect(storedDraft).toBe(emptyDraft);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Integration tests — clean updates require DB + template resolution
-// ---------------------------------------------------------------------------
 
 let ctx: ConversationTestCtx;
 
@@ -327,18 +293,11 @@ describe("update_connector_draft — clean updates pass", () => {
   });
 
   it("rejects auth_type downgrade to 'none' when a credential is cached", async () => {
-    // Reproduces session bab50df1: the LLM, faced with a probe failure,
-    // tried "switch auth_type back to none" as a workaround. With a
-    // credential already in the draft cache that flips the connector
-    // into a state where the next probe surfaces credential_required,
-    // and the LLM oscillates. The downgrade must be refused so the
-    // operator gets a clear next-best-action set.
     const { setDraftCredential, _resetDraftCredentialCacheForTests } = await import(
       "../../persistence/draft-credential-cache.ts"
     );
     _resetDraftCredentialCacheForTests();
     const { base } = await makeCtx();
-    // Stage an oauth2 connector + cached credential.
     await updateConnectorDraftTool.execute(base, {
       name: "AppSync",
       driver: "graphql",
@@ -447,8 +406,6 @@ describe("update_connector_draft — clean updates pass", () => {
       auth_type: "bearer",
       config: { mcp: { transport: "http", auth: { kind: "bearer" } } },
     });
-    // A draft recorded with a mismatched kind, under an older wording of
-    // the finding.
     const draft = getDraft();
     const connector = draft.connector;
     if (!connector?.validation) throw new Error("missing connector draft");
@@ -481,21 +438,11 @@ describe("update_connector_draft — clean updates pass", () => {
       base_url: "https://api.example.com",
       auth_type: "bearer",
     });
-    // No credential cached → switching to none is allowed (just
-    // editing a fresh draft).
     const result = await updateConnectorDraftTool.execute(base, { auth_type: "none" });
     expect(result.ok).toBe(true);
   });
 
   it("rejects any config.oauth payload with auth_mutation_not_allowed", async () => {
-    // Post-fix (session 18467df2): `config.oauth` is owned by the
-    // template snapshot + OAuth2 client at mint time. Letting the LLM
-    // hand-edit oauth fields here is what produced the bearer-with-
-    // oauth shape that strict-mode rejected at save. The earlier false
-    // positive (session 3f81fb2a) on `token_endpoint` substrings
-    // doesn't matter anymore — the entire oauth block is rejected
-    // before SENSITIVE_KEY_PATTERN even runs. Operators rotating an
-    // oauth2 client_id/secret should call authenticate_oauth.
     const { base } = await makeCtx();
     const result = await updateConnectorDraftTool.execute(base, {
       config: {
@@ -519,9 +466,6 @@ describe("update_connector_draft — clean updates pass", () => {
   });
 
   it("accepts non-oauth config updates (probe_endpoint, capabilities, static_headers)", async () => {
-    // Non-auth config remains writable: drivers and the LLM context
-    // need to tweak probe metadata, pagination defaults, and static
-    // headers without touching oauth.
     const { base } = await makeCtx();
     const result = await updateConnectorDraftTool.execute(base, {
       config: {

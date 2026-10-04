@@ -15,8 +15,6 @@ describe("client registration liveness", () => {
   });
 
   test("a retired registration says it was retired, and how it comes back", () => {
-    // It used to read "revoked — register again", which is neither what
-    // happened nor what the client has to do.
     const refusal = clientLivenessRefusal({ disabled_at: at, retired_at: at });
     expect(refusal).toBe("client_retired");
     const description = livenessRefusalDescription("client_retired");

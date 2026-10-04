@@ -1,22 +1,3 @@
-// HTTP integration tests for the operator on/off switch and the mcp
-// driver's own routes:
-//   POST /v1/connectors/{id}/enable
-//   POST /v1/connectors/{id}/disable
-//   POST /v1/connectors/{id}/mcp/inspect
-//   POST /v1/connectors/{id}/mcp/authorize
-//
-// Four claims are load-bearing. First, `enabled` is driver-agnostic and
-// readable back: a flip the caller cannot see would make these routes
-// report nothing. Second, the two `mcp/*` routes are DRIVER-DISPATCHED —
-// pointed at an http connector they must refuse rather than half-run, and
-// the refusal has to name the driver, because "404" on a connector the
-// operator can see in the list is an answer nobody can act on. Third,
-// `last_error` reaches the caller — a value recorded on the row but
-// withheld by the API is a diagnosis reserved for whoever has database
-// access. Fourth, so do `health_state` / `health_reason` /
-// `health_error_code`: `enabled` says whether a human switched the
-// connector off, and these say whether the ENGINE considers it usable.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../../db/schema/index.ts";
@@ -79,9 +60,6 @@ describe("POST /v1/connectors/{id}/enable | /disable", () => {
     expect(disabled.status).toBe(200);
     expect(((await disabled.json()) as { enabled: boolean }).enabled).toBe(false);
 
-    // Readable back on GET — the response body is not the only place the
-    // flip shows up, or an operator refreshing the page would see stale
-    // state.
     const fetched = await get(`/v1/connectors/${mcpConnectorId}`);
     expect(((await fetched.json()) as { enabled: boolean }).enabled).toBe(false);
 
@@ -121,16 +99,12 @@ describe("the mcp driver's own routes are driver-dispatched", () => {
   });
 
   test("mcp/authorize against an http connector is refused by its sign-in, not an OAuth dance", async () => {
-    // The route accepts exactly what the connector's `sign_in` sends to it.
     const res = await post(`/v1/connectors/${httpConnectorId}/mcp/authorize`);
     expect(res.status).toBe(422);
     expect(((await res.json()) as { code: string }).code).toBe("no_browser_sign_in");
   });
 
   test("mcp/authorize on an mcp connector whose auth kind is not oauth2 is refused with the reason", async () => {
-    // The seeded connector declares `kind: "none"`. Starting a browser
-    // round-trip for it would hand the operator a URL no authorization
-    // server ever agreed to serve.
     const res = await post(`/v1/connectors/${mcpConnectorId}/mcp/authorize`);
     expect(res.status).toBe(422);
     expect(JSON.stringify(await res.json())).toContain("oauth2");
@@ -139,8 +113,6 @@ describe("the mcp driver's own routes are driver-dispatched", () => {
   test("mcp/inspect on a DISABLED mcp connector is refused before any handshake", async () => {
     await post(`/v1/connectors/${mcpConnectorId}/disable`);
     const res = await post(`/v1/connectors/${mcpConnectorId}/mcp/inspect`);
-    // 422, not 502: nothing was attempted, so reporting an upstream
-    // failure would blame a remote that was never contacted.
     expect(res.status).toBe(422);
     expect(JSON.stringify(await res.json())).toContain("disabled");
     await post(`/v1/connectors/${mcpConnectorId}/enable`);
@@ -148,11 +120,6 @@ describe("the mcp driver's own routes are driver-dispatched", () => {
 });
 
 describe("`last_error` is readable on every connector representation", () => {
-  // Written straight onto the row: this pins the READ path, and the recorders
-  // that populate the column have their own tests. Both representations are
-  // asserted because an operator triaging a broken connector starts from the
-  // list and drills in — a field on only one of the two is a field they find by
-  // accident.
   const failure = "upstream refused the session: 401 invalid_token";
 
   test("a recorded failure reaches both the single GET and the list item", async () => {
@@ -184,8 +151,6 @@ describe("`last_error` is readable on every connector representation", () => {
   });
 
   test("a connector with no failure history reports null, not an absent field", async () => {
-    // Absent would read as "this API does not report failures"; null says
-    // "asked and answered: nothing recorded".
     const single = (await (await get(`/v1/connectors/${httpConnectorId}`)).json()) as Record<
       string,
       unknown
@@ -197,10 +162,6 @@ describe("`last_error` is readable on every connector representation", () => {
 });
 
 describe("the engine's own health verdict is readable on every connector representation", () => {
-  // `enabled` alone cannot answer "why is this connector not being used" —
-  // an operator seeing an enabled connector that never runs was previously
-  // told nothing. These three fields are engine-authored, which is what
-  // makes them safe to publish where the remote's error body is not.
   type HealthFields = {
     health_state: string;
     health_reason: string | null;
@@ -232,10 +193,6 @@ describe("the engine's own health verdict is readable on every connector represe
   });
 
   test("the published state is the RECONCILED verdict, not the raw column", async () => {
-    // `needs_reauth` outranks a stored `degraded`. Serving the column
-    // verbatim would put two answers about one connector in front of one
-    // operator — the disagreement effectiveConnectorHealth exists to
-    // prevent.
     await ctx.db
       .update(connectors)
       .set({ health_state: "degraded", needs_reauth: true })

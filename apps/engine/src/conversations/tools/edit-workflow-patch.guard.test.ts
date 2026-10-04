@@ -1,16 +1,3 @@
-// Guards the `steps`-must-stay-an-array check in applyWorkflowPatchToDraft.
-//
-// A patch may legally target `/steps`, and nothing upstream guarantees the op
-// leaves an ARRAY behind. Before the guard, a `replace` that put an object
-// there flowed into `(patched.steps ?? []).some(...)` — `?? []` only covers
-// null/undefined — and threw a raw TypeError that escaped as an untyped crash
-// instead of a correctable envelope. Observed in production; this test is the
-// proof the guard actually holds, which the comment alone was not.
-//
-// Pure logic: no DB, no draft persistence. setDraft throws so a regression that
-// lets a malformed patch through the gate fails loudly rather than silently
-// persisting a broken draft.
-
 import { describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
@@ -40,7 +27,6 @@ function ctxFor(draft: DraftDocument): ToolContext {
 }
 
 describe("edit_workflow_patch — steps must stay an array", () => {
-  // The exact shape seen in production, repeatedly.
   test("replacing /steps with an object is a typed patch_invalid, not a TypeError", async () => {
     const result = await applyWorkflowPatchToDraft(ctxFor(draftWithOneStep()), [
       { op: "replace", path: "/steps", value: { id: "not-a-list" } },
@@ -50,13 +36,10 @@ describe("edit_workflow_patch — steps must stay an array", () => {
     const data = result.data as { error_code?: string; message?: string };
     expect(data.error_code).toBe("patch_invalid");
     expect(data.message).toContain("steps must stay a list of step objects");
-    // The message names what was actually found, so the model can correct it.
     expect(data.message).toContain("object");
   });
 
   test("replacing /steps with null is rejected the same way", async () => {
-    // `?? []` WOULD have swallowed null, so this case never crashed — but it
-    // would have silently dropped every step. Same envelope, different reason.
     const result = await applyWorkflowPatchToDraft(ctxFor(draftWithOneStep()), [
       { op: "replace", path: "/steps", value: null },
     ]);

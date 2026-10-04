@@ -1,7 +1,3 @@
-// Reducer behaviour for the new `diff` TurnEvent on the cli-core
-// session-state path. Threads the diff under the most recent
-// assistant message; never appends to messages or cells.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, initialSessionState } from "../turn-event.ts";
 

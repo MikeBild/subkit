@@ -1,11 +1,3 @@
-// Declined-intent guard — a "no" stays a "no" within one conversation.
-//
-// Three seams:
-//   1. confirm.ts short-circuits an identical re-proposal (pure, fake ctx).
-//   2. normalizeState revives `last_denied_intent` across resume.
-//   3. recordDeniedIntentIfDeclined stamps the fingerprint on decline and
-//      the round-trip through the draft store survives (per-file DB).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations } from "../db/schema/index.ts";
 import { getMockProvider } from "../llm/mock-provider.ts";
@@ -61,8 +53,6 @@ const CONFIRM_ARGS = {
   commit_intent: { kind: "save_workflow_draft" as const, payload: {}, description: "save" },
 };
 
-// A bare confirm carries no commit_intent and no target — a plain question
-// with no stable action identity, so the guard must never fire for it.
 const BARE_CONFIRM_ARGS = {
   question: "Proceed?",
   kind: "generic" as const,
@@ -94,9 +84,6 @@ describe("declined-intent · confirm short-circuit", () => {
   });
 
   test("in auto mode the guard stays sticky — no one-shot clear, no auto-approve override", async () => {
-    // A target-only external_write (no commit_intent) is the exact shape that
-    // would otherwise auto-resolve; declining it must keep sticking in auto so
-    // a second identical re-proposal can never silently auto-approve.
     const targetArgs = {
       question: "Send to the webhook?",
       kind: "external_write" as const,
@@ -109,9 +96,7 @@ describe("declined-intent · confirm short-circuit", () => {
     const { ctx, current } = confirmCtx(draftWithDenial(targetFp), "auto");
     const first = await askUserConfirmTool.execute(ctx, targetArgs);
     expect((first.data as { already_declined?: boolean }).already_declined).toBe(true);
-    // The stamp is NOT cleared in auto mode.
     expect(current().state?.last_denied_intent?.fingerprint).toBe(targetFp!);
-    // A second identical re-proposal STILL short-circuits (never auto-approved).
     const second = await askUserConfirmTool.execute(ctx, targetArgs);
     expect((second.data as { already_declined?: boolean }).already_declined).toBe(true);
     expect((second.data as { confirmed: boolean }).confirmed).toBe(false);
@@ -126,32 +111,23 @@ describe("declined-intent · confirm short-circuit", () => {
       permission_mode: "ask",
     } as unknown as ToolContext;
     const result = await askUserConfirmTool.execute(ctx, CONFIRM_ARGS);
-    // Fail-open: the guard still returns the decline instead of throwing.
     expect((result.data as { already_declined?: boolean }).already_declined).toBe(true);
   });
 
   test("the guard is one-shot: firing clears the stamp so a genuine retry can prompt", async () => {
     const { ctx, current } = confirmCtx(draftWithDenial(SAVE_FP));
-    // First identical re-proposal short-circuits...
     const first = await askUserConfirmTool.execute(ctx, CONFIRM_ARGS);
     expect((first.data as { already_declined?: boolean }).already_declined).toBe(true);
-    // ...and clears the stamp, so the escape hatch is open.
     expect(current().state?.last_denied_intent ?? null).toBeNull();
-    // A second identical proposal no longer short-circuits — it falls through
-    // to the real pause path (which the fake ctx cannot service, so it throws).
     await expect(askUserConfirmTool.execute(ctx, CONFIRM_ARGS)).rejects.toThrow();
   });
 
   test("guard still matches when the confirm carries a secret-shaped string (both sides scrub)", async () => {
-    // The recorder fingerprints the SCRUBBED persisted input; the guard must
-    // fingerprint the scrubbed live args too, or a secret-carrying confirm
-    // would hash differently on the two sides and never match.
     const secretArgs = {
       question: "Send to the webhook?",
       kind: "external_write" as const,
       target: { url: "https://hooks.example/x", token: "ghp_0123456789abcdefghij0123456789abcdef" },
     };
-    // Mimic the recorder: stamp the fingerprint of the SCRUBBED projection.
     const scrubbed = scrubStringsDeep({
       kind: secretArgs.kind,
       commit_intent: undefined,
@@ -165,29 +141,20 @@ describe("declined-intent · confirm short-circuit", () => {
   });
 
   test("a bare confirm (no commit_intent, no target) is never guarded", async () => {
-    // Stamp the bare confirm's own fingerprint, then re-propose it: the guard
-    // must NOT fire, because a plain question has no stable action identity.
     const bareFp = authoringIntentFingerprint(
       { kind: BARE_CONFIRM_ARGS.kind, commit_intent: undefined, target: undefined },
       { workflow: WORKFLOW },
     );
     const { ctx } = confirmCtx(draftWithDenial(bareFp));
-    // Falls through to the pause path (no DB) → throws; a short-circuit would
-    // have returned already_declined without touching the DB.
     await expect(askUserConfirmTool.execute(ctx, BARE_CONFIRM_ARGS)).rejects.toThrow();
   });
 
-  // The remaining fall-through cases must NOT short-circuit — they proceed to
-  // the real `pauseForUserInput` path, which needs a DB the fake ctx lacks.
-  // Reaching it (and throwing on the missing DB) is the proof that the guard
-  // did not fire; a short-circuit would have returned before any DB access.
   test("no recorded denial → falls through to the normal pause path", async () => {
     const { ctx } = confirmCtx(draftWithDenial(null));
     await expect(askUserConfirmTool.execute(ctx, CONFIRM_ARGS)).rejects.toThrow();
   });
 
   test("edited draft (different fingerprint) → falls through, not short-circuited", async () => {
-    // A denial recorded for the ORIGINAL workflow, proposed against an edited one.
     const editedState = createEmptyState("workflow");
     editedState.last_denied_intent = {
       fingerprint: SAVE_FP!,
@@ -308,12 +275,6 @@ describe("declined-intent · decline write round-trip (DB)", () => {
   });
 });
 
-// The suites above each cover one seam in isolation: the short-circuit against
-// a hand-built draft, and the decline-write against a bare draft via a direct
-// function call. Neither drives the two REAL turns end-to-end through the
-// production call chain (respondElicitation -> applyElicitationOutcome ->
-// recordDeniedIntentIfDeclined -> a second runConversationTurn reading the
-// persisted draft through askUserConfirmTool). This closes that gap.
 describe("declined-intent · wired through two real turns", () => {
   let ctx: ConversationTestCtx;
   beforeAll(async () => {
@@ -393,10 +354,8 @@ describe("declined-intent · wired through two real turns", () => {
       },
       ctx.testDb.db,
     );
-    // The decline resumes the turn — not another pause on the same proposal.
     expect(declined.result.status).not.toBe("awaiting_input");
 
-    // Second, BYTE-IDENTICAL proposal in the same conversation.
     getMockProvider().setConversePlan(conversationId, [
       { tool: "ask_user_confirm", args: PROPOSAL },
     ]);
@@ -410,7 +369,6 @@ describe("declined-intent · wired through two real turns", () => {
       ctx.testDb.db,
     );
 
-    // The guard answered synchronously — no new pause on the repeat ask.
     expect(turn2.result.status).not.toBe("awaiting_input");
     const output = findToolResult(turn2.result.events, "ask_user_confirm");
     expect(output).toBeDefined();
@@ -447,8 +405,6 @@ describe("declined-intent · wired through two real turns", () => {
       ctx.testDb.db,
     );
 
-    // A DIFFERENT commit_intent description → a different fingerprint —
-    // must fall through to a normal pause, not the declined short-circuit.
     getMockProvider().setConversePlan(conversationId, [
       {
         tool: "ask_user_confirm",

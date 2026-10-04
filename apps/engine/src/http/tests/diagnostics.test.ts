@@ -1,12 +1,3 @@
-// Integration tests for /v1/diagnostics/errors.
-//
-// Drives a real engine via createHttpTestServer, seeds the in-memory
-// error ring directly, and asserts that:
-//   - the route returns the tenant-scoped tail of the ring
-//   - tracing by trace_id narrows
-//   - the limit query is honored
-//   - audit:read is required (member 403)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
@@ -38,8 +29,6 @@ function newKey(): { plaintext: string; prefix: string; hash: string } {
 beforeAll(async () => {
   srv = await createHttpTestServer("diagnostics");
 
-  // Seed the ring with one entry for our tenant + one for another
-  // tenant. Tenant scoping should hide the other tenant's row.
   errorRing.clear();
   errorRing.record({
     trace_id: "trace-self",
@@ -66,7 +55,6 @@ beforeAll(async () => {
     bucket: "unhandled",
   });
 
-  // Member with no audit:read for the 403 test.
   const [member] = await srv.db
     .insert(users)
     .values({
@@ -155,9 +143,6 @@ describe("/v1/diagnostics/errors", () => {
 
 describe("/v1/diagnostics/setup", () => {
   test("returns operator-facing setup validation for admins", async () => {
-    // 4.2.0: setup.ts reads exclusively from getConfig() (no envString
-    // calls except MASTER_KEY which is bootstrap-only). Drive the
-    // config tree via setConfigKey and assert the diagnostic flips.
     const { getConfig, setConfigKey } = await import("../../config/loader.ts");
     const before = {
       llmProvider: getConfig().llm.provider,
@@ -201,15 +186,10 @@ describe("/v1/diagnostics/setup", () => {
       expect(body.overall_status).toBe("blocked");
       expect(body.summary_counts.blockers).toBeGreaterThan(0);
       expect(body.sections.llm.status).toBe("blocked");
-      // A missing public_base_url is advisory (a recommendation), NOT a setup
-      // warning — a correct local/trial install should not show ⚠ for it, and
-      // the paths that truly need it already error clearly on their own.
       expect(body.sections.public_urls.status).toBe("ok");
       expect(body.issues.some((issue) => issue.id === "public-base-url")).toBe(false);
       expect(body.recommendations.some((rec) => rec.includes("public_base_url"))).toBe(true);
       expect(body.issues.some((issue) => issue.id === "llm-summarize")).toBe(true);
-      // Settings-style key naming: every value key matches a settings
-      // path (`sk settings set <key> ...`), not a legacy env var.
       expect(
         body.sections.llm.values.some((value) => value.key === "llm.providers.ai_gateway.api_key"),
       ).toBe(true);
@@ -243,22 +223,6 @@ describe("/v1/diagnostics/setup", () => {
   });
 
   test("every Zod-marked secret leaf surfaces as presence or is intentionally omitted", async () => {
-    // Schema-walk parity fence (closes the suggestion that a future
-    // rename of `llm.providers.anthropic.api_key` to `…anthropic.key`
-    // would silently surface as "Missing"). For every leaf in
-    // ConfigSchema marked `meta({ secret: true })`, assert that the
-    // diagnostic response either:
-    //   (a) lists the leaf with value of exactly "configured" or null
-    //       (the setPresence shape — never raw secret material), OR
-    //   (b) is in KNOWN_OMITTED below — i.e. deliberately not
-    //       surfaced because the diagnostic is *operator-facing
-    //       configuration validation*, not an audit dump.
-    //
-    // Each KNOWN_OMITTED entry carries a comment explaining why; a
-    // future schema addition that should be surfaced will fall
-    // through (a) and trip the assertion. Removing a leaf from the
-    // diagnostic without adding it here will also trip — keeps the
-    // surface deliberate.
     const KNOWN_OMITTED: Record<string, string> = {
       "llm.api_key":
         "Generic key mirrored into the active provider's llm.providers.<p>.api_key, which is the leaf surfaced here.",
@@ -311,7 +275,6 @@ describe("/v1/diagnostics/setup", () => {
           `secret leaf ${path} surfaced as ${JSON.stringify(v)} — must be "configured" or null`,
         ).toBe(true);
       } else {
-        // Not surfaced — must be explicitly KNOWN_OMITTED with a reason.
         expect(
           path in KNOWN_OMITTED,
           `secret leaf ${path} is not surfaced AND not in KNOWN_OMITTED. Either add it to a section builder (with setPresence) or document the omission in KNOWN_OMITTED with a reason.`,
@@ -321,12 +284,6 @@ describe("/v1/diagnostics/setup", () => {
   });
 
   test("secret-shape values surface as 'configured'/null only — never the underlying secret", async () => {
-    // 4.2.0 security regression net: every secret-shape value in the
-    // setup diagnostic uses `setPresence("configured" / null)`,
-    // never `maskSecret` (which leaked 6 hex chars to any
-    // identity:read principal). A later "improve developer
-    // ergonomics" patch that re-introduces maskSecret would silently
-    // re-open the leak; this test fails fast on that.
     const { getConfig, setConfigKey } = await import("../../config/loader.ts");
     const before = {
       anthropic: getConfig().llm.providers.anthropic.api_key,
@@ -337,8 +294,6 @@ describe("/v1/diagnostics/setup", () => {
       s3SecretKey: getConfig().storage.object_store.secret_access_key,
       s3SessionToken: getConfig().storage.object_store.session_token,
     };
-    // Distinct, recognizable fakes so a substring match below would
-    // catch any of them on partial leak.
     const fakes = {
       anthropic: "sk-ant-FAKE-LEAK-CANARY-anthro-9f8e7d6c5b4a",
       openai: "sk-FAKE-LEAK-CANARY-openai-9f8e7d6c5b4a3210",
@@ -368,20 +323,11 @@ describe("/v1/diagnostics/setup", () => {
       force: true,
     });
     try {
-      // identity:read principal (member). The route is gated by
-      // identity:read OR audit:read; a non-admin must NOT see secret
-      // material in any shape (full / masked / first-N chars).
       const res = await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
         headers: { authorization: `Bearer ${memberKey}` },
       });
       expect(res.status).toBe(200);
       const raw = await res.text();
-      // Hard scan: none of the seeded canaries appear anywhere in the
-      // serialized response, in any prefix length down to 4 chars.
-      // 4 chars is the floor — anything less wouldn't be a meaningful
-      // leak, but every credential-shape secret listed above is at
-      // least 12 chars, so a 6-char prefix (the historical
-      // maskSecret behavior) would clearly flag.
       for (const [key, value] of Object.entries(fakes)) {
         for (let prefixLen = value.length; prefixLen >= 4; prefixLen--) {
           const prefix = value.slice(0, prefixLen);
@@ -391,10 +337,6 @@ describe("/v1/diagnostics/setup", () => {
           ).toBe(false);
         }
       }
-      // Positive shape check: every secret-shape leaf either reports
-      // exactly "configured" or null. Hand-list keeps the assertion
-      // resilient to a schema rename (the test fails loudly instead
-      // of silently passing on a missing key).
       const body = (await (
         await fetch(`${srv.baseUrl}/v1/diagnostics/setup`, {
           headers: { authorization: `Bearer ${memberKey}` },
@@ -422,7 +364,7 @@ describe("/v1/diagnostics/setup", () => {
       ];
       for (const key of secretLeaves) {
         const v = valueByKey.get(key);
-        if (v === undefined) continue; // section may omit the leaf if not relevant for the active provider
+        if (v === undefined) continue;
         expect(v === "configured" || v === null, `${key}="${v}" must be "configured" or null`).toBe(
           true,
         );

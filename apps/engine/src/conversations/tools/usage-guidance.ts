@@ -1,14 +1,3 @@
-// Post-persist usage guidance — the structured "what you just created,
-// its inputs/outputs, and every real way to run it" block attached to
-// persist envelopes (workflow commit, connector save, knowledge-source
-// create). Lives here (not inline in each persist path) so the commit
-// chokepoints, the MCP `conversation_commit` capability, and the sk CLI
-// summary cards all read ONE shape and can never disagree about how a
-// resource is invoked. Access entries enumerate only mechanisms that
-// actually exist — a webhook entry appears only when a `webhooks_inbound`
-// row is bound, and URLs are emitted only when the engine has a
-// resolvable public origin (never fabricated).
-
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { listSchedules } from "../../scheduler/repo.ts";
@@ -19,14 +8,9 @@ import type { WorkflowDef } from "../../workflows/types.ts";
 export interface UsageAccessEntry {
   via: "rest" | "schedule" | "webhook" | "mcp" | "chat" | "cli";
   label: string;
-  /** Copy-pasteable command (sk / chat / HTTP verb+path). */
   command?: string;
-  /** Absolute URL — only when the engine's public origin is known or a
-   *  binding row carries one. */
   url?: string;
-  /** Tool name for via:"mcp" (`wf_<slug>`). */
   tool?: string;
-  /** Human note: live cron expression, example body, scope, … */
   detail?: string;
 }
 
@@ -37,11 +21,8 @@ export interface UsageInputEntry {
 }
 
 export interface FollowUpOption {
-  /** Short label shown in the choice list (e.g. "Run now"). */
   label: string;
-  /** Canonical action value — matches `UsageAccessEntry.via` or a tool name. */
   value: string;
-  /** Copy-pasteable command, tool name, or short qualifier string. */
   detail?: string;
 }
 
@@ -53,16 +34,10 @@ export interface ResourceUsage {
   inputs: UsageInputEntry[];
   output: string | null;
   access: UsageAccessEntry[];
-  /** Exactly ONE follow-up question for the COMMIT SUMMARY prompt rule. */
   follow_up: string;
-  /** Structured execution-options picker — only present for workflow usage.
-   *  Non-interactive surfaces (MCP headless, connectors, knowledge sources)
-   *  use the plain `follow_up` text instead. */
   follow_up_options?: FollowUpOption[];
 }
 
-/** Minimal structural view of a workflow definition — both the stored
- *  `WorkflowDef` and the draft-projected `WorkflowDefFromDraft` satisfy it. */
 export interface WorkflowDefinitionLike {
   description?: string | undefined;
   input_schema?: Record<string, unknown> | undefined;
@@ -83,16 +58,11 @@ export interface WorkflowUsageParts {
   publicBaseUrl: string | null;
 }
 
-/** Operator-configured public origin, or null. Mirrors precedence step 1
- *  of `credentials/oauth2/redirect-uri.ts` — persist paths have no live
- *  request to infer from, so config is the only source here. */
 export function resolvePublicBaseUrl(): string | null {
   try {
     const cfg = getConfig().server.public_base_url;
     if (cfg && cfg.length > 0) return cfg.endsWith("/") ? cfg.slice(0, -1) : cfg;
-  } catch {
-    /* loader not initialised (unit tests) — no origin */
-  }
+  } catch {}
   return null;
 }
 
@@ -196,12 +166,9 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
     });
   }
 
-  // Derive follow_up_options from the already-built access array — do not
-  // duplicate logic: one entry per actionable via, in presentation order.
   const follow_up_options: FollowUpOption[] = access
-    .filter((e) => e.via !== "webhook") // webhooks are not interactive choices
+    .filter((e) => e.via !== "webhook")
     .reduce<FollowUpOption[]>((acc, e) => {
-      // Deduplicate: only the first entry per via (e.g. only one schedule entry).
       if (acc.some((o) => o.value === e.via)) return acc;
       const optDetail = e.command ?? e.tool ?? e.detail;
       const opt: FollowUpOption = { label: e.label, value: e.via };
@@ -223,9 +190,6 @@ export function buildWorkflowUsageFromParts(p: WorkflowUsageParts): ResourceUsag
   };
 }
 
-/** Fetch wrapper — loads the live schedule + inbound-webhook bindings
- *  (both tenant-scoped) and the configured public origin, then delegates
- *  to the pure builder. */
 export async function buildWorkflowUsage(
   db: Db,
   tenant_id: string,
@@ -249,10 +213,6 @@ export async function buildWorkflowUsage(
   });
 }
 
-/** The shared tail of every connector persist envelope: the echoed
- *  connector summary, its usage block, and the next-step triad.
- *  `next_prompt` is centralised here — wrappers spread `...data` and
- *  must NOT re-stamp it or `usage.follow_up` gets clobbered. */
 export function connectorPersistEnvelopeFields(connector: {
   id: string;
   slug: string;

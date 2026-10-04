@@ -1,17 +1,12 @@
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 
-/**
- * What the engine says about one Kontoverbindung (outbound connection) —
- * the generated contract, so a renamed field breaks the build, not the page.
- */
 export type ConnectionItem = components["schemas"]["Connection"];
 export type ConnectionState = ConnectionItem["state"];
 export type ConnectionStateReason = NonNullable<ConnectionItem["state_reason"]>;
 
 export type DiscoveryItem = components["schemas"]["ConnectionDiscoverResponse"];
 
-/** The state word, one per §2/§11 vocabulary; the date rides beside "läuft ab". */
 export function connectionStateKey(state: ConnectionItem["state"]): TranslationKey {
   switch (state) {
     case "valid":
@@ -25,11 +20,6 @@ export function connectionStateKey(state: ConnectionItem["state"]): TranslationK
   }
 }
 
-/**
- * Why a grant is unusable, as a sentence that ends in the way back (§1: no red
- * without a way to the cause). The engine records a reason for every state
- * that is not ok, so there is never a dash beside "abgelaufen".
- */
 export function connectionReasonKey(reason: ConnectionStateReason): TranslationKey {
   switch (reason) {
     case "refresh_refused":
@@ -43,12 +33,10 @@ export function connectionReasonKey(reason: ConnectionStateReason): TranslationK
   }
 }
 
-/** Only a lost grant needs a way back; the others need no red (§1). */
 export function connectionNeedsRenewal(item: Pick<ConnectionItem, "state">): boolean {
   return item.state === "expired" || item.state === "unreadable";
 }
 
-/** The one sentence the page shows when discovery, the other side, or the exchange said no. */
 export function connectionFailureKey(code: string | null): TranslationKey {
   switch (code) {
     case "denied":
@@ -78,10 +66,6 @@ export function connectionFailureKey(code: string | null): TranslationKey {
   }
 }
 
-/**
- * A name the person can accept as-is: the service's own name when it has
- * one, otherwise the host, both reduced to what a secret name allows.
- */
 export function suggestConnectionName(serviceName: string | null, baseUrl: string): string {
   return slugOf(serviceName ?? "") || slugOf(hostOf(baseUrl)) || "konto";
 }
@@ -104,13 +88,8 @@ function hostOf(baseUrl: string): string {
   }
 }
 
-/** The callback's own words in the address; the page drops these and keeps the rest. */
 export const CALLBACK_PARAMS = ["connected", "renewed", "failed", "name"] as const;
 
-/**
- * The address without the callback's words, so a reload does not repeat the
- * sentence — and without losing `section=grants`, which the page is open at.
- */
 export function withoutCallbackParams(search: string): string {
   const params = new URLSearchParams(search);
   for (const key of CALLBACK_PARAMS) params.delete(key);
@@ -118,7 +97,6 @@ export function withoutCallbackParams(search: string): string {
   return query ? `?${query}` : "";
 }
 
-/** What the other side sent us back with, read off the page's own query string. */
 export type CallbackOutcome =
   | { kind: "connected"; name: string; renewed: boolean }
   | { kind: "failed"; code: string; name: string | null }
@@ -134,7 +112,6 @@ export function readCallbackOutcome(search: string): CallbackOutcome {
   return null;
 }
 
-/** Scopes the person can pick: what the server lists, and what a person typed when it lists none. */
 export function parseTypedScopes(raw: string): string[] {
   return [
     ...new Set(

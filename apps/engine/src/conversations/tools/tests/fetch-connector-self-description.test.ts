@@ -1,11 +1,3 @@
-// fetch_connector_self_description tool tests.
-//
-// Seeds a connector with self_description.links, mocks the driver fetch
-// seam, and asserts: the live body is returned transiently, NOTHING is
-// persisted (no connector-docs / knowledge-source rows), oversize bodies
-// are capped, and the "no link recorded" path fires when the connector
-// advertises no self-description.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -22,9 +14,7 @@ import type { ToolContext } from "../index.ts";
 
 let ctx: TestDb;
 let tenant_id: string;
-/** Connector that advertises llms + openapi self-description links. */
 let connector_with_links: string;
-/** Connector with no self_description links at all. */
 let connector_without_links: string;
 
 beforeAll(async () => {
@@ -100,7 +90,6 @@ function makeCtx(connector_id: string | null): ToolContext {
   };
 }
 
-/** Fake fetch returning `body` with the given byte length. */
 function fakeFetch(body: string): typeof fetch {
   return (async () =>
     new Response(body, {
@@ -140,12 +129,10 @@ describe("fetch_connector_self_description", () => {
     expect(data.documents[0]!.body).toContain("hello world");
     expect(data.documents[0]!.truncated).toBe(false);
 
-    // Persisted NOTHING — no connector-docs, no knowledge-source rows.
     const after = await countPersistedRows();
     expect(after.docs).toBe(before.docs);
     expect(after.sources).toBe(before.sources);
 
-    // Connector's stored self_description is untouched.
     const [row] = await ctx.db
       .select({ self_description: connectors.self_description })
       .from(connectors)
@@ -154,7 +141,7 @@ describe("fetch_connector_self_description", () => {
   });
 
   test("caps oversize bodies", async () => {
-    const huge = "x".repeat(200 * 1024); // 200 KB > 50 KB cap
+    const huge = "x".repeat(200 * 1024);
     const result = await withDriverFetchForTests(fakeFetch(huge), () =>
       fetchConnectorSelfDescriptionTool.execute(makeCtx(connector_with_links), { kind: "llms" }),
     );

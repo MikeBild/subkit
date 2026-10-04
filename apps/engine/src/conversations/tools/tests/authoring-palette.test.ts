@@ -1,12 +1,3 @@
-// Locks the chat-first-repair contract for the conversation tool palette.
-//
-// Background: the palette is skill-gated rather than state-gated —
-// loading the right skill exposes a fixed tool
-// set, and tools never silently disappear once exposed. Wrong-state
-// calls return a structured `tool_unavailable_in_state` envelope from
-// `state-gate.ts` instead of vanishing from the palette. The tests
-// below pin that contract.
-
 import { describe, expect, test } from "bun:test";
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
@@ -64,9 +55,6 @@ function summary(over: Partial<AuthoringSummary>): AuthoringSummary {
 }
 
 describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
-  // Locks the chat-first delete contract. Without this, the palette
-  // filter would hide every delete_*/revoke_* tool from focused
-  // authoring states. Session 9b9ea73b regression test.
   test("delete_connector / delete_workflow visible in workflow-persisted state", () => {
     const persisted: AuthoringSummary = summary({
       stage: "workflow_persisted",
@@ -106,11 +94,6 @@ describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
     expect(names).toContain("revoke_api_key");
   });
 
-  // Schedule writes were the original missing-tool case behind the
-  // "yes do daily 10am" turn that silently dropped the schedule:
-  // turn-routing.ts told the LLM to call create_schedule, but the
-  // palette didn't carry it. Locking visibility here so the contract
-  // between routing and palette can't drift again.
   test("schedule writes visible in any state with no skills loaded", () => {
     const draft: DraftDocument = {
       workflow: { name: "", steps: [] } as never,
@@ -127,25 +110,17 @@ describe("filterByAuthoringPalette — cleanup tools always reachable", () => {
     expect(names).toContain("delete_schedule");
   });
 
-  // A dead connector credential can surface in ANY conversation, so the
-  // recovery tool must always be reachable. It is `draft_write` (the
-  // non-OAuth path stages a re-issue draft), so the `tenant_read` catch-all
-  // no longer keeps it visible — it must be in an always-available set.
-  // Without this assertion, flipping its category silently removes the
-  // repair path from chat (the regression this exact fix restored).
   test("request_connector_reauth visible with no skills loaded", () => {
     const draft: DraftDocument = {
       workflow: { name: "", steps: [] } as never,
     };
     const tools = [
       { name: "request_connector_reauth", category: "draft_write" },
-      { name: "save_connector_draft", category: "draft_write" }, // connector-skill required
+      { name: "save_connector_draft", category: "draft_write" },
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, NO_SKILLS);
     const names = filtered.map((t) => t.name);
     expect(names).toContain("request_connector_reauth");
-    // Sanity: a genuinely skill-gated draft_write tool stays hidden, proving
-    // the inclusion above is the explicit allow-set entry, not a category leak.
     expect(names).not.toContain("save_connector_draft");
   });
 });
@@ -163,7 +138,7 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "probe_connector_draft" },
       { name: "save_connector_draft" },
       { name: "authenticate_oauth" },
-      { name: "edit_workflow_patch" }, // workflow-only
+      { name: "edit_workflow_patch" },
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_CONNECTOR);
     const names = filtered.map((t) => t.name);
@@ -187,14 +162,11 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "save_workflow_draft" },
       { name: "run_workflow" },
       { name: "diagnose_latest_execution" },
-      { name: "save_connector_draft" }, // connector-only
+      { name: "save_connector_draft" },
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, ONLY_WORKFLOW);
     const names = filtered.map((t) => t.name);
     expect(names).toContain("edit_workflow_patch");
-    // Regression: start_workflow_from_recipe must be exposed in the
-    // authoring conversation so recipes can be cloned (pre-fix it was
-    // omitted, forcing error-prone free-form edit_workflow_patch).
     expect(names).toContain("start_workflow_from_recipe");
     expect(names).toContain("save_workflow_draft");
     expect(names).toContain("run_workflow");
@@ -212,8 +184,8 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
       { name: "load_skill" },
       { name: "list_connectors" },
       { name: "delete_connector" },
-      { name: "save_connector_draft" }, // connector-skill required
-      { name: "edit_workflow_patch" }, // workflow-skill required
+      { name: "save_connector_draft" },
+      { name: "edit_workflow_patch" },
     ] as const;
     const filtered = filterByAuthoringPalette(tools, draft, NO_SKILLS);
     const names = filtered.map((t) => t.name);
@@ -227,13 +199,6 @@ describe("filterByAuthoringPalette — skill-gated authoring tools", () => {
 });
 
 describe("filterByAuthoringPalette — discovery stays reachable", () => {
-  // Session 00b93a52 ended with the agent saying "save_connector_draft
-  // is not available in the current tool palette" and asking the user
-  // to restart. Root cause: the old palette hid `save_connector_draft`
-  // when the probe checkpoint was stale. The fix: palette exposes the
-  // tool whenever `connector-creation-guidance` is loaded, regardless
-  // of probe state — the tool itself returns a structured probe_failed
-  // envelope that the LLM can recover from in the same turn.
   test("save_connector_draft stays in palette when probe failed", () => {
     const probedFailed: AuthoringSummary = summary({
       mode: "connector",
@@ -287,26 +252,12 @@ describe("filterByAuthoringPalette — discovery stays reachable", () => {
   });
 });
 
-// ── Chat read-only palette ──────────────────────────────────────────────────
-//
-// The chat surface (external chat platforms) is channel-scoped
-// read-only: authoring, mutation, and direct connector calls are
-// structurally absent from the palette, independent of skill-load
-// state and of the linked user's role. These invariants run against
-// the REAL tool registry so a future tool addition/category change is
-// checked, not a hand-maintained fixture.
-
 describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
   const registry = listTools();
   const chatPalette = filterByChatReadOnlyPalette(registry);
   const chatNames = new Set(chatPalette.map((t) => t.name));
 
   test("no draft_write or tenant_write tool is exposed (run_workflow + load_skill + ask_user_* excepted)", () => {
-    // ask_user_* are categorised draft_write because their elicitation
-    // rows can carry commit_intents — but on the chat surface those
-    // intents are refused by the auto-persist gate
-    // (`persistence/auto-persist.ts`, chat_readonly_commit_intent), so
-    // the tools themselves are pure conversation plumbing here.
     const allowedWriteish = new Set([
       "run_workflow",
       "load_skill",
@@ -369,10 +320,6 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
   });
 
   test("palette ignores skill-load state — loading authoring skills unlocks nothing", () => {
-    // The filter takes no loadedSkills by design; this pins the
-    // signature-level invariant by asserting the read-only set stays
-    // identical to a recomputation after the authoring palette (which
-    // IS skill-sensitive) would have unlocked its tool sets.
     const again = filterByChatReadOnlyPalette(registry).map((t) => t.name);
     expect(again.sort()).toEqual([...chatNames].sort());
   });

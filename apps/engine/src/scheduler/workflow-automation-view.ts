@@ -28,26 +28,13 @@ export async function workflowAutomationView(
   );
 }
 
-/** Both spellings of a refused delivery: `crud` hooks and trigger-bound ones. */
 const REFUSED_DELIVERY_ACTIONS = [
   AuditAction.WEBHOOK_INBOUND_DENIED,
   AuditAction.WEBHOOK_TRIGGER_FAILED_VERIFICATION,
 ];
 
-/** How far back the newest refused delivery is looked for. The standing state
- *  is `admission_hold`; this only dates it, and bounds the audit scan. */
 const REFUSAL_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
 
-/**
- * The workflow's inbound hooks, judged like its schedules. A hook is the other
- * thing that starts runs without a person, and one the authority gate refuses
- * on every delivery used to leave no trace here at all.
- *
- * A deactivated hook receives nothing, so it holds nothing: its hold reads as
- * null here exactly as a paused schedule's does, and the overview and the
- * attention list count only active hooks. `refusal_reasons` is the caller's
- * audit visibility — the reason text is audit-log content.
- */
 export async function inboundHookAutomationView(
   tenant: string,
   workflow: string,
@@ -61,8 +48,6 @@ export async function inboundHookAutomationView(
     .where(and(eq(webhooksInbound.tenant_id, tenant), eq(webhooksInbound.workflow_id, workflow)))
     .orderBy(webhooksInbound.slug);
   if (hooks.length === 0) return [];
-  // The newest refusal per hook, whatever gate refused it — one scan of the
-  // (tenant, action, ts) index, bounded by the lookback window.
   const refusals = await db
     .selectDistinctOn([auditLog.resource_id], {
       resource_id: auditLog.resource_id,
@@ -100,22 +85,10 @@ export async function inboundHookAutomationView(
   );
 }
 
-/** How far back a hook's deliveries are counted for a suggested run limit. */
 const DELIVERY_RATE_WINDOW_DAYS = 14;
 
-/** The refusals of the approval gate itself — a delivery that was authentic
- *  and would have started a run under an approval. */
 const GATE_REFUSAL_REASONS = ["execution_authority_required", "execution_authority_unavailable"];
 
-/**
- * How often the workflow's active inbound hooks were really called lately: the
- * runs they started plus the deliveries the approval gate refused. Both are
- * calls an approval has to cover — counting started runs alone would size the
- * approval of a hook nobody has approved yet from zero.
- *
- * Null when no hook is active: nothing delivers, so there is no rate.
- * Read-only; the count only sizes a suggestion a person still confirms.
- */
 export async function inboundHookDeliveryRate(
   tenant: string,
   workflow: string,

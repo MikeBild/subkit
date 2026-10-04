@@ -1,12 +1,3 @@
-// User story: As an operator, I want connector documentation to refresh
-// automatically on a schedule, so that the LLM always sees the current API.
-// Acceptance criteria:
-//   - AC1: A connector with auto_refresh_cron="every:1" ingests docs at boot.
-//   - AC2: When the upstream OpenAPI changes, the next reconciler tick re-ingests.
-//   - AC3: connector_document_chunks grows by the added-path count.
-//   - AC4: connectors.last_ingested_at advances.
-// Spec refs: docs/authors/authoring-workflows.md, docs/concepts/connectors.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -25,8 +16,6 @@ let mock: Server;
 let mockBase = "";
 let connectorId = "";
 let reconciler: SchedulerReconciler | null = null;
-// Mutable spec served by the mock. The test swaps the object in
-// between assertions to simulate an upstream shape change.
 let currentPaths: OpenApiPaths = {};
 
 function threePathSpec(): OpenApiPaths {
@@ -106,9 +95,6 @@ beforeAll(async () => {
   const addr = mock.address() as AddressInfo;
   mockBase = `http://127.0.0.1:${addr.port}`;
 
-  // Seed the connector row directly so we can pin the auto-refresh cron
-  // and the docs source config without bouncing through the connector
-  // create REST flow.
   const [row] = await ctx.db
     .insert(connectors)
     .values({
@@ -139,8 +125,6 @@ describe("journey 16: docs auto-refresh", () => {
   test(
     "AC1+AC3: initial ingest happens when reconciler boots",
     async () => {
-      // 200 ms reconcile cadence so the test doesn't have to wait out
-      // the 60 s production interval.
       reconciler = new SchedulerReconciler({
         boss: ctx.boss,
         db: ctx.db,
@@ -148,9 +132,6 @@ describe("journey 16: docs auto-refresh", () => {
       });
       await reconciler.start();
 
-      // OpenAPI chunker emits 1 index chunk + 1 chunk per operation, so
-      // a three-path spec lands at 4 chunks total. We poll until the
-      // async ingest job drains.
       const ok = await waitUntil(async () => (await countChunks()) >= 4, 10_000);
       expect(ok).toBe(true);
 
@@ -168,11 +149,8 @@ describe("journey 16: docs auto-refresh", () => {
       const beforeStamp = before.last_ingested_at?.getTime() ?? 0;
       expect(beforeChunks).toBeGreaterThanOrEqual(4);
 
-      // Flip the mock's served spec so the next reconciler tick sees the
-      // new shape.
       currentPaths = fourPathSpec();
 
-      // Give the reconciler two ticks plus the `every:1` minimum to fire.
       const grew = await waitUntil(async () => {
         const now = await countChunks();
         return now > beforeChunks;
@@ -180,10 +158,6 @@ describe("journey 16: docs auto-refresh", () => {
       expect(grew).toBe(true);
 
       const chunksAfter = await countChunks();
-      // The new ingest adds 1 index chunk + 1 chunk per operation for
-      // the fourth path. Exact arithmetic depends on dedup behaviour, so
-      // we only assert that chunks grew by at least the number of newly
-      // added paths.
       expect(chunksAfter - beforeChunks).toBeGreaterThanOrEqual(1);
 
       const after = await fetchConnector();

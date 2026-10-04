@@ -1,18 +1,3 @@
-// portal_token auth provider — real implementation.
-//
-// - Parses `Authorization: Bearer wf_portal_<rand>` or `?token=<key>` query
-// - Looks up `portal_tokens` row by prefix
-// - Constant-time sha256 comparison
-// - Validates expires_at / revoked_at
-// - Returns a ResolvedPrincipal scoped to the enduser with the token's
-//   `allowed_workflows` column carried through so the policy layer can
-//   gate workflow runs.
-//
-// Portal tokens are prefix-distinct from api keys (`wf_portal_` vs
-// `wf_live_`), so the registry can walk providers in any order — each
-// one rejects foreign prefixes fast. We still register the portal-token
-// provider first so it short-circuits the api-key lookup entirely.
-
 import { eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -32,9 +17,7 @@ function extractToken(req: Request): string | null {
     const url = new URL(req.url);
     const q = url.searchParams.get("token");
     if (q) return q;
-  } catch {
-    // non-absolute URL — nothing to pull
-  }
+  } catch {}
   return null;
 }
 
@@ -43,7 +26,6 @@ function normalizeAllowList(value: unknown): AllowList {
     if (value.length === 1 && value[0] === "*") return "all";
     return value as string[];
   }
-  // A portal token with no allowlist is meaningless — treat as empty.
   return [];
 }
 
@@ -67,7 +49,6 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
 
       const parsed = parsePortalToken(token);
       if (!parsed) {
-        // Not a portal token — let the next provider in the registry try.
         return null;
       }
 
@@ -130,9 +111,6 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
         return null;
       }
 
-      // Portal tokens are always enduser-owned. `enduser_ref` may be a
-      // user_id (most common) or an opaque external reference — we only
-      // try to resolve the email if the ref matches a real users row.
       const ownerId = row.enduser_ref;
       let email: string | undefined;
       try {
@@ -143,10 +121,7 @@ export function createPortalTokenProvider(opts: PortalTokenProviderOptions = {})
           .where(eq(users.id, ownerId))
           .limit(1);
         if (u[0]?.email) email = u[0].email;
-      } catch {
-        // Non-UUID enduser_ref will throw — safe to ignore. The
-        // principal still resolves; it just has no email hint.
-      }
+      } catch {}
 
       const principal: ResolvedPrincipal = {
         provider: "portal_token",

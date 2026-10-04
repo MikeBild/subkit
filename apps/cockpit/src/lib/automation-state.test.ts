@@ -123,7 +123,6 @@ function inputs(overrides: Partial<AutomationInputs> = {}): AutomationInputs {
   };
 }
 
-/** Verified schedule rows that each name their own environment. */
 function rows(
   entries: ReadonlyArray<readonly [AutomationRowState, "dev" | "prod"]>,
 ): AutomationStatusLike {
@@ -162,7 +161,6 @@ describe("automationState — one state, by precedence", () => {
       runsMax: 30,
     });
     expect(state.grant?.id).toBe(authority().id);
-    // No approval button once approved: only the way to look at it.
     expect(state.primaryAction).toEqual({ kind: "view" });
     expect(state.secondaryAction).toBeNull();
   });
@@ -185,7 +183,6 @@ describe("automationState — one state, by precedence", () => {
       runsSoFar: 41,
     });
     expect(state.primaryAction).toEqual({ kind: "view" });
-    // Nothing runs out, so nothing is offered for extension.
     expect(state.secondaryAction).toBeNull();
     expect(CATALOGS.de["automation.fact.untilRevoked"]).toBe("bis auf Widerruf");
     expect(CATALOGS.de["automation.fact.runsSoFar.other"]).toBe("{count} Läufe bisher");
@@ -212,7 +209,6 @@ describe("automationState — one state, by precedence", () => {
     );
     expect(state.state).toBe("repair");
     expect(state.facts.blockedStep).toBe("send_email");
-    // The approval is still shown: it exists, it just no longer fits.
     expect(state.grant?.id).toBe(authority().id);
     expect(state.secondaryAction).toEqual({ kind: "view" });
   });
@@ -268,7 +264,6 @@ describe("automationState — one state, by precedence", () => {
           current_version: 9,
         },
         draft: { version_id: DRAFT, version: 10 },
-        // A draft's diagnosis describes the draft; it never makes this "repair".
         diagnosis: { is_current: false, diagnoses: [block({ fixer: "bind_report_delivery" })] },
         authorities: [authority()],
         status: status(["authorized"]),
@@ -341,7 +336,6 @@ describe("automationState — one state, by precedence", () => {
     const state = automationState(inputs({ schedules: [], status: status(), authorities: [] }));
     expect(state.state).toBe("manual");
     expect(state.facts.inactive).toBe(false);
-    // The approval is offered; nothing is pending.
     expect(state.primaryAction).toEqual({ kind: "grant" });
     expect(state.pendingEnvironments).toEqual(["dev"]);
   });
@@ -457,7 +451,6 @@ describe("the engine's verified answer decides", () => {
     );
     expect(state.state).toBe("grant");
     expect(state.grant).toBeNull();
-    // It is still listed — once.
     expect(state.alsoValid).toHaveLength(1);
     expect(state.history).toHaveLength(0);
   });
@@ -526,7 +519,6 @@ describe("extending an approval", () => {
     const open = { valid_until: null, remaining_runs: null, max_runs: null };
     expect(grantNeedsExtension(open, NOW)).toBe(false);
     expect(grantNeedsExtension(open, NOW + 10_000 * DAY)).toBe(false);
-    // Only the side that has a limit can press.
     expect(grantNeedsExtension({ ...open, remaining_runs: 1, max_runs: 30 }, NOW)).toBe(true);
     expect(grantNeedsExtension({ ...base, remaining_runs: null, max_runs: null }, NOW)).toBe(false);
   });
@@ -634,7 +626,6 @@ describe("actions", () => {
       expect(CATALOGS.en[key], key).toBeTruthy();
       expect(CATALOGS.de[key], key).toBeTruthy();
     }
-    // The approved state never offers approving again under another name.
     expect(CATALOGS.de[automationActionKey({ kind: "view" })]).toBe("Freigabe ansehen");
     expect(CATALOGS.de[automationActionKey({ kind: "grant" })]).toBe("Jetzt freigeben");
   });
@@ -660,8 +651,6 @@ describe("actions", () => {
 });
 
 describe("a read that did not answer is never read as approved", () => {
-  // Each of these used to say "approved": a failed read left `null` behind,
-  // and `null` meant "nothing to report".
   const approved = { status: status(["authorized"]), authorities: [authority()] };
 
   test("the diagnosis did not answer, and an approval exists", () => {
@@ -670,7 +659,6 @@ describe("a read that did not answer is never read as approved", () => {
     );
     expect(state.state).toBe("unknown");
     expect(state.primaryAction).toBeNull();
-    // The approval that exists stays one press away.
     expect(state.secondaryAction).toEqual({ kind: "view" });
   });
 
@@ -687,13 +675,11 @@ describe("a read that did not answer is never read as approved", () => {
   });
 
   test("a status the reader may not ask for is not a failed one", () => {
-    // Without `schedule:read` the state is decided from what remains.
     const state = automationState(inputs({ authorities: [authority()], status: null }));
     expect(state.state).toBe("approved");
   });
 
   test("what is known without the read still outranks it", () => {
-    // Paused and a waiting change are read from the record and the schedules.
     const paused = automationState(
       inputs({
         schedules: [schedule({ paused: true })],
@@ -702,7 +688,6 @@ describe("a read that did not answer is never read as approved", () => {
       }),
     );
     expect(paused.state).toBe("paused");
-    // A refusal the status itself reports is a repair, whatever the diagnosis read did.
     const refused = automationState(
       inputs({
         status: status(["repair_required"]),
@@ -727,13 +712,11 @@ describe("schedules in both environments", () => {
       ]),
       authorities: [authority()],
     });
-    // The diagnosis and the approval dialog are asked for the half that waits.
     expect(automationEnvironment(input)).toBe("dev");
     const state = automationState(input);
     expect(state.state).toBe("grant");
     expect(state.environment).toBe("dev");
     expect(state.pendingEnvironments).toEqual(["dev"]);
-    // Production's approval is not the one this state rests on, and stays reachable.
     expect(state.grant).toBeNull();
     expect(state.alsoValid.map((entry) => entry.execution_environment)).toEqual(["prod"]);
     expect(state.secondaryAction).toEqual({ kind: "view" });
@@ -760,7 +743,6 @@ describe("schedules in both environments", () => {
     const state = automationState(
       inputs({ status: null, schedules: both, authorities: [authority()] }),
     );
-    // Production is approved; development is not — that is not "approved".
     expect(state.state).toBe("grant");
     expect(state.environment).toBe("dev");
     const dev = authority({
@@ -803,13 +785,11 @@ describe("an approval that is still valid is never out of reach", () => {
     const state = automationState(
       inputs({ schedules: [], status: status(), authorities: [authority()], workflow: hooked }),
     );
-    // The hook runs in production and production is approved.
     expect(state.state).toBe("approved");
     const manual = automationState(
       inputs({
         schedules: [],
         status: status(),
-        // Lapsed approvals name production as where it belongs; the valid one is for development.
         authorities: [authority({ state: "expired", ready_for_new_run: false }), dev],
       }),
     );
@@ -831,11 +811,9 @@ describe("a hook the reader may not list", () => {
       schedules: [schedule({ execution_mode: "dev" })],
       status: rows([["authorized", "dev"]]),
     });
-    // No approval for production in the list: the hook has none.
     const none = automationState(input);
     expect(none.state).toBe("grant");
     expect(none.environment).toBe("prod");
-    // One in the list that no row confirms: not verified, never "approved".
     const listed = automationState({ ...input, authorities: [authority()] });
     expect(listed.state).toBe("unknown");
     expect(listed.secondaryAction).toEqual({ kind: "view" });
@@ -859,7 +837,6 @@ describe("the approval in force can lie behind the first page", () => {
     expect(state.state).toBe("approved");
     expect(state.grant).toBeNull();
     expect(automationNeedsMoreApprovals(state, true)).toBe(true);
-    // Nothing further to read: the state stands as it is.
     expect(automationNeedsMoreApprovals(state, false)).toBe(false);
   });
 
@@ -878,7 +855,6 @@ describe("a stopped hook cannot be resumed from here", () => {
       inputs({ schedules: [], status: status([], ["paused"]), workflow: hooked }),
     );
     expect(state.state).toBe("paused");
-    // The panel says so in one line instead of a button that does nothing.
     expect(state.primaryAction).toBeNull();
     expect(state.pendingEnvironments).toEqual([]);
   });
@@ -925,7 +901,6 @@ describe("the chat's review card", () => {
   });
 
   test("a hook-started workflow only ever offers production", () => {
-    // Verified, unverified, and with a saved change: the hook runs in production.
     const cards = [
       inputs({ ...hookOnly, status: status([], ["approval_required"]) }),
       inputs({ ...hookOnly, status: null }),
@@ -948,7 +923,6 @@ describe("the chat's review card", () => {
     expect(
       hint({ workflow: hooked, status: status(["approval_required"], ["approval_required"]) }, 1),
     ).toBe("chat.automationCard.review.hint.any");
-    // A hook the reader may not list still counts.
     expect(hint({ ...hookOnly, status: null }, 1)).toBe("chat.automationCard.review.hint.hook");
   });
 
@@ -971,8 +945,6 @@ describe("the chat's review card", () => {
     expect(repair.actionKey).toBe("chat.automationCard.repair.action");
   });
 
-  // The states the page offers no approval for: the card must not either. Each
-  // of these used to get a button that opened the approval dialog.
   test("on request: the page's calm state, and nothing to press", () => {
     const manual = automationCard(
       automationState(inputs({ schedules: [], status: status(), authorities: [] })),
@@ -1044,7 +1016,6 @@ describe("the chat's review card", () => {
     ] as const;
     for (const catalog of Object.values(CATALOGS))
       for (const key of keys) expect(catalog[key], key).toBeTruthy();
-    // The card says to OPEN the review; its content is not "below".
     for (const key of keys.slice(0, 3)) {
       expect(CATALOGS.de[key]).toStartWith("Öffne die Prüfung");
       expect(CATALOGS.de[key]).not.toContain("unten");
@@ -1080,10 +1051,8 @@ describe("a version stored in an earlier format", () => {
       inputs({ workflow: invalid, status: status(["authorized"]), authorities: [authority()] }),
     );
     expect(state.state).toBe("invalid");
-    // Changing it is an author's act — in the chat.
     expect(state.primaryAction).toEqual({ kind: "repair", via: "chat", stepId: null });
     expect(state.pendingEnvironments).toEqual([]);
-    // No approval is offered for a version the engine would refuse to approve.
     expect(automationState(inputs({ workflow: invalid })).state).toBe("invalid");
     expect(
       automationState(

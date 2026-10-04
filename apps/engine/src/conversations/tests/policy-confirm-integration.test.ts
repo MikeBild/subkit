@@ -1,17 +1,3 @@
-// Confirm-gate integration test — the ONE deterministic rule end to end.
-//
-// The pre-execution confirm decision is consulted by BOTH the conversation
-// loop gate (`tools/sdk-wrap/invoke.ts`, driven here through `wrapTools`,
-// which evaluates `decideConfirm`) and the unified `policyDecide()` every
-// dispatcher surface calls.
-//
-// The rule: reads auto-run; a write under `confirm_before_execution` PAUSES
-// unless a durable, engine-verified `priorApproval` is present. Nothing the
-// MODEL puts in its own tool call clears the gate — the loop publishes no
-// confirm marker on any tool schema, and reads none off the args. This test
-// pins that behaviour on the loop surface AND proves the loop and MCP surfaces
-// reach the IDENTICAL pause/proceed verdict for the same tool + args.
-
 import { beforeAll, describe, expect, it, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -33,7 +19,6 @@ import { buildPolicyGateCommitIntent } from "../tools/sdk-wrap/policy-helpers.ts
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
 
-/** Deterministic handle — random ids are banned in tests. */
 const APPROVAL_ID = "00000000-0000-4000-8000-00000000c0de";
 
 let ctx: LlmTestCtx;
@@ -86,8 +71,6 @@ function toolCtxFor(): ToolContext {
   };
 }
 
-// Drive a single tool through the loop gate (`wrapTools`) and return
-// its wrapped-execute result + the emitted event stream.
 async function runLoopTool(
   tool: string,
   args: Record<string, unknown>,
@@ -123,8 +106,6 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
       { run_workflow: "confirm_before_execution" },
     );
 
-    // Deterministic pause — the inner tool never ran (no workflow_not_found
-    // 404 came back).
     expect(result.ok).toBe(false);
     expect(result.pause).toBeDefined();
     expect((result.pause as { tool_name?: string }).tool_name).toBe("ask_user_confirm");
@@ -151,7 +132,6 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
     });
     expect(elicit.summary).toBe('Run workflow "render-upload-slides" in prod');
 
-    // MUST-KEEP: the confirmation-state-machine row is staged as proposed.
     const [row] = await ctx.testDb.db
       .select()
       .from(conversationToolCalls)
@@ -167,8 +147,6 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
       workflow_id: "00000000-0000-0000-0000-000000000001",
       environment: "dev",
     });
-    // The critical bit: no pause. The inner tool ran (and returned a
-    // workflow_not_found for the fake id — proof the gate did not swallow it).
     expect(result.pause).toBeUndefined();
   });
 
@@ -183,8 +161,6 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
       },
       { run_workflow: "confirm_before_execution" },
     );
-    // The gate reads no marker off the args. One tool call carrying it must not
-    // become a live prod run with no elicitation, no approval row, no human.
     expect(result.ok).toBe(false);
     expect(result.pause).toBeDefined();
     expect((result.pause as { tool_name?: string }).tool_name).toBe("ask_user_confirm");
@@ -211,8 +187,6 @@ describe("confirm gate — loop surface follows the deterministic rule", () => {
 });
 
 describe("confirm gate — both surfaces require locally verifiable human approval", () => {
-  // The presentation differs (conversation card or approval portal), but
-  // neither surface accepts a client annotation as proof of human consent.
   it("explicitly guarded prod starts: chat and MCP require the same decision", async () => {
     const { result: loop } = await runLoopTool(
       "run_workflow",
@@ -254,8 +228,6 @@ describe("confirm gate — both surfaces require locally verifiable human approv
   }
 
   it("run_workflow dev with execute_writes reaches admission on both surfaces", async () => {
-    // The flag is not an execution grant. Durable admission reserves matching
-    // authority or holds writes; real DB/HTTP admission tests prove that fence.
     const { result: loop } = await runLoopTool("run_workflow", {
       workflow_id: "00000000-0000-0000-0000-000000000003",
       environment: "dev",
@@ -274,28 +246,15 @@ describe("confirm gate — both surfaces require locally verifiable human approv
 });
 
 describe("every gated confirm gets a human channel", () => {
-  // Production, on claude.ai: `save_workflow_draft` paused with
-  // `commit_intent.kind: "save_workflow_draft"`, NO `approval_url` and NO
-  // approval handle. On a client that cannot render an in-band form that is not
-  // a prompt — it is a dead end, and the only remaining route was an operator
-  // hand-running curl against /respond with their API key.
-  //
-  // A shape-specific carrier must therefore carry a handle exactly like the
-  // universal one, so the browser portal can reach it. `withApprovalHandle` is
-  // what makes both shapes satisfy the single predicate everything downstream
-  // keys on.
   test("a shape-specific carrier keeps its kind AND gains the approval handle", () => {
     const intent = buildPolicyGateCommitIntent("save_workflow_draft", { force_commit: true });
     expect(intent).not.toBeNull();
     expect(intent?.kind).toBe("save_workflow_draft");
-    // Before: no handle at all → invisible to the portal, model-resolvable.
     expect(approvalHandleFromElicitationInput({ commit_intent: intent })).toBeNull();
 
     const withHandle = withApprovalHandle(intent as Record<string, unknown>, APPROVAL_ID);
-    // The carrier's own payload survives — the resume still knows it is a save.
     expect(withHandle.kind).toBe("save_workflow_draft");
     expect((withHandle.payload as Record<string, unknown>).force_commit).toBe(true);
-    // …and it is now reachable through the portal.
     expect(approvalHandleFromElicitationInput({ commit_intent: withHandle })).toBe(APPROVAL_ID);
   });
 

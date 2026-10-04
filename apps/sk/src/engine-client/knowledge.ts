@@ -1,14 +1,8 @@
-// Knowledge + discovery surfaces of the engine client: knowledge
-// sources (incl. multipart create), discovery runs / artifacts, and the
-// AI extraction endpoints that feed them. Method group merged into
-// `EngineClient` by `../engine-client.ts`.
-
 import { EngineError } from "@cli-core/errors.ts";
 import type { EngineClient } from "../engine-client.ts";
 import { parseResponseBody } from "./http.ts";
 
 export const knowledgeMethods = {
-  // -------------------- Knowledge Sources --------------------
   listKnowledgeSources(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -57,9 +51,6 @@ export const knowledgeMethods = {
     return this.requestForm("POST", "/v1/knowledge-sources", form);
   },
 
-  /** Upsert a knowledge bundle (directory of markdown files) by slug —
-   *  `POST /v1/knowledge-sources/bundle`. Idempotent: unchanged content
-   *  returns `outcome: "unchanged"`. */
   importKnowledgeBundle(
     this: EngineClient,
     body: {
@@ -87,7 +78,6 @@ export const knowledgeMethods = {
     );
   },
 
-  // -------------------- Discovery --------------------
   listDiscoveryRuns(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -136,7 +126,6 @@ export const knowledgeMethods = {
     return this.requestForm("POST", "/v1/discovery/runs", form);
   },
 
-  // -------------------- AI --------------------
   extract(
     this: EngineClient,
     body: { sample: string; hint?: string },
@@ -144,10 +133,6 @@ export const knowledgeMethods = {
     return this.request("POST", "/v1/ai/extract", body);
   },
 
-  /** Upload a raw file body to `POST /v1/extract` — used by `sk extract`
-   *  when the input is a binary office document (PDF/DOCX/XLSX/PPTX).
-   *  Bypasses the JSON `request()` helper because the body is bytes, not
-   *  a JSON-serialisable object. */
   async extractFile(
     this: EngineClient,
     args: {
@@ -160,9 +145,6 @@ export const knowledgeMethods = {
     const headers = this.headers(undefined, { traceId });
     headers["content-type"] = args.contentType;
     if (args.filename) headers["x-filename"] = args.filename;
-    // fetch's typed BodyInit doesn't include Uint8Array on this
-    // TypeScript target; widen via the underlying ArrayBuffer slice so
-    // Bun and undici both accept the body without runtime conversion.
     const ab = args.buffer.buffer.slice(
       args.buffer.byteOffset,
       args.buffer.byteOffset + args.buffer.byteLength,

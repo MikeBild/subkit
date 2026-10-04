@@ -1,18 +1,3 @@
-// test_rbac_expression — conversational RBAC probe.
-//
-// Answers "would actor X be allowed to do Y on resource Z?" without
-// mutating state. Reuses the same `rbac/evaluator.ts:can` the HTTP
-// layer uses, so the answer is authoritative — no drift between the
-// conversational surface and real enforcement.
-//
-// Input:
-//   { actor_id: uuid, actor_kind: "user" | "system_account",
-//     permission: "workflow.run", resource_id?: uuid,
-//     resource_type?: "workflow" | "connector" | ... }
-//
-// Output: `{ allow, reason, source }` — the same Decision shape the
-// evaluator returns for real requests.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -21,29 +6,14 @@ import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
 import { can } from "../../rbac/evaluator.ts";
 import type { ConversationTool } from "./index.ts";
 
-// Two input shapes selected by `mode`:
-//   1. `actor_probe` (default) — "would actor X have permission P on
-//      resource R?" Reuses the live RBAC evaluator. Authoritative —
-//      no drift.
-//   2. `expression_preview` — "would this JSONata predicate
-//      evaluate to true against this sample step config?" so the LLM can
-//      validate a proposed custom rule before saving it.
-//
-// IMPORTANT: must be a flat z.object (NOT z.union / z.discriminatedUnion).
-// Anthropic's tool-use contract requires `input_schema.type: "object"`
-// at the root; a Zod union serialises to `anyOf` with no top-level
-// `type` and the API rejects the whole turn with
-// `tools.N.custom.input_schema.type: Field required`.
 const Input = z
   .object({
     mode: z.enum(["actor_probe", "expression_preview"]).default("actor_probe"),
-    // actor_probe fields
     actor_id: z.string().uuid().optional(),
     actor_kind: z.enum(["user", "system_account"]).optional(),
     permission: z.string().min(1).optional(),
     resource_id: z.string().uuid().optional(),
     resource_type: z.string().optional(),
-    // expression_preview fields
     expression: z
       .string()
       .min(1)
@@ -66,16 +36,10 @@ export const testRbacExpressionTool: ConversationTool = {
     "Check whether a specific actor would be allowed to perform a given permission, optionally against a named resource. Pure probe — writes nothing. Useful for answering 'would user X be able to approve patch candidate Y?' before granting a role.",
   inputSchema: Input,
   category: "tenant_read",
-  // Builds a definition rather than using one: withheld from the
-  // read-and-execute tier even though it only reads.
   authoring_only: true,
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
 
-    // Expression-preview mode: stateless JSONata evaluation. Useful
-    // BEFORE saving a custom rule via edit_role — the LLM can show
-    // the operator what the predicate matches against a sample step
-    // config so they don't accidentally lock themselves out.
     if (args.mode === "expression_preview") {
       if (!args.expression || !args.step_config) {
         return {
@@ -87,10 +51,6 @@ export const testRbacExpressionTool: ConversationTool = {
         };
       }
       try {
-        // Bespoke binding: `$config` exposes the step config under test.
-        // Doesn't fit the engine's standard `EvalBindings` shape, so go
-        // through `compileJsonata` for the cache + structured errors,
-        // then evaluate directly with the bespoke binding.
         const expr = compileJsonata(args.expression);
         const result = await expr.evaluate(args.step_config, {
           config: args.step_config,
@@ -114,7 +74,6 @@ export const testRbacExpressionTool: ConversationTool = {
       }
     }
 
-    // actor_probe mode requires actor_id + permission.
     if (!args.actor_id || !args.permission) {
       return {
         ok: false,
@@ -126,7 +85,6 @@ export const testRbacExpressionTool: ConversationTool = {
     }
     const actor_kind = args.actor_kind ?? "user";
 
-    // Resolve the actor's role names from their tenant row's `role_id`.
     let actorRoles: string[] = [];
     let actorExists = false;
     if (actor_kind === "user") {

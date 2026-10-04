@@ -18,29 +18,6 @@ import { readOperatingFigures, resolveOperatingBounds } from "./operating-figure
 import { registerTenantStateCache } from "./tenant-state.ts";
 
 export const OPERATIONAL_SCHEMA_VERSION = "operational-overview.v1" as const;
-/**
- * The version of THIS payload — the operational overview and nothing else.
- *
- * It was called FAMILY_CONTRACT_VERSION, which sent every reader to
- * `FAMILY-UI.json` to find out why that file says 2.3. The two numbers were
- * never the same contract: `familyVersion` versions the cross-product cockpit
- * UI — geometry, DOM attributes, states — and that file already carries
- * `apiSchemaVersion` as its pointer at this payload. They are independent and
- * are meant to move independently.
- *
- * 2.2 because `core` gained a required member. The published schema
- * (`OPERATIONAL-OVERVIEW.schema.json`) declares `additionalProperties: false`
- * at both levels, so a consumer validating a new snapshot against the 2.1
- * document rejects it outright; and a consumer destructuring `core` against the
- * 2.1 shape reads `undefined`. Additive from the inside is still a break from
- * the outside. The OpenAPI response is NOT closed — no `.strict()` anywhere in
- * the route — so it is the published schema that makes this a version.
- *
- * 2.3 is additive: every health component carries the `drilldown` to its
- * cause, `core.health` lists the concrete `causes` behind a red score, and
- * every freshness source names its `drilldown`. The published schema is closed,
- * so the new members are declared there (optional, for the sibling products).
- */
 export const OPERATIONAL_OVERVIEW_CONTRACT_VERSION = "2.3" as const;
 
 export type ValueState = "observed" | "zero" | "missing" | "stale" | "forbidden";
@@ -49,49 +26,31 @@ export interface Drilldown {
   path: string;
   label_id: string;
 }
-/**
- * Why a cause counts, as a fact a reader can word in their own language.
- *
- * `label` stays for the family contract's other readers, but it is an English
- * sentence the engine wrote: the cockpit rendered it verbatim inside a German
- * page. The structured pair — `subject` and `reason` — is what a surface
- * composes its own sentence from; `detail` is the residual free text (a
- * failing group's classifier sentence, a connector's `health_reason`) that no
- * surface can translate, so it is marked as the engine's wording wherever it
- * is shown.
- */
 export type HealthCauseReason =
   | "held_for_review"
   | "failing"
   | "needs_reauth"
   | "needs_update"
   | "degraded"
-  /** A connector `health_state` this build does not name; `detail` carries it. */
   | "unhealthy";
 
-/** The thing a cause is about. Nullable id/name: a failing group of an unsaved run has neither. */
 export interface HealthCauseSubject {
   kind: "workflow" | "connector";
   id: string | null;
   name: string | null;
 }
 
-/** A concrete reason a health score is not green, with where to act on it. */
 export interface HealthCause {
   kind: "failing_group" | "held_schedule" | "held_inbound_hook" | "connector";
   id: string;
-  /** The engine's own English sentence. Kept for the contract; a UI composes from subject + reason. */
   label: string;
   subject: HealthCauseSubject;
   reason: HealthCauseReason;
-  /** Residual engine free text, or null. Never a sentence a surface should pass off as its own. */
   detail: string | null;
-  /** Failing groups only: the classifier's class for the cause, else null. */
   cause_class: PreviewClassification | null;
   drilldown: Drilldown;
 }
 
-/** Every connector state that counts against health, named. A new state is a compile error here. */
 const CONNECTOR_REASON = {
   needs_reauth: "needs_reauth",
   needs_update: "needs_update",
@@ -128,18 +87,9 @@ export interface OperationalOverview {
   product: "subkit";
   generated_at: string;
   recommended_refresh_seconds: number;
-  /**
-   * `buildSnapshot` only ever produces `ready` or `partial`: it runs behind the
-   * permission middleware and inside the version that defines this shape, so it
-   * can observe neither of the other two. They stay in the union because they
-   * are the reader's vocabulary, not the writer's — a client reading this
-   * payload across a version boundary, or through a gateway that stripped its
-   * permission, has a name for what it is looking at instead of a parse error.
-   */
   snapshot_state: "ready" | "partial" | "forbidden" | "contract-mismatch";
   core: {
     blocked: OperationalMetric;
-    /** Approved, scheduled, and failing — the opposite of a held schedule. */
     failing: OperationalMetric;
     overdue: OperationalMetric;
     other_decisions: OperationalMetric;
@@ -154,10 +104,8 @@ export interface OperationalOverview {
         contribution: number | null;
         freshness: Freshness;
         required: boolean;
-        /** Where the thing this component measures can be acted on. */
         drilldown: Drilldown;
       }>;
-      /** The concrete causes behind the score, at most MAX_HEALTH_CAUSES. */
       causes: HealthCause[];
     };
     data_freshness: OperationalMetric & {
@@ -188,23 +136,8 @@ export interface FreshnessSource {
   drilldown: Drilldown;
 }
 
-/** How many concrete causes `core.health` lists before it stops. */
 export const MAX_HEALTH_CAUSES = 5;
 
-/**
- * The freshness sources and their thresholds.
- *
- * Both are written by the scheduler's reconciler on an hourly cadence per
- * tenant, so each is a real heartbeat of the machinery that produces what the
- * overview counts: the drift scan feeds the repair decisions, the re-auth scan
- * feeds connector health. Stale after three missed cadences — one late tick is
- * load, three is a stopped scheduler.
- *
- *   - `self_healing.drift_scan`: newest SUCCEEDED scheduler row in
- *     `self_healing_scans`. Not the claim stamp on `tenants`, which is written
- *     before the scan runs and so proves only that it was attempted.
- *   - `connectors.reauth_scan`: `tenants.last_connector_reauth_scan_at`.
- */
 export const FRESHNESS_EXPECTED_INTERVAL_SECONDS = 60 * 60;
 export const FRESHNESS_STALE_AFTER_SECONDS = 3 * FRESHNESS_EXPECTED_INTERVAL_SECONDS;
 
@@ -272,7 +205,6 @@ function rowsOf<T>(result: unknown): T[] {
   return (result as { rows?: T[] } | null)?.rows ?? [];
 }
 
-/** Held automatic runs — by a schedule or a refused hook, counted once per workflow. */
 function heldAutomation(tenantId: string) {
   return sql`
     SELECT w.id AS workflow_id, w.name AS name, 'held_schedule' AS kind, s.created_at
@@ -295,8 +227,6 @@ function heldAutomation(tenantId: string) {
 async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverview> {
   const now = new Date();
   const generatedAt = now.toISOString();
-  // The same predicate the digest, the MCP instructions and the list's
-  // `reviewable_total` read: proposed AND reviewable on the current version.
   const openPatches = await readOpenPatchDecisions(db, tenantId);
   const readyIds = openPatches.items.map((item) => item.row.id);
   const readyPatches = readyIds.length
@@ -306,21 +236,11 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       )})`
     : sql`FALSE`;
 
-  // Asked of the same code the decisions queue asks, not re-derived here. The
-  // grouping rule is more than a WHERE clause — first failed step per run,
-  // origin merged across the group, a scan cap — and a second copy of it in SQL
-  // is how the overview came to disagree with the page it links to.
   const failingGroups = failingScheduledGroups(
     await collectFailureGroups(db, tenantId, DECISION_FAILURE_WINDOW_HOURS),
   );
   const failing = failingGroups.length;
 
-  // The success and repair ratios are the Übersicht's figures over the last
-  // 24 hours, asked of the reader `GET /v1/stats/operating-figures` answers
-  // from — one definition, so a scrape, an MCP client and the cockpit's bar
-  // cannot quote two rates for one question. They used to be computed here:
-  // runs FINISHED in the window, and repairs by their stored status over all
-  // time. Taken as raw counts, not the figures' rounded percents.
   const bounds = resolveOperatingBounds({ window: "24h" }, now);
   if (!bounds.ok) throw new Error(`operational overview window: ${bounds.reason}`);
   const figures = await readOperatingFigures(db, tenantId, bounds);
@@ -359,8 +279,6 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   const other = numberOf(row.other_decisions);
   const executions = numberOf(row.execution_total_24h);
   const connectors = numberOf(row.connectors_total);
-  // The numerator is the complement of `GET /v1/connectors?health=not_ok`:
-  // one predicate, so the list a red tile opens holds exactly what it counted.
   const healthyConnectors = connectors - numberOf(row.connectors_not_ok);
   const successRatio =
     figures.runs.finished > 0 ? figures.runs.succeeded / figures.runs.finished : null;
@@ -466,8 +384,6 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
       contribution: successRatio === null ? null : successRatio * 30,
       freshness: successRatio === null ? ("missing" as const) : ("fresh" as const),
       required: true,
-      // The score counts every finished run; what a person can act on is the
-      // failed runs the scheduler started.
       drilldown: {
         path: "/cockpit?runs=all&status=failed&source=scheduler",
         label_id: "operational.open_runs",
@@ -507,9 +423,6 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
               ? "critical"
               : "unknown",
       generatedAt,
-      // A red score leads to what made it red. It pointed at the operations
-      // page, which says its findings are on the overview — a loop with no
-      // cause at either end.
       ...worstComponentLink(components, blocked),
       prometheus: "subkit_operational_health_score",
     }),
@@ -601,22 +514,6 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
           value: numberOf(row.production_failures_24h),
           unit: "count",
           severity: numberOf(row.production_failures_24h) > 0 ? "critical" : "healthy",
-          // A count that names failed runs has to lead to the failed runs. It
-          // pointed at the unfiltered list, where eleven thousand rows hid the
-          // one the number was about.
-          //
-          // `status=failed` alone was still the wrong list. This metric counts
-          // failed runs THE SCHEDULER STARTED — its own definition says it
-          // separates those from authoring trials — and the link landed on
-          // nine hundred rows that were overwhelmingly trials. The number
-          // excluded exactly what the reader was then shown.
-          //
-          // The 24-hour window is deliberately not in the link. A cutoff
-          // written into a path is a timestamp that keeps being served after
-          // the snapshot behind it was recomputed, so the link would name a
-          // window the number no longer used. Newest-first over the right KIND
-          // of run opens on the runs this counted; it is wider in time, and
-          // being wider is visible, where being wrong was not.
           path: "/cockpit?runs=all&status=failed&source=scheduler",
           labelId: "operational.open_runs",
           prometheus: "subkit_operational_production_incidents_24h",
@@ -691,8 +588,6 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
               : repairAppliedRatio >= 0.7
                 ? "healthy"
                 : "information",
-          // A historical ratio leads to the decisions it was computed from, not
-          // to the open queue: the approved, auto-applied and rejected repairs.
           path: DECIDED_REPAIRS_PATH,
           labelId: "operational.open_decided_repairs",
           prometheus: "subkit_operational_repairs_applied_ratio",
@@ -738,37 +633,17 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
   };
 }
 
-/**
- * The connectors behind `connectors.healthy_ratio` that pull it down: the list
- * narrowed by `GET /v1/connectors?health=not_ok`, the same predicate the ratio
- * counts against (`connectorCountsAgainstHealth`). Both the health component
- * and the section tile lead here — a ratio at 0 % links too, and the plain list
- * would hand the reader every connector instead of the broken ones.
- */
 export const NOT_OK_CONNECTORS_PATH = "/cockpit/connectors?health=not_ok";
 
-/**
- * Where every decision tile and blocked/failing cause leads: the one attention
- * list on the cockpit's start page (`buildAttention`). The four buckets used to
- * open four filtered views of a separate decisions page; the list now holds
- * them all, one item per thing to act on.
- */
 export const ATTENTION_PATH = "/cockpit";
 
-/** A cause about one workflow opens that workflow's item in the review sheet. */
 function workflowReviewPath(workflowId: string): string {
   return `/cockpit?review=workflow:${workflowId}`;
 }
 
-/** The audit rows behind `repairs.applied_ratio`: every decided repair. */
 export const DECIDED_REPAIRS_PATH =
   "/cockpit/audit?scope=all&action=patch_candidate.approved,patch_candidate.auto_applied,patch_candidate.rejected";
 
-/**
- * The health metric's own link: the worst-scoring component. Blocked work wins
- * outright (it makes the state critical on its own); otherwise the lowest
- * normalized score, in component order on a tie.
- */
 function worstComponentLink(
   components: ReadonlyArray<{ normalized_score: number | null; drilldown: Drilldown }>,
   blocked: number,
@@ -785,12 +660,6 @@ function worstComponentLink(
   return { path: link.path, labelId: link.label_id };
 }
 
-/**
- * The concrete causes behind the health score, most blocking first: held
- * schedules (the blocked tile's own predicate), failing scheduled groups (the
- * failing tile's own list), then unhealthy connectors (the complement of the
- * connector ratio's numerator). Capped at MAX_HEALTH_CAUSES.
- */
 async function readHealthCauses(
   db: Db,
   tenantId: string,
@@ -854,7 +723,6 @@ async function readHealthCauses(
         label: `${row.name}: ${row.health_state.replace(/_/g, " ")}`,
         subject: { kind: "connector", id: row.id, name: row.name },
         reason,
-        // A state this build does not name is still said — as the engine's word.
         detail: row.health_reason ?? (reason === "unhealthy" ? row.health_state : null),
         cause_class: null,
         drilldown: {
@@ -874,13 +742,6 @@ function freshnessOf(updatedAt: Date | null, now: Date): Freshness {
     : "fresh";
 }
 
-/**
- * `data.freshness` from the ages of the sources that feed the overview.
- *
- * It was a constant — value 0, always fresh — so it could never turn red,
- * however long the scheduler had been stopped. The value is now the age in
- * seconds of the stalest source, and the metric's link names that source.
- */
 async function readDataFreshness(
   db: Db,
   tenantId: string,
@@ -924,8 +785,6 @@ async function readDataFreshness(
     state: freshnessOf(source.at, now),
     drilldown: source.drilldown,
   }));
-  // The stalest source decides: a missing one first (nothing has ever run),
-  // then the oldest timestamp.
   const stalest = observed.reduce((a, b) =>
     !a.at ? a : !b.at ? b : b.at.getTime() < a.at.getTime() ? b : a,
   );
@@ -987,11 +846,6 @@ export function projectOperationalOverviewMetrics(snapshot: OperationalOverview)
     snapshot.core.data_freshness,
     ...snapshot.sections.flatMap((section) => section.metrics),
   ];
-  // A figure without a value is scraped as NaN — Prometheus's "no value" —
-  // not left at its last number: the ratios count a 24-hour window, and a
-  // quiet day has no ratio. Skipping the write kept yesterday's rate on the
-  // scrape, and an empty series renders as 0, which for a ratio reads as
-  // "everything failed".
   for (const entry of all) {
     if (entry.value_state === "forbidden") continue;
     registry.set(entry.prometheus.name, entry.value ?? Number.NaN);

@@ -1,12 +1,3 @@
-// inspect_execution over MCP — the surface-agnostic tenant_read that
-// gives MCP callers a whole-execution diagnosis. diagnose_latest_execution
-// stays draft_write and therefore unavailable on the stateless MCP
-// surface; this test pins both: inspect_execution works, and
-// diagnose_latest_execution still reports not_available_on_surface.
-//
-// Authoring MCP mode is forced via SK_MCP_MODE so the principal sees
-// conversation tools (same pattern as tools-list-disabled.test.ts).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../../tools/policy.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";

@@ -1,22 +1,3 @@
-// End-to-end notification fan-out test.
-//
-// Bridges the gap between `dispatch.test.ts` (which calls
-// `dispatchEvent` directly) and the real production wiring, which goes
-// through the outbox listener → `webhooks/outbound/fanout.ts` →
-// `dispatchEvent`. The intervening `fanoutEvent` synthesises the
-// `NotificationEvent` from the raw outbox payload, so the only place
-// the path's correctness can fail is in the bridge itself.
-//
-// What this test asserts:
-//   1. An `execution.failed` outbox event hits a matching channel.
-//   2. The synthesised event carries the workflow id + severity that
-//      the matcher and adapter expect.
-//   3. The audit trail records `chat.message.sent`.
-//   4. A `notification_deliveries` row lands with status `sent`.
-//
-// pg-boss is stubbed because no webhook subscription is seeded and the
-// notification dispatch path does not require a queue handle.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -74,9 +55,6 @@ async function seedChannelAndRule(opts: { workspace?: string; channel?: string }
   });
 }
 
-// Stub pg-boss so the webhook fanout branch (which iterates over zero
-// subscriptions in this test) does not need a real queue handle. The
-// notifications branch never touches `boss`.
 const fakeBoss = {
   send: async () => "stub-job-id",
 } as unknown as PgBoss;
@@ -124,9 +102,6 @@ describe("notifications: fanout-event end-to-end", () => {
   });
 
   test("notification dispatch is skipped when request_source is on the rule's filter", async () => {
-    // Default filter: rule has none → fires regardless. Seed a rule
-    // with `request_source_filter = ['scheduler']` and verify a
-    // `chat`-sourced event is filtered out at match time.
     await wipe();
     const workspace = "W_SOURCED";
     const channel = "C_SCOPED";
@@ -165,8 +140,6 @@ describe("notifications: fanout-event end-to-end", () => {
   test("adapter failure flips the breaker and the next call records breaker_open", async () => {
     await wipe();
     await seedChannelAndRule({ workspace: "W_BRK", channel: "C_BRK" });
-    // Trip the breaker by failing FAILURE_THRESHOLD times in a row.
-    // Each attempt records a `failed` delivery.
     const adapter = new FakeAdapter();
     adapter.alwaysFail = true;
     for (let i = 0; i < FAILURE_THRESHOLD; i += 1) {
@@ -180,8 +153,6 @@ describe("notifications: fanout-event end-to-end", () => {
         notificationAdapterResolver: () => adapter as unknown as NotificationAdapter,
       });
     }
-    // Next call — breaker should be open and the call should record
-    // `breaker_open` instead of invoking the adapter.
     const happyAdapter = new FakeAdapter();
     const stats = await fanoutEvent({
       db: ctx.db,

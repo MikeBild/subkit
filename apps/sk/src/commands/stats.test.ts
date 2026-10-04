@@ -1,19 +1,7 @@
-// Unit tests for the pure client-side validation logic in stats.ts.
-// No network calls, no engine, no process.exit. Tests the exported
-// resolveTime, buildQuery, ValidationError, and WINDOW_CAP_MS symbols.
-//
-// Refactor note: resolveTime, buildQuery, ValidationError, BUCKETS, and
-// WINDOW_CAP_MS were not previously exported. They were exported as part
-// of adding this test coverage (minimal export — no production behaviour
-// changed). See stats.ts exports.
-
 import { describe, expect, test } from "bun:test";
 import { BUCKETS, buildQuery, resolveTime, ValidationError, WINDOW_CAP_MS } from "./stats.ts";
 
-// Fixed "now" so relative expressions are deterministic.
 const NOW_MS = new Date("2026-01-15T12:00:00.000Z").getTime();
-
-// ---- resolveTime -----------------------------------------------------------
 
 describe("resolveTime — absolute ISO-8601", () => {
   test("parses a valid ISO-8601 string", () => {
@@ -67,24 +55,16 @@ describe("resolveTime — relative forms", () => {
   });
 });
 
-// ---- buildQuery — defaults + happy path ------------------------------------
-
 describe("buildQuery — zero-config defaults applied correctly", () => {
   test("executions default: bucket=hour, from=now-24h", () => {
     const q = buildQuery({}, { bucket: "hour", from: "now-24h" }, {});
     expect(q.bucket).toBe("hour");
-    // from must be ~24h before now; allow 5s of clock drift in CI.
-    // buildQuery always populates `to`; the StatsQuery type marks it
-    // optional for the wire interface, hence the non-null assertion.
     const fromMs = new Date(q.from).getTime();
     const toMs = new Date(q.to!).getTime();
-    expect(toMs - fromMs).toBeCloseTo(24 * 3_600_000, -3); // within 1s
+    expect(toMs - fromMs).toBeCloseTo(24 * 3_600_000, -3);
   });
 
   test("llm default: bucket=day, from=startOfMonth", () => {
-    // Use a mock nowMs for startOfMonth to be deterministic.
-    // buildQuery calls Date.now() internally; the month start is
-    // always the first of the current month in UTC.
     const q = buildQuery({}, { bucket: "day", from: "startOfMonth" }, {});
     expect(q.bucket).toBe("day");
     const fromDate = new Date(q.from);
@@ -144,8 +124,6 @@ describe("buildQuery — extra fields are forwarded", () => {
   });
 });
 
-// ---- buildQuery — client-side validation -----------------------------------
-
 describe("buildQuery — invalid bucket rejected", () => {
   test("throws ValidationError for unrecognised bucket", () => {
     expect(() =>
@@ -190,7 +168,6 @@ describe("buildQuery — to <= from rejected", () => {
 });
 
 describe("buildQuery — window cap enforcement mirrors server caps", () => {
-  // For each bucket, a window 1ms over the cap must throw.
   const cases: Array<[string, number]> = [
     ["minute", WINDOW_CAP_MS.minute + 1],
     ["hour", WINDOW_CAP_MS.hour + 1],
@@ -217,7 +194,6 @@ describe("buildQuery — window cap enforcement mirrors server caps", () => {
       }
       expect(threw).toBeDefined();
       expect(threw instanceof ValidationError).toBe(true);
-      // The error message must contain the cap hint (bucket name at minimum).
       expect((threw as ValidationError).message).toContain(bucket);
     });
   }
@@ -243,8 +219,6 @@ describe("buildQuery — unparseable --from", () => {
   });
 });
 
-// ---- JSON output shape stability (structural test) -------------------------
-
 describe("buildQuery — --json output shape is stable", () => {
   test("returned query has the three required envelope keys", () => {
     const q = buildQuery(
@@ -255,9 +229,7 @@ describe("buildQuery — --json output shape is stable", () => {
     expect(typeof q.bucket).toBe("string");
     expect(typeof q.from).toBe("string");
     expect(typeof q.to).toBe("string");
-    // Dates are ISO-8601 strings (parseable by Date constructor).
     expect(Number.isNaN(new Date(q.from).getTime())).toBe(false);
-    // buildQuery always sets `to`; StatsQuery.to is optional for the wire.
     expect(Number.isNaN(new Date(q.to!).getTime())).toBe(false);
   });
 });

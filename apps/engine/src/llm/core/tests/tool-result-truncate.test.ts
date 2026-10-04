@@ -1,14 +1,8 @@
-// Unit tests for the tool-result truncation policy. The policy must:
-//   - pass small values through verbatim,
-//   - sample large values and emit a structured marker,
-//   - apply different budgets for success and error kinds.
-
 import { describe, expect, test } from "bun:test";
 import { truncatedToolResultValue, truncateToolResult } from "../tool-result-truncate.ts";
 
 function bigPayload(approxBytes: number): Record<string, unknown> {
-  // Build a simple object with a single string field padded to size.
-  const target = approxBytes - 64; // headroom for keys
+  const target = approxBytes - 64;
   const blob = "x".repeat(Math.max(0, target));
   return { kind: "doc", content: blob };
 }
@@ -37,7 +31,7 @@ describe("truncateToolResult", () => {
   });
 
   test("error budget bites earlier than success budget", () => {
-    const between = bigPayload(60_000); // > 50KB error budget but < 80KB success budget
+    const between = bigPayload(60_000);
     const errResult = truncateToolResult(between, "error");
     const okResult = truncateToolResult(between, "success");
     expect(errResult.truncated).not.toBeNull();
@@ -60,7 +54,6 @@ describe("truncateToolResult", () => {
   test("truncatedToolResultValue wraps non-object values when truncating", () => {
     const longString = "y".repeat(100_000);
     const out = truncatedToolResultValue(longString, "success") as Record<string, unknown>;
-    // Strings JSON-encode with quotes, so the byte count exceeds 80 KB.
     expect(out._truncated).toBeDefined();
     expect(out.value).toBe(longString);
   });

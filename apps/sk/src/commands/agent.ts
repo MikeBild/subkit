@@ -1,19 +1,3 @@
-// `sk agent` — glue between the engine's domain knowledge and external
-// coding agents (Claude Code, Codex).
-//
-//   sk agent briefing   Print the domain-scoped session briefing (markdown).
-//                       With --hook it runs as a SessionStart hook: reads the
-//                       hook JSON from stdin, resolves `.sk/agent.json` from
-//                       the session cwd, and NEVER fails the session — any
-//                       error degrades to empty output and exit 0.
-//   sk agent capture    POST a finished session's transcript to the engine
-//                       for learning distillation (SessionEnd/Stop hook or
-//                       manual). Learnings land as PROPOSED candidates only.
-//   sk agent init       Declare the repo's domains (`.sk/agent.json`), wire
-//                       the Claude Code SessionStart + SessionEnd hooks, and
-//                       print the Codex hook snippet + MCP registration
-//                       commands.
-
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,7 +14,6 @@ const HOOK_COMMAND = "sk agent briefing --hook";
 const CAPTURE_HOOK_COMMAND = "sk agent capture --hook";
 const HOOK_TIMEOUT_SECONDS = 30;
 const CAPTURE_HOOK_TIMEOUT_SECONDS = 60;
-/** Client-side transcript cap, mirrors the engine's TRANSCRIPT_MAX_CHARS. */
 const TRANSCRIPT_MAX_CHARS = 1_000_000;
 
 interface AgentFile {
@@ -38,7 +21,6 @@ interface AgentFile {
   budget_tokens?: number;
 }
 
-/** Walk from `startDir` upward and return the first parsed `.sk/agent.json`. */
 export function findAgentFile(startDir: string): { path: string; config: AgentFile } | null {
   let dir = startDir;
   for (;;) {
@@ -71,7 +53,6 @@ interface HookPayload {
   transcript_path: string | null;
 }
 
-/** Hook payload from stdin (Claude Code and Codex share the fields we need). */
 function readHookPayload(): HookPayload {
   const empty: HookPayload = { cwd: null, session_id: null, transcript_path: null };
   try {
@@ -118,8 +99,6 @@ const briefingCommand = defineCommand({
             .filter(Boolean)
         : (fromFile?.config.domains ?? []);
       if (domains.length === 0) {
-        // No declared domains is normal for most repos — a hook must stay
-        // silent, an interactive call gets guidance.
         if (!args.hook) {
           process.stdout.write(
             `sk agent briefing: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
@@ -142,7 +121,6 @@ const briefingCommand = defineCommand({
       process.stdout.write(`${briefing.markdown}\n`);
     } catch (err) {
       if (args.hook) {
-        // A broken engine must never break the coding-agent session.
         debugLog("agent.briefing_hook_failed", { error: String(err) });
         return;
       }
@@ -150,10 +128,6 @@ const briefingCommand = defineCommand({
     }
   },
 });
-
-// ---------------------------------------------------------------------------
-// capture
-// ---------------------------------------------------------------------------
 
 const captureCommand = defineCommand({
   meta: {
@@ -186,8 +160,6 @@ const captureCommand = defineCommand({
             .map((d) => d.trim())
             .filter(Boolean)
         : (fromFile?.config.domains ?? []);
-      // Capture only where domains are declared — every other repo's
-      // sessions are none of the engine's business (noise + privacy).
       if (domains.length === 0) {
         if (!args.hook) {
           process.stdout.write(
@@ -207,7 +179,6 @@ const captureCommand = defineCommand({
       }
       let transcript = readFileSync(transcriptPath, "utf8");
       if (transcript.trim().length === 0) return;
-      // Corrections skew late — keep the tail when over the cap.
       if (transcript.length > TRANSCRIPT_MAX_CHARS) {
         transcript = transcript.slice(transcript.length - TRANSCRIPT_MAX_CHARS);
       }
@@ -239,10 +210,6 @@ const captureCommand = defineCommand({
   },
 });
 
-// ---------------------------------------------------------------------------
-// init
-// ---------------------------------------------------------------------------
-
 interface ClaudeHookEntry {
   matcher?: string;
   hooks?: Array<{ type?: string; command?: string; timeout?: number }>;
@@ -264,11 +231,6 @@ function appendHookEntry(
   return { ...hooks, [event]: [...entries, entry] };
 }
 
-/**
- * Idempotently wire the SessionStart briefing hook AND the SessionEnd
- * capture hook into a Claude Code settings.json blob. Returns the
- * updated blob, or null when both are already wired.
- */
 export function wireClaudeSessionStartHook(
   settings: Record<string, unknown>,
 ): Record<string, unknown> | null {
@@ -276,7 +238,6 @@ export function wireClaudeSessionStartHook(
   let changed = false;
   if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
     hooks = appendHookEntry(hooks, "SessionStart", {
-      // `compact` re-injects the briefing after context compaction.
       matcher: "startup|resume|compact",
       hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
     });

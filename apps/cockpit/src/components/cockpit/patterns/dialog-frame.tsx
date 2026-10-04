@@ -2,28 +2,12 @@ import { ChevronLeft, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/cockpit/icon-button";
 
-/**
- * One dialog anatomy (P13, P14), shared by FormDialog and ConfirmDialog:
- *
- * - head: an optional "‹ Zurück", the title with the close ×, an optional
- *   one-line description;
- * - body: scrolls; a 16px rhythm, labels above full-width controls, a
- *   SegmentedControl's segments stretched evenly;
- * - the one error line, above the footer;
- * - footer: a separating rule, ghost "Abbrechen" and one filled verb (red
- *   where it removes), right-aligned.
- *
- * Two widths, 512px and 576px; under 640px a full-width sheet from the
- * bottom edge.
- */
 export type DialogSize = "default" | "wide";
 
-/** The two dialog widths (§4): `sm:max-w-lg` (512px), and `sm:max-w-xl` (576px). */
 export function dialogWidthClass(size: DialogSize): string {
   return size === "wide" ? "sm:max-w-xl" : "sm:max-w-lg";
 }
 
-/** The frame: no padding of its own, its parts set the rhythm; a bottom sheet on a phone. */
 export const DIALOG_FRAME =
   "flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden bg-background p-0 max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[calc(100dvh-1.5rem)] max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none";
 
@@ -38,11 +22,9 @@ export const DIALOG_ERROR = "flex-none px-6 pb-4 text-sm text-destructive max-sm
 export const DIALOG_FOOT =
   "m-0 flex flex-none flex-row flex-wrap justify-end gap-2 rounded-none border-t bg-transparent px-6 py-4 max-sm:px-4 max-sm:py-3 sm:flex-row sm:justify-end";
 
-/** The verb that removes: red, as filled as any other verb. */
 export const FILLED_DESTRUCTIVE =
   "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/40";
 
-/** "‹ Zurück", above the title of a dialog's second step. */
 export function DialogBack({
   label,
   onClick,
@@ -69,7 +51,6 @@ export function DialogBack({
   );
 }
 
-/** The title row: the title and, at its end, the close ×. */
 export function DialogTitleRow({
   title,
   closeLabel,
@@ -77,7 +58,6 @@ export function DialogTitleRow({
   disabled,
   testId,
 }: {
-  /** The primitive's own title element, so the dialog stays labelled. */
   title: ReactNode;
   closeLabel: string;
   onClose(): void;

@@ -1,20 +1,3 @@
-// S3 driver round-trip test.
-//
-// Strategy: spin up a real S3 server in a container, create a
-// bucket, and exercise PUT → GET → LIST → HEAD → DELETE through the
-// driver. The whole suite is gated on a `dockerAvailable()` probe so a
-// laptop without Docker simply logs a "skipped" notice and exits 0
-// instead of failing CI.
-
-// A case that could not run must report SKIP, never PASS.
-//
-// LOCAL-SK-DOCKERFALL-ZAEHLT-ALS-BESTANDEN — the docker gate used to be a bare
-// `return` in each test body. Under `SKIP_DOCKER=1` (how CI's test shards run)
-// this group reported "pass" for cases that had asserted nothing. A count that
-// cannot distinguish "verified" from "never ran" is not evidence, and it is
-// the number a release reads. The probe now happens once at module scope and
-// the suite is gated with `describe.skipIf`, so bun counts them as skipped.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -27,7 +10,6 @@ import { probeConnector } from "../drivers/index.ts";
 import { executeS3Request, probeS3Connector } from "../drivers/s3.ts";
 import { createConnector, getConnector } from "../service.ts";
 
-// Module scope, so the result is known before bun builds the test list.
 const DOCKER = await dockerAvailable();
 let testDb: TestDb;
 let tenantId: string;
@@ -48,8 +30,6 @@ beforeAll(async () => {
   tenantId = t!.id;
   objectStore = await startObjectStore("subkit-s3-driver-test");
 
-  // Bootstrap the bucket directly via the s3-lite-client, so the
-  // driver test only exercises object-level operations.
   const { S3Client } = await import("@bradenmacdonald/s3-lite-client");
   const bootstrap = new S3Client({
     region: "us-east-1",
@@ -61,9 +41,7 @@ beforeAll(async () => {
   });
   try {
     await bootstrap.makeBucket(BUCKET);
-  } catch {
-    // ignore — bucket may already exist
-  }
+  } catch {}
 
   const conn = await createConnector(
     {
@@ -100,7 +78,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     expect(fresh).not.toBeNull();
 
-    // PUT
     const put = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -111,7 +88,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     });
     expect(put.status).toBe(200);
 
-    // GET
     const got = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -120,9 +96,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
       path: "/hello.txt",
     });
     expect(got.status).toBe(200);
-    // The driver returns raw bytes for non-text content types (the store
-    // defaults to application/octet-stream); the request-step path
-    // uses `parse_as` to decode. Direct callers convert explicitly.
     const gotBody =
       typeof got.body === "string"
         ? got.body
@@ -131,7 +104,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
           : String(got.body ?? "");
     expect(gotBody).toBe("hello world");
 
-    // HEAD
     const head = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -141,7 +113,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     });
     expect(head.status).toBe(200);
 
-    // LIST
     const list = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -154,7 +125,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     expect(listBody.count).toBeGreaterThanOrEqual(1);
     expect(listBody.items.find((i) => i.key === "hello.txt")).toBeTruthy();
 
-    // DELETE
     const del = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -164,7 +134,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     });
     expect(del.status).toBe(204);
 
-    // Probe via direct + via registry
     const probe = await probeS3Connector({
       db: testDb.db,
       tenant_id: tenantId,
@@ -184,7 +153,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     const fresh = await getConnector(tenantId, connectorId, testDb.db);
     if (!fresh) throw new Error("connector vanished");
 
-    // Seed three small objects so the paginated LIST has something to walk.
     for (const i of [1, 2, 3]) {
       const put = await executeS3Request({
         db: testDb.db,
@@ -197,7 +165,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
       expect(put.status).toBe(200);
     }
 
-    // Presigned GET — driver returns the URL instead of fetching.
     const presigned = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -212,7 +179,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     expect(presignBody.url.length).toBeGreaterThan(0);
     expect(presignBody.method).toBe("GET");
 
-    // Range GET — request only the first 4 bytes of `body-1`.
     const ranged = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -221,7 +187,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
       path: "/page/obj-1.txt",
       range: "bytes=0-3",
     });
-    // Range responses come back as 206 Partial Content.
     expect(ranged.status === 206 || ranged.status === 200).toBe(true);
     const rangedBody =
       typeof ranged.body === "string"
@@ -232,7 +197,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     expect(rangedBody.length).toBeLessThanOrEqual(7);
     expect(rangedBody.startsWith("body")).toBe(true);
 
-    // paginate: true walks the whole page tree until cap.
     const paged = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,
@@ -247,7 +211,6 @@ describe.skipIf(!DOCKER)("s3 driver", () => {
     expect(pagedBody.paginated).toBe(true);
     expect(pagedBody.count).toBeGreaterThanOrEqual(3);
 
-    // multipart: false on a small body still produces a valid PUT.
     const single = await executeS3Request({
       db: testDb.db,
       tenant_id: tenantId,

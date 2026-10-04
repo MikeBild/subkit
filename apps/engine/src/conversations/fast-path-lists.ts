@@ -1,19 +1,3 @@
-// Fast-path catalog renderers (Fix 3, sessions 2026-06-11/12).
-//
-// Workflows / connectors / schedules / knowledge sources are bounded
-// business catalogs — the fast path enumerates them COMPLETELY and the
-// headline names the exact total ("20 workflows:" only when 20 are
-// shown). The 1000 cap is a safety bound, not a page size; if a tenant
-// ever exceeds it the reply says "showing first 1000 of N" instead of
-// lying by omission. Executions are an unbounded history: they stay
-// paged, but the headline always renders from the true total
-// ("showing latest 10 of 312 executions").
-//
-// Extracted from fast-path.ts so the matcher stays focused on intent
-// routing; the RBAC gating for these renderers lives at the call site
-// (`tryFastPath` checks the same `*:read` permissions the HTTP routes
-// enforce).
-
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { categoryOfConnector } from "../connectors/categorize.ts";
 import { totalOverWindow } from "../db/list-result.ts";
@@ -32,11 +16,6 @@ import type { FastPathParams } from "./fast-path.ts";
 const CATALOG_SAFETY_LIMIT = 1000;
 const EXECUTIONS_PAGE_SIZE = 10;
 
-/**
- * Headline for a complete-or-capped catalog enumeration. `shown` and
- * `total` agree on every tenant below the safety bound, so the common
- * case reads "20 workflows:" — exact, no "more" marker needed.
- */
 function catalogHeadline(noun: string, shown: number, total: number): string {
   if (shown >= total) return `${total} ${noun}${total === 1 ? "" : "s"}:`;
   return `Showing first ${shown} of ${total} ${noun}s (narrow the list with a filter):`;
@@ -69,10 +48,6 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
       data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
     };
   }
-  // Same derived blocks the HTTP/MCP/CLI catalogs show. The fast path
-  // queries the tables directly rather than going through `listWorkflows`,
-  // so it MUST call the shared categoriser — a second inline rule here is
-  // exactly how the surfaces drifted apart before.
   const categories = deriveCategories(rows.map((r) => r.slug));
   const items = rows.map(({ total: _t, ...r }) => ({
     ...r,
@@ -97,7 +72,6 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
   };
 }
 
-/** Longest description rendered on one line of a category listing. */
 const DESCRIPTION_LINE_MAX = 200;
 
 function oneLine(text: string): string {
@@ -107,16 +81,6 @@ function oneLine(text: string): string {
     : flat;
 }
 
-/**
- * Every workflow of ONE derived catalog block, each with what it does.
- *
- * Membership comes from `loadCategoryIndex` — the same whole-catalog corpus
- * the HTTP/MCP/cockpit category counts derive from — so the number of rows
- * here equals the number on the category chip by construction, not through a
- * second rule that could drift. Returns `null` when the block does not exist,
- * so the caller hands the turn to the model instead of answering
- * "0 workflows" for a word that merely sat where a category would.
- */
 export type ReplyLanguage = "de" | "en";
 
 const LIFECYCLE_DE: Record<string, string> = {
@@ -125,10 +89,6 @@ const LIFECYCLE_DE: Record<string, string> = {
   archived: "archiviert",
 };
 
-/**
- * A category-list row. The name follows the slug only when it says something
- * the slug does not — a workflow named after its slug would read twice.
- */
 export function categoryListLine(
   row: { slug: string; name: string; lifecycle: string; description: string | null },
   language: ReplyLanguage,
@@ -160,8 +120,6 @@ export async function renderWorkflowCategoryList(
       name: workflows.name,
       lifecycle: workflows.lifecycle,
       description: workflows.description,
-      // Same precedence as the `wf_<slug>` tool description (catalog.ts):
-      // the editable column, then the active definition's description.
       definition_description: sql<string | null>`${workflowVersions.dag}->>'description'`,
     })
     .from(workflows)
@@ -250,8 +208,6 @@ export async function renderConnectorsList(p: FastPathParams): Promise<RenderPay
 }
 
 export async function renderExecutionsList(p: FastPathParams): Promise<RenderPayload> {
-  // Executions are unbounded history — page, but render from the true
-  // total so a page is never presented as the universe.
   const { rows, total, next_cursor } = await listExecutions(
     p.tenant_id,
     { limit: EXECUTIONS_PAGE_SIZE },

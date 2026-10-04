@@ -49,7 +49,6 @@ async function version(slug: string, owner = tenantId): Promise<Boundary> {
   };
 }
 
-// Storage fixtures are not authorization-service calls and grant no product API.
 async function insertAuthority(
   boundary: Boundary,
   patch: Record<string, unknown> = {},

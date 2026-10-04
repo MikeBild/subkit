@@ -1,23 +1,3 @@
-// An approval follows a workflow to a newer version when that version reaches
-// nothing the person did not already approve.
-//
-// A person approves an effect boundary for an environment: which connectors a
-// workflow reaches, at which addresses, and whether it only reads or also
-// writes. A saved change that keeps inside that boundary — a different
-// transform, a renamed step, a narrower request — does not change the risk the
-// person accepted, so asking again only teaches people to click "approve".
-// When a version becomes active, each live approval of the version it replaces
-// is compared with the new version's boundary, computed by the same function
-// the grant dialog shows and admission checks (`previewWorkflowAuthority`):
-//
-//   * equal or narrower — a new approval for the new version takes over what is
-//     left (runs, end date, environment), records where it came from, and the
-//     old approval ends in the same transaction, so nothing is ever doubled;
-//   * wider — nothing is carried; the version waits for a person as before and
-//     the version row records what is new, for the attention list to say.
-//
-// Pending drafts are never touched: only activation carries an approval.
-
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
@@ -38,7 +18,6 @@ import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 
 type Effect = WorkflowEffectManifest["effects"][number];
 
-/** Adds each connector's display name, so a reader can say "new target: X". */
 export async function nameGrowth(
   db: Executor,
   tenant_id: string,
@@ -59,10 +38,6 @@ export async function nameGrowth(
   }));
 }
 
-/** The approval a version's boundary is measured against for display: the
- *  newest one in this environment for another version of the workflow that a
- *  person did not revoke (a carried-over one counts — its boundary is the one
- *  a person approved). Null when there is none. */
 export async function referenceApprovedManifest(
   db: Executor,
   input: {
@@ -97,8 +72,6 @@ export async function referenceApprovedManifest(
 
 const EFFECT_RANK = { read: 0, write: 1, destructive: 2 } as const;
 
-/** Whether `granted` allows at least what `next` does. `unknown` is only
- *  covered by `unknown` on the same operation: the engine cannot order it. */
 function effectCovered(next: Effect, granted: Effect): boolean {
   if (next.effect === "unknown" || granted.effect === "unknown")
     return next.effect === granted.effect && next.operation === granted.operation;
@@ -123,11 +96,6 @@ function sameConfiguration(next: Effect, granted: Effect): boolean {
   );
 }
 
-/**
- * What `next` reaches beyond `granted`; empty when it reaches nothing new.
- * Step ids, request digests and version identities are deliberately not
- * compared — they change with every edit and say nothing about the risk.
- */
 export function boundaryGrowth(
   granted: WorkflowEffectManifest,
   next: WorkflowEffectManifest,
@@ -176,14 +144,7 @@ function parseManifest(raw: unknown): WorkflowEffectManifest | null {
 
 type AuthorityRow = typeof workflowExecutionAuthorities.$inferSelect;
 
-/** One approval measured against a version: its boundary, what that approval
- *  covers, and what the version adds. Null when the version cannot run on any
- *  approval (it needs a concrete-run review; the gate says why). */
 async function judgeCarry(db: Executor, parent: AuthorityRow, to_version_id: string) {
-  // A report mail's or a publication's boundary is learnt once and kept on the
-  // approval; the new version has no approval of its own yet, so it is
-  // measured with the ones its parent carries — exactly what admission reads
-  // back from the carried approval afterwards.
   const report_boundaries = reportBoundariesFromManifest(parent.effect_manifest);
   const content_boundaries = contentBoundariesFromManifest(parent.effect_manifest);
   const preview = await previewWorkflowAuthority(
@@ -205,11 +166,6 @@ async function judgeCarry(db: Executor, parent: AuthorityRow, to_version_id: str
   return { preview, granted, growth: boundaryGrowth(granted, preview.manifest) };
 }
 
-/**
- * Whether activating `version_id` would carry a live approval of the active
- * version in this environment over — the same judgement activation makes, so
- * a review can offer "take over" instead of asking for a new approval.
- */
 export async function approvalWouldCarry(
   db: Executor,
   input: {
@@ -244,15 +200,6 @@ export async function approvalWouldCarry(
   return false;
 }
 
-/**
- * Called in the transaction that makes `to_version_id` the active version.
- * Runs in a savepoint: a failure here never undoes the save — the version then
- * simply waits for a person, which is the behaviour without inheritance.
- *
- * Exactly once: each parent row is locked with `FOR UPDATE` and re-read as
- * live; a concurrent activation waits on the lock, then finds it ended. The
- * unique index on `inherited_from` backs this up in the database.
- */
 export async function carryApprovalsForward(
   tx: Executor,
   input: {
@@ -316,7 +263,6 @@ export async function carryApprovalsForward(
             valid_from: sql`clock_timestamp()`,
             valid_until: parent.valid_until,
             max_runs: remaining,
-            // The person who approved the boundary, not whoever saved.
             created_by: parent.created_by,
             inherited_from: parent.id,
             approved_manifest: { ...granted },
@@ -370,8 +316,6 @@ export async function carryApprovalsForward(
         outcome.inherited.push(child.id);
         covered.add(environment);
       }
-      // What the version adds, for the attention item. Only environments in
-      // which no approval followed are named: one carried approval covers it.
       for (const environment of covered) delete outcome.growth[environment];
       for (const environment of ["dev", "prod"] as const) {
         const entries = outcome.growth[environment];

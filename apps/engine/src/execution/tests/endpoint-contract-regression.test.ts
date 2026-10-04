@@ -1,24 +1,3 @@
-// Regression: removed/deprecated endpoints must surface actionably, not as
-// silent "0 results".
-//
-// Why the suite missed it: production (Jun 2026) — Atlassian removed
-// `/rest/api/3/search` and the Jira workflows failed with a bare `http 410`
-// for weeks; the LLM/user saw "0 test plans" and chased credentials instead
-// of the removed endpoint. `classifyConnectorHealth` already returned
-// `endpoint_gone` for 410, but the workflow path consumed only the
-// `auth_failed` verdict — the rest were computed and dropped, no test sent a
-// plain 410 through dispatch, and nothing persisted the fault.
-//
-// Coverage:
-//   1. 410 → step.failed carries guidance + structured code (not just
-//      "http 410"), and the connector flips health_state=needs_update
-//      (endpoint_removed) with the vendor's successor URI.
-//   2. 2xx + Deprecation/Sunset headers → connector.health_changed event +
-//      needs_update (endpoint_deprecated) — the months-early warning,
-//      with NO failing request at all.
-//   3. 404 on /orgs/{x} → step.failed carries the user-vs-org fallback hint.
-//   4. needs_update does NOT auto-clear on later successes of other paths.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, events } from "../../db/schema/index.ts";
@@ -44,7 +23,6 @@ beforeAll(async () => {
 
   mock = await createMockServer((req, res) => {
     if (req.url?.startsWith("/rest/api/3/search")) {
-      // The removed legacy endpoint: 410 + the vendor's deprecation Link.
       res.statusCode = 410;
       res.setHeader("content-type", "application/json");
       res.setHeader("deprecation", "true");
@@ -57,7 +35,6 @@ beforeAll(async () => {
       return;
     }
     if (req.url?.startsWith("/deprecated-ok")) {
-      // Successful response that announces its own removal.
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
       res.setHeader("deprecation", "true");
@@ -147,17 +124,14 @@ describe("endpoint contract — removed endpoint (410)", () => {
     expect(result.status).toBe("failed");
 
     const error = result.steps[0]?.error as StepErrorDetail | undefined;
-    // The raw status survives…
     expect(error?.message).toBe("http 410");
     expect(error?.upstream_status).toBe(410);
-    // …but the LLM/operator now gets the verdict + actionable guidance.
     expect(error?.health).toBe("endpoint_gone");
     expect(error?.health_error_code).toBe("endpoint_removed");
     expect(error?.guidance).toContain("removed");
     expect(error?.guidance).toContain("https://example.test/rest/api/3/search/jql");
     expect(error?.next_best_actions).toContain("fetch_connector_docs");
 
-    // Health rollup persisted with the vendor's announced successor.
     const row = await connectorRow();
     expect(row.health_state).toBe("needs_update");
     expect(row.health_error_code).toBe("endpoint_removed");
@@ -185,7 +159,6 @@ describe("endpoint contract — deprecation early warning (2xx + Sunset)", () =>
     const before = (await healthChangedEvents()).length;
 
     const result = await runStep("contract-deprecated", "/deprecated-ok");
-    // The call itself succeeds — deprecation is a warning, never a failure.
     expect(result.status).toBe("succeeded");
 
     const row = await connectorRow();
@@ -211,7 +184,6 @@ describe("endpoint contract — 404 path guidance", () => {
     expect(error?.health).toBe("not_found");
     expect(error?.guidance).toContain("/users/octocat/repos");
 
-    // A 404 is request-level — the connector itself must stay healthy.
     expect((await connectorRow()).health_state).toBe("ok");
   });
 });

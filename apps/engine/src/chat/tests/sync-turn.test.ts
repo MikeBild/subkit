@@ -1,17 +1,3 @@
-// `runChatTurnSync` — the synchronous Google-Chat response path (F2).
-//
-// These tests drive the REAL helper against a live test DB (workspace +
-// identity + dedup + a real capture-mode turn) to prove the load-bearing
-// NO-DOUBLE-SEND invariant end-to-end:
-//
-//   - fast finish        → { deliver:"sync", text }; the dispatcher sent
-//                          NOTHING (capture mode), so the reply has exactly
-//                          one sender (the HTTP body the route returns).
-//   - dedup already seen → { deliver:"acked" }; the turn never runs, no send.
-//   - timeout            → { deliver:"acked" }; the detached turn self-
-//                          delivers EXACTLY ONE reply via deliverChatReply.
-//   - no workspace       → { deliver:"defer" }; nothing claimed, worker owns it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   type ConversationTestCtx,
@@ -109,8 +95,6 @@ describe("runChatTurnSync", () => {
 
   test("already-seen event → acked, turn never runs, no send", async () => {
     const eventKey = "evt-dup-1";
-    // Claim the dedup row first, exactly as a prior owner (worker or a
-    // racing Google retry) would.
     const fresh = await markChatEventSeen(ctx.testDb.db, {
       tenant_id: ctx.tenant_id,
       workspace_id: workspaceUuid,
@@ -126,7 +110,6 @@ describe("runChatTurnSync", () => {
       timeoutMs: 20_000,
     });
     expect(res).toEqual({ deliver: "acked" });
-    // The turn never ran → nothing sent, no card.
     expect(adapter.sends.length).toBe(0);
     expect(adapter.approvals.length).toBe(0);
   });
@@ -143,15 +126,11 @@ describe("runChatTurnSync", () => {
     if (res.deliver !== "sync") throw new Error("expected sync");
     expect(typeof res.text).toBe("string");
     expect(res.text.length).toBeGreaterThan(0);
-    // NO-DOUBLE-SEND: in capture mode the dispatcher never posts the
-    // terminal reply — the route's HTTP body is the sole delivery.
     expect(adapter.sends.length).toBe(0);
   });
 
   test("timeout → acked + EXACTLY ONE detached delivery via deliverChatReply", async () => {
     const adapter = new FakeGoogleAdapter();
-    // 1ms timeout guarantees the timer wins the race; the turn detaches
-    // and self-delivers once it completes.
     const res = await runChatTurnSync({
       db: ctx.testDb.db,
       adapter,
@@ -159,14 +138,10 @@ describe("runChatTurnSync", () => {
       timeoutMs: 1,
     });
     expect(res).toEqual({ deliver: "acked" });
-    // The detached turn delivers exactly one reply after the ack. It is
-    // I/O-bound (DB + mock turn), so opt into short real-time polling.
     await waitFor(() => adapter.sends.length >= 1, { sleepMs: 25, label: "detached send" });
     expect(adapter.sends.length).toBe(1);
     expect(adapter.sends[0]?.kind).toBe("message");
     expect((adapter.sends[0]?.text?.length ?? 0) > 0).toBe(true);
-    // Prove NO second send ever lands: this poll must TIME OUT (never
-    // reach 2). If a duplicate delivery fired, it would resolve and fail.
     await expect(
       waitFor(() => adapter.sends.length >= 2, {
         tries: 6,

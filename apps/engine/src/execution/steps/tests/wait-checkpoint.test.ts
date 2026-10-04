@@ -1,11 +1,3 @@
-// Wait checkpoint + audit pair regression tests.
-//
-// Pins the contract: a wait step writes a row to `workflow_waits`
-// before sleeping, deletes the row on completion, and emits both
-// `WAIT_STARTED` + `WAIT_COMPLETED` audit entries. The integration is
-// covered by execution-level tests; this file focuses on the
-// checkpoint surface in isolation.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { count } from "drizzle-orm";
 import {
@@ -59,9 +51,6 @@ async function freshExecution(): Promise<string> {
   return e!.id;
 }
 
-/** A draft / single-step run: `resolveDefinition` synthesises the workflow ids
- *  and the `executions` row carries NULL for them, so nothing in `workflows`
- *  matches. `persist_workflow_refs: false` is how a driver learns that. */
 async function freshDraftExecution(): Promise<string> {
   const [e] = await ctx.db
     .insert(executions)
@@ -139,18 +128,11 @@ describe("wait checkpoint contract", () => {
     expect((endActions[0]!.metadata as { reason?: string }).reason).toBe("timer");
   });
 
-  // Regression: `dry_run_workflow` over a draft containing a wait step crashed
-  // with `workflow_waits_workflow_id_fkey` — the driver wrote the SYNTHETIC
-  // workflow id into a NOT NULL FK to `workflows`. The author saw the whole dry
-  // run fail at an unrelated step, and the retry storm that followed exhausted
-  // the MCP session cap. A run the boot reaper could never resume must not try
-  // to check point itself.
   test("a draft run (synthetic workflow id) waits without writing a checkpoint and without an FK crash", async () => {
     const draftExecutionId = await freshDraftExecution();
     const ac = new AbortController();
     const result = await runWaitStep({
       ctx: buildCtx(draftExecutionId, ac, {
-        // Synthesised by `resolveDefinition`; no such row in `workflows`.
         workflow_id: "bcfcff06-a3bd-4886-8585-7045257cba91",
         workflow_version_id: "bcfcff06-a3bd-4886-8585-7045257cba91",
         workflow_slug: "draft",

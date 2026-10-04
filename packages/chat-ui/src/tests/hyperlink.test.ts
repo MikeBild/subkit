@@ -17,8 +17,8 @@ describe("hyperlink — unsupported terminal falls back to plain (copyable) text
   test("no display text → bare URL (NOT terminal-link's space-joined form)", () => {
     const out = hyperlink(URL, undefined, false);
     expect(out).toBe(URL);
-    expect(out).not.toContain("\x1b"); // no escapes
-    expect(out).not.toContain(" "); // never `text url`
+    expect(out).not.toContain("\x1b");
+    expect(out).not.toContain(" ");
   });
   test("with a label → `label: url` (still no escapes, URL intact for copy)", () => {
     expect(hyperlink(URL, "release notes", false)).toBe(`release notes: ${URL}`);
@@ -36,7 +36,6 @@ describe("renderTextWithLinks", () => {
   });
   test("trailing sentence punctuation is not captured into the link", () => {
     const out = renderTextWithLinks(`open ${URL}.`, true);
-    // The dot stays OUTSIDE the OSC 8 target.
     expect(out).toBe(`open ${OSC8(URL)}.`);
   });
   test("prose with no URL is returned unchanged", () => {

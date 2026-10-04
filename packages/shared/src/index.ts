@@ -1,8 +1,3 @@
-// Shared types between engine and CLI. Apps consume these via the
-// `@shared/*` tsconfig path mapping. Add types here only when more than
-// one app needs the same shape — engine-internal types stay in
-// `apps/engine/src/api/` and `apps/engine/src/...`.
-
 export {
   AUDIT_SOURCE_HEADER,
   AUDIT_SOURCE_VALUES,

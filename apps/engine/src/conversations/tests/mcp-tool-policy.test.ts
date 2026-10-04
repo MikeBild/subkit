@@ -1,13 +1,3 @@
-// Policy resolver coverage for external MCP tools (`mcp_<ns>__<tool>`).
-//
-// External MCP tools are treated as dangerous (they leave
-// the tenant perimeter to a third-party server) so they MUST resolve to
-// `confirm_before_execution` under all non-yolo permission modes. Only
-// `yolo` lifts the gate (consistent with other dangerous tools like
-// delete_workflow).
-//
-// Uses GENERIC fake namespace "examplemcp" — no real vendor names.
-
 import { describe, expect, it } from "bun:test";
 import { isDangerousTool } from "../dangerous-tools.ts";
 import { decideToolMode, getApprovalMode, resolveToolMode } from "../tool-policies.ts";
@@ -32,7 +22,6 @@ describe("isDangerousTool — mcp_ prefix", () => {
 
 describe("resolveToolMode — mcp_ tools under auto mode", () => {
   it("auto mode: mcp tool still requires confirm_before_execution (dangerous gate)", () => {
-    // auto short-circuits non-dangerous; mcp_ IS dangerous so must not bypass.
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
@@ -118,13 +107,6 @@ describe("resolveToolMode — mcp_ tool with no permission_mode (default path)",
 });
 
 describe("resolveToolMode — per-conversation overrides and the external-MCP dispatch path", () => {
-  // The chat palette's external-MCP dispatch resolves policy through
-  // `policyDecide` (tools/policy.ts), which hands `resolveToolMode` EMPTY
-  // overrides and no permission_mode —
-  // exactly the arguments pinned below. A stored per-conversation
-  // `no_confirm` override therefore never lifts the confirm gate on that
-  // path. Bounded auto also refuses that override on the loop path: neither
-  // a tool preference nor a transport difference grants external authority.
   const storedNoConfirmOverride = { [FAKE_MCP_TOOL]: "no_confirm" as const };
 
   it("loop path: a stored no_confirm preference cannot grant external authority under auto", () => {
@@ -139,8 +121,6 @@ describe("resolveToolMode — per-conversation overrides and the external-MCP di
   });
 
   it("external-MCP dispatch path: the same stored override cannot apply — empty overrides keep confirm_before_execution", () => {
-    // The external-MCP dispatch passes `overrides: {}` and no permission_mode
-    // for `mcp_<ns>__<tool>` calls; the stored override above is unreachable.
     const mode = resolveToolMode({
       tool: FAKE_MCP_TOOL,
       category: "tenant_write",
@@ -158,7 +138,6 @@ describe("getApprovalMode — mcp_ prefix", () => {
   });
 
   it("getApprovalMode uses mcp_ prefix check, not TOOL_POLICIES lookup", () => {
-    // This tool is not in TOOL_POLICIES; the mcp_ prefix guard must fire first.
     expect(getApprovalMode("mcp_anynamespace__any_tool")).toBe("approval_before");
   });
 
@@ -194,8 +173,6 @@ describe("decideToolMode — operator trust (connector_trust)", () => {
   });
 
   it("the inline-credential safeguard outranks operator trust", () => {
-    // `update_connector_draft` declares credential slots; a filled one must
-    // confirm even when a caller claims trust for the call.
     expect(
       decideToolMode({
         tool: "update_connector_draft",

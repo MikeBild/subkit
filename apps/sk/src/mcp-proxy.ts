@@ -1,11 +1,3 @@
-// `sk mcp` — stdio MCP server that proxies the most-used `sk` surfaces
-// (start a conversation, append a turn, fetch detail) through to a
-// remote engine. Exposes sk-specific tools so IDE plugins can drive
-// the CLI-facing conversation surface without ever invoking the TUI.
-//
-// The MCP SDK imports are lazy so users running `sk -p "..."` never
-// pay for the MCP module tree.
-
 import { VERSION } from "@cli-core/version.ts";
 import type { ResolvedProfile } from "./config.ts";
 import { EngineClient } from "./engine-client.ts";

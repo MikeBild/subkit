@@ -1,13 +1,3 @@
-// `sk update` — self-update the sk CLI binary from GitHub Releases.
-//
-// `--rollback [--to=<version>]` swaps the running `sk` binary with a
-// previously retained signed binary under `~/.sk/versions/<version>/`.
-// The retention store is populated by every successful `performUpdate`
-// (see `@cli-core/updater::performUpdate`), so rollback only works
-// after at least one self-update has run. The cli-side rollback writes
-// no audit row — `sk` is the operator's CLI, not a server, and has no
-// database. The engine-side `engine --rollback` is the audited path.
-
 import {
   checkForUpdate,
   defaultUpdaterConfig,
@@ -19,10 +9,6 @@ import {
 import { defineCommand } from "citty";
 import { z } from "zod";
 
-// AGENTS.md "Every CLI input — schema first": symmetric with the engine
-// rollback validator at apps/engine/src/index.ts. Reject empty / shell-
-// suspicious values up front instead of letting them surface later as
-// "no retained binaries for '../../etc/passwd'".
 const RollbackTargetSchema = z
   .string()
   .min(1, "--to= must not be empty")

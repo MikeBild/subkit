@@ -53,7 +53,6 @@ describe("clock", () => {
     const prev = installClock(clock);
     expect(getTestNow()).toBe(1);
     restoreClock(prev);
-    // Back to real time — should be a large positive number, not 1.
     expect(getTestNow()).toBeGreaterThan(1);
   });
 });

@@ -1,9 +1,3 @@
-// Minimal local HTTP target server for tests that need a real loopback
-// origin. Uses node:http instead of Bun.serve because Bun.serve's handler
-// registration becomes flaky under heavy parallel load in bun test,
-// occasionally returning the default "Welcome to Bun" response instead of
-// invoking the handler.
-
 import http from "node:http";
 
 export function startLocalTargetServer(

@@ -1,7 +1,3 @@
-// Web-scraper optimization analyzer unit tests.
-//
-// Pure function tests — no DB, no clock, no I/O.
-
 import { describe, expect, test } from "bun:test";
 
 import {

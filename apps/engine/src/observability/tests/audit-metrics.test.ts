@@ -1,12 +1,3 @@
-// Audit writer bumps the `audit_rows_written_total` counter.
-//
-// The counter is labelled `{action, result}` — we want operators to
-// be able to read off the action mix and deny-rate directly from
-// Prometheus without joining back against the audit_log table. This
-// test drives the writer through its real persistence path (a
-// disposable Postgres database) so the metric write only fires if the
-// INSERT actually succeeds.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { auditAwait } from "../../audit/audit.ts";
 import { tenants } from "../../db/schema/index.ts";
@@ -43,7 +34,6 @@ function counterValue(action: string, result: string): number {
 describe("audit_rows_written_total counter", () => {
   test("bumps by 2 after two successful audit() calls", async () => {
     resetMetricsRegistryForTests();
-    // Sanity — we start from zero.
     expect(counterValue("workflow.created", "success")).toBe(0);
 
     await auditAwait(
@@ -69,8 +59,6 @@ describe("audit_rows_written_total counter", () => {
 
     expect(counterValue("workflow.created", "success")).toBe(2);
 
-    // A denied row lands on a distinct label set so the two samples
-    // don't collide.
     await auditAwait(
       {
         tenant_id: tenantId,

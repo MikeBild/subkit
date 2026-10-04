@@ -1,14 +1,3 @@
-// The list of past conversations.
-//
-// It is a way back in, not a place to live: beside the conversation on a wide
-// screen, folded under the page title on a phone. A row is one line, 32px
-// high, 4px apart, its text 8px inside its hover box (R18). The open
-// conversation's own menu renames, hides and deletes it, so a row carries no actions.
-//
-// The row never shows a status word. What a conversation came to is either
-// "it wants you" (a dot, named for a screen reader) or not worth a mark; the
-// excerpt of the last message is the row's tooltip, not a second line.
-
 import type { Conversation } from "@/api/client";
 import { Button, DataState } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
@@ -21,9 +10,7 @@ export interface ConversationListProps {
   onSelect(id: string): void;
   showHidden: boolean;
   onToggleHidden(): void;
-  /** Row labels the page computes, so presentation rules stay in one place. */
   labelsFor(conversation: Conversation): ConversationRowLabels;
-  /** Set when the list could not be read; it then says so instead of looking empty. */
   failed?: { title: string; onRetry(): void } | null;
 }
 
@@ -43,7 +30,6 @@ export function ConversationList({
         aria-label={t("chat.conversations")}
         className="scrollbar-thin relative -mx-2 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"
       >
-        {/* A list that did not load is not a list with nothing in it. */}
         {failed ? (
           <DataState
             state="error"

@@ -1,24 +1,3 @@
-// Deterministic confirm-gate behavior for destructive writes.
-//
-// History: sessions once tried to skip the policy gate when a prior
-// assistant prose line ("Shall I proceed to delete all 6 workflows?")
-// was followed by a user "yes". That fuzzy natural-language heuristic
-// was DELETED — guessing at operator intent over a security-critical
-// write is exactly the drift the unified `decideConfirm` rule exists to
-// prevent. The deterministic rule now is:
-//
-//   - a write in `confirm_before_execution` mode PAUSES unless a durable,
-//     fresh, matching prior approval the ENGINE verified is present.
-//   - prose "yes" alone NEVER skips the gate — no message-scanning,
-//     no affirmation regex.
-//   - nothing the MODEL puts in its own tool call skips the gate either. No
-//     wrapped tool publishes a confirm marker, and the gate reads none off
-//     the args — a boolean the model can set is a hole, not an approval.
-//
-// These tests pin that rule for `delete_workflow` / `delete_connector`: the
-// destructive write pauses regardless of what the prior prose said, and
-// regardless of a `__policy_confirmed` flag the model volunteers.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
@@ -131,9 +110,6 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     const tool = wrapped.delete_workflow;
     expect(tool).toBeDefined();
-    // NO structured marker → the deterministic gate MUST pause. The
-    // prior prose+yes is irrelevant; the heuristic that once read it is
-    // gone.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc" },
@@ -158,10 +134,6 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     const tool = wrapped.delete_workflow;
     expect(tool).toBeDefined();
-    // The marker is inert: the gate reads no confirm flag off the args, and the
-    // published schema declares none. A model that volunteers one gets the same
-    // confirmation card as one that does not — the operator decides, and the
-    // harness performs the delete once they answer.
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
       { id: "00000000-0000-0000-0000-000000000abc", __policy_confirmed: true },
@@ -243,8 +215,6 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
   });
 });
 
-// Cleanup: nothing persisted globally, every test seeds its own
-// conversation row. Just verify the messages table didn't blow up.
 test("deterministic confirm-gate tests left clean message rows", async () => {
   const rows = await ctx.testDb.db
     .select()

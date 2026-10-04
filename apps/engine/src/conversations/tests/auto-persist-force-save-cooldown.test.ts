@@ -1,14 +1,3 @@
-// RC4 — explicit operator approval beats the probe-failure cooldown.
-//
-// Forensic root cause (conversation 68b5c87e): the operator explicitly
-// approved "Force-save … despite probe failure" via ask_user_confirm
-// carrying commit_intent { kind: "save_connector_draft", payload:
-// { force_save: true } }, and the engine STILL refused with
-// `force_save_cooldown` ("probe failed ~40s ago"). A resolved approval
-// IS the human override the cooldown exists to demand — the bypass
-// must work through the commit-intent dispatch, while a bare
-// LLM-initiated force_save (no approval) keeps today's cooldown.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
@@ -50,9 +39,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** Draft whose latest probe FAILED moments ago — the cooldown window
- *  is active. auth_type none so the credential gate stays out of the
- *  way; http driver so the probe gate applies. */
 function freshFailedProbeDraft(slug: string): DraftDocument {
   const baseDraft: DraftDocument = {
     mode: "connector_authoring",
@@ -144,14 +130,12 @@ describe("force_save through a resolved approval bypasses the probe-failure cool
     expect(dispatch.dispatched).toBe(true);
     expect(dispatch.synthetic_result?.ok).toBe(true);
 
-    // The connector row landed.
     const saved = await ctx.db
       .select()
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.slug, "fsc-approved")));
     expect(saved.length).toBe(1);
 
-    // The override audit row records forced + cooldown_bypassed.
     const overrides = await ctx.db
       .select()
       .from(auditLog)
@@ -173,7 +157,6 @@ describe("force_save through a resolved approval bypasses the probe-failure cool
     expect(meta.cooldown_bypassed).toBe(true);
     expect(meta.source).toBe("harness_auto_persist");
 
-    // The draft graduated to persisted.
     const draftAfter = await loadDraft(tenant_id, conversation_id, ctx.db);
     expect(draftAfter.connector?.saved_connector_id).toBe(saved[0]!.id);
   });
@@ -204,7 +187,6 @@ describe("force_save through a resolved approval bypasses the probe-failure cool
     if (blocked.ok) throw new Error("expected cooldown rejection");
     expect(blocked.error_code).toBe("force_save_cooldown");
 
-    // No connector was written.
     const saved = await ctx.db
       .select()
       .from(connectors)

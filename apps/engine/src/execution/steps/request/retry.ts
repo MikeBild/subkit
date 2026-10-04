@@ -1,15 +1,3 @@
-// Retry policy primitives shared between `dispatch.ts` and tests.
-//
-//   - 5 attempts max (1 initial + 4 retries)
-//   - 200ms base, 30s cap, +/- 20% jitter
-//   - 429 honours `Retry-After` (cap 1h)
-//   - GET / HEAD / OPTIONS retry on 5xx + 429 + connection errors
-//   - POST / PUT / PATCH / DELETE retry only on 429 + connection errors
-//
-// Per-step overrides via `step.retry_backoff_ms` and
-// `step.retry_on_status` (the latter extends the policy with an
-// explicit opt-in for non-idempotent codes like 408 / 425).
-
 import type { RequestStep } from "../../../workflows/types.ts";
 
 export const RETRY_BASE_MS = 200;

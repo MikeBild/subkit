@@ -1,12 +1,3 @@
-// Integration coverage for the derived catalog view: the `category` and
-// `connector` list filters and the connector-reference extraction that backs
-// them. Uses testcontainers postgres — the jsonb_path_query_array projections
-// are the point, so they run against a real Postgres, not a mock.
-//
-// Regression target: "uses this connector" used to mean `steps[].connector_id`
-// only, so a workflow bound through a `${connector.<slug>.base_url}` url was
-// invisible to the dependency answer.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -61,7 +52,6 @@ beforeAll(async () => {
   apiConnectorId = await seedConnector("billing-api");
   await seedConnector("unused-api");
 
-  // A three-member family earns its own block…
   for (const name of ["search-pages", "append-markdown", "page-properties"]) {
     await seedWorkflow(`notion-${name}`, {
       id: "s1",
@@ -70,7 +60,6 @@ beforeAll(async () => {
       url: "https://notion.example.test/x",
     });
   }
-  // …a two-member one does not.
   for (const name of ["by-date", "tomorrow"]) {
     await seedWorkflow(`berlin-weather-${name}`, {
       id: "s1",
@@ -80,7 +69,6 @@ beforeAll(async () => {
     });
   }
 
-  // The two ways a step binds a connector.
   await seedWorkflow("billing-by-id", {
     id: "s1",
     kind: "request",
@@ -128,7 +116,6 @@ describe("naming grounding", () => {
   test("names the real families so a new draft can join one", async () => {
     const block = await buildNamingGroundingBlock(tenant_id, ctx.db);
     expect(block).toContain("notion (3)");
-    // It must state the mechanism (slug decides the block) and keep `name` free.
     expect(block).toContain("slug");
     expect(block).toContain("name");
   });
@@ -151,9 +138,7 @@ describe("connector references", () => {
   test("reports both binding forms as usage", async () => {
     const refs = await listConnectorRefs(tenant_id, ctx.db);
     const all = [...refs.values()].flat();
-    // Two distinct workflows reference billing-api — one by id, one by placeholder.
     expect(all.filter((s) => s === "billing-api")).toHaveLength(2);
-    // The unreferenced connector never shows up as a usage.
     expect(all).not.toContain("unused-api");
   });
 

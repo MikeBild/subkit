@@ -1,14 +1,3 @@
-// Cross-surface Zod schemas — round-trip + boundary tests.
-//
-// These schemas are the spine every REST route + MCP capability reads
-// from. A regression here ripples into every error envelope, every
-// list response, and every `{id}` URL param. The tests pin:
-//   - ErrorSchema accepts the optional fields, rejects wrong types
-//   - PaginationQuery's 200-row ceiling and non-negative offset
-//   - IdParam refuses non-UUID strings (this is the FK guard at the edge)
-//   - paginatedResponse builds an envelope that round-trips items
-//     and accepts both `null` and "absent" cursors
-
 import { describe, expect, test } from "bun:test";
 import { z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, PaginationQuery, paginatedResponse } from "./common-schemas.ts";

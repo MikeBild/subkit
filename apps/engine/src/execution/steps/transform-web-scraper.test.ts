@@ -1,15 +1,3 @@
-// Web-scraper — unit tests for the three transform languages.
-// Pure: no DB, no network. The executor branches operate on bare
-// HTML strings or envelope objects and return typed StepResult.
-//
-// What's covered:
-//   - readability: envelope shape, extract_too_large cap, no-article failure
-//   - html-to-markdown: envelope shape, script/style stripping, max_chars
-//     enforcement, soft-truncation via `markdown.truncate: true`
-//   - structured-data: JSON-LD parsing, OpenGraph extraction, found_any
-//   - output_schema_violation: required-field check
-//   - JSON round-trip stability (envelopes serialise cleanly)
-
 import {
   afterAll,
   afterEach,
@@ -26,10 +14,6 @@ import { type Config, ConfigSchema } from "../../config/schema.ts";
 import type { TransformStep } from "../../workflows/types.ts";
 import type { StepRunContext } from "../types.ts";
 import { runHtmlToMarkdown, runReadability, runStructuredData } from "./transform-web-scraper.ts";
-
-// The web-scraper executor reads tunables from getConfig(tenant_id).
-// We spy on the loader for the duration of the suite so the tests stay
-// self-contained — no config file, no env vars.
 
 const defaultConfig: Config = ConfigSchema.parse({
   database: { url: "postgres://test" },
@@ -55,9 +39,6 @@ function patchConfig(cfg: Config): void {
 }
 
 function makeCtx(): StepRunContext {
-  // The transform executors only read `tenant_id`. Everything else is
-  // present at type level but unused — cast to satisfy TS without
-  // spinning up the real execution context.
   return { tenant_id: "00000000-0000-0000-0000-000000000000" } as unknown as StepRunContext;
 }
 

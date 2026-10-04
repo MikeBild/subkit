@@ -1,12 +1,3 @@
-// Per-subscription circuit breaker.
-//
-// We keep a tiny in-memory map keyed by subscription id plus a
-// persisted `subscriptions.circuit_open_until` column, so a restart
-// preserves the cooldown window. The breaker trips after 10
-// consecutive failures and stays open for 5 minutes. While open,
-// delivery attempts are short-circuited to a "circuit_open" dead
-// letter without an HTTP call.
-
 import { eq } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { subscriptions } from "../../db/schema/index.ts";
@@ -17,7 +8,7 @@ export const OPEN_DURATION_MS = 5 * 60_000;
 
 interface BreakerState {
   consecutive_failures: number;
-  open_until: number; // epoch ms, 0 when closed
+  open_until: number;
 }
 
 const state: Map<string, BreakerState> = new Map();
@@ -36,10 +27,6 @@ export function reset(subscriptionId: string): void {
   state.set(subscriptionId, { consecutive_failures: 0, open_until: 0 });
 }
 
-/**
- * Record a successful delivery. Clears the counter and persists closed
- * state back to the database row.
- */
 export async function recordSuccess(db: Executor, subscriptionId: string): Promise<void> {
   const prev = state.get(subscriptionId);
   if (prev && prev.open_until > 0) {
@@ -56,13 +43,6 @@ export async function recordSuccess(db: Executor, subscriptionId: string): Promi
     .where(eq(subscriptions.id, subscriptionId));
 }
 
-/**
- * Record a failed delivery. If the in-memory counter reaches the
- * threshold the breaker opens and the cooldown is persisted.
- *
- * Returns the post-update state so the caller can decide whether to
- * log a breaker-open warning.
- */
 export async function recordFailure(
   db: Executor,
   subscriptionId: string,
@@ -96,10 +76,6 @@ export async function recordFailure(
   return next;
 }
 
-/**
- * Rehydrate the in-memory state from the DB row. Called by the
- * delivery worker on boot so breaker state survives restarts.
- */
 export async function hydrate(db: Executor, subscriptionId: string): Promise<void> {
   // tenant-filter:exempt — subscriptions PK lookup; row's tenant_id is read out and forwarded into in-memory breaker state
   const rows = await db
@@ -118,7 +94,6 @@ export async function hydrate(db: Executor, subscriptionId: string): Promise<voi
   });
 }
 
-/** Test-only helper. */
 export function __resetAll(): void {
   state.clear();
 }

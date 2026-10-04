@@ -1,24 +1,3 @@
-// Shared scaffolding for the story-driven journey tests.
-//
-// Every journey file starts its beforeAll hook by calling
-// `createJourneyCtx(label)` which:
-//
-//   1. Creates a disposable Postgres database and seeds a tenant +
-//      admin user + system account + admin API key.
-//   2. Boots a Hono server on a random 127.0.0.1 port via `createApp`.
-//   3. Starts the module-scoped pg-boss against the same database so
-//      routes that call `getBoss()` (async workflow runs, inbound
-//      webhooks, outbound fanout) find a live instance.
-//   4. Registers every queue handler so async jobs actually drain.
-//   5. Resets the in-memory mock LLM provider + webhook circuit breaker
-//      so state doesn't leak between files.
-//   6. Returns handles the test needs: baseUrl, mcpUrl, apiKey, db,
-//      and a combined `cleanup()` that forces socket close, stops
-//      pg-boss, closes the HTTP server, and drops the database.
-//
-// Each journey reaches the engine through its public contracts only
-// (REST, MCP, chat adapters, webhook ingress).
-
 import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,19 +31,6 @@ import {
 } from "../../test-helpers/determinism/index.ts";
 import { __resetAll as resetCircuitBreakers } from "../../webhooks/outbound/circuit-breaker.ts";
 
-/** Per-hook timeout for every journey `beforeAll` / `afterAll`. Set
- *  high enough that a slow pg-boss shutdown or test-db drop names
- *  itself in the structured `journey.teardown.step` log line below
- *  rather than surfacing as a generic Bun hook timeout.
- *
- *  Bumped to 120s after a `verify` gate run showed `DROP DATABASE`
- *  steps queueing behind concurrent admin operations at
- *  `--max-concurrency=4` — the 60s budget was being consumed entirely
- *  by the postgres-side teardown serialisation, not by anything the
- *  journey itself does. The 120s ceiling preserves the observability
- *  contract (slow steps still surface in the teardown_step log) while
- *  giving Postgres headroom to drop a 100-table database under load.
- */
 export const JOURNEY_HOOK_TIMEOUT = 120_000;
 
 export interface JourneyCtx {
@@ -78,18 +44,13 @@ export interface JourneyCtx {
   db: Db;
   boss: PgBoss;
   testDb: TestDb;
-  /** Deterministic clock for this journey. Advance with `advanceBy`. */
   clock: DeterministicClock;
-  /** Scoped id factory for this journey. */
   ids: IdFactory;
-  /** Seeded PRNG for this journey. */
   random: SeededRandom;
   cleanup: () => Promise<void>;
 }
 
 export interface CreateJourneyOpts {
-  /** Extra process.env overrides applied for the duration of the
-   *  journey. Restored on cleanup. `LLM_PROVIDER=mock` is always set. */
   envOverrides?: Record<string, string | undefined>;
 }
 
@@ -103,28 +64,6 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
 
-/**
- * Create a fresh per-journey context. Call once in `beforeAll`. The
- * returned ctx owns everything needed to reach the engine via its
- * public contracts. Cleanup is fail-safe: a partial setup failure still
- * tears down what was created.
- */
-/** Bootstrap the per-process config loader once. Route handlers that
- *  call `getConfig()` (e.g. `POST /v1/files/inline` →
- *  `composeStorageUri` → `getConfig().storage`) would otherwise 500 on
- *  the first request because no journey ever ran the engine boot path
- *  that calls `loadConfig()`. Idempotent — a probe via `getConfig()`
- *  short-circuits subsequent invocations from later journey files.
- *
- *  Takes the resolved testcontainer DATABASE_URL so `getPool()`'s
- *  env-first resolution (see `db/client.ts:getPool`) lands on the real
- *  disposable db, not a placeholder. Must run AFTER `withTestEnv`
- *  pins `DATABASE_URL` for the journey.
- *
- *  Journey tests exercise the complete public surface, including payload
- *  offload. Seed the non-secret test bucket after config is available; the
- *  object-store factory selects its in-memory implementation under
- *  `NODE_ENV=test`, so no network service or production fallback is involved. */
 async function ensureConfigLoaded(databaseUrl: string): Promise<void> {
   try {
     getConfig();
@@ -157,9 +96,6 @@ export async function createJourneyCtx(
   const ids = createDeterministicIdFactory(`j-${safeLabel}`);
   const random = createSeededRandom(seed);
 
-  // Track what's been created so a mid-setup failure can still tear
-  // down the partial state. Each entry is named so a flaky teardown
-  // on CI tells us which step ran long instead of just timing out.
   const failSafe: Array<{ name: string; fn: () => Promise<void> }> = [
     { name: "env-handle", fn: async () => envHandle.restore() },
   ];
@@ -167,9 +103,7 @@ export async function createJourneyCtx(
     for (const step of failSafe.reverse()) {
       try {
         await step.fn();
-      } catch {
-        /* swallow — teardown best-effort */
-      }
+      } catch {}
     }
     throw err;
   };
@@ -180,25 +114,19 @@ export async function createJourneyCtx(
     failSafe.push({ name: "test-db", fn: () => testDb.cleanup() });
   } catch (e) {
     await fail(e);
-    throw e; // unreachable
+    throw e;
   }
 
-  // Bootstrap the config loader against the resolved testcontainer URL —
-  // see ensureConfigLoaded's doc-comment for the ordering contract.
   try {
     await ensureConfigLoaded(testDb.url);
   } catch (e) {
     await fail(e);
-    throw e; // unreachable
+    throw e;
   }
 
   try {
-    // RBAC catalog + built-in roles come online before any tenant row
-    // so the journey user + system account can be assigned a real
-    // `role_id` the evaluator can resolve.
     const rbacRoleIds = await seedBuiltinRolesAndPermissions(testDb.db);
 
-    // Seed identity rows.
     const [tenant] = await testDb.db
       .insert(tenants)
       .values({ slug: `j-${safeLabel}`.slice(0, 32), display_name: `Journey ${label}` })
@@ -226,7 +154,6 @@ export async function createJourneyCtx(
       .returning();
     if (!sysAcct) throw new Error("seed system_account failed");
 
-    // Back-fill any rows that drop through the cracks (defense in depth).
     await backfillSystemAccountRoleIds(testDb.db, rbacRoleIds);
 
     const key = generateApiKey();
@@ -238,7 +165,6 @@ export async function createJourneyCtx(
       scopes: ["*"],
     });
 
-    // pg-boss at module scope so routes that reach for `getBoss()` work.
     let boss: PgBoss;
     try {
       boss = await startBoss({ connectionString: testDb.url });
@@ -258,7 +184,6 @@ export async function createJourneyCtx(
     });
     await registerAllHandlers({ boss, db: testDb.db });
 
-    // Build a Hono app bound to this database.
     const registry = buildDefaultRegistry(testDb.db);
     const app = createApp({ db: testDb.db, registry });
     const server: ServerType = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
@@ -294,12 +219,6 @@ export async function createJourneyCtx(
       ids,
       random,
       cleanup: async () => {
-        // Run the registered teardown stack in reverse order. Each
-        // step swallows errors so one failing step can't block the
-        // rest of cleanup. Per-step duration is emitted on every run
-        // (not just under SUBKIT_JOURNEY_TEARDOWN_DIAG) — that way a
-        // CI flake names the slow step in the existing log stream
-        // instead of requiring a re-run with the env var set.
         for (const step of failSafe.reverse()) {
           // allow-wall-clock: duration delta for observability — not a
           // timestamp consumed by the SUT. The tests/journey logger
@@ -331,12 +250,10 @@ export async function createJourneyCtx(
     };
   } catch (e) {
     await fail(e);
-    throw e; // unreachable
+    throw e;
   }
 }
 
-/** Hash a short ASCII label to a stable 32-bit seed. Used when the
- *  caller doesn't override via SUBKIT_DETERMINISTIC_SEED. */
 function hashStringToSeed(s: string): number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -345,7 +262,6 @@ function hashStringToSeed(s: string): number {
   return h >>> 0;
 }
 
-/** Convenience — adds bearer auth + JSON handling to `fetch`. */
 export function journeyFetch(
   ctx: JourneyCtx,
   path: string,
@@ -359,11 +275,6 @@ export function journeyFetch(
   return fetch(`${ctx.baseUrl}${path}`, { ...init, headers });
 }
 
-/**
- * Seed a workflow directly via DB rows. Used by journeys that need a
- * canned workflow up and running before the test begins. Goes through
- * the same tables the REST create handler touches.
- */
 export async function seedWorkflow(
   ctx: JourneyCtx,
   def: { slug: string; name: string; steps: unknown[] },

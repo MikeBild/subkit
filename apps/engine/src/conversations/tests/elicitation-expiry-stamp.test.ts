@@ -1,12 +1,3 @@
-// `createElicitation` must stamp the expiry that matches whatever capability
-// actually bounds the prompt.
-//
-// The sweep selects on `expires_at` alone, so this value IS the bound. An
-// approval-backed confirm that inherits the 7-day human window would sit pending
-// for a week after its 24-hour approval died — the conversation wedged in
-// `awaiting_input` exactly as before, only slower. Asserting the column is
-// merely non-null does not catch that; these tests assert the VALUE.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { conversationElicitations, conversations, tenants } from "../../db/schema/index.ts";
@@ -39,8 +30,6 @@ async function freshConversation(): Promise<string> {
   return conv!.id;
 }
 
-/** Milliseconds between the row's own created_at and expires_at, i.e. the bound
- *  the sweep will actually honour. */
 async function stampedWindowMs(id: string): Promise<number> {
   const [row] = await ctx.db
     .select({
@@ -83,10 +72,6 @@ describe("createElicitation stamps the bounding expiry", () => {
     );
 
     const windowMs = await stampedWindowMs(row.id);
-    // Allow a couple of seconds of clock/round-trip slack. The second bound is
-    // the point: an approval must be stamped with the approval window and not
-    // with the ordinary 7-day prompt window — a lapsed approval that the sweep
-    // cannot select is exactly how conversations wedged in `awaiting_input`.
     expect(windowMs).toBeGreaterThan(APPROVAL_TTL_MS - 10_000);
     expect(windowMs).toBeLessThan(APPROVAL_TTL_MS + 10_000);
     expect(windowMs).toBeLessThan(ELICITATION_HUMAN_TTL_MS);

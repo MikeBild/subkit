@@ -146,8 +146,6 @@ test("a human grants a boundary until revoked; a lost response does not grant tw
   await expect(grantWorkflowAuthority(f.workflow.id, openEnded, f.context)).rejects.toMatchObject({
     code: "authority_revoked",
   });
-  // The live Cockpit hears the grant once (the retry wrote nothing) and the
-  // revocation once — ids only, on the internal channel.
   const changes = await ctx.db
     .select({ type: events.type, payload: events.payload })
     .from(events)
@@ -352,10 +350,6 @@ test("reviewed active authority resolves exactly its held schedule, audited and 
       timezone: "UTC",
       execution_mode: "dev",
       admission_hold: hold,
-      // Two days old and never fired: an occurrence has ALREADY been missed
-      // while held. Without this the "nothing fires right after the grant"
-      // assertion below would pass on any code, because a fresh schedule is not
-      // due until its first occurrence after creation anyway.
       created_at: new Date(new Date(f.input.valid_from).getTime() - 2 * 86_400_000),
     })
     .returning();
@@ -407,11 +401,6 @@ test("reviewed active authority resolves exactly its held schedule, audited and 
   expect((await read())?.admission_hold).toBeNull();
   expect(await countOpen()).toBe(1);
   expect((await inspectScheduleAutomation(schedule, ctx.db)).state).toBe("authorized");
-  // Approving is not running: the dialog promises that no run starts now. The
-  // held occurrence must not fire on the next scheduler tick, so the watermark
-  // moves to the approval. Proven through the scheduler itself, not by reading
-  // the column: a tick right after the grant enqueues nothing, and a tick after
-  // the next cron occurrence enqueues exactly one run.
   const stamped = (await read())?.last_enqueued_at;
   expect(stamped).toBeInstanceOf(Date);
   const sent: unknown[] = [];
@@ -591,7 +580,6 @@ test("a production grant releases the workflow's held inbound hook, and nothing 
         )
     ).map((row) => row.workflow_id);
 
-  // Deliveries only ever run in production: a development grant releases nothing.
   await grantWorkflowAuthority(f.workflow.id, f.input, f.context);
   expect((await held()).sort()).toEqual([f.workflow.id, other.id].sort());
 
@@ -645,8 +633,6 @@ test("a refusal racing a production grant cannot leave a hold behind it", async 
     reason_code: "execution_authority_required" as const,
     observed_at: f.input.valid_from,
   };
-  // The refusal already judged the hook not ready and holds its row; the hold
-  // it is about to write is still NULL when the grant arrives.
   let grant: Promise<unknown> = Promise.resolve();
   await ctx.db.transaction(async (refusal) => {
     await refusal
@@ -662,7 +648,6 @@ test("a refusal racing a production grant cannot leave a hold behind it", async 
     ).finally(() => {
       granted = true;
     });
-    // Until the grant either finishes or queues behind the refusal's row lock.
     for (let attempt = 0; attempt < 200 && !granted; attempt += 1) {
       const waiting = await ctx.db.execute<{ n: number }>(
         sql`SELECT count(*)::int AS n FROM pg_stat_activity
@@ -806,7 +791,6 @@ test("activating a saved change keeps the approval when its boundary does not gr
     { ...openEnded, activation: { expected_current_version_id: null } },
     f.context,
   );
-  // The saved change: another recipient, same address, same effect.
   const [draft] = await ctx.db
     .insert(workflowVersions)
     .values({

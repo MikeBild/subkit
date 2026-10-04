@@ -62,7 +62,6 @@ const text = (record: RecordValue, key: string): string | null => {
   return typeof value === "string" && value ? value : null;
 };
 
-/** The engine-state word of an account connection, for its badge. */
 const CONNECTION_BADGE: Record<ConnectionItem["state"], string> = {
   valid: "ok",
   expiring: "expiring",
@@ -70,10 +69,6 @@ const CONNECTION_BADGE: Record<ConnectionItem["state"], string> = {
   unreadable: "error",
 };
 
-/**
- * The account connections this connector signs in with (D6): their state, and
- * "Trennen" per row. Renewing a lost one is the strip's action.
- */
 function ConnectorAccountConnections({
   connectorId,
   canWrite,
@@ -175,12 +170,6 @@ function ConnectorAccountConnections({
   );
 }
 
-/**
- * A connector's page (V6): the header, the status strip with the one action
- * of its top state (D15), and the tabs Verwendung · Verbindung · Werkzeuge
- * (MCP only). Renewing a sign-in has its one home in the strip (D6); the
- * account connections it signs in with stand in "Verbindung".
- */
 export function ConnectorPage({
   id,
   record,
@@ -194,7 +183,6 @@ export function ConnectorPage({
   title: string;
   purpose: string | null;
   permissions: readonly string[];
-  /** The page was opened by the sign-in callback's redirect. */
   returned: boolean;
 }) {
   const { t } = useI18n();
@@ -213,9 +201,6 @@ export function ConnectorPage({
   const userNames = (users.data?.items ?? []).flatMap((item) => (item.name ? [item.name] : []));
   const userCount = users.data?.total ?? userNames.length;
 
-  // A test is a real call: a passed one clears a refused sign-in and closes
-  // the breaker, and either way it is the newest call on record. The page is
-  // read again so it says what the test changed; the result stands in the strip.
   const probe = useMutation({
     mutationFn: () =>
       apiRequest<ProbeResult>(`/v1/connectors/${encodeURIComponent(id)}/test`, { method: "POST" }),
@@ -228,8 +213,6 @@ export function ConnectorPage({
       ]);
     },
   });
-  // For an MCP server, reading what it serves is one handshake on the
-  // reader's click — never on page open.
   const inspect = useMutation({
     mutationFn: async (): Promise<McpInspect> => {
       const body = asInspect(
@@ -245,7 +228,6 @@ export function ConnectorPage({
     probe.mutate();
     if (isMcp) inspect.mutate();
   };
-  // Switched on at once; put back if the engine refuses.
   const enable = useOptimisticAction({
     queryKey: ["catalog-detail", "connectors", id],
     mutationFn: () =>
@@ -254,14 +236,10 @@ export function ConnectorPage({
       }),
     apply: (current: RecordValue | undefined) =>
       current ? { ...current, enabled: true } : current,
-    // The engine answers with the connector as it now stands.
     fromResult: (result) => result,
     errorMessage: () => t("connectorState.enableFailed"),
     onSuccess: () => toast.success(t("connectorState.enabled")),
   });
-  // The connector's own sign-in, on the route the connector names: a web
-  // service and an MCP server sign in on different ones. The engine mints the
-  // authorization URL and the provider brings the browser back to its callback.
   const signInRoute = connectorSignIn(record);
   const oauthStart = useMutation({
     mutationFn: () => {
@@ -270,7 +248,6 @@ export function ConnectorPage({
     },
     onSuccess: async (result) => {
       if (result.authorization_url) return window.location.assign(result.authorization_url);
-      // Signed in machine to machine: nothing to approve, the page reads again.
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
     },
@@ -321,7 +298,6 @@ export function ConnectorPage({
     returned: notice === "signed_in" || notice === "signed_in_off",
     rights: { write: canWrite, test: canTest },
   });
-  // The tab a key is entered in.
   const toConnection = () => {
     setShowKey(true);
     const search = searchWithTab(window.location.search, "tab", "verbindung", "verwendung");
@@ -411,8 +387,6 @@ export function ConnectorPage({
             record={record}
             headerNames={credential.data?.header_names ?? []}
           />
-          {/* A connector that signs in with nothing has no sign-in to show:
-              the connection's own "Anmeldung" fact already says so. */}
           {auth !== "not_required" ? (
             <ConnectorCredentials
               connectorId={id}
@@ -520,7 +494,6 @@ export function ConnectorPage({
             line={
               <>
                 <span className="font-medium" data-testid="connector-strip-state">
-                  {/* Back from the provider and still off: both, in one word. */}
                   {t(
                     strip.kind === "off" && notice === "signed_in_off"
                       ? "connectorState.signedInOff"

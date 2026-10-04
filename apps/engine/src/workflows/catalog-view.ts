@@ -1,17 +1,3 @@
-// The derived view every workflow list surface shares: the category index used
-// for display, and the `category` / `connector` predicates used for filtering.
-//
-// Neither predicate can be pushed into the SQL WHERE clause:
-//   - a category is a function of the WHOLE slug corpus, not of one row
-//     (`categorize.ts`), so it does not exist until the catalog is known;
-//   - "uses connector X" spans two binding forms, one of which lives inside
-//     url strings (`connector-refs.ts`).
-// Both are therefore resolved once per request and applied to the row set
-// BEFORE the page is cut, so `total` counts matches rather than the unfiltered
-// catalog. Workflows are a bounded business catalog (O(10²)) — that is what
-// makes this affordable, and it is the same assumption behind
-// `WORKFLOW_LIST_MAX_LIMIT`.
-
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
@@ -19,9 +5,7 @@ import { deriveCategories, UNCATEGORIZED } from "./categorize.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
 
 export interface CatalogFilterOptions {
-  /** Derived catalog block (see `categorize.ts`) — applied after load. */
   category?: string;
-  /** Connector id or slug the workflow must reference (`connector-refs.ts`). */
   connector?: string;
 }
 
@@ -35,13 +19,6 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
   order?: "asc" | "desc";
 }
 
-/**
- * Build the WHERE conditions shared by `listWorkflows` and
- * `listWorkflowSummaries`. Centralising the predicate avoids drift the next
- * time the list surface gains a filter (e.g. an `owner_id` knob). Note that
- * the derived filters above deliberately do NOT live here — they cannot be
- * expressed in SQL at all.
- */
 export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
   const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
   if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
@@ -58,12 +35,6 @@ export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOpt
   return conds;
 }
 
-/**
- * Workflows are a bounded business catalog (O(10²)), not telemetry — the
- * default page is the safety bound itself so enumeration surfaces (fast
- * path, conversation tools, MCP resources) see the complete set unless a
- * caller explicitly pages.
- */
 export const WORKFLOW_LIST_MAX_LIMIT = 1000;
 
 export async function countWorkflows(
@@ -78,13 +49,6 @@ export async function countWorkflows(
   return Number(row?.c ?? 0);
 }
 
-/**
- * Category per slug for the tenant's whole catalog.
- *
- * Deliberately ignores the caller's status / name filters: a workflow must
- * land in the same block whether the list was filtered or not, so the corpus
- * is always every non-deleted workflow.
- */
 export async function loadCategoryIndex(
   tenant_id: string,
   exec?: Executor,
@@ -97,20 +61,6 @@ export async function loadCategoryIndex(
   return deriveCategories(rows.map((r) => r.slug));
 }
 
-/**
- * The naming grounding: the families that already exist in this tenant's
- * catalog, largest first.
- *
- * This is the whole point of leverage for keeping a catalog organised. The
- * category is derived from the slug, so the slug IS the organising decision —
- * and that decision is made once, at authoring time, when no `wf_<slug>` tool
- * is registered yet and renaming costs nothing. Naming each new workflow in
- * ignorance of the existing families is what produced a dozen one-off slugs;
- * showing the families at that moment is what stops it.
- *
- * Returns `null` when the catalog has no families yet, so a fresh tenant gets
- * no prompt section rather than an empty, confusing one.
- */
 export async function buildNamingGroundingBlock(
   tenant_id: string,
   exec?: Executor,
@@ -140,10 +90,6 @@ export interface CatalogFilter {
   keep(row: { id: string; slug: string }): boolean;
 }
 
-/**
- * Resolve the derived predicates, or `null` when the caller asked for neither —
- * which lets the list paths keep their existing SQL-paged fast route untouched.
- */
 export async function resolveCatalogFilter(
   tenant_id: string,
   opts: CatalogFilterOptions,

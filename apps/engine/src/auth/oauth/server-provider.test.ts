@@ -1,6 +1,3 @@
-// Integration tests for MCP OAuth server-provider state machine.
-// Uses a real disposable Postgres DB — no mocks.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -18,7 +15,6 @@ import { builtinRoleId } from "../../rbac/roles.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 import { sha256Hex } from "./tokens.ts";
 
-// Minimal config that satisfies createMcpOAuthProvider without loadConfig().
 function makeConfig(): Config {
   return {
     server: {
@@ -84,7 +80,6 @@ afterAll(async () => {
   await testDb.cleanup();
 }, 30_000);
 
-// Helper: register a client and return its client_id.
 async function registerTestClient(opts?: {
   redirect_uris?: string[];
   scope?: string;
@@ -97,7 +92,6 @@ async function registerTestClient(opts?: {
   return result.client_id;
 }
 
-// Helper: run the full authorize → exchange flow.
 async function issueTokenPair(opts?: {
   clientId?: string;
   scope?: string;
@@ -134,8 +128,6 @@ async function issueTokenPair(opts?: {
     clientId,
   });
 }
-
-// ─── registerClient ────────────────────────────────────────────────────────
 
 describe("registerClient", () => {
   test("inserts a row and returns client_id, redirect_uris, grant_types", async () => {
@@ -227,8 +219,6 @@ describe("registerClient", () => {
   });
 });
 
-// ─── issueAuthorizationCode + exchangeAuthorizationCode ───────────────────
-
 describe("authorization code flow", () => {
   test("happy path returns access_token + refresh_token", async () => {
     const tokens = await issueTokenPair();
@@ -270,7 +260,6 @@ describe("authorization code flow", () => {
       clientId,
     });
 
-    // Second exchange must fail
     let err: unknown;
     try {
       await provider.exchangeAuthorizationCode({
@@ -297,7 +286,6 @@ describe("authorization code flow", () => {
       scope: "mcp:read",
     });
 
-    // Backdate the code's expires_at so it is already expired.
     const codeHash = sha256Hex(code);
     const { mcpOauthAuthorizationCodes } = await import("../../db/schema/index.ts");
     await db
@@ -385,14 +373,11 @@ describe("authorization code flow", () => {
   });
 });
 
-// ─── exchangeRefreshToken ──────────────────────────────────────────────────
-
 describe("refresh token rotation", () => {
   test("rotation returns new access_token + refresh_token", async () => {
     const first = await issueTokenPair({ scope: "mcp:read" });
     const clientId = await registerTestClient({ scope: "mcp:read mcp:authoring" });
 
-    // Use the specific clientId that issued first
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
     const refreshed = await provider.exchangeRefreshToken({
@@ -451,9 +436,6 @@ describe("refresh token rotation", () => {
     let pair = await issueTokenPair({ clientId, scope: "mcp:read mcp:authoring" });
     expect(pair.scope).toBe("mcp:read mcp:authoring");
 
-    // Rotate several times, each time sending back the scope we just received —
-    // exactly what a conformant client does. The scope is a SET and must never
-    // grow or repeat across rotations.
     for (let i = 0; i < 4; i++) {
       const next = await provider.exchangeRefreshToken({
         refreshToken: pair.refresh_token,
@@ -461,7 +443,7 @@ describe("refresh token rotation", () => {
         scope: pair.scope,
       });
       const parts = next.scope.split(" ").filter(Boolean);
-      expect(new Set(parts).size).toBe(parts.length); // no duplicates
+      expect(new Set(parts).size).toBe(parts.length);
       expect(parts.sort()).toEqual(["mcp:authoring", "mcp:read"]);
       pair = { ...pair, refresh_token: next.refresh_token, scope: next.scope };
     }
@@ -471,7 +453,6 @@ describe("refresh token rotation", () => {
     const clientId = await registerTestClient({ scope: "mcp:read mcp:authoring" });
     const pair = await issueTokenPair({ clientId, scope: "mcp:read mcp:authoring" });
 
-    // Simulate a token row poisoned by the old (pre-fix) accumulation bug.
     const refreshHash = sha256Hex(pair.refresh_token);
     await db
       .update(mcpOauthRefreshTokens)
@@ -491,13 +472,11 @@ describe("refresh token rotation", () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
-    // First rotation — valid
     await provider.exchangeRefreshToken({
       refreshToken: firstPair.refresh_token,
       clientId,
     });
 
-    // Replay the already-rotated token — must revoke chain
     let err: unknown;
     try {
       await provider.exchangeRefreshToken({
@@ -509,7 +488,6 @@ describe("refresh token rotation", () => {
     }
     expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
 
-    // Old refresh token row must now be revoked
     const oldHash = sha256Hex(firstPair.refresh_token);
     const rows = await db
       .select({ revoked_at: mcpOauthRefreshTokens.revoked_at })
@@ -523,7 +501,6 @@ describe("refresh token rotation", () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
-    // Manually revoke the token
     const refreshHash = sha256Hex(firstPair.refresh_token);
     await db
       .update(mcpOauthRefreshTokens)
@@ -546,7 +523,6 @@ describe("refresh token rotation", () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
-    // Backdate expires_at
     const refreshHash = sha256Hex(firstPair.refresh_token);
     await db
       .update(mcpOauthRefreshTokens)
@@ -586,7 +562,6 @@ describe("refresh token rotation", () => {
       clientId,
       scope: "mcp:read mcp:admin",
     });
-    // mcp:admin was NOT in the original grant — must be stripped
     const scopes = refreshed.scope.split(" ");
     expect(scopes).not.toContain("mcp:admin");
     expect(scopes).toContain("mcp:read");
@@ -595,23 +570,19 @@ describe("refresh token rotation", () => {
   test("3-hop chain replay revokes all tokens (A→B→C, replay A revokes A+B+C)", async () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
 
-    // Hop 1: issue initial pair (A)
     const pairA = await issueTokenPair({ clientId, scope: "mcp:read" });
 
-    // Hop 2: rotate A → B
     const pairB = await provider.exchangeRefreshToken({
       refreshToken: pairA.refresh_token,
       clientId,
     });
 
-    // Hop 3: rotate B → C
     const pairC = await provider.exchangeRefreshToken({
       refreshToken: pairB.refresh_token,
       clientId,
     });
     void pairC;
 
-    // Replay token A (already rotated to B) — must revoke A, B, C and their access tokens
     let err: unknown;
     try {
       await provider.exchangeRefreshToken({ refreshToken: pairA.refresh_token, clientId });
@@ -620,7 +591,6 @@ describe("refresh token rotation", () => {
     }
     expect((err as { oauth_error?: string }).oauth_error).toBe("invalid_grant");
 
-    // All three refresh tokens must be revoked
     for (const pair of [pairA, pairB, pairC]) {
       const h = sha256Hex(pair.refresh_token);
       const rows = await db
@@ -631,7 +601,6 @@ describe("refresh token rotation", () => {
       expect(rows[0]?.revoked_at).not.toBeNull();
     }
 
-    // All three access tokens must be revoked
     for (const pair of [pairA, pairB, pairC]) {
       const h = sha256Hex(pair.access_token);
       const rows = await db
@@ -643,17 +612,12 @@ describe("refresh token rotation", () => {
     }
   });
 
-  // Regression: the resource server rejects an access token whose `resource`
-  // (RFC 8707 audience) is NULL once a public base URL is configured. A rotated
-  // token used to be minted without it — because the refresh token had no
-  // resource column to carry it — so the client re-authenticated every hour.
   const AUDIENCE = "https://test.example.com/mcp";
 
   test("rotated access token carries the audience the code was issued with", async () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read", resource: AUDIENCE });
 
-    // The initial (code-exchange) access token has the audience.
     const [firstAccess] = await db
       .select({ resource: mcpOauthAccessTokens.resource })
       .from(mcpOauthAccessTokens)
@@ -666,8 +630,6 @@ describe("refresh token rotation", () => {
       clientId,
     });
 
-    // THE fix: the rotated access token must carry the SAME audience, or the
-    // resource server rejects it as `audience_missing`.
     const [rotatedAccess] = await db
       .select({ resource: mcpOauthAccessTokens.resource })
       .from(mcpOauthAccessTokens)
@@ -675,7 +637,6 @@ describe("refresh token rotation", () => {
       .limit(1);
     expect(rotatedAccess?.resource).toBe(AUDIENCE);
 
-    // The new refresh token carries it too, so the NEXT rotation can copy it.
     const [rotatedRefresh] = await db
       .select({ resource: mcpOauthRefreshTokens.resource })
       .from(mcpOauthRefreshTokens)
@@ -707,8 +668,6 @@ describe("refresh token rotation", () => {
 
   test("audience-less grant stays audience-less on rotation (no phantom audience)", async () => {
     const clientId = await registerTestClient({ scope: "mcp:read" });
-    // No resource on the code → the whole chain stays NULL (deployments with no
-    // public base URL skip the audience check entirely).
     const firstPair = await issueTokenPair({ clientId, scope: "mcp:read" });
 
     const refreshed = await provider.exchangeRefreshToken({
@@ -724,14 +683,6 @@ describe("refresh token rotation", () => {
     expect(rotatedAccess?.resource).toBeNull();
   });
 });
-
-// ─── verifyAccessToken ─────────────────────────────────────────────────────
-// verifyAccessToken was removed — it constant-time-compared a value to
-// itself. The real verification path is the auth provider (mcp-oauth.ts).
-// These tests are skipped; the underlying DB queries they exercised are
-// covered by the auth provider tests.
-
-// ─── revokeToken ───────────────────────────────────────────────────────────
 
 describe("revokeToken", () => {
   test("revoking an access token sets revoked_at and writes mcp_oauth.token_revoked audit row", async () => {
@@ -781,8 +732,6 @@ describe("revokeToken", () => {
     ).resolves.toBeUndefined();
   });
 });
-
-// ─── mcp_oauth.token_rejected audit rows ──────────────────────────────────
 
 describe("token_rejected audit", () => {
   test("PKCE mismatch on code exchange emits mcp_oauth.token_rejected row", async () => {

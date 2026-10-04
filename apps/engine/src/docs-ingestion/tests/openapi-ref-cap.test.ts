@@ -1,10 +1,3 @@
-// GC6 — openapi external `$ref` follows capped at 20.
-//
-// The llms.txt 20-link cap is already covered by budget-caps.test.ts.
-// This test exercises the matching cap on the openapi source: a root
-// spec with 25 distinct external file refs should only trigger 20
-// follow-fetches and record exactly MAX_LINKS on the budget state.
-
 import { describe, expect, test } from "bun:test";
 import { createBudgetState, MAX_LINKS } from "../budgets.ts";
 import { collectExternalRefs, ingestOpenAPIUrl } from "../sources/openapi.ts";
@@ -91,7 +84,6 @@ describe("docs-ingestion/openapi external $ref cap", () => {
     const result = await ingestOpenAPIUrl(ROOT_URL, state, fetchImpl);
     expect(state.links_followed).toBe(MAX_LINKS);
     expect(childFetches).toBe(MAX_LINKS);
-    // The root chunks + 20 child chunks should all land in the output.
     expect(result.chunks.length).toBeGreaterThanOrEqual(MAX_LINKS);
   });
 });

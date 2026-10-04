@@ -1,5 +1,3 @@
-// Token-bucket rate limiter tests.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { __peekBucket, __resetRateLimiter, tryAcquire } from "../rate-limit.ts";
 
@@ -13,7 +11,6 @@ afterEach(() => {
 describe("notifications: rate-limit", () => {
   test("allows up to capacity per minute and rejects the rest", () => {
     const key = { tenant_id: "t1", workspace_id: "W1", channel_id: "C1" };
-    // Freeze "now" so refill cannot help the excess attempts.
     const t0 = 1_700_000_000_000;
     for (let i = 0; i < 60; i += 1) {
       const r = tryAcquire(key, 60, 1, t0);
@@ -28,15 +25,11 @@ describe("notifications: rate-limit", () => {
   test("refills proportionally after time passes", () => {
     const key = { tenant_id: "t2", workspace_id: "W1", channel_id: "C2" };
     const t0 = 1_700_000_000_000;
-    // Drain the bucket completely.
     for (let i = 0; i < 60; i += 1) {
       expect(tryAcquire(key, 60, 1, t0).ok).toBe(true);
     }
     expect(tryAcquire(key, 60, 1, t0).ok).toBe(false);
 
-    // 1 second later the bucket should have gained exactly 1 token
-    // (60 tokens/minute = 1/sec), so a single acquire succeeds and a
-    // follow-up fails again.
     const t1 = t0 + 1_000;
     expect(tryAcquire(key, 60, 1, t1).ok).toBe(true);
     expect(tryAcquire(key, 60, 1, t1).ok).toBe(false);
@@ -47,7 +40,6 @@ describe("notifications: rate-limit", () => {
     const b = { tenant_id: "t3", workspace_id: "W1", channel_id: "C_B" };
     const t0 = 1_700_000_000_000;
     for (let i = 0; i < 60; i += 1) expect(tryAcquire(a, 60, 1, t0).ok).toBe(true);
-    // Channel A is now drained; channel B should still be fully open.
     expect(tryAcquire(a, 60, 1, t0).ok).toBe(false);
     expect(tryAcquire(b, 60, 1, t0).ok).toBe(true);
     expect(__peekBucket(b)?.tokens).toBe(59);

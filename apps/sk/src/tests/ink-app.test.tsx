@@ -1,16 +1,3 @@
-// E2E user-journey tests for the Ink REPL surface. Mounts
-// `<InkApp>` via `ink-testing-library`, drives keystrokes through
-// the mock stdin, and asserts on rendered frames. Covers admin,
-// member, enduser, and portal-token personas plus every
-// user-visible state transition (banner, composer, spinner,
-// tool-call panel, approval modal, committed frame, validation
-// errors, slash autocomplete, exit flows).
-//
-// Tests avoid network by passing stubbed `onPrompt` / `onElicitResponse`
-// / `onSlash` callbacks — the same shape `ink-repl.ts` builds at
-// runtime. Async iterables for the SSE stream are synthesized
-// per test via a tiny `framesOf(...)` helper.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,10 +7,6 @@ import { cleanup, render } from "ink-testing-library";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 
-// Isolate HOME so slash dispatch's recordUsage(name) writes go to a
-// per-test-file tempdir, not the dev's real ~/.sk/prefs.json. Without
-// this, the journey tests inherit frequency-bias counts from prior runs
-// and autocomplete picks a stale command on Enter.
 let __homeTempDir: string | undefined;
 let __originalHome: string | undefined;
 beforeAll(() => {
@@ -36,8 +19,6 @@ afterAll(() => {
   else delete process.env.HOME;
   if (__homeTempDir) rmSync(__homeTempDir, { recursive: true, force: true });
 });
-
-// ---------- Helpers ----------
 
 async function* framesOf(...events: TurnEvent[]): AsyncIterable<TurnEvent> {
   for (const ev of events) yield ev;
@@ -66,8 +47,6 @@ const PERSONAS = {
   } as PersonaProbe,
 };
 
-// Tmpdir cache — each renderApp call gets a fresh history file so
-// tests don't bleed across runs or touch the real ~/.sk.
 const histDirs: string[] = [];
 function tmpHistory(): string {
   const d = mkdtempSync(join(tmpdir(), "sk-ink-hist-"));
@@ -100,25 +79,12 @@ function defaultProps(overrides: Partial<InkAppProps> = {}): InkAppProps {
   };
 }
 
-/**
- * React scheduler yield. Passes the current macrotask so useEffect
- * + async resolvers can drain.
- */
 async function tick(ms = 30): Promise<void> {
   // allow-wall-clock: ink's keypress parser needs real ms to
   // disambiguate Esc (\x1b) from the prefix of an arrow key.
   await new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Poll the frame until a predicate matches, then return. Replaces the
- * brittle `tick(N) + assertion` pattern for places where the render
- * timing depends on chained async work (tool result → render → key →
- * render). Locally a 40-ms tick is plenty; on CI under
- * `bun test --max-concurrency=4` (8.5k tests, 1.5 GB test runner heap)
- * the same code can take 200+ ms wall-clock to land the frame, and a
- * fixed tick races past it.
- */
 async function waitForFrame(
   instance: ReturnType<typeof renderApp>,
   pred: (frame: string) => boolean,
@@ -133,28 +99,19 @@ async function waitForFrame(
   }
 }
 
-/**
- * Feed characters into the Ink app one key at a time. Necessary
- * because Ink 7's InputParser batches multi-char chunks in ways
- * that differ from real keystrokes. Single-char writes are
- * unambiguous.
- */
 async function type(instance: ReturnType<typeof render>, text: string): Promise<void> {
   for (const ch of text) {
     instance.stdin.write(ch);
     await new Promise((r) => setImmediate(r));
   }
-  // Give React a beat to commit the final setState batch.
   await tick(5);
 }
 
-/** Press Enter (carriage return) then yield to the scheduler. */
 async function pressEnter(instance: ReturnType<typeof render>): Promise<void> {
   instance.stdin.write("\r");
   await tick(40);
 }
 
-/** Mount the Ink app with default props + optional overrides. */
 function renderApp(overrides: Partial<InkAppProps> = {}) {
   return render(<InkApp {...defaultProps(overrides)} />);
 }
@@ -166,43 +123,26 @@ afterEach(() => {
     if (d) {
       try {
         rmSync(d, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
-  // Reset the per-file usage-stats prefs file. Without this, every
-  // slash dispatched in this file accumulates a frequency bias that
-  // the next test's autocomplete sees — leading e.g. `/cost` to be
-  // outranked by an earlier-dispatched `/context`.
   if (__homeTempDir) {
     const skDir = join(__homeTempDir, ".sk");
     try {
       rmSync(skDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 });
-
-// ---------- Journey 1 — Admin mount + banner ----------
 
 describe("ink-app: journey 01 — admin mounts the REPL", () => {
   test("AC1: banner + footer + composer render on first paint", async () => {
     const instance = renderApp();
     await tick();
     const frame = stripAnsi(instance.lastFrame() ?? "");
-    // Compact boxed banner — asserts on stable substrings only so
-    // cosmetic tweaks to the framing don't require test churn.
-    // Matches any semver-looking string (e.g. `sk v1.6.0` or
-    // `sk · v0.0.0-dev` — the `·` separator arrived with the Claude
-    // Code UX adoption).
     expect(frame).toMatch(/sk[\s·]+v\d+\.\d+\.\d+(?:-[\w.-]+)?/);
     expect(frame).toContain("admin");
     expect(frame).toContain("tenant-alpha");
     expect(frame).toContain("localhost:8080");
-    // Composer prefix — `❯` when idle, a SPINNER_FRAMES glyph (e.g. `⣾`)
-    // when busy. Match either.
     expect(frame).toMatch(/❯|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷/);
     instance.unmount();
   });
@@ -218,9 +158,6 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("P=admin");
     expect(frame).toContain("M=claude-sonnet-4-6");
-    // Null `turn_tokens` now renders as `0` (not em-dash) so fresh
-    // sessions show a numeric counter. Lines up with the subkit-tailored
-    // status line's default template.
     expect(frame).toContain("T=0");
     instance.unmount();
   });
@@ -229,9 +166,6 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     const instance = renderApp();
     await tick();
     const frame = instance.lastFrame() ?? "";
-    // Banner uses `◦` as the tip prefix; match against any of the
-    // known BANNER_TIPS by name so pickTip()'s random choice can't
-    // make this flaky.
     expect(frame).toMatch(/◦|💡/);
     expect(frame).toMatch(
       /@path\/to\/file|SUBKIT\.md|sk -p|\/view inspect|\/compact|\/approve|\/reject|Shift-Tab|\/resume|@workflow/,
@@ -281,16 +215,12 @@ describe("ink-app: journey 01 — admin mounts the REPL", () => {
     });
     await tick();
     const frame = instance.lastFrame() ?? "";
-    // Sticky one-liner above the welcome panel — the new banner format
-    // calls out the action verb ("/setup") and uses the warn glyph.
     expect(frame).toContain("⚠ Setup");
     expect(frame).toContain("2 warnings");
     expect(frame).toContain("/setup");
     instance.unmount();
   });
 });
-
-// ---------- Journey 2 — Admin drives a prompt turn ----------
 
 describe("ink-app: journey 02 — admin submits a prompt", () => {
   test("AC1: typing text + Enter calls onPrompt with the trimmed text", async () => {
@@ -313,9 +243,6 @@ describe("ink-app: journey 02 — admin submits a prompt", () => {
     await tick(80);
     expect(received.current).toBe("hi there");
     const frame = instance.lastFrame() ?? "";
-    // Speaker labels replace the bare-glyph row: `›  you` for the
-    // operator, `•  sk` for the assistant, `$  tool` for tool calls,
-    // `·` for system rows.
     expect(frame).toMatch(/•/);
     expect(frame).toContain("sk");
     expect(frame).toContain("hello back");
@@ -343,18 +270,14 @@ describe("ink-app: journey 02 — admin submits a prompt", () => {
     const instance = renderApp();
     await tick();
     await type(instance, "abc");
-    // backspace 0x7f
     instance.stdin.write("\x7f");
     await tick(20);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("ab");
-    // `abc` should NOT be a clean substring after the prompt anymore
     expect(frame).not.toMatch(/sk>\s*abc/);
     instance.unmount();
   });
 });
-
-// ---------- Journey 3 — Tool-call + committed + validation panels ----------
 
 describe("ink-app: journey 03 — tool calls, commit, validation errors", () => {
   test("AC1: inspect view reveals the raw tool trace for a turn", async () => {
@@ -376,15 +299,9 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await tick();
     await type(instance, "do the thing");
     await pressEnter(instance);
-    // The first half: the turn should land in the *non-inspect* render —
-    // ⎿ marker stays absent. Wait for the tool name to appear (proves
-    // the turn was processed end-to-end) before asserting on the marker.
     await waitForFrame(instance, (f) => f.includes("author_workflow"));
     let frame = instance.lastFrame() ?? "";
     expect(frame).not.toMatch(/⎿/);
-    // Second half: toggle inspect view (Ctrl-O) and wait for the
-    // ⎿ marker to render. The previous `tick(40)` was racey on CI
-    // under bun test parallelism.
     instance.stdin.write("\x0f");
     await waitForFrame(instance, (f) => /⎿/.test(f));
     frame = instance.lastFrame() ?? "";
@@ -408,18 +325,12 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     await pressEnter(instance);
     await tick(80);
     const frame = instance.lastFrame() ?? "";
-    // Composer prefix — `❯` when idle, a SPINNER_FRAMES glyph (e.g. `⣾`)
-    // when busy. Match either.
     expect(frame).toMatch(/❯|⣾|⣽|⣻|⢿|⡿|⣟|⣯|⣷/);
-    // No thinking verb lingering on screen.
     expect(frame).not.toMatch(/thinking…|planning…|drafting…/);
     instance.unmount();
   });
 
   test("AC3: validation_error frame renders the panel — copy and tone follow turn status", async () => {
-    // Active turn (status=completed, non-terminal-failure): the panel
-    // appears under "draft validation" (yellow) — informative, not
-    // alarming, since the next attempt may still recover.
     const activeInstance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
@@ -447,9 +358,6 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     expect(activeFrame).toContain("must start with /");
     activeInstance.unmount();
 
-    // Mid-turn iteration: a tool_call_start AFTER a validation_error
-    // resets the panel — the LLM's next attempt either succeeds or
-    // emits a fresh validation_error. The panel should NOT linger.
     const iteratingInstance = renderApp({
       onPrompt: async () => ({
         events: framesOf(
@@ -477,8 +385,6 @@ describe("ink-app: journey 03 — tool calls, commit, validation errors", () => 
     iteratingInstance.unmount();
   });
 });
-
-// ---------- Journey 4 — Approval modal + approve / reject ----------
 
 describe("ink-app: journey 04 — elicitation lifecycle", () => {
   const approvalFrame: TurnEvent = {
@@ -516,13 +422,6 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await pressEnter(instance);
     await tick(500);
     const frame = instance.lastFrame() ?? "";
-    // ConfirmPrompt renders `confirm: <kind>` as the title line; the
-    // full diff body follows. Lines up with the ElicitRouter dispatch
-    // in @chat-ui. The top-of-screen "Waiting for input" banner is
-    // intentionally suppressed for every ask_user_* tool — the typed
-    // prompt is the single source of truth (G12 dedupe in the runtime-
-    // logs review plan; pre-fix the same OAuth prose was rendered twice
-    // in two differently-styled boxes).
     expect(frame).not.toContain("Waiting for input: confirmation required");
     expect(frame).toContain("confirm: save_workflow_draft");
     expect(frame).toContain("commit 2-step workflow");
@@ -532,10 +431,6 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
   });
 
   test("AC2: pressing `y` resumes the turn and applies returned events", async () => {
-    // Input-focus contract: while pendingElicitation is set, the
-    // composer's useInput goes inactive and the ConfirmPrompt owns the
-    // keyboard. `y` (or `1`, or Enter on the focused choice) submits
-    // approve without a free-text decision_reason.
     const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
@@ -566,10 +461,6 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await pressEnter(instance);
     await tick(100);
     instance.stdin.write("y");
-    // CI runners flake at 60ms — the onElicitResponse promise + frame
-    // re-render cascade needs more headroom than a local M-class CPU.
-    // Poll the frame for "Workflow saved" up to ~2s instead of a fixed
-    // sleep, fall through immediately on a local fast machine.
     let frame = "";
     for (let i = 0; i < 40; i += 1) {
       await tick(50);
@@ -587,12 +478,6 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
   });
 
   test("AC3: Tab-then-type-then-`n` rejects with the typed feedback", async () => {
-    // Reject path with free-text feedback: Tab opens the feedback
-    // field, the operator types prose, Tab closes the field, then `n`
-    // (or `3`) submits the reject. Architecturally the ConfirmPrompt's
-    // own useInput owns the keyboard for the entire dance; the composer
-    // is inactive throughout. The typed prose travels in `output.feedback`
-    // — the wire `reason` carries only machine codes.
     const decisions: Array<{ id: string; output: unknown; reason?: string }> = [];
     const instance = renderApp({
       onPrompt: async () => ({
@@ -610,28 +495,24 @@ describe("ink-app: journey 04 — elicitation lifecycle", () => {
     await type(instance, "please commit");
     await pressEnter(instance);
     await tick(100);
-    instance.stdin.write("\t"); // open feedback input
+    instance.stdin.write("\t");
     await tick(20);
     for (const ch of "step 1 missing connector_id") {
       instance.stdin.write(ch);
       await tick(5);
     }
-    instance.stdin.write("\t"); // close feedback input
+    instance.stdin.write("\t");
     await tick(20);
-    instance.stdin.write("n"); // submit reject
+    instance.stdin.write("n");
     await tick(60);
     expect(decisions.length).toBe(1);
     const out = decisions[0]?.output as { confirmed: boolean; feedback?: string };
     expect(out.confirmed).toBe(false);
-    // Free-text prose lands in `output.feedback`, never in the
-    // machine-code-only wire `reason`.
     expect(out.feedback).toBe("step 1 missing connector_id");
     expect(decisions[0]?.reason).toBeUndefined();
     instance.unmount();
   });
 });
-
-// ---------- Journey 5 — Slash autocomplete + /help + unknown command ----------
 
 describe("ink-app: journey 05 — slash autocomplete and /help", () => {
   test("AC1: typing `/m` shows prefix suggestions in the footer", async () => {
@@ -640,8 +521,6 @@ describe("ink-app: journey 05 — slash autocomplete and /help", () => {
     await type(instance, "/m");
     await tick(30);
     const frame = instance.lastFrame() ?? "";
-    // Header now describes the keybindings (Tab, ↑/↓, Enter) — assert
-    // the stable `matches` prefix instead of the legacy `matches:`.
     expect(frame).toContain("matches");
     expect(frame).toContain("Tab complete");
     expect(frame).toMatch(/\/(memory|mcp|model)/);
@@ -745,8 +624,6 @@ describe("ink-app: journey 05 — slash autocomplete and /help", () => {
   });
 });
 
-// ---------- Journey 6 — Member persona filtering ----------
-
 describe("ink-app: journey 06 — member persona", () => {
   test("AC1: member /help hides /audit (no audit:read)", async () => {
     const instance = renderApp({
@@ -788,8 +665,6 @@ describe("ink-app: journey 06 — member persona", () => {
     instance.unmount();
   });
 });
-
-// ---------- Journey 7 — Enduser persona filtering ----------
 
 describe("ink-app: journey 07 — enduser persona", () => {
   test("AC1: enduser /help hides /skills, /mcp, /audit, /tenant, /approve", async () => {
@@ -888,8 +763,6 @@ describe("ink-app: journey 07 — enduser persona", () => {
   });
 });
 
-// ---------- Journey 8 — Portal-token persona filtering ----------
-
 describe("ink-app: journey 08 — portal-token persona", () => {
   test("AC1: portal persona /help hides /resume (no conversation:list)", async () => {
     const instance = renderApp({
@@ -907,9 +780,6 @@ describe("ink-app: journey 08 — portal-token persona", () => {
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("/clear");
     expect(frame).toContain("/compact");
-    // Assert on the command-definition line format (`/cmd — help`) so
-    // the rotating tip mentioning `/resume` / `/audit` doesn't produce
-    // a false positive.
     expect(frame).not.toMatch(/\/resume\s+—/);
     expect(frame).not.toMatch(/\/audit\s+—/);
     instance.unmount();
@@ -933,8 +803,6 @@ describe("ink-app: journey 08 — portal-token persona", () => {
     instance.unmount();
   });
 });
-
-// ---------- Journey 9 — Exit flows ----------
 
 describe("ink-app: journey 09 — exit flows", () => {
   test("AC1: /exit triggers onExit", async () => {
@@ -973,11 +841,9 @@ describe("ink-app: journey 09 — exit flows", () => {
       },
     });
     await tick();
-    // First press: arms the "press again to exit" banner, does not call onExit.
     instance.stdin.write("\x03");
     await tick(20);
     expect(exited).toBe(false);
-    // Second press: exits.
     instance.stdin.write("\x03");
     await tick(30);
     expect(exited).toBe(true);
@@ -985,12 +851,7 @@ describe("ink-app: journey 09 — exit flows", () => {
   });
 });
 
-// ---------- Journey 10 — Generic slash handler dispatch ----------
-
 describe("ink-app: journey 10 — onSlash callback dispatch", () => {
-  // A tiny ref-style box sidesteps TypeScript's control-flow
-  // narrowing — without it, TS widens `captured` back to `null`
-  // inside async closures because it can't prove the mutation.
   interface SlashCapture {
     current: { name: string; raw: string } | null;
   }
@@ -1079,14 +940,6 @@ describe("ink-app: journey 10 — onSlash callback dispatch", () => {
   });
 });
 
-// ---------- Journey 12 — Modal pane slots (status / conversations) ----------
-//
-// The Ink host reserves a single modal slot below the transcript.
-// Slash commands that opt into structured output (currently `/status`
-// and `/resume`) call `openPane(spec)` from the onSlash callback;
-// the host renders the matching component. This journey verifies
-// the contract end-to-end through the Ink test harness.
-
 describe("ink-app: journey 12 — modal panes", () => {
   test("AC1: /status renders a StatusPane with the host-supplied rows", async () => {
     const instance = renderApp({
@@ -1126,13 +979,9 @@ describe("ink-app: journey 12 — modal panes", () => {
     await pressEnter(instance);
     await tick(60);
     const frame = instance.lastFrame() ?? "";
-    // Pane title carries the "sk — slash commands" line.
     expect(frame).toContain("sk — slash commands");
-    // Persona subtitle lands on the pane header.
     expect(frame).toContain("admin");
-    // Body content came through.
     expect(frame).toContain("/clear");
-    // The pane's Esc-to-close hint is visible.
     expect(frame).toContain("Esc to close");
     instance.unmount();
   });
@@ -1380,8 +1229,6 @@ describe("ink-app: journey 12 — modal panes", () => {
     expect(frame).toContain("resume conversation");
     expect(frame).toContain("invoice digest");
     expect(frame).toContain("hubspot export");
-    // Enter on the first (highlighted) row picks c-aaaaaaaa-0000 and
-    // dismisses the pane.
     instance.stdin.write("\r");
     await tick(60);
     expect(selected.current).toBe("c-aaaaaaaa-0000");
@@ -1390,8 +1237,6 @@ describe("ink-app: journey 12 — modal panes", () => {
     instance.unmount();
   });
 });
-
-// ---------- Journey 13 — Ctrl-R history search ----------
 
 describe("ink-app: journey 13 — Ctrl-R inline history search", () => {
   test("AC1: Ctrl-R opens the inline reverse-i-search above the composer", async () => {
@@ -1402,7 +1247,6 @@ describe("ink-app: journey 13 — Ctrl-R inline history search", () => {
       }),
     });
     await tick();
-    // Seed two prompts so the search has real entries to show.
     await type(instance, "first prompt");
     await pressEnter(instance);
     await tick(40);
@@ -1410,12 +1254,11 @@ describe("ink-app: journey 13 — Ctrl-R inline history search", () => {
     await pressEnter(instance);
     await tick(40);
 
-    // Ctrl-R (0x12) opens the inline search widget.
     instance.stdin.write("\x12");
     await tick(40);
     const frame = instance.lastFrame() ?? "";
     expect(frame).toContain("reverse-i-search");
-    expect(frame).toMatch(/1 \/ 2/); // cursor / total
+    expect(frame).toMatch(/1 \/ 2/);
     expect(frame).toContain("second prompt");
     instance.unmount();
   });
@@ -1437,18 +1280,14 @@ describe("ink-app: journey 13 — Ctrl-R inline history search", () => {
 
     instance.stdin.write("\x12");
     await tick(40);
-    // The newest prompt is highlighted first; Enter commits it.
     instance.stdin.write("\r");
     await tick(60);
     const frame = instance.lastFrame() ?? "";
     expect(frame).not.toContain("reverse-i-search");
-    // Composer line holds the restored prompt.
     expect(frame).toContain("hubspot workflow");
     instance.unmount();
   });
 });
-
-// ---------- Journey 11 — Approval hygiene edge cases ----------
 
 describe("ink-app: journey 11 — approval hygiene", () => {
   test("AC1: /approve with no pending elicitation surfaces a helpful message", async () => {
@@ -1466,18 +1305,6 @@ describe("ink-app: journey 11 — approval hygiene", () => {
   });
 
   test("bare-text 'approve' with no pending elicitation is forwarded as a plain prompt (no free-text classification of confirmation words)", async () => {
-    // A regex classifier used to intercept bare
-    // "approve" / "confirm" / "yes" and rendered an info message
-    // ("no pending approval"). That classifier was the source of the
-    // dca36b29 silent-failure bug ("Reply yes" prose with no actual
-    // elicit_request → user typed "yes" → classifier shrugged → user
-    // saw nothing happen). Free text is NEVER auto-classified as a
-    // confirmation answer. The
-    // structured ConfirmPrompt component (Y/N/Enter/Esc keybinds) is
-    // the only confirmation pathway. Bare "approve" with no pending
-    // elicitation is just a regular user message — the LLM may ask
-    // what should be approved, but the CLI does not invent a
-    // "no pending approval" hint.
     let promptCalled = false;
     const instance = renderApp({
       onPrompt: async () => {
@@ -1524,9 +1351,6 @@ describe("ink-app: journey 11 — approval hygiene", () => {
       }),
       onElicitResponse: async () => {
         respondCalls += 1;
-        // Block the first call long enough that a second /approve has
-        // time to arrive; without the busyRef guard inside
-        // submitElicitationResponse the second call would also POST.
         await new Promise<void>((resolve) => {
           releaseRef.fn = resolve;
         });
@@ -1576,15 +1400,11 @@ describe("ink-app: journey 11 — approval hygiene", () => {
     await pressEnter(instance);
     await tick(100);
     const frame = instance.lastFrame() ?? "";
-    // Generic ConfirmPrompt — "confirm: generic" is the title; summary
-    // comes through verbatim.
     expect(frame).toContain("confirm: generic");
     expect(frame).toContain("review the change");
     instance.unmount();
   });
 });
-
-// ---------- Journey 12 — onboarding, background tools, sticky errors ----------
 
 describe("ink-app: journey 12 — onboarding and transcript controls", () => {
   test("AC1: quick-start actions render on first paint and `2` prefills a connector prompt", async () => {

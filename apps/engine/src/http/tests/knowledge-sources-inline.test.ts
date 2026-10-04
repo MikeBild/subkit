@@ -1,8 +1,3 @@
-// Integration tests for the POST /v1/knowledge-sources/inline
-// OpenAPI route. Boots an in-process Hono server + real Postgres via
-// the shared http test scaffold so auth + RBAC + Zod validation +
-// chunking + persistence are all exercised end-to-end.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";

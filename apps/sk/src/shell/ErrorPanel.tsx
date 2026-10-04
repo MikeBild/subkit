@@ -1,23 +1,3 @@
-// Unified error renderer.
-//
-// Replaces the four scattered error-rendering paths (the inline
-// `humanizeRequestError` block in ink-app, the validation panel,
-// the ToolCard failure block, and the prompt-error banner) with
-// one component that:
-//
-//   - classifies the error into a known kind (rate-limit / validation
-//     / network / engine / auth / generic)
-//   - humanizes the headline via the existing `humanizeRequestError`
-//     helpers
-//   - shows the operator the *raw* envelope (code, hint, request_id)
-//     in a dim row underneath, so debugging stays first-class
-//   - renders a live retry countdown when the envelope carries
-//     `retry_after`
-//
-// The countdown re-renders every second; it is purely cosmetic and
-// does not actually retry — the caller decides whether to retry once
-// the hint says it's safe.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import { Box, Text } from "ink";
@@ -304,34 +284,6 @@ function GenericPanel({ payload }: { payload: GenericPayload }): React.ReactElem
   );
 }
 
-/**
- * Classify a raw error into one of the known panel kinds + payload.
- * Centralizes the routing logic so call-sites just say
- * `<ErrorPanel {...errorToPanel(err)} />`.
- */
-// Name-based guards live in @cli-core/errors (robust to the parallel
-// bun test runner loading a module twice and yielding two distinct
-// class identities).
-
-/**
- * Classify a top-level error into a panel kind. This is intentionally
- * a *different axis* from `classifyEngineError`:
- *
- * - `errorToPanel` switches on **transport / status** — `429` →
- *   rate-limit panel, `401/403` → auth panel, transport errors →
- *   network panel, `422` with an `errors` array → validation panel,
- *   everything else → generic engine panel. This decides which panel
- *   *shell* to render.
- *
- * - `classifyEngineError` switches on **per-row semantic content** —
- *   given a single `RawValidationError`, it labels the row as
- *   `provider_limit` / `provider_unavailable` / `validation` so the
- *   ValidationPanel can colour individual rows. The validation panel
- *   already consumes that classifier internally; `errorToPanel` does
- *   not duplicate it, it simply picks the panel.
- *
- * Both surfaces stay thin: the only branching done here is on `status`.
- */
 export function errorToPanel(err: unknown): {
   kind: ErrorPanelKind;
   payload: ErrorPanelPropsByKind[ErrorPanelKind];
@@ -354,9 +306,6 @@ export function errorToPanel(err: unknown): {
       };
       return { kind: "auth", payload };
     }
-    // 422 with a structured `errors` array routes to the validation
-    // panel so per-row severity (via the row classifier) can fire.
-    // Other 4xx/5xx fall through to the generic engine panel.
     if (err.status === 422 && hasValidationErrors(err.details)) {
       const payload: ValidationPayload = {
         errors: err.details.errors,
@@ -380,8 +329,6 @@ export function errorToPanel(err: unknown): {
       payload: { message: err.message },
     };
   }
-  // Last-resort fallback uses the existing humanize helper so we keep
-  // parity with the legacy renderer.
   return {
     kind: "generic",
     payload: { message: humanizeRequestError(err) },
@@ -401,12 +348,6 @@ function hasValidationErrors(details: unknown): details is { errors: RawValidati
   );
 }
 
-/**
- * Pull a single-line "body" string out of any panel kind. Centralises
- * the union narrowing so call sites that want to surface an error
- * elsewhere (toast queue, status line, log row) don't reach into the
- * payload with double `as`-casts.
- */
 export function bodyOf(panel: { kind: ErrorPanelKind; payload: unknown }): string {
   switch (panel.kind) {
     case "rate-limit":

@@ -1,12 +1,3 @@
-// Shared whole-execution diagnosis builder.
-//
-// Reads a finished execution and its steps (tenant-scoped) and assembles
-// the step-level diagnosis — status, durations, warnings, truncated
-// output previews, scope shapes — that both `inspect_execution`
-// (tenant_read, chat + MCP) and `diagnose_latest_execution` (draft_write,
-// chat) report. Keeping the read in one place means the two tools never
-// drift apart.
-
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
@@ -15,7 +6,6 @@ import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { LatestDiagnosisSummary } from "../types.ts";
 import { truncateForLlm } from "./truncate.ts";
 
-/** Execution-level summary returned alongside the diagnosis. */
 export interface ExecutionSummary {
   execution_id: string;
   workflow_id: string | null;
@@ -54,11 +44,6 @@ function summarizeReason(
   return `Execution succeeded across ${stepCount} step${stepCount === 1 ? "" : "s"} with no warnings.`;
 }
 
-/**
- * Build the step-level diagnosis for one execution. Every query is
- * filtered on `tenant_id`, so a leaked execution id from another tenant
- * resolves to `{ found: false }`.
- */
 export async function buildExecutionDiagnosis(
   db: Db,
   tenant_id: string,
@@ -138,8 +123,6 @@ export async function buildExecutionDiagnosis(
         ? previewRecord.value
         : row.output_preview;
     const truncatedPreview = truncateForLlm(previewValue);
-    // scope_at_step on each step grounds the next edit in the real
-    // runtime shape rather than an imagined envelope.
     const scope =
       previewValue !== undefined && previewValue !== null ? buildScopeAtStep(previewValue) : null;
     return {

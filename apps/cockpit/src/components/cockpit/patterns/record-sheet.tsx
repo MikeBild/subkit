@@ -6,16 +6,10 @@ import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
 
 export type SheetSize = "default" | "wide";
 
-/**
- * The two sheet widths (§4); there are no others. Stated for the right-hand
- * side the sheet opens on, so they replace the primitive's own side width
- * instead of losing to it; below `sm` every sheet takes the full width.
- */
 export function sheetWidthClass(size: SheetSize): string {
   return size === "wide" ? "data-[side=right]:sm:max-w-5xl" : "data-[side=right]:sm:max-w-xl";
 }
 
-/** The body of a record still loading: a fact list's shape, then rows. */
 function SheetBodySkeleton() {
   return (
     <div className="flex flex-col gap-6">
@@ -36,10 +30,6 @@ function SheetBodySkeleton() {
   );
 }
 
-/**
- * Every row detail and every overlay that is not a dialog (P8): a header as on
- * a page (title, badge, actions), the body, no footer.
- */
 export function RecordSheet({
   open,
   onOpenChange,
@@ -60,14 +50,12 @@ export function RecordSheet({
   size?: SheetSize;
   title: ReactNode;
   badge?: ReactNode;
-  /** Inside a wide sheet: the way back to the list it was opened from ("‹ Alle Läufe"). */
   back?: { label: string; onClick(): void };
   action?: ReactNode;
   menu?: ReactNode;
   testId: string;
   closeTestId?: string;
   titleTestId?: string;
-  /** The record is still loading: the body holds a skeleton of its final shape. */
   loading?: boolean;
   children: ReactNode;
 }) {

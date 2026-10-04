@@ -1,13 +1,3 @@
-// Resolver for the three first-class execution sources:
-//   • saved — persisted workflow + current_version_id
-//   • draft — inline WorkflowDef, no DB round-trip, no commit
-//   • step  — single StepDef wrapped in a synthetic one-step WorkflowDef
-//
-// All three emit the same shape so the engine's runtime pipeline stays
-// a single code path. The only difference is the origin of the
-// definition and whether the executions row carries workflow_id /
-// workflow_version_id (saved) or NULLs (draft, step).
-
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
@@ -15,29 +5,18 @@ import { executableDefinition } from "../workflows/stored-definition.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
 import { validateWorkflowDef } from "../workflows/validator.ts";
 
-/** Discriminated union identifying where the definition comes from. */
 export type RunExecutionSource =
   | { kind: "saved"; workflow_id: string; version_id?: string }
   | { kind: "draft"; definition: WorkflowDef | unknown; name?: string }
   | { kind: "step"; step: StepDef | unknown; workflow_slug?: string };
 
 export interface ResolvedDefinition {
-  /** Fully-validated definition ready for the execution pipeline. */
   def: WorkflowDef;
-  /** Real workflow id for saved runs; synthesized placeholder for draft/step
-   *  (NOT persisted — the DB column is NULL for these sources). */
   workflow_id: string;
-  /** Real workflow_version id for saved runs; synthesized placeholder
-   *  otherwise. NOT persisted for draft/step. */
   workflow_version_id: string;
-  /** Workflow slug for log lines and connector trace breadcrumbs. */
   workflow_slug: string;
-  /** Mirrors the source kind; passed through to executions.source_kind. */
   source_kind: "saved" | "draft" | "step";
-  /** Free-form metadata persisted to executions.source_ref. */
   source_ref: Record<string, unknown> | null;
-  /** True when the DB row's workflow_id / workflow_version_id should be
-   *  written as NULL (draft + step). */
   persist_workflow_refs: boolean;
 }
 
@@ -46,9 +25,6 @@ function synthUuid(): string {
 }
 
 function hashDefinition(def: WorkflowDef): string {
-  // Cheap deterministic hash for source_ref tracking. Not cryptographic —
-  // only meant to help operators correlate repeat draft-runs of the same
-  // definition in the executions table.
   const json = JSON.stringify(def);
   let h = 0;
   for (let i = 0; i < json.length; i++) {
@@ -76,9 +52,6 @@ async function resolveSaved(
     .limit(1);
   const wfRow = wfRows[0];
   if (!wfRow) throw new Error(`workflow not found: ${workflow_id}`);
-  // An archived workflow is retired — it must not run, whether triggered
-  // manually (POST /v1/executions) or by a lingering schedule. Promote a
-  // version back to active to run it again.
   if (wfRow.lifecycle === "archived") {
     throw Object.assign(new Error(`workflow is archived: ${workflow_id}`), {
       code: "workflow_archived",
@@ -86,10 +59,6 @@ async function resolveSaved(
   }
   const versionId = version_id ?? wfRow.current_version_id;
   if (!versionId) throw new Error("workflow has no current version");
-  // Bind the version to THIS workflow, not just the tenant. Without the
-  // workflow_id predicate a caller could pass a version_id belonging to
-  // workflow B and have its DAG execute under workflow A's identity, RBAC
-  // resource grant, and audit lineage (cross-workflow injection).
   const versionRows = await db
     .select()
     .from(workflowVersions)
@@ -103,8 +72,6 @@ async function resolveSaved(
     .limit(1);
   const versionRow = versionRows[0];
   if (!versionRow) throw new Error("workflow version not found");
-  // A version stored in an earlier format is refused by name, not thrown as
-  // a schema error the caller reads as an engine fault.
   const def = executableDefinition(versionRow.dag);
   return {
     def,
@@ -142,9 +109,6 @@ function resolveDraft(definition: unknown, name: string | undefined): ResolvedDe
 }
 
 function resolveStep(step: unknown, workflow_slug: string | undefined): ResolvedDefinition {
-  // Wrap the single step in a one-step WorkflowDef. Validation routes
-  // through the normal validator so JSONata / data_selector / branch
-  // references behave identically to a full workflow.
   const synthetic = {
     name: workflow_slug ?? "step-run",
     steps: [step],

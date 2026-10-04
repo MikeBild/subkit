@@ -1,29 +1,9 @@
-// User story: As a platform administrator, I want to inspect identity
-// users and manage system accounts via the `sk users` and
-// `sk system-accounts` CLI commands so I can automate onboarding
-// without direct database access.
-// Acceptance criteria:
-//   - AC1: `users list --json` returns >= 1 item; items have id and email.
-//   - AC2: `users get <userId>` returns the user with the expected id
-//          and email field.
-//   - AC3: `system-accounts list --json` returns >= 1 item (the seeded
-//          bot); items have id and name.
-//   - AC4: `system-accounts create --name <name>` creates a new account
-//          with the given name and a valid UUID id.
-//   - AC5: After create, `system-accounts list --json` contains the new
-//          account's id.
-//   - AC6: A non-admin tenant (wrong API key) receives a 403 on the
-//          users list route.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { systemAccountsCommand } from "../../../../sk/src/commands/system-accounts.ts";
 import { usersCommand } from "../../../../sk/src/commands/users.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup.ts";
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -175,7 +155,6 @@ afterAll(async () => {
 describe("journey 39: sk users CLI", () => {
   test("AC1: users list --json returns >= 1 item; items have id and email", async () => {
     const { stdout } = await run(usersCommand, ["list"]);
-    // emitList with --json outputs the raw array, not { items: [] }
     const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; email: string }>;
     expect(Array.isArray(items)).toBe(true);
     expect(items.length).toBeGreaterThanOrEqual(1);
@@ -196,20 +175,14 @@ describe("journey 39: sk users CLI", () => {
   });
 
   test("users list returns only the current tenant's users", async () => {
-    // The journey context seeds exactly one user. Verify the list
-    // contains that user and the count is exactly 1 (tenant isolation).
     const { stdout } = await run(usersCommand, ["list"]);
     const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; email: string }>;
     const ids = items.map((u) => u.id);
     expect(ids).toContain(ctx.userId);
-    // All returned users must belong to the seeded tenant (no cross-tenant
-    // bleed — the journey db is isolated per file).
     expect(items.length).toBe(1);
   });
 
   test("users get with non-existent id returns an error", async () => {
-    // RFC-4122-compliant — see journey 37's note: the pinned contract
-    // is the tenant-scoped not-found, not the uuid-shape 400.
     const fakeId = "00000000-0000-4000-8000-000000000077";
     const { message, captured } = await runExpectError(usersCommand, ["get", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
@@ -225,7 +198,6 @@ describe("journey 39: sk users CLI", () => {
 describe("journey 39: sk system-accounts CLI", () => {
   test("AC3: system-accounts list --json returns >= 1 item; items have id and name", async () => {
     const { stdout } = await run(systemAccountsCommand, ["list"]);
-    // emitList with --json outputs the raw array, not { items: [] }
     const items = JSON.parse(extractLastJson(stdout)) as Array<{ id: string; name: string }>;
     expect(Array.isArray(items)).toBe(true);
     expect(items.length).toBeGreaterThanOrEqual(1);
@@ -240,7 +212,6 @@ describe("journey 39: sk system-accounts CLI", () => {
   test("AC4: system-accounts create --name <name> returns an account with id and name", async () => {
     const { stdout } = await run(systemAccountsCommand, ["create", "--name=e2e-bot"]);
     const account = JSON.parse(extractLastJson(stdout)) as { id: string; name: string };
-    // id must be a non-empty UUID string
     expect(typeof account.id).toBe("string");
     expect(account.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(account.name).toBe("e2e-bot");
@@ -261,8 +232,6 @@ describe("journey 39: sk system-accounts CLI", () => {
   });
 
   test("system-accounts list returns only this tenant's accounts", async () => {
-    // The journey context seeds exactly one system account (the bot).
-    // Create one more, then verify the list size grows by exactly 1.
     const before = JSON.parse(
       extractLastJson((await run(systemAccountsCommand, ["list"])).stdout),
     ) as unknown[];
@@ -279,8 +248,6 @@ describe("journey 39: sk system-accounts CLI", () => {
   });
 
   test("AC6: non-admin key receives an auth error on users list", async () => {
-    // Issue a restricted key for the system account (no identity:read scope)
-    // and verify it cannot list users.
     const cli = patchStd();
     let caughtMessage = "";
     try {

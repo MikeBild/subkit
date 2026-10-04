@@ -16,11 +16,6 @@ const DOT: Record<StatusTone, string> = {
 const STRIP =
   "flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-(--sk-dur-base) ease-(--sk-ease-standard)";
 
-/**
- * A record's state in one line (P3), detail pages only: dot · line · (?) ·
- * one action. Only the top state gets the action (D15); lower states go into
- * `more`. A change of tone eases the border and the dot rather than jumping.
- */
 export function StatusStrip({
   tone,
   line,
@@ -32,13 +27,9 @@ export function StatusStrip({
 }: {
   tone: StatusTone;
   line: ReactNode;
-  /** The long explanation of the line, behind (?). */
   help?: ReactNode;
-  /** The lower states, e.g. "+1 weiteres". */
   more?: ReactNode;
-  /** Never more than one: an element, or an `ActionSpec`. */
   action?: ReactNode | ActionSpec;
-  /** The state is still loading: dot, one line and a button placeholder at the final size. */
   loading?: boolean;
   testId?: string;
 }) {
@@ -78,8 +69,6 @@ export function StatusStrip({
           DOT[tone],
         )}
       />
-      {/* The line keeps a readable width; on a phone the action wraps below it
-          at full width instead of squeezing the line to a word per row. */}
       <span className="min-w-0 flex-1 basis-48" data-slot="status-strip-line">
         {line}
       </span>

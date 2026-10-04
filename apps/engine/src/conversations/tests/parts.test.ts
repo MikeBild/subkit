@@ -1,7 +1,3 @@
-// Tests for the content-parts adapter — projects the flat
-// `ConversationMessageRecord.content` JSONB into the parts-based
-// `UIMessage` shape exposed on `messages`.
-
 import { describe, expect, test } from "bun:test";
 import { buildMessages, toMessageParts } from "../parts.ts";
 import type { ConversationMessageRecord, ConversationToolCallRecord } from "../types.ts";
@@ -113,9 +109,6 @@ describe("buildMessages with parent_message_id (engine migration 0032)", () => {
         created_at: "2026-01-01T00:00:05Z",
       }),
     ];
-    // Note: created_at is INTENTIONALLY out of order vs. parent_message_id
-    // — exercises that we trust the explicit anchor over the timestamp
-    // window. This is the bug the migration fixes.
     const toolCalls: ConversationToolCallRecord[] = [
       call({
         id: "c1",
@@ -151,7 +144,6 @@ describe("buildMessages with parent_message_id (engine migration 0032)", () => {
       }),
       msg({ id: "u1", role: "user", content: "next", created_at: "2026-01-01T00:00:05Z" }),
     ];
-    // No parent_message_id — messages no longer guesses placement.
     const toolCalls: ConversationToolCallRecord[] = [
       call({ id: "c1", tool: "listSkills", created_at: "2026-01-01T00:00:02Z" }),
     ];
@@ -175,7 +167,6 @@ describe("buildMessages with parent_message_id (engine migration 0032)", () => {
         parent_message_id: "a1",
         created_at: "2026-01-01T00:00:02Z",
       }),
-      // Legacy row with no anchor stays off messages.
       call({ id: "c-unanchored", tool: "searchKnowledge", created_at: "2026-01-01T00:00:03Z" }),
     ];
     const out = buildMessages(messages, toolCalls);

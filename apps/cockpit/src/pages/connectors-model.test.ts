@@ -46,8 +46,6 @@ describe("connectors that count against health", () => {
   };
 
   test("the narrowing is the engine's, and the page is a page of the narrowed list", () => {
-    // It used to read 200 enabled connectors and filter them here, so past 200
-    // the list was short and its total wrong.
     const params = catalogListParams("connectors", state, 25);
     expect(params.get("health")).toBe("not_ok");
     expect(params.get("limit")).toBe("25");

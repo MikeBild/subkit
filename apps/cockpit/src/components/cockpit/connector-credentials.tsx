@@ -29,13 +29,6 @@ export type ConnectorCredentialSummary = NonNullable<
   components["schemas"]["ConnectorCredentialSummary"]
 >;
 
-/**
- * The connector's credential as the engine describes it — mode, the header
- * names a key is sent in, and the Kontoverbindung it sends with that
- * connection's state. One query key, read by the strip, the "Verbindung"
- * facts and the sign-in block alike, so they can never disagree about where
- * the sign-in stands.
- */
 export function useConnectorCredential(connectorId: string | null) {
   return useQuery({
     queryKey: ["connector-credential", connectorId],
@@ -47,7 +40,6 @@ export function useConnectorCredential(connectorId: string | null) {
   });
 }
 
-/** The engine-state word of a sign-in, for its badge. */
 const BADGE_STATE: Record<ConnectorAuthState, string> = {
   connected: "ok",
   expired: "expired",
@@ -56,16 +48,6 @@ const BADGE_STATE: Record<ConnectorAuthState, string> = {
   unproven: "pending",
 };
 
-/**
- * "Anmeldung", in "Verbindung": where the sign-in stands — one line for what
- * is the case — when the credential was last changed, and the ways to change
- * it that fit its kind of sign-in. Renewing a lost sign-in is the strip's one
- * action (D6), not a second button here. "Verbindung wählen" is offered only
- * where a connection can carry the sign-in (OAuth, or a connector already
- * linked to one); "Schlüssel ersetzen" posts the key in the mode the connector
- * signs in with — a key sent in `X-API-KEY` stays a header key instead of
- * turning into a bearer token.
- */
 export function ConnectorCredentials({
   connectorId,
   authType,
@@ -79,16 +61,12 @@ export function ConnectorCredentials({
 }: {
   connectorId: string;
   authType: string | null;
-  /** The connector states a browser sign-in of its own (`sign_in`). */
   signsInAtProvider: boolean;
   state: ConnectorAuthState;
   canWrite: boolean;
-  /** The key form stands open — the strip's "Zugangsdaten eintragen" opens it too. */
   showKey: boolean;
   onShowKey: (open: boolean) => void;
-  /** Where the provider renews access, when a failed test named such a page. */
   providerUrl?: string | null;
-  /** The status strip already says the sign-in's state ("Verbunden"): no badge repeats it. */
   stateInStrip?: boolean;
 }) {
   const { t, dateTime } = useI18n();
@@ -135,13 +113,11 @@ export function ConnectorCredentials({
   const about = current?.connection
     ? t("connectorCredentials.viaConnection", { name: current.connection.name })
     : null;
-  // The header the key goes in, pre-filled with the one the engine reports.
   const header = headerName ?? current?.header_names?.[0] ?? "";
   const body = credentialBody(authType, token, header);
   const muted = "text-sm text-muted-foreground";
 
   return (
-    // The anchor "Neu verbinden" lands on, from the run dialog.
     <div id="connector-credentials" className="scroll-mt-6" data-testid="connector-credentials">
       <Section
         label={t("connectorCredentials.title")}
@@ -155,7 +131,6 @@ export function ConnectorCredentials({
           )
         }
       >
-        {/* One line: what is the case. A working sign-in needs none. */}
         {lost && line ? (
           <p className={muted} data-testid="connector-credential-sentence">
             {t(line, { name: current?.connection?.name ?? "" })}
@@ -182,8 +157,6 @@ export function ConnectorCredentials({
             })}
           </p>
         ) : null}
-        {/* Where the provider itself renews access — its own page, a
-            different place than the sign-in, named as one. */}
         {lost && providerUrl ? (
           <a
             href={providerUrl}

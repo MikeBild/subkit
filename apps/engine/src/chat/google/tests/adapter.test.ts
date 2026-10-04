@@ -1,6 +1,3 @@
-// Google Chat adapter test — mock token + messages endpoints, plus a
-// real test DB for the handleSyncInteraction Dialog fast path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -50,8 +47,6 @@ beforeAll(async () => {
       body,
       authorization: c.req.header("authorization") ?? "",
     });
-    // A reply targeting the sentinel "missing" thread simulates
-    // REPLY_MESSAGE_OR_FAIL against a non-addressable thread (DM case).
     if (body.includes("threads/missing")) {
       return c.json({ error: "not found" }, 404);
     }
@@ -108,8 +103,6 @@ describe("google chat adapter", () => {
     expect(tokenCalls).toBe(1);
     expect(hits.length).toBe(2);
     expect(hits[0]?.authorization).toBe("Bearer g-tok-1");
-    // channel_id carries the full resource name — the path must be
-    // /v1/spaces/AAA/messages, never /v1/spaces/spaces%2FAAA/messages.
     expect(hits[0]?.path).toBe("/v1/spaces/AAA/messages");
     expect(hits[1]?.body).toContain("cardsV2");
     expect(hits[1]?.body).toContain("approve:ap-1");
@@ -124,7 +117,6 @@ describe("google chat adapter", () => {
     });
     const before = hits.length;
 
-    // Addressable thread: one POST with the reply option + thread name.
     await adapter.send({
       tenant_id: "t",
       workspace_id: "spaces/AAA",
@@ -137,8 +129,6 @@ describe("google chat adapter", () => {
     expect(threadHit?.query).toContain("messageReplyOption=REPLY_MESSAGE_OR_FAIL");
     expect(threadHit?.body).toContain("spaces/AAA/threads/BBB");
 
-    // Non-addressable thread (DM case): the OR_FAIL 404 degrades to a
-    // top-level send instead of dropping the reply.
     const out = await adapter.send({
       tenant_id: "t",
       workspace_id: "spaces/AAA",
@@ -191,9 +181,6 @@ describe("google chat adapter", () => {
       user: { name: "users/123" },
     };
 
-    // Top-level message: thread.name is ALWAYS present on Google Chat
-    // messages, so it must NOT become the session key — the dispatcher
-    // falls back to the persistent space conversation.
     const topLevel = await adapter.receive({
       platform: "google_chat",
       raw: {
@@ -210,7 +197,6 @@ describe("google chat adapter", () => {
     expect(topLevel.thread_id).toBeUndefined();
     expect(topLevel.event_key).toBe("spaces/AAA/messages/1");
 
-    // Genuine thread reply: threadReply=true → thread-scoped session.
     const reply = await adapter.receive({
       platform: "google_chat",
       raw: {
@@ -226,8 +212,6 @@ describe("google chat adapter", () => {
     });
     expect(reply.thread_id).toBe("spaces/AAA/threads/T1");
 
-    // DM top-level (DMs are inline-threaded since the platform rollout,
-    // but a non-reply still maps to the persistent DM conversation).
     const dm = await adapter.receive({
       platform: "google_chat",
       raw: {
@@ -252,7 +236,6 @@ describe("google chat adapter", () => {
       baseUrl,
     });
 
-    // Current cardsV2 delivery: common.invokedFunction + flattened map.
     const modern = await adapter.receive({
       platform: "google_chat",
       raw: {
@@ -269,11 +252,8 @@ describe("google chat adapter", () => {
     });
     expect(modern.kind).toBe("interaction");
     expect(modern.interaction).toEqual({ action_id: "approve:ap-7", value: "conv-7" });
-    // Two different clicks on the same card message must not dedup-collide:
-    // the eventTime disambiguates.
     expect(modern.event_key).toContain("2026-01-01T00:00:00Z");
 
-    // Legacy cards-v1 shape still parses.
     const legacy = await adapter.receive({
       platform: "google_chat",
       raw: {
@@ -581,7 +561,6 @@ describe("handleSyncInteraction — Dialog fast path (real DB)", () => {
       actionResponse: { type: string; dialogAction: { dialog: unknown } };
     };
     expect(response.actionResponse.type).toBe("DIALOG");
-    // The dialog reflects the seeded row's fields.
     const body = JSON.stringify(response.actionResponse.dialogAction.dialog);
     expect(body).toContain("Pick a destination");
     expect(body).toContain('"name":"city"');
@@ -607,7 +586,6 @@ describe("handleSyncInteraction — Dialog fast path (real DB)", () => {
     };
     expect(response.actionResponse.type).toBe("DIALOG");
     expect(response.actionResponse.dialogAction.actionStatus?.statusCode).toBe("NOT_FOUND");
-    // Probe resistance: no elicitation content leaks.
     expect(response.actionResponse.dialogAction.dialog).toBeUndefined();
   });
 

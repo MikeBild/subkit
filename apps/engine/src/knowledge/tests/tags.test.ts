@@ -1,8 +1,3 @@
-// Pure classification table for the structural-tag contract — pins the
-// edges the analyze integration test cannot cheaply cover (trailing
-// hyphen, decomposed Unicode) so a regex or normalization revert fails
-// loudly here instead of silently re-pinning tags in production.
-
 import { describe, expect, test } from "bun:test";
 import { isStructuralTag, mergeStructuralTags } from "../tags.ts";
 
@@ -10,8 +5,6 @@ describe("knowledge/isStructuralTag", () => {
   const structural = [
     "domain:blog-de",
     "café:paris",
-    // Decomposed form (e + combining acute) — macOS terminals and
-    // filenames commonly emit NFD; canonical equivalence must hold.
     "café:paris",
     "_internal:x",
     "a:b",
@@ -24,7 +17,6 @@ describe("knowledge/isStructuralTag", () => {
     "q&a:faq",
     "c++:tips",
     ".net:core",
-    // Trailing hyphen — hyphens are allowed strictly INSIDE the namespace.
     "blog-:notes",
     "x-:y",
     "-x:y",

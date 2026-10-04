@@ -13,9 +13,6 @@ const BASE_ROUTE: ModelRoute = {
   enable_prompt_cache: false,
 };
 
-// Capture and restore per-flow env overrides so the test suite stays hermetic.
-// detectConfiguredProvider also reads ANTHROPIC_API_KEY etc. so we set it
-// explicitly for the "provider override" path.
 interface EnvSnapshot {
   extract_provider?: string | undefined;
   extract_model?: string | undefined;
@@ -64,7 +61,6 @@ describe("applyFlowEnvOverrides", () => {
     process.env.EXTRACT_MODEL = "claude-haiku-4-5-20251001";
     const out = applyFlowEnvOverrides(BASE_ROUTE, "extract");
     expect(out.primary).toBe("claude-haiku-4-5-20251001");
-    // Provider unchanged when only the model is overridden.
     expect(out.provider).toBe(BASE_ROUTE.provider);
   });
 

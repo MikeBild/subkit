@@ -1,17 +1,3 @@
-// End-to-end mount-tree integration test for the new sk shell.
-//
-// Renders the full proposed mount tree (Theme → Resize → Toast → app
-// content) and exercises a typical operator flow:
-//   1. theme switches between dark/light at runtime
-//   2. an error from the engine renders via ErrorPanel + retry-after
-//   3. a slash suggestion appears, then the operator picks one
-//   4. a toast is pushed, auto-dismisses, and is gone
-//
-// The surfaces are mounted together rather than in isolation so we
-// catch composition bugs that single-component tests miss
-// (theme-context propagation, toast queue placement under
-// ResizeBoundary, etc.).
-
 import { describe, expect, test } from "bun:test";
 import { Box, Text } from "ink";
 import { useEffect, useState } from "react";
@@ -43,8 +29,6 @@ function App({
   useEffect(() => {
     if (pushToastTitle)
       toast.push({ id: "fixed-toast", title: pushToastTitle, level: "info", ttlMs: 50 });
-    // toast.push is stable enough; we want the effect to fire once per
-    // pushToastTitle change, not whenever the queue redraws.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushToastTitle]);
 
@@ -97,7 +81,6 @@ describe("sk overhaul — mount tree integration", () => {
     try {
       await flush();
       expect(ui.text()).toContain("theme=dark");
-      // Welcome hint from SlashSuggest renders inside this composed tree.
       expect(ui.text()).toMatch(/press.*\/.*command/);
     } finally {
       ui.unmount();
@@ -176,9 +159,6 @@ describe("sk overhaul — mount tree integration", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("hi from toast"));
-      // Toast TTL is 30ms; the queue prunes on a 250ms setInterval
-      // tick. Both are macrotasks; sleepMs opts into wall-clock
-      // progress for the prune cycle.
       await ui.waitFor((t) => !t.includes("hi from toast"), { tries: 30, sleepMs: 50 });
       expect(ui.text()).not.toContain("hi from toast");
     } finally {

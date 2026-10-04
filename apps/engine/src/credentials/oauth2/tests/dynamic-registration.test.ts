@@ -1,9 +1,3 @@
-// Unit tests for dynamicallyRegisterClient.
-//
-// Mocks the OAuth discovery and registration POST using a tiny Bun.serve
-// test server (no Docker, no Postgres). Covers the happy path, all
-// failure branches, schema validation, and the insecure-request flag.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -13,18 +7,10 @@ import {
   dynamicallyRegisterClient,
 } from "../client.ts";
 
-// ---------------------------------------------------------------------------
-// Minimal IdP factory
-// ---------------------------------------------------------------------------
-
 interface MockIdPOptions {
-  /** HTTP status to return from /register. Default: 201. */
   registerStatus?: number;
-  /** Body to return from /register. Default: valid RFC7591 response. */
   registerBody?: unknown;
-  /** Whether to advertise registration_endpoint in discovery. Default: true. */
   advertiseRegistrationEndpoint?: boolean;
-  /** Return malformed (non-JSON) body from /register. Default: false. */
   registerNonJson?: boolean;
 }
 
@@ -111,10 +97,6 @@ async function startMockIdP(opts: MockIdPOptions = {}): Promise<MockIdP> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Test suite
-// ---------------------------------------------------------------------------
-
 let idp: MockIdP;
 
 beforeAll(() => {
@@ -169,7 +151,6 @@ describe("dynamicallyRegisterClient — validation before network call", () => {
         allowInsecureRequests: true,
       }),
     ).rejects.toThrow();
-    // No network call was made.
     expect(idp.registrationCallCount()).toBe(0);
     await idp.close();
   });

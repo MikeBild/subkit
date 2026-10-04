@@ -1,17 +1,3 @@
-// User story: As a platform operator, I want to onboard a new REST API
-// end-to-end — connector, docs, skills, workflow, sync + async run — so
-// that I can ship an automation without leaving the engine.
-// Acceptance criteria:
-//   - AC1: An operator can create an HTTP connector, ingest a canned
-//          OpenAPI document, search over it, and attach a global skill.
-//   - AC2: A workflow that references the connector runs synchronously
-//          via `?sync=1` and returns the upstream body.
-//   - AC3: The same workflow runs asynchronously through pg-boss, lands
-//          a terminal execution row, and writes an audit entry for the
-//          workflow run.
-// Spec refs: docs/concepts/connectors.md, docs/authors/authoring-workflows.md,
-//            docs/authors/authoring-workflows.md, docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -71,7 +57,6 @@ afterAll(async () => {
 
 describe("journey: operator onboards a REST API", () => {
   test("AC1: create connector, ingest OpenAPI docs, search, attach a skill", async () => {
-    // 1. Create the connector via REST.
     const createRes = await journeyFetch(ctx, "/v1/connectors", {
       method: "POST",
       body: JSON.stringify({
@@ -88,7 +73,6 @@ describe("journey: operator onboards a REST API", () => {
     connectorId = connector.id;
     expect(connector.slug).toBe("widgets");
 
-    // 2. Ingest the OpenAPI doc.
     const ingestRes = await journeyFetch(ctx, `/v1/connectors/${connectorId}/docs/ingest`, {
       method: "POST",
       body: JSON.stringify({
@@ -100,7 +84,6 @@ describe("journey: operator onboards a REST API", () => {
     const ingested = (await ingestRes.json()) as { ingested_count: number };
     expect(ingested.ingested_count).toBeGreaterThanOrEqual(1);
 
-    // 3. Search the ingested docs.
     const searchRes = await journeyFetch(
       ctx,
       `/v1/connectors/${connectorId}/docs/search?q=widgets`,
@@ -109,7 +92,6 @@ describe("journey: operator onboards a REST API", () => {
     const searchBody = (await searchRes.json()) as { items: Array<{ snippet: string }> };
     expect(searchBody.items.length).toBeGreaterThanOrEqual(1);
 
-    // 4. Attach a global skill.
     const skillRes = await journeyFetch(ctx, "/v1/skills", {
       method: "POST",
       body: JSON.stringify({
@@ -143,7 +125,6 @@ describe("journey: operator onboards a REST API", () => {
     const wf = (await createWfRes.json()) as { id: string };
     workflowId = wf.id;
 
-    // Sync run.
     const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
@@ -176,7 +157,6 @@ describe("journey: operator onboards a REST API", () => {
       expect(asyncBody.status).toBe("queued");
       const execution_id = asyncBody.execution_id;
 
-      // Wait for the worker to finish.
       const finalStatus = await waitFor(
         async () => {
           const rows = await ctx.db
@@ -190,7 +170,6 @@ describe("journey: operator onboards a REST API", () => {
       );
       expect(finalStatus).toBe("succeeded");
 
-      // At least one audit row for workflow.created or workflow.run lives in the DB.
       const audits = await ctx.db
         .select()
         .from(auditLog)

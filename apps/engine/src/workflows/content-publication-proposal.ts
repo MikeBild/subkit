@@ -11,8 +11,6 @@ import {
 } from "./content-publication-boundary.ts";
 
 export type ContentPublicationBoundaries = Record<string, ContentPublicationBoundary>;
-/** Optional presentation labels from the saved batch input. They never supply
- * membership or dispatch authority; unknown/unapproved members are discarded. */
 export function contentPublicationLabels(manifest: unknown, inputs: unknown[]) {
   const allowed = new Set(
     Object.values(contentBoundariesFromManifest(manifest)).flatMap((boundary) =>
@@ -69,8 +67,6 @@ export function revisionStepOwnsRow(stepId: string, key: string): boolean {
   );
 }
 
-/** Derive fixed members from one exact-version successful held execution.
- * Never merge members across runs, tenants, versions or environments. */
 export async function proposeContentPublicationBoundaries(
   input: {
     tenant_id: string;
@@ -159,9 +155,6 @@ export async function proposeContentPublicationBoundaries(
   return result;
 }
 
-/** Driver-owned evidence only. A held/failed/foreign execution and transformed
- * step output cannot authorize a release. The caller still checks the full
- * exact-version authority and validates these receipts against its members. */
 export async function loadContentRevisionReceipts(
   db: Executor,
   tenantId: string,

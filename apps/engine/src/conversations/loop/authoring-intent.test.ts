@@ -1,15 +1,3 @@
-// Unit tests for the authoring-intent detector — the single source of
-// truth for "the user wants to author a new workflow" pattern matching,
-// consumed by `conversations/intent-detector.ts` for its
-// `startNewWorkflow` signal.
-//
-// This detector no longer picks a model. It used to: a match seeded the
-// whole turn on a hard-coded top-tier literal, overriding the configured
-// `llm.model`. That is gone — see the file header of
-// `authoring-intent.ts`. What survives here is the narrowness the
-// detector always needed, now for a different reason: a false positive
-// resets an authoring target rather than inflating a bill.
-
 import { describe, expect, it } from "bun:test";
 import { detectAuthoringIntent } from "./authoring-intent.ts";
 
@@ -109,23 +97,10 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
   });
 
   it("does NOT match 'I want to run the workflow tomorrow'", () => {
-    // "run" is not in the authoring-verb set
     expect(detectAuthoringIntent("I want to run the workflow tomorrow")).toBe(false);
   });
 
-  // SHOULD-FIX 3 (6.0.3 review) — proximity-window + connector-object
-  // reject. The previous 40-char window matched enumeration phrases
-  // like "list my workflows that build X" because "workflows" precedes
-  // "build" within 40 characters. The new 20-char window misses these.
-  // Independently, when the authoring verb's object is a CONNECTOR
-  // (before the workflow noun) the match must reject — the user wants
-  // to build a connector for an existing workflow, not author a new
-  // workflow.
-
   it("does NOT match 'list my workflows that build X' (enumeration phrase)", () => {
-    // "workflows" precedes "build" with > 20 chars of intervening
-    // tokens; the noun→verb window misses, and the verb→noun direction
-    // does not fire because "build" comes after "workflows".
     expect(detectAuthoringIntent("list my workflows that build X")).toBe(false);
   });
 
@@ -134,8 +109,6 @@ describe("detectAuthoringIntent — non-authoring phrases", () => {
   });
 
   it("does NOT match 'build a connector for the daily-report workflow'", () => {
-    // The verb's object is a connector noun, so even though "workflow"
-    // appears within the window the connector-object reject fires.
     expect(detectAuthoringIntent("build a connector for the daily-report workflow")).toBe(false);
   });
 

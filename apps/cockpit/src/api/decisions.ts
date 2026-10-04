@@ -11,8 +11,6 @@ export type SkillCandidateEvidence = components["schemas"]["SkillCandidateEviden
 
 const QUEUE_LIMIT = 200;
 
-// Oldest first: the queue must never hide the position that has waited longest,
-// and the page cap would otherwise drop exactly those rows.
 async function allDecisionPages<T>(
   path: string,
 ): Promise<{ items: T[]; total: number; reviewable_total: number }> {
@@ -30,7 +28,6 @@ async function allDecisionPages<T>(
   return { ...first, items };
 }
 
-/** Proposed fixes, oldest first — all of them, or one workflow's. */
 export function listProposedPatchCandidates(workflowId?: string): Promise<PatchCandidateList> {
   const scope = workflowId ? `&workflow_id=${encodeURIComponent(workflowId)}` : "";
   return allDecisionPages<PatchCandidate>(`/v1/patch-candidates?status=proposed&order=asc${scope}`);
@@ -42,12 +39,6 @@ export function listPatchCandidatesByStatus(
   return apiRequest(`/v1/patch-candidates?status=${status}&order=desc&limit=25`);
 }
 
-/**
- * The proposed skills a person can adopt. Observations the engine files as
- * candidates — a recurring failure, a workflow's described interface — are
- * not ready guidance (`reviewable: false`): they feed drafting as context and
- * are never a decision, so no list, count or sheet offers them as one.
- */
 export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
   return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed&reviewable=true");
 }
@@ -104,12 +95,6 @@ export function rejectSkillCandidate(id: string, reason: string): Promise<unknow
   });
 }
 
-/**
- * The observed cases a proposed skill was distilled from.
- *
- * Fetched only when a card is expanded: the list already carries the count, and
- * one request per open card is one request — there is never more than one open.
- */
 export function listSkillCandidateEvidence(
   id: string,
 ): Promise<{ items: SkillCandidateEvidence[] }> {
@@ -120,7 +105,6 @@ export type HeldSchedule = components["schemas"]["ScheduleEntry"];
 export type InboundHookAutomation =
   paths["/v1/workflows/{id}/automation-status"]["get"]["responses"][200]["content"]["application/json"]["inbound_hooks"][number];
 
-/** A workflow's inbound hooks whose deliveries the authority gate refuses. */
 export async function listHeldInboundHooks(workflowId: string): Promise<InboundHookAutomation[]> {
   const result = await apiRequest<{ inbound_hooks: InboundHookAutomation[] }>(
     `/v1/workflows/${encodeURIComponent(workflowId)}/automation-status`,

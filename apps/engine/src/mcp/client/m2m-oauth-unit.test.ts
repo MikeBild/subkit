@@ -1,17 +1,3 @@
-// Unit tests: WS1 M2M OAuth — registry schema + parseAuthConfig for the two
-// new auth kinds added in the M2M OAuth feature.
-//
-// Layer: unit — pure logic only. No DB, no Docker, no network.
-// Run with: SKIP_DOCKER=1 bun run test:unit
-//
-// Coverage:
-//   - parseAuthConfig accepts oauth2_client_credentials with client_id/scope
-//   - parseAuthConfig accepts oauth2_private_key_jwt with client_id/algorithm/scope
-//   - .strict() rejects inline secrets on the new kinds (secret-by-reference invariant)
-//   - algorithm field round-trips for oauth2_private_key_jwt
-//   - null column still defaults to { kind: "none" }
-//   - wrong tenant → pool seam would skip the credential (unit aspect: credential shape)
-
 import { describe, expect, test } from "bun:test";
 import { parseAuthConfig } from "./registry.ts";
 
@@ -36,15 +22,11 @@ describe("parseAuthConfig — oauth2_client_credentials", () => {
   });
 
   test("does not persist algorithm (algorithm is not present for client_credentials)", () => {
-    // algorithm is only relevant for private_key_jwt; client_credentials
-    // should still round-trip even when algorithm is omitted.
     const cfg = parseAuthConfig({ kind: "oauth2_client_credentials", client_id: "c1" });
     expect(cfg.algorithm).toBeUndefined();
   });
 
   test("rejects inline client_secret (.strict guard — secret must live in credentials table)", () => {
-    // The .strict() Zod schema rejects any key not declared in authConfigSchema,
-    // so an inline secret never reaches the DB row.
     expect(() =>
       parseAuthConfig({
         kind: "oauth2_client_credentials",
@@ -102,8 +84,6 @@ describe("parseAuthConfig — oauth2_private_key_jwt", () => {
   });
 
   test("rejects inline private_key (.strict guard)", () => {
-    // The private key must live only in the encrypted credentials table,
-    // never in auth_config.
     expect(() =>
       parseAuthConfig({
         kind: "oauth2_private_key_jwt",
@@ -155,9 +135,6 @@ describe("parseAuthConfig — backwards compatibility", () => {
 
 describe("parseAuthConfig — undefined optional fields are omitted from output", () => {
   test("client_id absent → not present on result (no undefined keys)", () => {
-    // Under exactOptionalPropertyTypes, a key present with value undefined
-    // is a different type from a key that is absent. parseAuthConfig must
-    // never set a key to undefined on the returned object.
     const cfg = parseAuthConfig({ kind: "oauth2_client_credentials" });
     expect(Object.hasOwn(cfg, "client_id")).toBe(false);
     expect(Object.hasOwn(cfg, "scope")).toBe(false);
@@ -167,7 +144,6 @@ describe("parseAuthConfig — undefined optional fields are omitted from output"
 
   test("algorithm absent from oauth2_private_key_jwt → not present on result", () => {
     const cfg = parseAuthConfig({ kind: "oauth2_private_key_jwt", client_id: "c3" });
-    // algorithm may be omitted (schema uses .optional()); the key must be absent.
     if (!cfg.algorithm) {
       expect(Object.hasOwn(cfg, "algorithm")).toBe(false);
     }

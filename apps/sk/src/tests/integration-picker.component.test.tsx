@@ -66,7 +66,6 @@ describe("<IntegrationPicker>", () => {
       await ui.press("enter");
       await flush();
       expect(picked).not.toBeNull();
-      // Sticky default cursor is 0; first connector in source order.
       expect((picked as ConnectorTemplate | null)?.slug).toBe("stripe");
     } finally {
       ui.unmount();
@@ -89,9 +88,6 @@ describe("<IntegrationPicker>", () => {
     try {
       await flush();
       await ui.press("esc");
-      // Ink debounces ESC to disambiguate from escape sequences (it's
-      // a setTimeout-based debounce). ui.waitFor's sleepMs opts into
-      // wall-clock progress for this case.
       await ui.waitFor(() => cancelled, { tries: 50, sleepMs: 10 });
       expect(cancelled).toBe(true);
     } finally {

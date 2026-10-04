@@ -1,12 +1,3 @@
-// In-process EngineClient — same API as `apps/sk/src/engine-client.ts`
-// (which hits HTTP), but calls underlying services directly.
-//
-// Every method is tenant-scoped. The tenant_id + actor_id are captured
-// once at construction so individual tool executions don't have to
-// re-thread them. RBAC enforcement is delegated to the underlying
-// services (most services already tenant-filter); write tools should
-// additionally call into `rbac/` helpers before dispatching.
-
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
@@ -71,12 +62,6 @@ export type EngineClientActorType = "user" | "system_account" | "system";
 export interface EngineClientCtx {
   tenant_id: string;
   actor_id: string | null;
-  /**
-   * Actor kind for audit rows. Defaults to `system` when no actor_id is
-   * supplied, `user` when one is. Callers with API-key principals (most
-   * operator CLI + MCP paths) should pass `"system_account"` explicitly
-   * to match the audit_log CHECK constraint.
-   */
   actor_type?: EngineClientActorType;
   db?: Db;
 }
@@ -111,12 +96,8 @@ export class EngineClient {
       category?: string;
       connector?: string;
     }) => listWorkflows(this.tenant_id, opts ?? {}, this.db),
-    /** Derived catalog block per slug, over the whole catalog (see
-     *  `workflows/categorize.ts`). Callers enrich list rows with it. */
     categories: () => loadCategoryIndex(this.tenant_id, this.db),
-    /** Connector slugs referenced per workflow id (`connector-refs.ts`). */
     connectorRefs: () => listConnectorRefs(this.tenant_id, this.db),
-    /** Bound schedule + active webhook count per workflow id (two queries per call). */
     triggerBindings: (ids: readonly string[]) => loadTriggerBindings(this.tenant_id, ids, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
     getBySlug: (slug: string) => getWorkflowBySlug(this.tenant_id, slug, this.db),
@@ -140,9 +121,6 @@ export class EngineClient {
         this.db,
       ),
     count: async () => {
-      // Live rows only — a soft-deleted workflow must not inflate the
-      // tenant summary (same ground-truth-cardinality contract as the
-      // list services).
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
         .from(workflowsTable)
@@ -175,7 +153,6 @@ export class EngineClient {
         this.db,
       ),
     count: async () => {
-      // Live rows only — mirrors workflows.count.
       const [row] = await this.db
         .select({ c: sql<number>`count(*)::int` })
         .from(connectorsTable)
@@ -184,9 +161,6 @@ export class EngineClient {
         );
       return Number(row?.c ?? 0);
     },
-    // Describe the placeholder tokens a workflow author (the LLM, usually)
-    // should use to reference this connector's URL, credentials, and config
-    // without ever inlining a secret. See `llm/substitution/*`.
     describePlaceholders: (slug: string, environment: "dev" | "prod" = "dev") =>
       describeConnectorPlaceholders(slug, {
         tenant_id: this.tenant_id,
@@ -205,7 +179,6 @@ export class EngineClient {
         .limit(1);
       return rows[0] ?? null;
     },
-    /** The run's structured outcome (see `execution/outcome.ts`). */
     outcome: (row: Parameters<typeof loadExecutionOutcome>[1]) =>
       loadExecutionOutcome(this.tenant_id, row, this.db),
   };
@@ -246,7 +219,6 @@ export class EngineClient {
         review_reason: readiness[index]?.review_reason ?? null,
       }));
     },
-    /** The tenant's open patch decisions — the one predicate every surface counts. */
     openDecisions: () =>
       selfHealingSvc.readOpenPatchDecisions(this.db, this.tenant_id, { limit: 0 }),
     get: async (id: string) => {
@@ -348,9 +320,6 @@ export class EngineClient {
   };
 
   audit = {
-    // tenant_id is injected here from the bound principal — callers must NOT
-    // supply it (Omit keeps it off the caller-facing type so a tenant can never
-    // query another tenant's audit log).
     query: (
       filters?: Omit<Parameters<typeof queryAuditLog>[1], "tenant_id">,
       opts?: Parameters<typeof queryAuditLog>[2],
@@ -360,20 +329,11 @@ export class EngineClient {
 
   metrics = {
     monthlyTokenUsage: () => monthlyUsage(this.tenant_id, this.db),
-    // The workspace's own cap. `/v1/status` has always resolved it; the tool
-    // named "get token budget" answered `null` for the tenant because nothing
-    // here offered it the value.
     tenantTokenBudget: () => resolveMonthlyBudget(this.tenant_id),
     currentMonthBucket: () => currentMonthBucket(),
-    /** The workspace's month — used, cap, remaining, state — as `/v1/status` reads it. */
     tenantMonthlyBudget: () => readTenantMonthlyBudget(this.tenant_id, this.db),
-    /** One cap's figures from a used/cap pair, with the shared state. */
     monthlyBudgetFigures: (used: number, budget: number | null) =>
       monthlyBudgetFigures(used, budget),
-    /**
-     * Priced spend over a window, as `GET /v1/stats/llm` prices it: the same
-     * by-model rollup, the same catalog-plus-override rates.
-     */
     llmWindowCost: (window: { from: Date; to: Date; userId?: string | null }) =>
       readLlmWindowCost(this.db, {
         tenantId: this.tenant_id,
@@ -390,7 +350,6 @@ export class EngineClient {
         .where(eq(llmUsageTable.tenant_id, this.tenant_id))
         .orderBy(desc(llmUsageTable.created_at))
         .limit(Math.min(limit, 200)),
-    // Per-user variants — tenant predicate FIRST, then user_id narrowing.
     monthlyTokenUsageForUser: (userId: string) =>
       monthlyUsageForUser(this.tenant_id, userId, this.db),
     userTokenBudget: (userId: string) => resolveUserMonthlyBudget(this.tenant_id, userId, this.db),
@@ -504,27 +463,11 @@ export class EngineClient {
         connectors: connCount,
         executions: Number(execRows[0]?.c ?? 0),
         audit_entries: Number(auditRows[0]?.c ?? 0),
-        // Self-healing fixes a human can decide now — the same number the
-        // health digest and the patch-candidates list report.
         patch_decisions_open: openPatches.open_total,
       };
     },
   };
 
-  /**
-   * Record a tool-driven audit entry. Conversation write tools call this
-   * before / after a tenant-mutating action.
-   *
-   * LOCAL-SK-ZWEITER-AUDIT-SCHREIBER — this method used to hold its own
-   * `insert(auditLog)`. That made it a SECOND writer for the append-only
-   * trail, and it reached the table without `scrubSecrets`: measured with a
-   * real client, `prompt` and `api_token` landed in the row verbatim across
-   * all ~32 call sites. It now goes through `auditAwait`, the same entry
-   * point `audit()` uses, so the scrub, the logger mirror, the trace id and
-   * the written-rows metric apply to both writers identically. There is no
-   * direct insert left here — see the `audit_log has a single writer`
-   * invariant.
-   */
   async audit_write(params: {
     resource_type: string;
     resource_id: string;

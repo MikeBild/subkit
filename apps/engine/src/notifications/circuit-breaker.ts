@@ -1,24 +1,3 @@
-// P-GC5: per-channel circuit breaker for notification delivery.
-//
-// State machine (closed → open → half_open → closed):
-//
-//   closed    — deliveries pass. Each failure increments
-//               `consecutive_failures`. When it reaches 10 the breaker
-//               transitions to `open` with `circuit_open_until =
-//               now + 5 min`.
-//   open      — deliveries are skipped with `reason: breaker_open` until
-//               `circuit_open_until`. After that the next call returns
-//               `canPass=true` and puts the breaker in `half_open`
-//               (tracked in memory only — DB still shows `open` until
-//               the next success/failure).
-//   half_open — one probe is in flight. A success closes the breaker
-//               and clears counters. A failure re-opens for another
-//               5 min and bumps `consecutive_failures`.
-//
-// State is persisted to the `notification_channels` row so a restart
-// preserves cool-down timing. An in-memory `phase` map tracks the
-// ephemeral `half_open` transition.
-
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { type NotificationChannelRow, notificationChannels } from "../db/schema/notifications.ts";
@@ -42,12 +21,6 @@ function setPhase(channelId: string, phase: CircuitPhase): void {
   }
 }
 
-/**
- * Decide whether a delivery attempt may proceed. Pure-read except for
- * the in-memory phase flip `open → half_open`. DB state is not
- * mutated here; callers invoke `onSuccess` / `onFailure` after the
- * actual delivery completes.
- */
 export function canPass(
   channel: Pick<
     NotificationChannelRow,
@@ -67,7 +40,6 @@ export function canPass(
     if (openUntil > now) {
       return { allowed: false, phase: "open" };
     }
-    // Cool-down expired → flip to half_open and let one probe through.
     setPhase(channel.id, "half_open");
     return { allowed: true, phase: "half_open" };
   }
@@ -75,10 +47,6 @@ export function canPass(
   return { allowed: true, phase: "closed" };
 }
 
-/**
- * Record a successful delivery. Closes the breaker, resets the
- * counters, and persists the cleared state to the DB row.
- */
 export async function onSuccess(db: Db, channelId: string): Promise<void> {
   setPhase(channelId, "closed");
   await db
@@ -92,11 +60,6 @@ export async function onSuccess(db: Db, channelId: string): Promise<void> {
     .where(eq(notificationChannels.id, channelId));
 }
 
-/**
- * Record a failed delivery. Increments the counter, opens the breaker
- * once the threshold is reached (or if this was a half-open probe),
- * and persists the updated state to the DB row.
- */
 export async function onFailure(
   db: Db,
   channel: Pick<NotificationChannelRow, "id" | "consecutive_failures">,
@@ -124,7 +87,6 @@ export async function onFailure(
   return { phase: nextState, consecutive_failures: nextFailures };
 }
 
-/** Test-only helper. */
 export function __resetBreakers(): void {
   phaseByChannel.clear();
 }

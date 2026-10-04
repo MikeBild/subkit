@@ -1,9 +1,3 @@
-// createWorkflow on a duplicate active slug must return a clean conflict
-// result — NOT throw a raw Postgres 23505 that surfaces as an unhandled 500.
-// Observed in prod runtime logs: a duplicate-slug POST /v1/workflows logged
-// `request.failed: unhandled error … Failed query: insert into "workflows"`
-// and returned `{"code":"internal_error"}` (HTTP 500).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -36,8 +30,6 @@ describe("createWorkflow — duplicate slug conflict", () => {
     const first = await createWorkflow({ tenant_id, def: def("dup-slug"), actor_id: null }, ctx.db);
     expect("workflow" in first).toBe(true);
 
-    // The bug: this threw a raw 23505 out of the transaction → unhandled 500.
-    // The fix: it resolves to a structured `{ errors }` the route maps to a 4xx.
     let second: Awaited<ReturnType<typeof createWorkflow>>;
     let threw = false;
     try {

@@ -1,10 +1,3 @@
-// Privacy-safe usage-event writer shared by HTTP, Chat, Conversations, and MCP.
-//
-// The accepted input is intentionally closed and payload-free. Every string
-// persisted by this module is either a bounded enum/classifier or a canonical
-// route template. Actor/session identities are HMACed with a SubKit-local key
-// before they cross the database boundary.
-
 import { createHmac } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
@@ -168,17 +161,12 @@ function canonicalOperation(surface: UsageSurface, value: string): string {
   return value.slice(0, 160);
 }
 
-/** A stable, product-local pseudonym. Never export the source identifier. */
 export function usageHmac(secret: string, tenantId: string, kind: "actor" | "session", id: string) {
   return createHmac("sha256", secret)
     .update(`subkit-usage-v1\0${tenantId}\0${kind}\0${id}`)
     .digest("hex");
 }
 
-/**
- * Persist one event. The caller may await this in tests/jobs; latency-sensitive
- * request paths use `recordUsageEvent`, the no-throw fire-and-forget wrapper.
- */
 export async function appendUsageEvent(db: Executor, input: UsageEventInput): Promise<boolean> {
   const cfg = usageConfig();
   if (!cfg.enabled) return false;
@@ -197,8 +185,6 @@ export async function appendUsageEvent(db: Executor, input: UsageEventInput): Pr
   await db.insert(usageEvents).values({
     tenant_id: input.tenantId,
     surface: input.surface,
-    // Route/method classifiers are capped as a final cardinality and privacy
-    // guard. Callers must pass canonical values, never request content.
     operation: canonicalOperation(input.surface, input.operation),
     method: input.method ? safeToken(input.method, METHODS, "OTHER") : null,
     outcome: safeToken(input.outcome, OUTCOMES, "unknown"),
@@ -233,8 +219,6 @@ export async function appendUsageEvent(db: Executor, input: UsageEventInput): Pr
   if (current - lastRetentionSweepAt >= RETENTION_SWEEP_INTERVAL_MS) {
     lastRetentionSweepAtByTenant.set(input.tenantId, current);
     const cutoff = new Date(current - cfg.retentionDays * 86_400_000);
-    // Tenant predicate first, even for retention. This event's tenant pays
-    // only for its own bounded cleanup and can never delete another tenant.
     await db
       .delete(usageEvents)
       .where(and(eq(usageEvents.tenant_id, input.tenantId), lt(usageEvents.created_at, cutoff)));
@@ -258,7 +242,6 @@ export function trafficClassFromHeader(value: string | undefined): TrafficClass 
     : "organic";
 }
 
-/** Test seam for deterministic retention/config suites. */
 export function resetUsageWriterForTests(): void {
   lastRetentionSweepAtByTenant.clear();
   warnedMissingSecret = false;

@@ -1,19 +1,3 @@
-// Locks the no-silent-slug-adopt contract on save_workflow_draft.
-//
-// Background: a user starts a brand-new workflow draft ("Berlin Weather
-// Tomorrow") in a conversation with no target_workflow_id. The LLM
-// emits draft.slug = "list-private-github-repos" (a slug that already
-// belongs to a different live workflow in the tenant). Old behaviour:
-// save_workflow_draft silently adopted that workflow as the target and
-// overwrote its content. The user noticed only after listing workflows
-// and seeing "list-private-github-repos (active) — Berlin Weather
-// Tomorrow" — same id, content of a totally different workflow.
-//
-// New contract: a slug collision against a different live workflow id
-// returns slug_conflict_with_live_workflow with the conflict's id +
-// name. To overwrite, the LLM must call save_workflow_draft again with
-// target_workflow_id=<conflict.id> AFTER the user has confirmed in chat.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -158,7 +142,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
       .values({
         tenant_id: ctx.tenant_id,
         status: "active",
-        // No target_workflow_id — this is a brand-new authoring conversation.
         draft: { workflow: { name: "Berlin Weather Tomorrow", steps: [] } },
       })
       .returning();
@@ -167,7 +150,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
 
     const draft = readyDraft({
       name: "Berlin Weather Tomorrow",
-      // LLM accidentally emits the colliding slug.
       slug: "list-private-github-repos",
     });
 
@@ -190,7 +172,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     expect(typeof data.recovery?.overwrite).toBe("string");
     expect(typeof data.recovery?.rename).toBe("string");
 
-    // Critical: the existing workflow MUST NOT have been mutated.
     const refetched = await ctx.testDb.db
       .select({ name: workflows.name })
       .from(workflows)
@@ -204,7 +185,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     expect(versionRows.length).toBe(1);
     expect(versionRows[0]?.version).toBe(1);
 
-    // Conversation must NOT have been silently pinned to the conflicting workflow.
     const convAfter = await ctx.testDb.db
       .select({ target_workflow_id: conversations.target_workflow_id })
       .from(conversations)
@@ -256,7 +236,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     expect(result.ok).toBe(true);
     expect(result.committed_workflow_id).toBe(existing.id);
 
-    // The existing workflow row was updated in place — a v2 row was added.
     const versionRows = await ctx.testDb.db
       .select({ version: workflowVersions.version })
       .from(workflowVersions)
@@ -270,7 +249,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
     expect(after?.current_version_id).toBe(existing.version_id);
     expect(after?.draft_version_id).toBeTruthy();
 
-    // The conversation is now pinned for follow-up edits.
     const convAfter = await ctx.testDb.db
       .select({ target_workflow_id: conversations.target_workflow_id })
       .from(conversations)
@@ -295,7 +273,6 @@ describe("save_workflow_draft — slug-conflict-with-live-workflow contract", ()
 
     const result = await saveWorkflowDraftTool.execute(
       toolCtx(ctx.tenant_id, conv.id, ctx.user_id, () => draft),
-      // Valid UUID shape but no row in this tenant.
       { target_workflow_id: "00000000-0000-0000-0000-000000000000" },
     );
 

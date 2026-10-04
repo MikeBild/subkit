@@ -1,18 +1,3 @@
-// User story: As an operator whose webhook-started finding mailer stopped
-// running, I want the engine to diagnose the refusal on its own and propose
-// the repair for review, so that the fix is waiting for me instead of a held
-// hook that only says "authority unavailable".
-// Acceptance criteria:
-//   - AC1: An approved run of the version was refused at dispatch because its
-//     encoder broke the message (`not_utf8`). The next delivery is refused by
-//     the gate, the hook becomes held, and exactly one gate diagnosis job is
-//     queued for that version.
-//   - AC2: That job proposes one `gate_fix` candidate (fixer
-//     `use_utf8_encoder`), unsafe and awaiting review — nothing is applied.
-//   - AC3: A repeated refused delivery queues nothing new and leaves exactly
-//     one candidate.
-// Spec refs: docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { and, eq, like, sql } from "drizzle-orm";
@@ -44,8 +29,6 @@ import {
 const SECRET = "whsec_j72_standardaaaaaaaaaaaaaaa";
 const HOOK = "watchkit-findings";
 
-// The shape of a real finding mailer: "—" and "·" in the message, encoded one
-// byte per character, so the reviewed recipient is right and the bytes are not.
 const ENCODER = [
   "const subject = '[watchkit page] api.example.com — certificate expires';",
   "const html = '<p>watchkit.finding · api.example.com</p>';",
@@ -177,7 +160,6 @@ beforeAll(async () => {
   workflowId = wf.id;
   versionId = wf.version_id;
 
-  // One approved production run, spent on a run the boundary refuses.
   const review = await previewWorkflowAuthority(
     {
       tenant_id: ctx.tenantId,
@@ -262,7 +244,6 @@ describe("journey 72: a held hook proposes its gate repair", () => {
     const again = await deliver("finding-2");
     expect(again.status).toBe(409);
     expect(await gateJobs()).toBe(1);
-    // Give a stray job the worker's polling interval to land before counting.
     await Bun.sleep(3_000);
     expect(await gateCandidates()).toHaveLength(1);
   });

@@ -1,13 +1,3 @@
-// Coverage lock for the Config-tab label table.
-//
-// The engine's Zod schema declares N config leaves. Every one of them
-// must have a curated label in `lib/config-labels.ts` so the row body
-// reads as plain English, not as a dotted machine path. If you add a
-// new leaf to the engine schema and forget to add the label here,
-// this test fails — your row would otherwise fall back to the
-// derived "title-cased last segment" which is usually not what you
-// want for a primary UI label.
-
 import { describe, expect, test } from "bun:test";
 import { listConfigLeaves } from "../../../../engine/src/config/walk.ts";
 import {
@@ -24,9 +14,6 @@ describe("config-labels — coverage lock", () => {
     const missing: string[] = [];
     for (const leaf of leaves) {
       const path = leaf.path.join(".");
-      // `tenants.*` is a record-valued overlay map keyed by tenant id —
-      // it intentionally has no per-row UI representation and is
-      // skipped by the Config tab. Don't require a label.
       if (path.startsWith("tenants.")) continue;
       if (!(path in LABEL_BY_PATH)) missing.push(path);
     }
@@ -61,7 +48,6 @@ describe("config-labels — pure helpers", () => {
   test("formatLabel humanizes the last segment", () => {
     expect(formatLabel("storage.object_store.access_key_id")).toBe("Access key id");
     expect(formatLabel("repl.permissionMode")).toBe("PermissionMode");
-    // Single segment with no dot.
     expect(formatLabel("solo_thing")).toBe("Solo thing");
   });
 

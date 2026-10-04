@@ -1,16 +1,3 @@
-// User story: As a platform operator, I want policy-as-code hooks that
-// run before every outbound request so risky operations can be blocked
-// without a code change.
-// Acceptance criteria:
-//   - AC1: An admin can create a request hook via REST that denies
-//          mutating methods.
-//   - AC2: A workflow whose step would POST is denied by the hook and
-//          the execution surfaces a `hook_denied` error.
-//   - AC3: An `audit_log` row is written with `action=policy.denied`.
-//   - AC4: A GET-only workflow still succeeds even while the hook is
-//          enabled.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/admins/rbac-and-roles.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -81,7 +68,6 @@ describe("journey: before-request hook denial", () => {
   });
 
   test("AC3: member-role deny hook blocks workflow run and writes a policy.denied audit row", async () => {
-    // Seed a fresh deny-all hook for the `member` role.
     const memberHookRes = await journeyFetch(ctx, "/v1/auth/request-hooks", {
       method: "POST",
       body: JSON.stringify({
@@ -95,9 +81,6 @@ describe("journey: before-request hook denial", () => {
     const memberHookBody = (await memberHookRes.json()) as { id: string };
     const memberHookId = memberHookBody.id;
 
-    // Seed a member user + issue an API key tied to that user directly
-    // against the DB. The journey bootstrap only creates an admin user,
-    // so we need to drop down a layer to make a second identity.
     const [memberUser] = await ctx.db
       .insert(users)
       .values({
@@ -120,9 +103,6 @@ describe("journey: before-request hook denial", () => {
       scopes: ["*"],
     });
 
-    // Build a workflow the member will invoke. We use the admin API key
-    // to create the workflow (the create route requires admin-ish scope)
-    // and then run it as the member.
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -158,12 +138,10 @@ describe("journey: before-request hook denial", () => {
       steps: Array<{ error: { code?: string } | null }>;
     };
     expect(rb.status).toBe("failed");
-    // First failing step should surface the policy denial.
     const denied = rb.steps.find((s) => s.error && (s.error as { code?: string }).code);
     expect(denied).toBeDefined();
     expect((denied!.error as { code: string }).code).toBe("policy.denied");
 
-    // Audit row with action=policy.denied for this hook id.
     const auditRows = await ctx.db
       .select()
       .from(auditLog)

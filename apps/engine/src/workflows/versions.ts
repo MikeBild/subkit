@@ -1,15 +1,3 @@
-// A workflow's stored versions: the read-only history and the restore that
-// makes one of them current again.
-//
-// History shows what was saved, as it was saved. The definition schema moves
-// on; a version written under an earlier schema is still part of the record
-// and must stay listable, so the list never parses a stored dag strictly — it
-// only marks whether the version would still validate (`invalid`). Restore is
-// the opposite: it makes a stored dag the live definition, so there the schema
-// is enforced and a version that no longer validates is refused by name.
-// Restore is additive: it duplicates the old version's dag as a new version
-// with N+1, never overwriting history.
-
 import { and, desc, eq, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -33,10 +21,7 @@ export interface VersionView {
   id: string;
   workflow_id: string;
   version: number;
-  /** The stored definition, unchanged — not re-parsed against today's schema. */
   dag: unknown;
-  /** True when the stored definition no longer passes the current schema.
-   *  Such a version can be read but not restored. */
   invalid: boolean;
   note: string | null;
   created_at: Date;
@@ -47,16 +32,9 @@ export interface ListWorkflowVersionsOptions {
   offset?: number;
 }
 
-/** The largest page of versions one read returns. Every row carries its full
- *  definition and is checked against the current schema, so a page is bounded. */
 export const WORKFLOW_VERSION_LIST_MAX_LIMIT = 200;
-/** The page a read gets when it names no `limit`. */
 export const WORKFLOW_VERSION_LIST_DEFAULT_LIMIT = 50;
 
-/** Versions of one workflow, newest first — the first page is the recent
- *  history, which is what a reader looking for the last good version wants.
- *  `total` is the whole history's size, so a caller that wants all of it
- *  pages with `offset` until it has that many. */
 export async function listWorkflowVersions(
   tenant_id: string,
   id: string,
@@ -97,7 +75,6 @@ export async function listWorkflowVersions(
   };
 }
 
-/** A stored version whose definition no longer passes the current schema. */
 export class VersionNotRestorableError extends Error {
   readonly code = "version_not_restorable";
   readonly version: number;
@@ -113,8 +90,6 @@ export class VersionNotRestorableError extends Error {
   }
 }
 
-/** The stored dag as a current definition, or a `VersionNotRestorableError`
- *  naming the step and field that no longer validate. */
 function parseRestorableVersion(version: number, dag: unknown): WorkflowDef {
   const stored = readStoredDefinition(dag);
   if (stored.invalid) throw new VersionNotRestorableError(version, stored.issues);
@@ -145,9 +120,6 @@ export async function restoreWorkflowVersion(
       .limit(1);
     const target = targetRows[0];
     if (!target) return null;
-    // Restore makes a stored dag the live definition, so it is held to the
-    // current schema — and before anything is written, so a refused version
-    // leaves no version row, audit entry or lifecycle event behind.
     const restoredDef = parseRestorableVersion(version, target.dag);
     const restoreRows = (await tx
       .select({
@@ -169,10 +141,6 @@ export async function restoreWorkflowVersion(
       })
       .returning();
     assertInsertRow(v, "restore");
-    // Restore makes the target version current, so the top-level description
-    // column must track that version's DAG description (mirrors the
-    // create/update full-def paths). dag is jsonb-typed `unknown`; read its
-    // description defensively.
     const restoredDescription =
       target.dag && typeof target.dag === "object" && !Array.isArray(target.dag)
         ? ((target.dag as { description?: unknown }).description ?? null)
@@ -205,8 +173,6 @@ export async function restoreWorkflowVersion(
       },
       tx,
     );
-    // A version restore replaces what `readResource("workflow://<id>")`
-    // returns; MCP subscribers must be notified.
     await emitWorkflowLifecycle(tx, {
       tenant_id,
       type: "workflow.version_restored",
@@ -224,11 +190,6 @@ export async function restoreWorkflowVersion(
       new_version: next,
       actor_id,
     });
-    // Re-apply trigger bindings from the restored definition. A
-    // workflow that was, for example, scheduled at v3 but rotated to a
-    // request-only v4 must have its schedule torn down on restore-to-
-    // v3 and re-bound; otherwise the public surface drifts from the
-    // committed dag.
     const wfRows = await tx
       .select({ slug: workflows.slug })
       .from(workflows)

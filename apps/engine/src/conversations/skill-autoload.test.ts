@@ -1,11 +1,3 @@
-// Pure-matcher unit tests for the data-driven autoload.
-//
-// Parity-matrix design: instead of importing `loadActivationCatalog`
-// (which needs a DB), we hand-roll a tiny ActivationRecord catalog that
-// mirrors the shipped seed-skill `activates_when` rules. Every (tool,
-// input) tuple covered by the legacy `RULES` table has its own assertion
-// here so the rewrite cannot regress against the historical contract.
-
 import { describe, expect, test } from "bun:test";
 import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import {
@@ -126,7 +118,6 @@ describe("reaffirmLoadedForTurn — recency re-affirmation (inverse of one-way a
       CATALOG,
       ["subkit-concepts", "error-recovery"],
     );
-    // Both carry a baseline rule → re-affirmed regardless of text.
     expect(out).toContain("subkit-concepts");
     expect(out).toContain("error-recovery");
   });
@@ -160,7 +151,6 @@ describe("reaffirmLoadedForTurn — recency re-affirmation (inverse of one-way a
     const out = reaffirmLoadedForTurn(
       { mode: "user_turn", user_text: "I hit an error", connector_drivers: ["postgres"] },
       CATALOG,
-      // error-recovery would match but it is NOT loaded → must not appear.
       ["subkit-concepts"],
     );
     expect(out).not.toContain("error-recovery");
@@ -269,11 +259,6 @@ describe("autoloadForToolCall — RULES parity matrix", () => {
     expect(out).toContain("workflow-authoring");
   });
 
-  // A repair turn looks nothing like a creation turn: it carries `step_patches`
-  // whose value is a bare `{key_prefix, …}` with no driver anywhere. The
-  // creation-shaped test below kept passing while exactly this case failed in
-  // production, leaving the storage skill unloaded for a chat repairing an S3
-  // workflow. The driver has to come from the workflow draft, not the patch.
   test("a repair-shaped step_patches call carries no driver of its own", () => {
     expect(
       autoloadForToolCall(
@@ -364,8 +349,6 @@ describe("autoloadForToolCall — invariants", () => {
   });
 
   test("ranking is deterministic by tag count then slug", () => {
-    // postgres-connectors (2 tags) ranks before s3-connectors (1 tag)
-    // when both match an edit_workflow_patch turn that mentions both drivers.
     const out = autoloadForToolCall(
       {
         tool: "edit_workflow_patch",
@@ -417,9 +400,6 @@ describe("autoloadForUserTurn", () => {
   });
 
   test("authoring-only skill is suppressed on the read-only chat surface", () => {
-    // Regression guard: an authoring-oriented seed skill (e.g.
-    // domain-setup-onboarding) must NOT autoload on chat — its
-    // `create_skill` guidance dead-ends on the fail-closed chat palette.
     const catalog: ActivationRecord[] = [
       {
         slug: "domain-setup-onboarding",
@@ -429,14 +409,12 @@ describe("autoloadForUserTurn", () => {
         tags: ["onboarding", "authoring-only"],
       },
     ];
-    // Loads on authoring surfaces...
     expect(
       autoloadForUserTurn({ user_text: "help with music theory", surface: "mcp" }, catalog, []),
     ).toContain("domain-setup-onboarding");
     expect(autoloadForUserTurn({ user_text: "help with music theory" }, catalog, [])).toContain(
       "domain-setup-onboarding",
     );
-    // ...but is withheld on chat.
     expect(
       autoloadForUserTurn({ user_text: "help with music theory", surface: "chat" }, catalog, []),
     ).not.toContain("domain-setup-onboarding");
@@ -602,7 +580,6 @@ describe("applies_to — chat skills stay out of drafting, drafting skills out o
         [],
       ),
     ).toEqual(["drafting-only"]);
-    // Even a baseline chat skill ages out once the turn drafts.
     expect(
       reaffirmLoadedForTurn(
         { mode: "user_turn", user_text: "a report", audience: "authoring" },

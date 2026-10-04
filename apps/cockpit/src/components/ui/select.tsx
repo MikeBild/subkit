@@ -102,13 +102,7 @@ function SelectItem({
   description,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Item> & {
-  /**
-   * Text beside the label that is not part of it: it stays out of `ItemText`,
-   * so the trigger shows the bare label and the option's accessible name is
-   * the label alone.
-   */
   suffix?: React.ReactNode;
-  /** One line under the label, outside `ItemText` for the same reason. */
   description?: React.ReactNode;
 }) {
   const label = <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>;

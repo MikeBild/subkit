@@ -1,11 +1,3 @@
-// Capability-gap candidate loop — recordGapCandidate + listCapabilityGaps.
-//
-// Verifies the cannot_help -> durable gap signal: a gap is persisted as a
-// capability_gap discovery artifact, recurring gaps dedup by fingerprint
-// and bump an occurrence counter (the demand signal), distinct gaps get
-// distinct rows, and the list is demand-ranked. Running this also proves
-// migration 0006 (the capability_gap enum value) applies on a fresh DB.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -54,7 +46,6 @@ describe.skipIf(skip)("discovery/capability-gaps", () => {
     expect(draft.occurrences).toBe(1);
     expect(draft.suggested_kind).toBe("connector");
     expect(typeof draft.fingerprint).toBe("string");
-    // A gap has no source files — evidence is empty.
     expect(view!.evidence.file_ids).toEqual([]);
     expect(view!.evidence.excerpts).toEqual([]);
   });
@@ -76,7 +67,6 @@ describe.skipIf(skip)("discovery/capability-gaps", () => {
     expect((view!.draft as Record<string, unknown>).occurrences).toBe(2);
 
     const after = await listCapabilityGaps({ tenant_id: tenantId }, testDb.db);
-    // No new row — same fingerprint just incremented.
     expect(after.length).toBe(beforeCount);
   });
 
@@ -108,7 +98,6 @@ describe.skipIf(skip)("discovery/capability-gaps", () => {
   test("listCapabilityGaps is demand-ranked (most-requested first)", async () => {
     const gaps = await listCapabilityGaps({ tenant_id: tenantId }, testDb.db);
     expect(gaps.length).toBe(2);
-    // stripe.refunds has 2 occurrences, slack.chat has 1 → stripe first.
     expect((gaps[0]!.draft as Record<string, unknown>).missing_capability).toBe(
       "connector.stripe.refunds",
     );
@@ -122,8 +111,6 @@ describe.skipIf(skip)("discovery/capability-gaps", () => {
       .where(
         and(eq(auditLog.tenant_id, tenantId), eq(auditLog.action, "discovery.artifact_proposed")),
       );
-    // At least the two distinct first-occurrence inserts are audited
-    // (occurrence bumps do not re-audit).
     expect(audits.length).toBeGreaterThanOrEqual(2);
     const meta = audits.map((a) => a.metadata as Record<string, unknown> | null);
     expect(meta.some((m) => m?.kind === "capability_gap")).toBe(true);

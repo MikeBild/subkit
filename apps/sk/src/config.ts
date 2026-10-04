@@ -1,13 +1,3 @@
-// `~/.sk/config.json` — multi-profile config for the `sk` end-user CLI.
-//
-// The `sk` config supports multiple named profiles up-front; switching
-// profiles is a single flag (`--profile <name>`) or the active one via
-// `/tenant` at runtime.
-//
-// readSse + the TurnEvent reducer live under
-// packages/cli-core (@cli-core/*) and are imported by the shared `sk`
-// CLI surfaces.
-
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,18 +6,8 @@ export interface Profile {
   engine_url: string;
   api_key: string;
   active_tenant_id: string | null;
-  /**
-   * Cached for status-line rendering only — not authoritative.
-   * Always overridden by RBAC probe results on startup.
-   */
   persona_hint?: "admin" | "operator" | "member" | "enduser" | "portal" | null;
-  /** Locked to true for profiles authenticated via a portal token. */
   portal_locked?: boolean;
-  /**
-   * Highest notification-inbox row id this profile has seen. `sk
-   * notifications inbox` reads it as the `since` cursor so each call
-   * surfaces only newer rows, then persists the returned cursor back.
-   */
   notification_inbox_cursor?: number;
 }
 
@@ -36,8 +16,6 @@ export interface SkConfig {
   profiles: Record<string, Profile>;
 }
 
-// Matches the engine's default port (.env → PORT=3000). Override via
-// --engine-url or SUBKIT_ENGINE_URL when talking to a remote engine.
 export const DEFAULT_ENGINE_URL = "http://localhost:3000";
 export const DEFAULT_PROFILE = "default";
 
@@ -97,9 +75,7 @@ export function saveConfig(cfg: SkConfig, path: string = configPath()): void {
   writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, "utf8");
   try {
     chmodSync(path, 0o600);
-  } catch {
-    /* windows / non-unix: no-op */
-  }
+  } catch {}
 }
 
 export interface ResolvedProfile extends Profile {
@@ -114,15 +90,6 @@ export interface ResolveOptions {
   path?: string | undefined;
 }
 
-/**
- * Resolve the effective profile for this invocation. Precedence:
- *
- *   1. CLI flags (`--engine-url`, `--api-key`, `--tenant`, `--profile`)
- *   2. Environment variables (`SUBKIT_ENGINE_URL`, `SUBKIT_API_KEY`,
- *      `SUBKIT_TENANT`, `SUBKIT_PROFILE` or `SK_PROFILE`)
- *   3. On-disk profile fields (from the selected profile)
- *   4. Defaults
- */
 export function resolveProfile(opts: ResolveOptions = {}): ResolvedProfile {
   const disk = loadConfig(opts.path ?? configPath());
   const profileName =
@@ -157,11 +124,6 @@ export function resolveProfile(opts: ResolveOptions = {}): ResolvedProfile {
   };
 }
 
-/**
- * Read the persisted notification-inbox cursor for a profile, or 0 when
- * the profile has never paged the inbox. Resolves the profile name the
- * same way `resolveProfile` does so `--profile` / env overrides apply.
- */
 export function getNotificationInboxCursor(
   opts: ResolveOptions = {},
   path: string = configPath(),
@@ -177,7 +139,6 @@ export function getNotificationInboxCursor(
   return typeof cursor === "number" ? cursor : 0;
 }
 
-/** Persist the notification-inbox cursor for the resolved profile. */
 export function setNotificationInboxCursor(
   cursor: number,
   opts: ResolveOptions = {},
@@ -195,21 +156,9 @@ export function setNotificationInboxCursor(
   saveConfig(disk, path);
 }
 
-/** Persist an updated profile back to disk under its current name. */
 export function saveProfile(updates: ResolvedProfile, path: string = configPath()): void {
   const disk = loadConfig(path);
   disk.active_profile = updates.name;
-  // When the operator signs out the ResolvedProfile carries
-  // `api_key: ""`. Persisting that as a literal empty string risks
-  // future code paths sending `Authorization: Bearer ` (with trailing
-  // space) and lighting up the engine's 401 path with a misleading
-  // "principal token absent" log.
-  // The engine-client already short-circuits empty strings via
-  // `if (this.apiKey)`, but stripping the field at the disk boundary
-  // keeps the persisted shape honest: a profile is either signed in
-  // (api_key present + non-empty) or signed out (api_key absent).
-  // `resolveProfile` falls back to `""` via its `|| ""` chain when
-  // the field is missing, so the runtime contract is preserved.
   const trimmedKey = updates.api_key.trim();
   disk.profiles[updates.name] = {
     engine_url: updates.engine_url,

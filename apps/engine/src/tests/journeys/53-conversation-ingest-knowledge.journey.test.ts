@@ -1,18 +1,3 @@
-// Journey 53: create_knowledge_source tool creates a searchable KS, and
-// cross-tenant file isolation is enforced.
-//
-// Acceptance criteria:
-//   - AC1: invoking `create_knowledge_source` with mode='from_attachment'
-//          in-process (direct tool call with synthesised ToolContext)
-//          produces ok=true, chunk_count >= 2, the KS row appears in
-//          GET /v1/knowledge-sources, and searchKnowledge("BootNotification")
-//          returns at least one hit whose knowledge_source_id matches.
-//   - AC2: supplying a file_id that belongs to tenant B while operating
-//          as tenant A returns ok=false, error='file_not_found'. No KS row
-//          is written. This proves requireFileForTenant isolation.
-//
-// Spec refs: docs/authors/authoring-workflows.md, docs/concepts/glossary.md (Knowledge Sources)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -23,8 +8,6 @@ import { knowledgeSources } from "../../db/schema/index.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
 import { invalidateKnowledgeCache, searchKnowledge } from "../../knowledge/service.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
-
-// ---------- OCPP fixture (produces ≥2 chunks when parsed as Markdown) ----------
 
 const OCPP_FIXTURE = [
   "# OCPP 2.0.1 Protocol Reference",
@@ -67,8 +50,6 @@ const OCPP_FIXTURE = [
   "",
   "Stops a running transaction by `transactionId`.",
 ].join("\n");
-
-// ---------- helpers ----------
 
 function makeToolCtx(ctx: JourneyCtx): ToolContext {
   // biome-ignore lint/suspicious/noExplicitAny: minimal stub for in-process service forwarding
@@ -130,8 +111,6 @@ function makeToolCtx(ctx: JourneyCtx): ToolContext {
   };
 }
 
-// ---------- setup ----------
-
 let ctxA: JourneyCtx;
 let ctxB: JourneyCtx;
 
@@ -139,7 +118,6 @@ beforeAll(async () => {
   ctxA = await createJourneyCtx("ks-ingest-53-a");
   ctxB = await createJourneyCtx("ks-ingest-53-b");
 
-  // Start both journeys from a clean knowledge-search cache.
   invalidateKnowledgeCache(ctxA.tenantId);
   invalidateKnowledgeCache(ctxB.tenantId);
 }, JOURNEY_HOOK_TIMEOUT);
@@ -150,12 +128,7 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 53: create_knowledge_source tool — ingest and search", () => {
-  // ----------------------------------------------------------------
-  // AC1: tool invocation creates a searchable KS
-  // ----------------------------------------------------------------
-
   test("AC1: mode='from_attachment' creates a KS with chunk_count >= 2 and search returns hits", async () => {
-    // 1. Seed the file in tenant A's store via the test helper.
     const attached = await attachInlineForTest({
       db: ctxA.db,
       tenant_id: ctxA.tenantId,
@@ -165,7 +138,6 @@ describe("journey 53: create_knowledge_source tool — ingest and search", () =>
       content_type: "text/markdown",
     });
 
-    // 2. Invoke the tool directly with a synthesised ToolContext.
     const result = await createKnowledgeSourceTool.execute(makeToolCtx(ctxA), {
       mode: "from_attachment",
       file_id: attached.file_id,
@@ -192,15 +164,12 @@ describe("journey 53: create_knowledge_source tool — ingest and search", () =>
 
     const ksId = data.knowledge_source.id;
 
-    // 3. Confirm the KS row is visible via GET /v1/knowledge-sources.
     const listRes = await journeyFetch(ctxA, "/v1/knowledge-sources");
     expect(listRes.status).toBe(200);
     const listBody = (await listRes.json()) as { items: Array<{ id: string }> };
     const found = listBody.items.some((item) => item.id === ksId);
     expect(found).toBe(true);
 
-    // 4. Search for "BootNotification" — must return ≥1 hit matching this KS.
-    //    Invalidate cache first so the newly inserted chunks are picked up.
     invalidateKnowledgeCache(ctxA.tenantId);
     const hits = await searchKnowledge(
       { tenant_id: ctxA.tenantId, query: "BootNotification" },
@@ -210,12 +179,7 @@ describe("journey 53: create_knowledge_source tool — ingest and search", () =>
     expect(hits.some((h) => h.knowledge_source_id === ksId)).toBe(true);
   });
 
-  // ----------------------------------------------------------------
-  // AC2: cross-tenant file_id is rejected
-  // ----------------------------------------------------------------
-
   test("AC2: file_id from tenant B is rejected with file_not_found when used from tenant A", async () => {
-    // 1. Upload a file under tenant B.
     const attachedB = await attachInlineForTest({
       db: ctxB.db,
       tenant_id: ctxB.tenantId,
@@ -225,25 +189,20 @@ describe("journey 53: create_knowledge_source tool — ingest and search", () =>
       content_type: "text/markdown",
     });
 
-    // 2. Try to ingest it from tenant A's conversation tool context.
     const result = await createKnowledgeSourceTool.execute(makeToolCtx(ctxA), {
       mode: "from_attachment",
-      file_id: attachedB.file_id, // cross-tenant reference
+      file_id: attachedB.file_id,
     });
 
-    // 3. Must fail — requireFileForTenant gates on (tenant_id, fid).
     expect(result.ok).toBe(false);
     const errData = result.data as { error: string; file_id: string };
     expect(errData.error).toBe("file_not_found");
     expect(errData.file_id).toBe(attachedB.file_id);
 
-    // 4. No KS row written for tenant A.
     const rows = await ctxA.db
       .select()
       .from(knowledgeSources)
       .where(eq(knowledgeSources.tenant_id, ctxA.tenantId));
-    // Any rows that exist must have been created by AC1; none should have
-    // a source_uri of "tenant-b-doc.md".
     const leaked = rows.some((r) => r.source_uri === "tenant-b-doc.md");
     expect(leaked).toBe(false);
   });

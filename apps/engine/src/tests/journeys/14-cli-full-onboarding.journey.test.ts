@@ -1,13 +1,3 @@
-// User story: As an operator on my laptop, I want to drive the whole
-// onboarding through the CLI client so there's no REST Postman theatre.
-// Acceptance criteria:
-//   - AC1: The CLI `health` handler reports live and ready family probes.
-//   - AC2: `connectors create` and `connectors docs ingest` produce real
-//          rows against the engine using `EngineClient`.
-//   - AC3: `workflows create` + `workflows run` drive a real execution
-//          end-to-end via the CLI client wrapper, returning succeeded.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";

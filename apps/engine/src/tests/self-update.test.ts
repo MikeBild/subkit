@@ -1,13 +1,3 @@
-// Engine self-update + rollback unit tests.
-//
-// `runSelfUpdate` and `runRollback` are privileged mutations: every
-// binary swap writes an audit row + a
-// structured log entry + a metric increment. The "already at latest"
-// no-op branch is the only DB-free path; the rest require DATABASE_URL
-// so the recorder can land its row. These tests stand up a disposable
-// test database (`createTestDb`) and bind it to `process.env.DATABASE_URL`
-// so `getDb()` resolves to it.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
@@ -32,12 +22,6 @@ import { createDeterministicHexFactory, getTestNow } from "../test-helpers/deter
 
 const detHex = createDeterministicHexFactory(151);
 
-// Each test run gets a fresh tmpdir for the updater cache. Bun's
-// `os.homedir()` caches the result at startup, so a runtime
-// `process.env.HOME` override is silently ignored — instead, we pass an
-// explicit `UpdaterConfig` override into `runSelfUpdate` / `runRollback`
-// (the production code already accepted dependency injection for
-// `fetchImpl`; the cache dir just joins the same DI surface).
 let cacheDir = "";
 
 function makeConfig(): UpdaterConfig {
@@ -61,8 +45,6 @@ beforeAll(async () => {
   savedDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = testDb.url;
   cacheDir = mkdtempSync(join(tmpdir(), "engine-self-update-cache-"));
-  // Drop any cached `getDb()` pool from a previous test file in the
-  // same worker so the next call lazily picks up testDb.url.
   await closeDb();
 });
 
@@ -145,10 +127,6 @@ describe("engine runSelfUpdate", () => {
       .orderBy(desc(auditLog.ts));
     const initiated = rows.find((r) => r.ts >= before);
     expect(initiated).toBeDefined();
-    // Tenant must resolve to SYSTEM_TENANT_ID for every engine.update.*
-    // row — the binary swap is a process-level mutation, not
-    // tenant-scoped. Audit_log has no FK to tenants (compliance),
-    // so the zero-UUID lands cleanly.
     expect(initiated?.tenant_id).toBe(SYSTEM_TENANT_ID);
 
     const failedRows = await testDb.db
@@ -176,15 +154,12 @@ describe("engine runSelfUpdate", () => {
     await runSelfUpdate(fetchImpl, makeConfig());
     expect(fetchCalled).toBe(true);
   });
-  // (the `runSelfUpdate` calls below intentionally re-use makeConfig().)
 
   test("explicit self-update surfaces a network failure instead of a misleading 'already at latest'", async () => {
     captureWrites();
     const fetchImpl = makeFetchImpl(() => {
       throw new Error("network error");
     });
-    // force=true (explicit --self-update) now THROWS so the operator sees
-    // WHY it could not check, rather than a silent "already at latest".
     await expect(runSelfUpdate(fetchImpl, makeConfig())).rejects.toThrow(/network error/);
     expect(stdoutOutput).toContain("checking for updates");
     expect(stdoutOutput).not.toContain("already at latest version");
@@ -200,10 +175,6 @@ describe("engine runSelfUpdate", () => {
 });
 
 describe("engine runRollback", () => {
-  /** Plant a fake retained binary under `<cacheDir>/versions/<version>/`
-   *  so `runRollback("previous")` has something to swap to. Returns a
-   *  tmpfile path the test should pin `process.execPath` to so the
-   *  rename in `rollbackTo` is harmless. */
   function plantRetained(version: string, payload: string): { execPath: string; sha: string } {
     mkdirSync(join(cacheDir, "versions", version), { recursive: true });
     const binPath = join(cacheDir, "versions", version, "engine");
@@ -226,10 +197,6 @@ describe("engine runRollback", () => {
     return { execPath, sha };
   }
 
-  // **Critical**: must `await` inside the try so the finally that
-  // restores `process.execPath` runs AFTER the rollback finishes.
-  // A synchronous `return fn()` would let the finally run mid-rollback
-  // and `rollbackTo` would happily overwrite the real bun binary.
   async function withFakeExecPath<T>(execPath: string, fn: () => Promise<T>): Promise<T> {
     const real = process.execPath;
     Object.defineProperty(process, "execPath", { value: execPath, configurable: true });
@@ -254,8 +221,6 @@ describe("engine runRollback", () => {
     captureWrites();
     clearRetained();
     const before = new Date(getTestNow() - 1);
-    // Throw so the CLI flag handler exits non-zero. The audit row
-    // says `result: error`; the process exit must match.
     await expect(runRollback("previous", makeConfig())).rejects.toThrow(/no retained binaries/);
 
     const failedRows = await testDb.db
@@ -272,9 +237,6 @@ describe("engine runRollback", () => {
 
   test("happy path emits INITIATED + ROLLED_BACK rows and bumps the metric", async () => {
     captureWrites();
-    // Deterministic version string — different runs get different
-    // tags only because the seeded factory advances. Avoids real
-    // randomness so the test is reproducible.
     const versionTag = detHex(2);
     const version = `0.0.${parseInt(versionTag, 16)}`;
     const { execPath } = plantRetained(version, `retained-bytes-${version}`);
@@ -286,9 +248,7 @@ describe("engine runRollback", () => {
     } finally {
       try {
         unlinkSync(execPath);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     expect(stdoutOutput).toContain("rolling back");
 

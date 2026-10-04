@@ -1,11 +1,3 @@
-// DB + local-mock-server coverage for the HTTP driver's request pipeline:
-// credential resolution (`resolveConnectorCredential`, incl. the oauth2
-// inline-refresh call site), `buildRequestPlan`, `executePlannedHttpRequest`,
-// `executeConnectorHttpRequest`, and `probeHttpConnector`. The auth-material
-// permutations themselves are covered exhaustively at the pure-function
-// level (`apply-auth-material.test.ts`); this file exercises the
-// DB-and-network-adjacent glue those pure tests can't reach.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { upsertCredential } from "../../../credentials/service.ts";
@@ -147,11 +139,6 @@ describe("buildRequestPlan — credential resolution", () => {
   });
 
   test("oauth2 credential on a connector with no resolvable oauth config stays static (refresh skipped, not thrown)", async () => {
-    // The connector has no template and no config.oauth block, so
-    // resolveConnectorOAuthConfig can't build a client — refreshIfStale
-    // logs a warning and returns the credential unchanged. This exercises
-    // the oauth2 branch of resolveConnectorCredential without needing a
-    // live token endpoint.
     const conn = await makeConnector({ auth_type: "oauth2" });
     await upsertCredential(
       {
@@ -164,7 +151,7 @@ describe("buildRequestPlan — credential resolution", () => {
           access_token: "stale-access-token",
           token_type: "Bearer",
           refresh_token: null,
-          expires_at: new Date(0), // already expired — would trigger a refresh attempt if resolvable
+          expires_at: new Date(0),
         },
         actor_id: null,
       },

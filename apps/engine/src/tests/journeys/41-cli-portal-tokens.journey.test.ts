@@ -1,24 +1,8 @@
-// User story: As a platform operator, I want to manage portal tokens
-// through the `sk portal-tokens` CLI so I can issue scoped end-user
-// tokens and revoke them without writing curl.
-// Acceptance criteria:
-//   - AC1: `portal-tokens list --json` returns an array (may be empty
-//          before any tokens are issued).
-//   - AC2: After issuing a portal token via the REST API, the token's id
-//          appears in `portal-tokens list --json`.
-//   - AC3: `portal-tokens revoke <id>` prints "revoked" to stdout.
-//   - AC4: After revoke, `portal-tokens list` no longer includes the
-//          revoked token's id in the active (non-revoked) set.
-//   - AC5: Revoking a non-existent token id returns an error.
-// Spec refs: docs/admins/rbac-and-roles.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { portalTokensCommand } from "../../../../sk/src/commands/portal-tokens.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -178,9 +162,6 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// Portal token helpers — issue via REST (the CLI `create` command requires
-// `allowed_workflows` which is not exposed as a CLI flag, so the REST
-// path is the only way to mint tokens in tests).
 async function issuePortalToken(allowedWorkflows: string[] = ["*"]): Promise<{
   id: string;
   prefix: string;
@@ -197,13 +178,11 @@ async function issuePortalToken(allowedWorkflows: string[] = ["*"]): Promise<{
   return res.json() as Promise<{ id: string; prefix: string; plaintext_token: string }>;
 }
 
-// Seed a workflow so the portal-token endpoint has something to reference.
 let workflowId = "";
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("cli-portal-tokens");
 
-  // Create a minimal workflow so portal tokens can reference it.
   const wfRes = await journeyFetch(ctx, "/v1/workflows", {
     method: "POST",
     body: JSON.stringify({
@@ -224,7 +203,6 @@ afterAll(async () => {
 describe("journey 41: sk portal-tokens CLI", () => {
   test("AC1: portal-tokens list --json returns an array (may be empty)", async () => {
     const { stdout } = await run(portalTokensCommand, ["list"]);
-    // emitList with --json outputs the raw array, not { items: [] }
     const items = JSON.parse(extractLastJson(stdout));
     expect(Array.isArray(items)).toBe(true);
   });
@@ -253,11 +231,9 @@ describe("journey 41: sk portal-tokens CLI", () => {
   test("AC4: revoked token has revoked_at set in DB", async () => {
     const token = await issuePortalToken([workflowId]);
 
-    // Revoke via CLI.
     const { stdout: revokeOut } = await runPlain(portalTokensCommand, ["revoke", token.id]);
     expect(revokeOut).toContain("revoked");
 
-    // Verify the DB state reflects the revoke.
     const { portalTokens } = await import("../../db/schema/index.ts");
     const { eq } = await import("drizzle-orm");
     const rows = await ctx.db
@@ -269,8 +245,6 @@ describe("journey 41: sk portal-tokens CLI", () => {
   });
 
   test("AC5: revoking a non-existent token id returns an error", async () => {
-    // RFC-4122-compliant — the pinned contract is the tenant-scoped
-    // not-found, not the uuid-shape 400 (see journey 37's note).
     const fakeId = "00000000-0000-4000-8000-000000000088";
     const { message, captured } = await runExpectError(portalTokensCommand, ["revoke", fakeId]);
     const combined = `${message}\n${captured.stderr}`.toLowerCase();
@@ -283,8 +257,6 @@ describe("journey 41: sk portal-tokens CLI", () => {
   });
 
   test("wrong tenant: list returns only tokens from the current tenant", async () => {
-    // Issue a token in this tenant and verify it appears; then check that
-    // the count returned is exactly what we seeded (tenant isolation).
     const before = await run(portalTokensCommand, ["list"]);
     const itemsBefore = JSON.parse(extractLastJson(before.stdout)) as unknown[];
     const countBefore = itemsBefore.length;

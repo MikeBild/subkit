@@ -1,22 +1,3 @@
-// Unified files HTTP surface.
-//
-//   POST   /v1/files/inline              — inline base64 upload (≤5 MB)
-//   POST   /v1/files/batch-create        — create authenticated upload slots
-//   PUT    /v1/files/{id}/upload         — authenticated streaming upload
-//   POST   /v1/files/{id}/finalize       — verify sha256 + scan
-//   GET    /v1/files                     — list (with cursor + filters)
-//   GET    /v1/files/{id}                — metadata
-//   GET    /v1/files/{id}/content        — bytes (with Range support)
-//   DELETE /v1/files/{id}                — soft-delete
-//   POST   /v1/files/{id}/links          — attach to owning resource
-//   GET    /v1/files/stats               — aggregate counters
-//
-// Path syntax: AIP-style ':verb' segments (`:finalize`, `:batch-create`)
-// are intentionally not used. Hono's createRoute path is a literal
-// template; a colon in the segment name carries no benefit and risks
-// ambiguity with the param syntax used elsewhere. The convention here
-// is `/finalize` and `/batch-create` (plain slash, no colon).
-//
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
@@ -83,16 +64,6 @@ const FileIdParam = z.object({
   id: FileIdSchema.openapi({ param: { name: "id", in: "path" } }),
 });
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// `buildObjectKey`, `composeStorageUri`, and `streamFromBytes` are
-// shared with the portal-wrapper attachment route — they live in
-// `apps/engine/src/files/object-key.ts` so a change to the key shape
-// or storage-URI composition lands once.
-
-/** Wire-shape projection — converts DB ids to `fid_<uuid>` and dates to ISO. */
 export function toFileWire(row: typeof files.$inferSelect): FileWire {
   return {
     id: toFileId(row.id),
@@ -110,23 +81,11 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
   };
 }
 
-/** Sentinel `ScanResult` used when the scan exceeds
- *  `SCANNER_TIMEOUT_SECONDS`. The caller flips the row to
- *  `status='scanning'` (NOT `ready`) so the cleanup cron can reap rows
- *  whose scan never completed. The engine identifier surfaces in audit
- *  metadata so an operator chasing a stuck row can tell the scan timed
- *  out vs. an `infected` verdict. */
 const SCAN_TIMEOUT_RESULT: ScanResult = {
   verdict: "timeout",
   engine: "timeout",
 };
 
-/** Wrap `scanner.scan(...)` with a hard timeout. The default
- *  `NoopScanner` returns instantly so the race never fires; a real
- *  ClamAV-backed scanner may take seconds, so we cap the call to avoid
- *  cascading into Hono's request timeout. On timeout we resolve with
- *  `SCAN_TIMEOUT_RESULT` — the caller is responsible for leaving the row
- *  in `status='scanning'` and surfacing the state to the client. */
 async function scanWithTimeout(
   stream: AsyncIterable<Uint8Array>,
   meta: { content_type: string | null; filename: string },
@@ -143,9 +102,6 @@ async function scanWithTimeout(
   }
 }
 
-/** Stream-read the object store, computing sha256 and total length.
- *  Used by the finalize path to verify the bytes the client PUT match
- *  the asserted digest. */
 async function digestObject(key: string): Promise<{ sha256: string; size: number }> {
   const store = getObjectStore();
   const it = await store.openRead(key);
@@ -157,10 +113,6 @@ async function digestObject(key: string): Promise<{ sha256: string; size: number
   }
   return { sha256: h.digest("hex"), size };
 }
-
-// ---------------------------------------------------------------------------
-// Route registration
-// ---------------------------------------------------------------------------
 
 export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id/upload", requireAnyPermission(["file:write"]));
@@ -219,8 +171,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const key = storageKey(row.storage_uri);
     const boundSize = row.size_bytes;
 
-    // The common S3 contract requires a known Content-Length. The row's
-    // declared size is the immutable upper bound and must match exactly.
     const contentLengthHeader = c.req.header("content-length");
     if (!contentLengthHeader) {
       return c.json({ code: "bad_input", message: "Content-Length is required" }, 400);
@@ -248,11 +198,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Stream the body straight through to the object store. `c.req.raw.body`
-    // is a `ReadableStream<Uint8Array>` per the fetch API; we wrap it in
-    // an async generator consumed by `objectStore.putStream`, which sends
-    // the bytes to the configured S3-compatible object store without
-    // buffering the full payload in memory.
     const raw = c.req.raw.body;
     if (!raw) {
       return c.json({ code: "bad_input", message: "missing body" }, 400);
@@ -263,13 +208,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       raw as unknown as AsyncIterable<Uint8Array>,
       contentLength,
     );
-    // Audit byte-receipt so a client that uploads and then abandons
-    // the session before finalize still has a paper trail. Without
-    // this row the only evidence is the cleanup cron's pending-orphan
-    // sweep (≥1h later). `auditAwait` so the row is durable before the
-    // 200 response — a process crash between `putStream` returning and
-    // the audit row landing would otherwise leave bytes on disk with
-    // no audit trace until the cleanup cron sweep.
     await auditAwait(
       {
         tenant_id: row.tenant_id,
@@ -291,32 +229,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.body(null, 200);
   });
 
-  // ---------------------------------------------------------------------
-  // Per-route permission gates — each `/v1/files*` route below declares
-  // its required permission at the registration site via
-  // `app.use(<path>, requireAnyPermission([...]))`. Adding a route now
-  // forces a permission decision at the same call-site instead of
-  // silently inheriting from a verb-mapping switch (the previous gate
-  // collapsed `else → file:write`, so a future POST that should be
-  // read-flavoured — e.g. `:verify-sha256` — would inherit `file:write`
-  // without the author noticing).
-  // ---------------------------------------------------------------------
-
   app.use("/v1/files", requireAnyPermission(["file:read"]));
   app.use("/v1/files/inline", requireAnyPermission(["file:write"]));
   app.use("/v1/files/batch-create", requireAnyPermission(["file:write"]));
   app.use("/v1/files/stats", requireAnyPermission(["file:read"]));
-  // Per-{id} routes — Hono path matching: each `app.use` below applies
-  // to GET/POST/DELETE under that template. The `/v1/files/:id` line
-  // covers the metadata GET and the soft-delete DELETE; per-method
-  // splits via inline checks would obscure the symmetry, so we instead
-  // declare the dominant verb's permission here and the DELETE handler
-  // below pre-validates via the same `requireAnyPermission` if needed.
   app.use("/v1/files/:id", async (c, next) => {
     if (c.req.method === "DELETE") {
       return requireAnyPermission(["file:delete"])(c, next);
     }
-    // Renaming changes the record; reading it does not.
     if (c.req.method === "PATCH") {
       return requireAnyPermission(["file:write"])(c, next);
     }
@@ -325,10 +245,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/files/:id/content", requireAnyPermission(["file:read"]));
   app.use("/v1/files/:id/finalize", requireAnyPermission(["file:write"]));
   app.use("/v1/files/:id/links", requireAnyPermission(["file:write"]));
-
-  // ---------------------------------------------------------------------
-  // POST /v1/files/inline
-  // ---------------------------------------------------------------------
 
   const inlineRoute = createRoute({
     method: "post",
@@ -363,15 +279,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
-    // Wall-clock start for FILES_UPLOAD_DURATION_SECONDS — the
-    // observation lands in every terminal branch below (success / error /
-    // too_large is excluded as a pre-validation reject, not an upload
-    // attempt).
     const uploadStartedAt = Date.now();
 
-    // Decode base64 → bytes. `Buffer.from(..., "base64")` is permissive
-    // (whitespace OK, padding optional) which matches the inline-attach
-    // legacy behaviour. Reject only if the result is empty.
     let bytes: Uint8Array;
     try {
       bytes = Uint8Array.from(Buffer.from(body.content_base64, "base64"));
@@ -393,32 +302,17 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
 
-    // Dedup-probe: a prior identical-content upload short-circuits to
-    // the existing row. The unique index `files_tenant_sha256_uq` is
-    // the source of truth — we probe first and fall back to a SELECT on
-    // unique-violation in case two requests race.
     const existing = await db
       .select()
       .from(files)
       .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, sha256)))
       .limit(1);
     if (existing[0]) {
-      // Don't re-write the object; existing row is the canonical home.
-      // If the prior row was soft-deleted (cleanup-cron grace window),
-      // resurrect it by clearing `deleted_at` so callers see a live row
-      // and the row participates in list/link queries that filter
-      // `deleted_at IS NULL`. The unique index doesn't carry
-      // `deleted_at`, so a duplicate upload of the same content after
-      // soft-delete would otherwise hit the dedup branch and hand back a
-      // tombstone that lists/links silently ignore.
       let canonical = existing[0];
       if (canonical.deleted_at) {
         canonical = await reviveFileRow(db, canonical);
       }
       recordFileDedupHit();
-      // Per-tenant persisted counter — decouples the stats endpoint
-      // from audit retention. Paired with `recordFileDedupHit`
-      // (process-global Prometheus counter).
       await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
         {
@@ -452,15 +346,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const key = buildObjectKey(tenant_id, file_uuid);
     const storage_uri = composeStorageUri(key);
 
-    // Write bytes first; the row commit makes the file discoverable.
     await getObjectStore().put(key, bytes);
 
-    // Scan synchronously with a hard timeout. The default NoopScanner
-    // returns instantly; a real ClamAV-backed scanner caps at
-    // SCANNER_TIMEOUT_SECONDS so a slow / wedged backend cannot cascade
-    // into Hono's request timeout. On timeout we leave the row in
-    // `status='scanning'`, mark `scan_result='timeout'`, and rely on the
-    // cleanup cron to reap stuck rows after the documented grace.
     const scan = await scanWithTimeout(streamFromBytes(bytes), {
       content_type: body.content_type ?? null,
       filename: body.filename,
@@ -486,11 +373,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           principal.kind === "user" || principal.kind === "system_account" ? principal.id : null,
       });
     } catch (err) {
-      // Concurrent dedup race: catch the unique violation, re-SELECT.
-      // Drizzle wraps PG errors as DrizzleQueryError whose `.message` is
-      // "Failed query: …"; the original PG constraint message lives in
-      // `.cause.message`. Check both so the race path works regardless of
-      // whether the error is unwrapped or not.
       const causeMsg = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
       const msg = err instanceof Error ? err.message : String(err);
       if (
@@ -505,20 +387,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, sha256)))
           .limit(1);
         if (again[0]) {
-          // Roll back the object we wrote — the existing row's
-          // storage_uri is canonical.
           try {
             await getObjectStore().delete(key);
-          } catch {
-            /* best-effort */
-          }
+          } catch {}
           let canonical = again[0];
           if (canonical.deleted_at) {
             canonical = await reviveFileRow(db, canonical);
           }
           recordFileDedupHit();
-          // Persisted per-tenant counter — keeps the stats endpoint
-          // accurate independent of audit retention.
           await recordFilesDedupSeen(db, tenant_id);
           observeFileUploadDuration({
             outcome: "success",
@@ -533,9 +409,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       try {
         await getObjectStore().delete(key);
-      } catch {
-        /* best-effort orphan cleanup; immutable keys make a rerun safe */
-      }
+      } catch {}
       throw err;
     }
     if (!row) {
@@ -567,11 +441,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    // `auditAwait` sequentially so a test reading `audit_log`
-    // immediately after the route returns sees both rows. Both are
-    // required to be persisted before the response; the cost is one
-    // extra round-trip, which the route already pays for the
-    // FILE_CREATED row above.
     await auditAwait(
       {
         tenant_id,
@@ -580,9 +449,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: row.id,
-        // `timeout` is an operational failure (scanner backend slow / wedged),
-        // not a security verdict — log it as `error` so audit consumers
-        // can distinguish it from an `infected` denial.
         result:
           scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
         metadata: FileScanCompletedMetadataSchema.parse({
@@ -605,19 +471,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             : "scan_infected",
       duration_ms: Date.now() - uploadStartedAt,
     });
-    // On scan timeout the row is in `status='scanning'` and the
-    // cleanup cron will reap it after the grace window. Surface the
-    // state via the wire envelope + `Retry-After` so clients can poll
-    // GET /v1/files/{id} instead of treating the scan as complete.
     if (scan.verdict === "timeout") {
       c.header("Retry-After", String(SCANNER_TIMEOUT_SECONDS));
     }
     return c.json(toFileWire(row), 201);
   });
-
-  // ---------------------------------------------------------------------
-  // POST /v1/files/batch-create
-  // ---------------------------------------------------------------------
 
   const batchCreateRoute = createRoute({
     method: "post",
@@ -650,7 +508,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     let dedup_hits = 0;
 
     for (const entry of body.files) {
-      // Dedup-probe by client-supplied sha256.
       if (entry.sha256) {
         const existing = await db
           .select()
@@ -658,17 +515,12 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
           .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, entry.sha256)))
           .limit(1);
         if (existing[0]) {
-          // Same soft-delete resurrection as the inline path: a prior
-          // tombstone with matching content is brought back instead of
-          // being handed to the caller as a phantom dedup hit.
           let canonical = existing[0];
           if (canonical.deleted_at) {
             canonical = await reviveFileRow(db, canonical);
           }
           dedup_hits++;
           recordFileDedupHit();
-          // Persisted per-tenant counter — keeps the stats endpoint
-          // accurate independent of audit retention.
           await recordFilesDedupSeen(db, tenant_id);
           results.push({
             id: toFileId(canonical.id),
@@ -733,10 +585,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ files: results }, 201);
   });
 
-  // ---------------------------------------------------------------------
-  // POST /v1/files/{id}/finalize
-  // ---------------------------------------------------------------------
-
   const finalizeRoute = createRoute({
     method: "post",
     path: "/v1/files/{id}/finalize",
@@ -779,10 +627,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const tenant_id = principal.tenant_id;
     const fid_uuid = parseFileIdOrThrow(id);
-    // Wall-clock for FILES_UPLOAD_DURATION_SECONDS — covers the
-    // server-side finalize pass (digest + sibling-dedup + scan + row
-    // update). The preceding authenticated PUT is measured separately and not
-    // measured here.
     const finalizeStartedAt = Date.now();
 
     let row: typeof files.$inferSelect;
@@ -795,12 +639,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "conflict", message: `cannot finalize: status=${row.status}` }, 409);
     }
 
-    // Pre-digest size guard. The upload sink already rejects oversize
-    // bodies, and the schema bounds `size_bytes` at batch-create time,
-    // but a row that landed before the cap rollout (or one mutated out
-    // of band) could still drive the digest pass into a multi-GB read.
-    // Fail fast at 413 and audit the denial so operators see the event
-    // without sifting through schema-rejection logs.
     if (row.size_bytes > MAX_FINALIZE_VERIFY_BYTES) {
       await auditAwait(
         {
@@ -839,7 +677,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Verify the bytes the client PUT match the asserted digest.
     const key = storageKey(row.storage_uri);
     let digest: { sha256: string; size: number };
     try {
@@ -899,25 +736,17 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Concurrent-dedup race resolution: a sibling upload may already
-    // hold the same sha256. If so, drop our row, keep the sibling, and
-    // return the sibling with `dedup: true`.
     const sibling = await db
       .select()
       .from(files)
       .where(and(eq(files.tenant_id, tenant_id), eq(files.sha256, digest.sha256)))
       .limit(1);
     if (sibling[0] && sibling[0].id !== row.id) {
-      // Best-effort: orphan the duplicate row + object.
       try {
         await getObjectStore().delete(key);
-      } catch {
-        /* best-effort */
-      }
+      } catch {}
       await db.delete(files).where(eq(files.id, row.id));
       recordFileDedupHit();
-      // Persisted per-tenant counter — keeps the stats endpoint
-      // accurate independent of audit retention.
       await recordFilesDedupSeen(db, tenant_id);
       await auditAwait(
         {
@@ -939,9 +768,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         },
         db,
       );
-      // MCP notification — subscribers on `file://<sibling_fid>` get
-      // an update ping. The sibling row is the canonical home for the
-      // bytes after this dedup-collapse.
       await writeEvent(db, {
         tenant_id,
         channel: "notification.emitted",
@@ -955,10 +781,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(toFileWire(sibling[0]), 200);
     }
 
-    // Scan + flip status. Hard timeout via scanWithTimeout — a stuck
-    // ClamAV backend on the finalize stream cannot wedge the request.
-    // On timeout the row stays in `status='scanning'` and the cleanup
-    // cron reaps stuck rows after the documented grace.
     const it = await getObjectStore().openRead(key);
     const scan = await scanWithTimeout(it, {
       content_type: row.content_type ?? null,
@@ -1001,9 +823,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    // `auditAwait` sequentially — see inline handler comment above
-    // (FILE_SCAN_COMPLETED must be persisted before the route returns
-    // so test ordering against `audit_log` is deterministic).
     await auditAwait(
       {
         tenant_id,
@@ -1012,8 +831,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: updated.id,
-        // See inline-handler comment: `timeout` is an operational failure,
-        // not a security verdict.
         result:
           scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
         metadata: FileScanCompletedMetadataSchema.parse({
@@ -1027,13 +844,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // MCP notification — only on the ready transition. A failed scan
-    // moves status to `failed`; a timed-out scan parks the row in
-    // `scanning`. In both non-ready cases MCP subscribers see no update
-    // (subscribers couldn't read the bytes anyway). The forwarder in
-    // `apps/engine/src/mcp/capabilities/resources.ts` re-checks
-    // `file:read` before forwarding, so a portal-scoped principal
-    // that learned the fid out-of-band cannot piggy-back.
     if (status === "ready") {
       await writeEvent(db, {
         tenant_id,
@@ -1052,17 +862,11 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             : "scan_infected",
       duration_ms: Date.now() - finalizeStartedAt,
     });
-    // Surface `scanning` rows with a Retry-After hint — client polls
-    // GET /v1/files/{id} until status flips.
     if (scan.verdict === "timeout") {
       c.header("Retry-After", String(SCANNER_TIMEOUT_SECONDS));
     }
     return c.json(toFileWire(updated), 200);
   });
-
-  // ---------------------------------------------------------------------
-  // GET /v1/files
-  // ---------------------------------------------------------------------
 
   const listRoute = createRoute({
     method: "get",
@@ -1085,12 +889,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenant_id = principal.tenant_id;
     const limit = Math.min(q.limit ?? 20, 100);
 
-    // Cursor: opaque ISO `created_at` timestamp; rows older than the
-    // cursor are returned. Last-page cursors are nullable in the
-    // response envelope.
-    // List handler — `tenantConds` is the documented name the audit AST
-    // scan picks up as a tenant signal (see `.tenant-filter-allowlist.txt`
-    // convention note). Do not rename.
     const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
     if (q.status) tenantConds.push(eq(files.status, q.status));
     if (q.q) {
@@ -1143,8 +941,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    // Usage counts for the whole page, counted as `GET /v1/files/{id}/usage`
-    // counts them.
     const pageIds = page.map((r) => r.id);
     const workflowCounts = await workflowUsageCounts(db, tenant_id, page);
     const conversationRows =
@@ -1177,10 +973,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ items, total: Number(totalRow?.total ?? 0), next_cursor }, 200);
   });
 
-  // ---------------------------------------------------------------------
-  // GET /v1/files/stats
-  // ---------------------------------------------------------------------
-
   const statsRoute = createRoute({
     method: "get",
     path: "/v1/files/stats",
@@ -1211,9 +1003,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(files.tenant_id, tenant_id), isNull(files.deleted_at)))
       .groupBy(files.scan_result);
 
-    // Size buckets come out of the row scan — drizzle does not have a
-    // first-class CASE helper here, and the rowcount per tenant is
-    // bounded by the cleanup cron, so a single SELECT is fine.
     const sizeRows = await db
       .select({ size: files.size_bytes })
       .from(files)
@@ -1227,12 +1016,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       by_size_bucket[b] = (by_size_bucket[b] ?? 0) + 1;
     }
 
-    // Dedup hits — single indexed lookup on the per-tenant counter
-    // (`files_dedup_seen`) that the inline / batch-create / finalize
-    // dedup paths UPSERT-bump. The counter is decoupled from
-    // `audit_log` so the stat stays accurate independent of audit
-    // retention. Missing row (tenant has never recorded a dedup hit)
-    // collapses to zero.
     const [dedupRow] = await db
       .select({ n: filesDedupSeen.count })
       .from(filesDedupSeen)
@@ -1258,10 +1041,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     };
     return c.json(out, 200);
   });
-
-  // ---------------------------------------------------------------------
-  // GET /v1/files/{id}
-  // ---------------------------------------------------------------------
 
   const getRoute = createRoute({
     method: "get",
@@ -1292,10 +1071,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
   });
-
-  // ---------------------------------------------------------------------
-  // GET /v1/files/{id}/content
-  // ---------------------------------------------------------------------
 
   const contentRoute = createRoute({
     method: "get",
@@ -1331,9 +1106,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const ct = row.content_type ?? "application/octet-stream";
     const total = row.size_bytes;
 
-    // Range parsing — single-range only (`bytes=START-END`). Multi-range
-    // and suffix-only ranges fall through to the full-content path; the
-    // CDN can synthesize them upstream if it wants.
     const rangeHeader = c.req.header("range");
     let range: { start: number; end: number } | null = null;
     if (rangeHeader?.startsWith("bytes=")) {
@@ -1351,20 +1123,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Stream the bytes through the object store's range-aware reader
-    // so a Range request on a multi-GB object does not buffer the full
-    // payload in process memory. Local backend uses fs.createReadStream
-    // with `{ start, end }` (kernel-side pread); S3 backend issues a
-    // Range header through `getPartialObject` and forwards the 206
-    // body to the caller.
-    //
-    // `auditAwait` (not fire-and-forget `audit`): the prior
-    // fire-and-forget implementation lost FILE_DOWNLOADED rows under
-    // shutdown (DB pool closes before the deferred write commits),
-    // which broke audit completeness for short-lived e2e workers and
-    // any operator-initiated `pg_terminate_backend` mid-stream. The
-    // single extra round-trip is paid before the bytes start
-    // streaming, well under the network cost of the response body.
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
@@ -1385,8 +1143,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // Wrap the async iterable in a ReadableStream so Hono's `c.body`
-    // accepts it directly (fetch-api `BodyInit` allows ReadableStream).
     const iterable = range
       ? await getObjectStore().openReadRange(key, {
           start: range.start,
@@ -1411,9 +1167,7 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         if (typeof iterator.return === "function") {
           try {
             await iterator.return(reason);
-          } catch {
-            /* best-effort */
-          }
+          } catch {}
         }
       },
     });
@@ -1433,10 +1187,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       "accept-ranges": "bytes",
     });
   });
-
-  // ---------------------------------------------------------------------
-  // DELETE /v1/files/{id}
-  // ---------------------------------------------------------------------
 
   const deleteRoute = createRoute({
     method: "delete",
@@ -1464,7 +1214,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
     if (row.deleted_at) {
-      // Already soft-deleted — idempotent 204.
       return c.body(null, 204);
     }
     await db.update(files).set({ deleted_at: new Date() }).where(eq(files.id, row.id));
@@ -1485,12 +1234,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       },
       db,
     );
-    // MCP notification — subscribers on `file://<fid>` get a ping
-    // so they can react to the file disappearing. The forwarder
-    // re-checks `file:read`; a row that has just been soft-deleted
-    // still resolves (the resolver ignores `deleted_at` for the
-    // cleanup cron's 7-day soft-delete grace) so the RBAC re-check
-    // passes during the notification window.
     await writeEvent(db, {
       tenant_id: principal.tenant_id,
       channel: "notification.emitted",
@@ -1499,10 +1242,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     });
     return c.body(null, 204);
   });
-
-  // ---------------------------------------------------------------------
-  // POST /v1/files/{id}/links
-  // ---------------------------------------------------------------------
 
   const linkRoute = createRoute({
     method: "post",
@@ -1540,12 +1279,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     } catch {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
-    // Refuse to link a row that's not in `ready`. The read path
-    // already gates on it (GET /v1/files/:id/content returns 404 for a
-    // non-ready row), but fast-fail at the link step is friendlier —
-    // a caller that pre-links a `pending` row at batch-create time
-    // would otherwise see a working link that silently 404s on every
-    // download attempt until the row flips to `ready`.
     if (row.status !== "ready") {
       return c.json(
         {
@@ -1556,10 +1289,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         409,
       );
     }
-    // ON CONFLICT DO NOTHING via the (tenant_id, resource_type,
-    // resource_id, slug) unique index. The returning() result is empty
-    // on a no-op conflict; we re-SELECT to give the caller a stable
-    // shape regardless of race outcome.
     const inserted = await db
       .insert(fileLinks)
       .values({
@@ -1574,7 +1303,6 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
       .returning();
     let linkRow = inserted[0];
     if (!linkRow) {
-      // Conflict — find the existing matching row to return.
       const existing = await db
         .select()
         .from(fileLinks)

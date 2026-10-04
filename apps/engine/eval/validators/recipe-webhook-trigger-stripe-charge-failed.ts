@@ -1,10 +1,3 @@
-// Webhook-trigger primitive coverage. Pins the shipped
-// `stripe.on-charge-failed-notify-slack` recipe to the webhook trigger
-// shape the workflow service reconciles into an inbound binding. Loud
-// failure here means a future edit has either renamed the recipe,
-// dropped the trigger block, or downgraded the verification — any of
-// which would silently break the recipe surface for `start_workflow_from_recipe`.
-
 import { getBuiltinTemplate } from "../../src/connectors/templates.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

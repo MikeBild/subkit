@@ -1,5 +1,3 @@
-// Unit tests for the paste store + ref expansion.
-
 import { describe, expect, test } from "bun:test";
 import {
   createPasteStore,
@@ -85,8 +83,6 @@ describe("paste-store: expandRefs", () => {
     const { ref: imgRef } = s.addImage({ path: "/tmp/a.png" });
     const { ref: fileRef } = s.addFile({ path: "/tmp/b.pdf", filename: "b.pdf" });
     const { prompt, attachmentPaths } = expandRefs(`see ${imgRef} and ${fileRef}`, s);
-    // Image/File refs are kept visible in the prompt; attachments fan
-    // out via the mention resolver.
     expect(prompt).toContain("[Image #1]");
     expect(prompt).toContain("[File b.pdf #2]");
     expect(attachmentPaths).toContain("/tmp/a.png");

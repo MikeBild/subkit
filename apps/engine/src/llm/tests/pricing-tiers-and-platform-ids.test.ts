@@ -1,14 +1,3 @@
-// Three ways a catalog price can be wrong while every lookup succeeds.
-//
-// 1. Cache writes priced at a TTL SubKit never writes. The engine asks
-//    Anthropic for the one-hour cache, which bills a write at 2x input; the
-//    five-minute rate (1.25x) under-reports every cached turn.
-// 2. Long prompts priced at the base rate. Vendors with a long-context tier
-//    bill the whole call at the higher rate once its prompt passes the
-//    threshold — per call, so summed tokens must not decide it.
-// 3. Cloud platform ids (Bedrock, Vertex) either unpriced or silently claimed
-//    as the vendor's exact list price, when a platform may charge more.
-
 import { describe, expect, test } from "bun:test";
 import { PROMPT_CACHE_TTL } from "../core/cache-blocks.ts";
 import { routeTop, routeUp } from "../core/step-router.ts";
@@ -93,7 +82,6 @@ describe("long-context tiers", () => {
   });
 
   test("a single call past the threshold is priced at the long-context rate in full", () => {
-    // gemini-2.5-pro: 250k uncached input at 2.50 + 10k output at 15.
     const result = priceCalls(
       [row("gemini-2.5-pro", { prompt_tokens: 250_000, completion_tokens: 10_000 })],
       catalog(),
@@ -112,7 +100,6 @@ describe("long-context tiers", () => {
   });
 
   test("summed short calls never reach the long-context rate", () => {
-    // Two 150k prompts: 300k together, but neither call was long.
     const result = priceCalls(
       [row("gemini-2.5-pro", { calls: 2, prompt_tokens: 300_000 })],
       catalog(),
@@ -122,7 +109,6 @@ describe("long-context tiers", () => {
   });
 
   test("a row whose calls all exceeded the threshold is priced long, cache rates included", () => {
-    // gpt-5.6-sol long tier: input 8, output 30, cache read 0.80, cache write 10.
     const result = priceCalls(
       [
         row("gpt-5.6-sol", {
@@ -141,7 +127,6 @@ describe("long-context tiers", () => {
   });
 
   test("a row that exceeded only a lower model's threshold stays at the base rate", () => {
-    // Tier bound 200k is gemini's threshold, below gpt-5.6-sol's 272k.
     const result = priceCalls(
       [row("gpt-5.6-sol", { calls: 3, prompt_tokens: 750_000, prompt_tokens_exceed: 200_000 })],
       catalog(),
@@ -235,8 +220,6 @@ describe("cloud platform model ids", () => {
       ],
     });
     const result = priceCalls([row(bedrock), row("claude-haiku-4-5")], rates, "USD");
-    // The direct API's calls keep the catalog price: a platform override does
-    // not speak for the vendor's own endpoint.
     expect(result.amount).toBeCloseTo(1.1 + 1, 6);
     expect(result.price_sources).toEqual([
       { model: "claude-haiku-4-5", price_source: "catalog" },
@@ -265,8 +248,6 @@ describe("cloud platform model ids", () => {
 
 describe("platform reduction stays a pricing concern", () => {
   test("routing never hands a Bedrock provider a direct-API model id", () => {
-    // The Bedrock ladder is keyed by Anthropic's own ids. Reducing a Bedrock
-    // id to that key would route the call to an id Bedrock does not serve.
     const id = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
     expect(routeUp("bedrock", id)).toBe(id);
     expect(routeTop("bedrock", id)).toBe(id);

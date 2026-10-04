@@ -1,8 +1,3 @@
-// Helper functions for the Workflows → MCP tools capability
-// (`registerToolsCapability` in ./tools.ts). Pure code-motion: these are the
-// tool-list materialization, missing-input backstop, slug resolution, and
-// progress-bridge helpers that back the tools/list and tools/call handlers.
-
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -43,11 +38,6 @@ export async function listWorkflowTools({
   return catalog.map((entry) => ({
     name: workflowToolName(entry.slug),
     title: entry.name,
-    // Frame the tool as an executable action, not a passive description.
-    // Without this, a workflow description like "Lists all Test Plan issues…"
-    // reads as documentation and the model re-derives the query with
-    // call_connector instead of running the saved workflow. The "prefer this
-    // over re-deriving" nudge closes that gap.
     description: describeWorkflowTool(entry),
     inputSchema: entry.inputSchema as Tool["inputSchema"],
     ...(entry.outputSchema ? { outputSchema: entry.outputSchema as Tool["outputSchema"] } : {}),
@@ -57,12 +47,6 @@ export async function listWorkflowTools({
   }));
 }
 
-/**
- * Executable-verb framing for a `wf_<slug>` tool. Runs the saved workflow's
- * stored steps (with its connectors) and returns the result — the canonical
- * way to execute a known task. When the workflow has its own description we
- * append it; otherwise the name carries the intent.
- */
 function describeWorkflowTool(entry: { name: string; description: string }): string {
   const summary =
     entry.description && entry.description.trim() !== entry.name.trim()
@@ -71,29 +55,6 @@ function describeWorkflowTool(entry: { name: string; description: string }): str
   return `Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
 }
 
-// Anti-client-spiral backstop for `run_workflow` over the SESSIONLESS MCP
-// direct-call surface. run_workflow dispatched here runs against a synthetic
-// stub context (buildMcpStubCtx) with a conversation_id that has NO row: the
-// tool's own missing-input gate tries to PAUSE with an `ask_user_form`, but
-// the DB-pause insert FK-violates on the non-existent conversation and THROWS
-// — the caller then gets an opaque `tool_execute_failed` that never names the
-// missing fields. Even if the pause somehow surfaced, its `elicitation_id`
-// would be unresolvable (the client called run_workflow directly, not
-// conversation_start, so it has no session to answer against). That confusing
-// non-terminal dead-end is exactly what spiralled a live ChatGPT session into
-// dozens of junk documents.
-//
-// So we detect the unbound-required-input case UP FRONT — before dispatch —
-// and return ONE terminal, actionable `needs_input` envelope that NAMES the
-// exact fields inline and states the single next action: re-call run_workflow
-// with those inputs supplied. Mirrors the tool's own contract resolution
-// (declared input_schema > sample > structural synth via
-// resolveWorkflowInputContract) and target precedence (explicit `workflow`
-// arg, else the workflow bound to the caller's most-recent conversation) so
-// the guard and the tool agree on what "this run needs". Returns null when
-// nothing is missing, or when the target/contract can't be resolved (the tool
-// then returns its OWN terminal envelope — workflow_not_found /
-// workflow_not_persisted — which is already actionable).
 export async function buildRunWorkflowNeedsInput(p: {
   db: Db;
   principal: ResolvedPrincipal;
@@ -126,7 +87,6 @@ export async function buildRunWorkflowNeedsInput(p: {
     const v = suppliedMap[k];
     return v === undefined || v === null || (typeof v === "string" && v.trim() === "");
   });
-  // Fully satisfied — let the real dispatch run.
   if (missing.length === 0) return null;
 
   const missingNames = missing.length > 0 ? missing : contract.required;
@@ -235,9 +195,6 @@ export function startProgressBridge(
         seen = rows.length;
       }
     } catch (err) {
-      // Bridge is best-effort, but log so a recurring failure is
-      // visible. A bursty progress-notifier outage looks otherwise
-      // identical to "no work to report" from the operator's view.
       logger.debug({
         module: "mcp",
         action: "tool_progress.poll_failed",

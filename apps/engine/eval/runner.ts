@@ -1,18 +1,3 @@
-// Pre-deploy evaluation runner.
-//
-// Loads every fixture under `eval/fixtures/*.json`, dispatches it to
-// the matching validator under `eval/validators/*.ts`, and emits a
-// CSV + JSON report. Used by `bun run verify:ai` and the full
-// `bun run verify` gate so authoring-contract regressions are caught
-// before they ship.
-//
-// Usage:
-//   bun run apps/engine/eval/runner.ts
-//
-// Exit codes:
-//   0 — all fixtures passed
-//   1 — one or more fixtures failed (diagnostics on stderr)
-
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { invokeJudge, shouldInvokeJudge } from "./llm-judge.ts";
@@ -22,12 +7,6 @@ type ValidatorFn = (fixture: FixtureRecord) => Promise<ValidationResult> | Valid
 export interface FixtureRecord {
   name: string;
   description?: string;
-  /**
-   * Category label. Includes the LLM flow names (`generate`, `extract`,
-   * `repair`, `converse`, `discover`, `summarize`, `judge`) and `infra`
-   * for non-LLM integration tests (execution-engine behavior, cascade,
-   * etc.).
-   */
   flow:
     | "generate"
     | "extract"
@@ -37,43 +16,17 @@ export interface FixtureRecord {
     | "summarize"
     | "judge"
     | "infra";
-  /** Arbitrary input payload handed to the validator. */
   input: unknown;
-  /** Optional expected output payload the validator may assert against. */
   expected?: unknown;
 }
 
-/** Outcome verdict from the optional LLM judge. The judge enriches a
- *  validator's result; it never overrides a deterministic `pass=false`.
- *  Only emitted when the validator returns `pass=false` AND
- *  `function_passed=true` (structurally fine but semantically dubious)
- *  AND `SUBKIT_EVAL_LLM_JUDGE=1`.
- *
- *    - `passes`  — judge agrees the output is acceptable
- *    - `partial` — judge sees something off but not a hard failure
- *    - `failed`  — judge agrees the output is wrong
- *
- *  These verdicts stream into the CSV/JSON report and surface in the
- *  failing-fixture diagnostics so a reviewer can read the LLM's
- *  reasoning alongside the validator's deterministic verdict. */
 export type LlmJudgment = "passes" | "partial" | "failed";
 
 export interface ValidationResult {
-  /** Hard gate. The runner exits non-zero when any fixture has
-   *  `pass = false`. Determinism contract: same seed → same value. */
   pass: boolean;
-  /** Short human-readable reason; surfaced in the CSV report. */
   reason?: string;
-  /** Result of the deterministic validator function. Defaults to
-   *  `pass` when absent — most validators do not need to differentiate
-   *  structural pass-through from semantic agreement. The split exists
-   *  so the LLM judge can run only when the structure is intact but
-   *  the semantics are uncertain. */
   function_passed?: boolean;
-  /** Optional verdict from the LLM judge (see `LlmJudgment`). Always
-   *  null when `SUBKIT_EVAL_LLM_JUDGE` is unset. */
   llm_judgment?: LlmJudgment;
-  /** Human-readable reasoning the judge produced. */
   llm_reason?: string;
   metrics?: Record<string, number>;
 }
@@ -95,11 +48,6 @@ export interface RunReport {
     llm_judgment?: LlmJudgment;
     llm_reason?: string;
   }>;
-  /**
-   * Aggregate metrics across every fixture: per-flow pass rate + latency
-   * percentiles so a single report is enough to spot a regression without
-   * scrolling.
-   */
   aggregates: {
     pass_rate: number;
     latency_ms: { p50: number; p95: number; max: number };
@@ -156,12 +104,6 @@ const FIXTURES_DIR = join(EVAL_DIR, "fixtures");
 const VALIDATORS_DIR = join(EVAL_DIR, "validators");
 const OUT_DIR = join(EVAL_DIR, "out");
 const BASELINES_DIR = join(EVAL_DIR, "baselines");
-/**
- * Maximum percentage-point drop in any single flow's pass rate before
- * the runner fails the gate. Conservative — anything past this is a
- * real regression, not eval noise. Raise the baseline (regenerate the
- * CSV) when a flow has improved permanently.
- */
 const PASS_RATE_DRIFT_PCT_MAX = 10;
 
 function loadFixtures(): FixtureRecord[] {
@@ -181,9 +123,7 @@ async function loadValidator(name: string): Promise<ValidatorFn | undefined> {
       const mod = await import(path);
       const fn = (mod.validate ?? mod.default) as ValidatorFn | undefined;
       if (fn) return fn;
-    } catch {
-      // Try next path.
-    }
+    } catch {}
   }
   return undefined;
 }
@@ -241,14 +181,6 @@ interface BaselineRow {
   pass_rate: number;
 }
 
-/**
- * Load `baselines/per-flow-pass-rate.csv` if present and compare each
- * flow's current pass rate against the recorded baseline. Returns the
- * list of flows whose pass rate dropped by more than
- * `PASS_RATE_DRIFT_PCT_MAX` points — the runner exits non-zero when
- * non-empty. The first run (no baseline file) is silent so a fresh
- * checkout can produce its own snapshot via `bun run eval:baseline`.
- */
 function compareAgainstBaseline(report: RunReport): {
   drift: Array<{ flow: string; baseline_pct: number; current_pct: number; drop_pp: number }>;
   baseline_present: boolean;
@@ -292,18 +224,10 @@ function compareAgainstBaseline(report: RunReport): {
   return { drift, baseline_present: true };
 }
 
-/**
- * Write the current per-flow pass rate as the new baseline. Invoked
- * via `--write-baseline` so an operator who has intentionally improved
- * a flow's pass rate can lock the new floor in one step. The CSV
- * shape is `flow,pass_rate` with `pass_rate` as a 0..1 fraction.
- */
 function writeBaseline(report: RunReport): void {
   try {
     require("node:fs").mkdirSync(BASELINES_DIR, { recursive: true });
-  } catch {
-    // ignore
-  }
+  } catch {}
   const lines = ["flow,pass_rate"];
   for (const [flow, bucket] of Object.entries(report.aggregates.per_flow)) {
     if (bucket.total === 0) continue;
@@ -317,19 +241,13 @@ function writeBaseline(report: RunReport): void {
 async function main(): Promise<void> {
   try {
     require("node:fs").mkdirSync(OUT_DIR, { recursive: true });
-  } catch {
-    // ignore
-  }
+  } catch {}
   const fixtures = loadFixtures();
   const items: RunReport["items"] = [];
   let passed = 0;
   let failed = 0;
   for (const rec of fixtures) {
     const { result, duration_ms } = await runOne(rec);
-    // The judge harness is opt-in via `SUBKIT_EVAL_LLM_JUDGE`; until
-    // wired to a real provider it is dormant. The runner still
-    // consults `shouldInvokeJudge` so the contract is exercised in
-    // tests that pass a custom provider.
     const judgeShould = shouldInvokeJudge({
       pass: result.pass,
       function_passed: result.function_passed ?? result.pass,
@@ -348,11 +266,7 @@ async function main(): Promise<void> {
         });
         llm_judgment = judged.judgment;
         llm_reason = judged.reason;
-      } catch {
-        // The default provider stub throws until a follow-up wires
-        // `invoke()` through. Do not fail the eval gate on this — the
-        // deterministic verdict still lands.
-      }
+      } catch {}
     }
     const item = {
       name: rec.name,
@@ -394,10 +308,6 @@ async function main(): Promise<void> {
       `  ${flow}: ${agg.passed}/${agg.total} pass  p50=${agg.p50_ms}ms  p95=${agg.p95_ms}ms`,
     );
   }
-  // Baseline drift gate. Operators bless a new baseline by passing
-  // `--write-baseline` after a deliberate improvement; without that
-  // flag, a flow whose pass rate slipped >10 percentage points fails
-  // the gate.
   if (process.argv.includes("--write-baseline")) {
     writeBaseline(report);
   } else {

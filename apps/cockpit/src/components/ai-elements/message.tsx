@@ -165,7 +165,6 @@ export const MessageBranchContent = ({ children, ...props }: MessageBranchConten
     [children],
   );
 
-  // Use useEffect to update branches when they change
   useEffect(() => {
     if (branches.length !== childrenArray.length) {
       setBranches(childrenArray);
@@ -191,7 +190,6 @@ export type MessageBranchSelectorProps = ComponentProps<typeof ButtonGroup>;
 export const MessageBranchSelector = ({ className, ...props }: MessageBranchSelectorProps) => {
   const { totalBranches } = useMessageBranch();
 
-  // Don't render if there's only one branch
   if (totalBranches <= 1) {
     return null;
   }
@@ -271,14 +269,6 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-/**
- * A link in an answer is a link.
- *
- * The renderer's own anchor is a `button`, which carries no href for the
- * browser and no testid for the interactive-element gate — so any link the
- * model wrote was both unnavigable and a contract breach waiting for the first
- * fixture that contained one. Rendering a real anchor fixes both.
- */
 const MARKDOWN_COMPONENTS = {
   a: ({ href, children, ...props }: ComponentProps<"a">) => (
     <a

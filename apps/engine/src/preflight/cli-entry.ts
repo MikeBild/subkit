@@ -1,16 +1,7 @@
-// The process entry point for the bootstrap-preflight operator commands.
-//
-// It lives here rather than in `index.ts` for two reasons: the engine
-// entrypoint is at its LOC ceiling and every subsystem that grew a flag
-// there paid for it, and the wiring below — parse, load config, open one
-// short-lived db handle, print, close, exit — is this subsystem's shape, not
-// the entrypoint's. `index.ts` keeps the dispatch decision and nothing else.
-
 import { SYSTEM_TENANT_ID } from "../audit/index.ts";
 import { closeDb, getDb } from "../db/client.ts";
 import { newTraceId, withContext } from "../logging/context.ts";
 
-/** The flags that route here. `index.ts` tests membership and nothing more. */
 export const PREFLIGHT_FLAGS = [
   "--preflight",
   "--vault-check",
@@ -18,16 +9,6 @@ export const PREFLIGHT_FLAGS = [
   "--rewrap-master-key",
 ] as const;
 
-/**
- * The help block `engine --help` appends for these commands.
- *
- * Written as a short runbook, not a flag list: each entry says WHEN you
- * reach for it, in plain words, and then what it changes. Someone reading
- * this is usually mid-incident — an engine that refused to start — and the
- * question they have is "which of these four do I run", which a list of
- * argument shapes does not answer. Exit codes are stated once, at the end,
- * because they are the same for all four.
- */
 export const PREFLIGHT_HELP: string =
   "\nBootstrap preflight — run these when the engine refuses to start\n\n" +
   "  --preflight\n" +
@@ -68,14 +49,6 @@ export function isPreflightInvocation(argv: string[]): boolean {
   return PREFLIGHT_FLAGS.some((flag) => argv.includes(flag));
 }
 
-/**
- * Run one operator command and exit. Never returns.
- *
- * The config is loaded (for `DATABASE_URL`), but nothing else about a boot
- * happens: no migration, no settings revision, no listener. A usage error
- * prints the message plus the usage block on stderr and exits 2, the way
- * `--rollback --to=` does.
- */
 export async function runPreflightCliOrExit(
   argv: string[],
   loadConfigAndReconfigureLogger: () => Promise<unknown>,
@@ -86,12 +59,6 @@ export async function runPreflightCliOrExit(
     process.stderr.write(`engine: ${parsed.message}\n\nUsage:\n${VAULT_CLI_USAGE}\n`);
     process.exit(2);
   }
-  // Check 1 runs BEFORE the config loader, because it is the one check that
-  // needs nothing: no file, no database, no network. An operator whose
-  // settings file is broken AND whose MASTER_KEY is wrong should be told
-  // about the key, not handed a schema error that sends them to the wrong
-  // file. Without this, `--preflight` on a bad key exits 1 with a config
-  // message instead of 3 with the refusal it was asked for.
   if (parsed.command.mode === "preflight") {
     const { checkMasterKey } = await import("./checks.ts");
     const { refusalLine, PREFLIGHT_EXIT_REFUSED } = await import("./contracts.ts");
@@ -120,8 +87,6 @@ export async function runPreflightCliOrExit(
         const cfg = getConfig();
         const ops = createVaultOps(db, () => preflightOutcome(db, cfg));
         const outcome = await runVaultCli(parsed.command, { ops });
-        // Plain stdout, one line per fact: a deploy script reads these, and
-        // the secret value is never among them.
         process.stdout.write(`${outcome.lines.join("\n")}\n`);
         exitCode = outcome.exitCode;
       } catch (err) {

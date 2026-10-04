@@ -1,14 +1,3 @@
-// Domain golden set: German session questions against the blog-de
-// convention corpus, ranked by cosine over vectors PINNED in the fixture.
-//
-// The vectors are real MiniLM geometry (same model/dtype/pooling as the
-// engine's vector recovery), precomputed by eval/gen-blogde-golden-vectors.ts
-// because the embedded onnxruntime WASM only loads inside the compiled
-// binary — the eval gate runs under plain bun. The validator therefore
-// exercises the ranking contract (recall@k, MRR, abstention floor) fully
-// deterministically; the model-name pin below forces regeneration when
-// the engine's embedding model moves.
-
 import { cosineSimilarity, EMBEDDING_MODEL } from "../../src/embeddings/local-provider.ts";
 import { VECTOR_MIN_COSINE } from "../../src/embeddings/vector-rerank.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
@@ -17,11 +6,6 @@ interface Input {
   k: number;
   min_recall_at_k: number;
   min_mrr: number;
-  /** Calibrated noise ceiling for out-of-domain queries. The multilingual
-   *  MiniLM gives generic German office prose a ~0.3–0.41 base similarity,
-   *  so the engine's recovery floor (VECTOR_MIN_COSINE) is too tight as an
-   *  abstention pin; this gate asserts out-of-domain never climbs into the
-   *  range where it would pollute top results. */
   abstention_max_cosine?: number;
   embedding_model?: string;
   corpus: Array<{ id: string; vector?: number[] }>;

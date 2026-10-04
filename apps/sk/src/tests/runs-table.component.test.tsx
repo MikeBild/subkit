@@ -38,7 +38,7 @@ describe("<RunsTable>", () => {
       const text = ui.text();
       expect(text).toContain("ingest_users");
       expect(text).toContain("rotate_keys");
-      expect(text).toContain("ok"); // labels include "ok"
+      expect(text).toContain("ok");
       expect(text).toContain("3 match");
     } finally {
       ui.unmount();

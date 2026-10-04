@@ -57,18 +57,11 @@ type Translate = ReturnType<typeof useI18n>["t"];
 const KEYS_QUERY = ["admin", "api-keys"] as const;
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 
-/** The guide a reader follows to add an app; adding starts in the app itself. */
 const SECTION_TITLE_KEYS = {
   keys: "apiAccess.section.keys",
   clients: "apiAccess.section.clients",
 } as const;
 
-/**
- * API-Zugang — access INTO SubKit: the keys scripts use and the apps that
- * were approved, each a tab at its own address (`?section=`). Each tab is
- * behind its own read permission; one the reader cannot read is absent.
- * What SubKit holds on another system's side lives on that connector's page.
- */
 export function ApiAccessPage() {
   const { t } = useI18n();
   const session = useSession();
@@ -77,8 +70,6 @@ export function ApiAccessPage() {
   const canClients = can("mcp_oauth_client:read");
   const live = useLiveQueryOptions();
 
-  // Every list loads with the page: a tab counts the rows that need someone,
-  // and it can only count them once its list has arrived.
   const keys = useQuery({
     queryKey: KEYS_QUERY,
     queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
@@ -109,8 +100,6 @@ export function ApiAccessPage() {
   };
   const activeKeys = groupApiKeys(keys.data?.items ?? []).active.length;
 
-  // The one filled action, for the open tab. An empty list carries it in its
-  // empty state instead, so it never stands twice.
   const createKey = can("api_key:write") ? (
     <Button onClick={() => setCreateOpen(true)} data-testid="api-key-create">
       {t("apiKeys.create")}
@@ -182,14 +171,11 @@ function countText(
   return count === 1 ? t(one) : t(many, { count: String(count) });
 }
 
-/** A key's rights as words with their risk — never the raw `resource:action` string (§11). */
 function scopeWords(scopes: readonly string[], t: Translate): string {
   return scopes
     .map((scope) => `${scopeLabel(scope, t).text} · ${t(scopeRiskKey(scopeRisk(scope)))}`)
     .join(", ");
 }
-
-// ── Schlüssel ─────────────────────────────────────────────────────────────────
 
 function KeysSection({
   query,
@@ -351,7 +337,6 @@ function KeysSection({
   return (
     <>
       {total > 0 ? (
-        // An empty list says so itself; a count of nothing above it is noise.
         <SummaryLine
           testId="api-access-total-keys"
           text={t("apiAccess.total.keysSummary", {
@@ -418,7 +403,6 @@ function KeysSection({
   );
 }
 
-/** A new key's rights are picked from what the person holds — never typed. */
 function CreateKeyDialog({
   open,
   onOpenChange,
@@ -518,7 +502,6 @@ function CreateKeyDialog({
   );
 }
 
-/** The key, shown once, to copy before the dialog closes. */
 function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose(): void }) {
   const { t } = useI18n();
   return (
@@ -538,12 +521,6 @@ function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose()
   );
 }
 
-// ── Apps ──────────────────────────────────────────────────────────────────────
-
-/**
- * The applications approved for this installation and who approved each one.
- * The approval belongs to the installation, not to a browser session.
- */
 function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedClientItem[] }> }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
@@ -631,8 +608,6 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
       rowActions={
         canRevoke
           ? (item, index) =>
-              // A retired registration comes back on its next authorization;
-              // revoking it is how a person makes that impossible.
               !item.disabled_at || item.retired_at ? (
                 <span data-action-scope="connected-client">
                   <Button

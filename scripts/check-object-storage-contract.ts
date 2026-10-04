@@ -1,11 +1,5 @@
 #!/usr/bin/env bun
 
-// One-time provider conformance probe for the deliberately small SubKit S3
-// contract. It is not a release gate: operators run it against temporary
-// Garage/Supabase buckets and the private Upraft product bucket, then remove
-// the generated objects. Credentials are read only from the process and are
-// never printed.
-
 import { createHash, randomUUID } from "node:crypto";
 import {
   MULTIPART_PART_BYTES,

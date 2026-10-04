@@ -1,20 +1,3 @@
-// User story: As an operator, I want to manage workflows end-to-end via
-// the `sk workflows` CLI so I can automate DAG lifecycle without writing
-// HTTP calls by hand.
-// Acceptance criteria:
-//   - AC1: `workflows list --json` returns an empty array when no workflows exist.
-//   - AC2: `workflows create --file <json>` creates a workflow with id, name, slug.
-//   - AC3: `workflows list --json` after create returns at least 1 item containing
-//          the created workflow's id.
-//   - AC4: `workflows get <id>` returns the workflow with correct name.
-//   - AC5: `workflows history <id>` returns 1 version at version=1.
-//   - AC6: After a direct PATCH via HTTP, `workflows history` returns 2 versions.
-//   - AC7: `workflows restore <id> 1` restores to version 1.
-//   - AC8: `workflows delete <id>` outputs "deleted".
-//   - AC9: `workflows get <id>` after delete → error contains "not_found".
-// Spec refs: docs/concepts/workflows.md, docs/concepts/workflows.md,
-//            docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,8 +10,6 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch }
 const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -80,9 +61,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      /* fall through */
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -99,9 +78,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          /* continue */
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -175,7 +152,6 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// For commands that don't support --json (e.g. delete which just prints "deleted\n")
 async function runPlain(
   command: ReturnType<typeof defineCommand>,
   cmdPath: string[],
@@ -195,13 +171,9 @@ async function runPlain(
   return { stdout: cli.stdout, stderr: cli.stderr };
 }
 
-// ---------- test state ----------
-
 const fixture = {
   name: "test-wf",
   slug: "test-wf",
-  // Creation previews the DAG. This lifecycle test must not depend on a
-  // public website being reachable; request drivers have their own tests.
   steps: [{ kind: "transform", id: "step1", language: "javascript", expression: "({ ok: true })" }],
 };
 const tmpFile = path.join(tmpdir(), `35-cli-wf-${TEST_NOW_MS}.json`);
@@ -262,9 +234,6 @@ describe("journey 35: sk workflows CLI", () => {
   });
 
   test("AC6: after a PUT via HTTP, history returns 2 versions", async () => {
-    // PUT a full update to create a second committed version. The engine
-    // only exposes PUT (full replace) for workflow updates — PATCH is not
-    // registered. We still go through HTTP to exercise the real contract.
     const patchResp = await journeyFetch(ctx, `/v1/workflows/${createdId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -287,20 +256,15 @@ describe("journey 35: sk workflows CLI", () => {
   test("AC7: workflows restore <id> 1 creates a new version pointing at v1 dag", async () => {
     const { stdout } = await run(workflowsCommand, ["restore", createdId, "1"]);
     const body = JSON.parse(extractLastJson(stdout));
-    // The restore route returns a serialized WorkflowView. The restore creates a
-    // new version (next = 3) whose dag is a copy of v1. current_version_id is
-    // updated on the workflow row.
     expect(body.id).toBe(createdId);
     expect(typeof body.current_version_id).toBe("string");
     expect(body.current_version_id.length).toBeGreaterThan(0);
-    // The new restore version is always greater than the last version before restore.
     expect(typeof body.current_version).toBe("number");
     expect(body.current_version as number).toBeGreaterThanOrEqual(2);
   });
 
   test("AC8: workflows delete outputs 'deleted'", async () => {
     const { stdout } = await runPlain(workflowsCommand, ["delete", createdId]);
-    // Filter out any structured log lines interleaved by the in-process engine.
     const nonLogLines = stdout
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -309,9 +273,7 @@ describe("journey 35: sk workflows CLI", () => {
         try {
           const p = JSON.parse(l);
           if (isLogLine(p)) return false;
-        } catch {
-          /* not JSON — keep it */
-        }
+        } catch {}
         return true;
       });
     expect(nonLogLines).toContain("deleted");

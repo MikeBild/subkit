@@ -1,17 +1,3 @@
-// `resource.lifecycle` — state changes a live reader must hear about that
-// no other channel carries: an execution authority granted or revoked, a
-// schedule or inbound hook changed or held, a connector or its credentials
-// changed.
-//
-// The channel is internal. The outbound fan-out (webhooks and notification
-// rules) is wired to `execution.status` and `notification.emitted` only, so
-// nothing here becomes public webhook contract; the one reader is the
-// Cockpit's live stream (`GET /v1/cockpit/events/stream`), which refreshes
-// what it shows when one of these arrives.
-//
-// The payload is ids only. What changed is read back through the REST
-// surface under the reader's own permissions, never from the event.
-
 import type { Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 
@@ -36,7 +22,6 @@ export interface ResourceChangeIds {
   connector_id?: string | null;
 }
 
-/** A connector's stored credential was written or removed. */
 export async function emitCredentialChange(
   tx: Executor,
   tenant_id: string,
@@ -49,7 +34,6 @@ export async function emitCredentialChange(
   });
 }
 
-/** Write one `resource.lifecycle` row inside the caller's transaction. */
 export async function emitResourceChange(
   tx: Executor,
   input: { tenant_id: string; type: ResourceChangeType; ids: ResourceChangeIds },

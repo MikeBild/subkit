@@ -1,18 +1,3 @@
-// Pending-space discovery (`chat/pending-spaces.ts`) — the fail-closed
-// attribution matrix. The SYSTEM deny pool is tenant-blind, so the ONLY
-// thing keeping one caller from reading another's pending spaces is the
-// caller-owned-identity join. Each test below pins one leak the join
-// must close:
-//
-//   - a matching, owned, installed-nowhere candidate IS returned;
-//   - a `null` sender is never matched (NULL-safe);
-//   - a slack/teams (workspace-scoped) deny row is never surfaced even
-//     if a sender id somehow got written (defense in depth);
-//   - a deny row for ANOTHER tenant's user id is never attributed to us;
-//   - an already-installed space is excluded (no dead pick);
-//   - a caller with no chat_identity gets nothing;
-//   - a non-global-id platform filter fails closed.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -34,8 +19,6 @@ let userBId: string;
 const CALLER_PID = "users/g-caller-1";
 const OTHER_PID = "users/g-other-1";
 
-// Seed a SYSTEM-tenant workspace_not_installed deny row through the real
-// audit writer (generates id + ts, no determinism-lint hazard).
 async function seedDeny(md: {
   platform: string;
   workspace_id_native: string;
@@ -90,7 +73,6 @@ async function installedWorkspace(workspace_id: string, tenant_id: string) {
 beforeAll(async () => {
   ctx = await createConversationTestCtx("pending-spaces");
 
-  // Caller (tenant A) owns CALLER_PID via an existing (DM) identity.
   await ctx.testDb.db.insert(chatIdentities).values({
     tenant_id: ctx.tenant_id,
     user_id: ctx.user_id,
@@ -99,7 +81,6 @@ beforeAll(async () => {
     platform_user_id: CALLER_PID,
   });
 
-  // Tenant B + user B owning OTHER_PID.
   const [tenantB] = await ctx.testDb.db
     .insert(tenants)
     .values({ slug: "t-pending-b", display_name: "Pending B" })
@@ -124,7 +105,6 @@ beforeAll(async () => {
     platform_user_id: OTHER_PID,
   });
 
-  // Deny rows exercising each branch.
   await seedDeny({
     platform: "google_chat",
     workspace_id_native: "spaces/OK",
@@ -139,15 +119,13 @@ beforeAll(async () => {
   await seedDeny({
     platform: "slack",
     workspace_id_native: "T-SLACK",
-    sender_platform_user_id: CALLER_PID, // hypothetical regressed write
+    sender_platform_user_id: CALLER_PID,
   });
   await seedDeny({
     platform: "google_chat",
     workspace_id_native: "spaces/OTHERTENANT",
     sender_platform_user_id: OTHER_PID,
   });
-  // Installed-elsewhere: a deny for the caller, but the space is already
-  // registered (in tenant B) → the global unique index would 409 → hide.
   await seedDeny({
     platform: "google_chat",
     workspace_id_native: "spaces/INSTALLED",
@@ -168,11 +146,10 @@ describe("chat: pending-space discovery attribution", () => {
     });
     const ids = items.map((i) => i.workspace_id);
     expect(ids).toContain("spaces/OK");
-    // Every leak the join must close:
-    expect(ids).not.toContain("spaces/NULLSENDER"); // NULL-safe
-    expect(ids).not.toContain("T-SLACK"); // non-global-id platform
-    expect(ids).not.toContain("spaces/OTHERTENANT"); // another user's id
-    expect(ids).not.toContain("spaces/INSTALLED"); // already installed
+    expect(ids).not.toContain("spaces/NULLSENDER");
+    expect(ids).not.toContain("T-SLACK");
+    expect(ids).not.toContain("spaces/OTHERTENANT");
+    expect(ids).not.toContain("spaces/INSTALLED");
     const ok = items.find((i) => i.workspace_id === "spaces/OK");
     expect(ok).toEqual({
       platform: "google_chat",
@@ -189,7 +166,7 @@ describe("chat: pending-space discovery attribution", () => {
     });
     const ids = items.map((i) => i.workspace_id);
     expect(ids).toContain("spaces/OTHERTENANT");
-    expect(ids).not.toContain("spaces/OK"); // caller A's id — never attributed to B
+    expect(ids).not.toContain("spaces/OK");
   });
 
   test("a principal with no chat_identity gets nothing", async () => {

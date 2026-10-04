@@ -1,4 +1,3 @@
-/** The same canonical decision is available inline and in the working context. */
 export async function verifyChatChoices(page, stand, conversation, locale, capture) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(
@@ -101,8 +100,6 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
   await page.route(detailPattern, detail);
   await page.route(answerPattern, answer);
   try {
-    // One card, in the transcript: a second copy in the working context held
-    // a second selection ("Montags" here, "Dienstags" there).
     for (const surface of ["inline", "inline-cancel"]) {
       waiting = true;
       expected = surface === "inline" ? "preview" : "cancel";
@@ -224,8 +221,6 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     await page.getByTestId("chat-message-0-choice").getByRole("alert").waitFor();
     await capture("error");
 
-    // The persisted pre-8.0.13 question keeps its response binding, but exposes
-    // a readable recommendation and effects on both surfaces.
     waiting = true;
     fail = false;
     input.question =

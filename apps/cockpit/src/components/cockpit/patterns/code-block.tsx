@@ -3,7 +3,6 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import { useI18n } from "@/lib/i18n-context";
 import { useCopy } from "./copy-field";
 
-/** A payload, a command or a request (P15) — the only `<pre>` outside chat. */
 export function CodeBlock({
   code,
   lang,

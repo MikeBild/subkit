@@ -1,7 +1,3 @@
-// `converse` flow — single-turn LLM call used by ad-hoc `/ai/generate`
-// and repair-style paths. Multi-turn tool-using authoring lives in
-// `apps/engine/src/conversations/loop.ts`.
-
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../core/invoke.ts";
 import type { EnhancedPrompt } from "../types.ts";

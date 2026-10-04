@@ -63,12 +63,6 @@ function assertSecretName(name: string): void {
   }
 }
 
-/**
- * A version written but not yet approved by a person (T5 "Freigaben statt
- * Eingaben"). Until approval it is not the current version, cannot be bound
- * and is invisible to `--vault-check`; `pending_bindings` are the settings
- * paths approval re-points at it.
- */
 export interface PendingSecretVersionInput {
   prepared_by: string;
   bindings: string[];
@@ -99,10 +93,6 @@ async function createSecretVersionInTransaction(
   const version = (latest?.version ?? 0) + 1;
   const aad = `runtime-secret:${name}:${version}`;
   const encrypted = encryptSecret(plaintext, aad);
-  // `engine --vault-set` runs on the host BEFORE this release's migrations,
-  // and drizzle's insert names every schema column — including the three
-  // 6.29 added — so on the previous schema it is written by hand with the
-  // columns every release has had. See secret-columns.ts.
   let created: { created_at: Date } | undefined;
   if (await hasPendingSecretColumns(tx)) {
     [created] = await tx
@@ -150,7 +140,6 @@ export async function createSecretVersion(
     name: string;
     value: string;
     created_by: string | null;
-    /** Write it as a prepared version that waits for approval in the Cockpit. */
     pending?: PendingSecretVersionInput;
   },
 ): Promise<{
@@ -181,9 +170,6 @@ export async function listSecretVersions(db: Executor): Promise<
     }>;
   }>
 > {
-  // A prepared version is not a version yet as far as bindings are
-  // concerned; it is listed by `listPendingSecretVersions` instead. The
-  // predicate is only spelled where the column exists (secret-columns.ts).
   const withPending = await hasPendingSecretColumns(db);
   // tenant-filter:exempt — the registry is product-global operator state;
   // routes require settings:read and never return ciphertext.
@@ -220,10 +206,6 @@ export async function listSecretVersions(db: Executor): Promise<
 }
 
 async function readSecret(db: Executor, name: string, version: number): Promise<string> {
-  // Read with the schema-tolerant projection: this path runs on the host
-  // BEFORE this release's migrations (`--vault-set --bind`, the preflight's
-  // object-store credential), where the prepared-version columns may not
-  // exist yet. See secret-columns.ts.
   const projection = await secretVersionProjection(db);
   // tenant-filter:exempt — references address the product-global secret registry.
   const [found] = await db
@@ -254,7 +236,6 @@ async function readSecret(db: Executor, name: string, version: number): Promise<
   );
 }
 
-/** Decrypt one current (non-revoked, approved) version. The only public read of a value. */
 export async function readSecretVersion(
   db: Executor,
   name: string,
@@ -301,8 +282,6 @@ async function externalizeSeedSecrets(
   const stored = clone(document);
   for (const leaf of listConfigLeaves()) {
     if (!leaf.meta.secret) continue;
-    // The fundamental DSN is represented by a fixed non-secret sentinel in
-    // revision documents and is supplied by the process after resolution.
     if (dottedPath(leaf) === "database.url") continue;
     const globalValue = getDeep(stored, leaf.path);
     if (typeof globalValue === "string" && globalValue && !parseSecretReference(globalValue)) {
@@ -349,31 +328,16 @@ async function requireRevision(db: Executor, revision: number): Promise<RuntimeR
   return toRevision(row);
 }
 
-/** A restart-required revision waits while another replica's lease is still
- * fresh. Internal: the boot loop retries on it until the lease runs out. */
 class HealthyLeaseConflictError extends RuntimeConfigConflictError {}
 
-/** How long boot waits for a foreign lease to run out before giving up: one
- * lease window plus a heartbeat of slack. */
 export const BOOT_LEASE_WAIT_MS = REPLICA_LEASE_MS + 5_000;
 
 export interface BootLeaseWait {
-  /** Give up (and throw the conflict) after this many milliseconds. */
   maxWaitMs?: number;
   sleep?: (ms: number) => Promise<void>;
-  /** This process's replica id; a lease under it cannot be another live process. */
   instanceId?: string;
 }
 
-/**
- * Load the canonical snapshot at boot. A restart-required revision is
- * promoted only when no other replica holds a fresh lease. Right after an
- * unclean end the previous process's lease is still fresh for up to
- * REPLICA_LEASE_MS; throwing then would make the supervisor restart us into
- * the same refusal until its start limit gives up, so boot waits (with
- * backoff, outside any transaction) for the lease to run out and only throws
- * when a lease stays fresh past the wait — a replica that is really alive.
- */
 export async function initializeRuntimeConfig(
   db: Db,
   seed: Config,
@@ -462,11 +426,6 @@ async function initializeRuntimeConfigOnce(
     }
 
     const parsed = ConfigSchema.parse(seed);
-    // The DSN is needed to reach this transaction and therefore cannot be
-    // sourced from the revision it is creating. Keep neither plaintext nor an
-    // encrypted dead copy in PostgreSQL; the fixed sentinel preserves the
-    // schema shape and makes the process-binding exception explicit on every
-    // revision/read surface.
     parsed.database.url = DATABASE_URL_BOOTSTRAP_SENTINEL;
     const document = await externalizeSeedSecrets(
       tx,
@@ -496,9 +455,6 @@ async function initializeRuntimeConfigOnce(
   });
 
   const resolved = await validateAndResolveDocument(db, state.active.document);
-  // DATABASE_URL is intentionally the one DB-independent bootstrap secret.
-  // Every other runtime value comes from PostgreSQL, but the connection used
-  // to reach that PostgreSQL instance must remain the process binding.
   resolved.database.url = seed.database.url;
   const { preflightObjectStoreConfig } = await import("../storage/object-store.ts");
   await preflightObjectStoreConfig(resolved.storage);
@@ -529,9 +485,6 @@ export async function getRuntimeConfigState(db: Executor): Promise<RuntimeConfig
     saved_revision: saved.revision,
     active_revision: active.revision,
     activation_status: saved.status,
-    // A revision keeps the fields that needed a restart when it was saved; once
-    // it IS the active one, nothing waits any more. Reporting them after the
-    // restart kept "Wartet auf Neustart" on screen for a value already in effect.
     pending_restart_fields: saved.revision === active.revision ? [] : saved.pending_restart_fields,
   };
 }
@@ -631,12 +584,6 @@ export async function saveRuntimeConfigPatch(
       setDeep(document, targetPath, value);
     }
 
-    // What waits for a restart is every restart-sensitive value that differs
-    // from what the running process loaded — not only the paths of this
-    // patch. A later save on top of a revision still waiting for its restart
-    // must carry that wait forward; otherwise it would hot-activate the
-    // earlier restart-sensitive change (the listener keeps the old port) and
-    // drop it from the "waiting for a restart" line.
     const active =
       state.active_revision === base.revision
         ? base
@@ -737,10 +684,6 @@ export async function prepareRuntimeConfig(
   revision: RuntimeRevision,
 ): Promise<Config> {
   const config = await validateAndResolveDocument(db, revision.document);
-  // DATABASE_URL is the fundamental connection bootstrap. Reading a new DSN
-  // from the database reached through the old DSN would split the process:
-  // the request DB would stay on the old pool while queue/listener consumers
-  // moved to the new one. Keep the already-established process binding.
   config.database.url = getConfig().database.url;
   const { preflightObjectStoreConfig } = await import("../storage/object-store.ts");
   await preflightObjectStoreConfig(config.storage);
@@ -760,11 +703,6 @@ export async function applyRuntimeConfig(config: Config): Promise<void> {
   try {
     await reconfigureTracing();
   } catch (error) {
-    // The revision was already validated and the database pointer is the
-    // cluster-wide commit point. Tracer shutdown/exporter failures must not
-    // leave this replica on an older application configuration forever.
-    // Keep the new snapshot active, surface the degraded hot reload, and let
-    // the next observability change or process restart rebuild the SDK.
     logger.warn({
       module: "runtime_config",
       action: "observability.reconfigure_failed",
@@ -775,9 +713,7 @@ export async function applyRuntimeConfig(config: Config): Promise<void> {
   try {
     const { resetLangfuseCacheForReload } = await import("../observability/langfuse-spans.ts");
     resetLangfuseCacheForReload();
-  } catch {
-    // The lightweight engine build may not include the Langfuse module.
-  }
+  } catch {}
   const { resetObjectStoreForRuntimeConfig } = await import("../storage/object-store.ts");
   resetObjectStoreForRuntimeConfig();
 }

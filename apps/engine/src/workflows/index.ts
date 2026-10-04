@@ -1,7 +1,3 @@
-// Public API barrel for the `workflows` subsystem. Routes and other
-// subsystems must import from this entry point only — see the
-// route_layering check at apps/engine/scripts/audit-invariants.ts.
-
 export * from "./apply-boundary-proposals.ts";
 export { AuthorityExecutionShapeSchema } from "./authority-execution-shape.ts";
 export { type BoundaryGrowth, BoundaryGrowthSchema } from "./authority-growth.ts";

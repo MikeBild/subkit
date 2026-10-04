@@ -8,8 +8,6 @@ import {
 } from "../execution/prepared-request.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 
-/** Version/input provenance plus optional proofs for supported materialized
- * requests. Missing legacy proofs never authorize a bound external dispatch. */
 export const PreparedWorkflowBindingSchema = z
   .object({
     schema_version: z.literal(1),
@@ -40,8 +38,6 @@ export function preparedInputDigest(input: unknown): string {
   return workflowJsonDigest(input ?? {});
 }
 
-/** Derive provenance from the completed held run, never the latest workflow or
- * a model-supplied version. This internal parameter is not a public tool input. */
 export async function capturePreparedWorkflowBinding(p: {
   db: Db;
   tenant_id: string;
@@ -89,8 +85,6 @@ export async function capturePreparedWorkflowBinding(p: {
       .safeParse(meta);
     return parsed.success ? [{ ...parsed.data.extras.prepared_request_proof, step_key }] : [];
   });
-  // Read the display projection from persisted dispatch preparation, never
-  // from model-supplied preview prose. Only proven requests carry a run limit.
   const request_reviews = steps.flatMap(({ meta, step_key }) => {
     const parsed = z
       .object({

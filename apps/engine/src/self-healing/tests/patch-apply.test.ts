@@ -1,13 +1,3 @@
-// patch-apply — the one patch semantic behind preview, dry-run and apply.
-//
-// Pins the properties the self-healing loop rests on:
-//   - `update_field_path` rewrites the projection of the addressed step
-//   - a proposal kind the engine cannot perform is refused, never silently
-//     turned into a version that changes nothing
-//   - every refusal names a reason, so an unapplied patch is never recorded
-//     as a repair
-//   - the input DAG is never mutated
-
 import { describe, expect, test } from "bun:test";
 import type { PatchProposal } from "../../llm/flows/repair.ts";
 import {
@@ -87,7 +77,6 @@ describe("applyPatchToWorkflowDag", () => {
     if (!out.ok) return;
     expect((out.dag.steps as Record<string, unknown>[])[0]?.data_selector).toBe("data.result.id");
     expect(out.changed_paths).toEqual(["data_selector"]);
-    // The persisted row the caller holds must survive untouched.
     expect((before.steps[0] as Record<string, unknown>).data_selector).toBe("data.id");
   });
 

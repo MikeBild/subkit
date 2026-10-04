@@ -1,31 +1,3 @@
-// Integration tests for the global OAuth2 callback route.
-//
-// Covers the v4.7.3 refactor: a single unauthenticated
-// `GET /v1/oauth/callback` looks up the connector by opaque `state`
-// (atomically claimed via DELETE … RETURNING), exchanges the code at
-// the OAuth provider, and persists the credential under the state
-// row's tenant_id / connector_id. State encodes everything the
-// callback needs; the callback URL is connector-agnostic.
-//
-// What the tests pin:
-//   1. happy path — valid state + code → credential row written,
-//      state row deleted, HTML success page returned.
-//   2. provider error — `?error=access_denied` returns HTML error
-//      page (200/400 with text/html, not JSON), state row deleted.
-//   3. state replay — second GET with the same state returns the
-//      "state not found" page (the first call atomically claimed
-//      the row).
-//   4. unknown state — random state value returns the same
-//      not-found page (no leakage of valid-state-but-wrong-tenant).
-//   5. the stored credential IS the re-authorization — the sign-in flag
-//      and the circuit breaker are reset (each with its audit row), and a
-//      switched-off connector stays switched off and is said to be.
-//   6. where the person goes next follows where the flow was started: a
-//      Cockpit flow is redirected to the connector's page — an address
-//      built by the engine, whatever the callback's query says — and
-//      every other flow, and every failure, gets a page worded for its
-//      origin.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -55,13 +27,11 @@ import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts"
 let server: HttpTestServer;
 let mock: MockOAuthServer;
 let connectorId: string;
-// The configured address is process-wide; hand it back as it was found.
 let publicBaseUrlBefore = "";
 const uuid = createDeterministicUuidFactory(0x0a17);
 
 beforeAll(async () => {
   server = await createHttpTestServer("oauth-callback");
-  // The return address is built from the engine's own configured origin.
   publicBaseUrlBefore = getConfig().server.public_base_url;
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
   mock = await startMockOAuthServer();
@@ -110,10 +80,6 @@ async function seedStateRow(
     redirect_uri: `${server.baseUrl}/v1/oauth/callback`,
     origin: opts.origin ?? null,
     requested_scopes: opts.requested_scopes ?? null,
-    // The callback route checks `expires_at > now()`; use the
-    // production clock seam (not `Date.now`) so the determinism gate
-    // is happy AND tests that install `setTestNow` still observe the
-    // same wall.
     expires_at: new Date(now() + 5 * 60_000),
   });
 }
@@ -142,8 +108,6 @@ async function getStateRow(state: string) {
   return rows[0] ?? null;
 }
 
-/** The connector as the prod incident left it: flagged, breaker open, and —
- *  when asked — switched off by an operator. */
 async function breakConnector(opts: { enabled?: boolean } = {}): Promise<void> {
   await server.db
     .update(connectors)
@@ -165,7 +129,6 @@ async function getConnectorRow() {
   return row;
 }
 
-/** The connector as the API hands it out — what the Cockpit page reads. */
 async function getConnectorApi(): Promise<Record<string, unknown>> {
   const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}`, {
     headers: { authorization: `Bearer ${server.apiKey}` },
@@ -182,8 +145,6 @@ async function auditActions(): Promise<string[]> {
   return rows.map((row) => row.action);
 }
 
-/** A live Cockpit session: the cookie alone (what a browser sends to the
- *  callback) and the headers the Cockpit's own requests carry. */
 async function cockpitSession(): Promise<{ cookie: string; headers: Record<string, string> }> {
   const [session] = await server.db
     .insert(sessions)
@@ -261,10 +222,6 @@ describe("GET /v1/oauth/callback", () => {
       .where(eq(conversationElicitations.id, elicitation.id));
     expect(completedElicitation?.delivery_last_error).toBe("url_completed");
 
-    // v4.8.0 Fix #1: callback must also publish
-    // `connector.oauth.callback_succeeded` on the `connector.oauth`
-    // channel so sk-cli can auto-resume the in-flight conversation.
-    // Assert the events row exists with the documented payload shape.
     const eventRows = await server.db
       .select()
       .from(events)
@@ -299,7 +256,6 @@ describe("GET /v1/oauth/callback", () => {
     expect(row.circuit_failure_count).toBe(0);
     expect(row.circuit_opened_at).toBeNull();
 
-    // What the connector page reads, not only the columns behind it.
     const api = await getConnectorApi();
     expect(api.needs_reauth).toBe(false);
     expect(api.auth_failed_at).toBeNull();
@@ -336,7 +292,6 @@ describe("GET /v1/oauth/callback", () => {
     const body = await res.text();
     expect(body).toContain("Signed in");
     expect(body).toContain("switched off and stays off until someone switches it on");
-    // A terminal flow is told how to switch it on from the terminal.
     expect(body).toContain("sk connectors enable");
 
     const row = await getConnectorRow();
@@ -393,7 +348,6 @@ describe("GET /v1/oauth/callback", () => {
       });
       return (await res.json()) as { missing_scopes: string[] };
     };
-    // The connector asks for `read`; this sign-in was granted something else.
     await seedStateRow("state-summary-partial", { requested_scopes: "read" });
     mock.setGrantedScope("profile");
     try {
@@ -440,9 +394,6 @@ describe("GET /v1/oauth/callback", () => {
       expect(res.status).toBe(200);
       return (await res.json()) as { last_success_at: string | null; last_failure: unknown };
     };
-    // The sign-ins earlier in this file happened long ago; the rejected call
-    // came after them, before this one. Times are the database's, the clock
-    // the audit writer stamps with.
     await server.db
       .update(auditLog)
       .set({ ts: sql`${auditLog.ts} - interval '60 days'` })
@@ -470,7 +421,6 @@ describe("GET /v1/oauth/callback", () => {
     expect(body).toContain("Signed in");
     const after = await runtime();
     expect(after.last_failure).toBeNull();
-    // A sign-in is not a call.
     expect(after.last_success_at).toBe(before.last_success_at);
   });
 
@@ -528,8 +478,6 @@ describe("GET /v1/oauth/callback", () => {
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(`${connectorPage()}?signed_in=1`);
 
-    // The redirect is not a way around the switch: the connector is signed
-    // in and still off, which is what the page it lands on will read.
     const api = await getConnectorApi();
     expect(api.enabled).toBe(false);
     expect(api.needs_reauth).toBe(false);
@@ -562,8 +510,6 @@ describe("GET /v1/oauth/callback", () => {
     expect(res.headers.get("content-type")).toMatch(/^text\/html/);
     expect(res.status).toBe(400);
     const body = await res.text();
-    // The provider's code is shown; its free text — anyone's text, on an
-    // unauthenticated URL — is not.
     expect(body).toContain("Provider code: access_denied");
     expect(body).not.toContain("call this number");
     expect(body).toContain("Nothing was stored.");
@@ -584,10 +530,8 @@ describe("GET /v1/oauth/callback", () => {
     const state = "state-replay";
     await seedStateRow(state);
     const code = "test-code-stub";
-    // First call wins (DELETE … RETURNING atomically claims the row).
     const first = await callback(`state=${state}&code=${code}`);
     expect(first.status).toBe(200);
-    // Second call sees no row — should render the "link expired" page.
     const second = await callback(`state=${state}&code=ignored`);
     expect(second.status).toBe(400);
     expect(second.headers.get("content-type")).toMatch(/^text\/html/);
@@ -601,8 +545,6 @@ describe("GET /v1/oauth/callback", () => {
     expect(res.status).toBe(400);
     const body = await res.text();
     expect(body).toContain("Link expired");
-    // Nothing identifies a flow, so the page names no surface and — even for
-    // a signed-in browser — links nowhere.
     expect(body).toContain("Start the sign-in again where you began it.");
     expect(body).not.toContain("terminal");
     expect(body).not.toContain("auth-result-link");

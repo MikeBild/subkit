@@ -26,36 +26,10 @@ export interface NativeElicitationTransport {
   elicitUrl?: (params: ElicitOobParams & { mode: "url" }) => Promise<ElicitationResult>;
 }
 
-/**
- * How long a wire `elicitation/create` stays pending, and therefore how
- * long the client-rendered form can still be answered. Agentic clients
- * (Claude Code) render a mid-turn elicitation only AFTER their own agent
- * turn completes — minutes, not seconds — so the SDK's 60s default
- * guarantees a timeout there. Delivery is non-blocking (the poll call
- * returns immediately); this bound only caps the detached round-trip so
- * an abandoned form eventually releases its delivery lease for a fresh
- * re-prompt.
- */
 export const ELICITATION_FORM_TIMEOUT_MS = 5 * 60_000;
 
-/**
- * Delivery-lease window for a wire elicitation. Slightly longer than the
- * round-trip timeout so the in-flight request always settles (and
- * releases the lease itself) before a concurrent poll can claim the row
- * and put a SECOND live form in front of the operator.
- */
 export const ELICITATION_DELIVERY_LEASE_MS = ELICITATION_FORM_TIMEOUT_MS + 15_000;
 
-/**
- * How long the poll call is held open after firing `elicitation/create`.
- * Clients accept an elicitation only in the context of an active request
- * and auto-cancel "unsolicited" ones (observed: Claude Code cancels in
- * ~16ms when the request lands after the tool result was written, but
- * queues the same request for its end-of-turn form UI when it lands
- * while the call is in flight). The grace keeps the call open just long
- * enough for the elicitation to reach the client inside that window —
- * it never waits for the human answer.
- */
 export const ELICITATION_DELIVERY_GRACE_MS = 1_000;
 
 export interface NativeDeliveryResult {
@@ -87,15 +61,6 @@ const FORM_TOOL_NAMES = new Set<FormBridgeToolName>([
   "ask_user_form",
 ]);
 
-// A URL an elicitation row hands to the human to complete out of band.
-//   - `credential`: an OAuth authorization / credential-setup link. URL-FIRST —
-//     the alternative would collect a secret as chat text, which the MCP surface
-//     refuses. Delivered as url-mode whenever the client can, regardless of form
-//     capability.
-//   - `approval`: a policy-confirmation portal link (`approval_url`). A FALLBACK
-//     — a form-capable client renders the rich confirm form and never needs the
-//     link; a client that cannot render a form (or has already completed the
-//     link out of band) reaches the confirmation only through it.
 function pendingUrlElicitation(
   pending: ElicitationRecord,
 ): { url: string; message: string; kind: "credential" | "approval" } | null {
@@ -130,27 +95,16 @@ export async function deliverPendingNativeElicitationCore(p: {
   const elicitForm = p.nativeElicitation.elicitForm;
   const elicitUrl = p.nativeElicitation.elicitUrl;
   const urlCandidate = pendingUrlElicitation(p.pending);
-  // A URL interaction already settled out of band (the portal POST marked the
-  // row) is a FACT to replay, not a mode to choose — honor it regardless of the
-  // client's form capability, so a form-capable client whose form never
-  // rendered still resumes once the human used the link.
   const urlAlreadyResolved =
     p.pending.delivery_last_error === "url_completed" ||
     p.pending.delivery_last_error === "url_failed" ||
     p.pending.delivery_last_error === "url_accepted";
-  // Deliver via URL when it is a credential row (url-first), when the URL
-  // interaction already resolved (replay), or when the client cannot render a
-  // form (the only channel it has). An `approval` row on a form-capable client
-  // keeps the rich confirm form.
   const urlElicitation =
     urlCandidate && (urlCandidate.kind === "credential" || urlAlreadyResolved || !elicitForm)
       ? urlCandidate
       : null;
   const mapped = urlElicitation ? null : mapAskUserToPrimitiveSchema(toolName, p.pending.input);
   const formMapping = mapped && !mapped.degrade ? mapped : null;
-  // A LIVE url delivery needs `elicitUrl`; an already-resolved one is replayed
-  // synchronously (below) and needs no wire capability — so only bail when the
-  // URL still needs a round-trip the client cannot make.
   if (urlElicitation && !elicitUrl && !urlAlreadyResolved) return null;
   if (!urlElicitation && (!formMapping || !elicitForm)) return null;
   if (urlElicitation && p.pending.delivery_last_error === "url_accepted") {
@@ -238,8 +192,6 @@ export async function deliverPendingNativeElicitationCore(p: {
     return resumed;
   };
 
-  // Replay arm — a URL interaction already finished out-of-band; there is
-  // no wire round-trip left, so resolve synchronously.
   if (
     urlElicitation &&
     (p.pending.delivery_last_error === "url_completed" ||
@@ -254,14 +206,6 @@ export async function deliverPendingNativeElicitationCore(p: {
     );
   }
 
-  // Wire arm — NON-BLOCKING. The `elicitation/create` round-trip must not
-  // hold this `tools/call` open: agentic clients (Claude Code) render the
-  // form only after their own agent turn completes, and their turn cannot
-  // complete while this call blocks — a deadlock the old awaiting shape
-  // always lost to the request timeout. Fire the round-trip, let a
-  // detached continuation stage the answer and resume the conversation
-  // when it lands, and hand `input_required` back immediately so the
-  // client's turn can end and the human can actually see the form.
   const sentAt = Date.now();
   const delivery = (async () => {
     try {
@@ -293,9 +237,6 @@ export async function deliverPendingNativeElicitationCore(p: {
           message: formMapping.message,
           requestedSchema: formMapping.requestedSchema,
         });
-        // A cancel faster than a human could read the form is the client
-        // auto-cancelling without rendering — a transport verdict, not a
-        // decision. Release the lease so a later poll re-prompts.
         if (result.action === "cancel" && Date.now() - sentAt < FORM_FAST_CANCEL_MS) {
           await releaseNativeElicitationDelivery(
             {
@@ -359,12 +300,6 @@ export async function deliverPendingNativeElicitationCore(p: {
     }
   })();
 
-  // Hold the poll open for a short grace so the `elicitation/create`
-  // reaches the client while this call is still in flight — never for
-  // the human's answer. If the round-trip settles inside the grace (an
-  // instant auto-cancel, a lightning-fast answer), the continuation has
-  // already done its work; either way the poll returns promptly so the
-  // client's agent turn can end and the operator can see the form.
   await Promise.race([
     delivery,
     new Promise<void>((resolve) => setTimeout(resolve, ELICITATION_DELIVERY_GRACE_MS)),

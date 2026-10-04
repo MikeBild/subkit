@@ -1,13 +1,3 @@
-// Offline smoke tier for the three sk UX additions:
-//   - `sk workflows invoke-snippet <id> [--lang ...] [--json]`
-//   - `sk review [--json]`
-//   - bare-`sk` no-profile non-TTY contract (unchanged: stderr + exit 2)
-//
-// All assertions are offline: invoke-snippet only formats a snippet,
-// review degrades to an empty digest when the engine is unreachable,
-// and the non-TTY no-profile path never touches the network. Tests are
-// skipped when dist/sk doesn't exist (CI builds it first).
-
 import { describe, expect, test } from "bun:test";
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -18,9 +8,6 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const BINARY = resolve(REPO_ROOT, "dist", "sk");
 
 function withProfileHome(): string {
-  // A throwaway $HOME with a saved api-key profile pointed at an
-  // unreachable engine, so commands resolve a profile but never make a
-  // successful network call.
   const home = mkdtempSync(path.join(tmpdir(), "sk-ux-"));
   spawnSync(
     BINARY,
@@ -60,7 +47,6 @@ describe("sk UX additions smoke", () => {
       expect(out).toContain("curl -sS -X POST");
       expect(out).toContain("https://engine.example.com/v1/executions");
       expect(out).toContain("wf_abc123");
-      // The real key is NEVER printed — only the env placeholder.
       expect(out).toContain("$SK_API_KEY");
       expect(out).not.toContain("wf_live_smoke");
     } finally {
@@ -123,8 +109,6 @@ describe("sk UX additions smoke", () => {
     const home = withProfileHome();
     try {
       const r = run(["review", "--json"], home);
-      // Engine unreachable → each section degrades to an empty list plus
-      // a note; the command still exits 0 with a well-formed envelope.
       expect(r.status).toBe(0);
       const parsed = JSON.parse(r.stdout as string) as {
         patch_candidates: unknown[];
@@ -144,8 +128,6 @@ describe("sk UX additions smoke", () => {
   test.skipIf(skip)("bare `sk` with no profile on non-TTY keeps the exit-2 contract", () => {
     const home = mkdtempSync(path.join(tmpdir(), "sk-ux-noauth-"));
     try {
-      // Empty stdin → non-TTY; no profile saved → must print the
-      // one-liner and exit 2 (scripts/CI contract), NOT open the picker.
       const r = spawnSync(BINARY, [], {
         encoding: "utf8",
         env: {

@@ -1,8 +1,3 @@
-// Unit tests for the user-provisioning CLI surface: the `createUser` /
-// `createInvite` engine-client contracts (mocked HTTP) and the
-// once-only invite banner formatter. Mirrors the HTTP-mock style of
-// `init.test.ts` — no real engine, no disk.
-
 import { describe, expect, test } from "bun:test";
 import { EngineClient, type UserInviteIssuedWire } from "../../engine-client.ts";
 import { formatInviteIssued, usersCommand } from "../users.ts";

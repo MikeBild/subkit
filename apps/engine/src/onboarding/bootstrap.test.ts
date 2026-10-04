@@ -1,5 +1,3 @@
-// Bootstrap orchestrator tests — DB-backed via testcontainers.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
@@ -10,7 +8,6 @@ import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { DEMO_WORKFLOWS } from "./demo-seed.ts";
 
-// settings/clearCache removed in v3.5 — runtime config moved to subkit.config.json
 const clearCache = (): void => {};
 
 import {
@@ -40,8 +37,6 @@ afterAll(async () => {
 });
 
 async function resetWorld(): Promise<void> {
-  // Drop everything we mutate between tests.  Order matters because of
-  // FK chains coming off `tenants`.
   await tdb.db.delete(auditLog);
   await tdb.db.delete(engineSettings);
   await tdb.db.delete(tenants);
@@ -84,7 +79,6 @@ describe("run() — banner + token mint", () => {
     );
     expect(envelope).toBeDefined();
     expect(envelope!.token_sha256).toBe(_internal.sha256Hex(result.plaintext_token!));
-    // 15-minute TTL +/- 5s slop for clock noise during the test.
     expect(envelope!.expires_at_ms - getTestNow()).toBeGreaterThan(BOOTSTRAP_TOKEN_TTL_MS - 5_000);
     expect(envelope!.expires_at_ms - getTestNow()).toBeLessThanOrEqual(BOOTSTRAP_TOKEN_TTL_MS);
   });
@@ -109,9 +103,6 @@ describe("run() — banner + token mint", () => {
 
 describe("consume() — starter workflows", () => {
   test("a completed setup leaves the tenant with something it can actually run", async () => {
-    // Without this the only route to a first execution is the conversational
-    // authoring loop, which needs a real LLM provider. A newcomer using the
-    // mock provider reached setup and then faced an empty workspace.
     const minted = await run(tdb.db, { stdout: { write: () => undefined } });
     const outcome = await consume(
       tdb.db,
@@ -168,14 +159,6 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     expect(sentinel).toBe(true);
     const envelope = await _internal.readSetting(tdb.db, BOOTSTRAP_TOKEN_KEY);
     expect(envelope).toBeUndefined();
-
-    // v3.5: llm.provider and llm.api_key now live in subkit.config.json,
-    // not engine_settings. The bootstrap consume() path writes them via
-    // setConfigKey but the loader is not initialised in this unit test
-    // (the wrapper logs a skip warn). The new tenant's
-    // tenant_llm_settings row carries the same config and is asserted
-    // by the integration suite — see
-    // apps/engine/src/http/routes/__tests__/settings.integration.test.ts.
 
     const completed = await tdb.db
       .select()
@@ -239,7 +222,6 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
 
   test("expired token is rejected, a fresh token is re-minted, and the new token redeems", async () => {
     const minted = await run(tdb.db, { stdout: { write: () => undefined } });
-    // Manually rewrite the envelope's expiry into the past.
     const envelope = await _internal.readSetting<{ token_sha256: string; expires_at_ms: number }>(
       tdb.db,
       BOOTSTRAP_TOKEN_KEY,
@@ -271,8 +253,6 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
       expect(outcome.hint).toContain("fresh token");
     }
 
-    // A fresh token was minted (new hash, future expiry) and the banner
-    // was reprinted with the new plaintext.
     const reminted = await _internal.readSetting<{ token_sha256: string; expires_at_ms: number }>(
       tdb.db,
       BOOTSTRAP_TOKEN_KEY,
@@ -285,7 +265,6 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
     const tokenMatch = /sk init --token ([0-9a-f]{64})/.exec(banner);
     expect(tokenMatch).not.toBeNull();
 
-    // The re-minted token is single-use and actually redeems.
     const retry = await consume(
       tdb.db,
       rbacIds,
@@ -327,8 +306,6 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
         },
         { token: "f".repeat(64), ip },
       );
-      // Either invalid_token (most attempts) or one of the gate checks
-      // — but never rate_limited within the budget.
       if (outcome.status === "failed") {
         expect(outcome.code).not.toBe("rate_limited");
       }

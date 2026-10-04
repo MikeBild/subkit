@@ -1,15 +1,3 @@
-// Integration tests for buildSyntheticWorkflowTools.
-// Uses testcontainers postgres (createTestDb) — no mocks of the DB.
-// Verifies:
-//   - the catalog shape and per-tenant isolation of the wf_<slug> palette
-//   - per-execute gateWorkflowRunRbac denial
-//   - per-step ctx.onLog calls mirror run-workflow.ts:306-329
-//   - envelope carries suggested_command
-// The hold-writes preview → confirm_id → replay contract these tools share
-// with MCP's wf_<slug> is pinned in execution/tests/hold-writes.test.ts and
-// mcp/capabilities/held-preview.test.ts; the workflows seeded here have no
-// write-classified steps, so they never mint an approval.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { and, eq } from "drizzle-orm";
@@ -47,8 +35,6 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
   return {
     provider: "test",
     kind: "user",
-    // UUID-shape so audit-write doesn't fail validation when a deny path
-    // commits a POLICY_DENIED row.
     id: "00000000-0000-4000-8000-0000000000fc",
     tenant_id: tenantId,
     roles: ["admin"],
@@ -100,7 +86,6 @@ beforeAll(async () => {
     .returning();
   if (!t) throw new Error("tenant seed failed");
   tenantId = t.id;
-  // Exercise the real HTTP driver without depending on a public network endpoint.
   server = createServer((request, response) => {
     request.on("data", (chunk) => {
       receivedBody += chunk.toString();
@@ -126,7 +111,6 @@ beforeEach(async () => {
   resetMockProvider();
   requests = 0;
   receivedBody = "";
-  // Fresh conversation per test
   const [conv] = await tdb.db
     .insert(conversations)
     .values({ tenant_id: tenantId, status: "active" })
@@ -134,14 +118,9 @@ beforeEach(async () => {
   if (!conv) throw new Error("conversation seed failed");
   conversationId = conv.id;
 
-  // Clean up workflows
   await tdb.db.delete(workflowVersions);
   await tdb.db.delete(workflows);
 });
-
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
 
 async function seedTool(slug: string): Promise<{ id: string }> {
   const [wf] = await tdb.db
@@ -171,10 +150,6 @@ async function seedTool(slug: string): Promise<{ id: string }> {
   return { id: wf.id };
 }
 
-// ---------------------------------------------------------------------------
-// buildSyntheticWorkflowTools — catalog returns wf_<slug> tools
-// ---------------------------------------------------------------------------
-
 describe("buildSyntheticWorkflowTools — catalog shape", () => {
   test("returns empty map when no is_tool workflows exist", async () => {
     const tools = await buildSyntheticWorkflowTools({
@@ -201,7 +176,6 @@ describe("buildSyntheticWorkflowTools — catalog shape", () => {
 
     expect("wf_my-tool-wf" in tools).toBe(true);
     expect("wf_another-tool" in tools).toBe(true);
-    // Raw slug without prefix is NOT in the map
     expect("my-tool-wf" in tools).toBe(false);
   });
 
@@ -234,17 +208,11 @@ describe("buildSyntheticWorkflowTools — catalog shape", () => {
       events: [],
     });
 
-    // v7 Tool.description is `string | ((options) => string)`; these
-    // synthetic tools use string descriptions — coerce for the assertion.
     const desc = String(tools["wf_jira-sync"]?.description ?? "");
     expect(desc).toContain("jira-sync");
     expect(desc.toLowerCase()).toContain("workflow");
   });
 });
-
-// ---------------------------------------------------------------------------
-// execute — happy path run produces output envelope
-// ---------------------------------------------------------------------------
 
 describe("buildSyntheticWorkflowTools — execute happy path", () => {
   test("execute returns an envelope with suggested_command", async () => {
@@ -272,7 +240,6 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
       context: {},
     });
     const output = (result as { ok: boolean; data: Record<string, unknown> }).data;
-    // suggested_command should be present
     expect(output?.suggested_command).toBe("/workflows run suggest-test");
     expect(requests).toBe(1);
     expect((result as { ok: boolean }).ok).toBe(true);
@@ -321,14 +288,9 @@ describe("buildSyntheticWorkflowTools — execute happy path", () => {
       {},
       { toolCallId: "test-call-id", messages: [], context: {} },
     );
-    // ctx.onLog should have been called with at least the "running workflow" line
     expect(logMessages.some((m) => m.includes("log-test"))).toBe(true);
   });
 });
-
-// ---------------------------------------------------------------------------
-// execute — envelope fields post-run
-// ---------------------------------------------------------------------------
 
 describe("buildSyntheticWorkflowTools — envelope fields", () => {
   test("envelope contains workflow_id after a run", async () => {
@@ -379,10 +341,6 @@ describe("buildSyntheticWorkflowTools — envelope fields", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tenant isolation + RBAC denial
-// ---------------------------------------------------------------------------
-
 describe("buildSyntheticWorkflowTools — tenant isolation", () => {
   test("principal from tenant B sees no wf_<slug> entries for tenant A", async () => {
     await seedTool("tenant-a-tool");
@@ -406,10 +364,6 @@ describe("buildSyntheticWorkflowTools — tenant isolation", () => {
 
 describe("buildSyntheticWorkflowTools — RBAC denial", () => {
   test("per-execute gateWorkflowRunRbac fires when an admin-built tool is invoked under a restricted principal", async () => {
-    // Build the synthetic palette under an admin principal so the catalog
-    // surfaces the tool. Hand the resulting `execute` function a restricted
-    // principal at call time — that's the path the per-execute
-    // gateWorkflowRunRbac gate is meant to defend against.
     const wf = await seedTool("rbac-denied-syn");
     const admin = makePrincipal();
     const tools = await buildSyntheticWorkflowTools({
@@ -422,8 +376,6 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
     const tool = tools["wf_rbac-denied-syn"];
     expect(tool).toBeDefined();
 
-    // Now rebuild with the restricted principal so the executeSyntheticRun
-    // closure carries the restricted identity into the per-execute gate.
     const restricted = makePrincipal({
       provider: "portal_token",
       roles: ["portal_token_user"],
@@ -438,10 +390,6 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
     });
     const restrictedTool = restrictedTools["wf_rbac-denied-syn"];
     if (!restrictedTool) {
-      // The portal-token allowlist filters the visible catalog, so the
-      // synthetic palette omits this tool. That is also a valid deny —
-      // pin the catalog-side outcome here so the test still asserts the
-      // contract regardless of which layer fires first.
       expect(Object.keys(restrictedTools)).not.toContain("wf_rbac-denied-syn");
     } else {
       const result = (await restrictedTool.execute!(
@@ -452,8 +400,6 @@ describe("buildSyntheticWorkflowTools — RBAC denial", () => {
       expect(result.data?.denied).toBe(true);
       expect(result.data?.permission).toBe("workflow:run");
     }
-    // Either path (catalog filter or per-execute gate) must have
-    // committed a POLICY_DENIED audit row keyed on the workflow.
     const audit = await tdb.db
       .select()
       .from(auditLog)
@@ -517,9 +463,7 @@ test("a hook-started workflow is judged in production, where its deliveries run"
     })
     .returning();
   if (!hook) throw new Error("missing hook");
-  // The hook alone decides: one saved change, one environment to review.
   expect(await workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).toBe("prod");
-  // A development schedule beside it is a real ambiguity, as two schedules are.
   const [schedule] = await tdb.db
     .insert(workflowsSchedules)
     .values({ tenant_id: tenantId, workflow_id: wf.id, cron: "0 8 * * *", execution_mode: "dev" })
@@ -528,7 +472,6 @@ test("a hook-started workflow is judged in production, where its deliveries run"
   await expect(workflowExecutionEnvironment(tdb.db, tenantId, wf.id)).rejects.toMatchObject({
     code: "workflow_environment_ambiguous",
   });
-  // A deactivated hook receives nothing and decides nothing.
   await tdb.db
     .update(webhooksInbound)
     .set({ active: false })
@@ -632,7 +575,6 @@ test("production preparation pauses in chat and human approval dispatches once i
     );
   expect(question?.input).toMatchObject({ commit_intent: { kind: "commit_held_workflow_writes" } });
   if (!question) throw new Error("missing decision");
-  // A changed schedule must not redirect the already-reviewed one-shot operation.
   await tdb.db
     .update(workflowsSchedules)
     .set({ execution_mode: "dev" })
@@ -654,7 +596,7 @@ test("production preparation pauses in chat and human approval dispatches once i
     surface: "web" as const,
     db: tdb.db,
   };
-  await Bun.sleep(30); // A human decides after the preparation clock has advanced.
+  await Bun.sleep(30);
   const completed = await maybeAutoPersistFromElicitation(answer);
   expect(completed.synthetic_result).toMatchObject({ ok: true, data: { status: "succeeded" } });
   expect(requests).toBe(1);

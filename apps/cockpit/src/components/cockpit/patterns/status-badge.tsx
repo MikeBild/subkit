@@ -45,7 +45,6 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   warn: "warn",
 };
 
-/** How a persisted engine state reads: well, needs a look, broken — or just a word. */
 export function statusTone(state: string): BadgeTone {
   return TONES[state.toLowerCase()] ?? "neutral";
 }
@@ -57,17 +56,12 @@ const TONE_CLASS: Record<BadgeTone, string> = {
   neutral: "text-muted-foreground",
 };
 
-/**
- * An engine state (P11): dot and word. States only — a category, a kind or a
- * count is plain text and draws no dot.
- */
 export function StatusBadge({
   state,
   label,
   testId,
 }: {
   state: string;
-  /** The word, where the state's own translation is not the one to show. */
   label?: string;
   testId?: string;
 }) {

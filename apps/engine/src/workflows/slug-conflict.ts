@@ -1,27 +1,13 @@
-// Shared slug-conflict mapping for workflow create + metadata update.
-//
-// A duplicate active slug raises Postgres `23505` on the partial unique index
-// `workflows_tenant_slug_active_key` (tenant_id, slug WHERE deleted_at IS
-// NULL). Both write paths map it to a clean structured conflict the HTTP route
-// turns into a 4xx — instead of the unhandled 500 a duplicate-slug
-// `POST /v1/workflows` was producing (raw insert error in the runtime logs).
-
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflows } from "../db/schema/index.ts";
 
-/** Conflict shape returned alongside a slug-conflict error. */
 export interface SlugConflict {
   workflow_id: string;
   slug: string;
   name: string;
 }
 
-/**
- * Map a unique-violation error to a structured slug-conflict result, or
- * `null` when the error is NOT a slug conflict — the caller must rethrow so
- * unrelated failures still surface.
- */
 export async function slugConflictResult(
   err: unknown,
   db: Executor,

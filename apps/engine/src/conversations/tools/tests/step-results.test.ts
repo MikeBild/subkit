@@ -1,8 +1,3 @@
-// buildRawStepResults — the OPTIONAL raw per-step input/output surface
-// dry_run_workflow / run_workflow attach under `include_step_results` (D6).
-// The default tool envelope stays compact (truncated step_trace); this
-// builder is what the opt-in flag returns.
-
 import { describe, expect, test } from "bun:test";
 import { buildRawStepResults, type RawStepResultSource } from "../step-results.ts";
 
@@ -22,13 +17,11 @@ describe("buildRawStepResults", () => {
         kind: "transform",
         status: "succeeded",
         duration_ms: 1,
-        // A transform issues no request → input is null, not fabricated.
         output_preview: [{ id: "p1" }],
       },
     ];
     const results = buildRawStepResults(steps);
     expect(results).toHaveLength(2);
-    // The request step exposes the resolved request as `input`.
     expect(results[0]).toMatchObject({
       step_id: "fetch",
       kind: "request",
@@ -37,7 +30,6 @@ describe("buildRawStepResults", () => {
       input: { method: "GET", url: "https://api.test/v2/projects", status: 200 },
     });
     expect(results[0]?.output).toEqual({ projects: [{ id: "p1", name: "Acme" }] });
-    // The transform step has no request → input null but keeps its output.
     expect(results[1]?.input).toBeNull();
     expect(results[1]?.output).toEqual([{ id: "p1" }]);
   });

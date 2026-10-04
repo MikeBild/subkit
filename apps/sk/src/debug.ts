@@ -1,20 +1,3 @@
-// Full-trace debug logger for the `sk` CLI.
-//
-// File logging is ALWAYS on. Records are appended as JSON-Lines to
-// `~/.sk/debug.log` (or `$SK_DEBUG_FILE`) so an operator can grep a
-// failure without asking the user to set an env var first. The log
-// rotates at 2 MB; the previous two generations are kept as
-// `debug.log.1` and `debug.log.2`.
-//
-// Verbose mode (env `SK_DEBUG=1` / `DEBUG=sk[:*]` / argv `--debug` /
-// `setDebugVerbose(true)`) only controls whether HTTP bodies and raw
-// SSE frame payloads are persisted — those are expensive to write and
-// remain sensitive even after `redact()`. Default-off keeps the log
-// usable; flip it on when you need full traces.
-//
-// Records are redacted before they hit disk so secrets do not leak
-// into local artifacts.
-
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
@@ -23,7 +6,7 @@ import { redact } from "@cli-core/index.ts";
 
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 const ROTATION_BYTES = 2 * 1024 * 1024;
-const ROTATION_KEEP = 2; // keep debug.log.1 and debug.log.2
+const ROTATION_KEEP = 2;
 const MAX_STRING_FIELD_CHARS = 2000;
 const MAX_DEBUG_DEPTH = 10;
 
@@ -37,85 +20,27 @@ export type DebugRecordKind =
   | "dialog.render_output"
   | "dialog.turn_end"
   | "dialog.error"
-  // dialog.elicitation_routing — emitted on every keystroke that
-  // reaches the pending-elicitation branch with how the input was
-  // classified (confirm / reject / pick / structured_only). Lets a
-  // "the user typed yes but nothing happened" investigation answer
-  // "did the CLI route it as confirm? as ambiguous?" from a single
-  // log file.
   | "dialog.elicitation_routing"
-  // dialog.plain_prompt_sent — emitted right before forwarding a
-  // plain prompt to the engine. Carries `had_recent_unresolved_intent`
-  // (true when the assistant's last message looks like
-  // "Reply 'yes' to commit" but no elicit_request was emitted —
-  // strong signal of an engine policy-gate bug).
   | "dialog.plain_prompt_sent"
-  // dialog.elicit_request_received — emitted when an elicit_request
-  // SSE frame arrives client-side. Bookends the engine's
-  // `elicitation.created` log so a "did the prompt actually reach
-  // the CLI?" question is one grep away across both halves.
   | "dialog.elicit_request_received"
   | "conversation.turn_events"
   | "elicitation.response"
   | "http.request"
   | "http.response"
   | "http.transport_error"
-  // http.transport_recovery — emitted when engine-client recovers from
-  // a transient ECONNRESET / socket-closed mid-turn by retrying or
-  // synthesising state from a re-fetched conversation detail. The
-  // `strategy` field distinguishes the path so post-mortems can
-  // separate "we retried and the engine accepted it" from "we replayed
-  // via getConversation".
   | "http.transport_recovery"
-  // suggest_next.feedback_failed — emitted when the fire-and-forget
-  // POST to /v1/conversations/:id/suggest-next/feedback throws (5xx,
-  // network blip). The primary chat flow has already completed by
-  // then, so the user-visible UX is unaffected; this record makes the
-  // breakage observable when SK_DEBUG=1 without leaking it to the
-  // operator.
   | "suggest_next.feedback_failed"
-  // oauth.sse_subscribe_failed — emitted when the connector-OAuth
-  // callback SSE subscription is refused (proxy stripping SSE). The install flow degrades to credential polling; this
-  // record keeps the degraded transport diagnosable.
   | "oauth.sse_subscribe_failed"
   | "sse.open"
   | "sse.frame"
   | "sse.close"
   | "sse.transport_error"
   | "approval.diff_fetch_failed"
-  // bootstrap.fetch_failed — emitted when /v1/sk/bootstrap rejects
-  // (401 = revoked api_key, 500 = engine bug, network = unreachable).
-  // The CLI falls back to a no-grant profile-only snapshot; this record
-  // keeps the failure diagnosable without a packet capture.
   | "bootstrap.fetch_failed"
-  // bootstrap.cache_write_failed — emitted when persisting the
-  // bootstrap snapshot to `~/.sk/cache/bootstrap-*.json` fails
-  // (read-only volume, full disk, EPERM). The CLI keeps working
-  // in-memory; this record surfaces the silent failure so an
-  // operator on a CI runner can grep the debug log for it.
   | "bootstrap.cache_write_failed"
-  // bootstrap.cache_read_rejected — emitted when the persisted
-  // snapshot fails Zod validation (corrupted file, schema-version
-  // mismatch, unknown extra field). Caller falls through
-  // to a fresh /v1/sk/bootstrap call.
   | "bootstrap.cache_read_rejected"
-  // settings.schema_fallback — emitted when an engine-served schema
-  // descriptor declares an `enum` field with zero values, which is
-  // invalid in zod. The loader coerces to `z.string()` so the form
-  // renders, but this is a sign that the engine shipped a malformed
-  // descriptor (typically: a connector whose enum source returned
-  // an empty list).
   | "settings.schema_fallback"
-  // session.append_failed — emitted when `appendEvent` fails to
-  // write a per-conversation JSONL event (read-only volume, full
-  // disk, EPERM). The REPL keeps running; the event is dropped.
-  // Pairs with `bootstrap.cache_write_failed` so silent disk
-  // failures stay grep-able.
   | "session.append_failed"
-  // agent.briefing_hook_failed / agent.capture_hook_failed — `sk agent
-  // briefing|capture --hook` swallowed an error (a session hook must never
-  // fail the coding-agent session); these records keep the breakage
-  // observable via ~/.sk/debug.log.
   | "agent.briefing_hook_failed"
   | "agent.capture_hook_failed";
 
@@ -156,17 +81,6 @@ let writeFailed = false;
 let nextRecordSeq = 0;
 let nextTurnSeq = 0;
 
-/**
- * Verbose mode controls whether HTTP/SSE bodies are persisted.
- * File logging itself is always on regardless.
- *
- * Env / argv take precedence over the in-memory toggle: if the operator
- * exported `SK_DEBUG=1` (or passed `--debug`) for this process, no
- * runtime `setDebugVerbose(false)` may strip body capture. That rule
- * also makes the test fixtures race-free under `--max-concurrency`:
- * a sibling test file that toggles the shared module-level cache
- * cannot mask a verbose-true env in another concurrent file.
- */
 export function isDebugVerbose(): boolean {
   if (envVerbose() || argvVerbose()) return true;
   if (cachedVerbose !== null) return cachedVerbose;
@@ -174,11 +88,6 @@ export function isDebugVerbose(): boolean {
   return cachedVerbose;
 }
 
-/**
- * Programmatic toggle for verbose mode — used by `/debug on|off` to
- * flip body capture without a restart. Returns the new state.
- * Note: env / argv override this toggle in `isDebugVerbose()`.
- */
 export function setDebugVerbose(next: boolean): boolean {
   cachedVerbose = next;
   return next;
@@ -236,23 +145,18 @@ function rotateIfNeeded(path: string): void {
   try {
     size = fs.statSync(path).size;
   } catch {
-    return; // file does not exist yet — nothing to rotate
+    return;
   }
   if (size < ROTATION_BYTES) return;
-  // Rotate: debug.log.2 -> unlink, debug.log.1 -> debug.log.2, debug.log -> debug.log.1
   for (let i = ROTATION_KEEP; i >= 1; i--) {
     const src = i === 1 ? path : `${path}.${i - 1}`;
     const dst = `${path}.${i}`;
     try {
       if (fs.existsSync(dst)) fs.rmSync(dst, { force: true });
-    } catch {
-      /* best effort */
-    }
+    } catch {}
     try {
       if (fs.existsSync(src)) fs.renameSync(src, dst);
-    } catch {
-      /* best effort */
-    }
+    } catch {}
   }
 }
 
@@ -264,9 +168,6 @@ function appendRecord(rec: DebugRecord): void {
     rotateIfNeeded(path);
     fs.appendFileSync(path, line, { encoding: "utf8" });
   } catch (err) {
-    // Avoid noisy fallbacks every request when the file system is
-    // misconfigured. Surface ONCE on stderr, then go silent so debug
-    // never breaks the user's session.
     if (!writeFailed) {
       writeFailed = true;
       process.stderr.write(
@@ -310,10 +211,6 @@ export function debugLog(
   appendRecord(compactDebugValue(redact(raw)) as DebugRecord);
 }
 
-/**
- * Read the tail of the debug log for `/debug tail` rendering. Returns
- * an empty array when the file does not yet exist.
- */
 export function debugLogTail(maxLines = 40): string[] {
   const path = debugLogPath();
   let raw: string;

@@ -16,14 +16,9 @@ beforeEach(() => {
 afterEach(() => {
   process.env = originalEnv;
   delete require.cache[require.resolve("../debug.ts")];
-  // Never evict `engine-client.ts`: that drops any `mock.module` override
-  // another test file installed for it in this process, leaving the next
-  // importer with the real client and a live socket.
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function readDebugRecords(): Array<Record<string, unknown>> {
@@ -54,11 +49,7 @@ describe("outbound trace-id propagation", () => {
     expect(sentTraceId).toMatch(/^cli-[a-zA-Z0-9_-]{8,}$/);
 
     const records = readDebugRecords();
-    // every record for this request must carry the same trace_id
     const traceIds = new Set(records.map((r) => r.trace_id));
-    // engine echoed a different id back; CLI keeps its outbound id as the
-    // primary, but http.response also carries the engine-issued id under
-    // the dedicated `trace_id` field of the response — verify both shapes.
     expect(traceIds.has(sentTraceId)).toBe(true);
   });
 

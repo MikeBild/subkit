@@ -1,20 +1,3 @@
-// SkCliAdapter unit/integration tests.
-//
-// Uses a real disposable Postgres database (createTestDb pattern) — the
-// adapter's entire contract is a DB INSERT, so no meaningful behavior can
-// be observed without touching the actual schema.
-//
-// Covers:
-//   - send() inserts exactly ONE cli_notification_inbox row scoped to
-//     delivery.tenant_id, with the severity / event_type / event_payload
-//     carried from delivery.notification — for an ACTIONABLE event. A row is
-//     a task: an informational or unknown event leaves no row and is reported
-//     back as `{ skipped: "not_actionable" }`.
-//   - Returns { platform_message_id } = the row's bigserial id (as string).
-//   - A second send() adds a second row; the cursor advances monotonically.
-//   - Cross-tenant isolation: a delivery for tenant A never appears in
-//     tenant B's inbox.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/index.ts";
@@ -49,7 +32,6 @@ afterAll(async () => {
   await testDb.cleanup();
 }, 30_000);
 
-/** The inserted row's id; fails the test when the adapter skipped instead. */
 function messageId(result: OutboundSendResult): string {
   if ("skipped" in result) throw new Error(`expected an inbox row, got skipped: ${result.skipped}`);
   return result.platform_message_id;
@@ -119,7 +101,6 @@ describe("SkCliAdapter.send", () => {
       }),
     );
     expect(typeof messageId(result)).toBe("string");
-    // The id should parse to a positive integer.
     const id = Number(messageId(result));
     expect(Number.isInteger(id) && id > 0).toBe(true);
   });
@@ -195,7 +176,6 @@ describe("SkCliAdapter.send", () => {
 
   test("delivery without notification fields is not a task: no row, reported as skipped", async () => {
     const adapter = new SkCliAdapter(testDb.db);
-    // Delivery with no .notification field at all.
     const bare: ChatDelivery = {
       tenant_id: tenantAId,
       workspace_id: "_cli",

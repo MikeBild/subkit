@@ -58,11 +58,11 @@ describe("importedPackages", () => {
   test("collects external imports while ignoring method calls, builtins, and aliases", () => {
     const code = [
       'import React from "react";',
-      'import type { Thing } from "@acme/sdk";', // type-only, scoped — must still be caught
+      'import type { Thing } from "@acme/sdk";',
       'import { readFileSync } from "node:fs";',
       'import { helper } from "@shared/util";',
       'import rel from "./local";',
-      'const rows = db.from("audit_log");', // method call, not an import
+      'const rows = db.from("audit_log");',
       'await import("cron-parser");',
     ].join("\n");
     const got = importedPackages(code, "tsx", ["@shared"]).sort();

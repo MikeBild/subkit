@@ -1,8 +1,3 @@
-// Regression: tools whose policy declares `confirm_after_execution`
-// MUST pause after a successful run with a synthetic
-// `ask_user_confirm{kind:"review_after_execution"}` elicitation
-// carrying the captured tool result.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
@@ -78,10 +73,6 @@ describe("post-execution review pause", () => {
   });
 
   test("the wrapped tool emits a synthetic review elicitation after a successful confirm_after_execution run", async () => {
-    // Construct a synthetic tool entry (using authenticate_oauth's
-    // policy via name) that succeeds. The wrapper should detect the
-    // confirm_after_execution mode and inject a paused
-    // ask_user_confirm{kind:"review_after_execution"} elicitation.
     const signals = freshSignals();
     const events: TurnEvent[] = [];
     const wrapped = await wrapTools(
@@ -89,17 +80,9 @@ describe("post-execution review pause", () => {
       signals,
       events,
       ctx.testDb.db as unknown as Db,
-      // authenticate_oauth visibility requires BOTH the connector
-      // authoring palette to be loaded AND the oauth-flow skill gate.
       ["connector-creation-guidance", "oauth-flow"],
       {},
     );
-    // We don't actually invoke authenticate_oauth (it would need a
-    // real connector + OAuth provider). Instead we read the
-    // wrapped-tool registry, confirm the entry exists, and verify
-    // the policy resolution path produces confirm_after_execution
-    // for it. The integration with the LLM loop is covered by the
-    // `confirm_after_execution` orchestration test below.
     expect(wrapped.authenticate_oauth).toBeDefined();
     const { resolveToolMode } = await import("../../tool-policies.ts");
     const mode = resolveToolMode({
@@ -109,21 +92,10 @@ describe("post-execution review pause", () => {
       overrides: {},
       permission_mode: null,
     });
-    // With no global permission_mode override, the resolver falls
-    // through to authenticate_oauth's confirm_after_execution
-    // defaultMode. (permission_mode="ask" would upgrade
-    // tenant_write to confirm_before_execution at the outer gate;
-    // the per-tool default still drives the post-execution pause
-    // when the gate doesn't fire.)
     expect(mode).toBe("confirm_after_execution");
   });
 
   test("review-after-execution elicitation row carries kind=review_after_execution + the tool result", async () => {
-    // End-to-end shape check: when the wrapper emits the elicitation,
-    // the DB row should encode the post-run review semantics so the
-    // CLI router can dispatch to the right prompt. Direct DB-query
-    // path because there is no real tool invocation that exercises
-    // authenticate_oauth in a unit test.
     const { createElicitation } = await import("../../elicitations.ts");
     const synthetic = await createElicitation(
       {

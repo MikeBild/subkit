@@ -1,9 +1,3 @@
-// What the circuit breaker is allowed to count.
-//
-// The load-bearing assertions here are the NEGATIVE ones. A predicate that
-// says yes to everything would open a breaker on the author's own typo and
-// take a healthy connector offline for the whole reset window.
-
 import { describe, expect, test } from "bun:test";
 import { isAvailabilityFailure, isAvailabilityFailureFromError } from "./availability.ts";
 
@@ -25,8 +19,6 @@ describe("isAvailabilityFailure — the remote could not serve us", () => {
   });
 
   test("postgres connection/resource SQLSTATE classes count", () => {
-    // 08006 connection failure, 53300 too many connections,
-    // 57P01 admin shutdown.
     for (const code of ["08006", "53300", "57P01"]) {
       expect(isAvailabilityFailure({ code })).toBe(true);
     }
@@ -46,7 +38,6 @@ describe("isAvailabilityFailure — the request was wrong", () => {
   });
 
   test("a SQL syntax error does NOT count", () => {
-    // 42601 syntax_error, 42P01 undefined_table.
     expect(isAvailabilityFailure({ code: "42601", message: 'syntax error at or near ")"' })).toBe(
       false,
     );
@@ -62,8 +53,6 @@ describe("isAvailabilityFailure — the request was wrong", () => {
   });
 
   test("an unrecognised failure does NOT count", () => {
-    // Conservative in the direction that matters: one extra request costs
-    // less than a breaker opened on evidence we did not understand.
     expect(isAvailabilityFailure({ message: "something went wrong" })).toBe(false);
     expect(isAvailabilityFailure({})).toBe(false);
   });

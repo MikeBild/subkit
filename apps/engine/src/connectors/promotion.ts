@@ -206,10 +206,6 @@ export async function promoteConnector(
     const auditLogIds: string[] = [];
 
     if (input.strategy === "copy") {
-      // Rows only exist here from versions that still had the write endpoint;
-      // the feature was never honoured on the execution path and the route is
-      // gone. The guard stays so an old row cannot be silently duplicated into
-      // a promoted connector and look effective there either.
       const endUserRows = await tx
         .select({ id: endUserCredentials.id })
         .from(endUserCredentials)
@@ -251,8 +247,6 @@ export async function promoteConnector(
           driver: source.driver,
           environment: "prod",
           auth_type: source.auth_type,
-          // A copy starts by asking before every remote tool call: the
-          // operator's per-tool trust was granted to the dev connector.
           config: withoutMcpTrustList(source.config),
           base_url: source.base_url,
           dsn: source.dsn,

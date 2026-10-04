@@ -9,36 +9,18 @@ type Translate = (key: TranslationKey, values?: Record<string, string | number>)
 export type ApiKeyItem = components["schemas"]["ApiKey"];
 export type ConnectedClientItem = components["schemas"]["OAuthClient"];
 
-/** The wildcard a key carries when it asserts no narrowing (`auth/scopes.ts`). */
 export const WILDCARD_SCOPE = "*";
 
-/**
- * How long the old key keeps working after a rotation. Sent explicitly, so the
- * sentence in the confirmation and the engine's behaviour cannot drift apart.
- */
 export const ROTATE_OVERLAP_MINUTES = 60;
 
-/** A key nobody has used for this long is a standing right nobody needs (§11). */
 export const UNUSED_KEY_DAYS = 90;
 
-// ── Page order ──────────────────────────────────────────────────────────────
-
-/**
- * The tabs in page order (D7): the keys scripts use, then the apps that were
- * approved. The first is the default.
- */
 export const API_ACCESS_ORDER = ["keys", "clients"] as const satisfies readonly ApiAccessSection[];
 
-/** The sections this reader may read, in page order. */
 export function readableSections(can: Record<ApiAccessSection, boolean>): ApiAccessSection[] {
   return API_ACCESS_ORDER.filter((section) => can[section]);
 }
 
-/**
- * The tab the page opens at: the one the address names when the reader may
- * read it, else the first one they may. Null only for a reader who may read
- * none of them.
- */
 export function openApiAccessSection(
   requested: ApiAccessSection | null,
   readable: readonly ApiAccessSection[],
@@ -47,13 +29,6 @@ export function openApiAccessSection(
   return readable[0] ?? null;
 }
 
-// ── Tab counts ──────────────────────────────────────────────────────────────
-
-/**
- * How many keys ask for a decision: expired, or lapsing within
- * `KEY_EXPIRING_DAYS` — the same predicate the row's chip uses. An idle key is
- * a state, not a task, and does not count.
- */
 export function keysNeedingAction(
   keys: readonly Pick<ApiKeyItem, "revoked_at" | "expires_at" | "last_used_at" | "created_at">[],
   nowMs: number,
@@ -64,14 +39,10 @@ export function keysNeedingAction(
   }).length;
 }
 
-// ── Scopes ──────────────────────────────────────────────────────────────────
-
-/** Three risk words (§11 Fähigkeits-Inventur): reading never hides writing. */
 export type ScopeRisk = "reads" | "writes" | "manages";
 
 const READ_ACTIONS = new Set(["read", "list", "export"]);
 const MANAGE_ACTIONS = new Set(["admin", "approve", "promote", "revoke", "rotate", "delete"]);
-/** Resources whose every change hands out or takes away rights. */
 const RIGHTS_RESOURCES = new Set([
   "rbac",
   "identity",
@@ -83,10 +54,6 @@ const RIGHTS_RESOURCES = new Set([
   "portal_token",
 ]);
 
-/**
- * The risk of one scope. An action this build does not know counts as
- * writing: a label that understates what a key may do is worse than none.
- */
 export function scopeRisk(scope: string): ScopeRisk {
   if (scope === WILDCARD_SCOPE) return "manages";
   const [resource = "", action = ""] = scope.split(":");
@@ -105,18 +72,11 @@ export function scopeRiskKey(risk: ScopeRisk): TranslationKey {
   return RISK_KEYS[risk];
 }
 
-/** `workflow:run` as "Workflows · Ausführen"; the wildcard as "all rights of your role". */
 export function scopeLabel(scope: string, t: Translate): CatalogLabel {
   if (scope === WILDCARD_SCOPE) return { text: t("apiKeys.scope.all"), machine: false };
   return permissionLabel(scope, t);
 }
 
-/**
- * The scopes a person may put on a key they issue for themselves: the
- * permissions they hold (a key's scopes are a ceiling below its owner's role,
- * never above it) plus the wildcard. Sorted by what a scope risks, then by
- * name, so reading comes before changing.
- */
 export function scopeCatalogue(permissions: readonly string[]): string[] {
   const order: Record<ScopeRisk, number> = { reads: 0, writes: 1, manages: 2 };
   const scopes = [...new Set(permissions)].filter((scope) => scope.includes(":"));
@@ -124,18 +84,14 @@ export function scopeCatalogue(permissions: readonly string[]): string[] {
   return [WILDCARD_SCOPE, ...scopes];
 }
 
-/** The scopes a new key starts with: run and read workflows, where the person may. */
 export function defaultKeyScopes(permissions: readonly string[]): string[] {
   return ["workflow:read", "workflow:run"].filter((scope) => permissions.includes(scope));
 }
-
-// ── Keys ────────────────────────────────────────────────────────────────────
 
 export function keyExpired(key: Pick<ApiKeyItem, "expires_at">, nowMs: number): boolean {
   return key.expires_at !== null && Date.parse(key.expires_at) <= nowMs;
 }
 
-/** Days since the key was last used — or, never used, since it was made. Null while recent. */
 export function keyIdleDays(
   key: Pick<ApiKeyItem, "last_used_at" | "created_at">,
   nowMs: number,
@@ -145,11 +101,6 @@ export function keyIdleDays(
   return days >= UNUSED_KEY_DAYS ? days : null;
 }
 
-/**
- * Keys in two groups: the ones that still hold rights (an expired key is
- * among them — it needs a decision, and its row says so), and
- * the revoked ones, which hold nothing and are collapsed behind their count.
- */
 export function groupApiKeys<T extends Pick<ApiKeyItem, "revoked_at">>(
   keys: readonly T[],
 ): { active: T[]; revoked: T[] } {
@@ -159,22 +110,12 @@ export function groupApiKeys<T extends Pick<ApiKeyItem, "revoked_at">>(
   };
 }
 
-// ── Connected applications ──────────────────────────────────────────────────
-
 export interface ClientGroups<T> {
-  /** Someone's valid grant keeps these working — what a reader came for. */
   granted: T[];
-  /** Registered and enabled, but nobody holds a grant: nothing can use them. */
   ungranted: T[];
-  /** Retired by housekeeping or revoked by an administrator: not listed by default. */
   disabled: T[];
 }
 
-/**
- * Applications in the order a reader needs them. Production held ~500
- * registrations against four real applications; listed flat, the real ones
- * drowned and the section below them was out of reach.
- */
 export function groupConnectedClients<
   T extends Pick<ConnectedClientItem, "disabled_at" | "live_connections" | "created_at">,
 >(clients: readonly T[]): ClientGroups<T> {
@@ -187,21 +128,8 @@ export function groupConnectedClients<
   };
 }
 
-// ── Key state ───────────────────────────────────────────────────────────────
-
-/** A key that lapses within this many days says so on its row. */
 export const KEY_EXPIRING_DAYS = 7;
 
-/**
- * The one state word a key's row carries, or none.
- *
- * Zugangsdaten used to raise these as a second task list above its sections;
- * the tasks live on Übersicht, and a key's state belongs on the key. One word per
- * row, the most pressing first: a revoked key holds nothing, an expired one no
- * longer works, one about to lapse will stop soon, and one nobody has used
- * for months is a standing right nobody needs (§11). A fresh key nobody has
- * used yet carries nothing — its use line already says "Nie benutzt".
- */
 export type KeyState =
   | { kind: "revoked" }
   | { kind: "expired" }
@@ -209,11 +137,6 @@ export type KeyState =
   | { kind: "neverUsed"; days: number }
   | { kind: "idle"; days: number };
 
-/**
- * Calendar days from `nowMs` to `targetMs` in the reader's own time zone:
- * 0 is later today, 1 is tomorrow. Counted by date, not by 24-hour blocks — a
- * key lapsing at 01:00 tomorrow expires "morgen", though it is two hours away.
- */
 export function calendarDaysUntil(targetMs: number, nowMs: number): number {
   const day = (ms: number) => {
     const date = new Date(ms);
@@ -237,16 +160,10 @@ export function keyState(
   return key.last_used_at ? { kind: "idle", days: idle } : { kind: "neverUsed", days: idle };
 }
 
-/**
- * Whether the chip already says how the key was used — "seit 120 Tagen
- * ungenutzt", "seit 95 Tagen nie benutzt". The row's use line then leaves its
- * own "Zuletzt benutzt …"/"Noch nie benutzt" out: one fact, said once.
- */
 export function keyStateSaysUse(state: KeyState | null): boolean {
   return state?.kind === "idle" || state?.kind === "neverUsed";
 }
 
-/** The chip's words: "läuft ab in 3 Tagen", "abgelaufen", "seit 120 Tagen ungenutzt". */
 export function keyStateText(state: KeyState, t: Translate): string {
   switch (state.kind) {
     case "revoked":

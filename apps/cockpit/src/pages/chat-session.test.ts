@@ -42,10 +42,7 @@ describe("session key", () => {
 
 describe("the request just sent", () => {
   test("stands in the transcript until the saved request is there", () => {
-    // Sent into a conversation with one earlier request: the turn is still
-    // running, then it has ended but the refetch has not landed yet.
     expect(optimisticVisible(pending(), 3, [user, assistant])).toBe(true);
-    // The saved request arrived: the stand-in goes, in the same render.
     expect(optimisticVisible(pending(), 3, [user, assistant, user])).toBe(false);
   });
 
@@ -61,7 +58,6 @@ describe("the request just sent", () => {
 
   test("goes back into the composer only if the engine did not keep it", () => {
     expect(shouldRestoreComposer(pending(), [user, assistant])).toBe(true);
-    // A stopped turn that stored the request: putting it back invites a double send.
     expect(shouldRestoreComposer(pending(), [user, assistant, user])).toBe(false);
   });
 
@@ -156,11 +152,6 @@ describe("a failed first send", () => {
     ).toEqual({ switchTo: null, restoreComposer: true });
   });
 
-  // The reported jump: a send typed before the list had loaded took an EMPTY
-  // snapshot of what existed, and the list diff reached a minute back — so a
-  // waiting conversation opened 30 seconds earlier read as "the one this send
-  // created". The page moved there, found a request in it, and kept the text
-  // out of the composer: the message vanished into someone else's question.
   test("never names a conversation that existed before the send", () => {
     const listed = [{ id: "awaiting", created_at: "2026-09-29T09:59:30.000Z" }];
     expect(
@@ -173,7 +164,6 @@ describe("a failed first send", () => {
     expect(
       conversationOpenedByFailedSend({ startedId: null, knownIds: null, sentAt, listed }),
     ).toBeNull();
-    // The create stream's own frame is still trusted without a snapshot.
     expect(
       conversationOpenedByFailedSend({ startedId: "c-new", knownIds: null, sentAt, listed }),
     ).toBe("c-new");
@@ -256,7 +246,6 @@ describe("header pills", () => {
 
   test("cost only when priced, and a floor when a model had no rate", () => {
     expect(costPill({ cost: null })).toBeNull();
-    // Nothing spent (e.g. the provider refused the only call): no "0,00 $".
     expect(costPill({ cost: { amount: 0, currency: "USD", unpriced_models: [] } })).toBeNull();
     expect(costPill({ cost: { amount: 0.42, currency: "EUR", unpriced_models: [] } })).toEqual({
       amount: 0.42,

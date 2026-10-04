@@ -1,5 +1,3 @@
-// ask_user_choice — ask the user to pick one option from a list.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -17,9 +15,6 @@ const inputSchema = z
       )
       .min(2)
       .max(7),
-    /** Optional pre-selected option value — the client renders the
-     *  cursor on it so the user confirms with one keypress. Must equal
-     *  one of the declared option values. */
     default: z.string().optional(),
   })
   .superRefine((input, ctx) => {

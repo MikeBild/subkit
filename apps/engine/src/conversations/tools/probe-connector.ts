@@ -1,24 +1,3 @@
-// `probe_connector` — one-shot HTTP probe against a configured connector.
-//
-// Before authoring a `request` step (or a full workflow), the LLM should
-// see the real shape of the API response so it can stop guessing field
-// names. Probing takes less than one second and produces a truncated
-// response envelope plus `placeholders_used` so the conversation context
-// carries a proof that credentials were resolved — not inlined.
-//
-// The tool is deliberately NOT routed through the workflow executor: no
-// `executions` row is created, no retry loop runs, and no pagination
-// stitching happens. It's a bare HTTP call with credential substitution,
-// audited, rate-limited, and truncated.
-//
-// Policy:
-//   - RBAC: `connector:read` on the target connector (plus `workflow:run`
-//     to ensure the principal can author workflows at all).
-//   - Rate limit: 20 probes / minute / conversation. Over the limit the
-//     tool returns `probe_rate_limited` without issuing a network call.
-//   - `confirm_before_execution` is applied upstream when method is not
-//     GET/HEAD or when `environment === "prod"` (see tool-policies.ts).
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
@@ -59,21 +38,6 @@ const ProbeInput = z
   })
   .openapi("ProbeConnectorToolInput");
 
-// ---- rate limit ------------------------------------------------------------
-//
-// Per-conversation rate gate for the network probe. The bucket is a
-// trivial fixed-window: one entry per conversation_id, refreshed when
-// the window rolls over. Buckets are evicted opportunistically to keep
-// the Map bounded:
-//   - On every read, drop any bucket whose window is more than
-//     RATE_BUCKET_EXPIRY_MS old (twice the active window — a small
-//     grace so a probe right after the boundary still bumps the
-//     existing entry instead of creating two).
-//   - At BUCKET_HARD_CAP entries, drop the oldest-window entry to keep
-//     a misbehaving caller from growing the Map to OOM (the prod 4 GB
-//     transient spike investigation flagged this Map as one of the
-//     unbounded module-level caches in the conversation hot path).
-
 interface RateBucket {
   count: number;
   window_start_ms: number;
@@ -96,16 +60,10 @@ function sweepExpiredBuckets(now: number): void {
 
 function consumeRateToken(conversation_id: string): boolean {
   const now = Date.now();
-  // Amortised sweep — every Nth read, evict expired entries. Cheaper
-  // than a setInterval timer and bounded by call rate, so an idle engine
-  // doesn't spend CPU cycles maintaining an empty cache.
   if (++readsSinceSweep >= SWEEP_EVERY_N_READS) {
     readsSinceSweep = 0;
     sweepExpiredBuckets(now);
   }
-  // Hard backstop — if the sweep budget hasn't kept up (e.g. a burst of
-  // unique conversation_ids inside one window), drop the oldest entry.
-  // Map iteration is insertion order, so the first key is the oldest.
   if (rateBuckets.size >= BUCKET_HARD_CAP) {
     const oldest = rateBuckets.keys().next().value;
     if (oldest !== undefined) rateBuckets.delete(oldest);
@@ -120,26 +78,20 @@ function consumeRateToken(conversation_id: string): boolean {
   return true;
 }
 
-/** Reset the bucket for a conversation — tests use this to keep runs independent. */
 export function resetProbeRateLimit(conversation_id?: string): void {
   if (conversation_id) rateBuckets.delete(conversation_id);
   else rateBuckets.clear();
 }
 
-/** Test-only — inspect the live bucket count to assert eviction behaviour. */
 export function _probeRateBucketCountForTests(): number {
   return rateBuckets.size;
 }
 
-/** Test-only — drive the gate directly without a DB / tool dispatcher. */
 export function _consumeRateTokenForTests(conversation_id: string): boolean {
   return consumeRateToken(conversation_id);
 }
 
-/** Test-only — surface the cap so the unit test stays in lockstep with the source. */
 export const _RATE_BUCKET_HARD_CAP_FOR_TESTS = BUCKET_HARD_CAP;
-
-// ---- helpers ---------------------------------------------------------------
 
 async function lookupConnectorBySlug(
   db: Db,
@@ -147,13 +99,6 @@ async function lookupConnectorBySlug(
   slug: string,
   environment: "dev" | "prod" | null,
 ): Promise<ConnectorView | null> {
-  // When the caller pins an environment, scope the lookup to it. When it
-  // does not, resolve the connector by (tenant_id, slug) regardless of
-  // environment and use the connector's OWN environment downstream —
-  // credentials are env-scoped, so probing a `prod`-only connector under
-  // an implicit `dev` would resolve no credential and send an empty
-  // Bearer. This mirrors call_connector, which always uses the
-  // connector's own `environment`.
   const rows = await db
     .select()
     .from(connectorsTable)
@@ -167,8 +112,6 @@ async function lookupConnectorBySlug(
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  // The ConnectorView shape matches the row columns exactly; cast here
-  // after a defensive null-check on the minimally required fields.
   return row as unknown as ConnectorView;
 }
 
@@ -195,8 +138,6 @@ function isTimeoutError(error: unknown): boolean {
   }
   return /timed? out|timeout|aborted/i.test(String(error));
 }
-
-// ---- the tool --------------------------------------------------------------
 
 export const probeConnectorTool: ConversationTool = {
   name: "probe_connector",
@@ -245,21 +186,11 @@ export const probeConnectorTool: ConversationTool = {
       );
     }
 
-    // Did the caller explicitly pin an environment? `ProbeInput.environment`
-    // defaults to "dev" after parse, so we can't read explicit-ness off the
-    // parsed args — inspect the raw payload. When NOT explicit we resolve the
-    // connector regardless of environment and adopt its OWN environment for
-    // both credential resolution and dispatch (call_connector does the same),
-    // so a `prod`-only connector probed without an env doesn't resolve under a
-    // phantom `dev` scope and send an empty Bearer.
     const explicitEnv =
       typeof rawArgs === "object" &&
       rawArgs !== null &&
       (rawArgs as Record<string, unknown>).environment !== undefined;
 
-    // Look up the connector. A missing connector (wrong slug / wrong env)
-    // is the most common probe failure; the returned error includes the
-    // placeholders the LLM should fix.
     const connector = await lookupConnectorBySlug(
       ctx.db,
       ctx.tenant_id,
@@ -275,9 +206,6 @@ export const probeConnectorTool: ConversationTool = {
       );
     }
 
-    // Effective environment: the explicit one when pinned, otherwise the
-    // connector's own. All credential + dispatch + audit downstream uses
-    // this value so they stay in lockstep.
     const environment = explicitEnv ? args.environment : connector.environment;
     try {
       await preflightDirectConnector(ctx, connector);
@@ -287,11 +215,6 @@ export const probeConnectorTool: ConversationTool = {
       throw error;
     }
 
-    // Credential pre-gate — mirror call_connector. For auth_type !== "none"
-    // connectors, refuse to dispatch when there is no saved credential, or
-    // when an oauth2 credential exists but its access_token is empty (the
-    // OAuth2 dance never minted a token). Otherwise an empty Bearer hits the
-    // provider and the model misreads the resulting 401 as "wrong path".
     let credentialDescriptor: { mode: string; present: boolean } | null = null;
     if (connector.auth_type !== "none") {
       const cred = await getCredentialForConnector(
@@ -319,8 +242,6 @@ export const probeConnectorTool: ConversationTool = {
       }
     }
 
-    // Resolve placeholders in every string field of headers/query/body.
-    // Unresolved placeholders are fatal — we do not dispatch partial auth.
     const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
     const references: ResolvedAuthorityReference[] = [];
     const resolved = await resolvePlaceholders(
@@ -410,10 +331,6 @@ export const probeConnectorTool: ConversationTool = {
     const duration_ms = Date.now() - started;
     const truncated = truncateForLlm(responseBody);
 
-    // Audit. Metadata deliberately excludes the URL path (may contain
-    // IDs that hint at PII) and excludes the body entirely. We bind the
-    // write to the caller's db executor so tests (and any caller-owned
-    // transaction) get a consistent view of the audit trail.
     await auditAwait(
       {
         tenant_id: ctx.tenant_id,
@@ -452,9 +369,6 @@ export const probeConnectorTool: ConversationTool = {
             code: failure_code,
             message: timeout ? `Probe timed out after ${args.timeout_ms}ms.` : errorDetail,
           },
-          // Same recovery vocabulary as probe_connector_draft so the
-          // LLM doesn't need to branch on which probe surface raised
-          // the error. dry_run_step uses the same mapping.
           next_best_actions: pickProbeRecoveryActions({ failure_code }),
           metadata: {
             connector_slug: args.connector_slug,
@@ -467,22 +381,8 @@ export const probeConnectorTool: ConversationTool = {
       };
     }
 
-    // HTTP-level failure (4xx / 5xx) — return ok: true at the tool
-    // boundary because the request completed, but include a
-    // `failure_signal` + recovery actions so the LLM can inspect the
-    // status without re-parsing the response body. Successful 2xx
-    // responses skip this surface.
     const isHttpFailure = status >= 400;
 
-    // Successful probes record the observed top-level shape against
-    // `schema_versions` so the drift detector and the next
-    // `inspect_connector` / `suggest_jsonata_paths` call have a
-    // canonical "what does this endpoint actually return" reference.
-    // Pre-fix only request-step executions populated schema_versions
-    // — probes were the LLM's primary discovery surface but their
-    // observations were thrown away. Endpoint key is `<METHOD>
-    // <path>` so multiple probes against the same endpoint reuse a
-    // row.
     if (!isHttpFailure && status >= 200 && status < 300 && responseBody !== null) {
       try {
         await recordSuccessShape(
@@ -495,8 +395,6 @@ export const probeConnectorTool: ConversationTool = {
           ctx.db,
         );
       } catch (err) {
-        // Never let shape recording fail the probe — the LLM still
-        // needs the response. Log and move on.
         logger.warn({
           module: "conversation.probe_connector",
           action: "probe.shape_record_failed",
@@ -517,10 +415,6 @@ export const probeConnectorTool: ConversationTool = {
         truncated: truncated.truncated,
         raw_ref: truncated.raw_ref,
         placeholders_used: resolved.placeholders_used,
-        // Explicit credential presence so the model doesn't read an empty
-        // `placeholders_used` as "no credential" — for auth_type connectors
-        // this states the resolved credential mode and whether usable auth
-        // material was present at dispatch.
         ...(credentialDescriptor ? { credential: credentialDescriptor } : {}),
         ...(isHttpFailure ? { next_best_actions: pickProbeRecoveryActions({ status }) } : {}),
         metadata: {

@@ -1,18 +1,8 @@
-// The write shape and its discriminator, tested together.
-//
-// `normalizeToolResultPayload` produces what lands on
-// `conversation_tool_calls.output`; `toolCallOutcome` produces what lands on
-// `conversation_tool_calls.outcome`. The first test below is the reason the
-// second function has to exist at all.
-
 import { describe, expect, test } from "bun:test";
 import type { ToolResult, ToolResultPause } from "./index.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "./result-payload.ts";
 
 describe("a failure that is indistinguishable in the payload", () => {
-  // `ToolResult`'s failure branch makes `error_code` AND `message` optional,
-  // and the legacy `data` object is spread through without an `ok:false`
-  // marker. This is the case a read-time sniff over `output` gets wrong.
   const failed: ToolResult = { ok: false, data: { rows: [] } };
   const succeeded: ToolResult = { ok: true, data: { rows: [] } };
 

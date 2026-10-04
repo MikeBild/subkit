@@ -1,13 +1,3 @@
-// Token-mint refresh worker. Mirrors the oauth2 refresh-worker
-// shape: pre-flight inline refresh, called from the HTTP driver right
-// before a request goes out.
-//
-// Strategy: re-mint via the same `runTokenMintGrant` path as the
-// initial mint. We don't track refresh-token-grant separately because
-// Firebase / Cognito / generic POST /login all support running the
-// USER_PASSWORD_AUTH path on every refresh — it is the simpler, more
-// general fallback than provider-specific REFRESH_TOKEN_AUTH wiring.
-
 import { eq } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -36,10 +26,6 @@ export async function refreshTokenMintIfStale(
 ): Promise<DecryptedCredential & { mode: "token_mint" }> {
   const now = Date.now();
   const expiresMs = decrypted.expires_at ? decrypted.expires_at.getTime() : 0;
-  // Token has an explicit expiry and is still safely in-window — return
-  // unchanged. When the IdP doesn't return an expiry path, expiresMs is
-  // 0 and we re-mint on every request (operator opted into that by
-  // omitting `expires_in_path` / `expires_at_path` from the credential).
   if (expiresMs > 0 && expiresMs - now > REFRESH_LEAD_MS) return decrypted;
   try {
     const bundle = await runTokenMintGrant({
@@ -52,10 +38,6 @@ export async function refreshTokenMintIfStale(
       ...(decrypted.expires_at_path ? { expires_at_path: decrypted.expires_at_path } : {}),
       ...(decrypted.header_template ? { header_template: decrypted.header_template } : {}),
     });
-    // Persist the refreshed access token and expiry. The static mint
-    // config (shape, mint_endpoint, credentials, paths, header_template)
-    // is unchanged — re-encrypt the same payload with the rotated
-    // access_token.
     const plaintext = JSON.stringify({
       access_token: bundle.access_token,
       shape: decrypted.shape,

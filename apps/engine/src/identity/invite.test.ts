@@ -1,10 +1,3 @@
-// Invite-token utilities — generation, parsing, prefix discrimination.
-//
-// Invite tokens share the api-key sha256 hashing helper but live under a
-// distinct prefix literal (`wf_invite_`) so they can never be mistaken for
-// a live api key or portal token at the auth boundary. These tests pin
-// both invariants.
-
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "./api-key.ts";
 import {

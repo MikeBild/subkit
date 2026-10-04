@@ -1,12 +1,3 @@
-// Contract: every column the catalog list commands render must be a real
-// property of the engine's list item.
-//
-// Regression target: `sk workflows list` rendered a `status` column that the
-// engine never returned — it calls the field `lifecycle` — so the column was
-// blank on every row from the day it was added, and nothing failed. Checking
-// the column names against the committed OpenAPI schema turns that silent
-// class of bug into a test failure.
-
 import { describe, expect, test } from "bun:test";
 import openapi from "@cli-core/engine-api/openapi.json" with { type: "json" };
 import {
@@ -24,7 +15,6 @@ type Schema = {
 
 const schemas = (openapi as { components: { schemas: Record<string, Schema> } }).components.schemas;
 
-/** Collect property names through `allOf` composition and `$ref` indirection. */
 function propertiesOf(name: string, seen = new Set<string>()): Set<string> {
   const out = new Set<string>();
   if (seen.has(name)) return out;
@@ -44,8 +34,6 @@ function propertiesOf(name: string, seen = new Set<string>()): Set<string> {
 
 describe("catalog list columns match the engine schema", () => {
   test("the list-item schemas resolve to real properties", () => {
-    // Guards the test itself: if `allOf`/`$ref` resolution ever silently
-    // returns nothing, the assertions below would pass vacuously.
     expect(propertiesOf("WorkflowListItem").size).toBeGreaterThan(5);
     expect(propertiesOf("ConnectorListItem").size).toBeGreaterThan(5);
   });

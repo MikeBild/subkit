@@ -80,8 +80,6 @@ export const DiscoveryArtifactSchema = z
 
 export type DiscoveryArtifactView = z.infer<typeof DiscoveryArtifactSchema>;
 
-// ----- connector draft shape -------------------------------------------------
-
 export interface ConnectorDraft {
   name: string;
   slug?: string;
@@ -107,8 +105,6 @@ export interface KnowledgeDraft {
   summary: string;
 }
 
-// ----- LLM output shape -----------------------------------------------------
-
 export interface DiscoveredArtifact {
   kind: DiscoveryArtifactKind;
   title: string;
@@ -117,8 +113,6 @@ export interface DiscoveredArtifact {
   evidence: Array<{ text: string }>;
   confidence: number;
 }
-
-// ----- service params --------------------------------------------------------
 
 export interface CreateDiscoveryRunParams {
   tenant_id: string;
@@ -130,8 +124,6 @@ export interface CreateDiscoveryRunParams {
     mime?: string;
   }>;
   actor_id: string | null;
-  /** Already-persisted `files` row for the raw uploaded archive; linked as
-   *  file_links(resource_type='discovery_run', role='archive') in the run tx. */
   archive_file_id?: string;
 }
 

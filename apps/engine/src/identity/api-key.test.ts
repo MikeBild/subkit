@@ -1,12 +1,3 @@
-// API key utilities — generation, hashing, parsing, constant-time equality.
-//
-// Pure-function tests, no DB. Locks the on-disk format (prefix literal +
-// length, sha256 hex hash) and the timing-safe comparison so a future
-// refactor cannot silently downgrade either:
-//   - prefix length defines what's stored unhashed in the DB index
-//   - hash format is what every credential store rounds-trips
-//   - constant-time equality is the only safe way to compare hashes
-
 import { describe, expect, test } from "bun:test";
 import {
   constantTimeHexEquals,
@@ -37,7 +28,6 @@ describe("generateKey", () => {
   test("emits a key with the wf_live_ prefix and 40 total chars", () => {
     const key = generateKey();
     expect(key.plaintext.startsWith(KEY_PREFIX_LITERAL)).toBe(true);
-    // 8-char prefix literal + 32 url-safe random = 40 chars total.
     expect(key.plaintext.length).toBe(KEY_PREFIX_LITERAL.length + 32);
   });
 
@@ -81,14 +71,11 @@ describe("parseKey", () => {
 
   test("rejects strings without the wf_live_ prefix", () => {
     expect(parseKey("not_a_key_at_all")).toBeNull();
-    // Wrong prefix — portal tokens look similar but must not parse here.
     expect(parseKey("wf_portal_abcdefghijklmnop")).toBeNull();
   });
 
   test("rejects too-short strings even when the prefix matches", () => {
-    // Prefix literal alone, no random suffix.
     expect(parseKey(KEY_PREFIX_LITERAL)).toBeNull();
-    // Just below the minimum (12 + 7 chars).
     expect(parseKey(`${KEY_PREFIX_LITERAL}abc`)).toBeNull();
   });
 });
@@ -112,14 +99,10 @@ describe("constantTimeHexEquals", () => {
   });
 
   test("returns false when lengths differ (no throw)", () => {
-    // Defensive contract — the function header notes it should not throw on
-    // length mismatch, even though most callers pre-check the prefix.
     expect(constantTimeHexEquals("aa", "aabb")).toBe(false);
   });
 
   test("returns false for invalid hex (Buffer.from coerces silently)", () => {
-    // Buffer.from(<garbage>, "hex") yields fewer bytes than expected — the
-    // length check then trips and returns false rather than throwing.
     expect(
       constantTimeHexEquals(
         "not-hex-at-all-but-64-chars-wide-not-hex-at-all-but-64-chars-wid",

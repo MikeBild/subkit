@@ -1,12 +1,3 @@
-// P-GC5: notification channels + rules + deliveries.
-//
-// Notifications are an independent delivery path that runs off the
-// outbox next to outbound webhooks. A notification rule matches an
-// event (by type glob, workflow glob, severity, request source) and
-// targets a specific chat channel; the service layer applies a
-// per-channel token-bucket rate limit and a persistent circuit
-// breaker before handing off to the chat adapter.
-
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -24,12 +15,8 @@ import {
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants, users } from "./identity.ts";
 
-// Severity ladder used for rule severity filtering.
-// debug < info < warn < error < critical
 export const NOTIFICATION_SEVERITIES = ["debug", "info", "warn", "error", "critical"] as const;
 export type NotificationSeverity = (typeof NOTIFICATION_SEVERITIES)[number];
-
-// ----- notification_channels -----------------------------------------------
 
 export const notificationChannels = pgTable(
   "notification_channels",
@@ -56,8 +43,6 @@ export const notificationChannels = pgTable(
   ],
 );
 
-// ----- notification_rules --------------------------------------------------
-
 export const notificationRules = pgTable(
   "notification_rules",
   {
@@ -83,8 +68,6 @@ export const notificationRules = pgTable(
   ],
 );
 
-// ----- notification_deliveries ---------------------------------------------
-
 export const notificationDeliveries = pgTable(
   "notification_deliveries",
   {
@@ -107,26 +90,6 @@ export const notificationDeliveries = pgTable(
   ],
 );
 
-// ----- cli_notification_inbox ----------------------------------------------
-//
-// Durable, pull-based task inbox for the tenant. The default rule
-// (`_cli` / `_inbox`) routes every matching event into this table via
-// the `SkCliAdapter` — a local INSERT, no chat platform involved. The
-// table name predates the cockpit, which reads the same rows; it is a
-// stable identifier and is not renamed for vocabulary alignment.
-//
-// A row is a task, not a log line: `actionable` says whether a person
-// has to do something about it and `resource_type` / `resource_id`
-// point at what they would open. Both are written at INSERT time from
-// `classifyEvent`, so `actionable_only` can be a SQL predicate
-// underneath the cursor rather than a post-filter that would yield
-// short and empty pages.
-//
-// Consumption is a per-user read mark in `cli_notification_inbox_reads`,
-// never a DELETE — one operator's ack must not empty a colleague's
-// inbox. Rows leave only through the retention sweep. The
-// `(tenant_id, id)` index serves the monotonic cursor walk.
-
 export const cliNotificationInbox = pgTable(
   "cli_notification_inbox",
   {
@@ -145,25 +108,11 @@ export const cliNotificationInbox = pgTable(
   },
   (t) => [
     index("cli_notification_inbox_tenant_cursor_idx").on(t.tenant_id, t.id),
-    // Partial: `actionable_only=true` is the "what must I deal with"
-    // view and stays a narrow slice of the table. Same precedent as
-    // `workflows_tool_catalog_lru_idx` — the ordering is declared here,
-    // the `WHERE` is owned by the generated migration `.sql`.
     index("cli_notification_inbox_actionable_idx")
       .on(t.tenant_id, t.id)
       .where(sql`${t.actionable}`),
   ],
 );
-
-// ----- cli_notification_inbox_reads -----------------------------------------
-//
-// Per-user read state over the inbox. `tenant_id` is denormalized so
-// every row carries its tenant (the isolation invariant) and so the
-// tenant filter can be the first WHERE clause on the read path.
-//
-// `user_id` references `users.id`: only a `kind: "user"` principal has
-// one. A system-account principal's id comes from `system_accounts`
-// and must never reach this column.
 
 export const cliNotificationInboxReads = pgTable(
   "cli_notification_inbox_reads",

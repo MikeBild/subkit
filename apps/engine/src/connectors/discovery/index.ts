@@ -1,25 +1,3 @@
-// Public entry point: orchestrate the multi-strategy fallback chain.
-//
-// `discoverConnectorEndpoints` resolves an input URL (from a template
-// slug, an explicit `ingestion_url`, or a `base_url` walked against
-// well-known paths) and runs strategies in order:
-//   1. openapi-direct
-//   2. graphql-introspect
-//   3. swagger-ui-scrape
-//   4. llms-txt
-//   5. html-scrape
-// Each failed strategy contributes a warning to the final result if a
-// later strategy succeeds. If all strategies fail, the function throws
-// `DiscoveryError("all_strategies_failed", …)` with aggregated reasons.
-//
-// When the caller hands us a template whose `ingestion_source` is
-// `graphql` or `llms_txt` we promote the matching strategy to the head
-// of the chain so we don't waste a round-trip on `openapi-direct`.
-//
-// Caching is intentionally NOT done here — the conversation tool wrapper
-// owns persisting the result as a `knowledge_sources` row. This module
-// is pure compute.
-
 import { log } from "../../logging/logger.ts";
 import { validateOutboundHeaders } from "../drivers/http.ts";
 import { scrubUrl } from "../egress.ts";
@@ -63,37 +41,20 @@ export interface DiscoverConnectorEndpointsInput {
   base_url?: string;
   ingestion_url?: string;
   signal?: AbortSignal;
-  /** Optional headers forwarded to every strategy fetch (e.g. user-agent). */
   headers?: Record<string, string>;
-  /** Override strategy order (mostly for tests). */
   strategies?: DiscoveryStrategy[];
 }
 
 const DEFAULT_STRATEGIES: DiscoveryStrategy[] = [
-  // postgres-introspect runs first when the URL is a database protocol
-  // (`postgres://`) — every other strategy will fail on the unusual
-  // protocol so it's a quick win to skip them.
   postgresIntrospectStrategy,
   openApiDirectStrategy,
   graphqlIntrospectStrategy,
   swaggerUiScrapeStrategy,
   llmsTxtStrategy,
   htmlScrapeStrategy,
-  // playwright-crawl is the costliest strategy (launches Chromium) and
-  // therefore always runs last, never gets promoted by template hints.
   playwrightCrawlStrategy,
 ];
 
-/**
- * If the resolved template hints at GraphQL or llms.txt ingestion,
- * promote that strategy to the front of the chain. Other strategies
- * follow in their canonical order so we still attempt fallbacks if the
- * primary fails.
- *
- * `playwright-crawl` is never promoted — it's the costliest strategy
- * (launches headless Chromium) and stays pinned to the tail of the
- * chain regardless of template hints.
- */
 function reorderStrategiesForTemplate(
   templateId: string | undefined,
   base: DiscoveryStrategy[],
@@ -102,7 +63,7 @@ function reorderStrategiesForTemplate(
   const tmpl = getBuiltinTemplate(templateId);
   if (!tmpl) return base;
   const promote = (name: DiscoveryStrategy["name"]): DiscoveryStrategy[] => {
-    if (name === "playwright-crawl") return base; // never promote
+    if (name === "playwright-crawl") return base;
     const idx = base.findIndex((s) => s.name === name);
     if (idx <= 0) return base;
     const head = base[idx];
@@ -138,20 +99,10 @@ function resolveSourceUrl(input: DiscoverConnectorEndpointsInput): string {
   );
 }
 
-/**
- * Run the multi-strategy fallback chain. Strategies execute sequentially;
- * the first to return a `DiscoveryResult` wins. Earlier failures attach
- * as warnings on the winning result.
- */
 export async function discoverConnectorEndpoints(
   input: DiscoverConnectorEndpointsInput,
 ): Promise<DiscoveryResult> {
   const url = resolveSourceUrl(input);
-  // Validate the headers bag once at the dispatcher boundary instead
-  // of letting every strategy crash inside `new Headers()` with the
-  // obtuse "Invalid header name" error. A malformed header bag is a
-  // hard authoring error, not something to fall through to the next
-  // strategy on. (Audit anti-pattern C3.)
   if (input.headers !== undefined) {
     validateOutboundHeaders(input.headers);
   }
@@ -163,10 +114,6 @@ export async function discoverConnectorEndpoints(
   };
 
   const warnings: DiscoveryWarning[] = [];
-  // First strategy that failed because the endpoint needs credentials
-  // (HTTP 401/403). If no strategy succeeds, this takes precedence over
-  // the generic `all_strategies_failed` so the caller can prompt for
-  // credentials instead of reporting a flat failure.
   let authRequired: DiscoveryWarning | null = null;
 
   for (const strategy of strategies) {
@@ -220,12 +167,6 @@ export async function discoverConnectorEndpoints(
   );
 }
 
-/**
- * True when a strategy's `DiscoveryError.code` signals an authentication
- * failure — either the explicit `auth_required` code or any `http_401` /
- * `http_403` (and `*_401` / `*_403`) variant. Keyed on the HTTP status
- * class so it generalises across strategies and hosts.
- */
 function isAuthRequiredCode(code: string): boolean {
   return code === "auth_required" || /(^|_)40[13]$/.test(code);
 }

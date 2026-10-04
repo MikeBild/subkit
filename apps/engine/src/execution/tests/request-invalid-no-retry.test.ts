@@ -1,17 +1,3 @@
-// Contract: a `RequestError(cause_kind: "request_invalid")` — the
-// taxonomy entry produced when the http driver throws
-// `HttpRequestInvalidError` for a malformed plan (non-RFC-7230 header
-// name, JSON-string-pretending-to-be-headers slipthrough, non-string
-// header value) — must NOT be retried. Retries can't fix a malformed
-// plan; without an explicit no-retry classification the failure used
-// to reclassify as `connection` and burn 5 retries on every misformed
-// request.
-//
-// Drives executeRequestStep through the engine harness with a header
-// name that fails RFC 7230 token validation. Asserts the workflow
-// fails on the first attempt — total upstream hits is 0 (the http
-// driver never reaches fetch).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import {
@@ -51,13 +37,6 @@ describe("request_invalid · no retry", () => {
           id: "fetch",
           method: "GET",
           url: `${mock.baseUrl}/data`,
-          // RFC 7230 token violations: space + colon are not allowed
-          // in field-name. The schema-level guard at parseHeaderLines
-          // catches the clearly-broken JSON-string slipthrough; an
-          // object-shaped headers map with an invalid key reaches
-          // the http driver's validateOutboundHeaders which throws
-          // HttpRequestInvalidError, classified as `request_invalid`
-          // and never retried.
           headers: { "Bad Header": "value" },
         },
       ],

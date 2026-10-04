@@ -1,16 +1,3 @@
-// User story: As an operator, I read a run that was refused before it started
-// — its development connector lost its sign-in, or it was a preparation closed
-// because it never ran — and the run names that cause, not "error in the
-// external system", and tells me which connector to reconnect.
-// Acceptance criteria:
-//   - AC1: A development run refused for a connector that must be reconnected
-//     reads `connector_unavailable` on its detail outcome and on its list row,
-//     and names the connector and why it cannot serve.
-//   - AC2: A preparation closed as `orphaned_preparation` reads
-//     `refused_before_start` on its detail outcome and on its list row.
-//   - AC3: A run that really failed in its step still reads its own class.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, executions } from "../../db/schema/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -117,7 +104,6 @@ describe("journey 63: a refused run names its cause", () => {
   });
 
   test("AC2: a preparation closed because it never ran reads refused_before_start", async () => {
-    // The shape migration 0074 wrote onto the stranded rows.
     const [row] = await ctx.db
       .insert(executions)
       .values({

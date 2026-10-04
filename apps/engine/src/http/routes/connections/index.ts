@@ -1,17 +1,3 @@
-// Outbound connections — the account sign-ins a connector's credential points at.
-//
-//   POST   /v1/connections/discover      what is at this address? (name, scopes, connectable?)
-//   POST   /v1/connections/start         register there, mint PKCE, return the authorization URL
-//   GET    /v1/connections/callback      UNAUTHENTICATED — the other side redirects here;
-//                                        `state` is the credential. Ends in the Cockpit.
-//   GET    /v1/connections               every connection of this tenant, with its state
-//   GET    /v1/connections/{id}
-//   POST   /v1/connections/{id}/renew    "Erneuern": the same flow again for this row
-//   DELETE /v1/connections/{id}          "Trennen"
-//
-// The callback never renders a page of its own: success and failure both
-// land on /cockpit/connectors with a query the list turns into a sentence.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectionStateEnum, ConnectionStateReasonEnum } from "../../../api/connection-schemas.ts";
@@ -38,7 +24,6 @@ const ConnectionUserSchema = z
     connector_id: z.string(),
     slug: z.string(),
     display_name: z.string(),
-    /** Live workflows that use this connector (`workflows/connector-refs.ts`). */
     workflow_count: z.number().int().nonnegative(),
   })
   .openapi("ConnectionUser");
@@ -55,11 +40,6 @@ const ConnectionSchema = z
     granted_scopes: z.array(z.string()).nullable(),
     state: ConnectionStateEnum,
     state_reason: ConnectionStateReasonEnum.nullable(),
-    /**
-     * True when a refresh token is stored and the engine renews before expiry.
-     * False with an `expires_at`: the other side issued no refresh token, and
-     * the grant ends then unless a person renews it.
-     */
     auto_renew: z.boolean(),
     expires_at: z.string().nullable(),
     last_used_at: z.string().nullable(),
@@ -82,17 +62,12 @@ const DiscoverBody = z
 const DiscoverResponse = z
   .object({
     base_url: z.string(),
-    /** Whether "Verbinden" can proceed, and if not, why in one code. */
     connectable: z.boolean(),
     reason: z.string().nullable(),
     service_name: z.string().nullable(),
     service_description: z.string().nullable(),
     service_version: z.string().nullable(),
     issuer: z.string().nullable(),
-    /**
-     * The permissions a person can pick. Protocol scopes the server lists
-     * (`offline_access`) are left out: the engine requests them itself.
-     */
     scopes_supported: z.array(z.string()),
   })
   .openapi("ConnectionDiscoverResponse");
@@ -111,8 +86,6 @@ const StartResponse = z
 
 const CallbackQuery = z
   .object({
-    // Optional in the schema so a browser that arrives without one still lands
-    // on the Cockpit with a sentence, not on a JSON 400 (`state_invalid`).
     state: z.string().optional(),
     code: z.string().optional(),
     error: z.string().optional(),
@@ -152,9 +125,6 @@ const callbackRoute = createRoute({
   path: "/v1/connections/callback",
   tags: ["connections"],
   summary: "Complete a connection; the other side redirects the browser here",
-  // Unauthenticated: the browser arrives from the other server with no
-  // session header. The opaque `state` names the tenant, the person and the
-  // round, and is spent exactly once.
   request: { query: CallbackQuery },
   responses: { 302: { description: "Redirect into the Cockpit" } },
 });
@@ -219,7 +189,6 @@ function rethrow(error: unknown): never {
   throw error;
 }
 
-/** A sign-in belongs to the connector it serves; the callback lands on the connector list. */
 function cockpitReturn(origin: string, params: Record<string, string | null>): Response {
   const url = new URL("/cockpit/connectors", origin);
   for (const [key, value] of Object.entries(params)) if (value) url.searchParams.set(key, value);
@@ -230,7 +199,6 @@ function cockpitReturn(origin: string, params: Record<string, string | null>): R
 }
 
 export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
-  // The callback is the one path without a principal; everything else needs one.
   app.use("/v1/connections", (c, next) =>
     c.req.method === "GET"
       ? requirePermission("connection:read")(c, next)
@@ -361,8 +329,6 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
         user_id: principal.id,
         name: current.name,
         base_url: current.base_url,
-        // The person's permissions only; startConnection re-derives the
-        // protocol scopes from the server's metadata on this round.
         scopes: current.scopes,
         redirect_uri,
         client_uri: resolvePublicOrigin({ req: c.req.raw }),

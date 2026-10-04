@@ -23,14 +23,9 @@ export interface ResolveProviderIdentityOptions {
   subject: string;
   email: string;
   linkByEmail: boolean;
-  /** When false, only existing users may resolve — never JIT-provision a new users row. */
   allowCreate: boolean;
 }
 
-/**
- * Resolve one provider-namespaced subject to a local user. Email linking is
- * opt-in and callers must enable it only for provider-verified addresses.
- */
 export async function resolveProviderIdentity(
   db: Db,
   options: ResolveProviderIdentityOptions,

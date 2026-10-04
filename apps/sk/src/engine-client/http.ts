@@ -1,9 +1,3 @@
-// Shared request/response shaping helpers for the engine client. These
-// are transport-level utilities used by the `EngineClient` core in
-// `../engine-client.ts` and by the per-resource method modules in this
-// directory that talk to fetch directly (streamed uploads, downloads,
-// raw-body extraction).
-
 export function parseResponseBody(text: string): unknown {
   if (!text) return null;
   try {

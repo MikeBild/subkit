@@ -1,28 +1,11 @@
-// The copy-paste snippet that runs a saved workflow over HTTP — the ONE
-// renderer behind `sk workflows invoke-snippet` and the engine's
-// `GET /v1/workflows/{id}/invocation`, so the terminal and the workflow page
-// hand out the same call for the same inputs.
-//
-// The call targets `POST /v1/executions`, the route every saved run goes
-// through. Two things a caller cannot guess are always spelled out:
-//
-//   - `x-subkit-environment`. The engine runs in development when the header
-//     is absent, so a snippet without it silently runs somewhere else than the
-//     reader meant.
-//   - the API key as a `$SK_API_KEY` placeholder. A real key is never printed.
-//
-// Pure and primitive-typed: no I/O, no clock, nothing from `apps/*`.
-
 export const INVOKE_SNIPPET_LANGUAGES = ["curl", "node", "python"] as const;
 export type InvokeSnippetLanguage = (typeof INVOKE_SNIPPET_LANGUAGES)[number];
 
 export const INVOKE_ENVIRONMENTS = ["dev", "prod"] as const;
 export type InvokeEnvironment = (typeof INVOKE_ENVIRONMENTS)[number];
 
-/** The route a saved run is posted to, relative to the engine's base URL. */
 export const INVOKE_RUN_PATH = "/v1/executions";
 
-/** Header names a run request carries, in the order the snippets print them. */
 export const INVOKE_HEADER_NAMES = [
   "authorization",
   "x-subkit-environment",
@@ -31,12 +14,9 @@ export const INVOKE_HEADER_NAMES = [
 
 export interface InvokeSnippetOptions {
   lang: InvokeSnippetLanguage;
-  /** The engine's base URL; a trailing slash is tolerated. */
   engineUrl: string;
   workflowId: string;
-  /** Where the run executes. Always printed — never left to the engine's default. */
   environment: InvokeEnvironment;
-  /** The run's input; an empty object when the caller has no sample. */
   input?: Record<string, unknown>;
 }
 
@@ -48,12 +28,10 @@ export function isInvokeEnvironment(value: string): value is InvokeEnvironment {
   return (INVOKE_ENVIRONMENTS as readonly string[]).includes(value);
 }
 
-/** The absolute URL of the run route under `engineUrl`. */
 export function invokeRunUrl(engineUrl: string): string {
   return `${engineUrl.replace(/\/+$/, "")}${INVOKE_RUN_PATH}`;
 }
 
-/** The request body of a saved run. Input always travels under `input`. */
 export function invokeRunBody(
   workflowId: string,
   input: Record<string, unknown> = {},
@@ -61,22 +39,10 @@ export function invokeRunBody(
   return { source: "saved", workflow_id: workflowId, input };
 }
 
-/**
- * A string as one single-quoted shell word. Inside single quotes the shell
- * reads every character literally — `$`, a backslash, a backtick — except the
- * quote itself, which closes the word, is written escaped, and reopens it.
- */
 export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-/**
- * A JSON value as a JavaScript expression, indented like `JSON.stringify`
- * does. It differs from JSON in one key: in an object literal `"__proto__": x`
- * sets the prototype instead of defining a property, so the key would be gone
- * from the body the snippet sends. Written as a computed key it is a property
- * like any other.
- */
 function javascriptLiteral(value: unknown, indent: string): string {
   const inner = `${indent}  `;
   if (Array.isArray(value)) {
@@ -146,11 +112,6 @@ export function renderInvokeSnippet(options: InvokeSnippetOptions): string {
   ].join("\n");
 }
 
-/**
- * A JSON value as a Python literal. JSON's `true` / `false` / `null` are not
- * Python: pasted as they are, a sample input carrying one of them is a
- * `NameError` before the request is ever sent.
- */
 function pythonLiteral(value: unknown): string {
   if (value === null || value === undefined) return "None";
   if (value === true) return "True";

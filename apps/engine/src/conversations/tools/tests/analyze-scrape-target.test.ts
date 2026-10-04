@@ -1,14 +1,3 @@
-// Unit tests for the analyze_scrape_target chat tool.
-//
-// What's covered:
-//   - Green verdict when sitemap is under thresholds and robots allows
-//   - Yellow / Red verdicts at the documented sitemap entry thresholds
-//   - Red on a robots-disallowed path
-//   - Red (SSRF refusal) on a private-IP / metadata-service target
-//   - Sitemap fetch timeout falls through to Green (count = 0)
-//   - Tool stays in `tenant_read` category and reads tunables from
-//     getConfig(tenant_id).connectors.web_scraper.authoring.*
-
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import * as loader from "../../../config/loader.ts";
@@ -18,9 +7,6 @@ import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { analyzeScrapeTargetTool } from "../analyze-scrape-target.ts";
 import type { ToolContext } from "../index.ts";
 
-// Use strict egress mode so the SSRF tests exercise the RFC 1918 /
-// metadata-service guards; permissive (the dev default) only blocks
-// bare localhost / 0.0.0.0.
 const baseConfig: Config = ConfigSchema.parse({
   database: { url: "postgres://test" },
   egress: { mode: "strict" },
@@ -29,11 +15,6 @@ const baseConfig: Config = ConfigSchema.parse({
 let configSpy: ReturnType<typeof spyOn<typeof loader, "getConfig">>;
 let fetchSpy: ReturnType<typeof mock<typeof fetch>>;
 
-/** Driver-fetch seam: the tool and robots-cache read getDriverFetch(),
- *  not globalThis. The seam override must wrap the body explicitly
- *  (store.run via `withDriverFetchForTests`), but each test picks its
- *  fetch impl INSIDE the body — so `seamTest` binds a stable dispatcher
- *  that forwards to whatever `fetchSpy` currently is. */
 function installFetch(impl?: typeof fetch): ReturnType<typeof mock<typeof fetch>> {
   return impl ? mock<typeof fetch>(impl) : mock<typeof fetch>();
 }
@@ -121,8 +102,6 @@ describe("analyze_scrape_target / verdicts", () => {
   });
 
   seamTest("red when sitemap count exceeds red_sitemap_threshold", async () => {
-    // Building 100_001 url tags inline is wasteful — instead patch the
-    // config so a 1000-entry sitemap trips the red gate.
     const tight: Config = {
       ...baseConfig,
       connectors: {
@@ -175,8 +154,6 @@ describe("analyze_scrape_target / SSRF guard", () => {
     expect(out.ok).toBe(true);
     expect((out.data as { verdict: string }).verdict).toBe("red");
     expect((out.data as { message: string }).message).toMatch(/egress guard blocked/i);
-    // SSRF guard runs BEFORE any fetch — no outbound call must reach
-    // the network.
     expect(fetchSpy.mock.calls.length).toBe(0);
   });
 

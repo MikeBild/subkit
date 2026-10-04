@@ -112,7 +112,6 @@ describe("the sentence", () => {
       expect(
         attentionSentence(held(reason, { kind: "schedule", name: null }), de, NOW).lead,
       ).toContain("Zeitplan");
-      // No trigger named keeps the schedule sentence.
       expect(attentionSentence(held(reason, null), de, NOW).lead).toContain("Zeitplan");
     }
   });
@@ -139,8 +138,6 @@ describe("the sentence", () => {
     expect(sentenceText(attentionSentence(blocked(prepare), de, NOW))).toBe(
       "Der Workflow „Monatsbericht“ lässt sich in Fassung v9 nicht freigeben – Schritt „send_email“: wer seine E-Mail bekommt, hat noch niemand gesehen — seit gerade eben.",
     );
-    // A code this build has no words for falls back to what removes the block;
-    // other blocked steps are counted, never listed.
     const author = {
       ...prepare,
       step_id: "create_reader",
@@ -155,7 +152,6 @@ describe("the sentence", () => {
     expect(attentionSentence(blocked(null as never), en, NOW).lead).toContain(
       "cannot be approved in version v9",
     );
-    // The act its diagnosis offers — never "approve".
     const open = { verb: "open" as const, href: "/x", primary: true, permission: "workflow:run" };
     const chat = {
       verb: "chat" as const,
@@ -176,8 +172,6 @@ describe("the sentence", () => {
   });
 
   test("a hold says what lifts it: a missing approval, or a change to the workflow", () => {
-    // `unavailable` is the gate finding no approval with runs left: a grant
-    // lifts it. `required` is a version no approval may cover: only a change does.
     const held = (reason: AttentionItem["reason"], trigger: AttentionItem["trigger"]) =>
       item({ reason, class: "stopped", severity: "critical", trigger });
     for (const trigger of [
@@ -213,7 +207,6 @@ describe("the sentence", () => {
     expect(hook.lead).toContain("Fassung v4");
     expect(hook.lead).toContain("„findings“");
     expect(hook.lead).not.toContain("geplante");
-    // A hook whose name is not the reader's to read is still not called a schedule.
     const unnamed = attentionSentence(waiting({ kind: "inbound_hook", name: null }), de, NOW);
     expect(unnamed.lead).toContain("automatische Start");
     expect(unnamed.lead).not.toContain("„“");
@@ -246,7 +239,6 @@ describe("the sentence", () => {
     expect(attentionSentence(grown([connector, writes]), en, NOW).lead).toContain(
       "New target: Ticket desk (and 1 more)",
     );
-    // Nothing recorded: the sentence stays as it was.
     expect(attentionSentence(grown(undefined), de, NOW).lead).not.toContain("Neu");
   });
 
@@ -270,7 +262,6 @@ describe("the sentence", () => {
     expect(sentenceText(attentionSentence(ending, de, NOW))).toBe(
       "Der Workflow „Monatsbericht“ ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht — seit 3 Tagen.",
     );
-    // The engine's address is the cockpit's own panel address.
     expect(routerPath(open.href)).toBe(workflowAutomationHref(W));
   });
 
@@ -301,7 +292,6 @@ describe("the sentence", () => {
         const sentence = attentionSentence(item({ reason }), t, NOW);
         expect(sentence.machine, reason).toBeNull();
         expect(sentence.lead, reason).not.toContain("{");
-        // No machine value leaks into the words: no snake_case anywhere.
         expect(sentence.lead, reason).not.toMatch(/[a-z]+_[a-z_]+/);
       }
     }
@@ -353,7 +343,6 @@ describe("the sentence", () => {
       NOW,
     );
     expect(unknownCause.machine).toBe("rate_limited");
-    // An unknown signal is named as the engine named it, never as "unbekannt".
     const signal = attentionSentence(
       item({ reason: "risk_critical", kind: "disk_full", subject: null }),
       de,
@@ -409,9 +398,6 @@ describe("the list", () => {
       item({ id: "skills", class: "decide", subject: null }),
       item({ id: `workflow:${W}`, class: "failing" }),
     ];
-    // Deliberately not re-sorted: the engine orders stopped → failing → decide
-    // with deadlines and age inside, and a second sort here would be a second
-    // rule to keep in step.
     expect(attentionEntries(items).map((entry) => entry.id)).toEqual([
       "conversation:c",
       "skills",
@@ -551,7 +537,6 @@ describe("the review sheet", () => {
 });
 
 describe("an entry decided in this tab", () => {
-  // A failing workflow with one open fix: its primary action is the review.
   const withFix = item({
     counts: { failures: 3, patches: 1 },
     actions: [
@@ -564,7 +549,6 @@ describe("an entry decided in this tab", () => {
       { verb: "open_runs", href: "/cockpit/runs", primary: false, permission: "execution:read" },
     ],
   });
-  // The same workflow once the fix is decided: still failing, now a chat.
   const stillFailing = item({
     counts: { failures: 3 },
     actions: [
@@ -580,7 +564,6 @@ describe("an entry decided in this tab", () => {
   });
 
   test("is back at once when the engine lists the same subject as a different task", () => {
-    // Deciding the last fix of a failing workflow does not end the task.
     const view = overviewView(attention({ items: [stillFailing] }), hidden);
     expect(view.kind).toBe("items");
     if (view.kind === "items") expect(view.items[0]?.actions[0]?.verb).toBe("chat");
@@ -608,7 +591,6 @@ describe("what a review sheet may show", () => {
   });
 });
 
-/** A browser history, small enough to reason about. */
 function fakeHistory() {
   const entries: { url: string; state: unknown }[] = [{ url: "/cockpit", state: null }];
   let index = 0;
@@ -643,7 +625,6 @@ describe("the review sheet and Back", () => {
     expect(history.url()).toBe("/cockpit?review=skills");
     navigation.close();
     expect(history.url()).toBe("/cockpit");
-    // Nothing ahead of the reader but the closed sheet, and nothing behind.
     expect(history.entries.slice(0, 1).map((entry) => entry.url)).toEqual(["/cockpit"]);
     history.back();
     expect(history.url()).toBe("/cockpit");

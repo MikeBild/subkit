@@ -1,10 +1,3 @@
-// Thin wrapper: register the event.fanout worker.
-//
-// Jobs on the `event.fanout` queue carry a single `{event_row_id}`
-// envelope. The worker pulls the matching outbox row and passes it to
-// the webhook fanout service, which enqueues downstream
-// `webhook.deliver` jobs for every matching subscription.
-
 import type { Job, PgBoss } from "pg-boss";
 import type { ChatAdapterRegistry } from "../../chat/registry.ts";
 import type { Db } from "../../db/client.ts";
@@ -22,9 +15,6 @@ export interface EventFanoutJob {
 export interface RegisterEventFanoutOptions {
   boss: PgBoss;
   db: Db;
-  /** Optional chat adapter registry. When provided the fanout worker
-   * will run the notification dispatch path for each outbox event and
-   * resolve per-channel adapters out of this registry. */
   chatRegistry?: ChatAdapterRegistry;
 }
 
@@ -37,17 +27,9 @@ export async function registerEventFanoutHandler(
     : undefined;
   const workerId = await boss.work<EventFanoutJob>(
     EVENT_FANOUT_QUEUE,
-    // batchSize:1 so one failing event doesn't drag its batch-mates: a
-    // failure now fails exactly its own job, which pg-boss then retries.
     { batchSize: 1, pollingIntervalSeconds: 1 },
     async (jobs: Job<EventFanoutJob>[]) => {
       for (const j of jobs) {
-        // Wrap the per-job body in the queue context bridge like every other
-        // handler. The envelope ({ event_row_id }) carries no trace_id/tenant_id,
-        // so this only stamps request_source:"queue" on the worker's own
-        // queue-level logs — fanoutEventRow re-establishes the per-row tenant
-        // from the outbox row itself — but it keeps the correlation surface
-        // uniform so these lines aren't request_source-blind.
         await withJobContext(j.data, async () => {
           const started = Date.now();
           try {
@@ -79,12 +61,6 @@ export async function registerEventFanoutHandler(
               msg: "event.fanout handler threw",
               ...errorFields(err),
             });
-            // Rethrow so pg-boss marks the job failed and RETRIES it.
-            // Previously the error was swallowed → pg-boss saw success →
-            // the event's webhook/notification deliveries were lost with no
-            // retry. The delivery event_id is derived deterministically from
-            // the outbox row id (see fanout.ts), so a retried fan-out is
-            // idempotent at the receiver.
             throw err;
           }
         });

@@ -1,19 +1,3 @@
-// Integration tests: assembler renders full bodies only for skills in the
-// recency window (loaded_skill_slugs) and demoted skills still appear in
-// the "Loaded" index block via loaded_skill_membership.
-//
-// Design note: the "loaded" full-body path in assembleEnhancedPrompt only
-// fires for skills NOT already returned by `retrieveApplicableSkills`
-// (global skills are always in scope and render via the Global index). To
-// test the recency-controlled full-body vs index path we use:
-//   - A connector-scoped skill bound to connector C1 (out-of-scope for
-//     an assembly call that passes no connector_id or a different id).
-//   - This skill is then referenced via loaded_skill_slugs (full body) or
-//     only in loaded_skill_membership (Loaded index one-liner).
-//
-// These tests require a real Postgres database (testcontainers).
-// Set REQUIRES_PG=0 to skip in environments without a DB.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, skills, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -24,7 +8,6 @@ const skip = process.env.REQUIRES_PG === "0";
 
 let db: TestDb;
 let tenant_id: string;
-// Slug of a connector-scoped skill bound to a connector not in assembly scope.
 let outOfScopeFullBodySlug: string;
 let outOfScopeDemotedSlug: string;
 
@@ -38,11 +21,6 @@ beforeAll(async () => {
     .returning();
   tenant_id = t!.id;
 
-  // Seed a connector — its id is used to scope the skills, but we will
-  // NOT pass this connector_id to the assembler, so these skills are
-  // out-of-scope for `retrieveApplicableSkills`. They only enter the
-  // prompt via loaded_skill_slugs (full body) or loaded_skill_membership
-  // (Loaded index), exercising the recency-aware rendering path.
   const [conn] = await db.db
     .insert(connectors)
     .values({
@@ -98,17 +76,13 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
         user_turns: [{ role: "user", content: "help me" }],
         max_tokens: 40_000,
         model: "mock",
-        // Only the "full body" skill is in the recency window.
-        // No connector_id passed — both connector skills are out-of-scope for retrieveApplicableSkills.
         loaded_skill_slugs: [outOfScopeFullBodySlug],
         loaded_skill_membership: [outOfScopeFullBodySlug, outOfScopeDemotedSlug],
       },
       db.db,
     );
 
-    // The full body marker should appear verbatim for the recency-window skill.
     expect(prompt.system).toContain("FULL_BODY_MARKER_OOS");
-    // The rendered body wraps in a "# Skill:" heading.
     expect(prompt.system).toContain("# Skill: Full Body OOS Skill");
   });
 
@@ -120,17 +94,12 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
         user_turns: [{ role: "user", content: "help me" }],
         max_tokens: 40_000,
         model: "mock",
-        // "skill-demoted-oos" is aged out — not in the recency subset.
         loaded_skill_slugs: [outOfScopeFullBodySlug],
         loaded_skill_membership: [outOfScopeFullBodySlug, outOfScopeDemotedSlug],
       },
       db.db,
     );
 
-    // The demoted skill must NOT render a full "# Skill:" section (which is what
-    // formatSkill produces). The index one-liner may echo the first line of the body
-    // as a description snippet (that's intentional in formatSkillIndex), but the
-    // full "# Skill: <title>" heading must not appear for the demoted skill.
     expect(prompt.system).not.toContain("# Skill: Demoted OOS Skill");
   });
 
@@ -148,8 +117,6 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
       db.db,
     );
 
-    // The "Loaded" index block is created by formatSkillIndex("Loaded", ...).
-    // It lists the slug + title as a one-liner for any out-of-scope demoted skill.
     expect(prompt.system).toContain("Loaded skill index");
     expect(prompt.system).toContain(outOfScopeDemotedSlug);
     expect(prompt.system).toContain("Demoted OOS Skill");
@@ -163,12 +130,10 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
         user_turns: [{ role: "user", content: "help me" }],
         max_tokens: 40_000,
         model: "mock",
-        // Neither loaded_skill_slugs nor loaded_skill_membership provided.
       },
       db.db,
     );
 
-    // Without membership there should be no "Loaded" index block.
     expect(prompt.system).not.toContain("Loaded skill index");
   });
 
@@ -181,22 +146,18 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
         max_tokens: 40_000,
         model: "mock",
         loaded_skill_slugs: [outOfScopeFullBodySlug],
-        // Same slug in membership — must not duplicate into the Loaded index.
         loaded_skill_membership: [outOfScopeFullBodySlug],
       },
       db.db,
     );
 
-    // The full body appears exactly once.
     const occurrences = (prompt.system.match(/FULL_BODY_MARKER_OOS/g) ?? []).length;
     expect(occurrences).toBe(1);
 
-    // And the Loaded index should NOT appear (no demoted skills outside the full-body set).
     expect(prompt.system).not.toContain("Loaded skill index");
   });
 
   test("wrong-tenant loaded_skill_slugs resolve to nothing (no body injected, no cross-tenant leak)", async () => {
-    // Seed a skill under a different tenant.
     const [otherTenant] = await db.db
       .insert(tenants)
       .values({ slug: "t-other-recency", display_name: "Other" })
@@ -230,19 +191,17 @@ describe.skipIf(skip)("assembler — recency-aware full-body vs index rendering"
 
     const prompt = await assembleEnhancedPrompt(
       {
-        tenant_id, // our tenant, not otherTenant
+        tenant_id,
         flow: "generate",
         user_turns: [{ role: "user", content: "help me" }],
         max_tokens: 40_000,
         model: "mock",
-        // Reference the other tenant's skill slug.
         loaded_skill_slugs: [otherSkill!.slug!],
         loaded_skill_membership: [otherSkill!.slug!],
       },
       db.db,
     );
 
-    // The cross-tenant body must not appear.
     expect(prompt.system).not.toContain("CROSS_TENANT_BODY");
   });
 });
@@ -256,8 +215,6 @@ describe.skipIf(skip)(
     });
 
     test("formatSkillIndex renders a one-liner per skill with load_skill hint", () => {
-      // Import synchronously after the dynamic import above has resolved.
-      // Using require() inside a test is fine for pure-function assertions.
       // biome-ignore lint/suspicious/noExplicitAny: test helper
       const mod = require("../core/context-assembler.ts") as any;
       const { formatSkillIndex } = mod;
@@ -296,7 +253,6 @@ describe.skipIf(skip)(
       expect(result).toContain("`my-skill`");
       expect(result).toContain("My Skill");
       expect(result).toContain("load_skill");
-      // The multi-line body must be collapsed to a one-liner: "Line two" must not appear.
       expect(result).not.toContain("Line two");
     });
 
@@ -305,9 +261,7 @@ describe.skipIf(skip)(
       const { join } = require("node:path");
       const src = join(import.meta.dir, "..", "core", "context-assembler.ts");
       const body = readFileSync(src, "utf-8") as string;
-      // Full-body rendering for the recency window.
       expect(body).toMatch(/for \(const s of loadedSkills\) sections\.push\(formatSkill\(/);
-      // Loaded index for demoted skills.
       expect(body).toMatch(/formatSkillIndex\("Loaded", loadedIndexSkills/);
     });
   },

@@ -1,9 +1,3 @@
-// dry_run_step — run a single draft step in isolation via the same driver
-// pipeline a production workflow uses. Backed by `runSingleStep`, which
-// wraps the step in a one-step WorkflowDef and calls `runExecution` with
-// source.kind="step". Classification taxonomy is preserved so the chat
-// surface can still render human-readable failure summaries.
-
 import { z } from "@hono/zod-openapi";
 import { classifyRunResult, isTransientRunResult } from "../../execution/classify.ts";
 import { runSingleStep } from "../../execution/step-run.ts";
@@ -84,16 +78,6 @@ export const dryRunStepTool: ConversationTool = {
       };
     }
     const step = rawStep as unknown as StepDef;
-    // Bounded transient retry (authoring safety net). The request/graphql
-    // drivers already retry most transients in-band; a single residual flap
-    // (an upstream 5xx/429/connection blip that survives the driver's own
-    // retries) still surfaces as a failed dry-run. Four such failures in a
-    // row trip `error_code_repeat_block` and stall the whole authoring
-    // session on a fault that has nothing to do with the draft. Re-running
-    // the single step up to twice more (500ms then 1s backoff) clears that
-    // flap without masking a deterministic failure: only transient
-    // classifications retry; timeouts and auth/4xx/schema errors fall
-    // through on the first attempt.
     const TRANSIENT_RETRY_BACKOFF_MS = [500, 1_000] as const;
     let run = await runSingleStep({
       db: ctx.db,
@@ -144,8 +128,6 @@ export const dryRunStepTool: ConversationTool = {
       code: (w as { code?: string }).code ?? "unknown",
       message: (w as { message?: string }).message ?? "",
     }));
-    // Author build-time permission warning (Stream 4) — non-blocking; warns
-    // when this step writes a connector the author cannot write.
     const author = await resolveConversationPrincipal(ctx);
     if (author) {
       const authorWarnings = await authorConnectorWriteWarnings(ctx.db, author, ctx.tenant_id, [
@@ -167,22 +149,12 @@ export const dryRunStepTool: ConversationTool = {
         count: runWarnings.length,
       });
     }
-    // Build a one-entry step_traces slot mirroring dry_run_workflow's
-    // shape so subsequent inspect_workflow_draft / suggest_jsonata_paths
-    // calls have a per-step scope to read against. Single-step
-    // dry-runs are how the LLM explores a request shape before
-    // committing to a transform — without persisting scope_at_step
-    // here, the next call would have to re-run the whole workflow
-    // just to learn the same shape.
     const runStep = run.steps[0];
     const stepTraceEntry = runStep
       ? {
           step_id: runStep.step_key,
           kind: runStep.kind,
           status: runStep.status,
-          // Fingerprint stamping: bind this evidence to the
-          // exact step definition it was recorded against so later
-          // mutations drop it only when THIS step changes.
           ...(runStep.step_key === args.step_id ? { fingerprint: stepFingerprint(rawStep) } : {}),
           ...(runStep.duration_ms != null ? { duration_ms: runStep.duration_ms } : {}),
           ...(runStep.output_preview !== undefined && runStep.output_preview !== null
@@ -199,9 +171,6 @@ export const dryRunStepTool: ConversationTool = {
               ? { error_code: (runStep.error as { code: string }).code }
               : {}
             : {}),
-          // Hold-writes preview: the materialized-but-never-dispatched
-          // request IS the step's reviewable artifact — same trace shape
-          // as dry_run_workflow's step_trace entries.
           ...(runStep.held
             ? { held: true, held_request: truncateStepPreviewForLlm(runStep.held_request).data }
             : {}),
@@ -224,10 +193,6 @@ export const dryRunStepTool: ConversationTool = {
     );
     await ctx.setDraft(nextDraft);
 
-    // Probe-style recovery hints when the step actually failed at the
-    // driver level. Only applies to request-like kinds (request /
-    // call) where status/timeout makes sense; transforms / loops
-    // surface their own typed errors via `summary.error`.
     const meta = (runStep?.request_meta ?? null) as {
       driver?: string;
       status?: number | null;
@@ -257,9 +222,6 @@ export const dryRunStepTool: ConversationTool = {
         classification: summary.classification,
         summary: summary.summary,
         execution_id: run.execution_id,
-        // Single-step surface: the held marker rides the top-level
-        // payload too — the LLM must see "resolved but NOT dispatched"
-        // without digging into step_traces.
         ...(runStep?.held
           ? { held: true, held_request: truncateStepPreviewForLlm(runStep.held_request).data }
           : {}),
@@ -276,10 +238,6 @@ export const dryRunStepTool: ConversationTool = {
   },
 };
 
-/** Sleep for `ms`, resolving early (without throwing) if `signal` aborts
- *  during the wait. Keeps the transient-retry backoff responsive to the
- *  conversation's abort signal — a cancelled authoring turn must not block
- *  on a pending backoff. */
 function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve();
   return new Promise<void>((resolve) => {

@@ -1,5 +1,3 @@
-// Pub/Sub barrel.
-
 export { globalEmitter, PubSubEmitter } from "./emitter.ts";
 export {
   getListener,

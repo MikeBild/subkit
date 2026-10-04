@@ -1,18 +1,3 @@
-// Playground / sandbox authoring mode (D5).
-//
-// A conversation started in `playground` mode is a scratch authoring
-// surface that reuses the ONE conversation loop + skill-gated palette:
-//   - it preloads the `workflow-authoring` skill so the author_workflow /
-//     dry_run_workflow / edit_workflow_patch triad is available on turn one,
-//   - it binds NO saved workflow (pure scratch), even if a workflow_id is
-//     supplied,
-//   - it carries a DURABLE `draft.session.playground` flag (not an env flag)
-//     that survives the DB normalize round-trip, and
-//   - a commit persists NOTHING: `commitWorkflowAtomic` short-circuits with
-//     `playground_no_persist` and never writes a workflow row.
-//
-// hold_writes is unchanged, so dry-runs stay safe for experimentation.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { conversations, workflows } from "../../db/schema/index.ts";
@@ -39,9 +24,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A draft that has cleared every structural commit gate (inspect +
- *  validate + successful preview) so the ONLY thing that can block the
- *  commit is the playground short-circuit. */
 function committableDraft(slug: string, session?: DraftDocument["session"]): DraftDocument {
   const base: DraftDocument = {
     mode: "workflow_authoring",
@@ -90,7 +72,6 @@ describe("D5 — playground conversation creation", () => {
       {
         tenant_id: ctx.tenant_id,
         actor_id: ctx.user_id,
-        // A workflow_id is supplied on purpose — playground must ignore it.
         workflow_id: "00000000-0000-4000-8000-000000000094",
         initial_message: "let me experiment with a workflow",
         playground: true,
@@ -112,13 +93,9 @@ describe("D5 — playground conversation creation", () => {
       )
       .limit(1);
 
-    // workflow-authoring is preloaded so the triad is available turn one.
     expect(row?.loaded_skills.map((s) => s.slug)).toContain(WORKFLOW_AUTHORING_SKILL);
-    // Scratch surface — no saved workflow bound even though workflow_id was set.
     expect(row?.target_workflow_id).toBeNull();
 
-    // The durable flag survives the DB normalize round-trip (the data-loss
-    // class that silently drops draft.session on read).
     const draft = await loadDraft(ctx.tenant_id, created.conversation.id, ctx.testDb.db);
     expect(draft.session?.playground).toBe(true);
   });
@@ -155,8 +132,6 @@ describe("D5 — playground commit persists nothing", () => {
     const draft = committableDraft(slug, { playground: true });
     const result = await commitWorkflowAtomic({
       ctx: stubToolCtx(conv.id, draft),
-      // The harness auto-persist path routes through here too — assert the
-      // sandbox gate wins even when the prior-approval check is skipped.
       skipPriorApprovalCheck: true,
       emitAutoPersistAudit: true,
       reason: "auto_persist_on_confirmation",
@@ -166,7 +141,6 @@ describe("D5 — playground commit persists nothing", () => {
     if (result.ok) throw new Error("expected playground commit to be blocked");
     expect(result.error_code).toBe("playground_no_persist");
 
-    // No workflow row was created for the scratch slug.
     const rows = await ctx.testDb.db
       .select({ id: workflows.id })
       .from(workflows)

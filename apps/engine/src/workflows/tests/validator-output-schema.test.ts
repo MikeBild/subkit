@@ -1,9 +1,3 @@
-// `output_schema` on the workflow definition (Fix 11): the field lives
-// in the versioned definition JSON (WorkflowDefSchema) and the
-// validator refuses a schema Ajv cannot compile — an uncompilable
-// contract would silently disable both the preview gate and the
-// live-run warning.
-
 import { describe, expect, test } from "bun:test";
 import { WorkflowDefSchema } from "../types.ts";
 import { validateWorkflowDef } from "../validator.ts";
@@ -59,8 +53,6 @@ describe("validateWorkflowDef · output_schema sanity", () => {
   test("refuses an output_schema Ajv cannot compile, with the field path", () => {
     const verdict = validateWorkflowDef({
       ...BASE,
-      // `type` must be a string / array of strings — the meta-schema
-      // rejects this, so the contract could never be enforced.
       output_schema: { type: 123 },
     });
     expect(verdict.ok).toBe(false);

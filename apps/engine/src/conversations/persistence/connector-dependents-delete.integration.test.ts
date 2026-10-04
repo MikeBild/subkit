@@ -1,14 +1,3 @@
-// Integration test B.1 — listWorkflowsUsingConnector + dispatchDeleteConnector
-// dependency backstop.
-//
-// Coverage:
-//   - seed a connector + a live workflow whose current-version DAG has a step
-//     with connector_id = that connector.
-//   - listWorkflowsUsingConnector → returns the workflow.
-//   - dispatchDeleteConnector without confirm_orphan → ok:false
-//     error_code=connector_has_dependents with dependents listed.
-//   - dispatchDeleteConnector with confirm_orphan:true → delete proceeds.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
@@ -121,7 +110,7 @@ describe("listWorkflowsUsingConnector", () => {
     await seedWorkflowWithConnector("tenant-iso-wf", connectorId);
 
     const deps = await listWorkflowsUsingConnector(
-      "00000000-0000-0000-0000-000000000000", // wrong tenant
+      "00000000-0000-0000-0000-000000000000",
       connectorId,
       ctx.testDb.db,
     );
@@ -163,7 +152,6 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
 
     expect(result.ok).toBe(true);
 
-    // Connector row is soft-deleted (deleted_at IS NOT NULL).
     const remaining = await ctx.testDb.db
       .select({ deleted_at: connectors.deleted_at })
       .from(connectors)
@@ -174,7 +162,6 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
 
   test("without any dependent workflows → delete proceeds immediately", async () => {
     const connectorId = await seedConnector("delete-nodep-api");
-    // No workflow seeded — no dependents.
 
     const toolCtx = await makeToolCtx();
     const intent: CommitIntent = {
@@ -188,9 +175,6 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
   });
 
   test("tenant isolation: deleting a connector from the wrong tenant → connector_not_found", async () => {
-    // RBAC (connector:delete) is enforced upstream in deleteConnectorTool;
-    // this pins that the dispatch backstop is tenant-scoped — a wrong-tenant
-    // delete neither surfaces the connector's dependents nor deletes the row.
     const connectorId = await seedConnector("dep-cross-tenant-api");
     await seedWorkflowWithConnector("dep-cross-tenant-wf", connectorId);
 
@@ -228,7 +212,6 @@ describe("dispatchDeleteConnector — dependency backstop", () => {
     expect(result.ok).toBe(false);
     expect((result as { error_code?: string }).error_code).toBe("connector_not_found");
 
-    // The connector in the real tenant must remain live (not soft-deleted).
     const stillLive = await ctx.testDb.db
       .select({ deleted_at: connectors.deleted_at })
       .from(connectors)

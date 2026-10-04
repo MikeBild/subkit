@@ -1,9 +1,3 @@
-// Pure validators that coerce `unknown` payloads (DB rows, JSON
-// blobs, MCP tool inputs) into the typed `DraftDocument` /
-// `AuthoringState` / `AuthoringSummary` shapes. No state mutations,
-// no checkpoint logic — that lives in `summary.ts` and the parent
-// `authoring-state.ts` barrel.
-
 import { toPublicConnector } from "../../connectors/public-view.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { isRecord } from "../../utils/type-guards.ts";
@@ -71,30 +65,6 @@ export function surfaceModeFor(mode: AuthoringMode | undefined): AuthoringSurfac
   return "connector";
 }
 
-/**
- * Build a re-issue-bound connector draft from an already-saved connector.
- *
- * Sets `saved_connector_id` to the live connector's id — the load-bearing
- * field that routes the subsequent `ask_user_form` → auto-persist /
- * `save_connector_draft` submission through the **re-issue branch**
- * (`save-connector.ts` `existingSavedId` path), so a credential rotation
- * lands on the SAME connector row and the connector id never changes.
- *
- * Used by `request_connector_reauth` to turn a dead-credential connector into
- * an in-chat re-credential flow (the non-OAuth counterpart of
- * `authenticate_oauth`). `latest_probe`/`validation` are intentionally omitted
- * — the re-issue path re-runs `validateConnectorDraft` and a fresh probe.
- * `operator_quirks` is intentionally NOT carried (ConnectorDraftDocument has
- * no such field anyway): the re-issue persists to the SAME saved row, which
- * already holds its quirks, so nothing is lost.
- */
-/**
- * A draft is conversation state: tools echo it to the model and the
- * conversation route returns it. It is therefore hydrated from the PUBLIC
- * projection of the saved connector, never from the view — the stored OAuth
- * client secret and connection-string password have no place in a
- * transcript. The save path reads the mask as "keep what is stored".
- */
 export function hydrateDraftFromSavedConnector(view: ConnectorView): ConnectorDraftDocument {
   const saved = toPublicConnector(view);
   const next: ConnectorDraftDocument = {
@@ -126,10 +96,6 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
   const name = pickString("name") ?? fallback.name;
   const slug = pickString("slug");
   const description = pickString("description");
-  // The user's goal verbatim — stashed by author_workflow /
-  // build_workflow({goal}) and read by the post-preview judge. Must
-  // survive the normalize round-trip or the stash silently evaporates
-  // on the very next draft mutation.
   const goal = pickString("goal");
   const outputTransform = pickString("output_transform");
   const derivedFromSkillId = pickString("derived_from_skill_id");
@@ -147,14 +113,6 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
       ? base.steps.filter((step): step is Record<string, unknown> => isRecord(step))
       : [],
     ...(isRecord(base.input_schema) ? { input_schema: base.input_schema } : {}),
-    // Literal example payload (NOT a schema) — carried verbatim so the
-    // sample-derived input-contract tier survives the normalize round-trip
-    // (draft mutation, undo, and hydration from a saved `dag`) all the way
-    // into the persisted WorkflowDef. Any JSON value is valid; only an
-    // object-with-keys sample yields a usable contract downstream, but the
-    // filtering lives in `resolveWorkflowInputContract`, not here — this
-    // stage must not drop a non-object sample or the field silently
-    // evaporates. `null` is treated as "unset" (nothing to derive from).
     ...(base.input_schema_sample !== undefined && base.input_schema_sample !== null
       ? { input_schema_sample: base.input_schema_sample }
       : {}),
@@ -175,12 +133,6 @@ export function normalizeWorkflowDraft(raw: unknown): WorkflowDraftDocument {
       : {}),
   };
 
-  // The persisted WorkflowDef schema is the authoritative field roster.
-  // Copy every remaining top-level definition field verbatim so hydration
-  // cannot silently erase a newly-added governance/runtime field before the
-  // author edits or commits the draft. The explicitly-normalized fields above
-  // retain their existing coercion rules; draft-only metadata stays outside
-  // this schema-derived projection.
   const alreadyNormalized = new Set([
     "name",
     "slug",
@@ -280,10 +232,6 @@ export function normalizeConnectorDraft(raw: unknown): ConnectorDraftDocument | 
         : {}),
       ...(typeof probe.failure_code === "string" ? { failure_code: probe.failure_code } : {}),
       ...(typeof probe.probed_at === "string" ? { probed_at: probe.probed_at } : {}),
-      // The re-probe guard compares this across turns — dropping it
-      // here silently disabled the guard in production while the
-      // in-memory test stub kept it alive (caught live on v6.15.2,
-      // conversation ad4dc8f7).
       ...(typeof probe.fingerprint === "string" ? { fingerprint: probe.fingerprint } : {}),
     };
   }
@@ -454,12 +402,6 @@ function normalizeJudgeVerdictMemo(value: unknown): JudgeVerdictMemo | null {
   };
 }
 
-/**
- * Coerce the persisted preview-judge breaker (P3). Reads the current
- * `blocks_since_commit` shape; falls back to an earlier
- * `{ fingerprint, blocks }` entry by seeding the monotonic counter from
- * `blocks` (a stale entry over-counts at worst, never deadlocks).
- */
 function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
   if (!isRecord(value)) return null;
   const blocksSinceCommit =
@@ -470,8 +412,6 @@ function normalizeJudgeBreaker(value: unknown): JudgeBreakerState | null {
         : null;
   const lastVerdict = normalizeJudgeVerdictMemo(value.last_verdict);
   if (blocksSinceCommit === null && lastVerdict === null) return null;
-  // Holds AT the cap (P3 hardening). Survives the normalize round-trip so a
-  // model that ignores the EXIT and re-runs escalates instead of looping.
   const holdsAtCap =
     typeof value.holds_at_cap === "number" && value.holds_at_cap > 0
       ? value.holds_at_cap
@@ -518,25 +458,12 @@ export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefine
       : [],
     latest_execution: normalizeLatestExecution(state.latest_execution),
     latest_diagnosis: normalizeLatestDiagnosis(state.latest_diagnosis),
-    // Preview-judge circuit-breaker (P3) — a MONOTONIC count of judge
-    // blocks since the last commit plus a fingerprint-keyed verdict
-    // memo. It must survive the round-trip or the breaker never trips
-    // across turns and the memo never skips a re-judge. An earlier
-    // persisted `{ fingerprint, blocks }` entry seeds
-    // `blocks_since_commit` from `blocks` (a soft over-count at worst —
-    // it only makes the breaker escalate to the user one block sooner,
-    // never a deadlock).
     judge_breaker: normalizeJudgeBreaker(state.judge_breaker),
-    // Grounding fingerprint + the connector set it was computed over — must
-    // survive resume or the /context staleness check has nothing to compare
-    // against and no connectors to recompute for.
     grounding_fingerprint:
       typeof state.grounding_fingerprint === "string" ? state.grounding_fingerprint : null,
     grounding_connector_ids: Array.isArray(state.grounding_connector_ids)
       ? state.grounding_connector_ids.filter((id): id is string => typeof id === "string")
       : null,
-    // Last declined intent — must survive resume so the guard still
-    // recognises the rejected proposal after a session reload.
     last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
   };
   if (isRecord(state.checkpoints)) {

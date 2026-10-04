@@ -1,13 +1,3 @@
-// A workflow-keyed proposal has exactly one live candidate per workflow.
-//
-// The capability candidate is attributed to a connector only while the
-// workflow uses exactly one; with several (or none) it carries no connector.
-// Supersede used to narrow by the signal's connector too, so a workflow that
-// moved from several connectors to one, or from one connector to another,
-// kept its previous proposal open beside the new one.
-//
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/connectors.ts";

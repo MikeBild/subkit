@@ -1,14 +1,3 @@
-// Hybrid retrieval — multilingual recovery, end-to-end.
-//
-// Proves the core Track-B win for the knowledge path: a GERMAN query
-// retrieves an ENGLISH chunk that shares no English stem, which the
-// FTS-only path (plainto_tsquery('english', …)) provably cannot match.
-//
-// Needs Postgres AND the local embedding model, so it is opt-in: set
-// RUN_EMBEDDING_E2E=1 (and a DB) to run. CI skips it to avoid a model
-// download; the fusion logic itself is covered deterministically in
-// embeddings/tests/vector-rerank.test.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { backfillEmbeddings } from "../../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../../embeddings/local-provider.ts";
@@ -40,8 +29,6 @@ beforeAll(async () => {
     },
     ctx.testDb.db,
   );
-  // Embeddings are populated out-of-band (ingest stays fast) — run the
-  // backfill explicitly so the vector path has data to recover against.
   await backfillEmbeddings({ tenant_id: ctx.tenantId }, ctx.testDb.db);
 }, 120_000);
 
@@ -55,8 +42,6 @@ describe.skipIf(skip)("knowledge/hybrid multilingual recovery", () => {
   });
 
   test("a German query retrieves the English payments chunk (FTS would miss)", async () => {
-    // 'Kartenzahlung von einem Kunden entgegennehmen' shares no English
-    // stem with the content → plainto_tsquery('english') matches nothing.
     const hits = await searchKnowledge(
       {
         tenant_id: ctx.tenantId,

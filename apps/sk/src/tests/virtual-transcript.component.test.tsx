@@ -101,7 +101,6 @@ describe("<VirtualTranscript>", () => {
       const text = ui.text();
       expect(text).toContain("MSG4");
       expect(text).toContain("MSG3");
-      // Only the last two should fit (3 + 3 = 6 ≤ 7); MSG0 and MSG1 dropped.
       expect(text).not.toContain("MSG0");
       expect(text).not.toContain("MSG1");
     } finally {
@@ -136,8 +135,6 @@ describe("<VirtualTranscript>", () => {
     try {
       await flush();
       const initialCalls = estimateCalls;
-      // Force a re-render by remounting; with the same cache + width
-      // we should hit, not miss.
       ui.unmount();
       const ui2 = renderInk(
         <ThemeProvider>
@@ -159,7 +156,6 @@ describe("<VirtualTranscript>", () => {
         ui2.unmount();
       }
     } finally {
-      // already unmounted above
     }
   });
 
@@ -208,7 +204,6 @@ describe("<VirtualTranscript>", () => {
         ui2.unmount();
       }
     } finally {
-      // already unmounted
     }
   });
 });

@@ -1,27 +1,3 @@
-// `POST /v1/connectors/discover` — programmatic surface for connector
-// endpoint discovery.
-//
-// Mirrors the conversation tool `discover_connector_endpoints` so CI
-// scripts and headless callers can reach discovery without a conversation.
-// Both call into `runDiscoveryCached` from `connectors/discovery/service.ts`
-// — the cache + audit semantics (24h TTL in `knowledge_sources`,
-// `knowledge_source.refreshed` audit row with reason
-// `"discovery_cache_refresh"`) are identical across surfaces.
-//
-// RBAC: `connector:read` on the tenant scope. The route doesn't read or
-// mutate a specific connector — it operates on a template id or URL —
-// so the resource descriptor is omitted (tenant-scoped grant only).
-//
-// Errors:
-//   400 — neither template_id nor base_url nor ingestion_url provided
-//         (Zod refinement); also bubbles `template_not_found`,
-//         `template_no_url`, `no_url_provided` from the discovery module.
-//   403 — RBAC (handled by middleware).
-//   503 — discovery ran but every strategy bailed (`all_strategies_failed`).
-//         A 502 might also fit, but 503 is closer to "the upstream is
-//         currently unreachable" which is what every-strategy-fails
-//         actually means.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DiscoveryResultSchema } from "../../api/connector-schemas.ts";
@@ -84,8 +60,6 @@ class DiscoveryUnavailableError extends HttpError {
 }
 
 export function registerConnectorDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC. Tenant-scoped read permission — discovery doesn't mutate any
-  // specific connector, only the per-tenant knowledge_sources cache.
   app.use("/v1/connectors/discover", requirePermission("connector:read"));
 
   app.openapi(discoverRoute, async (c) => {
@@ -124,9 +98,6 @@ export function registerConnectorDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void
           error_code: err.code,
           error_message: err.message,
         });
-        // Map machine-readable discovery codes to surface-appropriate
-        // HTTP statuses. Every strategy failing is a 503; bad input
-        // shape is 400. Anything else is treated as 503.
         if (
           err.code === "no_url_provided" ||
           err.code === "template_not_found" ||

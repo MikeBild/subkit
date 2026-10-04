@@ -1,12 +1,3 @@
-// Targeted tests for `computeBlockedBy` — specifically the OAuth2
-// lifecycle ordering. The Gmail dead-end (conversation 37a6d350,
-// 2026-05-12) reached `blocked_by: ["authenticate_oauth",
-// "probe_connector_draft"]` simultaneously, which trapped the model:
-// `probe_connector_draft` cannot succeed before tokens exist, but the
-// suggestion fired in parallel with `authenticate_oauth`. The
-// documented lifecycle (docs/concepts/connectors.md) is save → authenticate
-// → probe — these tests pin that ordering.
-
 import { describe, expect, it } from "bun:test";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import type { AuthoringSummary, ConnectorDraftDocument, WorkflowDraftDocument } from "../types.ts";

@@ -1,13 +1,3 @@
-// RBAC permission-matrix tests.
-//
-// Purpose: prove that for every (role × permission) pair the evaluator
-// produces the decision the seed.ts permission-set declares, and that
-// cross-tenant boundaries hold for every decision path. The existing
-// evaluator.test.ts hits each path once; this file walks the whole
-// matrix so a quiet permission-set drift can't slip through.
-//
-// Coverage targets: rbac/ — line ≥90 %, branch ≥85 %.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -29,10 +19,6 @@ import { assertCan, can } from "../evaluator.ts";
 import * as grantsSvc from "../grants.ts";
 import { BUILTIN_ROLE_NAMES } from "../seed.ts";
 
-// Mirror the role permission filters from seed.ts. Keeping them here in
-// table form — instead of importing the seed predicates — is intentional:
-// if seed.ts and the evaluator drift apart, this test is the line of
-// defence, so the test must own its expected-state catalogue.
 const ENDUSER_PERMISSIONS = new Set<string>([
   "workflow:read",
   "workflow:run",
@@ -42,10 +28,6 @@ const ENDUSER_PERMISSIONS = new Set<string>([
   "conversation:cancel",
   "conversation:list",
   "knowledge:read",
-  // Deliberate product decision: skills are read-only reference
-  // material for enduser-facing surfaces (the read-only chat channel
-  // asks "which skills exist"); connector:read / schedule:read stay
-  // operator-facing. Mirrors ENDUSER_PERMISSIONS in seed.ts.
   "skill:read",
   "file:read",
 ]);
@@ -61,9 +43,6 @@ const PORTAL_TOKEN_USER_PERMISSIONS = new Set<string>([
 function memberAllows(name: string): boolean {
   if (name.startsWith("rbac:")) return false;
   if (name === "audit:read") return false;
-  // identity:write is admin-only user/tenant/invite management; identity:read
-  // is read-only and stays a member permission. Mirrors
-  // memberPermissionFilter in seed.ts.
   if (name === "identity:write") return false;
   if (name === "api_key:write") return false;
   if (name === "api_key:rotate") return false;
@@ -71,25 +50,12 @@ function memberAllows(name: string): boolean {
   if (name === "connector:promote") return false;
   if (name.startsWith("credential:") && name !== "credential:read") return false;
   if (name === "discovery:approve") return false;
-  // stats:read exposes cross-workflow operational posture (failure
-  // rates, LLM spend); members opt in via a custom role grant, not the
-  // default catalogue. Mirrors memberPermissionFilter in seed.ts.
   if (name === "stats:read") return false;
-  // stats:read:all additionally exposes OTHER users' LLM spend + cross-user
-  // breakdowns — strictly more privileged than stats:read; members opt in via
-  // a custom role grant. Mirrors memberPermissionFilter in seed.ts.
   if (name === "stats:read:all") return false;
   if (name.startsWith("self_healing:")) return false;
   if (name === "mcp:admin") return false;
   if (name.startsWith("mcp_oauth_client:")) return false;
-  // system:restart ends the engine for every tenant — admin-only.
-  // Mirrors memberPermissionFilter in seed.ts.
   if (name === "system:restart") return false;
-  // chat_workspace:write / chat_identity:write install/remove tenant-wide
-  // Slack/Teams/Google bindings (with encrypted bot credentials) and
-  // bind external chat users to subkit principals — admin-only ops.
-  // The DELETE route gates on `:write` per project convention, so no
-  // separate `:delete` permission exists.
   if (name.startsWith("chat_workspace:") && name !== "chat_workspace:read") return false;
   if (name.startsWith("chat_identity:") && name !== "chat_identity:read") return false;
   return true;
@@ -118,16 +84,13 @@ describe("rbac matrix", () => {
   let tenantA: string;
   let tenantB: string;
 
-  // Per-role principals on tenantA.
   const principals: Record<string, ResolvedPrincipal> = {};
-  // Same logical roles re-seeded under tenantB for cross-tenant tests.
   let memberB: ResolvedPrincipal;
 
-  // Resource grant fixtures.
   const workflowAlpha = "11111111-1111-1111-1111-111111111111";
   const workflowBeta = "22222222-2222-2222-2222-222222222222";
-  let grantedMember: ResolvedPrincipal; // tenantA member with audit:read on workflowAlpha
-  let groupMember: ResolvedPrincipal; // tenantA user in a group with admin role assignment
+  let grantedMember: ResolvedPrincipal;
+  let groupMember: ResolvedPrincipal;
 
   beforeAll(async () => {
     testDb = await createTestDb("rbac-matrix");
@@ -218,10 +181,6 @@ describe("rbac matrix", () => {
       roles: [BUILTIN_ROLE_NAMES.METRICS_SCRAPER],
     };
     principals[BUILTIN_ROLE_NAMES.PORTAL_TOKEN_USER] = {
-      // NOTE: provider is "api_key" here — we want to exercise the
-      // role-lookup path with portal_token_user as the role, not the
-      // portal-token allowlist path. Portal-token-as-provider cases
-      // live in their own describe block below.
       provider: "api_key",
       kind: "user",
       id: portalUserId,
@@ -229,8 +188,6 @@ describe("rbac matrix", () => {
       roles: [BUILTIN_ROLE_NAMES.PORTAL_TOKEN_USER],
     };
 
-    // Cross-tenant fixture: a member under tenantB. Used to prove that
-    // a tenantA resource grant does not leak.
     const memberBId = await seedUser(tenantB, "member@b", memberRoleId);
     memberB = {
       provider: "api_key",
@@ -240,9 +197,6 @@ describe("rbac matrix", () => {
       roles: [BUILTIN_ROLE_NAMES.MEMBER],
     };
 
-    // Resource-grant fixture: a tenantA member with audit:read on
-    // workflowAlpha only. Member role does NOT include audit:read, so
-    // any allow on this principal+permission must come from the grant.
     const grantedId = await seedUser(tenantA, "granted@a", memberRoleId);
     grantedMember = {
       provider: "api_key",
@@ -260,8 +214,6 @@ describe("rbac matrix", () => {
       permission: "audit:read",
     });
 
-    // Group fixture: a tenantA user whose own role grants nothing belongs
-    // to a group with the admin role assigned. Hits the group path.
     const groupUserId = await seedUser(tenantA, "groupie@a", await emptyRoleId(db, tenantA));
     const [group] = await db
       .insert(groups)
@@ -275,7 +227,7 @@ describe("rbac matrix", () => {
       kind: "user",
       id: groupUserId,
       tenant_id: tenantA,
-      roles: [], // intentionally empty so role short-circuit cannot fire
+      roles: [],
     };
   });
 
@@ -283,12 +235,8 @@ describe("rbac matrix", () => {
     await testDb.cleanup();
   });
 
-  // ---------- the matrix proper ----------
-
   describe("role × permission catalogue", () => {
     test("the catalogue is what we think it is", () => {
-      // Pin the permission count so a silent catalogue change forces
-      // an explicit update of the matrix expectations.
       expect(ALL_PERMISSION_NAMES.length).toBe(loadPermissionCatalog().length);
       expect(ALL_PERMISSION_NAMES.length).toBeGreaterThanOrEqual(60);
     });
@@ -305,7 +253,6 @@ describe("rbac matrix", () => {
               permission,
             });
             const expected = expectedAllow(roleName, permission);
-            // Use a custom message so a failure points at the cell.
             if (decision.allow !== expected) {
               throw new Error(
                 `RBAC matrix mismatch: role=${roleName} permission=${permission} expected_allow=${expected} got_allow=${decision.allow} reason=${decision.reason ?? "n/a"}`,
@@ -323,8 +270,6 @@ describe("rbac matrix", () => {
       });
     }
   });
-
-  // ---------- decision-source attribution ----------
 
   describe("decision sources", () => {
     test("admin always uses the builtin_admin short-circuit", async () => {
@@ -368,8 +313,6 @@ describe("rbac matrix", () => {
     });
   });
 
-  // ---------- resource grants ----------
-
   describe("resource-scoped grants", () => {
     test("grant allows only on the granted resource", async () => {
       const onTarget = await can(db, {
@@ -391,9 +334,6 @@ describe("rbac matrix", () => {
     });
 
     test("grant does not bypass tenant boundary", async () => {
-      // Same principal id but a different tenant in the check — the
-      // resource_grants row is keyed by tenant_id, so the cross-tenant
-      // check must miss.
       const decision = await can(db, {
         tenant_id: tenantB,
         principal: grantedMember,
@@ -424,8 +364,6 @@ describe("rbac matrix", () => {
     });
   });
 
-  // ---------- portal-token allowlist ----------
-
   describe("portal_token allowlist", () => {
     function portalToken(
       principalId: string,
@@ -438,7 +376,6 @@ describe("rbac matrix", () => {
         tenant_id: tenantA,
         roles: ["enduser"],
       };
-      // exactOptionalPropertyTypes: only set the field when defined.
       if (allowed !== undefined) base.allowed_workflows = allowed;
       return base;
     }
@@ -501,7 +438,6 @@ describe("rbac matrix", () => {
         tenant_id: tenantA,
         principal: portalToken(grantedMember.id, [workflowAlpha]),
         permission: "workflow:run",
-        // no resource field at all
       });
       expect(decision.allow).toBe(false);
     });
@@ -535,10 +471,6 @@ describe("rbac matrix", () => {
     });
 
     test("portal-token does NOT inherit the underlying user's role", async () => {
-      // grantedMember has the `member` role at the user table level,
-      // but a portal token issued for that user must be scoped to the
-      // allowlist only — workflow:write is a member permission, but
-      // the portal-token principal should still be denied.
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: portalToken(grantedMember.id, "all"),
@@ -548,17 +480,6 @@ describe("rbac matrix", () => {
     });
 
     test("portal-token does NOT inherit a resource grant on the underlying user (security)", async () => {
-      // grantedMember has audit:read on workflowAlpha. If the portal-
-      // token principal short-circuited through the resource_grant
-      // branch, this would allow — and a narrowly-scoped portal token
-      // would inherit any per-user grants on the same user_id, which
-      // is a scope-escalation. Pin the safe behaviour: deny.
-      //
-      // The decision must NOT have source="resource_grant" — that
-      // would mean the grant path leaked. Either deny outright (no
-      // matching grant for this subject_type) or allow via the
-      // portal_token_allowlist path (audit:read is not on the
-      // allowlist surfaces, so this branch can't fire either).
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: portalToken(grantedMember.id, "all"),
@@ -570,29 +491,13 @@ describe("rbac matrix", () => {
     });
   });
 
-  // ---------- cross-tenant boundary ----------
-
   describe("tenant boundary", () => {
     test("a tenantB principal cannot satisfy a tenantA-scoped check", async () => {
-      // memberB lives on tenantB. A check with tenant_id=tenantA must
-      // not allow even though the role lookup would say "member has
-      // workflow:read" — the principal isn't on this tenant.
-      // Today the evaluator does not validate principal.tenant_id ==
-      // check.tenant_id. The check only uses the role tables, which
-      // are tenant-agnostic for built-in roles. This test pins the
-      // current behaviour AND documents the expected hardening:
-      // route handlers must reject the request before reaching the
-      // evaluator when principal.tenant_id !== requested tenant. A
-      // route-level test enforces this; here we just record that the
-      // evaluator alone is NOT a tenant boundary.
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: memberB,
         permission: "workflow:read",
       });
-      // Built-in roles short-circuit on the role name in
-      // principal.roles, so we expect the evaluator to allow this.
-      // The actual tenant boundary is enforced at the route layer.
       expect(decision.allow).toBe(true);
       expect(decision.source).toBe("role");
     });
@@ -608,8 +513,6 @@ describe("rbac matrix", () => {
     });
   });
 
-  // ---------- unknown-permission deny ----------
-
   describe("unknown permission", () => {
     test("denies and tags the reason", async () => {
       const decision = await can(db, {
@@ -622,8 +525,6 @@ describe("rbac matrix", () => {
     });
 
     test("admin still short-circuits ahead of permission lookup", async () => {
-      // The admin path runs BEFORE permission lookup, so an unknown
-      // name on an admin principal must still allow. Pins the order.
       const decision = await can(db, {
         tenant_id: tenantA,
         principal: principals[BUILTIN_ROLE_NAMES.ADMIN]!,
@@ -633,8 +534,6 @@ describe("rbac matrix", () => {
       expect(decision.source).toBe("builtin_admin");
     });
   });
-
-  // ---------- catalog + assertCan + legacy fallback ----------
 
   describe("catalog lookup", () => {
     test("getPermissionByName returns the catalogue row", () => {
@@ -722,7 +621,5 @@ describe("rbac matrix", () => {
     });
   });
 
-  // suppress unused imports for the resource-grants table re-exported
-  // via the index barrel for type symbol pinning
   void resourceGrants;
 });

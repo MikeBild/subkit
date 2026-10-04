@@ -1,18 +1,3 @@
-// #25 — connector environment fallback resolution.
-//
-// `getConnectorForEnvironment(tenant, id, env)` resolves the connector
-// binding for the requested execution environment. When the requested
-// connector already matches the environment it is returned as-is. When it
-// does NOT, the resolver looks for a same-slug sibling in the requested
-// environment and returns that; if none exists it FALLS BACK to the
-// original binding (load-bearing for single-env tenants).
-//
-// The dispatch step emits a `connector.environment.fallback` warn + a
-// `connector_env_fallback_total` metric exactly when the resolved
-// connector's environment differs from the requested one — i.e. the
-// fallback branch below. These tests pin that resolution contract (the
-// trigger condition for the signal) at the DB layer.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -59,8 +44,6 @@ describe("getConnectorForEnvironment", () => {
 
     const resolved = await getConnectorForEnvironment(tenant_id, dev.id, "prod", ctx.db);
     expect(resolved).not.toBeNull();
-    // Fallback: resolved environment differs from the requested one — this
-    // is precisely the dispatch condition that emits the warn + metric.
     expect(resolved?.environment).toBe("dev");
     expect(resolved?.environment).not.toBe("prod");
   });
@@ -82,7 +65,6 @@ describe("getConnectorForEnvironment", () => {
       },
       ctx.db,
     );
-    // Same slug, prod environment — the resolver should prefer this.
     await createConnector(
       {
         tenant_id,
@@ -161,11 +143,6 @@ describe("getConnectorForEnvironment", () => {
     );
     await setConnectorEnabled(tenant_id, devTwin.id, false, null, ctx.db);
 
-    // A dev run of a step that names the prod connector. Resolution answers
-    // "which connector", not "may it serve": handing back the enabled prod
-    // connector here would send a dev preview to production because someone
-    // switched the dev twin off. The dispatcher refuses the disabled twin by
-    // name instead (execution/tests/disabled-connector-refusal.test.ts).
     const resolved = await getConnectorForEnvironment(tenant_id, prod.id, "dev", ctx.db);
     expect(resolved?.id).toBe(devTwin.id);
     expect(resolved?.environment).toBe("dev");

@@ -1,9 +1,3 @@
-// Boot-time seed orchestrator.
-//
-// Tests the new `seedAtBoot(db)` path that the engine binary calls
-// after `runMigrations(db)`. This is the in-process replacement for
-// the former `bun run db:seed` script.
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { eq, isNull, like } from "drizzle-orm";
 import { permissions, roles, tenants, users } from "../schema/index.ts";
@@ -14,11 +8,7 @@ let ctx: TestDb;
 const originalNodeEnv = process.env.NODE_ENV;
 
 beforeAll(async () => {
-  // We migrate but skip createTestDb's RBAC seed so we can observe the
-  // first-run behaviour of seedAtBoot.
   ctx = await createTestDb("seed_at_boot");
-  // Wipe RBAC + tenant rows that createTestDb may have planted so we
-  // observe a fresh boot.
   await ctx.db.delete(users);
   await ctx.db.delete(tenants);
 }, 60_000);
@@ -60,11 +50,6 @@ describe("seedAtBoot (development)", () => {
   });
 
   test("no tunnel:* permissions and no tunnel_agent role survive on a fresh DB", async () => {
-    // Defence-in-depth against the orphan-RBAC failure mode that
-    // 0014_drop_tunnels.sql exists to prevent: a fresh DB must not
-    // surface tunnel:* permissions or the tunnel_agent built-in role,
-    // regardless of how the seeder evolves. Pairs with the negative
-    // assertion in the cli-rbac journey for the upgraded-DB path.
     const ghostPerms = await ctx.db
       .select()
       .from(permissions)
@@ -77,7 +62,6 @@ describe("seedAtBoot (development)", () => {
 
 describe("seedAtBoot (production)", () => {
   test("does NOT create the dev tenant — keeps tenants table empty for first-run /v1/setup", async () => {
-    // Wipe what the dev test left behind so we re-observe a fresh boot.
     await ctx.db.delete(users);
     await ctx.db.delete(tenants);
 

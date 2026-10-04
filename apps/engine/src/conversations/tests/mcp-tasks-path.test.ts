@@ -1,17 +1,3 @@
-// MCP async Tasks (SEP-1686) — the Tasks-capable client path.
-//
-// `mcp.test.ts` covers the non-Tasks path (plain `working` body +
-// `conversation_get` poll). This suite drives the OTHER path: a client
-// that advertises the `tasks` capability. The conversation tool returns
-// a `CreateTaskResult` and the client polls `tasks/get` + `tasks/result`
-// through the SDK's experimental task surface.
-//
-//   conversation_start (task-augmented) → taskCreated(working)
-//     → tasks/get poll → completed | input_required
-//     → tasks/result → the terminal CallToolResult envelope
-//
-// Also pins `tasks/list` and `tasks/cancel` of an already-terminal task.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Task } from "@modelcontextprotocol/sdk/types.js";
 import { CallToolResultSchema, CreateTaskResultSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -56,7 +42,6 @@ afterAll(async () => {
   delete process.env.SK_MCP_MODE;
 });
 
-/** Poll `tasks/get` through the experimental client until terminal. */
 async function pollTask(
   client: Awaited<ReturnType<McpTestSuite["connectTasks"]>>,
   taskId: string,
@@ -76,7 +61,6 @@ async function pollTask(
 }
 
 describe("mcp async Tasks — Tasks-capable client path", () => {
-  /** Issue a task-augmented `tools/call` and return the created task id. */
   async function callToolAsTask(
     client: Awaited<ReturnType<McpTestSuite["connectTasks"]>>,
     name: string,
@@ -96,7 +80,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
       CreateTaskResultSchema,
     )) as { task: { taskId: string; status: string } };
     expect(createResult.task.taskId.length).toBeGreaterThan(0);
-    // The conversation handler short-circuits with a `working` task.
     expect(createResult.task.status).toBe("working");
     return createResult.task.taskId;
   }
@@ -125,9 +108,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
   test("full Tasks path: start → input_required → browser approval → completed → tasks/result", async () => {
     const client = await suite.connectTasks();
 
-    // 1) Task-augmented `conversation_start`: the SDK adds `params.task`
-    // because this client advertised the `tasks` capability; the
-    // conversation handler returns a `CreateTaskResult`.
     const startTaskId = await callToolAsTask(
       client,
       "conversation_start",
@@ -138,15 +118,9 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
       "ask",
     );
 
-    // 2) Poll `tasks/get`. The backgrounded turn passes NO live
-    // elicitation bridge → the ask_user_confirm takes the DB-pause path,
-    // so the task derives `input_required`, not `completed`.
     const startSettled = await pollTask(client, startTaskId);
     expect(startSettled.status).toBe("input_required");
 
-    // The `mcp_tasks` index row correlates the taskId to its
-    // conversation; `conversation_get` then carries the pending
-    // elicitation form (which Tasks `tasks/get` intentionally omits).
     const startRow = await getMcpTask(suite.http.tenantId, startTaskId, suite.http.db);
     if (!startRow) throw new Error("start task row missing");
     const conversationId = startRow.conversation_id;
@@ -164,9 +138,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     expect(getBody.pending_elicitation_id).toBeDefined();
     expect(getBody.input?.approval_url).toContain("/v1/tool-approvals/decide");
 
-    // 3) The model-callable response tool must not impersonate the human.
-    // Approving in the browser stages the human answer and creates the fresh
-    // background task that resumes the loop and commits.
     const approval = await decideApproval(getBody.input?.approval_url ?? "", "approve");
     expect(approval.status).toBe(200);
     let respondTaskId = "";
@@ -189,13 +160,9 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
       { tries: 40, sleepMs: 100, label: "portal-created response task" },
     );
 
-    // 4) Poll the resume task to a terminal state. The resumed turn
-    // commits the workflow → the task derives `completed`.
     const respondSettled = await pollTask(client, respondTaskId);
     expect(respondSettled.status).toBe("completed");
 
-    // 5) `tasks/result` returns the terminal CallToolResult envelope —
-    // the same body a non-Tasks client reads via `conversation_get`.
     const result = (await client.experimental.tasks.getTaskResult(
       respondTaskId,
       CallToolResultSchema,
@@ -213,7 +180,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
   test("tasks/list returns the calling tenant's tasks", async () => {
     const client = await suite.connectTasks();
     const { tasks } = await client.experimental.tasks.listTasks();
-    // The previous test created at least one task for this tenant.
     expect(tasks.length).toBeGreaterThan(0);
     for (const t of tasks) {
       expect(["working", "input_required", "completed", "failed", "cancelled"]).toContain(t.status);
@@ -222,9 +188,6 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
 
   test("tasks/cancel of an input-required task is accepted", async () => {
     const client = await suite.connectTasks();
-    // Saving a draft leaves its authoring conversation active. Use a separate
-    // connector so start deduplication does not correctly resume that earlier
-    // conversation instead of creating the pending task this test needs.
     const [cancelConnector] = await suite.http.db
       .insert(connectors)
       .values({
@@ -255,14 +218,10 @@ describe("mcp async Tasks — Tasks-capable client path", () => {
     const taskId = createResult.task.taskId;
     expect(taskId.length).toBeGreaterThan(0);
 
-    // `input_required` is deliberately non-terminal in SEP-1686, so the SDK
-    // forwards cancellation to SubKit. The store-level suite separately pins
-    // cancellation races after a result has already landed.
     const waiting = await pollTask(client, taskId);
     expect(waiting.status).toBe("input_required");
     await client.experimental.tasks.cancelTask(taskId);
 
-    // After a cancel, derivation puts `cancelled` above `completed`.
     const afterCancel = await client.experimental.tasks.getTask(taskId);
     expect(afterCancel.status).toBe("cancelled");
   }, 60_000);

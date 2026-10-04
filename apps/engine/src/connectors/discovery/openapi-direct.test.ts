@@ -9,10 +9,6 @@ beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
@@ -153,11 +149,9 @@ describe("openApiDirectStrategy — OpenAPI 3", () => {
     expect(createCustomer?.request_content_type).toBe("application/json");
     expect(listCustomers?.request_content_type).toBeNull();
 
-    // Path-level parameter is inherited by operations in the path.
     const retrieveCustomer = result.endpoints.find((e) => e.operation_id === "retrieveCustomer");
     expect(retrieveCustomer?.params.some((p) => p.name === "id" && p.in === "path")).toBe(true);
 
-    // Auth schemes
     const bearer = result.auth_schemes.find((s) => s.name === "bearerAuth");
     expect(bearer?.type).toBe("http");
     expect(bearer?.scheme).toBe("bearer");
@@ -334,7 +328,6 @@ describe("normalizeKnownHosts", () => {
   });
 
   test("rewrites SwaggerHub /apis-docs/ rendered-docs host to API path", () => {
-    // Operators frequently paste the docs URL when the spec URL is wanted.
     expect(normalizeKnownHosts("https://app.swaggerhub.com/apis-docs/acme/widgets/1.0.0")).toBe(
       "https://api.swaggerhub.com/apis/acme/widgets/1.0.0",
     );

@@ -1,19 +1,3 @@
-// Authoring-state mutations + the public `with*` API.
-//
-// The heavy compute / parsing logic lives in `authoring-state/`:
-//
-//   - `authoring-state/normalize.ts` — pure validators that coerce
-//                                       `unknown` payloads into typed
-//                                       drafts / state / summary
-//   - `authoring-state/summary.ts`   — pure compute helpers that
-//                                       derive the surfaced
-//                                       `AuthoringSummary` from a
-//                                       given state
-//
-// This file owns the mutating glue: state cloning, checkpoint
-// recording, persisted-resource accumulation, and the 17 public
-// `with*` helpers the chat loop calls after each tool succeeds.
-
 import { isRecord } from "../utils/type-guards.ts";
 import {
   CHECKPOINT_KEYS,
@@ -173,41 +157,14 @@ function applyWorkflowMutation(
   const state = cloneState(normalized.state ?? createEmptyState("workflow"));
   state.mode = "workflow";
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";
-  // Every changed definition invalidates whole-workflow evidence and the saved
-  // checkpoint. Per-step evidence is retained below only for unchanged steps.
   if (canonicalJson(normalized.workflow) !== canonicalJson(workflow)) {
     state.workflow_mutation_seq += 1;
   }
-  // Judge breaker hygiene (P3): `blocks_since_commit` is a MONOTONIC
-  // count of judge blocks since the last successful commit — a same-goal
-  // edit must NOT reset it, or a model churning edits between blocks
-  // resets the breaker on every fingerprint change and never converges
-  // (the C1 loop). Only a commit clears it (see `clearJudgeBreakerOnCommit`).
-  // The fingerprint-keyed verdict memo (`last_verdict`) is naturally
-  // invalidated by an edit — it only matches when the fingerprint
-  // matches — so a stale memo after a step change is harmless and is
-  // left in place rather than cleared.
-  //
-  // BUT a GOAL CHANGE invalidates the count: the goal is the judge's
-  // evaluation target, so blocks accumulated against goal A must not
-  // carry into goal B (else the first green preview for B degrades
-  // straight to advisory and auto-commits WITHOUT the judge ever
-  // blocking once on B — the green-but-wrong commit the judge exists
-  // to prevent). Reset the breaker (count + memo) when the goal differs.
   const priorGoal = normalized.workflow?.goal ?? null;
   const nextGoal = workflow.goal ?? null;
   if (priorGoal !== nextGoal) {
     state.judge_breaker = null;
   }
-  // Fingerprint-keyed evidence retention (Fix 5, session 784c1b02).
-  // A mutation drops preview evidence ONLY for steps whose definition
-  // changed (or which were removed); unchanged steps keep their
-  // recorded `scope_at_step` / `output_preview`, so the loop/transform
-  // authoring gates stay satisfied without a redundant dry-run.
-  // Pre-fix every mutation left the traces untouched (stale evidence
-  // could satisfy a gate against a rewritten step) while other paths
-  // wiped them wholesale — both wrong; the fingerprint is the single
-  // retention rule now.
   const latest_preview = normalized.latest_preview
     ? {
         ...normalized.latest_preview,
@@ -293,11 +250,6 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
     workflow,
     connector,
     ...(() => {
-      // Carry the durable session sub-document across the DB round-trip.
-      // Both `permission_mode` (auto/ask/plan — `yolo` is intentionally
-      // non-persistent) and the `playground` sandbox flag must survive, or
-      // the loop would silently lose them on the next turn's read
-      // (the authoring-drift data-loss class).
       if (!isRecord(raw.session)) return {};
       const session: DraftDocument["session"] = {};
       if (
@@ -377,10 +329,6 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
                         ...(entry.request_meta !== undefined
                           ? { request_meta: entry.request_meta }
                           : {}),
-                        // Hold-writes preview artifacts: the materialized
-                        // never-dispatched request is the step's reviewable
-                        // payload — it must survive normalization so the
-                        // NEXT turn's context still shows the would-be send.
                         ...(entry.held === true ? { held: true } : {}),
                         ...(entry.held === true && entry.held_request !== undefined
                           ? { held_request: entry.held_request }
@@ -417,15 +365,6 @@ export function withWorkflowDraft(
   return applyWorkflowMutation(draft, workflow, last_action);
 }
 
-/**
- * True when the draft holds a non-empty WORKFLOW draft that is NOT already a
- * persisted workflow (its slug doesn't match any persisted workflow resource).
- * i.e. there is unsaved authored work in flight.
- *
- * Single source of truth for the guard that stops the `startNewWorkflow`
- * intent heuristic in `loop.ts` from wiping in-progress authoring — shared
- * with its unit test so the predicate can't drift between gate and test.
- */
 export function hasInProgressWorkflowDraft(draft: DraftDocument): boolean {
   if ((draft.workflow?.steps.length ?? 0) === 0) return false;
   const slug = draft.workflow?.slug;
@@ -445,8 +384,6 @@ export function startNewWorkflowDraft(
   state.workflow_mutation_seq += 1;
   state.latest_execution = null;
   state.latest_diagnosis = null;
-  // A fresh workflow target is a fresh judge subject — drop any blocks
-  // accumulated against the previous goal (P3).
   state.judge_breaker = null;
   state.persisted_resources = state.persisted_resources.filter((item) => item.kind !== "workflow");
   delete state.checkpoints.workflow_inspected;
@@ -476,12 +413,6 @@ export function withConnectorDraft(
   return applyConnectorMutation(draft, connector, last_action);
 }
 
-/**
- * Record the preview-judge circuit-breaker state (Fix C). Pure draft
- * mutation like every other `with*` helper — callers pass the next
- * breaker value (or null to clear) and the state survives the
- * normalize/serialize round-trip alongside the fingerprint evidence.
- */
 export function withJudgeBreaker(
   draft: DraftDocument,
   judge_breaker: JudgeBreakerState | null,
@@ -502,17 +433,6 @@ export function withLatestPreview(
   last_action: string | null = "workflow_previewed",
 ): DraftDocument {
   const normalized = normalizeDraftDocument(draft);
-  // Fingerprint-keyed evidence merge. The incoming preview only
-  // carries traces for the steps the new walk actually touched — a
-  // single-step `dry_run_step`, or a refused dry-run ("Preview blocked
-  // until the workflow draft validates cleanly") that carries NO traces
-  // at all. Pre-fix the new preview REPLACED `step_traces` wholesale,
-  // so one blocked dry-run destroyed every recorded `scope_at_step`
-  // and the loop/transform gates deadlocked the next mutation
-  // (session 784c1b02: 16× `loop_authoring_requires_inspect`).
-  // Merge instead: incoming traces win for their step ids; existing
-  // traces survive iff their fingerprint still matches the current
-  // draft step.
   const mergedPreview = ((): DraftDocument["latest_preview"] => {
     if (!preview) return preview ?? null;
     const incoming = preview.step_traces ?? [];
@@ -533,17 +453,6 @@ export function withLatestPreview(
     preview?.ok ?? false,
     preview?.summary ?? "Workflow preview recorded.",
   );
-  // G5 (runtime-logs review plan): a clean end-to-end preview IS
-  // validation — every step ran against real data with real
-  // credentials and returned a real response. Pre-fix the
-  // `workflow_validated` checkpoint was only set by step-level
-  // `validate_draft` / `dry_run_step`, so an auto-persist driven by
-  // a green `dry_run_workflow` left `validated_step_count` at 0 and
-  // the critic later logged `verdict: fail failed_checks:
-  // [validated_step_present]` 15 s after the commit row was already
-  // written (session ed20f48d). Recording `workflow_validated` here
-  // when the preview is clean closes that false-fail without
-  // restructuring the turn loop's critic-after-commit ordering.
   if (preview?.ok === true) {
     state = recordCheckpoint(
       state,
@@ -745,13 +654,6 @@ export function bindPersistedWorkflow(
     : state.latest_execution
       ? "execution"
       : "workflow";
-  // Judge breaker reset (P3): a successful commit is the ONLY event
-  // that clears `blocks_since_commit`. Every commit path funnels
-  // through here (auto-commit on green dry-run + explicit/force
-  // save_workflow_draft both call commitWorkflowAtomic →
-  // withWorkflowPersisted → here), so this is the single reset site.
-  // The fingerprint-keyed verdict memo is dropped too — the committed
-  // definition no longer needs a cached "is this preview good?" answer.
   state.judge_breaker = null;
   state = addPersistedResource(state, resource);
   state = recordCheckpoint(

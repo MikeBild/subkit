@@ -1,11 +1,3 @@
-// Privacy-safe, product-internal usage events.
-//
-// This ledger deliberately contains no payload JSON and no free-form identity
-// fields. Writers persist only bounded classification values, measurements,
-// and product-local HMACs. Raw HTTP paths, query strings, chat messages,
-// platform identifiers, MCP arguments/results, IP addresses, user agents, and
-// OAuth material have no column in which they could be stored.
-
 import { sql } from "drizzle-orm";
 import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenants } from "./identity.ts";

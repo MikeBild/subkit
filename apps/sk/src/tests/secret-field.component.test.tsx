@@ -15,7 +15,6 @@ describe("<SecretField>", () => {
       const text = ui.text();
       expect(text).toContain("API key");
       expect(text).toContain("•".repeat("hello-world".length));
-      // Plaintext must not be visible.
       expect(text).not.toContain("hello-world");
     } finally {
       ui.unmount();
@@ -71,10 +70,8 @@ describe("<SecretField>", () => {
     );
     try {
       await flush();
-      // Initial: masked
       expect(ui.text()).toContain("•".repeat(6));
       expect(ui.text()).not.toContain("abc123");
-      // Send Ctrl+E to reveal — but ink's useInput still honors single keys.
       await ui.press("ctrlE");
       await flush();
       const revealed = ui.text();
@@ -101,8 +98,6 @@ describe("<SecretField>", () => {
       await flush();
       await ui.type("ab");
       await flush();
-      // `value` is owned by the parent; we asserted onChange fired by
-      // checking the captured local var.
       expect(v.length).toBeGreaterThan(0);
     } finally {
       ui.unmount();

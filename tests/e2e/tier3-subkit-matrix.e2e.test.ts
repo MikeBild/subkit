@@ -1,28 +1,3 @@
-// Tier 3 — `sk` admin-CLI engine surface matrix.
-//
-// One smoke per `sk` subcommand-group that talks to the engine.
-// Pure CRUD, no LLM. Talks HTTP directly so each test is self-contained
-// and fast. The actual compiled CLI is exercised in
-// subkit-cli.e2e.test.ts; this file rounds out the engine endpoints
-// the binary calls but the existing e2e didn't cover.
-//
-// Coverage added by this file (one test per group):
-//   credentials   POST /v1/connectors/:id/credentials
-//   schedules     GET /v1/schedules + create
-//   knowledge-sources POST + DELETE
-//   skill-candidates  GET (auto-discovery surface, may be empty)
-//   discovery     GET /v1/discovery/runs
-//   portal-tokens GET + POST + DELETE
-//   events        GET /v1/webhooks/inbound
-//   executions    GET /v1/executions
-//   hooks         GET + POST + DELETE /v1/webhooks/inbound (alias)
-//   subscriptions GET + POST + DELETE /v1/subscriptions
-//   notifications GET /v1/notifications
-//   mcp catalog   GET /v1/mcp/catalog
-//   workflows     POST history + restore (gap fill on top of subkit-cli.e2e)
-//   apikeys       POST + DELETE (gap fill)
-//   rbac          POST role-permissions assign/revoke (gap fill)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { getTestNow } from "../../apps/engine/src/test-helpers/determinism/clock.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
@@ -49,9 +24,7 @@ async function jget(path: string): Promise<{ status: number; body: unknown }> {
   let body: unknown = null;
   try {
     body = await r.json();
-  } catch {
-    /* ignore — some endpoints may return empty */
-  }
+  } catch {}
   return { status: r.status, body };
 }
 
@@ -64,9 +37,7 @@ async function jpost(path: string, body: unknown): Promise<{ status: number; bod
   let resp: unknown = null;
   try {
     resp = await r.json();
-  } catch {
-    /* some endpoints return empty */
-  }
+  } catch {}
   return { status: r.status, body: resp };
 }
 
@@ -79,9 +50,6 @@ async function jdelete(path: string): Promise<{ status: number }> {
 }
 
 describe("Tier 3 — read endpoints (every collection responds)", () => {
-  // Each endpoint must return 200 + an iterable shape. We don't assert
-  // on row count — empty is a valid initial state. The point is that
-  // the surface is wired and the auth gate accepts the admin key.
   const READ_PATHS = [
     "/v1/connectors?limit=10",
     "/v1/skills?limit=10",
@@ -168,15 +136,8 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
       target_workflow_ids: [],
       ttl_seconds: 600,
     });
-    // Some envs require a target workflow — accept 201 OR 422 either
-    // way the route is exercised.
     expect([201, 400, 422]).toContain(created.status);
   });
-
-  // POST /v1/knowledge-sources skipped — request shape is non-trivial
-  // (kind-specific + content path). Read coverage is in the read
-  // matrix. Add a dedicated test once the engine has a stable
-  // create-from-inline shape we can pin.
 
   test("POST /v1/subscriptions → create + DELETE", async () => {
     const created = await jpost("/v1/subscriptions", {
@@ -205,15 +166,8 @@ describe("Tier 3 — write surfaces (CRUD round-trip)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Tier 3 — stats endpoints smoke (GET /v1/stats/*)
-// ---------------------------------------------------------------------------
-
 describe("Tier 3 — stats endpoints smoke", () => {
   test("GET /v1/stats/executions with bucket=hour returns groups + totals shape", async () => {
-    // Use a 24h window ending now so the query is always valid. May return
-    // zero rows if the engine has no executions; what we assert is the
-    // structural shape, not the count.
     const from = new Date(TEST_NOW_MS - 24 * 60 * 60 * 1000).toISOString();
     const to = new Date(TEST_NOW_MS + 60 * 1000).toISOString();
     const { status, body } = await jget(
@@ -258,11 +212,6 @@ describe("Tier 3 — stats endpoints smoke", () => {
   });
 
   test("GET /v1/stats/executions wrong tenant header returns 0 results", async () => {
-    // Tenant isolation: a request with a fabricated tenant id (via the
-    // x-subkit-tenant override) must not see the test tenant's rows.
-    // In the e2e harness the admin key already has a tenant binding;
-    // sending a different x-subkit-tenant value MUST be rejected or
-    // return an empty result, never another tenant's data.
     const from = new Date(TEST_NOW_MS - 24 * 60 * 60 * 1000).toISOString();
     const to = new Date(TEST_NOW_MS + 60 * 1000).toISOString();
     const r = await fetch(
@@ -275,9 +224,6 @@ describe("Tier 3 — stats endpoints smoke", () => {
         },
       },
     );
-    // Engine either rejects the mismatched tenant header (403/400) or
-    // returns 200 with 0 rows. Either is correct; what is NOT correct is
-    // returning another tenant's rows with a 200 status.
     if (r.status === 200) {
       const b = (await r.json()) as {
         totals: { executions: { count: number } };

@@ -8,11 +8,6 @@ import { useOptimisticAction } from "@/lib/use-optimistic-action";
 
 type RecordValue = Record<string, unknown>;
 
-/**
- * "Umbenennen" on a workflow's page: the dialog is headed by the record it
- * renames. The new name stands on the page at once and goes back if the
- * engine refuses it.
- */
 export function MetadataDialog({
   id,
   title,
@@ -20,7 +15,6 @@ export function MetadataDialog({
   onOpenChange,
 }: {
   id: string;
-  /** The record's current name. */
   title: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -54,7 +48,6 @@ export function MetadataDialog({
         testId: "detail-metadata-save",
       }}
       onSubmit={() => {
-        // The name changes on the page now; a refusal puts it back.
         rename.mutate(name.trim());
         onOpenChange(false);
       }}

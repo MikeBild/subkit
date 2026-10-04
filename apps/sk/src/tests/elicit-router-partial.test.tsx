@@ -1,9 +1,3 @@
-// D3 — routes an `ask_user_confirm` PendingElicitation with
-// `kind: "partial_diff_approval"` through `ElicitRouter` to the per-op
-// PartialApprovalPrompt, and drives accept-all / partial / decline
-// keystroke-by-keystroke, asserting the exact `approved_indices` response
-// the engine's apply_workflow_patch dispatcher reads.
-
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { ElicitRouter } from "@chat-ui/index.ts";
 import type { PendingElicitation } from "@cli-core/index.ts";
@@ -77,7 +71,6 @@ describe("ElicitRouter — partial_diff_approval (D3)", () => {
     const instance = render(
       <ElicitRouter elicitation={partialElicitation()} onResponse={onResponse} />,
     );
-    // Focus starts on row 0 → space toggles it off → Enter submits.
     await writeKeys(instance, [KEY.space, KEY.enter]);
     expect(onResponse).toHaveBeenCalledTimes(1);
     expect(onResponse.mock.calls[0]?.[0]).toEqual({
@@ -92,7 +85,6 @@ describe("ElicitRouter — partial_diff_approval (D3)", () => {
     const instance = render(
       <ElicitRouter elicitation={partialElicitation()} onResponse={onResponse} />,
     );
-    // Toggle row 0 off, move to row 1, toggle it off, submit.
     await writeKeys(instance, [KEY.space, KEY.down, KEY.space, KEY.enter]);
     expect(onResponse).toHaveBeenCalledTimes(1);
     expect(onResponse.mock.calls[0]?.[0]).toEqual({ confirmed: false });

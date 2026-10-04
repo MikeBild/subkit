@@ -1,29 +1,3 @@
-// Strategy: PostgreSQL schema introspection.
-//
-// For Postgres-driven connectors, the LLM author needs to know the schema
-// (tables, columns, types, nullability, defaults, primary keys, foreign
-// keys) before it can compose a sensible SQL query. Without this, the
-// agent has to either guess or hand-author probe queries against
-// `information_schema` — which costs round-trips and ratchets up the
-// token budget for every authoring cycle.
-//
-// The strategy accepts a `postgres://` or `postgresql://` URL, opens a
-// short-lived pool, queries the catalog, and emits a Markdown corpus
-// shaped like:
-//
-//     ## public.orders
-//     | column | type | nullable | default | pk |
-//     | --- | --- | --- | --- | --- |
-//     | id | integer | NO | nextval(...) | PK |
-//     | customer_id | integer | YES | | |
-//
-//     **Foreign keys**:
-//     - `customer_id` → `public.customers.id`
-//
-// The corpus is meant to feed RAG / chunking, NOT the structured
-// endpoint list. `endpoints: []` because Postgres doesn't expose
-// HTTP-shaped operations.
-
 import pg from "pg";
 import { log } from "../../logging/logger.ts";
 import { scrubUrl } from "../egress.ts";
@@ -98,7 +72,6 @@ WHERE tc.constraint_type = 'FOREIGN KEY'
   AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
 `;
 
-/** True for `postgres://` and `postgresql://` URIs. */
 export function looksLikePostgresUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return lower.startsWith("postgres://") || lower.startsWith("postgresql://");
@@ -142,17 +115,10 @@ async function fetchSchema(url: string, signal?: AbortSignal): Promise<Introspec
       foreignKeys: fks.rows,
     };
   } finally {
-    // Best-effort close — failures here aren't worth raising.
     pool.end().catch(() => {});
   }
 }
 
-/**
- * Render the catalog rows as a Markdown corpus. Tables sorted
- * alphabetically (schema.table); within each table columns in original
- * `ordinal_position`. Foreign-key callouts at the end of each table
- * section.
- */
 export function renderSchemaMarkdown(
   data: IntrospectionData,
   opts: { maxTables?: number } = {},

@@ -1,0 +1,50 @@
+
+⚠ Heads up, you have less than 10% of your weekly limit left. Run /status for a breakdown.
+
+╭────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.144.6)                         │
+│                                                    │
+│ model:     gpt-5.6-terra medium   /model to change │
+│ directory: /private/tmp/sk-elicit-codex.qjkOHL     │
+╰────────────────────────────────────────────────────╯
+
+  Tip: Try the Codex App. Run 'codex app' or visit https://chatgpt.com/codex?app-landing-page=true
+
+⚠ MCP client for `sklocal` failed to start: MCP startup failed: Environment variable SK_LOCAL_KEY for MCP server 'sklocal' is not set
+
+⚠ MCP startup incomplete (failed: sklocal)
+
+
+› Use MCP server sk-elicit-matrix: call conversation_start with message 'Build a workflow to list users from an API'. Then poll conversation_get until status is input_required or completed, then STOP
+  and report the status. Do not answer any form yourself.
+
+
+• SessionStart hook (completed)
+  hook context: # WikiKit context discovery
+
+    … +3 lines (ctrl + t to view transcript)
+
+• UserPromptSubmit hook (completed)
+  hook context: # WikiKit session briefing — spaces: `contentkit`, `mission-cockpit`, `subkit`, `mikebild-platform`
+
+    … +17 lines (ctrl + t to view transcript)
+
+• I’ll start the requested elicitation workflow, poll until it reaches the specified terminal state, and won’t provide any answers into it.
+
+• Called sk-elicit-matrix.conversation_start({"message":"Build a workflow to list users from an API"})
+  └ {"conversation_id": "0de26051-e71c-4b10-94cf-362370e06d35", "mcp_task_id": "54eff396-2622-485b-9497-3e404617e6ee", "status": "working", "poll_with": "conversation_get", "poll_arg":
+        {"conversation_id": "0de26051-e71c-4b10-94cf-362370e06d35"}}
+
+• Called sk-elicit-matrix.conversation_get({"conversation_id":"0de26051-e71c-4b10-94cf-362370e06d35"})
+  └ {"status": "input_required", "conversation_id": "0de26051-e71c-4b10-94cf-362370e06d35", "phase": "awaiting_human_input", "pending_elicitation_id": "2a5d3cc5-abd0-4288-b5dc-b752e73d72b0"}
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Status: input_required.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+› Implement {feature}
+
+  gpt-5.6-terra medium · Context 5% used

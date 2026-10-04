@@ -1,13 +1,7 @@
-// Request logging middleware — emits request.started / completed / failed
-// log lines around every request. Trace + tenant come from the async
-// context populated upstream by traceMiddleware + authMiddleware.
-
 import type { MiddlewareHandler } from "hono";
 import { errorFields, log } from "../../logging/logger.ts";
 import type { AppEnv } from "../openapi.ts";
 
-// The unversioned alias is the same probe under another name, so it gets the
-// same silence — otherwise a fleet-wide health poll fills the log.
 const SILENT_PATHS = new Set(["/health", "/health"]);
 
 export function loggingMiddleware(): MiddlewareHandler<AppEnv> {

@@ -1,13 +1,3 @@
-// GraphQL schema-drift visibility.
-//
-// A GraphQL failure rides as HTTP 200 + errors[], so it can never hit
-// the detector's http branch — these tests pin the whole chain that
-// makes it visible to self-healing: the schema-error classifier, the
-// driver's structured failure envelope mapping to an
-// `endpoint_contract` signal, the never-auto classification, and the
-// operation-aware endpoint key both shape recording and the reactive
-// enqueue derive from the same helper.
-
 import { describe, expect, test } from "bun:test";
 import { classifyGraphqlSchemaError } from "../../connectors/drivers/graphql-retry-classify.ts";
 import type { RequestMeta } from "../../execution/types.ts";

@@ -1,7 +1,3 @@
-// User-message turn-driving endpoints:
-//   POST /v1/conversations/{id}/messages         — append + drive turn (+ optional SSE)
-//   POST /v1/conversations/{id}/messages/upload  — multipart with file attachments
-
 import {
   createRoute,
   type OpenAPIHono,
@@ -50,12 +46,8 @@ const appendRoute = createRoute({
   },
 });
 
-// The upload handler returns bare `{ error }` bodies — documented as-is,
-// deliberately not the typed ErrorSchema envelope.
 const UploadErrorSchema = z.object({ error: z.string() });
 
-// The upload response is the standard run outcome plus the ids of the
-// Knowledge Sources auto-ingested from the attached files.
 export const UploadRunOutcomeSchema = RunOutcomeSchema.extend({
   ingested_knowledge_source_ids: z.array(z.string()),
 }).openapi("ConversationUploadRunOutcome");
@@ -72,9 +64,6 @@ const uploadRoute = createRoute({
       required: true,
       content: {
         "multipart/form-data": {
-          // Documentation-only OpenAPI schema (not Zod): the handler parses
-          // the form itself via c.req.formData(), so no form validator is
-          // attached and the handler's bare error bodies stay the contract.
           schema: {
             type: "object",
             required: ["message"],
@@ -115,32 +104,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    // Register the AbortController on the
-    // synchronous frame of request-accept so a cancel arriving in the
-    // first ~40ms always finds a controller. The registry key carries
-    // the principal's tenant id, so a foreign tenant probing another
-    // tenant's UUID lives in its own slot and cannot displace the
-    // legitimate registration. Registering inside `runLoop` (the
-    // earlier location) re-opens the race the cancel route silently
-    // lost.
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
-    // Ownership of the registered controller transfers
-    // to the SSE callback's own `finally` because Hono's `streamSSE`
-    // does NOT await the callback — it kicks the callback off
-    // fire-and-forget and returns a Response synchronously. An outer
-    // `try { … } finally { unregister(...) }` would fire its `finally`
-    // immediately after `streamSSE` returns and unregister the
-    // controller while the SSE callback is still running, re-opening
-    // the cancel race the synchronous registration set out to close.
-    //
-    // The `ownershipTransferred` flag is the seam: set true once
-    // streamSSE has accepted ownership; the outer `finally` skips
-    // unregister and lets the inner `finally` own it. Anything that
-    // throws BEFORE we hand off — `buildRuntimeContextFromRequest`,
-    // `wantsSSE`, `streamSSE` setup itself — leaves the flag false
-    // and the outer `finally` cleans up. The non-SSE path keeps the
-    // outer `finally` because `await svc.appendUserMessage(...)`
-    // keeps the surrounding `try` alive until completion.
     let ownershipTransferred = false;
     try {
       const appendParams = {
@@ -154,9 +118,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       } as const;
       const runtimeContext = buildRuntimeContextFromRequest(c, principal);
-      // The append + turn split: `appendUserMessage` validates + persists
-      // the user message row, `runConversationTurn` drives the model loop.
-      // The HTTP route runs both inline so the SSE surface keeps streaming.
       const driveTurn = (
         appended: svc.AppendMessageResult,
         onEvent?: (ev: TurnEvent) => void,
@@ -169,8 +130,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             principal,
             user_message: appended.message,
             ...(appended.references ? { user_references: appended.references } : {}),
-            // A person typed this into an authenticated session, so a fast-path
-            // "yes" in it is their approval.
             answer_actor: humanChatAnswer(principal),
             user_memory: appended.user_memory,
             turn_abort_ctrl: turnAbortCtrl,
@@ -180,9 +139,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
             ...(body.client_suppress !== undefined
               ? { next_suggestion_suppress: body.client_suppress }
               : {}),
-            // Typed client event → deterministic no-LLM short-circuit in
-            // runConversationTurn. HTTP surface only; the pg-boss / MCP
-            // async path never carries one.
             ...(body.event ? { event: body.event } : {}),
             ...(onEvent ? { onEvent } : {}),
           },
@@ -192,7 +148,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       if (wantsSSE(c.req.header("accept"))) {
         const response = streamSSE(c, async (stream) => {
           try {
-            // A new turn starts: whatever killed the previous one is history.
             await svc.clearConversationTurnFailure(db, principal.tenant_id, id).catch(() => {});
             const appended = await svc.appendUserMessage(appendParams, db);
             const outcome = await driveTurn(appended, (ev: TurnEvent) => {
@@ -214,10 +169,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               return;
             }
             const failure = svc.describeTurnFailure(error);
-            // Durable, so a reload does not turn a dead turn back into a
-            // thinking one. A provider that answers "you have reached your
-            // usage limits" is telling the person exactly what to do; losing
-            // that sentence costs them the diagnosis, not just the message.
             await svc
               .recordConversationTurnFailure(c.get("db"), principal.tenant_id, id, failure)
               .catch(() => {});
@@ -225,14 +176,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           } finally {
             unregisterConversationAbort(principal.tenant_id, id, turnAbortCtrl);
           }
-          // streamSSE returns a plain Response; the openapi handler wants the
-          // typed JSON shape — the SSE branch is runtime-correct (see the
-          // createRouteSpec branch in collection.ts).
         }) as Response & RouteConfigToTypedResponse<typeof appendRoute>;
-        // streamSSE accepted ownership — defer unregister to the
-        // inner `finally`. Set the flag AFTER `streamSSE` returns
-        // cleanly so a sync throw from streamSSE-setup still triggers
-        // the outer `finally`.
         ownershipTransferred = true;
         return response;
       }
@@ -260,11 +204,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // Each uploaded file is auto-ingested as a Knowledge Source scoped to the
-  // conversation's target workflow (or global). The user message + any
-  // file references are then passed to the standard appendUserMessage flow.
-  // Permission gating lives in conversations/index.ts (conversation:write
-  // OR knowledge:write), same as before the openapi migration.
   app.openapi(uploadRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -279,12 +218,10 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
     const memory = formData.get("memory");
     const files = formData.getAll("files");
 
-    // Resolve conversation to determine scope for knowledge sources
     const conv = await svc.getConversation(principal.tenant_id, id, db);
     if (!conv) return c.json({ error: "conversation not found" }, 404);
     const targetWorkflowId = conv.conversation.target_workflow_id;
 
-    // Auto-ingest each file as a Knowledge Source
     const ingestedSources: string[] = [];
     for (const file of files) {
       if (!(file instanceof File)) continue;
@@ -308,9 +245,6 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
           db,
         );
         ingestedSources.push(source.id);
-        // Interactive auto-enrich (best-effort): description + tags when the
-        // attachment landed without them. Outside the create transaction; a
-        // failure (incl. LlmQuotaExhausted) never fails message ingestion.
         if (source.description === null || source.tags.length === 0) {
           try {
             await analyzeKnowledgeSource(
@@ -338,15 +272,11 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
       }
     }
 
-    // Append enriched message that references ingested files
     const enrichedMessage =
       ingestedSources.length > 0
         ? `${message}\n\n[Attached ${ingestedSources.length} file(s) as knowledge sources]`
         : message;
 
-    // Register synchronously and unregister in
-    // `finally` (non-SSE branch only — this route returns JSON, so the
-    // single outer try/finally is sufficient).
     const turnAbortCtrl = registerConversationAbort(principal.tenant_id, id);
     try {
       const appended = await svc.appendUserMessage(

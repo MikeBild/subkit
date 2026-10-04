@@ -22,7 +22,6 @@ import {
 import { initializeRuntimeConfig } from "../../../runtime-config/service.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts";
 
-/** The process that accepted the request, as the next boot sees it. */
 const PREVIOUS_BOOT_ID = "00000000-0000-4000-8000-0000000b0071";
 
 let server: HttpTestServer;
@@ -94,7 +93,6 @@ async function status(): Promise<Status> {
   return (await response.json()) as Status;
 }
 
-/** Save and activate one patch the way the Cockpit does. */
 async function saveAndActivate(changes: Record<string, unknown>) {
   const current = await status();
   const saved = await call("/v1/settings", {
@@ -130,7 +128,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
       restart_supervised: false,
       pending_restart_fields: [],
     });
-    // /health stays the minimal public probe.
     const health = (await (await fetch(`${server.baseUrl}/health`)).json()) as Record<
       string,
       unknown
@@ -144,7 +141,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
   });
 
   test("refuses honestly: not_supervised, then multiple_replicas", async () => {
-    // A restart-sensitive value waits, but nobody declared a supervisor.
     expect((await saveAndActivate({ "server.port": 3101 })).activation_status).toBe(
       "restart_required",
     );
@@ -153,8 +149,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
     expect(unsupervised.body.code).toBe("not_supervised");
     expect(String(unsupervised.body.hint)).toContain("systemctl restart subkit-engine");
 
-    // Declaring the supervisor while the port still waits must keep the port
-    // waiting (and so keep the restart possible) — not hot-activate it.
     expect((await saveAndActivate({ "server.restart_supervised": true })).activation_status).toBe(
       "restart_required",
     );
@@ -163,7 +157,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
     expect(waiting.pending_restart_fields).toEqual(["server.port"]);
     expect(getConfig().server.port).not.toBe(3101);
 
-    // A second live instance: the restart would take down only one of them.
     await server.db.insert(runtimeConfigReplicas).values({
       instance_id: "other-live-replica",
       product_version: "test",
@@ -181,8 +174,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
   });
 
   test("refuses while no process restart is registered, and writes nothing", async () => {
-    // Before the entrypoint registered its restart, an accepted request would
-    // sit open with this boot's id and refuse every later one.
     const early = await restart();
     expect(early.status).toBe(409);
     expect(early.body.code).toBe("not_ready");
@@ -227,14 +218,11 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
         actor_type: "user",
       });
 
-      // The same process is still draining: a second request is refused.
       const again = await restart();
       expect(again.status).toBe(409);
       expect(again.body.code).toBe("restart_in_progress");
       expect(triggered).toBe(1);
 
-      // The next process: the old lease is gone after the drain, boot promotes
-      // the waiting revision and answers the request exactly once.
       await coordinator.stop();
       const [stored] = await server.db.select().from(engineRestartRequests);
       const request = stored?.request;
@@ -283,8 +271,6 @@ describe("POST /v1/system/restart and GET /v1/system/restart-status", () => {
     const [state] = await server.db.select().from(runtimeConfigState);
     const [stored] = await server.db.select().from(engineRestartRequests);
     if (!stored || !state?.active_revision) throw new Error("no prior request");
-    // An open request from a previous process that waited for a revision the
-    // boot did not activate.
     const { outcome: _outcome, closed_at: _closed, to_boot_id: _to, ...open } = stored.request;
     await server.db
       .update(engineRestartRequests)

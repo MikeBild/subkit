@@ -1,17 +1,3 @@
-// File format dispatch for Knowledge Sources.
-//
-// Delegates to existing parsers for text formats (JSON, YAML, CSV, XML,
-// Markdown) and returns RawChunk[] — the same type the fingerprinting
-// pipeline expects.
-//
-// Binary formats (PDF, DOCX, XLSX/XLS, PPTX) and archives (ZIP, GZIP —
-// recursively extracted, every entry re-fed through the same registry)
-// are routed through the binary parser registry in
-// `../docs-ingestion/parsers/` via the `parseBinaryFileToChunks` helper
-// below. The text `parseFileToChunks` returns no chunks for a binary
-// format — callers must dispatch on `detectFormat` and call the right
-// helper.
-
 import {
   type BinaryFormat,
   isBinaryFormat as isBinaryFormatId,
@@ -46,22 +32,13 @@ export class UnsupportedFileFormatError extends Error {
   }
 }
 
-/** Type predicate narrowing a `ParsedFormat` to `BinaryFormat`. Thin
- *  wrapper over the canonical `isBinaryFormat` in
- *  `docs-ingestion/parsers/` — the binary-format membership set has a
- *  single source of truth there; this keeps the `ParsedFormat`-typed
- *  call sites in the knowledge subsystem ergonomic. */
 export function isBinaryFormat(format: ParsedFormat): format is BinaryFormat {
   return isBinaryFormatId(format);
 }
 
-/**
- * Detect the format of a file from its filename and optional MIME type.
- */
 export function detectFormat(filename: string, mime?: string): ParsedFormat {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
 
-  // Check extension first (more reliable than MIME for most cases)
   switch (ext) {
     case "json":
       return "json";
@@ -97,10 +74,6 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
       return "gzip";
   }
 
-  // Fall back to MIME type. Binary office MIMEs (which carry
-  // "openxmlformats-officedocument" / "ms-excel") are checked BEFORE
-  // the generic xml branch — otherwise their `vnd.openxmlformats-…`
-  // substring trips `xml` and DOCX/XLSX/PPTX uploads are misclassified.
   if (mime) {
     if (mime.includes("pdf")) return "pdf";
     if (mime.includes("wordprocessingml") || mime.includes("officedocument.wordprocessing")) {
@@ -113,9 +86,6 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
     if (mime.includes("presentationml") || mime.includes("officedocument.presentation")) {
       return "pptx";
     }
-    // Archives — after the office MIMEs (which never contain "zip" in
-    // their `vnd.openxmlformats…` names, but keep the specific-first
-    // ordering explicit).
     if (mime.includes("gzip")) return "gzip";
     if (mime.includes("zip")) return "zip";
     if (mime.includes("json")) return "json";
@@ -129,20 +99,11 @@ export function detectFormat(filename: string, mime?: string): ParsedFormat {
   return "unknown";
 }
 
-/**
- * Parse a file buffer into RawChunks suitable for the fingerprinting pipeline.
- *
- * Splits the content into sections based on the format:
- * - Markdown: split on headings
- * - JSON/YAML/XML/CSV: single chunk (the fingerprinter will split by budget)
- * - Plaintext: split on double newlines (paragraph boundaries)
- */
 export function parseFileToChunks(
   content: string,
   filename: string,
   format: ParsedFormat,
 ): RawChunk[] {
-  // Empty or whitespace-only content produces no chunks
   if (!content || content.trim().length === 0) return [];
 
   switch (format) {
@@ -157,7 +118,6 @@ export function parseFileToChunks(
     case "plaintext":
       return parsePlaintextChunks(content, filename);
     case "unknown":
-      // Treat unknown as plaintext
       return parsePlaintextChunks(content, filename);
     case "pdf":
     case "docx":
@@ -166,17 +126,10 @@ export function parseFileToChunks(
     case "pptx":
     case "zip":
     case "gzip":
-      // Binary formats are dispatched via `parseBinaryFileToChunks` —
-      // callers must branch on `isBinaryFormat(format)`.
       return [];
   }
 }
 
-/**
- * Parse a binary file (PDF/DOCX/XLSX/PPTX) buffer into RawChunks. Throws
- * `BinaryParseError` from the underlying parser on failure; callers
- * decide whether to surface the error or degrade to a placeholder.
- */
 export async function parseBinaryFileToChunks(
   buffer: Buffer,
   filename: string,
@@ -226,9 +179,6 @@ export async function parseBinaryFileToChunks(
     }
     case "zip":
     case "gzip": {
-      // The archive renderer emits one `## <entry path>` section per
-      // extracted member — exactly the heading shape the markdown
-      // chunker splits on, so each member becomes its own chunk.
       const chunks = parseMarkdownChunks(parsed.text, filename);
       if (chunks.length === 0 || parsed.text.trim().length === 0) {
         return [];
@@ -238,13 +188,7 @@ export async function parseBinaryFileToChunks(
   }
 }
 
-/**
- * Split markdown on heading boundaries (H1 or H2). Exported so the
- * file-upload source and the DOCX binary path can share the same
- * chunking strategy without duplicating the heading walk.
- */
 export function parseMarkdownChunks(content: string, filename: string): RawChunk[] {
-  // Split on lines starting with # or ##
   const lines = content.split("\n");
   const chunks: RawChunk[] = [];
   let currentTitle: string | null = null;
@@ -270,7 +214,6 @@ export function parseMarkdownChunks(content: string, filename: string): RawChunk
   }
   flush();
 
-  // If no headings found, return as single chunk
   if (chunks.length === 0) {
     return [{ title: filename, path: filename, content }];
   }
@@ -278,9 +221,6 @@ export function parseMarkdownChunks(content: string, filename: string): RawChunk
   return chunks;
 }
 
-/**
- * Split plaintext on paragraph boundaries (double newlines).
- */
 function parsePlaintextChunks(content: string, filename: string): RawChunk[] {
   const paragraphs = content.split(/\n{2,}/).filter((p) => p.trim().length > 0);
 

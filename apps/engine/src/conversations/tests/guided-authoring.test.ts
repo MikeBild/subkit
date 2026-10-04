@@ -18,32 +18,22 @@ beforeAll(async () => {
   ctx = await createConversationTestCtx("guided_authoring");
   server = Bun.serve({
     port: 0,
-    // Pinned: the suite dials 127.0.0.1, so the server must bind it too.
     hostname: "127.0.0.1",
     fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/health") {
         return Response.json({ ok: true, service: "guided-authoring-test" });
       }
-      // Serve everything else as 200 OK so connector probes (which
-      // hit the seeded base_url after v3.5's create.ts migration to
-      // server.public_base_url) terminate quickly instead of bouncing
-      // through the request-retry ladder until the test times out.
       return new Response("ok", { status: 200 });
     },
   });
   baseUrl = `http://127.0.0.1:${server.port}`;
-  // The conversation surface reads canonical server.public_base_url.
   await setConfigKey("server.public_base_url", baseUrl, { force: true });
 });
 
 afterAll(async () => {
   server.stop(true);
   await ctx.cleanup();
-  // Reset the config singleton this suite set in beforeAll. Bun runs
-  // files alphabetically, so a leaked `server.public_base_url` would make a
-  // later suite's stub-DB dispatch try to mint a portal link and throw. Same
-  // config-pollution-across-suites class as the global-pool test race.
   _resetConfigForTests();
 });
 
@@ -93,16 +83,6 @@ describe("guided authoring conversation loop", () => {
     );
     expect(resumedSave.result.status).toBe("awaiting_input");
     expect(resumedSave.result.pending_elicitation_id).toBeTruthy();
-    // New contract: the LLM never re-issues save_connector_draft itself after
-    // confirming — no wrapped tool publishes a confirm marker any more. The
-    // harness auto-persists the write the instant the operator's "yes"
-    // resolves the elicitation, and the model's next turn moves straight on
-    // to editing the workflow. Assert the harness-side persistence directly:
-    // the synthetic tool-call row it injected, and the second audit row it
-    // tags `reason: auto_persist_on_confirmation`.
-    // Two rows share this tool name: the model's real (paused) invocation
-    // from turn one, and the harness-injected synthetic result from this
-    // resume. Only the latter carries `source: "harness_auto_persist"`.
     const autoPersistCalls = await ctx.testDb.db
       .select()
       .from(conversationToolCalls)
@@ -177,9 +157,6 @@ describe("guided authoring conversation loop", () => {
     expect(detail?.draft?.connector?.name).toBe("Subkit Engine");
     expect(detail?.draft?.connector?.saved_connector_id).toBeTruthy();
     expect(detail?.draft?.connector?.latest_probe?.summary).toContain("Probe succeeded");
-    // Post-hart-cut: dry_run_step routes through runSingleStep, so the
-    // summary now reads "Ran step `health` (request) in Nms." The word
-    // "Previewed" is gone alongside preview.ts.
     expect(detail?.draft?.latest_preview?.summary).toContain("Ran step");
     expect(detail?.draft?.latest_preview?.summary).toContain("health");
   });

@@ -49,7 +49,6 @@ function renderSummary(summary: WorkflowSummary | ConnectorSummary | KnowledgeSo
   return render((<SummaryCard summary={summary} />) as ReactElement);
 }
 
-// --- WorkflowSummary ---
 describe("SummaryCard · workflow", () => {
   const base: WorkflowSummary = {
     kind: "workflow",
@@ -134,16 +133,13 @@ describe("SummaryCard · workflow", () => {
   test("follow_up_options renders as numbered choice list when present", () => {
     const ui = renderSummary({ ...base, usage: workflowUsageWithOptions });
     const out = snapshot(ui);
-    // Numbered entries must appear
     expect(out).toContain("1. sk CLI");
     expect(out).toContain("2. MCP tool");
     expect(out).toContain("3. Chat");
     expect(out).toContain("4. REST API");
     expect(out).toContain("5. Schedule (live)");
-    // Detail values must appear
     expect(out).toContain("wf_nightly-sync");
     expect(out).toContain("POST /v1/executions");
-    // The plain follow_up text must NOT appear when options are present
     expect(out).not.toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
     ui.unmount();
   });
@@ -152,13 +148,11 @@ describe("SummaryCard · workflow", () => {
     const ui = renderSummary({ ...base, usage: workflowUsage });
     const out = snapshot(ui);
     expect(out).toContain("Run it now, show the REST/HTTP call, or set up a schedule?");
-    // No numbered list
     expect(out).not.toContain("1. sk CLI");
     ui.unmount();
   });
 });
 
-// --- ConnectorSummary ---
 describe("SummaryCard · connector", () => {
   const base: ConnectorSummary = {
     kind: "connector",
@@ -266,7 +260,6 @@ describe("SummaryCard · connector", () => {
   });
 });
 
-// --- KnowledgeSourceSummary ---
 describe("SummaryCard · knowledge source", () => {
   const base: KnowledgeSourceSummary = {
     kind: "knowledge_source",

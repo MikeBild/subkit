@@ -1,6 +1,3 @@
-// Welcome banner — first-paint orientation only. Keep it compact so the
-// transcript can take over as soon as the user starts working.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
@@ -22,9 +19,7 @@ export interface WelcomeBannerProps {
   targetName?: string | null | undefined;
   environment?: string | null | undefined;
   compact?: boolean | undefined;
-  /** One-line tip shown under the hint row. Rotate via `pickTip`. */
   tip?: string;
-  /** When false, replaces the persona/tenant slot with a sign-in hint. */
   signedIn?: boolean | undefined;
 }
 

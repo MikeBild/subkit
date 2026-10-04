@@ -1,35 +1,3 @@
-// RETIRED_ENV_KEYS hygiene — every env var listed in env.ts as
-// retired must NOT be read directly by production code (outside the
-// retire-warn list itself). The contract: an operator who still sets
-// a retired env var gets a one-line warn at boot pointing at
-// `sk settings configure`, and the engine does NOT silently honor
-// the value through some lingering env read.
-//
-// Allowed exceptions (documented inline):
-//   - apps/engine/src/env.ts itself                — owns the warn list
-//   - apps/engine/src/llm/core/model-init.ts       — readEnv() routes
-//                                                   env→config via the
-//                                                   ENV_TO_CONFIG_PATH map
-//                                                   so the env reads
-//                                                   here are the
-//                                                   approved migration
-//                                                   bridge
-//   - apps/engine/src/llm/accounting/{count,enforce}.ts
-//                                                 — explicit
-//                                                   getConfig-first +
-//                                                   env-fallback
-//                                                   helpers
-//   - apps/engine/src/llm/runtime-context.ts       — same env-fallback
-//                                                   shape as above
-//   - apps/engine/src/execution/offload.ts         — env-fallback for
-//                                                   the legacy
-//                                                   S3_OFFLOAD_*
-//                                                   variants
-//
-// Any other production file that contains `process.env.<RETIRED>` is
-// a regression — operators set the env, get the warn, but the value
-// silently still wires through.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -55,21 +23,12 @@ const ALLOWED_FILES = new Set<string>([
   "llm/accounting/enforce.ts",
   "llm/runtime-context.ts",
   "execution/offload.ts",
-  // Bootstrap-tier env reads — these run BEFORE loadConfig() at boot:
-  "index.ts", // runSmoke needs PORT before loadConfig
-  "db/migrate.ts", // standalone migration binary
-  "db/issue-admin-key.ts", // standalone admin script
-  "db/client.ts", // env-fallback when getConfig() throws (test-helper bootstraps)
+  "index.ts",
+  "db/migrate.ts",
+  "db/issue-admin-key.ts",
+  "db/client.ts",
 ]);
 
-/**
- * A path segment, wherever it sits — including first.
- *
- * The exclusions used to be substring matches on `/tests/`, which is a segment
- * only when something precedes it. `src/tests/` is scanned relative to `src`,
- * so it arrives as `tests/…` and was read as production code: a test-only
- * fixture was reported as an operator-visible env read.
- */
 function inDirectory(file: string, directory: string): boolean {
   return file === directory || file.startsWith(`${directory}/`) || file.includes(`/${directory}/`);
 }
@@ -101,8 +60,6 @@ describe("RETIRED_ENV_KEYS hygiene", () => {
     for (const [file, lines] of files) {
       lines.forEach((line, idx) => {
         for (const key of retired) {
-          // Match `process.env.<KEY>` exactly. Allow `process.env[<KEY>]`
-          // bracket access too.
           const dot = new RegExp(`process\\.env\\.${key}\\b`);
           const bracket = new RegExp(`process\\.env\\[\\s*"${key}"\\s*\\]`);
           if (dot.test(line) || bracket.test(line)) {

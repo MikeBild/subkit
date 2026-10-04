@@ -34,7 +34,6 @@ import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type Connector = components["schemas"]["Connector"];
 
-/** A name as a slug: lowercase words joined by "-". */
 export function slugify(text: string): string {
   return text
     .normalize("NFKD")
@@ -49,12 +48,6 @@ export function slugify(text: string): string {
 type Kind = "workflow" | "connector";
 type Step = "choose" | "manual";
 
-/**
- * "Workflow erstellen" / "Konnektor hinzufügen" (R16, R19): one dialog of two
- * steps for both. First two ChoiceCards — the chat or by hand — and only
- * "Abbrechen"; choosing the chat opens it, choosing by hand shows the form
- * with "‹ Zurück" and "Anlegen".
- */
 function CreateChoiceDialog({
   kind,
   open,
@@ -173,7 +166,6 @@ function refusal(failure: unknown, taken: string, t: ReturnType<typeof useI18n>[
 
 type WorkflowTrigger = "webhook" | "schedule" | "request";
 
-/** A workflow by hand: name, purpose, trigger and category — its steps follow in "Aufbau". */
 function useManualWorkflow(
   active: boolean,
   done: () => void,
@@ -211,8 +203,6 @@ function useManualWorkflow(
         name: name.trim(),
         slug,
         ...(purpose.trim() ? { description: purpose.trim() } : {}),
-        // A workflow holds at least one step: it starts with one that hands
-        // its input on, and "Aufbau" takes it from there.
         steps: [{ id: "start", kind: "transform", expression: "return input;" }],
         trigger:
           trigger === "schedule"
@@ -296,13 +286,6 @@ function useManualWorkflow(
   };
 }
 
-/**
- * A connector by hand (R19): what it connects, how SubKit signs in there,
- * name, address and — for a key only — the key; a web service signed in with
- * an account also its OAuth app. Once it exists the connector says whether a
- * sign-in starts (its `sign_in`): that goes on to the service's approval, an
- * MCP server otherwise to its tools, a web service to its connection.
- */
 function useManualConnector(done: () => void, fail: (error: string) => void): ManualForm {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -332,7 +315,6 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
           connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
         ),
       });
-      // The key is stored as the connector's credential, never in its record.
       if (needsSecret(signIn))
         await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
           method: "POST",
@@ -348,9 +330,6 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
       const page = `${connectorHref(connector.id)}?tab=${afterCreateTab(target)}`;
       const route = connectorSignIn(connector);
       if (route) {
-        // The service's approval, straight away, on the route the connector
-        // names. Where it cannot start, the reader is told why and lands on
-        // the page whose sign-in button starts the same route again.
         try {
           const start = await apiRequest<{ authorization_url: string }>(route.start, {
             method: "POST",
@@ -494,7 +473,6 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
   };
 }
 
-/** The list page's one action: opens the choice. */
 export function CreateAction({
   kind,
   canChat,

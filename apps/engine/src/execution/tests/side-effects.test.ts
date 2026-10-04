@@ -1,10 +1,3 @@
-// Fix G — side-effect classification matrix for request-class steps.
-//
-// The classifier lives at the driver layer (never vendor keywords):
-// HTTP method semantics via the `isIdempotent` retry seam, GraphQL
-// operation kind, SQL leading keyword, S3 verb — with the explicit
-// `side_effects` may escalate a read, but cannot grant unknown remote effects.
-
 import { describe, expect, test } from "bun:test";
 import { type RequestStep, RequestStepSchema } from "../../workflows/types.ts";
 import {
@@ -243,10 +236,6 @@ describe("classifyRequestStepSideEffects · SQL", () => {
 });
 
 describe("classifyRequestStepSideEffects · MCP", () => {
-  // The remote's own `readOnlyHint` is deliberately NOT consulted: it is
-  // optional, unverified, and asserted by the party whose side effects it
-  // describes. Reading it would let a remote decide which of its own calls
-  // the engine gates.
   test("call_tool is a write — a missing annotation gets no benefit of the doubt", () => {
     expect(
       classifyRequestStepSideEffects(
@@ -256,8 +245,6 @@ describe("classifyRequestStepSideEffects · MCP", () => {
   });
 
   test("call_tool is a write even though the step method defaults to GET", () => {
-    // The HTTP arm would classify this read. The mcp arm must run first,
-    // or every remote tool call would slip the hold-writes gate silently.
     const parsed = step({
       connector_id: CONNECTOR_ID,
       mcp: { operation: "call_tool", tool: "anything" },
@@ -362,7 +349,6 @@ describe("redactHeldRequestHeaders", () => {
     expect(out["X-Api-Key"]).toBe("***REDACTED:auth_header***");
     expect(out["Content-Type"]).toBe("application/json");
     expect(out["X-Trace-Id"]).toBe("trace-1");
-    // every name survives — the judge must see WHICH headers would be sent
     expect(Object.keys(out).sort()).toEqual(
       ["Authorization", "Content-Type", "Cookie", "X-Api-Key", "X-Trace-Id"].sort(),
     );

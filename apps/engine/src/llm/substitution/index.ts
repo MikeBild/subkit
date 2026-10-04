@@ -1,6 +1,3 @@
-// Placeholder substitution — public surface.
-//
-// Parser (pure, no I/O):
 export {
   collectTokenNames,
   hasPlaceholders,
@@ -12,7 +9,6 @@ export {
   stripPlaceholders,
 } from "./parser.ts";
 
-// Resolver (DB + RBAC):
 export {
   describeConnectorPlaceholders,
   type Environment,
@@ -25,7 +21,6 @@ export {
   type UnresolvedCode,
 } from "./resolver.ts";
 
-// Unsupported-placeholder detector (Mustache + bad kinds):
 export {
   findUnsupportedPlaceholders,
   type UnsupportedPlaceholder,

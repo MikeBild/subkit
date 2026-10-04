@@ -1,23 +1,8 @@
-// How a reviewed storage folder is described to the person approving it.
-//
-// The dialog used to label every operation that was not a PUT as "read". When
-// removal became grantable, a DELETE boundary fell into that branch: the most
-// prominent part of the approval dialog told the human "Read files within this
-// folder" for a step that permanently deletes them, and the ceiling they were
-// approving was not shown at all. The fine print below said DELETE; the
-// headline said read.
-//
-// So the mapping is explicit per operation and has no "everything else is a
-// read" fallback. An operation this table does not know is presented as
-// unknown and destructive-styled — a reviewer must never be shown a reassuring
-// label for something the dialog cannot actually describe.
-
 import type { TranslationKey } from "@/lib/i18n";
 
 export interface StorageScopePresentation {
   title: TranslationKey;
   detail: TranslationKey;
-  /** Interpolated into `detail`. */
   values: Record<string, string | number>;
   destructive: boolean;
 }

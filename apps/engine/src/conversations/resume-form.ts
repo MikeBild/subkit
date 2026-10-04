@@ -1,15 +1,5 @@
 import { z } from "@hono/zod-openapi";
 
-/**
- * The form a reader can answer outside the model: the cockpit card renders
- * exactly these fields. Every field shape `ask_user_form` accepts must be
- * projectable here (see `resume-form.test.ts`) — a form the reader cannot
- * see leaves the conversation waiting on input nobody can give.
- *
- * Secret fields (`type:"password"` or `sensitive:true`) project as a
- * definition only: never a default, never a value. The answer is redacted at
- * persistence (`tools/ask-user/redact-answer.ts`).
- */
 export const ResumeFormFieldSchema = z.object({
   name: z.string().min(1),
   label: z.string().min(1),

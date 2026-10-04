@@ -17,8 +17,6 @@ function makeClient() {
   });
 }
 
-// ---- channels ----
-
 const channelsListCmd = defineCommand({
   meta: { name: "list", description: "List notification channels" },
   args: {
@@ -154,8 +152,6 @@ const channelsCmd = defineCommand({
   },
 });
 
-// ---- rules ----
-
 const rulesListCmd = defineCommand({
   meta: { name: "list", description: "List notification rules" },
   args: {
@@ -288,8 +284,6 @@ const rulesCmd = defineCommand({
   },
 });
 
-// ---- deliveries ----
-
 const deliveriesListCmd = defineCommand({
   meta: { name: "list", description: "List notification deliveries" },
   args: {
@@ -317,8 +311,6 @@ const deliveriesCmd = defineCommand({
   meta: { name: "deliveries", description: "Notification deliveries" },
   subCommands: { list: deliveriesListCmd },
 });
-
-// ---- inbox ----
 
 const inboxListArgs = {
   all: { type: "boolean", description: "Show everything queued, ignoring the stored cursor" },
@@ -353,8 +345,6 @@ async function runInboxList(args: {
       ["id", "severity", "actionable", "event_type", "created_at"],
       items as unknown as Record<string, unknown>[],
     );
-    // Advance the stored cursor so the next call only surfaces newer
-    // rows. `--all` still persists the high-water mark it observed.
     setNotificationInboxCursor(cursor);
   } catch (err) {
     reportCommandError(err, { json: Boolean(args.json) });
@@ -408,7 +398,6 @@ const inboxCmd = defineCommand({
     list: inboxListCmd,
     ack: inboxAckCmd,
   },
-  // Default action when no subcommand is given: list.
   run: ({ args }) => runInboxList(args),
 });
 

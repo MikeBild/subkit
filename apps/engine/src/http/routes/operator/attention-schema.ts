@@ -1,6 +1,3 @@
-// attention.v1 — the Zod contract of `buildAttention`, shared by
-// `GET /v1/attention` and the digest's `attention` member.
-
 import { z } from "@hono/zod-openapi";
 import { PREVIEW_CLASSIFICATIONS } from "../../../execution/index.ts";
 import {
@@ -76,8 +73,6 @@ const AttentionItem = z
       .describe(
         "Why no approval may cover that version yet. Only on version_needs_repair: the leading blocked step and its diagnosis code (GET /v1/workflows/{id}/diagnosis), the act that removes it, how many steps are blocked, and the filed repair or the run the diagnosis rests on.",
       ),
-    // Inline, not the named `FailureCauseClass`: a nullable $ref is emitted as
-    // `allOf` and the generated client loses the null.
     cause_class: z.enum(PREVIEW_CLASSIFICATIONS).nullable(),
     counts: z.object({
       patches: z.number().int().optional(),

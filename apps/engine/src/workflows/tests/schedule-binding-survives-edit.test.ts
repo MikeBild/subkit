@@ -1,14 +1,3 @@
-// Pins the invariant that a version rotation only reconciles trigger
-// bindings when the def's `trigger` block ACTUALLY changes.
-//
-// The bug this guards against: `updateWorkflow` rotated the version and
-// called `applyTriggerBindings` unconditionally; for a no-trigger
-// (`request`) def that path DELETEs the `workflows_schedules` row. A
-// schedule bound OUT-OF-BAND (via `createSchedule`, because it carries a
-// workflow `input` the inline ScheduleTrigger cannot express) was therefore
-// destroyed by any step-only edit — `daily-do-resources-email` went dark for
-// 11 days. The fix gates the reconcile on a real trigger-block change.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants, workflowsSchedules } from "../../db/schema/index.ts";
@@ -32,7 +21,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A no-trigger ("request") workflow whose only step is editable. */
 function requestDef(slug: string, expression: string) {
   return {
     name: slug,
@@ -44,7 +32,6 @@ function requestDef(slug: string, expression: string) {
   };
 }
 
-/** Same shape but carrying an inline schedule trigger. */
 function scheduledDef(slug: string, cron: string) {
   return {
     ...requestDef(slug, "return input.scope.fetch.data;"),
@@ -66,7 +53,6 @@ function schedulesFor(workflow_id: string) {
 
 describe("schedule binding survives a step-only edit", () => {
   test("out-of-band schedule survives a step-only edit (the daily-do case)", async () => {
-    // request workflow → no inline trigger.
     const created = await createWorkflow(
       {
         tenant_id,
@@ -78,8 +64,6 @@ describe("schedule binding survives a step-only edit", () => {
     if ("errors" in created) throw new Error(`create: ${created.errors.join("; ")}`);
     const wfId = created.workflow.id;
 
-    // Bind a schedule OUT OF BAND — carries a workflow input the inline
-    // trigger schema cannot represent.
     const sched = await createSchedule(ctx.db, {
       tenant_id,
       workflow_id: wfId,
@@ -89,9 +73,6 @@ describe("schedule binding survives a step-only edit", () => {
     });
     expect(await schedulesFor(wfId)).toHaveLength(1);
 
-    // A STEP-ONLY edit (changed transform expression, trigger unchanged →
-    // still `request`) rotates the version. On current main this deletes the
-    // schedule row (RED); with the trigger-change gate it must survive.
     const updated = await updateWorkflow(
       {
         tenant_id,
@@ -119,8 +100,6 @@ describe("schedule binding survives a step-only edit", () => {
     const wfId = created.workflow.id;
     expect(await schedulesFor(wfId)).toHaveLength(1);
 
-    // Trigger removed (schedule → request) IS a trigger-block change → the
-    // reconcile must still run and tear the schedule down.
     const updated = await updateWorkflow(
       {
         tenant_id,

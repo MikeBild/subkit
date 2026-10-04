@@ -1,14 +1,3 @@
-// `ConnectorSystem` — single facade unifying connector + driver +
-// credentials + docs. `tenantId` and `schemaVersion` make tenant
-// isolation and self-healing drift tracking part of the type, not
-// callable invariants.
-//
-// Use this for any code path that needs MORE THAN ONE of {driver,
-// credentials, documentation}. Single-purpose call sites (an OAuth
-// refresh worker that only needs creds) can keep calling
-// `getCredentialForConnector` directly; the facade is for orchestrators
-// (conversation tools, execution steps) where the three are entangled.
-
 import {
   type CredentialAuthorityMetadata,
   getCredentialAuthorityMetadata,
@@ -31,62 +20,22 @@ export interface ConnectorDocumentSummary {
 }
 
 export interface ConnectorSystem {
-  /** Metadata-only authority binding. Never decrypts tokens or refreshes OAuth. */
   getAuthorityMetadata(): Promise<CredentialAuthorityMetadata>;
-  /** The connector row id this facade is bound to. */
   readonly id: string;
-  /** Tenant scope — every credential / doc lookup is filtered by this. */
   readonly tenantId: string;
-  /** Driver name — `"http"`, `"graphql"`, `"postgres"`, … */
   readonly driver: DriverName;
-  /**
-   * Template-version pin from the connector row. Self-healing's
-   * drift detector tracks per-endpoint shapes against this in the
-   * `schema_versions` table; the field exposes the pin so consumers
-   * can correlate facade output with drift records.
-   */
   readonly templateVersion: number | null;
-  /** Resolved environment (`"dev"` | `"prod"`). */
   readonly environment: Environment;
-  /** The underlying connector row. */
   readonly connector: ConnectorView;
 
-  /**
-   * Resolve credentials for this connector's environment. Returns
-   * `null` if no credential row exists (e.g. probe before auth was
-   * configured). Callers that require credentials should treat `null`
-   * as a typed error; the facade does not throw.
-   *
-   * RBAC pre-check is the caller's responsibility (the engine's
-   * `before-request hook` runs at request time, not here). The facade
-   * is purely a lookup — it does not reach into the policy layer.
-   */
   getCredentials(): Promise<{
-    // `connector_id` is nullable on the shared credentials row (an MCP
-    // server may own a row instead), but this facade ONLY ever
-    // resolves connector-owned rows via `getCredentialForConnector`. We
-    // re-narrow to non-null at the facade boundary (fail-fast in the impl
-    // if the resolved row ever lacks a connector_id) so callers never see
-    // the MCP-widened type.
     row: { connector_id: string; mode: string; tenant_id: string };
     value: DecryptedCredential;
   } | null>;
 
-  /**
-   * List the connector's ingested documents (OpenAPI / GraphQL schema /
-   * markdown). Used by conversation tools that need to surface the
-   * connector's spec to the LLM. Returns `[]` for connectors with no
-   * ingestion configured.
-   */
   getDocumentation(): Promise<ConnectorDocumentSummary[]>;
 }
 
-/**
- * Load the facade for a connector. Resolves the connector row once
- * (with the environment fall-back from `getConnectorForEnvironment`)
- * and lazily defers credential + docs lookups to first use — the
- * caller may only need one of them.
- */
 export async function loadConnectorSystem(
   tenant_id: string,
   connector_id: string,
@@ -110,10 +59,6 @@ export async function loadConnectorSystem(
     async getCredentials() {
       const resolved = await getCredentialForConnector(tenant_id, connector.id, resolvedEnv, exec);
       if (!resolved) return null;
-      // Re-narrow connector_id at the facade: this lookup only ever returns
-      // connector-owned rows, so a null connector_id is a contract
-      // violation (an MCP-owned row leaked through the connector resolver).
-      // Fail fast rather than hand back a non-connector row typed as one.
       if (resolved.row.connector_id === null) {
         throw new Error(
           `connector facade resolved a credential row with no connector_id for connector ${connector.id}`,

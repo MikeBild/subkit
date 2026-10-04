@@ -1,13 +1,3 @@
-// Inline unified-diff renderer.
-//
-// Engine pre-computes line hunks (`apps/engine/src/conversations/diff-util.ts`)
-// and ships them as a `diff` TurnEvent; this component paints the
-// gutter + content with theme colors.
-//
-// Long diffs collapse: only the first 12 lines render by default, with
-// a footer hint pointing at Ctrl-T to open the full transcript pager —
-// an information-density rule that keeps cells compact.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo, useMemo } from "react";
@@ -16,11 +6,7 @@ export interface DiffCardProps {
   title: string;
   language: "json" | "yaml" | "text";
   hunks: ReadonlyArray<{ kind: "+" | "-" | " "; text: string }>;
-  /** When true the cell renders every hunk; otherwise truncates to
-   *  `maxLines`. The pager passes true; the inline transcript leaves
-   *  it false unless the user explicitly toggles. */
   expanded?: boolean;
-  /** Default 12 lines for the inline cell. */
   maxLines?: number;
 }
 

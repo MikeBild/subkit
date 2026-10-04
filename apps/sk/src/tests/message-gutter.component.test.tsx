@@ -54,8 +54,6 @@ describe("<MessageGutter>", () => {
     try {
       await flush();
       const text = ui.text();
-      // Exactly one occurrence of the gutter glyph (or zero if Ink wraps
-      // strangely) — at least we shouldn't see two.
       const occurrences = (text.match(/⎿/g) ?? []).length;
       expect(occurrences).toBeLessThanOrEqual(1);
       expect(text).toContain("deep");

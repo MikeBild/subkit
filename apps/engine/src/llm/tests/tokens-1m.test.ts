@@ -1,14 +1,3 @@
-// Pins the 1M-context cap matcher in tokens.ts. The Anthropic
-// `anthropic-beta: context-1m-2025-08-07` header is already attached
-// in `llm/core/model-init.ts:resolveAnthropic`. This test ensures
-// `contextCapFor` actually opens the 900k usable budget so the
-// assembler stops evicting skills and docs unnecessarily.
-//
-// Trigger paths verified here:
-//   - model id ends in `-1m`
-//   - default Claude cap (180k) when neither trigger fires
-// Runtime `llm.context_1m` read-back is covered by consumer-readback.test.ts.
-
 import { describe, expect, test } from "bun:test";
 import { contextCapFor } from "../accounting/index.ts";
 
@@ -47,8 +36,6 @@ describe("contextCapFor · open-weight / OpenAI-compatible families", () => {
   });
 
   test("anchors on the leading family — a merge id does not collide", () => {
-    // `includes("mixtral")` would mis-bucket this to 110k; startsWith on the
-    // bare id resolves it to the leading `llama` family (120k).
     expect(contextCapFor("llama-mixtral-8x22b")).toBe(120_000);
   });
 

@@ -1,9 +1,3 @@
-// Regression test for the W3 / Root-cause-2 fix at
-// `apps/engine/src/conversations/tools/inspect-execution-step.ts:131-145`.
-// The tool resolves the exact persisted storage URI through the canonical
-// object-store resolver. Legacy fixture:// rows remain readable only when
-// their kind is `offload`; self-healing fixtures never masquerade as payloads.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -93,7 +87,6 @@ async function seedExecutionWithStep(opts: {
       step_key: opts.step_key,
       kind: "request",
       status: "succeeded",
-      // Mark the step as offloaded so the include_full_payload branch fires.
       result_storage_uri: `fixture://${nextStorageUri()}`,
       output_preview: { _truncated: "offloaded" },
     })
@@ -139,7 +132,6 @@ describe("inspect_execution_step · canonical offload resolution", () => {
       tenant: tenant_id,
       step_key: "fetch_self_healing_only",
     });
-    // Only a self-healing fixture exists for this step — no offload row.
     const [fixture] = await ctx.db
       .insert(executionFixtures)
       .values({
@@ -171,8 +163,6 @@ describe("inspect_execution_step · canonical offload resolution", () => {
   });
 
   test("does NOT leak a foreign-tenant fixture row that shares step_id", async () => {
-    // Seed the offload row under the foreign tenant — same step_id
-    // shape, different tenant_id. The tenant predicate must filter it.
     const { execution_id: foreignExec, step_id: foreignStep } = await seedExecutionWithStep({
       tenant: foreign_tenant_id,
       step_key: "foreign_step",
@@ -185,8 +175,7 @@ describe("inspect_execution_step · canonical offload resolution", () => {
       body: { storage: { value: "foreign-tenant-secret" } },
       byte_size: 256,
     });
-    const toolCtx = makeCtx(); // Uses `tenant_id`, NOT `foreign_tenant_id`.
-    // Caller asks for the foreign execution — must get execution_not_found.
+    const toolCtx = makeCtx();
     const result = await inspectExecutionStepTool.execute(toolCtx, {
       execution_id: foreignExec,
       step_key: "foreign_step",

@@ -1,15 +1,3 @@
-// The boot guard that refuses to serve from the wrong PostgreSQL schema.
-//
-// The engine no longer sends `-c search_path=subkit,pg_catalog,public` as a
-// connection startup option, because a pooler in transaction mode rejects
-// startup parameters outright (SQLSTATE 08P01) and the engine cannot boot
-// behind one. The runtime path is a role default now.
-//
-// The trade has a sharp edge worth pinning down: without the role default the
-// path falls back to `"$user", public`, where an unqualified table name
-// resolves against whatever pre-isolation objects survive in `public` — the
-// query SUCCEEDS and returns the wrong rows. An engine executing workflows
-// against a stale schema is worse than one that is down, so the guard aborts.
 import { describe, expect, test } from "bun:test";
 import { assertSearchPath, EXPECTED_SCHEMA } from "../client.ts";
 

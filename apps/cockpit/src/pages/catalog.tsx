@@ -49,7 +49,6 @@ import {
 } from "@/pages/connectors-model";
 import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
 
-/** The lists this page draws; Wissen's lists have pages of their own. */
 type CatalogResource = "workflows" | "connectors";
 type CatalogRow = Record<string, unknown>;
 type ConnectorListItem = components["schemas"]["ConnectorListItem"];
@@ -59,12 +58,7 @@ interface CatalogState {
   q: string;
   status: string;
   category: string;
-  /** Workflows only: the connector slug whose users are being listed. */
   connector: string;
-  /**
-   * Connectors only: the narrowing the health tile's link brings. Never typed,
-   * so it has no control of its own — only the chip that says so and lifts it.
-   */
   health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
@@ -108,7 +102,6 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
 };
 
 const PAGE_SIZE = 25;
-/** One read, inverted client-side, instead of one relation lookup per row. */
 const RELATION_INDEX_LIMIT = 200;
 
 function parseState(config: CatalogConfig): CatalogState {
@@ -171,29 +164,12 @@ function stringList(row: CatalogRow, field: string): string[] {
     : [];
 }
 
-/**
- * Workflow health rides on the name rather than taking an eighth column.
- *
- * A healthy workflow says nothing — the row is already the good news. An
- * unhealthy one carries a dot AND the state as a word, because a colour on its
- * own tells a person who cannot see it nothing (CUI-A11Y-5), and a `title=` or
- * a hover-only tooltip is unreachable by keyboard and invisible on touch
- * (CUI-WORDS-2).
- *
- * The engine's own reason is not repeated here. It is the entry's reason on
- * Übersicht and stands, marked as the engine's, in Übersicht's review sheet and in the
- * cause block of the workflow's own page — one fact, one home. A third copy on
- * every list row was the same sentence in a place nobody acts on it.
- */
 function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
   const { t } = useI18n();
   const state = stringField(row, "health_state");
   const id = stringField(row, "id");
   if (!state || state === "ok") return null;
   const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
-  // The red mark leads to its cause: the failed runs of this workflow (§1,
-  // "kein Rot ohne Weg zur Ursache"). A mark that only says "failed" sends
-  // the reader to search the run log by name.
   const sentence = t("workflows.health", { state: statusLabel(t, state) });
   return (
     <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -237,8 +213,6 @@ function catalogColumns(
         t("common.name"),
         (row, index) => (
           <span className="flex min-w-0 flex-col gap-1">
-            {/* The name is the row's link; the health line below links to the
-                failed runs, and a link inside a link is none. */}
             <span className="min-w-0 font-medium">
               <RowName>{stringField(row, "name") ?? MISSING}</RowName>
             </span>
@@ -292,8 +266,6 @@ function catalogColumns(
         (row) => t(triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"])),
         { width: "w-[11%]" },
       ),
-      // The last run's time leads to the runs of this workflow — the date is
-      // the question "what happened then?", and the answer is one click away.
       column.custom(
         "last_executed_at",
         (row) => row.last_executed_at,
@@ -325,15 +297,10 @@ function catalogColumns(
   }
 
   const columns: CockpitColumn<CatalogRow>[] = [
-    // The name is text. It was a link to the very record the row click and
-    // the row's open button already open — three ways to one place, and the
-    // one styled as a link looked like it led somewhere else.
     column.text("name", (row) => row.display_name, t("common.name"), {
       sortable: true,
       width: "w-[23%]",
     }),
-    // One column for where the connector stands. A second one, "Zugangsdaten",
-    // read the same verdict and said it again in other words.
     column.status("health", (row) => row.health_state, t("catalog.health"), {
       width: "w-[18%]",
     }),
@@ -341,12 +308,9 @@ function catalogColumns(
       "enabled",
       (row) => row.enabled,
       t("catalog.enabled"),
-      // A yes or no is plain text: a badge is for an engine state (P11).
       (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
       { sortable: true, width: "w-[10%]" },
     ),
-    // The same words the connector's own page uses: "Produktion", not "prod";
-    // "MCP-Server", not "mcp". Sorting still reads the engine's value.
     column.custom(
       "environment",
       (row) => row.environment,
@@ -362,8 +326,6 @@ function catalogColumns(
       { sortable: true, width: "w-[13%]" },
     ),
   ];
-  // Without workflow:read the relation cannot be read at all. Dropping the
-  // column is honest; rendering "0" would claim a measured count.
   if (relations.canReadWorkflows) {
     columns.push(
       column.link(
@@ -396,7 +358,6 @@ export function CatalogPage({
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const config = CONFIG[resource];
-  // A connector sign-in comes back to this list with its result in the query.
   useConnectionCallback(resource === "connectors");
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
@@ -410,8 +371,6 @@ export function CatalogPage({
   const query = useQuery({
     queryKey: ["catalog", resource, state],
     enabled: permissions.includes(config.permission),
-    // Every narrowing, `health=not_ok` included, is the engine's — so the
-    // total and the pages describe the narrowed list (catalog-model.ts).
     queryFn: () =>
       apiRequest<{
         items: CatalogRow[];
@@ -420,7 +379,6 @@ export function CatalogPage({
       }>(`${config.endpoint}?${catalogListParams(resource, state, PAGE_SIZE)}`),
   });
 
-  // Workflows name their connectors by slug; the detail route needs an id.
   const connectorIndex = useQuery({
     queryKey: ["catalog-connector-index"],
     enabled: resource === "workflows" && permissions.includes("connector:read"),
@@ -432,8 +390,6 @@ export function CatalogPage({
     [connectorIndex.data],
   );
 
-  // The engine answers "which connectors does this workflow use"; the connector
-  // list needs the other direction, so one read is inverted here.
   const canReadWorkflows = permissions.includes("workflow:read");
   const workflowIndex = useQuery({
     queryKey: ["catalog-workflow-index"],
@@ -553,11 +509,7 @@ export function CatalogPage({
       ],
     });
 
-  // One action, one place. With rows it heads the page; with none it stands in
-  // the empty state, where the reader is looking — it used to stand in both,
-  // the same button twice on one screen.
   const primaryAction = (testId: string) =>
-    // Workflows and connectors are made in the chat or by hand (R16, R19).
     (resource === "workflows" && permissions.includes("workflow:write")) ||
     (resource === "connectors" && permissions.includes("connector:write")) ? (
       <CreateAction
@@ -584,11 +536,6 @@ export function CatalogPage({
       header={
         <PageHeader
           title={title}
-          // The header yields its action only to the one state that shows
-          // the same action itself: a loaded, unfiltered, empty list. While
-          // loading, after a failed read, or when a search matches nothing,
-          // the empty state offers no "create" — hiding the header's there
-          // left no way to start one until the reader cleared the filters.
           action={showsZeroStateAction ? undefined : primaryAction("catalog-primary-action")}
         />
       }
@@ -607,7 +554,6 @@ export function CatalogPage({
               }}
               selects={selects}
             />
-            {/* The narrowing a link brought, said out loud and removable. */}
             {resource === "connectors" && state.health === "not_ok" ? (
               <Button
                 variant="secondary"
@@ -669,8 +615,6 @@ export function CatalogPage({
         }}
         onOpen={(row) => {
           const id = row.id;
-          // A router navigation, as every other list opens its record: a full
-          // page load would throw the cockpit away to show one record.
           if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
         }}
         rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
@@ -714,11 +658,6 @@ export function CatalogPage({
   );
 }
 
-/**
- * A workflow's category is its slug family, so moving it between blocks
- * renames the slug. The dialog shows the resulting slug and names the
- * consequence external clients see before anything is written.
- */
 function RecategorizeDialog({
   row,
   categories,
@@ -811,10 +750,6 @@ function RecategorizeDialog({
   );
 }
 
-/**
- * "Kategorie ändern" on a workflow's own page: the same dialog as the list's,
- * with the blocks read for it.
- */
 export function WorkflowRecategorize({
   record,
   onClose,

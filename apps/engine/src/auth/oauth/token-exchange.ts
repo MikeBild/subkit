@@ -1,26 +1,3 @@
-// RFC 8693 token exchange: API key → short-lived Bearer token.
-//
-// `POST /v1/oauth/token` with
-//   grant_type=urn:ietf:params:oauth:grant-type:token-exchange
-//   subject_token=<wf_live_… api key>
-//   subject_token_type=urn:subkit:params:oauth:token-type:api-key
-//   [scope=<subset of the key's scopes>] [ttl=<seconds, ≤ 3600>]
-// answers with a Bearer token the engine accepts everywhere the key is
-// accepted — same principal, tenant, roles, scopes and allow-lists. The key
-// itself then travels once per TTL instead of on every request, and never
-// shows up in request logs.
-//
-// The token is STATELESS: an HS256 JWT signed with a MASTER_KEY-derived
-// secret, bound to the key row (`api_key_id`) and to the key VERSION (a
-// fingerprint of the stored hash). No table, no migration. On every use the
-// provider re-reads the row and runs the exact api-key state checks
-// (`providers/api-key-row.ts`), so revoking, expiring or rotating the key
-// refuses its tokens at once; a rotated-in key has a new row and a new
-// hash, so a token minted for the old one cannot follow it.
-//
-// No refresh token is issued — a machine that needs a new token has the key
-// and exchanges again.
-
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as jose from "jose";
@@ -45,7 +22,6 @@ export const API_KEY_TOKEN_TYPE = "urn:subkit:params:oauth:token-type:api-key";
 export const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 export const TOKEN_EXCHANGE_DEFAULT_TTL_SECONDS = 900;
 export const TOKEN_EXCHANGE_MAX_TTL_SECONDS = 3600;
-/** Scope entries of this form narrow `allowed_workflows` instead of `scopes`. */
 export const WORKFLOW_SCOPE_PREFIX = "workflow:";
 
 const JWT_TYP = "subkit-tx+jwt";
@@ -62,15 +38,10 @@ export class TokenExchangeError extends Error {
   }
 }
 
-/** Signing secret. Derived from MASTER_KEY so every instance sharing the
- *  key material verifies each other's tokens without shared state. */
 export function deriveTokenExchangeSecret(masterKey: string = env.MASTER_KEY ?? ""): Uint8Array {
   return new Uint8Array(createHash("sha256").update(`${masterKey}:token-exchange`).digest());
 }
 
-/** Fingerprint of the key VERSION. The stored hash changes with every
- *  rotation, so a token bound to it dies with the version it was minted for.
- *  Never the hash itself — the token is readable by whoever holds it. */
 export function keyVersionFingerprint(tokenSha256: string): string {
   return createHash("sha256").update(`v1:${tokenSha256}`).digest("hex").slice(0, 32);
 }
@@ -80,7 +51,6 @@ export function parseScopeParam(scope: string | undefined): string[] {
   return [...new Set(scope.split(/\s+/).filter(Boolean))];
 }
 
-/** Clamp a requested lifetime to (0, 3600]. Missing → 900. */
 export function resolveTtlSeconds(requested: number | string | undefined): number {
   if (requested === undefined || requested === "") return TOKEN_EXCHANGE_DEFAULT_TTL_SECONDS;
   const n = typeof requested === "number" ? requested : Number(requested);
@@ -97,7 +67,6 @@ export interface KeyGrants {
 
 export interface NarrowedGrants {
   scopes: string[];
-  /** Present only when the request narrowed the workflows. */
   allowed_workflows?: string[];
 }
 
@@ -105,12 +74,6 @@ function keyCoversScope(keyScopes: string[], scope: string): boolean {
   return keyScopes.includes("*") || keyScopes.includes(scope);
 }
 
-/**
- * Narrow the key's grants to what the request asked for. Plain entries must
- * be scopes the key holds (`*` on the key covers everything); `workflow:<id>`
- * entries must be workflows the key may run. Anything wider → invalid_scope.
- * An empty request inherits the key's scopes unchanged.
- */
 export function narrowGrants(requested: string[], key: KeyGrants): NarrowedGrants {
   if (requested.length === 0) return { scopes: key.scopes };
   const scopes: string[] = [];
@@ -154,7 +117,6 @@ export interface TokenExchangeRequest {
   scope?: string | undefined;
   ttl?: number | string | undefined;
   requestSource: RequestSource;
-  /** Origin request, for failed-attempt tracking; absent on the host CLI. */
   req?: Request | null;
 }
 
@@ -166,7 +128,6 @@ export interface TokenExchangeResponse {
   scope: string;
 }
 
-/** Mint a short-lived token for an API key. Throws `TokenExchangeError`. */
 export async function exchangeApiKeyForToken(
   input: TokenExchangeRequest,
 ): Promise<TokenExchangeResponse> {
@@ -182,8 +143,6 @@ export async function exchangeApiKeyForToken(
   const db = input.db ?? getDb();
   const row = await matchApiKeyRow(db, input.subjectToken, input.req ?? null, PROVIDER);
   if (!row) throw new TokenExchangeError("invalid_grant", "api key not accepted");
-  // Same state + owner checks as a direct key use — a revoked, expired or
-  // rotated-out key cannot be exchanged, and a disabled owner cannot either.
   const principal = await resolvePrincipalFromApiKeyRow(db, row, { provider: PROVIDER });
   if (!principal) throw new TokenExchangeError("invalid_grant", "api key not accepted");
 
@@ -240,7 +199,6 @@ export async function exchangeApiKeyForToken(
   };
 }
 
-/** Cheap pre-check so foreign JWTs never reach the verifier. */
 export function looksLikeExchangedToken(token: string): boolean {
   const firstDot = token.indexOf(".");
   if (firstDot <= 0 || token.indexOf(".", firstDot + 1) < 0) return false;
@@ -279,11 +237,6 @@ function intersectAllowList(current: AllowList | undefined, narrowed: string[]):
   return narrowed.filter((id) => current.includes(id));
 }
 
-/**
- * Apply the token's narrowing on top of the key's CURRENT grants. The key
- * row is authoritative — a scope removed from the key after minting is gone
- * from the token too.
- */
 export function applyTokenGrants(
   principal: ResolvedPrincipal,
   claims: ExchangedTokenClaims,
@@ -305,7 +258,6 @@ export interface TokenExchangeProviderOptions {
   db?: Db;
 }
 
-/** Auth provider for exchanged tokens. Register ahead of `api_key`. */
 export function createTokenExchangeProvider(opts: TokenExchangeProviderOptions = {}): AuthProvider {
   return {
     name: PROVIDER,

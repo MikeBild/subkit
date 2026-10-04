@@ -1,12 +1,3 @@
-// Focused unit coverage for the external MCP CLIENT subsystem.
-//
-// These are pure, DB-free assertions over the validation + manifest
-// surface. The full integration suite (live handshake, drift, audit
-// rows, tenant isolation against a real Db) is owned by the
-// test-generator agent; this file pins the deterministic invariants the
-// loop + route layers depend on and proves all three modules import and
-// type-check together.
-
 import { describe, expect, test } from "bun:test";
 import { EgressBlockedError } from "../../connectors/egress-guard.ts";
 import { __mcpClientInternalsForTests, type RemoteToolDescriptor } from "./pool.ts";
@@ -27,15 +18,11 @@ describe("registry.parseAuthConfig", () => {
   });
 
   test("bearer parses with no inline secret (secret lives in credentials)", () => {
-    // The secret is stored by reference in the credentials table keyed by
-    // mcp_server_id — auth_config carries ONLY the kind for bearer.
     const cfg = parseAuthConfig({ kind: "bearer" });
     expect(cfg.kind).toBe("bearer");
   });
 
   test("a leaked secret key in auth_config is rejected (.strict)", () => {
-    // No secret key may ride on auth_config — `.strict()` rejects unknown
-    // keys so a leaked token never reaches the row.
     expect(() => parseAuthConfig({ kind: "bearer", token: "shhh" })).toThrow();
     expect(() => parseAuthConfig({ kind: "bearer", token_ref: "x" })).toThrow();
   });
@@ -69,8 +56,6 @@ describe("pool.hashManifest determinism", () => {
   });
 
   test("hash is order-independent within a tool object's keys but order-sensitive across tools", () => {
-    // Canonical JSON sorts object keys, so re-ordering inputSchema keys
-    // must not change the hash.
     const aReordered: RemoteToolDescriptor = {
       inputSchema: { properties: { q: { type: "string" } }, type: "object" },
       description: "search docs",
@@ -97,7 +82,6 @@ describe("pool.capManifest token budget", () => {
   });
 
   test("over-cap manifest drops heaviest tools and stays under the cap", () => {
-    // One huge tool plus a few small ones; the heavy one must be dropped.
     const heavy: RemoteToolDescriptor = {
       name: "heavy",
       description: "x".repeat(PER_SERVER_MANIFEST_BYTE_CAP + 1000),
@@ -115,9 +99,6 @@ describe("pool.capManifest token budget", () => {
   });
 
   test("a single tool larger than the cap is still kept (never empty)", () => {
-    // Pre-fix this produced an EMPTY manifest, making the server vanish
-    // from the palette with no signal. The smallest tool must survive even
-    // when it alone exceeds the cap.
     const onlyTool: RemoteToolDescriptor = {
       name: "oversized",
       description: "y".repeat(PER_SERVER_MANIFEST_BYTE_CAP + 5000),
@@ -129,18 +110,14 @@ describe("pool.capManifest token budget", () => {
   });
 
   test("keeps the most (lightest) tools that fit when all are over the aggregate cap", () => {
-    // Several medium tools whose sum exceeds the cap: the lightest subset
-    // that fits is kept, heaviest dropped — matching the comment contract.
     const tools: RemoteToolDescriptor[] = Array.from({ length: 6 }, (_, i) => ({
       name: `t_${i}`,
-      // Ascending sizes so the heaviest (highest index) are dropped first.
       description: "z".repeat(6000 + i * 1000),
       inputSchema: { type: "object" },
     }));
     const capped = capManifest("tenant", "ns", "srv", tools);
     expect(capped.length).toBeGreaterThan(0);
     expect(JSON.stringify(capped).length).toBeLessThanOrEqual(PER_SERVER_MANIFEST_BYTE_CAP);
-    // The lightest tool (t_0) is always retained; the heaviest (t_5) dropped.
     expect(capped.some((t) => t.name === "t_0")).toBe(true);
     expect(capped.some((t) => t.name === "t_5")).toBe(false);
   });
@@ -180,11 +157,6 @@ describe("registry.classifyMcpHandshakeFailure", () => {
   const endpoint = "https://remote.example.test/mcp";
 
   test("nothing the remote wrote survives into the verdict", () => {
-    // The dominant shape: the SDK reports a refused handshake as
-    // `Error POSTing to endpoint: <raw response body>`, so the server we
-    // just failed to authenticate against decides what that string says —
-    // and an OAuth error body routinely echoes the token it rejected. The
-    // engine reads the status out of it and writes its own sentence.
     const fault = classifyMcpHandshakeFailure(
       'Error POSTing to endpoint (HTTP 401): {"error":"invalid_token","error_description":"Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk is expired"}',
       endpoint,
@@ -192,15 +164,12 @@ describe("registry.classifyMcpHandshakeFailure", () => {
     expect(fault.error_code).toBe("auth_rejected");
     expect(fault.reason).not.toContain("eyJhbGciOiJIUzI1NiJ9");
     expect(fault.reason).not.toContain("invalid_token");
-    // What survives is engine-authored and still names what failed.
     expect(fault.reason).toContain("remote.example.test");
     expect(fault.reason).toContain("credential");
     expect(fault.reason).toContain("401");
   });
 
   test("a credential inlined in the configured endpoint never reaches the sentence", () => {
-    // `base_url` is operator-authored, but an operator who pasted a URL
-    // with userinfo would otherwise publish it in a column the API serves.
     const fault = classifyMcpHandshakeFailure(
       "connect ECONNREFUSED",
       "https://svc:hunter2@remote.example.test/mcp",
@@ -217,8 +186,6 @@ describe("registry.classifyMcpHandshakeFailure", () => {
     expect(codeFor("Error POSTing to endpoint (HTTP 404): not found")).toBe("resource_not_found");
     expect(codeFor("Error POSTing to endpoint (HTTP 410): gone")).toBe("resource_not_found");
     expect(codeFor("Error POSTing to endpoint (HTTP 503): unavailable")).toBe("vendor_degraded");
-    // The engine's own collapse of the SDK's UnauthorizedError — the one
-    // message on this path the engine authored, so it may be read.
     expect(codeFor(UNAUTHORIZED_HANDSHAKE_MESSAGE)).toBe("auth_rejected");
   });
 
@@ -229,7 +196,6 @@ describe("registry.classifyMcpHandshakeFailure", () => {
     );
     expect(fault.error_code).toBe("mcp_handshake_failed");
     expect(fault.reason).toContain("did not complete");
-    // The operator is pointed at where the upstream text actually lives.
     expect(fault.reason).toContain("log");
   });
 
@@ -239,9 +205,6 @@ describe("registry.classifyMcpHandshakeFailure", () => {
   });
 
   test("the engine's OWN refusal is carried verbatim — it is the diagnosis", () => {
-    // Authorship, not prose, decides what survives. A missing credential or
-    // an unset config leaf is the engine talking, and flattening it into the
-    // generic sentence would delete the only text that says WHICH one to fix.
     const missing = classifyMcpHandshakeFailure(
       new McpPreflightError(
         "credential_missing",
@@ -278,7 +241,6 @@ describe("registry.classifyMcpHandshakeFailure", () => {
       new McpPreflightError("credential_invalid", "y".repeat(5_000)),
       endpoint,
     );
-    // 300 characters plus the truncation ellipsis, as everywhere else here.
     expect(fault.reason.length).toBeLessThanOrEqual(301);
   });
 });

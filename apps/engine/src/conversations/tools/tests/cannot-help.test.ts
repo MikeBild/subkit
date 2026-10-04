@@ -1,8 +1,3 @@
-// Unit tests for the cannot_help abstention tool. Cover schema
-// enforcement, the returned shape consumed by the loop, and the
-// optional-field round-trip behaviour the capability-gap analytics
-// will read.
-
 import { describe, expect, it } from "bun:test";
 import { cannotHelpTool } from "../cannot-help.ts";
 import type { ToolContext } from "../index.ts";
@@ -50,13 +45,6 @@ describe("cannot_help", () => {
   });
 
   it("rejects unknown fields outright (sealSchema applied at registration)", async () => {
-    // sealSchema (deliverable D4) toggles every conversation-tool input
-    // schema to `.strict()` — extra keys are no longer silently dropped,
-    // they fail the parse. Note: cannotHelpTool.execute() uses the
-    // module-level inputSchema reference (still .passthrough by default
-    // because .execute() bypasses the registry); the strict flavour is
-    // what the LLM SDK enforces via the wrapped tool. This test
-    // documents that distinction explicitly.
     const sealedFromRegistry = (await import("../index.ts")).getTool("cannot_help")!.inputSchema;
     expect(sealedFromRegistry.safeParse({ reason: "ok", not_a_real_field: "x" }).success).toBe(
       false,

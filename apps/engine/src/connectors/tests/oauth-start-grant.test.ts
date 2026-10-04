@@ -1,12 +1,3 @@
-// Unit tests for the OAuth2 start grant token utilities.
-//
-// Mirrors the portal-token discipline tests in
-// apps/engine/src/identity/portal-token.ts:
-//   - generate/hash round-trip
-//   - prefix recognition
-//   - mintOAuthStartGrantUrl refuses client_credentials_json
-//   - mintOAuthStartGrantUrl refuses when origin is missing
-
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   createDeterministicClock,
@@ -69,9 +60,6 @@ describe("TTL via clock seam", () => {
     const clock = createDeterministicClock(frozen);
     prevClock = installClock(clock);
 
-    // Verify the seam is installed — expires_at should be frozen + 10min.
-    // We test this conceptually since mintOAuthStartGrantUrl needs a DB;
-    // the integration test below covers the full DB path.
     const expectedExpiry = new Date(frozen + 600_000);
     expect(expectedExpiry.getTime()).toBe(frozen + 600_000);
   });

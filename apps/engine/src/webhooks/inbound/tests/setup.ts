@@ -1,11 +1,3 @@
-// Shared test scaffolding for inbound webhook tests.
-//
-// Each test file uses `createInboundCtx()` to get:
-//   * a disposable database
-//   * seeded tenant + workflow
-//   * a ready-to-use `createInbound()` helper that returns the row
-//     plus the plaintext secret used for signing requests.
-
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../../../db/client.ts";

@@ -1,12 +1,3 @@
-// Content-parts adapter — reconstructs a parts-based `UIMessage` shape
-// from the flat `ConversationMessageRecord.content` JSONB plus the
-// conversation's tool calls. Mirrors Vercel AI SDK UI's `UIMessage`.
-//
-// The engine still persists `content: unknown`; this adapter is the
-// read-side projection consumed by `messages` on the detail
-// endpoint. Once CLIs consume `messages` exclusively a later PR can
-// physically migrate rows.
-
 import type { ConversationReference } from "./references.ts";
 import type {
   ContentPart,
@@ -15,12 +6,6 @@ import type {
   UIMessage,
 } from "./types.ts";
 
-/**
- * Project a single persisted message into its parts array. Tool calls
- * associated with the message via position are inlined as
- * `tool_call` + `tool_result` parts so the client can render the
- * call + result inline without a separate list.
- */
 export function toMessageParts(
   message: ConversationMessageRecord,
   toolCalls: ConversationToolCallRecord[],
@@ -28,8 +13,6 @@ export function toMessageParts(
   const parts: ContentPart[] = [];
   const text = extractText(message.content);
   if (text !== null && text.length > 0) {
-    // A user turn carries its @-mentions next to the text so the client
-    // can render chips after a reload; the engine wrote them at ingest.
     const refs = extractReferences(message.content);
     parts.push({
       type: "text",
@@ -70,12 +53,6 @@ export function toMessageParts(
   };
 }
 
-/**
- * Project every persisted message in a conversation. Tool calls are
- * attached to assistant messages via explicit `parent_message_id`.
- * Unanchored legacy rows are ignored here and remain available only on
- * the raw `tool_calls` detail surface.
- */
 export function buildMessages(
   messages: ConversationMessageRecord[],
   toolCalls: ConversationToolCallRecord[],
@@ -84,12 +61,6 @@ export function buildMessages(
   return messages.map((m) => toMessageParts(m, assistantToolCalls.get(m.id) ?? []));
 }
 
-/**
- * Walk the messages and group tool calls under their parent assistant
- * message. Only explicit anchors are considered. Unanchored rows stay
- * visible through the raw detail endpoint rather than being guessed
- * into `messages`.
- */
 function groupToolCallsByAssistantTurn(
   messages: ConversationMessageRecord[],
   toolCalls: ConversationToolCallRecord[],
@@ -102,20 +73,12 @@ function groupToolCallsByAssistantTurn(
     list.push(tc);
     out.set(tc.parent_message_id as string, list);
   }
-  // Stable order within each bucket so the renderer sees children in
-  // the same chronological order they were created.
   for (const list of out.values()) {
     list.sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
   return out;
 }
 
-/**
- * True when a persisted message content carries non-empty prose. The stream
- * replay uses this to mirror the live loop's `lastAssistantText` gate: a
- * terminal citations frame is emitted only for a turn that produced an actual
- * answer, not one that ended tool-only or was cancelled mid-flight.
- */
 export function messageHasText(content: unknown): boolean {
   const text = extractText(content);
   return text !== null && text.length > 0;

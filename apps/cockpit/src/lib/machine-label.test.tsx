@@ -1,7 +1,3 @@
-// A setting's description is the engine's English wording. On the German
-// screen it read as the Cockpit's own sentence in the wrong language; it is
-// now marked as the engine's words, in `lang="en"`, and never translated.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -39,10 +35,6 @@ describe("the engine's wording", () => {
   });
 
   test("the settings page does not render the engine's description at all", () => {
-    // A bare `{item.meta.description}` child was the English sentence posing
-    // as the Cockpit's own; then it stood marked, inside every row's
-    // "Technische Angaben". Each row has its own help sentence in the
-    // reader's language, so the English repeat is gone from the page.
     const source = readFileSync(resolve(import.meta.dir, "../pages/settings.tsx"), "utf8");
     expect(source).not.toContain("meta.description");
   });

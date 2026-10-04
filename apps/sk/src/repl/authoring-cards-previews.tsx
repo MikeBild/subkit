@@ -1,10 +1,3 @@
-// Endpoint-check and dry-run preview cards. ConnectorProbeCard renders
-// probe_connector / probe_connector_draft results (incl. the scrubbed
-// upstream failure preview); StepPreviewCard renders dry_run_step /
-// dry_run_workflow envelopes — per-step trace, held writes, judge
-// verdict, and the last-step output preview. Extracted verbatim from
-// authoring-cards.tsx, which keeps the renderAuthoringCard dispatch.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { memo } from "react";
@@ -22,11 +15,6 @@ export const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   const tone = statusTone(call);
   const d = unwrapData(call);
   const probe = asRecord(d?.latest_probe);
-  // Hide unresolved method/path placeholders instead of rendering
-  // "(method)" / "(path)" literally — those strings leaked into the
-  // sk-cli chat view when the tool result was missing the probe
-  // object. Better to show a compact card than an honest-looking line
-  // with fake values.
   const method = typeof probe?.method === "string" ? probe.method : null;
   const path = typeof probe?.path === "string" ? probe.path : null;
   const env = typeof probe?.environment === "string" ? probe.environment : "dev";
@@ -34,10 +22,6 @@ export const ConnectorProbeCard: React.FC<CardProps> = memo(({ call }) => {
   const duration = typeof probe?.duration_ms === "number" ? `${probe.duration_ms}ms` : null;
   const summary = typeof probe?.summary === "string" ? probe.summary : "";
   const request = [method, path].filter((x): x is string => !!x).join(" ");
-  // On failure surface the upstream's own words — the engine ships
-  // a scrubbed `response_preview` body snippet plus allowlisted
-  // diagnostic `response_headers` (www-authenticate, x-*-loginreason,
-  // …) on the probe summary. Pre-fix the card stopped at "HTTP 403".
   const failed = probe?.ok === false;
   const rawPreview = typeof probe?.response_preview === "string" ? probe.response_preview : "";
   const preview = rawPreview.length > 200 ? `${rawPreview.slice(0, 200)}…` : rawPreview;
@@ -100,34 +84,17 @@ export const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
   const duration = typeof d?.duration_ms === "number" ? `${d.duration_ms}ms` : null;
   const summary = typeof d?.summary === "string" ? d.summary : "";
   const kind = call.name === "dry_run_workflow" ? "workflow" : `step ${stepId}`;
-  // Prefer the explicit per-step preview the engine returns; fall back
-  // to a generic output field. A successful preview that produced []
-  // (e.g. a loop body that never iterated) renders the literal "[]" so
-  // the operator can see it WITHOUT having to ask "display results".
-  // `step_trace` is the canonical per-step array on the dry_run_workflow
-  // envelope (both the blocked and the auto-committed shapes); `steps`
-  // is the older key some tools still emit. Read both.
   const stepPreviews = Array.isArray(d?.steps)
     ? (d?.steps as unknown[])
     : Array.isArray(d?.step_trace)
       ? (d?.step_trace as unknown[])
       : null;
-  // Instruction-grounded preview judge (dry_run_workflow). `passes`
-  // renders one quiet line, `skipped` renders nothing, partial/failed
-  // render a prominent block — the verdict is WHY the preview did not
-  // auto-commit, so hiding it would leave the operator staring at an
-  // unexplained needs_repair.
   const judge = asRecord(d?.judge);
   const judgeVerdict = typeof judge?.verdict === "string" ? judge.verdict : null;
   const judgeReason = typeof judge?.reason === "string" ? judge.reason : null;
   const judgeMissing = Array.isArray(judge?.missing)
     ? judge.missing.filter((m): m is string => typeof m === "string")
     : [];
-  // step_outputs[] is the per-step preview array dry_run_workflow
-  // emits. When present we surface the LAST step's preview as
-  // the "what did the workflow produce" line — without it the dry-run
-  // card stops at the summary and the user has to ask the LLM to
-  // show the data (session 86de186b).
   const stepOutputs = Array.isArray(d?.step_outputs) ? (d?.step_outputs as unknown[]) : null;
   const lastStepFromOutputs =
     stepOutputs && stepOutputs.length > 0 ? asRecord(stepOutputs[stepOutputs.length - 1]) : null;
@@ -180,10 +147,6 @@ export const StepPreviewCard: React.FC<CardProps> = memo(({ call }) => {
             const sStatus = typeof r?.status === "string" ? r.status : "?";
             const sKind = typeof r?.kind === "string" ? r.kind : "";
             const sDur = typeof r?.duration_ms === "number" ? `${r.duration_ms}ms` : "";
-            // Hold-writes preview: the step was resolved but NOT
-            // dispatched. It must never read as a normal green step —
-            // the materialized request (method, URL, body) is the
-            // operator's review artifact, so it gets its own block.
             if (r?.held === true) {
               const hr = asRecord(r?.held_request);
               const hMethod = typeof hr?.method === "string" ? hr.method : "";

@@ -1,11 +1,3 @@
-// `warnings_banner` on dry_run_workflow + run_workflow envelopes.
-// Promotes the warnings list to a top-level summary so the LLM sees
-// `count + codes + entries` immediately on result.data, instead of
-// scrolling past `step_trace` to find them. Pre-fix the LLM in
-// session ebd66982 read the trace top-down, missed the
-// `loop_over_unresolved` warnings on three consecutive dry-runs,
-// and burned the step budget guessing path variants.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -46,14 +38,6 @@ function makeCtx(getDraft: () => DraftDocument): ToolContext {
 
 describe("dry_run_workflow · warnings_banner", () => {
   test("loop_over_unresolved produces a top-level warnings_banner", async () => {
-    // Reproduce session ebd66982: an upstream step succeeds, a
-    // loop reads `$scope.<existing>.data.<bad_field>` (the path
-    // refers to a real step but the field doesn't exist), the
-    // engine emits a `loop_over_unresolved` warning at runtime.
-    // (Authoring-time `validateStepReferences` only catches an
-    // unknown step id; an unknown sub-field is the runtime case.)
-    // Pre-fix the warning landed nested inside `data.warnings`.
-    // Post-fix the banner surfaces at the top of `result.data`.
     const draft: DraftDocument = {
       workflow: {
         name: "warnings-banner-loop",
@@ -68,7 +52,6 @@ describe("dry_run_workflow · warnings_banner", () => {
           {
             id: "iter",
             kind: "loop",
-            // shape.data is `{ok: true}` — `bad_field` is undefined.
             over: "$scope.shape.data.bad_field",
             body: ["body"],
           },
@@ -99,7 +82,6 @@ describe("dry_run_workflow · warnings_banner", () => {
     expect(data.warnings_banner!.count).toBeGreaterThan(0);
     expect(data.warnings_banner!.codes).toContain("loop_over_unresolved");
     expect(data.warnings_banner!.summary).toContain("loop_over_unresolved");
-    // The nested `warnings` list carries the full detail.
     expect(data.warnings).toBeDefined();
   });
 
@@ -129,9 +111,6 @@ describe("dry_run_workflow · warnings_banner", () => {
   });
 
   test("warnings_banner.codes is sorted + deduped", async () => {
-    // Single loop step with a missing-FIELD reference (shape.data.bad
-    // is undefined at runtime) produces ONE warning code,
-    // regardless of how many times it surfaces.
     const draft: DraftDocument = {
       workflow: {
         name: "warnings-banner-dedup",

@@ -1,15 +1,3 @@
-// Knowledge-seed loader tests.
-//
-// Coverage:
-//   - frontmatter parsing: happy path, missing keys, bad scope, bad yaml
-//   - loadEmbeddedKnowledgeSeeds: all 6 files parse, scope = global, slugs present
-//   - content-hash drift detection: second apply of unchanged seed is a no-op
-//   - apply creates rows with correct shape
-//   - body change → UPDATE with rotated version fingerprint
-//   - per-tenant isolation: two tenants each get their own rows
-//   - FTS search: embedded sk-platform-reference content is findable after apply
-//   - 5 new seed skills: intent_keyword activates_when, kebab slugs, no dotted MCP names
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { knowledgeSources, tenants } from "../../db/schema/index.ts";
@@ -24,13 +12,7 @@ import {
 } from "../seed.ts";
 import { searchKnowledge } from "../service.ts";
 
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip DB tests in
-// environments without a live Postgres.
 const skip = process.env.REQUIRES_PG === "0";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function validKnowledgeMd(opts: {
   slug: string;
@@ -60,10 +42,6 @@ function src(name: string, content: string): SeedSource {
   return { file: `${name}.md`, content };
 }
 
-// ---------------------------------------------------------------------------
-// DB setup — shared across DB-backed describe blocks
-// ---------------------------------------------------------------------------
-
 let dbCtx: TestDb;
 let tenantA: string;
 let tenantB: string;
@@ -87,10 +65,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!skip && dbCtx?.cleanup) await dbCtx.cleanup();
 }, 30_000);
-
-// ---------------------------------------------------------------------------
-// Pure — loadEmbeddedKnowledgeSeeds()
-// ---------------------------------------------------------------------------
 
 describe("loadEmbeddedKnowledgeSeeds — all 7 embedded files", () => {
   test("parses all 7 files with 0 errors", () => {
@@ -130,16 +104,10 @@ describe("loadEmbeddedKnowledgeSeeds — all 7 embedded files", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const cli = r.knowledge.find((k) => k.slug === "sk-ref-cli");
     expect(cli).toBeDefined();
-    // P1: the real install path is the engine-served `/install` one-liner —
-    // it must be present so retrieval grounds the bot on the working answer.
     expect(cli!.body).toContain("/install");
     expect(cli!.body).toContain("curl -fsSL <engine-url>/install | bash");
     expect(cli!.body).toContain("~/.subkit/bin");
-    // The hallucinated npm package must never appear in retrievable knowledge,
-    // even as a negation — the seed content must not re-introduce the string.
     expect(cli!.body).not.toContain("@subkit/cli");
-    // The GitHub repo is private, so a raw.githubusercontent / releases link is
-    // a dead end for users. The seed must not offer one as an install source.
     expect(cli!.body).not.toContain("raw.githubusercontent.com");
     expect(cli!.body).not.toContain("github.com");
   });
@@ -155,10 +123,6 @@ describe("loadEmbeddedKnowledgeSeeds — all 7 embedded files", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Pure — loadKnowledgeSeedsFromContent() happy path
-// ---------------------------------------------------------------------------
 
 describe("loadKnowledgeSeedsFromContent — happy path", () => {
   test("parses a valid entry and extracts all frontmatter fields", () => {
@@ -218,10 +182,6 @@ describe("loadKnowledgeSeedsFromContent — happy path", () => {
     expect(r.knowledge[0]!.tags).toEqual(["alpha", "beta", "gamma"]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Pure — loadKnowledgeSeedsFromContent() error paths
-// ---------------------------------------------------------------------------
 
 describe("loadKnowledgeSeedsFromContent — error paths", () => {
   test("missing frontmatter reports missing_frontmatter", () => {
@@ -331,10 +291,6 @@ describe("loadKnowledgeSeedsFromContent — error paths", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Pure — 5 new seed skills (skill parser contract)
-// ---------------------------------------------------------------------------
-
 const NEW_SKILL_SLUGS = [
   "webhooks-and-triggers",
   "engine-rest-api",
@@ -372,27 +328,20 @@ describe("5 new seed skills — skill parser contract", () => {
 
   test("every new skill slug is kebab-case (lowercase, hyphens only — no uppercase or dots)", () => {
     for (const slug of NEW_SKILL_SLUGS) {
-      // Slug must consist of lowercase letters, digits, and hyphens only.
       expect(slug).toMatch(/^[a-z0-9-]+$/);
     }
   });
 
   test("no new skill has dotted MCP tool names in gates_tools or activates_when tool entries", () => {
-    // MCP tool names must match ^[a-zA-Z0-9_-]{1,64}$ — dots are rejected by
-    // Anthropic/claude.ai.  Check the parsed structured fields, not prose, so
-    // legitimate property-access notation in examples (e.g. `result.data`) is
-    // not incorrectly flagged.
     const r = loadEmbeddedSkillSeeds();
     const bySlug = new Map(r.skills.map((s) => [s.slug, s]));
     for (const slug of NEW_SKILL_SLUGS) {
       const skill = bySlug.get(slug)!;
 
-      // gates_tools must not contain dots
       for (const toolName of skill.gates_tools) {
         expect(toolName).not.toContain(".");
       }
 
-      // activates_when entries of kind "tool" must not have dots in the tool field
       for (const activation of skill.activates_when) {
         if (activation.kind === "tool") {
           expect(activation.tool).not.toContain(".");
@@ -401,10 +350,6 @@ describe("5 new seed skills — skill parser contract", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// DB — applyKnowledgeSeeds upsert semantics
-// ---------------------------------------------------------------------------
 
 describe.skipIf(skip)("applyKnowledgeSeeds — DB upsert semantics", () => {
   test("inserts rows on first apply; second apply of same body is all unchanged", async () => {
@@ -420,13 +365,11 @@ describe.skipIf(skip)("applyKnowledgeSeeds — DB upsert semantics", () => {
     expect(first.unchanged).toBe(0);
     expect(first.tenant_id).toBe(tenantA);
 
-    // Second apply with identical bodies → all unchanged, no duplicate rows
     const second = await applyKnowledgeSeeds(loaded.knowledge, tenantA, dbCtx.db);
     expect(second.inserted).toBe(0);
     expect(second.updated).toBe(0);
     expect(second.unchanged).toBe(2);
 
-    // Verify exactly 2 rows exist for this tenant (no duplicates)
     const rows = await dbCtx.db
       .select()
       .from(knowledgeSources)
@@ -472,14 +415,9 @@ describe.skipIf(skip)("applyKnowledgeSeeds — DB upsert semantics", () => {
       .from(knowledgeSources)
       .where(and(eq(knowledgeSources.tenant_id, tenantB), eq(knowledgeSources.slug, "ks-evolve")));
     expect(row2).toBeDefined();
-    // Version fingerprint must have rotated to reflect the new content
     expect(row2!.version).not.toBe(versionBefore);
   });
 });
-
-// ---------------------------------------------------------------------------
-// DB — applyKnowledgeSeedsForAllTenants per-tenant fanout
-// ---------------------------------------------------------------------------
 
 describe.skipIf(skip)("applyKnowledgeSeedsForAllTenants — per-tenant fanout", () => {
   test("each of 2 tenants gets its own row per slug; rows are tenant-isolated", async () => {
@@ -489,13 +427,11 @@ describe.skipIf(skip)("applyKnowledgeSeedsForAllTenants — per-tenant fanout", 
     const seeds = loaded.knowledge;
     const outcomes = await applyKnowledgeSeedsForAllTenants(seeds, dbCtx.db);
 
-    // Both tenants must appear in the outcomes
     const outcomeA = outcomes.find((o) => o.tenant_id === tenantA);
     const outcomeB = outcomes.find((o) => o.tenant_id === tenantB);
     expect(outcomeA).toBeDefined();
     expect(outcomeB).toBeDefined();
 
-    // Each tenant gets its own row
     const rowsA = await dbCtx.db
       .select()
       .from(knowledgeSources)
@@ -511,7 +447,6 @@ describe.skipIf(skip)("applyKnowledgeSeedsForAllTenants — per-tenant fanout", 
     expect(rowsA.length).toBe(1);
     expect(rowsB.length).toBe(1);
 
-    // Rows belong to the correct tenant
     expect(rowsA[0]!.tenant_id).toBe(tenantA);
     expect(rowsB[0]!.tenant_id).toBe(tenantB);
   });
@@ -525,10 +460,8 @@ describe.skipIf(skip)("applyKnowledgeSeedsForAllTenants — per-tenant fanout", 
     ]);
     const seeds = loaded.knowledge;
 
-    // First apply to seed both tenants
     await applyKnowledgeSeedsForAllTenants(seeds, dbCtx.db);
 
-    // Second apply must report 0 inserted, 0 updated for every tenant
     const second = await applyKnowledgeSeedsForAllTenants(seeds, dbCtx.db);
     for (const o of second) {
       expect(o.inserted).toBe(0);
@@ -538,17 +471,11 @@ describe.skipIf(skip)("applyKnowledgeSeedsForAllTenants — per-tenant fanout", 
   });
 });
 
-// ---------------------------------------------------------------------------
-// DB — searchKnowledge with seeded sk-platform-reference content
-// ---------------------------------------------------------------------------
-
 describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference content", () => {
   let searchTenantId: string;
 
   beforeAll(async () => {
     if (skip) return;
-    // Create a dedicated tenant for the FTS tests so the embedded seeds land
-    // in an isolated namespace that other describe blocks don't touch.
     const [t] = await dbCtx.db
       .insert(tenants)
       .values({ slug: "t-kseed-fts", display_name: "Knowledge Seed FTS" })
@@ -556,13 +483,9 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
     if (!t) throw new Error("fts tenant failed");
     searchTenantId = t.id;
 
-    // Apply all embedded knowledge seeds to this tenant
     const { knowledge } = loadEmbeddedKnowledgeSeeds();
     const outcome = await applyKnowledgeSeeds(knowledge, searchTenantId, dbCtx.db);
-    // All 7 seeds must have been inserted (this is a fresh tenant)
     expect(outcome.inserted).toBe(7);
-    // Embedded model assets make this perform real WASM inference for all
-    // seven seeds. Use the shared database setup budget, as other suites do.
   }, TEST_DB_HOOK_TIMEOUT);
 
   test("'login' returns at least one hit (sk-ref-cli covers sk login command)", async () => {
@@ -588,9 +511,7 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
   test("all FTS hits belong to the seeded tenant (not another tenant)", async () => {
     const hits = await searchKnowledge({ tenant_id: searchTenantId, query: "webhook" }, dbCtx.db);
     expect(hits.length).toBeGreaterThan(0);
-    // Every hit must come from a knowledge source owned by searchTenantId
     for (const hit of hits) {
-      // The hit's knowledge_source_id must reference a row belonging to searchTenantId
       const [row] = await dbCtx.db
         .select()
         .from(knowledgeSources)
@@ -601,14 +522,10 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
   });
 
   test("wrong tenant ID returns no FTS hits from the seed tenant (isolation)", async () => {
-    // tenantA has no knowledge sources with the same seed content applied to
-    // searchTenantId, so searching from tenantA for seed-specific terms
-    // must return no cross-tenant hits.
     const wrongTenantHits = await searchKnowledge(
       { tenant_id: tenantA, query: "signature verification webhook" },
       dbCtx.db,
     );
-    // All returned hits (if any) must NOT come from searchTenantId's sources
     for (const hit of wrongTenantHits) {
       const [row] = await dbCtx.db
         .select()
@@ -624,8 +541,6 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
 describe("seed sweep never overwrites a non-seed source occupying a seed slug", () => {
   test("user bundle under a seed slug survives applyKnowledgeSeeds untouched", async () => {
     const { upsertKnowledgeBundle } = await import("../bundle-service.ts");
-    // A user bundle occupies the slug BEFORE the sweep (the delete-a-seed →
-    // import-your-own scenario the partial unique index newly permits).
     const userBundle = await upsertKnowledgeBundle(
       {
         tenant_id: tenantA,

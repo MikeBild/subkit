@@ -1,7 +1,3 @@
-// Public API barrel for the `connectors` subsystem. Routes and other
-// subsystems must import from this entry point only — see the
-// route_layering check at apps/engine/scripts/audit-invariants.ts.
-
 export * from "./categorize.ts";
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
@@ -25,11 +21,6 @@ export * from "./services/call-connector.ts";
 export * from "./sign-in.ts";
 export * from "./template-binding.ts";
 export * from "./template-credentials.ts";
-// `ConnectorTemplateSource` is the canonical zod-derived type in
-// `types.ts`; the duplicate `type` declaration in
-// `template-resolver.ts` is the same shape. Re-exporting only the
-// non-conflicting names avoids TS2308 from `export *` picking up
-// both.
 export {
   buildTemplateBindingFields,
   findTemplateAliasMatches,

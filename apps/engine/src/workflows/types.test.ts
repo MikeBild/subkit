@@ -1,15 +1,3 @@
-// Schema regression: `kind: "tool"` workflow steps must be rejected
-// at parse time, not silently accepted. The 4.2.0 retire removed the
-// `tool` discriminator branch from `StepSchema`; a future refactor
-// that re-adds the case (or accidentally widens the union) would
-// re-open the docker-sandbox attack surface this PR closed.
-//
-// Also covers the W3a-for_each schema:
-//   - `for_each` on baseStep accepts a JS selector string.
-//   - Transforms are JavaScript-only: `language: "jsonata"` is no longer a
-//     valid enum value and a transform declaring it fails `WorkflowDefSchema`.
-//   - `kind: "loop"` remains a valid step kind.
-
 import { describe, expect, test } from "bun:test";
 import { StepSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
@@ -26,10 +14,6 @@ describe("StepSchema — retired `tool` step is rejected", () => {
   });
 
   test("the discriminated union has exactly the supported kinds", () => {
-    // Fence accidental widening: a future PR that adds a new kind
-    // (or re-introduces `tool`) trips this assertion before the new
-    // branch can ship without a corresponding recipe + LLM prompt
-    // update.
     const options = (StepSchema as unknown as { options: ReadonlyArray<unknown> }).options;
     const kinds = options
       .map((o) => {
@@ -109,9 +93,6 @@ describe("baseStep.for_each — W3a schema", () => {
   });
 
   test("for_each coexists with data_selector (output projector) on the same step", () => {
-    // data_selector = JSONPath-lite output projector (applySelector in step-runner)
-    // for_each      = JS selector that returns the iteration array (runJs path)
-    // The two fields are distinct and must never shadow each other.
     const result = StepSchema.safeParse({
       id: "iter_and_project",
       kind: "request",
@@ -161,7 +142,6 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
       name: "drift",
       input_schema: {
         type: "object",
-        // essay_id is used in the URL but NOT declared here
         properties: { word_count: { type: "number" } },
       },
       steps: [BASE_REQUEST_STEP],
@@ -172,18 +152,13 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
   });
 
   test("allows a required key that no step references (wholesale $input / JS transforms)", () => {
-    // The drift check only flags referenced-but-undeclared keys. The reverse
-    // direction (declared required but unreferenced) is intentionally NOT an
-    // error: a step may read `$input` wholesale, or a JS transform may read
-    // `input.<key>` invisibly to the extractor, so flagging it false-positives
-    // on legitimate workflows (e.g. journey 48 charge-processor).
     const res = validateWorkflowDef({
       name: "unused-required",
       input_schema: {
         type: "object",
         properties: {
-          essay_id: { type: "string" }, // used via ${input.essay_id}
-          unused_key: { type: "string" }, // declared required but not referenced → allowed
+          essay_id: { type: "string" },
+          unused_key: { type: "string" },
         },
         required: ["unused_key"],
       },
@@ -200,9 +175,8 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
         type: "object",
         properties: {
           essay_id: { type: "string" },
-          optional_extra: { type: "string" }, // not required, not referenced → ok
+          optional_extra: { type: "string" },
         },
-        // no required array
       },
       steps: [BASE_REQUEST_STEP],
     });
@@ -217,7 +191,6 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
         type: "object",
         properties: {
           essay_id: { type: "string" },
-          // author_id is missing → error
         },
       },
       steps: [
@@ -235,15 +208,12 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
     expect(messages.some((m) => m.includes('"author_id"') && m.includes("not declared"))).toBe(
       true,
     );
-    // essay_id IS declared → should not appear as an error
     expect(messages.some((m) => m.includes('"essay_id"') && m.includes("not declared"))).toBe(
       false,
     );
   });
 
   test("skips drift check when input_schema has no properties key", () => {
-    // Freeform input_schema (no properties map) — synthesiser cannot reason
-    // about declared shape, so no drift check is possible.
     const res = validateWorkflowDef({
       name: "freeform",
       input_schema: { type: "object" },
@@ -256,10 +226,6 @@ describe("validateWorkflowDef — E4 input_schema drift", () => {
 
 describe("validateWorkflowDef — W3a retirement enforcement", () => {
   test("rejects language:'jsonata' transform step — jsonata is no longer a transform language", () => {
-    // The `jsonata` enum value was removed from TransformStep.language.
-    // Transforms are JavaScript-only, so a transform declaring
-    // `language: "jsonata"` fails WorkflowDefSchema at the enum, and
-    // validateWorkflowDef surfaces the parse error.
     const res = validateWorkflowDef({
       name: "jsonata-rejected",
       steps: [
@@ -307,10 +273,6 @@ describe("validateWorkflowDef — W3a retirement enforcement", () => {
   });
 
   test("accepts kind:'loop' — still valid at the validation layer for backwards compat", () => {
-    // `kind: "loop"` is not rejected at validateWorkflowDef. The loop
-    // step kind is supported via the Zod schema and the execution engine.
-    // `for_each` on baseStep is the NEW preferred form for inline iteration,
-    // but loop steps continue to work unchanged.
     const res = validateWorkflowDef({
       name: "loop-ok",
       steps: [

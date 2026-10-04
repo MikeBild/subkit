@@ -1,20 +1,3 @@
-// Unit tests for Phase-2 predictive-maintenance metric helpers.
-//
-// No DB or queue infrastructure — these drive the live metrics registry
-// directly, so the file is a plain unit test (`.test.ts`, not `.int.test.ts`):
-// the integration CI layer must not spin up compose just to run it.
-//
-// These tests use the live metrics registry (no DB required) to assert that
-// each instrumentation helper records the expected counter / gauge change when
-// driven by the four scenarios the plan specifies:
-//   1. transient DB retry
-//   2. DLQ insert (gauge set to non-zero)
-//   3. connector error (non-ok health label)
-//   4. LLM fallback invocation
-//
-// The registry is reset between tests via resetMetricsRegistryForTests() so
-// each case starts from zero.
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   _resetRssHighWaterForTests,
@@ -74,7 +57,7 @@ describe("DLQ depth gauge", () => {
 
   test("gauge is overwritten (not accumulated) on repeated sets", () => {
     setDlqJobCount("execution.dlq", 7);
-    setDlqJobCount("execution.dlq", 2); // jobs were re-queued or cleared
+    setDlqJobCount("execution.dlq", 2);
     const snap = getMetrics().snapshot();
     const entry = snap.find((s) => s.name === METRIC_NAMES.DLQ_JOB_COUNT);
     const sample = entry?.samples.find((s) => s.labels.queue === "execution.dlq");

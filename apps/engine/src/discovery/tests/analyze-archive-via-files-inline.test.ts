@@ -1,18 +1,3 @@
-// C20: Verify the discovery from-archive persistence contract.
-//
-// The route `POST /v1/discovery/runs/from-archive` persists the RAW
-// archive bytes through the shared inline-upload pipeline
-// (`persistInlineUpload` → canonical `files` row, binary-safe object
-// storage) and threads the resulting file id into `createDiscoveryRun`,
-// which links it to the run via
-// `file_links(resource_type='discovery_run', role='archive')` inside the
-// run-creation transaction. The extracted text path into
-// `discovery_files` is unchanged.
-//
-// This test exercises the service layer directly: persist a file, create
-// a run with `archive_file_id`, and assert the `files` + `file_links`
-// rows exist alongside the run.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -25,7 +10,6 @@ import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
 
-// Build a minimal valid zip in a temp dir.
 function _makeZip(entries: Record<string, string>): Buffer {
   const dir = mkdtempSync(join(tmpdir(), "c20-archive-test-"));
   try {
@@ -61,13 +45,9 @@ afterAll(async () => {
 
 describe.skipIf(skip)("C20 — from-archive persists the raw archive via files + file_links", () => {
   test("from-archive: archive_file_id yields a files row + discovery_run file_link", async () => {
-    // Exercise the service layer directly — the same sequence the HTTP
-    // handler runs — without standing up a full HTTP server.
     const { createDiscoveryRun } = await import("../service.ts");
     const { persistInlineUpload } = await import("../../files/persist-inline-upload.ts");
 
-    // Raw archive bytes are binary (contain null bytes) — they must land
-    // in the object store, never a TEXT column.
     const archiveBytes = Buffer.from("PK\x03\x04\x00\x01\x02-raw-archive-bytes", "binary");
     const persisted = await persistInlineUpload(ctx.db, {
       tenant_id: tenantId,
@@ -98,18 +78,15 @@ describe.skipIf(skip)("C20 — from-archive persists the raw archive via files +
     expect(run.file_count).toBe(2);
     expect(run.status).toBe("pending");
 
-    // Confirm the discovery_run row exists in DB.
     const runRows = await ctx.db.select().from(discoveryRuns).where(eq(discoveryRuns.id, run.id));
 
     expect(runRows).toHaveLength(1);
 
-    // The raw archive lands in the canonical `files` table.
     const fileRows = await ctx.db.select().from(files).where(eq(files.tenant_id, tenantId));
 
     expect(fileRows).toHaveLength(1);
     expect(fileRows[0]!.id).toBe(persisted.row.id);
 
-    // ... and is linked to the run as its archive.
     const linkRows = await ctx.db
       .select()
       .from(fileLinks)
@@ -133,7 +110,6 @@ describe.skipIf(skip)("C20 — from-archive persists the raw archive via files +
       ctx.db,
     );
 
-    // Query from the wrong tenant — must return nothing.
     const wrongTenantRows = await ctx.db
       .select()
       .from(discoveryRuns)

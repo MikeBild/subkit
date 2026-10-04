@@ -1,10 +1,3 @@
-// search_docs — semantic-search across a connector's ingested documentation chunks
-// (OpenAPI, GraphQL, HTML, Markdown, LLMs.txt, etc.). On-demand companion to
-// `search_knowledge` and `fetch_connector_docs`. Unlike the assembler's pre-push
-// docs step, this tool lets the authoring loop pull targeted chunks mid-turn
-// (e.g. "how do I create a customer in the Stripe API?") without blowing the
-// stable cache block with unrelated endpoints.
-
 import { z } from "@hono/zod-openapi";
 import { searchDocs } from "../../docs-ingestion/service.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

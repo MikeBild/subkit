@@ -1,6 +1,3 @@
-// Deterministic Google API Discovery parser. Discovery documents are JSON
-// descriptions used by Google APIs; they are not OpenAPI documents.
-
 import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 export type GoogleDiscoveryObject = Record<string, unknown>;

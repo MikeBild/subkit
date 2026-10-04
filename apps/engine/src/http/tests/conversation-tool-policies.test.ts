@@ -1,6 +1,3 @@
-// Bug RR regression: per-conversation tool-policy overrides via the
-// /v1/conversations/:id/tool-policies route.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
@@ -57,11 +54,9 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
   });
 
   test("PUT with null clears the override", async () => {
-    // Seed with a real policy first.
     await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
       policies: { run_workflow: "confirm_before_execution" },
     });
-    // Clear it.
     const cleared = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
       policies: { run_workflow: null },
     });
@@ -98,7 +93,6 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
   });
 
   test("PUT writes one tool_policy.changed audit row per tool with prior+new mode metadata", async () => {
-    // Seed a baseline so the next PUT records a non-null prior_mode.
     await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
       policies: { audit_probe: "no_confirm" },
     });
@@ -116,7 +110,6 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
       .limit(1);
     const baselineId = before[0]?.id ?? null;
 
-    // Real change: relax `audit_probe` from no_confirm → confirm_before_execution.
     const res = await api("PUT", `/v1/conversations/${conversation_id}/tool-policies`, {
       policies: { audit_probe: "confirm_before_execution" },
     });
@@ -147,30 +140,8 @@ describe("conversation tool-policies HTTP route (Bug RR)", () => {
   });
 });
 
-// NOTE on W2 from the 13th /review pass:
-// A negative-RBAC HTTP test (enduser role → 200 GET, 403 PUT) was
-// drafted but caused a deterministic 5s afterAll hang in this
-// test file (cause not localised — the test logic + assertions
-// run cleanly, the hang is purely in srv.cleanup() after all
-// tests complete). The route middleware enforcement (W1 from the
-// 10th /review pass) is unchanged in production; we already
-// cover the cross-tenant 404 case below. Negative-RBAC HTTP
-// coverage is tracked as follow-up; the AGENTS.md non-negotiable
-// is met via the in-process unit tests at
-// `apps/engine/src/conversations/tool-policies-tenant.test.ts`
-// which assert the wrong-tenant write contract on the service
-// layer.
-
 describe("conversation tool-policies HTTP route — cross-tenant isolation", () => {
   test("a different tenant's conversation_id returns 404 (cross-tenant isolation)", async () => {
-    // Cross-tenant assertion in-process: mint a second tenant in
-    // the SAME test DB, give it its own user + API key, hit the
-    // route with that key against tenant A's conversation_id. The
-    // route must return 404 because `getConversation(B.tenant_id,
-    // A.conv_id)` returns null. Doing this in-process (rather than
-    // spinning up a second HTTP server with its own DB) avoids the
-    // cleanup-pool contention that the second-server pattern was
-    // hitting in CI.
     const slug = `tp-cross-${crypto.randomUUID().slice(0, 8)}`; // allow-random: cross-tenant fixture; uniqueness > determinism here
     const [otherTenant] = await srv.db
       .insert(tenants)

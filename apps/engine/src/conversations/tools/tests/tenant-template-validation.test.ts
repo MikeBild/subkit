@@ -1,12 +1,3 @@
-// Tenant-created connector templates must be visible to EVERY
-// validateConnectorDraft call site. Forensic root cause (GA4 authoring
-// session): probe_connector_draft and inspect_connector_draft called the
-// validator without the resolved template list, so the lookup collapsed
-// to builtins only and a tenant template was rejected with
-// "template_slug must reference a known connector template" — while the
-// other five call sites accepted the same draft. The templates parameter
-// is now required; these tests pin the previously-broken tool paths.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectorTemplates } from "../../../db/schema/index.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";

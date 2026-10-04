@@ -1,11 +1,3 @@
-// Cycle detection — pre-flight runs at build_workflow,
-// dry_run_workflow, and edit_workflow_patch boundaries. A workflow
-// whose `${scope.X}` placeholders form a loop is rejected with the
-// typed `workflow_cycle_detected` error before it can persist.
-//
-// Sister test: dag.test.ts pins the pure-function correctness; this
-// test pins the wiring at the conversation-tool boundary.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -41,9 +33,6 @@ function makeAcyclicDraft(): DraftDocument {
         },
       ],
     },
-    // Minimal latest_preview so the transform-authoring gate (v4.8.0)
-    // doesn't fire on the fixture's pre-existing `$scope.a.data` ref.
-    // The test is exercising cycle detection, not the inspect gate.
     latest_preview: {
       ok: true,
       summary: "preview seeded for test fixture",
@@ -104,8 +93,6 @@ describe("workflow_cycle_detected · edit_workflow_patch", () => {
       makeCtx(() => draftRef.current, draftRef),
       {
         patches: [
-          // Make `a` reference `b`, while `b` already references `a`.
-          // Now a → b → a forms a cycle.
           {
             op: "replace",
             path: "/steps/0/expression",
@@ -117,7 +104,6 @@ describe("workflow_cycle_detected · edit_workflow_patch", () => {
     expect(result.ok).toBe(false);
     const data = result.data as { error_code?: string; cycles?: unknown };
     expect(data.error_code).toBe("workflow_cycle_detected");
-    // Draft must be byte-stable — partial application is never allowed.
     expect(JSON.stringify(draftRef.current)).toBe(before);
   });
 

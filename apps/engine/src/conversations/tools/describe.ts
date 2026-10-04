@@ -1,31 +1,3 @@
-// Tool description compiler.
-//
-// The LLM sees tool descriptions as plain text in the tool-use schema.
-// To give it a structured, discoverable catalogue without bloating the
-// system prompt, we fold four optional metadata channels (use_case,
-// important_notes, requires_skill, example_input) into XML-tagged
-// sections appended to the base description.
-//
-// Example output:
-//
-//     Fetch a single connector by id …
-//
-//     <use_case>Use before authoring a step that calls this connector …</use_case>
-//
-//     <important_notes>
-//     - Returns placeholder tokens for URL / credentials / config.
-//     - Issues a `connector:read` RBAC check; low-privilege principals …
-//     </important_notes>
-//
-//     <requires_skill>http-connectors</requires_skill>
-//
-//     <example>
-//     {"id":"c0f1…-…"}
-//     </example>
-//
-// The function is pure; it emits an empty string for empty metadata. A
-// null input renders just the base description, unchanged.
-
 import type { ConversationTool } from "./index.ts";
 
 export function compileDescription(tool: ConversationTool): string {
@@ -45,8 +17,6 @@ export function compileDescription(tool: ConversationTool): string {
   }
 
   if (tool.example_input && Object.keys(tool.example_input).length > 0) {
-    // Pretty-printing bloats the description; a single-line example is
-    // easier for the model to parse.
     const encoded = JSON.stringify(tool.example_input);
     parts.push(`\n<example>\n${encoded}\n</example>`);
   }

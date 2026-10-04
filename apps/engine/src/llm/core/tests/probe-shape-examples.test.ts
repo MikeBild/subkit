@@ -1,17 +1,3 @@
-// `loadProbeShapeExamples` — the "Recorded endpoint samples" loader
-// (payload-first generation context).
-//
-// Verifies against a real Postgres database:
-//   - latest shape per endpoint wins (newest seen_at);
-//   - per-connector endpoint cap (≤ PROBE_SHAPE_MAX_ENDPOINTS_PER_CONNECTOR);
-//   - tenant isolation: tenant B's connector shapes NEVER load for
-//     tenant A, even when tenant A passes tenant B's connector id;
-//   - non-UUID connector ids (recipe placeholders like "${stripe}")
-//     are filtered without erroring;
-//   - empty result when no shapes were recorded.
-// Plus pure-render assertions on `formatProbeShapeExamples` /
-// `summarizeShape`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, schemaVersions, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -75,9 +61,6 @@ beforeAll(async () => {
   connectorA = ca!.id;
   connectorB = cb!.id;
 
-  // Tenant A shapes: one endpoint with an OLD and a NEW shape (explicit
-  // seen_at so "latest wins" is deterministic, never clock-dependent),
-  // plus enough extra endpoints to exceed the per-connector cap.
   await ctx.db.insert(schemaVersions).values([
     {
       tenant_id: tenantA,
@@ -113,7 +96,6 @@ beforeAll(async () => {
     })),
   ]);
 
-  // Tenant B shape — must never surface for tenant A.
   await recordSuccessShape(
     {
       tenant_id: tenantB,
@@ -139,7 +121,6 @@ describe.skipIf(skip)("loadProbeShapeExamples — latest shapes, caps", () => {
     const droplets = examples.find((e) => e.endpoint_key === "GET /v2/droplets");
     expect(droplets).toBeDefined();
     expect(droplets!.connector_slug).toBe("digitalocean");
-    // The 2026-06-10 row wins over the 2026-06-01 row.
     const shape = droplets!.shape as { type: string; properties: Record<string, unknown> };
     expect(Object.keys(shape.properties)).toEqual(["droplets"]);
     expect(shape.properties.old_field).toBeUndefined();
@@ -218,7 +199,6 @@ describe("formatProbeShapeExamples / summarizeShape — pure render", () => {
     expect(section).toContain("# Recorded endpoint samples");
     expect(section).toContain("## digitalocean");
     expect(section).toContain("- GET /v2/droplets: { droplets: array<unknown> }");
-    // Shared addressing vocabulary with the scope manifest + latest preview.
     expect(section).toContain("addressable as `$scope.<step_id>.data…`");
   });
 

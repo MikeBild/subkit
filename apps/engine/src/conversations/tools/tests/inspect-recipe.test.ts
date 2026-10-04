@@ -1,18 +1,7 @@
-// Unit tests for the inspect_recipe conversation tool.
-//
-// The tool is read-only and free of side effects, so we invoke
-// `execute` with a stub context and assert the returned shape. This
-// is the same payload the LLM sees on the tool_result message.
-
 import { describe, expect, test } from "bun:test";
 import { makeStubCtx, makeStubDb, makeTestPrincipal } from "../../../tools/tests/_helpers.ts";
 import { inspectRecipeTool } from "../inspect-recipe.ts";
 
-// The tool now consults `resolveConnectorTemplate({db, tenant_id, slug})`
-// so tenant overrides of a built-in template are honored. We pass a
-// stub Db that returns empty result sets — built-ins still resolve
-// (the resolver falls through to the built-in catalog) and tenant
-// overrides return no rows.
 const { db: STUB_DB } = makeStubDb();
 const STUB_PRINCIPAL = makeTestPrincipal();
 const STUB_CTX = makeStubCtx({ db: STUB_DB, principal: STUB_PRINCIPAL });
@@ -24,8 +13,6 @@ describe("inspect_recipe — tool metadata contract", () => {
 
   test("description directs the model to call before clone, not after", () => {
     expect(inspectRecipeTool.description).toMatch(/before cloning/i);
-    // start_workflow_from_recipe is referenced in important_notes + use_case;
-    // the description is intentionally tight on tokens.
     expect(inspectRecipeTool.use_case).toMatch(/start_workflow_from_recipe/i);
   });
 });
@@ -54,7 +41,6 @@ describe("inspect_recipe — execute", () => {
     expect(data.author).toBe("subkit-builtin");
     expect(typeof data.step_count).toBe("number");
     expect(Array.isArray(data.step_summary)).toBe(true);
-    // Step summary carries kind + id but never the workflow body itself.
     const steps = data.step_summary as Array<{ id: string; kind: string }>;
     for (const s of steps) {
       expect(typeof s.id).toBe("string");

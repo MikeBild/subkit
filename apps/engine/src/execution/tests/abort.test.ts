@@ -48,7 +48,6 @@ describe("abort", () => {
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    // Wait for the executions row + abort registration to materialize.
     await new Promise((r) => setTimeout(r, 300)); // allow-wall-clock: deliberately blocks past the abort budget so the abort signal must interrupt it
     const { executions } = await import("../../db/schema/index.ts");
     const { eq } = await import("drizzle-orm");

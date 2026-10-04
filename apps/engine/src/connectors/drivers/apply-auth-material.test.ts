@@ -1,18 +1,3 @@
-// Pure-function tests for the HTTP driver's `applyAuthMaterial`.
-// Carved out of the DB-backed `tests/http-driver.test.ts` so this set
-// runs without Postgres / Docker — every test exercises the auth-
-// header composition logic in isolation.
-//
-// Regression context: the 2026-05-12 Gmail-OAuth2 session
-// (engine trace cli-18c4701f8a2d48e1) hit a real 401 on every
-// workflow run while `call_connector` against the same connector
-// returned 404. Root cause: Google's OAuth2 token endpoint returns
-// `token_type: "bearer"` (lowercase) and Google's resource APIs
-// reject the lowercase form with 401 even though RFC 6749 §5.1 says
-// the comparison is case-insensitive. The driver now canonicalises
-// "bearer" / "BEARER" / etc. to "Bearer" so the header is
-// interoperable across every provider.
-
 import { describe, expect, test } from "bun:test";
 import type { ConnectorView } from "../types.ts";
 import { applyAuthMaterial } from "./http.ts";
@@ -137,13 +122,6 @@ describe("applyAuthMaterial — oauth2 token_type case normalization", () => {
 });
 
 describe("applyAuthMaterial — oauth2 empty access_token guard (empty-Bearer regression)", () => {
-  // Regression: a credential row exists but the OAuth2 dance never
-  // minted a token (access_token is empty or null). Pre-fix the driver
-  // would set `Authorization: Bearer ` (an empty Bearer), causing
-  // provider 401s that the LLM misread as auth-config errors.
-  // The fix: early-return when access_token is falsy so no Authorization
-  // header is emitted. Mirrors the same guard in the token_mint branch.
-
   test("empty access_token → NO Authorization header emitted", () => {
     const headers: Record<string, string> = {};
     applyAuthMaterial(
@@ -227,7 +205,6 @@ describe("applyAuthMaterial — oauth2 empty access_token guard (empty-Bearer re
       headers,
       {},
     );
-    // Authorization must not have been added and the existing header must survive.
     expect(headers.Authorization).toBeUndefined();
     expect(headers["x-request-id"]).toBe("req-42");
   });

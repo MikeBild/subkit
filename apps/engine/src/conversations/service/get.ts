@@ -1,8 +1,3 @@
-// Read path: hydrate a full ConversationDetail (row + messages + tool
-// calls + draft + resume_summary). Imported by nearly every other
-// service operation, so it lives in its own file with no upstream
-// service-layer imports.
-
 import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import {
@@ -25,13 +20,6 @@ import type {
 } from "../types.ts";
 import { loadOwners, rowToRecord } from "./shared.ts";
 
-/**
- * Strip every `[file:fid_<uuid>]` sentinel out of a stored message
- * content blob. The persisted shape is `string` for legacy rows or
- * `{ text: string }` for the rewriter-canonical shape; both are walked.
- * Anything else (tool decision notes, structured payloads) passes
- * through untouched.
- */
 function stripContentSentinels(content: unknown): unknown {
   if (typeof content === "string") return stripFileSentinelsForDisplay(content);
   if (content && typeof content === "object" && "text" in content) {
@@ -145,7 +133,6 @@ export async function getConversation(
         : [],
     ),
   );
-  // Project the canonical answer row into the transcript; do not duplicate it in storage.
   const transcriptMessages = [
     ...msgs,
     ...textAnswers.flatMap((answer) => {
@@ -194,7 +181,6 @@ export async function getConversation(
           typeof (pendingElicitationRows[0].input as { summary?: unknown })?.summary === "string"
             ? ((pendingElicitationRows[0].input as { summary?: string }).summary ?? null)
             : null,
-        // Already on the selected row — no extra query for the deadline.
         expires_at: pendingElicitationRows[0].expires_at.toISOString(),
       }
     : null;
@@ -219,12 +205,6 @@ export async function getConversation(
         id: m.id,
         conversation_id: m.conversation_id,
         role: m.role as ConversationMessageRecord["role"],
-        // Strip `[file:fid_<uuid>]` sentinels from the content surfaced
-        // to API consumers (CLI/REPL, web UI, MCP detail readers). The
-        // canonical persisted form keeps the sentinel for replay
-        // routing in `buildModelMessages`; the human/API surface gets
-        // a `[file]` placeholder. Without this, the raw fid would land
-        // in any UI that renders the conversation transcript.
         content: stripContentSentinels(m.content),
         model: m.model,
         created_at: m.created_at.toISOString(),
@@ -291,11 +271,6 @@ export async function getConversation(
   };
 }
 
-/**
- * What a conversation brought into being: the workflows and connectors its
- * draft persisted, and the executions its tool calls started. Newest first,
- * so a header can list them next to the transcript.
- */
 function collectCreatedResources(
   draft: DraftDocument | null,
   calls: Array<{ tool: string; output: unknown; created_at: Date }>,

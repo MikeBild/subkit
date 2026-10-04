@@ -3,11 +3,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 
-/**
- * The one skeleton look: a muted block with a slow, subtle shimmer (still
- * under reduced motion). Every loading pattern draws its final shape out of
- * these, at the final size, so nothing moves when the data arrives.
- */
 export function Skeleton({ className, testId }: { className?: string; testId?: string }) {
   return (
     <span
@@ -19,12 +14,6 @@ export function Skeleton({ className, testId }: { className?: string; testId?: s
   );
 }
 
-/**
- * A pattern's loading frame. While loading it renders the pattern's own
- * skeleton — invisible for the first moments, so a fast answer arrives
- * without a flash, then shown and held briefly so it never flickers — and the
- * content fades in where the skeleton stood. The frame is one block element.
- */
 export function Loadable({
   loading,
   skeleton,
@@ -62,7 +51,6 @@ export function Loadable({
   );
 }
 
-/** A KPI tile's shape: the label, the figure, the trend line. */
 export function TileSkeleton({ testId }: { testId?: string }) {
   return (
     <div
@@ -77,7 +65,6 @@ export function TileSkeleton({ testId }: { testId?: string }) {
   );
 }
 
-/** Rows of a list or a tab panel: `count` bars, each one table row high. */
 export function RowsSkeleton({ count = 3, testId }: { count?: number; testId?: string }) {
   return (
     <div data-slot="rows-skeleton" data-testid={testId} className="flex flex-col">

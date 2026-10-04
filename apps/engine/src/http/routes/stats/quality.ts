@@ -1,11 +1,3 @@
-// GET /v1/stats/quality — tenant-scoped, time-windowed workflow-quality
-// stats. Gated by `stats:read`.
-//
-// Three rollups in one response: one-shot success rate, failure reasons by
-// step error code, and post-repair success rate. All numbers are aggregated
-// at read time from `executions` / `execution_steps` / `patch_candidates` —
-// no new persistence.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { aggregateQuality } from "../../../stats/aggregate-quality.ts";

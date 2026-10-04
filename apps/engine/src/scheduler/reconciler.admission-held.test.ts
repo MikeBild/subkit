@@ -48,8 +48,6 @@ test("missing authority stays held and retryable; later approval admits exactly 
   const gateJobs: unknown[] = [];
   const boss = {
     send: async (queue: string, payload: unknown) => {
-      // A held schedule asks once for a gate diagnosis on the repair queue;
-      // only the execution queue counts as a run.
       (queue === "workflow.repair" ? gateJobs : sent).push(payload);
       return "job";
     },
@@ -66,7 +64,6 @@ test("missing authority stays held and retryable; later approval admits exactly 
     await reconciler.reconcileWorkflowSchedules(now);
     await reconciler.reconcileWorkflowSchedules(now);
     expect(sent).toHaveLength(0);
-    // The hold is one edge: two refused ticks ask for one diagnosis.
     expect(gateJobs).toEqual([
       expect.objectContaining({ workflow_id, trigger: "gate_block", environment: "prod" }),
     ]);
@@ -124,7 +121,6 @@ test("missing authority stays held and retryable; later approval admits exactly 
       (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
         ?.admission_hold,
     ).toBeNull();
-    // Even the current claimant may have observed refusal before the human grant.
     await recordScheduleAdmission(
       ctx.testDb.db,
       { tenant_id: ctx.tenantId, schedule_id: schedule.id, claimed_at: now },
@@ -134,7 +130,6 @@ test("missing authority stays held and retryable; later approval admits exactly 
       (await ctx.testDb.db.select().from(workflowsSchedules).where(scheduleWhere))[0]
         ?.admission_hold,
     ).toBeNull();
-    // An old claimant and a different tenant cannot resurrect a cleared hold.
     await recordScheduleAdmission(
       ctx.testDb.db,
       {
@@ -193,8 +188,6 @@ test("dynamic effects require concrete review and stay out of the execution queu
   const gateJobs: unknown[] = [];
   const boss = {
     send: async (queue: string, payload: unknown) => {
-      // A held schedule asks once for a gate diagnosis on the repair queue;
-      // only the execution queue counts as a run.
       (queue === "workflow.repair" ? gateJobs : sent).push(payload);
       return "job";
     },

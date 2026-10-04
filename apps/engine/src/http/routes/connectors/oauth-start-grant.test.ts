@@ -1,17 +1,3 @@
-// Integration tests for GET /v1/connectors/{id}/oauth/start?grant=…
-//
-// Covers:
-//   a) mint → unauthenticated GET → 302 to provider + state row with
-//      requested_scopes, grant row deleted, grant_consumed audit.
-//   b) full zero-to-credential: GET grant → extract state from Location →
-//      GET /v1/oauth/callback?code&state → credential row written.
-//   c) grant replay → 400 HTML, no second state row.
-//   d) expired grant → 400.
-//   e) valid grant + wrong connector path id → 400 AND grant still claimable
-//      at the correct connector id.
-//   f) GET without grant param → 400 (Zod validation), not 401.
-//   g) POST without bearer still 401 (existing auth not bypassed).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, gt } from "drizzle-orm";
 import { setConfigKey } from "../../../config/loader.ts";
@@ -39,7 +25,6 @@ beforeAll(async () => {
   server = await createHttpTestServer("oauth-grant-start");
   mock = await startMockOAuthServer();
 
-  // Set public_base_url so buildOAuthRedirectUri resolves for mintOAuthStartGrantUrl.
   await setConfigKey("server.public_base_url", server.baseUrl, { force: true });
 
   const [row] = await server.db
@@ -74,7 +59,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-// Helper: insert a fresh grant row directly.
 async function seedGrant(opts?: { expires_at?: Date; connector_id?: string }) {
   const { plaintext, hash } = generateStartGrant();
   const expires_at = opts?.expires_at ?? new Date(now() + 5 * 60_000);
@@ -117,7 +101,6 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
   test("(a) mint → GET → 302 to provider, grant deleted, grant_consumed audit", async () => {
     const token = await seedGrant();
 
-    // Unauthenticated GET must not follow the 302 automatically.
     const res = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
@@ -129,10 +112,8 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
     expect(location).toContain(mock.baseUrl);
     expect(location).toContain("/authorize");
 
-    // Grant row must be deleted (atomic claim).
     expect(await getGrantRow(token)).toBeNull();
 
-    // State row must exist with requested_scopes.
     const stateRows = await server.db
       .select()
       .from(connectorOauthStates)
@@ -146,7 +127,6 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
     expect(stateRows.length).toBeGreaterThan(0);
     expect(stateRows[0]?.requested_scopes).toBe("read write");
 
-    // grant_consumed audit row must exist.
     const consumedAudit = await server.db
       .select()
       .from(auditLog)
@@ -164,29 +144,24 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
 
     const token = await seedGrant();
 
-    // Step 1: follow the grant redirect to get the provider's redirect back.
     const startRes = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
     );
     expect(startRes.status).toBe(302);
 
-    // Step 2: the provider authorize endpoint redirects back to /v1/oauth/callback.
     const authUrl = startRes.headers.get("location")!;
     const authRes = await fetch(authUrl, { redirect: "manual" });
     expect(authRes.status).toBe(302);
 
-    // Step 3: follow the callback redirect.
     const callbackUrl = authRes.headers.get("location")!;
     expect(callbackUrl).toContain("/v1/oauth/callback");
     const callbackRes = await fetch(callbackUrl);
     expect(callbackRes.status).toBe(200);
     const html = await callbackRes.text();
     expect(html).toContain("Signed in");
-    // A grant link is handed out in a conversation; that is where it sends back to.
     expect(html).toContain("return to the conversation");
 
-    // Credential row must be written.
     const cred = await getCredentialRow();
     expect(cred).not.toBeNull();
     expect(cred?.mode).toBe("oauth2");
@@ -195,19 +170,16 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
   test("(c) grant replay → 400 HTML, no second state row", async () => {
     const token = await seedGrant();
 
-    // First use: should succeed with 302.
     const first = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
     );
     expect(first.status).toBe(302);
 
-    // Clean up the state row from the first use to isolate the replay test.
     await server.db
       .delete(connectorOauthStates)
       .where(eq(connectorOauthStates.connector_id, connectorId));
 
-    // Replay: grant is burned, should return 400.
     const second = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
@@ -218,7 +190,6 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
   });
 
   test("(d) expired grant → 400 HTML", async () => {
-    // Seed a grant that has already expired.
     const expiredAt = new Date(now() - 1000);
     const token = await seedGrant({ expires_at: expiredAt });
 
@@ -234,7 +205,6 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
   test("(e) valid grant + wrong connector path id → 400 AND grant still claimable at correct id", async () => {
     const token = await seedGrant();
 
-    // Seed a second connector so there's a valid UUID to use as the wrong path.
     const [other] = await server.db
       .insert(connectors)
       .values({
@@ -250,23 +220,19 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
       .returning();
     if (!other) throw new Error("seed other connector failed");
 
-    // GET with wrong connector id → 400 (grant not burned).
     const wrongRes = await fetch(
       `${server.baseUrl}/v1/connectors/${other.id}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
     );
     expect(wrongRes.status).toBe(400);
 
-    // Grant must still exist (not burned by the wrong-id attempt).
     expect(await getGrantRow(token)).not.toBeNull();
 
-    // GET with the correct connector id must still work.
     const correctRes = await fetch(
       `${server.baseUrl}/v1/connectors/${connectorId}/oauth/start?grant=${encodeURIComponent(token)}`,
       { redirect: "manual" },
     );
     expect(correctRes.status).toBe(302);
-    // Now it must be burned.
     expect(await getGrantRow(token)).toBeNull();
   });
 
@@ -274,7 +240,6 @@ describe("GET /v1/connectors/{id}/oauth/start?grant=…", () => {
     const res = await fetch(`${server.baseUrl}/v1/connectors/${connectorId}/oauth/start`, {
       redirect: "manual",
     });
-    // Zod validation failure returns 400, not 401 (no bearer check on GET).
     expect(res.status).toBe(400);
   });
 

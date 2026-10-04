@@ -1,10 +1,3 @@
-// HTTP integration tests for `POST /v1/connectors/discover`.
-//
-// We mock `discoverConnectorEndpoints` so the test never reaches the
-// network. The HTTP route shares the same service helper as the
-// conversation tool, so the cache + audit assertions here protect the
-// shared path.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -21,11 +14,8 @@ import { builtinRoleId, createRole } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
-// A second tenant + key so we can prove tenant isolation.
 let secondTenantApiKey: string;
 let secondTenantId: string;
-// A member-role api key in the same tenant — admin short-circuits the
-// RBAC evaluator so we need a non-admin caller to probe the 403 path.
 let memberApiKey: string;
 
 const SAMPLE_RESULT: DiscoveryResult = {
@@ -58,9 +48,6 @@ const SAMPLE_RESULT: DiscoveryResult = {
 beforeAll(async () => {
   ctx = await createHttpTestServer("conn-disc");
 
-  // Seed a second tenant + api key on the same server so we can test
-  // tenant isolation. We bypass createHttpTestServer for the second
-  // pair because we want them to share the same Hono app.
   const [t2] = await ctx.db
     .insert(tenants)
     .values({ slug: "t-conn-disc-b", display_name: "Tenant B" })
@@ -89,10 +76,6 @@ beforeAll(async () => {
     scopes: ["*"],
   });
 
-  // Non-admin caller in tenant A bound to a *no-permissions* custom
-  // role so we can exercise the 403 branch. Admins short-circuit the
-  // RBAC evaluator (`builtin_admin` source) and the built-in `member`
-  // role grants `connector:read` — neither would surface a denial.
   const noopRole = await createRole(ctx.db, ctx.tenantId, "noop-conn-disc", "no permissions");
   const [member] = await ctx.db
     .insert(users)
@@ -117,27 +100,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Tiny drain so fire-and-forget audit inserts (`api_key.used`) finish
-  // before we tear down the per-suite database. Without this the
-  // `pool.end()` inside `ctx.cleanup()` can race the in-flight inserts
-  // and hang waiting for the connection to release.
   // allow-wall-clock: real ms required to flush postgres write queue.
   await new Promise((r) => setTimeout(r, 250));
-  // Bound the teardown so a stuck pool doesn't block the test runner's
-  // 5s afterEach budget. Aborted cleanup just leaks a transient test
-  // database; the disposable-database harness GCs them on the next
-  // `createTestDb` call.
   // allow-wall-clock: wall-clock cap on cleanup to avoid Bun's 5s afterAll timeout.
   await Promise.race([ctx.cleanup(), new Promise<void>((r) => setTimeout(r, 4000))]);
 }, 10_000);
-
-// No `afterEach` cleanup. The HTTP test fixture uses a disposable
-// per-suite database and parallel asynchronous audit inserts from the
-// auth middleware (`api_key.used`, fire-and-forget) make a `DELETE` /
-// `TRUNCATE` between tests race against in-flight writes — that race
-// has caused 5s afterEach-hook timeouts. Tests are written so each
-// scenario sets a unique cache key (different `template_id`s + the
-// second tenant), so leaked rows from one test don't poison the next.
 
 describe("POST /v1/connectors/discover", () => {
   test("200 — template_id returns DiscoveryResult and persists cache row + audit", async () => {
@@ -165,7 +132,6 @@ describe("POST /v1/connectors/discover", () => {
       expect(body.result.endpoints[0]?.path).toBe("/v1/customers");
       expect(spy).toHaveBeenCalledTimes(1);
 
-      // Cache row persisted.
       const rows = await ctx.db
         .select()
         .from(knowledgeSources)
@@ -174,7 +140,6 @@ describe("POST /v1/connectors/discover", () => {
       expect(rows[0]?.source_type).toBe("discovery_endpoint_index");
       expect(rows[0]?.slug).toBe("discovery-template-stripe");
 
-      // Audit row recorded with reason `discovery_cache_refresh`.
       const audit = await ctx.db
         .select()
         .from(auditLog)
@@ -215,8 +180,6 @@ describe("POST /v1/connectors/discover", () => {
       expect(res.status).toBe(403);
       const body = (await res.json()) as { code: string };
       expect(body.code).toBe("forbidden");
-      // Discovery must NOT have run when the request was rejected at
-      // the policy gate.
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
@@ -255,7 +218,6 @@ describe("POST /v1/connectors/discover", () => {
   });
 
   test("tenant isolation — tenant A's cached discovery is not returned for tenant B", async () => {
-    // Tenant A populates the cache (cache miss → fresh).
     const seed = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(
       SAMPLE_RESULT,
     );
@@ -270,8 +232,6 @@ describe("POST /v1/connectors/discover", () => {
     expect(aRes.status).toBe(200);
     seed.mockRestore();
 
-    // Tenant B asks the same key — must miss and re-fetch with their
-    // own response. (Returns a different title so we can tell them apart.)
     const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue({
       ...SAMPLE_RESULT,
       title: "Tenant B view",
@@ -294,7 +254,6 @@ describe("POST /v1/connectors/discover", () => {
       expect(body.result.title).toBe("Tenant B view");
       expect(spy).toHaveBeenCalledTimes(1);
 
-      // Both tenants have their own cache row.
       const aRows = await ctx.db
         .select()
         .from(knowledgeSources)

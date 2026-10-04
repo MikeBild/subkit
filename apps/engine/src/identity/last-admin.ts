@@ -1,12 +1,3 @@
-// An installation always keeps one administrator.
-//
-// Admin-only routes check the ROLE NAME (`policy.adminOnly` → effective role
-// "admin", auth/user-role.ts). Moving the last admin to another role — even a
-// custom role that holds every permission — or deactivating them leaves a
-// tenant nobody can manage people or roles in any more, and nothing in the
-// product can undo it. Every path that changes who is admin runs through this
-// check inside its own transaction.
-
 import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { roles, users } from "../db/schema/index.ts";
@@ -21,12 +12,6 @@ export class LastAdminError extends Error {
   }
 }
 
-/**
- * Throws `LastAdminError` when `user_id` is an administrator who would stop
- * being one (`nextEffectiveRole` is another role, or `null` for deactivation)
- * and no other administrator remains. The tenant's user rows are locked for
- * the rest of the transaction, so two concurrent demotions cannot both pass.
- */
 export async function assertAdminRemains(
   tx: Executor,
   input: { tenant_id: string; user_id: string; nextEffectiveRole: string | null },

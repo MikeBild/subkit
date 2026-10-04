@@ -1,10 +1,3 @@
-// Regression coverage for the
-// Knowledge tab's path/size UX guard. The contract is "reject
-// OS-internal + credentials-root paths and oversized files
-// **before** readFile slurps them" — without this test a future
-// widening of the deny-list could silently shrink to no-op on one
-// platform.
-
 import { describe, expect, test } from "bun:test";
 import {
   checkIngestGuard,
@@ -39,10 +32,6 @@ describe("checkIngestGuard — Unix", () => {
   });
 
   test("accepts /var/folders/... (macOS tmpdir) and /var/tmp", () => {
-    // macOS resolves `os.tmpdir()` to `/var/folders/...`, which is a
-    // legitimate ingest source for tests + scratch files. The guard
-    // narrows the /var deny-list to `/var/log /var/lib /var/run
-    // /var/spool` so those still reject but the tmpdir branches don't.
     expect(
       checkIngestGuard({
         absolutePath: "/var/folders/abc/T/playbook.md",

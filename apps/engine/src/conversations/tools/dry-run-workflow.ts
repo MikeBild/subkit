@@ -1,8 +1,3 @@
-// dry_run_workflow — run the draft workflow end-to-end via runExecution
-// with source.kind="draft". No persistence of a workflow row is needed;
-// the engine synthesizes workflow_id internally but keeps the executions
-// row's workflow_id column NULL so it's clearly separable from saved runs.
-
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { resolveDryRunEnvironment } from "../../credentials/service.ts";
@@ -121,11 +116,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
-    // Cycle pre-flight — refuse to dry-run a workflow with a cyclic
-    // step dependency. The runtime walker would silently produce
-    // undefined values for the steps stuck behind the cycle, then
-    // mask the bug as a transform_empty_extraction warning. Surface
-    // the typed cycle error instead so the operator can fix it.
     {
       const dag = buildStepDag({ name: draft.name ?? "draft", steps });
       const cycleReport = detectCycles(dag);
@@ -146,18 +136,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       }
     }
 
-    // Reference pre-flight — refuse to dry-run a workflow that points
-    // a JSONata expression or `${scope.X}` placeholder at a step id
-    // that doesn't exist. The runtime would otherwise resolve the bad
-    // reference to undefined and emit `loop_over_unresolved` /
-    // `transform_empty_extraction` warnings — the user has to read
-    // the warnings, then map them back to the bad reference. Surface
-    // the typed error directly with `did_you_mean` candidates so the
-    // operator can fix the typo without burning a dry-run cycle.
-    // Unsupported-placeholder pre-flight — Mustache `{{...}}`,
-    // `${$loop...}`, `${user.X}` etc. would ship verbatim through the
-    // driver and 404 upstream. Reject with a concrete `did_you_mean`
-    // rewrite instead of burning a dry-run cycle on a doomed request.
     {
       const placeholderErrors = validateUnsupportedPlaceholders({
         name: draft.name ?? "draft",
@@ -189,8 +167,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       }
     }
 
-    // Only references this draft introduces over the active version block
-    // the run; what production already has is reported, never repaired here.
     const references = await classifyStepReferences(ctx, "dry_run_workflow", {
       name: draft.name ?? "draft",
       ...(draft.slug ? { slug: draft.slug } : {}),
@@ -215,16 +191,10 @@ export const dryRunWorkflowTool: ConversationTool = {
         }),
       };
     }
-    // Envelope-only: never a run warning, those are replayed next turn as
-    // failures to repair.
     const inheritedReferencesField = references.notice
       ? { inherited_step_references: references.notice }
       : {};
 
-    // Author build-time permission pre-flight (Stream 4) — best-effort,
-    // non-blocking. Computed on the static draft; merged into the surfaced
-    // `warnings` below so the author learns at authoring time that a write
-    // step targets a connector they cannot write, instead of failing live.
     const author = await resolveConversationPrincipal(ctx);
     const authorPermissionWarnings = author
       ? await authorConnectorWriteWarnings(
@@ -235,14 +205,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         )
       : [];
 
-    // Circuit-breaker — same as run-workflow. Three consecutive
-    // dry-runs producing the same authoring-bug warning code mean the
-    // LLM's strategy isn't converging. Halt and force the LLM to ask
-    // or re-strategize instead of running again. Codes that count:
-    // `unresolved_identifier`, `loop_over_unresolved`,
-    // `transform_empty_extraction`. Each one means the JSONata path
-    // doesn't actually resolve to data the engine can use, so a
-    // re-run with no other changes will produce the same warning.
     const REPEATING_REPAIR_CODES = new Set([
       "unresolved_identifier",
       "loop_over_unresolved",
@@ -303,9 +265,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         };
       }
     } catch (err) {
-      // DB blip: don't trip the breaker on a query failure, but log
-      // it so a recurring outage shows up in operator triage rather
-      // than silently disabling the repair-loop guard.
       logger.warn({
         module: "conversation_tool",
         action: "dry_run_workflow.repair_loop_query_failed",
@@ -316,13 +275,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       });
     }
 
-    // The draft's workflow-level output surface travels with the
-    // definition (Fix 11): `output_transform` shapes the final payload
-    // exactly like a live run would, and `output_schema` makes the
-    // engine validate that payload against the declared contract. The
-    // resulting `output_contract_violation` warning is BLOCKING here
-    // (see repairWarnings below) — a draft that does not produce the
-    // contracted shape never auto-commits.
     const definition = {
       name: draft.name ?? "draft",
       steps,
@@ -333,8 +285,6 @@ export const dryRunWorkflowTool: ConversationTool = {
     };
     const signal = ctx.abortSignal;
 
-    // Resolve the effective execution environment (dev vs prod credential
-    // grant) for the draft's connectors. See resolveDryRunEnvironment.
     const effectiveEnvironment = await resolveDryRunEnvironment({
       tenant_id: ctx.tenant_id,
       steps,
@@ -369,11 +319,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       "info",
       `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${effectiveEnvironment})`,
     );
-    // Cache hit short-circuit. Pre-fix re-previewing an unchanged draft
-    // re-ran every step end-to-end (109 calls to api.digitalocean.com
-    // for the f00b8d1c session). Hash the draft + input; if a recent
-    // success exists, replay the cached envelope instead of hitting
-    // the upstream again.
     const cacheKey = buildDryRunCacheKey({
       tenant_id: ctx.tenant_id,
       execution_mode: effectiveEnvironment,
@@ -390,12 +335,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       );
       run = cached;
     } else {
-      // Per-step prefix fixtures. Walk the draft from the top while
-      // each step's prefix hash matches a cached envelope; feed those
-      // envelopes into runExecution via `step_output_fixtures` so the
-      // engine skips re-executing them. The first miss stops the
-      // prefix walk — downstream steps execute normally and their
-      // envelopes get written back to the prefix cache on success.
       const stepOutputFixtures: Record<string, unknown> = {};
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i] as { id?: unknown; kind?: unknown };
@@ -432,8 +371,6 @@ export const dryRunWorkflowTool: ConversationTool = {
           options: {
             request_source: "chat",
             execution_mode: effectiveEnvironment,
-            // Mutable draft state has no immutable execution authority.
-            // Resolve writes for review, but do not release them via a flag.
             hold_writes: true,
             ...(signal ? { signal } : {}),
             ...(prefixReplayCount > 0 ? { step_output_fixtures: stepOutputFixtures } : {}),
@@ -442,10 +379,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         const reason = (err as { code?: string }).code ?? "draft_run_failed";
-        // Top-level error_code/message so `summarizeToolFailure` lifts the WHY
-        // into the tool.failed log AND the error_code-repeat breaker can track
-        // a draft that keeps throwing the same way (it reads top-level
-        // error_code/message, not nested data).
         return {
           ok: false,
           error_code: reason,
@@ -457,24 +390,11 @@ export const dryRunWorkflowTool: ConversationTool = {
         };
       }
       writeDryRunCache(cacheKey, run);
-      // Write back per-step envelopes for the next iteration. We only
-      // cache successful steps that are kind-safe; failures bypass so
-      // the next edit doesn't replay a broken result. The cached value
-      // is a reconstructed `ScopeEnvelope` ({ data, duration_ms, error,
-      // status_code?, headers? }) — the same shape `envelopeFor`
-      // produces internally — so the engine can write it into `scope`
-      // verbatim on a future fixture hit and downstream `$scope.<id>.
-      // data` keeps working.
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i] as { id?: unknown; kind?: unknown };
         if (!step || typeof step.id !== "string") continue;
         if (!isStepKindCacheable(step.kind, step)) continue;
         const summary = run.steps.find((s) => s.step_key === step.id);
-        // `held === true` guard: a write-classified GET/HEAD is held yet
-        // kind-cacheable — caching its {data: null} envelope would replay
-        // a null "response" as if real on the next preview. `== null`
-        // also rejects null previews generally (held output is null,
-        // not undefined).
         if (
           summary?.status !== "succeeded" ||
           summary.held === true ||
@@ -508,20 +428,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       }
     }
 
-    // Stash this preview's scope on the per-conversation slot so
-    // `dry_run_transform` can resolve `$scope.<step_id>` references
-    // without re-running the upstream. The store keeps only the
-    // succeeded-step envelopes — failed steps would just confuse a
-    // JSONata-only iteration loop.
-    //
-    // Execution parity: the runtime scope addresses every step
-    // through the documented envelope — `$scope.<id>.data` is the
-    // payload, `$scope.<id>.status_code` the diagnostics. A store that
-    // keeps the RAW `output_preview` (no `data` wrapper) breaks this: the
-    // exact expression that works in a transform step returns `{}`
-    // here and the model concludes "scope doesn't work" (session
-    // 784c1b02, ~10 wasted rewrite rounds). Wrap to the same envelope
-    // the engine writes into `scope` (`engine/envelope.ts`).
     const previewScope: Record<string, unknown> = {};
     for (const s of run.steps) {
       if (s.status === "succeeded" && s.output_preview !== undefined) {
@@ -546,9 +452,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       });
     }
 
-    // Per-step progress feed — same as run_workflow. Lets the user see
-    // each step's status, kind, and duration in real time instead of a
-    // single end-of-preview badge.
     for (const step of run.steps) {
       const errMsg =
         step.error && typeof step.error === "object" && step.error !== null
@@ -569,16 +472,11 @@ export const dryRunWorkflowTool: ConversationTool = {
     }
 
     const lastStepSummary = run.steps[run.steps.length - 1];
-    // The FAILED step is where the run stopped. A held preview also skips every
-    // step behind a held write, and naming the first of those sent the author
-    // to repair a step that had nothing wrong with it.
     const stoppedStep =
       run.steps.find((s) => s.status === "failed") ??
       run.steps.find((s) => s.status !== "succeeded") ??
       null;
     const stoppedId = stoppedStep?.step_key ?? null;
-    // The message has to belong to the step it is attributed to: with several
-    // failures in one run, the last step's summary described a different one.
     const stoppedError =
       stoppedStep?.status === "failed" && stoppedStep.error && typeof stoppedStep.error === "object"
         ? (stoppedStep.error as { message?: unknown }).message
@@ -592,21 +490,10 @@ export const dryRunWorkflowTool: ConversationTool = {
     const lastStep: PreviewStepSummary | undefined =
       lastStepSummary && matchedStep ? classifyRunResult(matchedStep, run) : undefined;
 
-    // The workflow's RESOLVED final output (post output_transform /
-    // response_filters) — what the caller actually receives. The preview must
-    // surface THIS, not the last step: with an output_transform the two differ,
-    // and a user/judge/benchmark inspecting the last step would see the wrong
-    // thing (a markdown table rendered in a step that the transform discards).
-    // `null` for a hold-writes preview where no real final output exists → fall
-    // back to the last step's output for the preview field.
     const finalOutputForLlm =
       run.output !== undefined && run.output !== null
         ? truncateStepPreviewForLlm(run.output)
         : null;
-    // The response field carrying that final output to the model/user — same
-    // truncation discipline as every other LLM-visible preview. Spread into
-    // each success/blocked envelope so the caller always sees the actual
-    // result, not just the last step.
     const finalOutputField = finalOutputForLlm
       ? {
           final_output: finalOutputForLlm.data,
@@ -614,12 +501,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         }
       : {};
 
-    // D6 — optional raw per-step inputs/outputs. Compact by default (the
-    // truncated `step_trace` below); this attaches the resolved per-step
-    // input next to its output ONLY when the caller opted in, so the model
-    // can localise a bad final output to a step vs the output_transform.
-    // Spread into every terminal envelope (auto-commit, green-pending-save,
-    // and the not-clean path) so the surface is uniform.
     const stepResultsField = args.include_step_results
       ? { step_results: buildRawStepResults(run.steps) }
       : {};
@@ -634,8 +515,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       code: (w as { code?: string }).code ?? "unknown",
       message: (w as { message?: string }).message ?? "",
     }));
-    // Author build-time permission warnings (Stream 4), surfaced alongside
-    // the runtime warnings.
     runWarnings.push(...authorPermissionWarnings);
     recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "workflow" });
     if (runWarnings.length > 0) {
@@ -645,15 +524,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         count: runWarnings.length,
       });
     }
-    // Mirror run-workflow's requires_repair derivation so the
-    // commit-workflow gate can see that a fresher dry-run has cleared
-    // (or kept) the repair flag. Only the warnings that ALWAYS
-    // indicate a real bug contribute — `transform_dropped_fields`
-    // alone is informational.
-    // `output_contract_violation` is non-blocking on LIVE runs but
-    // blocking on previews (Fix 11): a draft whose final output does
-    // not satisfy its declared `output_schema` has not converged, so
-    // the preview must not read green and must not auto-commit.
     const repairWarnings = runWarnings.filter(
       (w) =>
         w.code === "unresolved_identifier" ||
@@ -664,23 +534,13 @@ export const dryRunWorkflowTool: ConversationTool = {
     );
     const dryRunRequiresRepair = repairWarnings.length > 0;
 
-    // authoring_scope_changed — see scope-drift.ts (paths disappearing
-    // between previews get a non-fatal warning before the LLM patches
-    // downstream transforms against the new shape).
     runWarnings.push(...computeScopeDriftWarnings(ctx.getDraft(), run.steps));
 
-    // Instruction-grounded preview judge (Fix C) — see preview-judge-gate.ts
-    // for the gate + circuit-breaker semantics.
     const dryRunGreen = run.status === "succeeded" && !dryRunRequiresRepair;
     let judgeOutcome: PreviewJudgeOutcome | null = null;
     let judgeBlocked = false;
-    /** undefined = leave the stored breaker untouched. */
     let nextJudgeBreaker: JudgeBreakerState | undefined;
-    /** Terminal done-signal — set when the judge blocked at/over the cap: the
-     *  preview stays held and the model gets an EXIT, not another silent
-     *  requires_repair. */
     let judgeDoneSignal: Awaited<ReturnType<typeof runPreviewJudgeGate>>["doneSignal"] = null;
-    /** Forced operator-choice escalation: the model re-ran past the hold cap. */
     let judgeEscalate = false;
     if (dryRunGreen) {
       const gate = await runPreviewJudgeGate({
@@ -691,10 +551,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         definition,
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
-        // The resolved final output (post output_transform) — the judge's
-        // format check evaluates THIS, not intermediate steps. A markdown
-        // table rendered in a middle step that output_transform discards must
-        // not satisfy a "return a markdown table" goal.
         final_output: run.output,
         prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
         ...(signal ? { signal } : {}),
@@ -707,40 +563,15 @@ export const dryRunWorkflowTool: ConversationTool = {
       if (gate.warning) runWarnings.push(gate.warning);
     }
 
-    // Build the persisted per-step trace. The conversation context-
-    // assembler reads this off `latest_preview.step_traces` on every
-    // authoring turn so the LLM sees the most recent shape per step
-    // without re-reading the dry_run envelope. We materialise a
-    // compact view here (drop request_meta from the persisted
-    // version — it's cheap to keep around in the response envelope
-    // but not worth the token cost on every turn).
-    // Fingerprint stamping: each persisted trace carries the
-    // identity of the step definition it was recorded against, so
-    // mutations drop evidence per changed step instead of wholesale and
-    // the authoring gates can verify the evidence is still current.
     const persistedStepTracesUnstamped = run.steps.map((s) => {
       const errorCode =
         s.error && typeof s.error === "object" && s.error !== null
           ? (s.error as { code?: unknown }).code
           : undefined;
-      // `scope_at_step` (enumerated JSONata paths + shape summary) is the
-      // authoring-critical projection and is computed from the FULL preview
-      // here, BEFORE the preview itself is capped below. So capping the
-      // persisted `output_preview` / `raw_preview` loses no path/shape signal
-      // the next turn relies on.
       const scope =
         s.output_preview !== undefined && s.output_preview !== null
           ? buildScopeAtStep(s.output_preview)
           : undefined;
-      // Cap the persisted previews to the same per-step budget the LLM
-      // envelope uses. `latest_preview.step_traces` is persisted into
-      // `conversations.draft` (JSONB) and re-rendered into the authoring
-      // prompt on EVERY turn; storing a step's full ~10 KB preview × N steps
-      // ballooned the draft to multi-MB and drove the per-turn heap into the
-      // memory-pressure band. The full payload remains in the execution step
-      // rows (reachable via inspect_execution_step / diagnose_latest_execution),
-      // so this only trims the redundant in-draft copy. `.data` is the
-      // structurally-truncated shape (keys/sample values preserved).
       const persistedPreview =
         s.output_preview !== undefined && s.output_preview !== null
           ? truncateStepPreviewForLlm(s.output_preview).data
@@ -758,9 +589,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         ...(persistedRawPreview !== undefined ? { raw_preview: persistedRawPreview } : {}),
         ...(scope ? { scope_at_step: scope } : {}),
         ...(typeof errorCode === "string" ? { error_code: errorCode } : {}),
-        // Hold-writes preview: the materialized-but-never-dispatched
-        // request IS the step's reviewable artifact — the model (and
-        // the user) inspect the would-be send without anything firing.
         ...(s.held
           ? { held: true, held_request: truncateStepPreviewForLlm(s.held_request).data }
           : {}),
@@ -771,9 +599,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       steps as unknown as Array<Record<string, unknown>>,
     );
 
-    // A judge block writes the breaker counter into the draft state in
-    // the same persist as the preview itself — one setDraft, no torn
-    // state between the verdict and its anti-churn bookkeeping.
     const draftForPreview =
       nextJudgeBreaker !== undefined
         ? withJudgeBreaker(ctx.getDraft(), nextJudgeBreaker)
@@ -784,13 +609,8 @@ export const dryRunWorkflowTool: ConversationTool = {
         ok: run.status === "succeeded",
         step_id: stoppedForDraft,
         summary: lastStep?.summary ?? `Run completed with status ${run.status}.`,
-        // Prefer the resolved final output (post output_transform) — that is
-        // what the caller receives and what the judge now evaluates.
         preview: finalOutputForLlm?.data ?? lastStep?.output_preview ?? null,
         ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
-        // A judge block joins the requires_repair path so its blocking
-        // semantics (no auto-commit; explicit save / force_commit stays
-        // available) match the structural repair warnings exactly.
         ...(dryRunRequiresRepair || judgeBlocked ? { requires_repair: true } : {}),
         step_traces: persistedStepTraces,
         input: previewInput ?? null,
@@ -800,41 +620,15 @@ export const dryRunWorkflowTool: ConversationTool = {
     );
     await ctx.setDraft(nextDraft);
 
-    // Per-step trace — surface every step's actual output shape +
-    // request_meta on the dry_run response so the LLM can author
-    // downstream transforms against REAL scope shapes instead of
-    // guessing at JSONata paths. Pre-fix the LLM in session 3f6082d2
-    // wrote format_output blind, the projection silently dropped the
-    // loop body's resources field, and v1→v2→v3 of the workflow
-    // committed without ever seeing the canonical shape. Each entry
-    // is truncated to ~1KB by the runtime's offload layer
-    // (output_preview is already capped); the LLM sees enough shape
-    // to author the next transform without burning the whole context.
-    //
-    // Gives the LLM a single
-    // structured trace it can scan to pinpoint the failing step plus
-    // its driver-level metadata (status code, byte counts, connector
-    // resolution).
     const stepTrace = run.steps.map((s) => {
       const errorCode =
         s.error && typeof s.error === "object" && s.error !== null
           ? (s.error as { code?: unknown }).code
           : undefined;
-      // scope_at_step is the authoring-vocab projection of the
-      // step's actual output shape (available_paths + shape_summary
-      // + primary_data_path). Computed once here so both the
-      // returned envelope and the persisted `step_traces` slot share
-      // the exact same shape — no drift between what the LLM saw on
-      // dry_run and what `inspect_workflow_draft` shows next turn.
       const scope =
         s.output_preview !== undefined && s.output_preview !== null
           ? buildScopeAtStep(s.output_preview)
           : null;
-      // Per-step LLM-context cap. The persisted dry-run preview keeps
-      // the full output_preview (next-turn `inspect_workflow_draft`
-      // sees the full shape via persistedStepTraces above); only the
-      // returned envelope is clipped. Restores the contract documented
-      // a few lines above ("output_preview is already capped").
       const previewForLlm =
         s.output_preview !== undefined && s.output_preview !== null
           ? truncateStepPreviewForLlm(s.output_preview)
@@ -869,13 +663,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     });
 
-    // Banner-style warnings summary at the top of the result
-    // envelope. Pre-fix the LLM had to scroll past `step_trace` and
-    // dive into `data.warnings` to notice loop_over_unresolved /
-    // unresolved_identifier signals (session ebd66982: the LLM
-    // missed three consecutive warnings before reading them).
-    // Promoting a one-line summary plus the structured list to the
-    // outer envelope makes the signal unmissable on the first read.
     const warningsBanner =
       runWarnings.length > 0
         ? {
@@ -890,70 +677,19 @@ export const dryRunWorkflowTool: ConversationTool = {
           }
         : null;
 
-    // Next-action hint on the dry-run envelope. Green preview that
-    // doesn't need a repair pass → commit; otherwise → fix-it loop.
-    // Pre-fix the success path was silent and the user had to type
-    // "yes" twice before the LLM proposed save_workflow_draft (session
-    // 0ac7593c). Even with task #4's auto-commit behaviour live, the
-    // hint stays on the envelope so the chat renderer's lifecycle line
-    // and the never-silent guard in loop.ts both have something to
-    // anchor on.
-    // A green dry-run auto-commits only when the caller explicitly selected
-    // permission_mode `auto` and the preview judge rendered a non-blocking
-    // verdict. In ask/plan modes, preview and persistence are separate
-    // decisions: the green result returns save_required and the normal
-    // save_workflow_draft policy gate supplies the human approval surface.
-    // ANY judge skip counts as unjudged — not just `no_goal`:
-    //   - `no_goal`: a bare verification dry-run during iteration must NOT mint
-    //     a version every call (one live session churned v6→v12 this way, six
-    //     `auto_persist_on_green_dry_run` commits in 36 min).
-    //   - `judge_unavailable`: the provider was down or the output uncoercible.
-    //     Keying only on `no_goal` here meant a provider outage silently
-    //     produced an UNJUDGED auto-commit with a human sitting right there —
-    //     the judge fails open by design, so this is the only place that can
-    //     hold the commit.
-    // A green-but-unjudged preview is still `ok`; it just returns the
-    // `save_workflow_draft` next-action so the model/user persists once,
-    // deliberately.
     const judgeSkipped = judgeOutcome?.verdict === "skipped";
-    // Backgrounded MCP turns can surface the durable approval_url through
-    // conversation_get, so transport shape is not permission to persist.
-    // Only permission_mode `auto` is the caller's explicit "don't ask" signal.
     const autoCommitAllowed = ctx.permission_mode === "auto";
-    // In auto mode a green dry-run + non-blocking judge can auto-commit:
-    // hold_writes made the run side-effect-free. A green-but-unjudged preview
-    // may also commit a brand-new workflow in auto mode — an unchanged
-    // re-preview still reports
-    // `already_persisted` (no churn), and the audit row carries the honest
-    // `judge_verdict: "skipped"` with its reason. The judge stays a QUALITY
-    // gate: a `partial`/`failed` verdict or a breaker hold keeps `judgeBlocked`
-    // true, so this NEVER auto-commits a goal-mismatched preview.
-    // The `unattended` allowance exists so a backgrounded turn does not
-    // dead-end on a `save_workflow_draft` deferral nobody can answer. That
-    // reasoning holds for a NEW workflow — there is nothing to lose. It does
-    // not hold when the commit would REPLACE one that already exists: then an
-    // unjudged preview lands on top of work someone verified. Production did
-    // exactly that: a green-but-unjudged preview auto-committed a generic
-    // normaliser over a purpose-built one, and "green" there meant only
-    // "no exception".
     const wouldReplacePersisted = replacesPersistedWorkflow(ctx.getDraft().summary);
     const autoUnjudgedCommit = autoCommitAllowed && !wouldReplacePersisted;
     const cleanPreview =
       dryRunGreen && !judgeBlocked && autoCommitAllowed && (!judgeSkipped || autoUnjudgedCommit);
     const greenPendingSave = dryRunGreen && !judgeBlocked && !cleanPreview;
-    // The judge hit its block cap: the edit loop is exhausted but the preview
-    // still does not satisfy the goal. Do NOT keep nudging edit→dry_run (that
-    // is the loop the breaker exists to stop); instead offer an explicit
-    // commit-as-is OR a final edit, and let the done-signal guidance tell the
-    // model to surface the gap to the user.
     const judgeExhausted = judgeBlocked && judgeDoneSignal != null;
     const previewNextActions =
       cleanPreview || greenPendingSave
         ? ["save_workflow_draft"]
         : judgeEscalate
-          ? // Forced escalation: the only tool action left is commit-as-is; the
-            // model must otherwise ASK the user (a conversational, not tool, move).
-            ["save_workflow_draft"]
+          ? ["save_workflow_draft"]
           : judgeExhausted
             ? ["save_workflow_draft", "edit_workflow_patch"]
             : judgeBlocked
@@ -979,16 +715,6 @@ export const dryRunWorkflowTool: ConversationTool = {
               : `Re-run preview after fixing step \`${stoppedForDraft}\``;
     const warningSummary = runWarnings.length > 0 ? (warningsBanner?.summary ?? null) : null;
 
-    // Auto-commit on green dry-run. A clean preview means the draft
-    // is validated end-to-end against real data; persisting
-    // immediately removes the redundant approval step that produced
-    // the "yes" → "yes" → "commit this" loop in session 0ac7593c.
-    // `skipPriorApprovalCheck: true` bypasses the ask_user_confirm
-    // gate the explicit save tool requires; the audit row is tagged
-    // `auto_persist_on_green_dry_run` so the history is unambiguous.
-    // If the commit refuses (e.g. workflow_not_ready, slug clash) the
-    // typed envelope is returned verbatim so the LLM picks the right
-    // recovery move.
     if (cleanPreview) {
       const commitResult = await commitWorkflowAtomic({
         ctx,
@@ -996,9 +722,6 @@ export const dryRunWorkflowTool: ConversationTool = {
         reason: "auto_persist_on_green_dry_run",
         emitAutoPersistAudit: true,
         commitIntentKind: "save_workflow_draft",
-        // Governance: the immutable record of WHY this auto-commit was
-        // permitted carries the semantic gate's verdict alongside the
-        // structural green.
         ...(judgeOutcome
           ? {
               extraAuditMetadata: {
@@ -1051,15 +774,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           ...committed,
           auto_committed: versionChanged,
           auto_commit_reason: "auto_persist_on_green_dry_run",
-          // The judge outcome rides the commit envelope: `passes`
-          // verdicts, skips (no_goal / judge_unavailable), and
-          // breaker-degraded advisory verdicts are all visible here.
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
-          // Terminal done-signal (P3): when a still-unsatisfied preview
-          // was committed as-is because the judge hit its block cap, the
-          // model gets an explicit EXIT — stop editing, tell the user
-          // what's missing, ask how to proceed. Surfaced as guidance,
-          // not another silent requires_repair.
           ...(judgeDoneSignal
             ? {
                 judge_done: {
@@ -1075,10 +790,6 @@ export const dryRunWorkflowTool: ConversationTool = {
             duration_ms: totalDryRunMs,
             execution_id: run.execution_id,
           },
-          // Preserve the per-step trace from the dry-run on the
-          // auto-committed envelope. The LLM still needs to see
-          // step-by-step shape + status to author downstream
-          // transforms or to debug a follow-up run.
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
@@ -1092,10 +803,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
-    // Green preview that is not eligible for auto persistence: return the
-    // result with an explicit save_workflow_draft next-action. In ask/plan
-    // modes this always separates preview from the human save decision. In
-    // auto mode this path still holds an unjudged replacement.
     if (greenPendingSave) {
       const totalDryRunMs = run.steps.reduce((acc, s) => acc + (s.duration_ms ?? 0), 0);
       logger.info({
@@ -1132,17 +839,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       };
     }
 
-    // This return is the NOT-clean path — `cleanPreview` returned early
-    // above. The run either failed outright, or it succeeded on paper
-    // but a step produced broken output (an empty transform, an
-    // unresolved reference). Either way the preview is not `ok`: a green
-    // `run.status` must never read as success while the workflow still
-    // produces broken output. Pre-fix a `transform_empty_extraction`
-    // preview reported `ok:true`, `classification:"ok"`, and "Ran N
-    // steps with no errors" — so the authoring agent iterated for a
-    // dozen turns against a false green.
-    //
-    // Bounded auto-repair (Fix 10) — propose-only; see dry-run-repair.ts.
     const repairProposals = await proposeDryRunRepairs({
       steps,
       runWarnings,
@@ -1155,17 +851,11 @@ export const dryRunWorkflowTool: ConversationTool = {
       ...(signal ? { signal } : {}),
     });
     const repairCount = repairWarnings.length;
-    // The failing step's driver error_code (e.g. `http_4xx`), when the run
-    // stopped on a step rather than on the judge — suffixed into the tool-level
-    // error_code so an operator (and the error_code-repeat breaker) sees the
-    // SHAPE of the failure, not just "needs repair".
     const failedStepErrorCode =
       run.status !== "succeeded"
         ? (run.steps.find((s) => s.status !== "succeeded")?.error as { code?: string } | undefined)
             ?.code
         : undefined;
-    // Stable top-level error_code for the ok:false envelope. judge block,
-    // step failure, or structural repair-needed — each gets a distinct code.
     const previewErrorCode = judgeEscalate
       ? "preview_judge_exhausted"
       : judgeBlocked
@@ -1175,8 +865,6 @@ export const dryRunWorkflowTool: ConversationTool = {
             ? `draft_step_failed:${failedStepErrorCode}`
             : "draft_step_failed"
           : "preview_needs_repair";
-    // Hoisted so it serves BOTH the lifecycle payload's `summary` AND the
-    // top-level `message` summarizeToolFailure lifts into the tool.failed log.
     const previewSummary =
       run.status !== "succeeded"
         ? `Run stopped at step \`${stoppedForDraft}\`: ${stoppedMessage ?? lastStep?.summary ?? run.error?.message ?? "unknown error"}`
@@ -1185,13 +873,6 @@ export const dryRunWorkflowTool: ConversationTool = {
           : judgeBlocked && judgeOutcome && judgeOutcome.verdict !== "skipped"
             ? `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"} without errors, but the preview does not satisfy the user's goal (judge verdict: ${judgeOutcome.verdict}): ${judgeOutcome.reason}${judgeOutcome.missing.length > 0 ? ` Missing: ${judgeOutcome.missing.join("; ")}.` : ""} Fix via edit_workflow_patch and re-run dry_run_workflow — or, after the user explicitly confirms, commit anyway via save_workflow_draft.`
             : `Ran ${run.steps.length} step${run.steps.length === 1 ? "" : "s"}, but the preview needs repair — ${repairCount} blocking warning${repairCount === 1 ? "" : "s"}. Fix the flagged step before committing.`;
-    // Held-read nudge: when holding a step skipped its dependents and the
-    // preview is therefore incomplete, the held step is often a READ
-    // misclassified as a write (e.g. a scrape that uses POST). Surface a hint
-    // about the supported HTTP POST search override, not a blanket bypass
-    // for SQL, GraphQL, or MCP effects. Never auto-reclassify. Fires ONLY when
-    // holding actually broke the preview (held + skipped dependents), so a
-    // legitimate held-write preview that still produces output stays quiet.
     const heldStepCount = run.steps.filter((s) => s.held).length;
     const skippedDependentCount = run.steps.filter(
       (s) => (s.error as { code?: string } | undefined)?.code === "skipped_dependency_held",
@@ -1203,10 +884,6 @@ export const dryRunWorkflowTool: ConversationTool = {
     const previewMessage = heldReadHint ? `${previewSummary} ${heldReadHint}` : previewSummary;
     return {
       ok: cleanPreview,
-      // This path is always ok:false (cleanPreview returned early). The
-      // top-level error_code/message let `summarizeToolFailure` log the WHY
-      // and let the error_code-repeat breaker (which reads top-level fields,
-      // not nested data) track a model re-issuing the same failing preview.
       ...(cleanPreview ? {} : { error_code: previewErrorCode, message: previewMessage }),
       data: buildLifecyclePayload(
         nextDraft,
@@ -1223,20 +900,11 @@ export const dryRunWorkflowTool: ConversationTool = {
           execution_id: run.execution_id,
           next_best_actions: previewNextActions,
           next_prompt: previewNextPrompt,
-          // Judge verdict on the blocked envelope — the model reads
-          // `judge.missing` to target the repair.
           ...(judgeOutcome ? { judge: judgeOutcome } : {}),
-          // Terminal done-signal on the HELD (not committed) envelope: the
-          // judge exhausted its block cap and the preview still fails the goal.
-          // `committed_as_is: false` is the contract that distinguishes this
-          // from the legitimate auto-commit path — the model must stop the
-          // edit loop and ask the user, not keep re-running dry_run_workflow.
           ...(judgeDoneSignal
             ? {
                 judge_done: {
                   committed_as_is: false,
-                  // `escalate: true` means the model ignored the EXIT and re-ran
-                  // past the hold cap — it must now force the operator choice.
                   escalate: judgeEscalate,
                   attempts: judgeDoneSignal.attempts,
                   missing: judgeDoneSignal.missing,
@@ -1245,15 +913,8 @@ export const dryRunWorkflowTool: ConversationTool = {
               }
             : {}),
           ...(warningSummary ? { warning_summary: warningSummary } : {}),
-          // Top-level banner so the LLM can't miss warnings on first
-          // read; `warnings` carries the full per-warning detail.
           ...(warningsBanner ? { warnings_banner: warningsBanner } : {}),
           ...(runWarnings.length > 0 ? { warnings: runWarnings } : {}),
-          // Propose-only repair outcomes (Fix 10). `repaired: true`
-          // entries carry a VERIFIED expression (compiles; non-empty
-          // against this run's recorded scope where applicable) —
-          // apply via edit_workflow_patch, then
-          // re-preview. The draft was not changed.
           ...(repairProposals.length > 0 ? { repair_proposals: repairProposals } : {}),
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
@@ -1263,11 +924,6 @@ export const dryRunWorkflowTool: ConversationTool = {
           ...stepResultsField,
           ...(lastStep
             ? (() => {
-                // Same per-step LLM cap as the step_trace assembler
-                // above. Without this, last_step.output_preview is the
-                // second LLM-visible copy of the final step's full
-                // output and would re-introduce the same envelope-bloat
-                // path step_trace just stopped causing.
                 const lastPreviewForLlm =
                   lastStep.output_preview !== undefined && lastStep.output_preview !== null
                     ? truncateStepPreviewForLlm(lastStep.output_preview)

@@ -7,9 +7,6 @@ import {
   textAnswerAcceptable,
 } from "./chat-text";
 
-// The shape the engine sends for a pending ask_user_text: `summary` is empty
-// (the question is not in the row's input.summary), the question rides in
-// `prompt.question`, and the placeholder only in the call's own input.
 function fixture(): ConversationDetail {
   return {
     resume_summary: {

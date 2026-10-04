@@ -1,15 +1,3 @@
-// AST-based replacement for the old `.from(table)` regex heuristic in
-// audit-invariants.ts. The heuristic produced 196 candidate sites, of
-// which the bulk were `Buffer.from(...)` and `Array.from(...)` —
-// both `.from(<expr>)` shapes whose receiver is the global Buffer /
-// Array constructor, not a Drizzle query builder. This scan
-// distinguishes a Drizzle query chain from those constructors by
-// walking the AST receiver back to a query starter (`select`,
-// `update`, `delete`, `insert`, `with`).
-//
-// Safe-detection rules (any of):
-//   1. The `.from(table)` table identifier is in `.tenant-filter-allowlist.txt`
-//      (truly tenant-agnostic system tables).
 //   2. The `.from(...)` call has a `// tenant-filter:exempt — <reason>`
 //      comment in its leading trivia or trailing comment. Reason must be
 //      non-empty; intentionally cross-tenant call sites (slug-based webhook
@@ -58,18 +46,7 @@ const QUERY_STARTERS = new Set([
 // the separator forces at least one non-space character.
 const EXEMPT_RE = /\btenant-filter:\s*exempt\b\s*[-—:]\s*\S/;
 
-// 12 ≈ longest observed Drizzle chain in this repo (the
-// `executions/run.ts` list query, with multi-condition `where(and(…))`
-// spread across helper variable + inline conditions). If the scan
-// starts missing valid leading exemptions on legitimate longer
-// chains, raise this; do not raise blindly — the upper bound also
-// caps how far an exempt comment can sit from its `.from()` call,
-// which is a readability constraint.
 const MAX_CHAIN_SCAN_LINES = 12;
-// `TODO`/`FIXME` is not a documented decision — it is "I haven't
-// actually checked". Reject these in the reason text so a future
-// contributor cannot ship a green build behind a TODO. If the site
-// genuinely needs tracking, file an issue and link it in the reason.
 const TODO_REASON_RE = /\b(?:TODO|FIXME|XXX|HACK)\b/;
 const TENANT_ID_NAMES = new Set(["tenant_id", "tenantId"]);
 
@@ -163,11 +140,9 @@ function exemptMatches(text: string): boolean {
 function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   const start = call.getStart();
   const end = call.getEnd();
-  // Same-line trailing comment: scan from end of call to next newline.
   const lineEnd = sourceText.indexOf("\n", end);
   const after = sourceText.substring(end, lineEnd === -1 ? sourceText.length : lineEnd);
   if (exemptMatches(after)) return true;
-  // Leading trivia on the enclosing statement — walk up until a Statement.
   let cur: Node | undefined = call;
   while (cur) {
     if (Node.isStatement(cur) || Node.isVariableStatement(cur)) {
@@ -177,13 +152,6 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
     }
     cur = cur.getParent();
   }
-  // Mid-chain comment: scan upward from the .from() call through
-  // chain-continuation lines (chained method calls, await, opening
-  // parens, blank/comment lines). Drizzle queries often span many
-  // lines as a single statement, so a statement-level leading-trivia
-  // scan misses comments placed adjacent to the .from() inside the
-  // chain. We stop once we hit a line that clearly starts a fresh
-  // statement.
   let scanFrom = start;
   for (let i = 0; i < MAX_CHAIN_SCAN_LINES; i++) {
     const prevNewline = sourceText.lastIndexOf("\n", scanFrom - 1);
@@ -210,12 +178,6 @@ function hasExemptComment(call: CallExpression, sourceText: string): boolean {
   return false;
 }
 
-// /tenant/i match against any identifier or property name lets the
-// scan recognize predicates that flow through helper variables —
-// `tenantConds`, `tenantWhereClauses`, `withTenantScope(...)`, etc.
-// The constraint is intentionally loose: any code that puts the word
-// "tenant" in a where-tree identifier is signalling intent, and a
-// reviewer can confirm the array's first element is the predicate.
 const TENANT_NAMED_RE = /tenant/i;
 
 function nodeIsTenantSignal(n: Node, fileTenantHelpers: ReadonlySet<string>): boolean {
@@ -255,12 +217,6 @@ function whereArgRefsTenant(node: Node, fileTenantHelpers: ReadonlySet<string>):
   return found;
 }
 
-// Find local helper functions whose body references `tenant_id` /
-// `tenantId`. A `.where(buildWhere(...))` argument that calls one of
-// these helpers is treated as safe — the helper provably injects the
-// predicate. Limited to same-file resolution (no cross-file symbol
-// lookup) to keep the scan O(n) and avoid TypeScript's program-wide
-// type checker. Helpers shared across files can either be renamed to
 // match /tenant/i or carry a `// tenant-filter:exempt` annotation at
 // each call site.
 function collectTenantHelperNames(sourceFile: SourceFile): Set<string> {
@@ -302,10 +258,6 @@ function chainHasTenantWhere(
   fromCall: CallExpression,
   fileTenantHelpers: ReadonlySet<string>,
 ): boolean {
-  // Walk parent chain forward through PropertyAccess + CallExpression
-  // pairs. The structure for `.from(t).where(p)` is:
-  //   CallExpression(from)  →  parent PropertyAccess(.where)
-  //                         →  grandparent CallExpression(where(p))
   let cur: Node = fromCall;
   for (;;) {
     const parent = cur.getParent();
@@ -365,24 +317,6 @@ interface InspectOpts {
   fileTenantHelpers: ReadonlySet<string>;
 }
 
-/**
- * Classify a CallExpression and report a violation if it is a
- * Drizzle SELECT chain that lacks a tenant predicate.
- *
- * SCOPE — INTENTIONAL BLIND SPOTS:
- *   * `db.update(<table>).set(...).where(...)` — NOT inspected.
- *   * `db.delete(<table>).where(...)` — NOT inspected.
- *   * `db.insert(<table>).values(...)` — NOT inspected (no WHERE;
- *     covered by the schema-level `tenant_id NOT NULL` constraint).
- *
- * The scaffolding to extend the scan to update/delete chains is
- * trivially copy-pasteable from this function, but turning it on
- * surfaces ~180 pre-existing call sites that need triage. That
- * burndown deserves its own focused PR (mirror this PR's shape:
- * fix or annotate every site, then flip the gate). For now the
- * SELECT path is the gate; update/delete paths are
- * reviewer-enforced. Documented in `apps/engine/AGENTS.md`.
- */
 function inspectQueryNode(node: CallExpression, opts: InspectOpts): TenantFilterViolation | null {
   const expr = node.getExpression();
   if (Node.isPropertyAccessExpression(expr)) {

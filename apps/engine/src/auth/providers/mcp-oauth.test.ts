@@ -1,9 +1,3 @@
-// Integration tests for createMcpOAuthAuthProvider.
-// Exercises the full resolve() path against a real Postgres DB.
-// No mocks — uses testcontainers via createTestDb.
-//
-// Also covers canonicalizeResourceUri as pure unit tests (no DB needed).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,9 +17,6 @@ let tenantId: string;
 let userId: string;
 
 beforeAll(async () => {
-  // Load config once for the whole suite so that resolve()'s audience check
-  // can read getConfig().server.public_base_url. The audience describe's
-  // beforeAll then overrides only that key via setConfigKey().
   const configDir = await mkdtemp(join(tmpdir(), "sk-mcp-oauth-provider-"));
   await loadConfig({
     env: { DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/subkit" },
@@ -57,7 +48,6 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 }, 30_000);
 
-// Seed a DCR client row so the access token FK resolves
 let clientSeq = 0;
 async function seedClient(): Promise<string> {
   const clientId = `test-client-${++clientSeq}`;
@@ -72,14 +62,12 @@ async function seedClient(): Promise<string> {
   return clientId;
 }
 
-// Seed a valid access token and return its plaintext
 async function seedAccessToken(opts?: {
   scope?: string;
   tenantIdOverride?: string;
   userIdOverride?: string;
   expiresAt?: Date;
   revokedAt?: Date;
-  /** RFC 8707 resource indicator. Omit only in tests that do not enable audience validation. */
   resource?: string | null;
 }): Promise<{ plaintext: string; tokenId: string; clientId: string }> {
   const clientId = await seedClient();
@@ -98,8 +86,6 @@ async function seedAccessToken(opts?: {
       scope: opts?.scope ?? "mcp:read",
       expires_at: expiresAt,
       revoked_at: opts?.revokedAt ?? null,
-      // resource: null is the DB default; audience-validation tests pass an
-      // explicit value unless they are asserting fail-closed behavior.
       ...(opts?.resource !== undefined ? { resource: opts.resource } : {}),
     })
     .returning({ id: mcpOauthAccessTokens.id });
@@ -112,8 +98,6 @@ function makeRequest(token: string): Request {
     headers: { authorization: `Bearer ${token}` },
   });
 }
-
-// ── Happy path ────────────────────────────────────────────────────────────────
 
 describe("createMcpOAuthAuthProvider — happy path", () => {
   test("valid wf_mcp_* token resolves to ResolvedPrincipal with correct tenant_id, scopes, roles, kind", async () => {
@@ -131,10 +115,6 @@ describe("createMcpOAuthAuthProvider — happy path", () => {
   });
 
   test("carries the OAuth client registration the token was issued to", async () => {
-    // Which client connected is credential-bound, not self-reported: it comes
-    // from the access-token row, so a client cannot claim to be another one the
-    // way it can with `clientInfo` at `initialize`. That is what makes it usable
-    // for per-channel decisions and for splitting telemetry by client.
     const { plaintext, clientId } = await seedAccessToken();
     const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
     const principal = await provider.resolve(makeRequest(plaintext));
@@ -143,9 +123,6 @@ describe("createMcpOAuthAuthProvider — happy path", () => {
   });
 
   test("two clients authorised by the same user resolve to different registrations", async () => {
-    // The session owner key derives its credential term from this field, so two
-    // distinct clients for one user must not collapse onto the same value —
-    // otherwise they would share an MCP session.
     const first = await seedAccessToken();
     const second = await seedAccessToken();
     const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
@@ -158,12 +135,9 @@ describe("createMcpOAuthAuthProvider — happy path", () => {
   });
 });
 
-// ── Prefix rejection ──────────────────────────────────────────────────────────
-
 describe("createMcpOAuthAuthProvider — prefix rejection", () => {
   test("Bearer wf_live_* prefix returns null (falls through)", async () => {
     const provider = createMcpOAuthAuthProvider({ db });
-    // wf_live_ prefix is used for API keys, not MCP OAuth tokens
     const principal = await provider.resolve(
       makeRequest("wf_live_abcdefghijklmnopqrstuvwxyz01234567"),
     );
@@ -177,8 +151,6 @@ describe("createMcpOAuthAuthProvider — prefix rejection", () => {
     expect(principal).toBeNull();
   });
 });
-
-// ── Revocation + expiry ───────────────────────────────────────────────────────
 
 describe("createMcpOAuthAuthProvider — revocation and expiry", () => {
   test("revoked token (revoked_at in the past) returns null", async () => {
@@ -200,16 +172,11 @@ describe("createMcpOAuthAuthProvider — revocation and expiry", () => {
   });
 });
 
-// ── last_used_at flush throttling ─────────────────────────────────────────────
-
 describe("createMcpOAuthAuthProvider — last_used_at flush throttling", () => {
   test("two resolve() calls within 60s only update last_used_at once", async () => {
     const { plaintext, tokenId } = await seedAccessToken({ scope: "mcp:read" });
-    // resetThrottle clears the module-level lastFlush map so this token starts cold
     const provider = createMcpOAuthAuthProvider({ db, resetThrottle: true });
 
-    // First call — should write last_used_at. The flush is awaited
-    // inside resolve(), so the row is updated before resolve() returns.
     await provider.resolve(makeRequest(plaintext));
 
     const rows1 = await db
@@ -220,7 +187,6 @@ describe("createMcpOAuthAuthProvider — last_used_at flush throttling", () => {
     const firstFlushTs = rows1[0]?.last_used_at;
     expect(firstFlushTs).not.toBeNull();
 
-    // Second call immediately after — should NOT update (within 60s window)
     await provider.resolve(makeRequest(plaintext));
 
     const rows2 = await db
@@ -230,16 +196,12 @@ describe("createMcpOAuthAuthProvider — last_used_at flush throttling", () => {
       .limit(1);
     const secondFlushTs = rows2[0]?.last_used_at;
 
-    // The timestamp must not have changed (same flush window)
     expect(secondFlushTs?.getTime()).toBe(firstFlushTs?.getTime());
   });
 });
 
-// ── Tenant isolation ──────────────────────────────────────────────────────────
-
 describe("createMcpOAuthAuthProvider — tenant isolation", () => {
   test("token for tenant A resolves to a principal whose tenant_id is A", async () => {
-    // Seed a second tenant
     const [tenantB] = await db
       .insert(tenants)
       .values({ slug: "mcp-tenant-b", display_name: "Tenant B" })
@@ -256,20 +218,16 @@ describe("createMcpOAuthAuthProvider — tenant isolation", () => {
       .returning();
     if (!userB) throw new Error("seed user B failed");
 
-    // Issue a token scoped to tenantId (A)
     const { plaintext } = await seedAccessToken({ scope: "mcp:read" });
 
     const provider = createMcpOAuthAuthProvider({ db });
     const principal = await provider.resolve(makeRequest(plaintext));
 
     expect(principal).not.toBeNull();
-    // The principal's tenant_id must be A (not B)
     expect(principal?.tenant_id).toBe(tenantId);
     expect(principal?.tenant_id).not.toBe(tenantB.id);
   });
 });
-
-// ── canonicalizeResourceUri — pure unit tests (no DB) ─────────────────────────
 
 describe("canonicalizeResourceUri", () => {
   test("adds a single trailing slash when path has none", () => {
@@ -285,7 +243,6 @@ describe("canonicalizeResourceUri", () => {
   });
 
   test("lowercases scheme (URL spec normalises on parse)", () => {
-    // HTTPS:// → https://
     expect(canonicalizeResourceUri("HTTPS://example.com/mcp")).toBe("https://example.com/mcp/");
   });
 
@@ -297,8 +254,6 @@ describe("canonicalizeResourceUri", () => {
     expect(canonicalizeResourceUri("https://example.com")).toBe("https://example.com/");
   });
 });
-
-// ── Audience (RFC 8707 resource indicator) validation ─────────────────────────
 
 describe("createMcpOAuthAuthProvider — audience validation", () => {
   const TEST_BASE_URL = "https://aud-test.example.com";
@@ -314,7 +269,6 @@ describe("createMcpOAuthAuthProvider — audience validation", () => {
   });
 
   test("accepts token whose resource matches the server's canonical /mcp URI", async () => {
-    // canonicalizeResourceUri("https://aud-test.example.com/mcp") = "https://aud-test.example.com/mcp/"
     const { plaintext } = await seedAccessToken({
       resource: `${TEST_BASE_URL}/mcp`,
     });
@@ -324,7 +278,6 @@ describe("createMcpOAuthAuthProvider — audience validation", () => {
   });
 
   test("accepts token with trailing-slash variant of the expected resource", async () => {
-    // "https://aud-test.example.com/mcp/" canonicalises to the same value
     const { plaintext } = await seedAccessToken({
       resource: `${TEST_BASE_URL}/mcp/`,
     });
@@ -352,7 +305,6 @@ describe("createMcpOAuthAuthProvider — audience validation", () => {
   test("skips audience check when base_url is empty (no rejection)", async () => {
     await setConfigKey("server.public_base_url", "", { force: true });
     try {
-      // Even a clearly wrong resource is accepted when base_url is unset
       const { plaintext } = await seedAccessToken({
         resource: "https://completely-wrong.example.com/mcp",
       });
@@ -360,7 +312,6 @@ describe("createMcpOAuthAuthProvider — audience validation", () => {
       const principal = await provider.resolve(makeRequest(plaintext));
       expect(principal).not.toBeNull();
     } finally {
-      // Restore so subsequent tests in this describe see the test base_url
       await setConfigKey("server.public_base_url", TEST_BASE_URL, { force: true });
     }
   });

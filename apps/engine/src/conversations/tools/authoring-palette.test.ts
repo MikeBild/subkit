@@ -1,10 +1,3 @@
-// Unit tests for the default-deny execution-tool gate.
-//
-// These pure helpers decide whether `run_workflow` + its synthetic `wf_<slug>`
-// peers stay in the per-turn palette. The gate is keyed ONLY on durable state
-// (a bound saved workflow, or a slug the user named), never on run/authoring
-// free text — that is what closes the negation-blind build-new hijack class.
-
 import { describe, expect, test } from "bun:test";
 import {
   applyExecutionToolGate,
@@ -95,9 +88,6 @@ describe("resolveNamedWorkflowSlug", () => {
   });
 
   test("a short common-word slug ('run') never self-matches incidental prose", () => {
-    // 'run' is in the catalog but below the single-token floor — it must not
-    // match the verb 'run' in "run a new workflow", which would spuriously
-    // expose execution during authoring.
     expect(resolveNamedWorkflowSlug("run a brand new workflow from scratch", catalog)).toBeNull();
   });
 
@@ -147,7 +137,6 @@ describe("applyExecutionToolGate", () => {
     expect(removed).toBe(2);
     expect(tools.run_workflow).toBeUndefined();
     expect(tools["wf_notion-essay-to-markdown"]).toBeUndefined();
-    // Non-execution tools are untouched.
     expect(tools.edit_workflow_patch).toBeDefined();
     expect(tools.list_workflows).toBeDefined();
   });
@@ -164,11 +153,6 @@ describe("applyExecutionToolGate", () => {
     expect(tools["wf_notion-essay-to-markdown"]).toBeDefined();
   });
 
-  // The chat surface is exempt from the default-deny gate: the loop always
-  // decides `{ exposeExecution: true, reason: "chat_surface" }` for
-  // `p.surface === "chat"`, so execution tools survive regardless of whether a
-  // workflow is bound or was named this turn. Chat cannot author, so the
-  // build-new lookalike hijack the gate guards against is impossible there.
   test("chat_surface decision keeps execution tools even with no bound/named target", () => {
     const tools = palette();
     const removed = applyExecutionToolGate(

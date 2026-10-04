@@ -1,13 +1,3 @@
-// Group CRUD + member management + group-role assignment:
-//   GET    /v1/rbac/groups
-//   POST   /v1/rbac/groups
-//   PATCH  /v1/rbac/groups/:id
-//   DELETE /v1/rbac/groups/:id
-//   POST   /v1/rbac/groups/:id/members/:user_id
-//   DELETE /v1/rbac/groups/:id/members/:user_id
-//   POST   /v1/rbac/groups/:id/roles/:role_id
-//   DELETE /v1/rbac/groups/:id/roles/:role_id
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../../audit/index.ts";

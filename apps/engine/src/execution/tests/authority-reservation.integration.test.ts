@@ -23,8 +23,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// Storage fixtures deliberately do not model a human grant. Human/session and
-// manifest validation are covered by the grant-service and HTTP suites.
 async function fixture(patch: Partial<typeof workflowExecutionAuthorities.$inferInsert> = {}) {
   const slug = `authority-reservation-${++counter}`;
   const [tenant] = await ctx.db.insert(tenants).values({ slug, display_name: slug }).returning();

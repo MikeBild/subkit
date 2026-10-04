@@ -1,15 +1,3 @@
-// User story: As an operator, I run a saved workflow in development while its
-// development connector has lost its sign-in, and I am told which connector
-// needs reconnecting — not "internal error" — and nothing is left behind that
-// blocks the next attempt.
-// Acceptance criteria:
-//   - AC1: The run is refused with 409 prepared_credential_unavailable and the
-//     refusal names the step, the connector and the reason.
-//   - AC2: No execution row is left queued for that workflow.
-//   - AC3: A preparation afterwards is not told another one is in flight.
-//   - AC4: Production, whose connector is healthy, still runs.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, executions } from "../../db/schema/index.ts";
@@ -42,7 +30,6 @@ beforeAll(async () => {
     .insert(connectors)
     .values({ ...connector, environment: "prod" })
     .returning();
-  // The development twin: same slug, its sign-in lost.
   const [devTwin] = await ctx.db
     .insert(connectors)
     .values({ ...connector, environment: "dev", needs_reauth: true })
@@ -91,7 +78,6 @@ describe("journey: a run refuses a connector that must be reconnected", () => {
     expect(body.message).toContain('"gmail"');
     expect(body.details).toMatchObject({
       step_id: "send",
-      // The twin that must be reconnected, not the healthy production row.
       connector_id: devTwinId,
       connector_slug: "gmail",
       environment: "dev",

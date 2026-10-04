@@ -1,11 +1,3 @@
-// `/admin` slash command — single-pane modal wrapping the existing
-// AdminTab. Lifted out of /settings as part of the 5-tab refactor.
-//
-// Probes the user's permissions on mount via skBootstrap so a
-// non-admin sees an in-pane "no permission" message instead of an
-// empty tab. The server still enforces RBAC on every mutation; the
-// gate here is purely UX.
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -66,9 +58,6 @@ export const AdminCommand: React.FC<Props> = ({ client, tenant, onDismiss }) => 
             </Box>
           );
         }
-        // AdminTab aggregates its sub-tabs' inner-Esc state and forwards
-        // it here, so the outer SinglePane stays open while an
-        // AdminCreateForm / consent prompt is up.
         return <AdminTab client={client} onInnerEscape={setInnerEscape} />;
       }}
     </SinglePane>

@@ -1,8 +1,3 @@
-// Output helpers: JSON emit, simple column table, key/value dump.
-//
-// Commands pipe these through `process.stdout.write` so stdin/stdout
-// are easy to stub in tests.
-
 export function toJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
@@ -11,10 +6,6 @@ export function printJson(value: unknown): void {
   process.stdout.write(`${toJson(value)}\n`);
 }
 
-/**
- * Render a list of records as a tab-separated table, preserving the
- * caller-provided column order. Unknown keys become empty cells.
- */
 export function renderTable(columns: readonly string[], rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "";
   const header = columns.join("\t");
@@ -57,7 +48,6 @@ export function printKeyValue(record: Record<string, unknown>): void {
   }
 }
 
-/** Pick between table and JSON output based on an asJson flag. */
 export function emitList<T extends Record<string, unknown>>(
   asJson: boolean,
   columns: readonly string[],
@@ -70,24 +60,11 @@ export function emitList<T extends Record<string, unknown>>(
   printTable(columns, rows);
 }
 
-/** One catalog block, as the engine reports it on a list response. */
 export interface CategoryBlockSummary {
   category: string;
   count: number;
 }
 
-/**
- * Render a catalog as titled blocks instead of one flat table.
- *
- * The block ORDER comes from the server (`categories` on the list response),
- * never from a rule re-implemented here — the engine owns "largest block
- * first, catch-all last" and every client must agree with it. Rows are matched
- * to a block by their own `category` field; anything the server did not
- * announce is appended in a final pass so a row can never be swallowed.
- *
- * JSON output stays FLAT and unchanged: machine consumers keep a stable shape,
- * and the blocks are already present as `category` on each row.
- */
 export function emitGroupedList<T extends Record<string, unknown>>(
   asJson: boolean,
   columns: readonly string[],

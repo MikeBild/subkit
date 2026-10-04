@@ -1,12 +1,3 @@
-// The `mcp_<slug>__<tool>` grammar, and the collision it exists to prevent.
-//
-// The whole point of banning `__` inside a connector slug is that the FIRST
-// `__` after the prefix is then the only possible split point. These tests
-// pin that: two different (slug, tool) pairs must never compose to the same
-// name, and every name we compose must round-trip back to the pair it came
-// from. Without the ban both properties break, and the visible symptom is a
-// tool call landing on the wrong remote server.
-
 import { describe, expect, test } from "bun:test";
 import { CONNECTOR_SLUG_RE, ConnectorSlugSchema } from "../types.ts";
 import {
@@ -52,9 +43,6 @@ describe("buildMcpToolName", () => {
   });
 
   test("a composed name over the 64-char limit is refused rather than truncated", () => {
-    // A truncated name would still route — to whichever server shares the
-    // prefix — so the collision would only surface as a call landing on the
-    // wrong remote.
     const slug = "a".repeat(40);
     const tool = "b".repeat(40);
     let caught: unknown;
@@ -68,7 +56,6 @@ describe("buildMcpToolName", () => {
   });
 
   test("a name exactly at the limit is accepted", () => {
-    // 4 (prefix) + slug + 2 (separator) + tool === 64
     const name = buildMcpToolName("a".repeat(20), "b".repeat(38));
     expect(name.length).toBe(MCP_TOOL_NAME_MAX);
   });
@@ -92,9 +79,6 @@ describe("parseMcpToolName", () => {
   });
 
   test("a slug ending in _ and a tool starting with _ do not collide", () => {
-    // The pair that WOULD collide if the split point were "last underscore
-    // run" instead of "first `__`": both compose distinct names, and each
-    // parses back to itself.
     const a = buildMcpToolName("conn_a", "search");
     const b = buildMcpToolName("conn", "a_search");
     expect(a).not.toBe(b);
@@ -109,9 +93,6 @@ describe("parseMcpToolName", () => {
   });
 
   test("refuses a name whose remote half still contains `__`", () => {
-    // Only reachable from a slug that should never have been storable — the
-    // DB CHECK is what makes this branch dead in practice. Refusing beats
-    // picking one of two possible splits.
     expect(parseMcpToolName("mcp_conn__a__b")).toBeNull();
   });
 });

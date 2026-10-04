@@ -56,11 +56,6 @@ function parseTrigger(raw: unknown): WorkflowTrigger {
 }
 
 function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
-  // The file passed to create/update IS the WorkflowDef (steps/trigger at
-  // top level). Pre-fix this read a never-present `body.definition`
-  // nesting, so the intent always showed zero steps and trigger=request
-  // regardless of the actual definition. Keep the nested shape as a
-  // fallback for run --draft style envelopes.
   const definition =
     Array.isArray(body.steps) || body.trigger !== undefined
       ? body
@@ -82,11 +77,6 @@ function intentFromBody(body: Record<string, unknown>): WorkflowIntent {
   };
 }
 
-/** Print the workflow run JSON, then — when connector_resolutions or
- *  warnings are present — a compact summary to stderr so humans can
- *  eyeball which connector, auth method, and environment every step
- *  actually hit, and which steps surfaced warnings (unresolved
- *  identifiers, rate-limit hits, pagination edges). */
 function printRunResult(result: RunExecutionResponse): void {
   printJson(result);
   if (result.idempotent_replay) {
@@ -108,11 +98,6 @@ function printRunResult(result: RunExecutionResponse): void {
       process.stderr.write(`  ${pc.yellow("WARN")} step=${step} code=${code} msg=${msg}\n`);
     }
   }
-  // Inline performance: surface the slowest step/connector call from the
-  // run's steps payload (each carries `duration_ms`) so an operator sees
-  // the bottleneck right after the run, without reaching for `sk stats`
-  // or `sk executions get`. Reuses the same bottleneck computation the
-  // execution detail uses.
   const ranked = computeStepBottlenecks(
     (result.steps ?? []) as unknown as Array<Record<string, unknown>>,
   );
@@ -144,7 +129,6 @@ function makeClient() {
   });
 }
 
-/** Candidate rows for the interactive workflow picker (TTY only). */
 const fetchWorkflowRows = async (client: EngineClient) => {
   const { items } = await client.listWorkflows({ limit: 50 });
   return (items as Record<string, unknown>[]).map((r) => ({
@@ -157,12 +141,6 @@ const fetchWorkflowRows = async (client: EngineClient) => {
 const WORKFLOW_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** Resolve a `sk workflows run` positional that may be a workflow id OR a
- *  slug (or exact name). A UUID passes through untouched; otherwise we look
- *  it up against the tenant's workflows. The engine's saved-run route only
- *  accepts a UUID `workflow_id`, so resolving here turns the prior cryptic
- *  `bad_request: request validation failed` into either the correct run or a
- *  clear, actionable error. */
 export async function resolveWorkflowIdOrSlug(
   client: EngineClient,
   idOrSlug: string,
@@ -227,9 +205,6 @@ const invokeSnippetCommand = defineCommand({
       process.exit(1);
     }
     const workflowId = String(args.id);
-    // The engine's snippet — the one the workflow page shows, with the
-    // workflow's sample input and the engine's public address. Rendered here
-    // only when the engine cannot answer (see lib/invoke-snippet-source.ts).
     let resolved: Awaited<ReturnType<typeof resolveInvokeSnippet>>;
     try {
       resolved = await resolveInvokeSnippet({
@@ -274,8 +249,6 @@ const invokeSnippetCommand = defineCommand({
         `${pc.yellow(`${LOCAL_SNIPPET_NOTES[resolved.local_reason]} This snippet uses your profile's engine URL and an empty input — fill in the workflow's input before you run it.`)}\n`,
       );
     }
-    // The choice is stated, not implied: without the header the engine runs
-    // in development, which is not where a pasted production call belongs.
     process.stdout.write(
       `${pc.dim(
         environment === "prod"
@@ -307,22 +280,17 @@ const listCommand = defineCommand({
         ...(args.connector ? { connector: args.connector } : {}),
       });
       const columns = WORKFLOW_LIST_COLUMNS;
-      // JSON stays the engine's item verbatim; the table gets the synthesised
-      // `runs_on` column (see list-columns.ts).
       const rows = args.json
         ? items
         : items.map((item) => ({
             ...item,
             runs_on: effectiveTriggerLabel(item as TriggerFields),
           }));
-      // Grouping is the default because a flat 60-row catalog is what made
-      // this unreadable; `--flat` restores the old view.
       if (args.flat || !categories?.length) {
         emitList(!!args.json, columns, rows);
       } else {
         emitGroupedList(!!args.json, columns, rows, categories);
       }
-      // Ground-truth cardinality: never present a page as the universe.
       if (!args.json) {
         const blocks =
           !args.flat && categories?.length
@@ -355,11 +323,6 @@ const getCommand = defineCommand({
       });
       const workflow = await client.getWorkflow(id);
       printJson(workflow);
-      // First-class summary of what really starts the workflow. Read from the
-      // engine's `effective_trigger` (bound schedule / webhook rows beat the
-      // definition), never from the declared `trigger` alone — that reported
-      // schedules created with `sk schedules create` as "request". Always
-      // print a line so an absent field is visible, not silent.
       process.stderr.write(
         `\n${pc.dim("trigger:")} ${effectiveTriggerLabel(workflow as TriggerFields)}\n`,
       );
@@ -421,9 +384,6 @@ const runCommand = defineCommand({
     const client = makeClient();
     const { readFileSync } = await import("node:fs");
 
-    // --follow rides the queued (async) execution path, which the
-    // engine only supports for saved workflows — draft and step runs
-    // have no persisted workflow for a queue worker to rehydrate.
     if (args.follow && (args.draft || args.step)) {
       process.stderr.write(
         "--follow requires a saved workflow id; draft and step runs execute inline and return their result directly\n",
@@ -431,10 +391,6 @@ const runCommand = defineCommand({
       process.exit(1);
     }
 
-    // Parse the --input JSON blob once; it is reused across all three
-    // source kinds. The `@<path>` prefix opts into file-backed input
-    // (e.g. `--input @./payload.json`), matching the convention curl
-    // and gh use; the rest of the string is treated as a path.
     let input: unknown = null;
     if (args.input) {
       const raw = String(args.input);
@@ -453,12 +409,6 @@ const runCommand = defineCommand({
       }
     }
 
-    // Parse repeatable --input-file flags. Citty surfaces a repeated
-    // string-typed arg as `string | string[]` depending on how the
-    // user supplied them; we normalise to an array of `K=<path>`
-    // strings and split each. The substituted ref is the standard
-    // `{ "$file": "fid_..." }` leaf — the workflow input_schema's
-    // `file` typed leaf resolves it at the step boundary.
     const rawInputFile = (args as Record<string, unknown>)["input-file"];
     const inputFilePairs: string[] = Array.isArray(rawInputFile)
       ? rawInputFile.map((s) => String(s))
@@ -467,9 +417,6 @@ const runCommand = defineCommand({
         : [];
     if (inputFilePairs.length > 0) {
       if (input === null || typeof input !== "object" || Array.isArray(input)) {
-        // `--input-file` only makes sense alongside a JSON-object input
-        // (or no --input at all, in which case we synthesize one). A
-        // scalar / array input has no key to set.
         input = {};
       }
       const inputObj = input as Record<string, unknown>;
@@ -496,7 +443,6 @@ const runCommand = defineCommand({
     }
 
     try {
-      // --step: run a single step definition directly.
       if (args.step) {
         const step = JSON.parse(readFileSync(String(args.step), "utf8")) as Record<string, unknown>;
         const body = {
@@ -510,7 +456,6 @@ const runCommand = defineCommand({
         return;
       }
 
-      // --draft: run an inline workflow definition without persistence.
       if (args.draft) {
         const definition = JSON.parse(readFileSync(String(args.draft), "utf8")) as Record<
           string,
@@ -527,18 +472,12 @@ const runCommand = defineCommand({
         return;
       }
 
-      // Saved workflow (default). An omitted id opens an interactive
-      // picker in a TTY; non-TTY keeps the informative required error.
       const picked = await pickId({
         label: "workflow id or slug (positional, unless --draft or --step is provided)",
         argValue: args.id,
         fetch: () => fetchWorkflowRows(client),
       });
-      // Accept a slug or exact name as well as a UUID — the engine's
-      // saved-run route requires a UUID, so resolve before posting.
       const workflowId = await resolveWorkflowIdOrSlug(client, picked);
-      // Use the engine's `RunExecutionBody` so the body shape is
-      // type-checked against the canonical POST /v1/executions schema.
       const body: Extract<RunExecutionBody, { source: "saved" }> = {
         source: "saved",
         workflow_id: workflowId,
@@ -547,9 +486,6 @@ const runCommand = defineCommand({
         request_source: "cli",
       };
       if (args.follow) {
-        // Queue the run (202 + execution_id), then tail its outbox
-        // events live. The engine closes the stream right after the
-        // terminal frame; the exit code mirrors the run's outcome.
         const queued = await client.runExecution({ ...body, async: true });
         if (queued.idempotent_replay) {
           process.stderr.write(
@@ -568,8 +504,6 @@ const runCommand = defineCommand({
         return;
       }
       printRunResult(await client.runExecution(body));
-      // Discovery hint for saved-workflow runs: the same workflow can be
-      // triggered from the operator's own app/CI via invoke-snippet.
       process.stderr.write(
         `\n${pc.dim("Tip:")} sk workflows invoke-snippet ${workflowId} --lang node\n`,
       );
@@ -709,11 +643,6 @@ const restoreCommand = defineCommand({
   },
 });
 
-/**
- * Shared validate → preview → save pipeline for `create` and `update`.
- * `update` PUTs the full definition to /v1/workflows/{id} (the same body
- * shape as create); an unchanged definition does not rotate a version.
- */
 async function saveWorkflowFromFile(
   target: { kind: "create" } | { kind: "update"; id: string },
   args: Record<string, unknown>,
@@ -768,9 +697,6 @@ async function saveWorkflowFromFile(
           message?: string;
         }>;
 
-        // Preview failure is a hard stop. Warnings are informational —
-        // they print but the create proceeds. This decouples the
-        // earlier conflated predicate ("warnings present ⇒ fail").
         if (preview.status !== "succeeded") {
           const phases: PlanStep[] = [
             { id: "validate", label: "Validate", status: "succeeded" },
@@ -821,9 +747,6 @@ async function saveWorkflowFromFile(
       };
       printJson(created);
 
-      // The HTTP response serializes the version as `current_version`
-      // (`version` never existed on it — the summary used to print the
-      // fallback 1 on every update).
       const version =
         typeof created.current_version === "number"
           ? created.current_version
@@ -841,10 +764,6 @@ async function saveWorkflowFromFile(
       };
       await renderSummary(summary, { jsonMode });
 
-      // Next-step hints: the exact run command (with the fresh id filled
-      // in) plus the invoke-snippet for app/CI callers. Stderr keeps
-      // stdout a clean JSON body for pipes; suppressed in jsonMode for
-      // the same reason.
       if (!jsonMode && summary.id !== "(unknown)") {
         process.stderr.write(
           `\n${pc.dim("Next:")} sk workflows run ${summary.id} --follow\n` +

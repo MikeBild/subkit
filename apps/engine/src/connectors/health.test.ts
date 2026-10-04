@@ -1,9 +1,3 @@
-// Connector-response health classification. Pinned so a transport-level
-// success that is actually an auth failure / removed endpoint / vendor 5xx
-// is never reported to the LLM as a healthy empty result — and so the
-// request-level verdicts (not_found / rate_limited) and the deprecation
-// early warning carry actionable guidance instead of a raw status code.
-
 import { describe, expect, test } from "bun:test";
 import {
   type ConnectorHealth,
@@ -23,19 +17,13 @@ describe("classifyConnectorHealth", () => {
     { status: 201, expect: "ok" },
     { status: 204, expect: "ok" },
     { status: 301, expect: "ok" },
-    // Inspectable 4xx the caller may legitimately handle — stays ok.
     { status: 409, expect: "ok" },
     { status: 422, expect: "ok" },
-    // Request-level outcomes: the connector itself is fine, but the verdict
-    // routes path/throttle guidance instead of a raw status code.
     { status: 404, expect: "not_found" },
     { status: 429, expect: "rate_limited" },
-    // Auth failures.
     { status: 401, expect: "auth_failed" },
     { status: 403, expect: "auth_failed" },
-    // Removed endpoint.
     { status: 410, expect: "endpoint_gone" },
-    // Vendor-side failures.
     { status: 500, expect: "degraded" },
     { status: 503, expect: "degraded" },
   ];

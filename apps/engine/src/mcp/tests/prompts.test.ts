@@ -31,7 +31,6 @@ describe("mcp prompts", () => {
 
     const got = await client.getPrompt({ name: `skill_${id}` });
     expect(got.description).toBe("Bake bread");
-    // First message carries the body, subsequent messages carry examples.
     expect(got.messages.length).toBe(3);
     const first = got.messages[0]!;
     expect(first.role).toBe("user");
@@ -105,10 +104,6 @@ describe("mcp prompts", () => {
     );
   });
 
-  // B2 — MCP 2025-11-25 compliance: prompts/get for unknown names MUST return
-  // JSON-RPC -32602 (InvalidParams). Two cases:
-  //   1. A name that does not start with the "skill_" prefix.
-  //   2. A well-formed "skill_<id>" name where the id does not exist.
   test("B2: getPrompt with a bad prefix (not skill_) returns JSON-RPC -32602", async () => {
     const client = await suite.connect();
     const err = await client

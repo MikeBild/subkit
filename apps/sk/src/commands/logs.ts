@@ -1,21 +1,3 @@
-// `sk logs` — tail the engine's structured runtime log ring.
-//
-// Usage:
-//   sk logs --follow                          # live SSE tail
-//   sk logs --since 5m                        # last 5 minutes, then exit
-//   sk logs --since 5m --follow               # catch up + live tail
-//   sk logs --module migrate --action drift_detected
-//   sk logs --level warn                      # only warn/error/fatal
-//   sk logs --json                            # raw NDJSON; pipe to jq
-//
-// Backed by GET /v1/diagnostics/logs (paginated) and
-// /v1/diagnostics/logs/stream (SSE). Both require `audit:read`.
-//
-// This is the operator-facing counterpart to the engine's in-process
-// drift detection: when `sk doctor` flags a problem, `sk logs --follow
-// --module migrate` shows the migration log lines that produced it
-// without SSH-ing into the container.
-
 import { exitCodeFor } from "@cli-core/errors";
 import { TransportError } from "@cli-core/errors.ts";
 import { printJson } from "@cli-core/format";
@@ -35,10 +17,8 @@ interface LogEntry {
 }
 
 function parseSince(value: string): number {
-  // Absolute unix-ms passes through unchanged.
   const asNum = Number(value);
   if (Number.isFinite(asNum) && asNum > 1_000_000_000_000) return Math.floor(asNum);
-  // Relative duration (1s, 5m, 2h, 1d).
   const m = /^(\d+)\s*([smhd])$/.exec(value.trim());
   if (m) {
     const n = Number(m[1]);
@@ -46,7 +26,6 @@ function parseSince(value: string): number {
     const ms = unit === "s" ? 1000 : unit === "m" ? 60_000 : unit === "h" ? 3_600_000 : 86_400_000;
     return Date.now() - n * ms;
   }
-  // ISO-8601.
   const d = Date.parse(value);
   if (!Number.isNaN(d)) return d;
   throw new Error(`invalid --since value: '${value}' (use 5m / 2h / 1d / ISO-8601 / unix-ms)`);
@@ -130,9 +109,6 @@ export const logsCommand = defineCommand({
       }
     };
 
-    // 1. Initial window (catch-up). Always pull, even when --follow, so
-    //    the operator sees recent context immediately rather than only
-    //    new events going forward.
     try {
       const opts: Parameters<EngineClient["logsTailWindow"]>[0] = {};
       if (since_ms !== undefined) opts.since_ms = since_ms;
@@ -141,19 +117,15 @@ export const logsCommand = defineCommand({
       if (actionFilter) opts.action = actionFilter;
       if (levelFilter) opts.level = levelFilter;
       const window = await client.logsTailWindow(opts);
-      // tail() returns newest-first when no since_ms is set; reverse so
-      // the operator reads chronologically.
       const entries = since_ms === undefined ? window.entries.slice().reverse() : window.entries;
       for (const e of entries) print(e);
       if (!args.follow) return;
-      // Live tail picks up where the window left off.
       since_ms = window.next_since_ms;
     } catch (err) {
       process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
       process.exit(exitCodeFor(err));
     }
 
-    // 2. SSE live tail.
     const url = client.logsTailStreamUrl({
       since_ms,
       ...(moduleFilter ? { module: moduleFilter } : {}),
@@ -201,15 +173,13 @@ export const logsCommand = defineCommand({
       buffer = events.pop() ?? "";
       for (const block of events) {
         if (!block.trim()) continue;
-        if (block.startsWith(":")) continue; // heartbeat
+        if (block.startsWith(":")) continue;
         const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
         if (!dataLine) continue;
         try {
           const entry = JSON.parse(dataLine.slice("data: ".length)) as LogEntry;
           print(entry);
-        } catch {
-          // Malformed payload — drop it rather than abort the stream.
-        }
+        } catch {}
       }
     }
   },

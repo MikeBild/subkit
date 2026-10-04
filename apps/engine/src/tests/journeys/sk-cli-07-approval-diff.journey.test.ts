@@ -1,19 +1,3 @@
-// User story: As a REPL user reviewing a pending commit, I need the
-// SSE `elicit_request` frame to carry the structured `diff` payload
-// the `ask_user_confirm` tool emitted, so the CLI can render a
-// kind-specific confirm body (draft diff, external-write target,
-// etc.) instead of a bare summary string.
-//
-// Acceptance criteria:
-//
-//   AC1. When an `ask_user_confirm` elicitation is created with a
-//        structured `diff` payload, the
-//        `conversation_elicitations.input` row is persisted and
-//        contains the diff.
-//   AC2. When the SSE stream is re-opened on the same conversation,
-//        the `elicit_request` frame for any still-pending row
-//        includes the persisted `diff` field verbatim.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createElicitation } from "../../conversations/elicitations.ts";
@@ -38,9 +22,6 @@ describe("journey: sk-cli elicitation diff surfacing", () => {
     );
     conversationId = outcome.conversation.id;
 
-    // Persist a structured save_workflow_draft confirm directly via the
-    // elicitation helper — mirrors what `ask_user_confirm` does at
-    // runtime without driving the full tool loop.
     const elicitation = await createElicitation(
       {
         tenant_id: ctx.tenantId,

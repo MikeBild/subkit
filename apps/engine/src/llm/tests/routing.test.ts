@@ -11,7 +11,6 @@ let ctx: LlmTestCtx;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("routing");
-  // Pin the primary/fallback so the test asserts on known ids.
   await ctx.testDb.db.insert(tenantLlmSettings).values({
     tenant_id: ctx.tenant_id,
     llm_provider: "mock",
@@ -26,10 +25,6 @@ afterAll(async () => {
 
 describe("llm/routing", () => {
   test("falls back exactly once on overloaded and logs the event", async () => {
-    // Queue a one-shot overloaded error on the primary model. Uses a
-    // chat-frequency flow (`converse`) — `generate`/`judge` are
-    // code-elevated to the fallback model and never dispatch to the
-    // primary in the first place (see applyFlowModelElevation).
     getMockProvider().setFailure("mock-primary-1", "overloaded");
 
     const events: Array<Record<string, unknown>> = [];
@@ -58,7 +53,6 @@ describe("llm/routing", () => {
       (logger as any).warn = priorWarn;
     }
 
-    // Exactly one successful usage row for the fallback model.
     const successRows = await ctx.testDb.db
       .select()
       .from(llmUsage)
@@ -71,7 +65,6 @@ describe("llm/routing", () => {
       );
     expect(successRows.length).toBe(1);
 
-    // One error usage row for the primary model.
     const errorRows = await ctx.testDb.db
       .select()
       .from(llmUsage)
@@ -89,8 +82,6 @@ describe("llm/routing", () => {
   });
 
   test("generate flow is code-elevated to the tenant's fallback (stronger) model", async () => {
-    // No failure queued — the elevation alone routes the dispatch to
-    // the fallback model id; this is NOT the error-fallback path.
     const result = await runGenerateFlow(
       {
         tenant_id: ctx.tenant_id,

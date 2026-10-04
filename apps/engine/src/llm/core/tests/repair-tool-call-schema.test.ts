@@ -1,16 +1,3 @@
-// Repair-loop schema preparation. The repair pass used to feed
-// `tool.inputSchema` directly through `jsonSchema(...)`, but the AI
-// SDK tools in this repo are registered with Zod schemas — so the
-// raw cast produced a JSON Schema without `additionalProperties:
-// false`, which Anthropic SDK 6 strict mode rejects with
-// `output_config.format.schema: For 'object' type,
-// 'additionalProperties' must be explicitly set to false`. The
-// healthy `generateObject` path in `ai-sdk-model.ts:264` normalises
-// the schema first; the repair path now matches.
-//
-// These tests pin the Zod→JSON-Schema→normalize pipeline directly so
-// the contract cannot regress without flagging it before any LLM call.
-
 import { describe, expect, it } from "bun:test";
 import { type ZodType, z } from "zod";
 import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
@@ -30,8 +17,6 @@ describe("repair-tool-call — schema preparation", () => {
   });
 
   it("seals nested objects inside discriminated unions (credential shape)", () => {
-    // Mirrors the save_connector_draft credential union — the shape
-    // that broke under Anthropic strict mode in trace cli-eff8d7d79d724c56.
     const zodSchema = z.object({
       credential: z
         .discriminatedUnion("mode", [
@@ -47,7 +32,6 @@ describe("repair-tool-call — schema preparation", () => {
     const json = toJson(zodSchema);
     const { schema: normalized } = normalizeSchema(json);
     expect(normalized.additionalProperties).toBe(false);
-    // Walk all nested object schemas; every one must seal.
     const stack: unknown[] = [normalized];
     let seen = 0;
     while (stack.length > 0) {

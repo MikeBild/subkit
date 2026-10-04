@@ -1,10 +1,3 @@
-// Unit tests for the risk-signal computation layer.
-//
-// `computeRiskSignals` reads the live metrics registry and config and maps
-// gauge/counter values to `RiskSignal` entries. These tests drive the
-// registry directly (no DB, no real config) and assert the mapping from
-// "gauge value vs threshold" → "RiskSignal kind + severity".
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,10 +24,6 @@ import {
 } from "../observability/transient-retry-rate.ts";
 import { computeRiskSignals, topRisk } from "./risk-signals.ts";
 
-// Load a minimal config so getConfig() inside computeRiskSignals() resolves.
-// The predictive thresholds are tuned in-test via setConfigKey so this just
-// seeds the default values (pool_saturation_pct=80, dlq_critical_depth=5,
-// transient_retry_rate=1, memory_cap_fraction=0.9).
 async function ensureConfig(): Promise<void> {
   try {
     const { getConfig } = await import("../config/loader.ts");
@@ -61,7 +50,6 @@ afterEach(() => {
 
 describe("computeRiskSignals — no signals when all clear", () => {
   test("returns an empty list when every metric is below threshold", () => {
-    // No metrics written → all gauges/counters at zero.
     const signals = computeRiskSignals();
     expect(signals).toEqual([]);
   });
@@ -69,7 +57,6 @@ describe("computeRiskSignals — no signals when all clear", () => {
 
 describe("computeRiskSignals — pool_saturation", () => {
   test("emits warn when in-use pct ≥ pool_saturation_pct (default 80)", () => {
-    // 8 in-use out of 10 = 80% → exactly at threshold.
     setDbPoolStats({ total: 10, idle: 2, waiting: 0 });
     const signals = computeRiskSignals();
     const s = signals.find((r) => r.kind === "pool_saturation");
@@ -90,7 +77,7 @@ describe("computeRiskSignals — pool_saturation", () => {
   });
 
   test("no signal below threshold", () => {
-    setDbPoolStats({ total: 10, idle: 3, waiting: 0 }); // 70% < 80%
+    setDbPoolStats({ total: 10, idle: 3, waiting: 0 });
     const signals = computeRiskSignals();
     expect(signals.find((r) => r.kind === "pool_saturation")).toBeUndefined();
   });
@@ -115,13 +102,10 @@ describe("computeRiskSignals — dlq_growth", () => {
 });
 
 describe("computeRiskSignals — transient_retry", () => {
-  // The signal reads the WINDOWED rate gauge the memory sampler maintains.
-  // Drive it deterministically: baseline-sample at t0, record retries, then
-  // sample again at t0+Δ with injected nowMs so the rate = retries ÷ Δminutes.
   test("emits warn when the windowed rate ≥ transient_retry_rate (default 1/min)", () => {
-    sampleTransientRetryRate({ nowMs: 0 }); // baseline
+    sampleTransientRetryRate({ nowMs: 0 });
     for (let i = 0; i < 2; i++) recordDbTransientRetry({ label: "test" });
-    sampleTransientRetryRate({ nowMs: 60_000 }); // 2 retries over 1 min → rate 2
+    sampleTransientRetryRate({ nowMs: 60_000 });
 
     const signals = computeRiskSignals();
     const s = signals.find((r) => r.kind === "transient_retry");
@@ -134,18 +118,16 @@ describe("computeRiskSignals — transient_retry", () => {
   test("no signal when the windowed rate is below threshold", () => {
     sampleTransientRetryRate({ nowMs: 0 });
     for (let i = 0; i < 5; i++) recordDbTransientRetry({ label: "test" });
-    sampleTransientRetryRate({ nowMs: 600_000 }); // 5 retries over 10 min → 0.5/min
+    sampleTransientRetryRate({ nowMs: 600_000 });
 
     expect(computeRiskSignals().find((r) => r.kind === "transient_retry")).toBeUndefined();
   });
 
   test("an old blip decays: a quiet window drops the rate back to 0 (no latch)", () => {
-    // Spike, then a window with NO new retries → rate returns to 0, proving the
-    // windowed gauge is a leading indicator, not a cumulative-÷-uptime latch.
     sampleTransientRetryRate({ nowMs: 0 });
     for (let i = 0; i < 10; i++) recordDbTransientRetry({ label: "test" });
-    sampleTransientRetryRate({ nowMs: 60_000 }); // rate 10 → would warn
-    sampleTransientRetryRate({ nowMs: 120_000 }); // quiet minute → rate 0
+    sampleTransientRetryRate({ nowMs: 60_000 });
+    sampleTransientRetryRate({ nowMs: 120_000 });
 
     expect(computeRiskSignals().find((r) => r.kind === "transient_retry")).toBeUndefined();
   });
@@ -153,8 +135,6 @@ describe("computeRiskSignals — transient_retry", () => {
 
 describe("computeRiskSignals — connector_unhealthy", () => {
   test("emits warn when unhealthy share ≥ pool_saturation_pct threshold", () => {
-    // 8 ok, 2 auth_failed = 20% unhealthy. That's below 80% — no signal.
-    // Use 9 non-ok + 1 ok = 90% unhealthy > 80%.
     for (let i = 0; i < 9; i++) {
       recordConnectorCall({ slug: "slack", health: "auth_failed" });
     }
@@ -168,7 +148,6 @@ describe("computeRiskSignals — connector_unhealthy", () => {
   });
 
   test("no signal when unhealthy share is below threshold", () => {
-    // 1 bad + 9 ok = 10% unhealthy < 80%.
     recordConnectorCall({ slug: "slack", health: "auth_failed" });
     for (let i = 0; i < 9; i++) {
       recordConnectorCall({ slug: "slack", health: "ok" });
@@ -180,11 +159,9 @@ describe("computeRiskSignals — connector_unhealthy", () => {
 
 describe("computeRiskSignals — llm_fallback", () => {
   test("emits warn when fallback fraction ≥ pool_saturation_pct threshold", () => {
-    // 9 fallbacks + 1 primary call = 90% fallback rate > 80%.
     for (let i = 0; i < 9; i++) {
       recordLlmFallbackInvocation({ from: "haiku", to: "sonnet", reason: "overloaded" });
     }
-    // Record 10 histogram observations so histogramCount = 10.
     for (let i = 0; i < 10; i++) {
       recordLlmCallDuration({
         provider: "gateway",
@@ -204,8 +181,6 @@ describe("computeRiskSignals — llm_fallback", () => {
 
 describe("computeRiskSignals — memory_high_water", () => {
   test("emits critical when RSS high-water ≥ memory_cap_fraction of host memory", () => {
-    // Use a huge RSS value (1 TB) so the fraction always exceeds the 0.9 cap
-    // regardless of the host's actual total memory.
     const ONE_TB = 1_099_511_627_776;
     recordProcessRssHighWater(ONE_TB);
     const signals = computeRiskSignals();
@@ -217,7 +192,6 @@ describe("computeRiskSignals — memory_high_water", () => {
   });
 
   test("no signal when RSS high-water is zero", () => {
-    // _resetRssHighWaterForTests already zeroed it; gauge is never set.
     const signals = computeRiskSignals();
     expect(signals.find((r) => r.kind === "memory_high_water")).toBeUndefined();
   });
@@ -225,7 +199,6 @@ describe("computeRiskSignals — memory_high_water", () => {
 
 describe("computeRiskSignals — sort order", () => {
   test("critical signals rank before warn signals", () => {
-    // Trigger both a critical (waiting pool) and a warn (connector health).
     setDbPoolStats({ total: 10, idle: 2, waiting: 1 });
     for (let i = 0; i < 9; i++) {
       recordConnectorCall({ slug: "jira", health: "auth_failed" });
@@ -291,16 +264,12 @@ describe("the month's token allowance", () => {
   });
 
   test("an unbounded workspace raises nothing", () => {
-    // Not "safe" — unmeasured. Warning about a ceiling that does not exist
-    // would be the zero that means "not measured".
     expect(computeRiskSignals({ monthTokens: 999_999_999, monthBudget: null })).toEqual([]);
     expect(computeRiskSignals({ monthTokens: 999_999_999 })).toEqual([]);
     expect(computeRiskSignals({ monthTokens: 5, monthBudget: 0 })).toEqual([]);
   });
 
   test("names the consequence, not the metric", () => {
-    // A reader who is not an operator must understand what happens next: runs
-    // get refused, and a refused scheduled run looks like a broken workflow.
     const [signal] = computeRiskSignals({ monthTokens: 95, monthBudget: 100 });
     expect(signal?.detail).toMatch(/refused/i);
     expect(signal?.headline).toMatch(/allowance/i);

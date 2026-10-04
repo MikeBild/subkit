@@ -57,8 +57,6 @@ describe("before-request hook", () => {
   });
 
   test("hook that throws denies the request with reason hook_error", async () => {
-    // Reset rows and insert a throwing hook in its own role to avoid
-    // interfering with the previous test.
     const badPrincipal: ResolvedPrincipal = { ...principal(), roles: ["bad-role"] };
     await testDb.db.insert(requestHooks).values({
       tenant_id: tenantId,

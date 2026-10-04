@@ -1,6 +1,3 @@
-// What a file is, for the drop zone and the preview: pure, so both decide the
-// same way and a test can say what each name and type becomes.
-
 export type PreviewKind = "image" | "markdown" | "text" | "csv" | "pdf" | "other";
 
 const TEXT_EXTENSIONS = ["txt", "json", "yaml", "yml", "log", "xml", "ts", "js", "sql", "toml"];
@@ -10,7 +7,6 @@ function extension(name: string): string {
   return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
-/** How a file is previewed, from its type and, where the type says little, its name. */
 export function previewKind(name: string, mimeType: string | null | undefined): PreviewKind {
   const type = (mimeType ?? "").toLowerCase().split(";")[0]?.trim() ?? "";
   const ext = extension(name);
@@ -24,11 +20,6 @@ export function previewKind(name: string, mimeType: string | null | undefined): 
   return "other";
 }
 
-/**
- * Whether a picked or dropped file may be taken: its type against an
- * `accept` list (`image/*`, `.csv`, `application/pdf`) and its size against
- * the limit. The reason names the rule it broke.
- */
 export function fileRefusal(
   file: { name: string; type: string; size: number },
   rules: { accept?: string; maxBytes?: number },
@@ -51,13 +42,8 @@ export function fileRefusal(
   return ok ? null : "type";
 }
 
-/**
- * CSV into rows, quotes and escaped quotes honoured, at most `maxRows` rows.
- * A preview, not an importer: it shows what the file holds.
- */
 export function parseCsv(text: string, maxRows = 20): string[][] {
   const rows: string[][] = [];
-  // A German export separates with `;`: the header line says which it is.
   const header = text.split("\n")[0] ?? "";
   const delimiter = header.split(";").length > header.split(",").length ? ";" : ",";
   let row: string[] = [];
@@ -93,7 +79,6 @@ export function parseCsv(text: string, maxRows = 20): string[][] {
   return rows.slice(0, maxRows);
 }
 
-/** A size a person reads: 512 B, 12 KB, 3.4 MB. */
 export function formatBytes(bytes: number, locale = "de-DE"): string {
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;

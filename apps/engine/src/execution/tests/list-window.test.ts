@@ -1,12 +1,3 @@
-// The run log narrowed to a window on `started_at`.
-//
-// The Cockpit's usage page shows "runs over the last 7 days" and links the
-// number to the run log. Without a window on the list, the link opened every
-// run there ever was — a figure and the list behind it that disagreed on every
-// installation older than the window. The window is the stats route's own:
-// `started_at`, from inclusive, to exclusive. So the proof is a parity: the
-// list's `total` equals the stats count over the same bounds, per status too.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executions, tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -51,20 +42,19 @@ beforeAll(async () => {
     started_at: started,
     finished_at: started ? new Date(started.getTime() + 1000) : null,
   });
-  await ctx.db.insert(executions).values([
-    // Inside the window: three succeeded, two failed — one exactly at `from`.
-    run(tenant, "succeeded", hoursAgo(1)),
-    run(tenant, "succeeded", hoursAgo(30)),
-    run(tenant, "succeeded", FROM),
-    run(tenant, "failed", hoursAgo(2)),
-    run(tenant, "failed", hoursAgo(100)),
-    // Outside: before the window, exactly at `to` (exclusive), never started.
-    run(tenant, "failed", hoursAgo(8 * 24)),
-    run(tenant, "succeeded", TO),
-    run(tenant, "queued", null),
-    // Another tenant's run in the window.
-    run(other, "failed", hoursAgo(3)),
-  ]);
+  await ctx.db
+    .insert(executions)
+    .values([
+      run(tenant, "succeeded", hoursAgo(1)),
+      run(tenant, "succeeded", hoursAgo(30)),
+      run(tenant, "succeeded", FROM),
+      run(tenant, "failed", hoursAgo(2)),
+      run(tenant, "failed", hoursAgo(100)),
+      run(tenant, "failed", hoursAgo(8 * 24)),
+      run(tenant, "succeeded", TO),
+      run(tenant, "queued", null),
+      run(other, "failed", hoursAgo(3)),
+    ]);
 });
 
 afterAll(async () => {

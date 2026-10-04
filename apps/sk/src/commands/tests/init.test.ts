@@ -1,7 +1,3 @@
-// `sk init` unit tests — driven through `runInit` so we never have to
-// stand up a real engine here.  Citty wiring is exercised by the
-// shape-only smoke checks at the bottom.
-
 import { describe, expect, test } from "bun:test";
 import { initCommand, runInit } from "../init.ts";
 

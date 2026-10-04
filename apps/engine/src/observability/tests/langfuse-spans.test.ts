@@ -1,7 +1,3 @@
-// Langfuse-spans tests. Focus on the redaction pipeline; the network
-// path is covered by a no-op fallback when LANGFUSE_SECRET_KEY is
-// absent, and no integration test should hit a real Langfuse instance.
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import { redactPayload, resetLangfuseCacheForReload, startToolSpan } from "../langfuse-spans.ts";
 
@@ -65,8 +61,6 @@ describe("redactPayload — value-shape masking", () => {
   test("UUIDs pass through (they're used as tenant ids)", () => {
     const uuid = "550e8400-e29b-41d4-a716-446655440000";
     const out = redactPayload({ tenant_id: uuid }) as Record<string, string>;
-    // tenant_id is not a sensitive key name in our pattern list, so
-    // the value pattern is what gates this. UUIDs must pass through.
     expect(out.tenant_id).toBe(uuid);
   });
 
@@ -80,20 +74,14 @@ describe("redactPayload — value-shape masking", () => {
 describe("redactPayload — placeholder-token visibility", () => {
   test(`\${cred.*} tokens are marked but not fully masked (they're names, not values)`, () => {
     const out = redactPayload({
-      Authorization: "ok", // bypasses key check because it's Authorization
+      Authorization: "ok",
       note: `using \${cred.stripe.token} for auth`,
     }) as Record<string, string>;
-    // The Authorization key is masked regardless of value (key-rule wins):
     expect(out.Authorization).toBe("[REDACTED]");
-    // But a plain string mentioning a ${cred.*} token stays readable
-    // with a visible REDACTED marker so operators know the placeholder
-    // was detected but the token name itself is not a secret.
     expect(out.note).toBe(`using \${cred.REDACTED} for auth`);
   });
 
   test("secret-shaped value under a sensitive key is fully masked", () => {
-    // Secret-looking = 32+ chars mixed lowercase+digits (matches the
-    // real Stripe / Slack token shapes).
     const CANARY = "sk0live9a7cT8hm2qPv9eG1R3kS4bV5n";
     const input = {
       headers: {
@@ -107,15 +95,11 @@ describe("redactPayload — placeholder-token visibility", () => {
   });
 
   test("secret-shaped value as a standalone string is value-pattern-masked", () => {
-    // 32+ alphanum+dash value matches SENSITIVE_VALUE_PATTERNS even
-    // when it's not under a sensitive key.
     const v = "abc1def2ghi3jkl4mno5pqr6stu7vw8";
     const out = redactPayload(v);
-    // Note: 31 chars — just under the 32-char threshold to validate the
-    // boundary. A 32+ char version:
     const long = `${v}x`;
     const outLong = redactPayload(long);
-    expect(out).toBe(v); // under threshold, passes through
+    expect(out).toBe(v);
     expect(outLong).toBe("[REDACTED]");
   });
 });
@@ -159,8 +143,6 @@ describe("startToolSpan — no-op when Langfuse keys are absent", () => {
       metadata: { tenant_id: "t" },
     });
     expect(span.active).toBe(false);
-    // finish must not throw, must not make any network call — a
-    // second invocation is idempotent.
     await span.finish({ output: { ok: true }, status: "success" });
     await span.finish({ output: { ok: true }, status: "success" });
   });

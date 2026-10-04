@@ -1,9 +1,3 @@
-// The chat header's tokens and cost for one conversation.
-//
-// Pure half: when the header gets an amount and when it gets none. DB half:
-// the rollup — tokens and price alike — reads this tenant's rows for this
-// conversation and nothing else.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
@@ -70,7 +64,6 @@ describe("conversationUsageFrom", () => {
 
 const skip = process.env.REQUIRES_PG === "0";
 
-/** One rate, for model `a` only: one unit per million input tokens. */
 const PRICES: SourcedModelPrice[] = [
   {
     model: "a",
@@ -82,7 +75,6 @@ const PRICES: SourcedModelPrice[] = [
   },
 ];
 
-/** The real row-level pricing query over the given predicate, at `PRICES`. */
 async function priceRows(db: Db, _tenantId: string, where: SQL): Promise<CostResult> {
   return priceCalls(await readPricedTokens(db, where, []), PRICES, "EUR");
 }
@@ -119,19 +111,15 @@ describe.skipIf(skip)("readConversationUsage", () => {
       result: "success",
       month_bucket: 202609,
     });
-    await ctx.db.insert(llmUsage).values([
-      row(tenantA, conversation, "a", 1_000_000),
-      row(tenantA, conversation, "a", 500_000),
-      row(tenantA, conversation, "x", 25),
-      // Another conversation of the same tenant, and the same conversation id
-      // under another tenant: neither may reach the header — not its tokens,
-      // not its money.
-      row(tenantA, other, "a", 9_000_000),
-      row(tenantB, conversation, "a", 7_000_000),
-    ]);
-    // A call the provider refused before processing it, written the way the
-    // turn loop writes it: with the tokenizer's estimate of the prompt it never
-    // read. It stays in the ledger as an error and adds nothing to the header.
+    await ctx.db
+      .insert(llmUsage)
+      .values([
+        row(tenantA, conversation, "a", 1_000_000),
+        row(tenantA, conversation, "a", 500_000),
+        row(tenantA, conversation, "x", 25),
+        row(tenantA, other, "a", 9_000_000),
+        row(tenantB, conversation, "a", 7_000_000),
+      ]);
     await recordUsage(
       {
         tenant_id: tenantA,

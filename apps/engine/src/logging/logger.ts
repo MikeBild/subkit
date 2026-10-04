@@ -6,20 +6,12 @@ import { getContext } from "./context.ts";
 import { classifyError, type ErrorClass } from "./error-class.ts";
 import { redact } from "./redact.ts";
 
-// Re-export under the engine's historical name so callers don't churn.
-// The map itself lives in `@cli-core/log-levels` so the engine logger,
-// the in-memory ring, and `sk logs` all read the same six entries.
 export type LogLevel = LogLevelName;
 
 const LEVEL_WEIGHT = LOG_LEVEL_WEIGHT;
 
 type RenderMode = "pretty" | "ndjson";
 
-// Phase 1 boot defaults: read only NODE_ENV + TTY. LOG_LEVEL / LOG_FORMAT
-// live in the active PostgreSQL runtime snapshot (see apps/engine/src/config/schema.ts).
-// `reconfigureLogger()` swaps these to the configured values right after
-// `loadConfig()` resolves; until then the logger is the only safe surface
-// for boot-time error reporting (no `console.*` anywhere).
 function defaultMode(): RenderMode {
   const tty = Boolean(process.stdout.isTTY);
   const env = (process.env.NODE_ENV ?? "development").toLowerCase();
@@ -27,30 +19,15 @@ function defaultMode(): RenderMode {
   return tty ? "pretty" : "ndjson";
 }
 
-// sd-daemon(3) priority prefixes. journald records every plain stdout
-// line at its default priority 6 ("info"), so without these markers a
-// `"level":"error"` JSON record is invisible to `journalctl -p err` and
-// to any priority-based alerting on the unit. Prefixing the line with
-// `<N>` makes journald adopt N as the entry's PRIORITY field; the JSON
-// payload after the marker is untouched, so downstream parsers that
-// strip the prefix (or never see it — journald consumes it) are
-// unaffected.
 const SD_DAEMON_PREFIX: Record<LogLevelName, string> = {
-  trace: "<7>", // SD_DEBUG
-  debug: "<7>", // SD_DEBUG
-  info: "<6>", // SD_INFO
-  warn: "<4>", // SD_WARNING
-  error: "<3>", // SD_ERR
-  fatal: "<2>", // SD_CRIT
+  trace: "<7>",
+  debug: "<7>",
+  info: "<6>",
+  warn: "<4>",
+  error: "<3>",
+  fatal: "<2>",
 };
 
-// Prefixing is only correct when stdout actually feeds journald — a
-// docker json-file collector or a dev terminal would see the `<3>`
-// marker as garbage in front of the JSON. systemd exports
-// JOURNAL_STREAM to the unit exactly when stdout/stderr is connected
-// to the journal (sd_journal_stream_fd(3)), so that is the auto-detect
-// signal. SK_LOG_SD_DAEMON=1/0 force-overrides for setups where the
-// auto-detect is wrong (e.g. journald behind a shell pipe).
 function defaultSdDaemonPrefix(): boolean {
   const flag = (process.env.SK_LOG_SD_DAEMON ?? "").toLowerCase();
   if (flag === "1" || flag === "true") return true;
@@ -62,9 +39,6 @@ let MODE: RenderMode = defaultMode();
 let THRESHOLD: number = LEVEL_WEIGHT.info;
 let SD_DAEMON: boolean = defaultSdDaemonPrefix();
 
-// Where NDJSON lines go. stdout by default (journald reads it). A CLI
-// command whose stdout IS its result (`engine --token-exchange` prints a
-// token for `$(…)`) moves the log stream to stderr so the result stays clean.
 let NDJSON_SINK: "stdout" | "stderr" = "stdout";
 export function routeLogsToStderr(): void {
   NDJSON_SINK = "stderr";
@@ -84,8 +58,6 @@ export function reconfigureLogger(opts: {
   }
 }
 
-// Test-only — restore Phase 1 defaults between cases that call
-// `reconfigureLogger` / `reconfigureObservability`.
 export function _resetLoggerForTests(): void {
   MODE = defaultMode();
   THRESHOLD = LEVEL_WEIGHT.info;
@@ -153,28 +125,14 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
   const restStr = Object.keys(redacted as object).length > 0 ? ` ${JSON.stringify(redacted)}` : "";
 
   const line = `${pc.dim(ts)} ${lvl} ${ctxStr}${moduleAction}${msg}${restStr}`;
-  // Dev mode mirrors to stderr for immediate terminal visibility.
   process.stderr.write(`${line}\n`);
 }
 
-// Per-field string cap. A single runaway field (a megabyte of HTML in an
-// upstream error body, a base64 blob in a stack) can blow a log line past
-// what the collector accepts and drown the surrounding signal. We cap each
-// individual string AFTER redaction so a truncated tail can never expose a
-// secret the redactor would otherwise have masked.
-//
-// Phase 1 boot default is 2048; `reconfigureObservability()` swaps it to
-// `observability.field_truncation_chars` once the config loader resolves
-// (mirrors `reconfigureLogger`). Until then — and in unit tests that never
-// load config — the 2048 default holds. The cap is in characters (UTF-16
-// code units, matching `String.length`/`slice`), not bytes.
 const DEFAULT_MAX_FIELD_LEN = 2048;
 let MAX_FIELD_LEN = DEFAULT_MAX_FIELD_LEN;
 let SERVICE_NAME = "subkit";
 let DEPLOYMENT_ENVIRONMENT = process.env.NODE_ENV ?? "development";
 
-/** Hot-swap the per-field log cap from `observability.field_truncation_chars`.
- *  Falls back to the 2048 boot default when the value is absent or invalid. */
 export function reconfigureObservability(opts: {
   field_truncation_chars?: number;
   service_name?: string;
@@ -207,8 +165,6 @@ function truncateLongStrings(value: unknown): unknown {
 
 function emitNdjson(level: LogLevel, fields: LogFields): void {
   const ctx = getContext();
-  // Redact first, then cap: truncating before redaction could slice a
-  // secret mid-token and leave the leading half un-masked.
   const redactedFields = truncateLongStrings(redact(fields)) as Record<string, unknown>;
   const record: Record<string, unknown> = {
     ts: new Date().toISOString(),
@@ -219,8 +175,6 @@ function emitNdjson(level: LogLevel, fields: LogFields): void {
     "service.version": VERSION,
     "deployment.environment.name": DEPLOYMENT_ENVIRONMENT,
   };
-  // Under systemd the sd-daemon marker maps the record's level onto the
-  // journald PRIORITY field; everywhere else the line stays bare JSON.
   const prefix = SD_DAEMON ? SD_DAEMON_PREFIX[level] : "";
   const sink = NDJSON_SINK === "stderr" ? process.stderr : process.stdout;
   sink.write(`${prefix}${JSON.stringify(record)}\n`);
@@ -231,17 +185,6 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 function recordToRing(level: LogLevel, fields: LogFields): void {
-  // Mirror to the in-memory ring so /v1/diagnostics/logs and the SSE
-  // tail can serve it. Strip module/action/msg for the bag; redact the
-  // rest so sensitive headers don't leak into the diagnostics surface.
-  //
-  // Field precedence: explicit fields the caller passed
-  // win over the request-context bag. The previous order assigned
-  // context AFTER `rest`, which silently downgraded an explicit
-  // `logger.info({ tenant_id: "<X>" })` to whatever the surrounding
-  // `withContext` set. The right rule is "spread context first, then
-  // overlay the call's explicit fields" so the call site is always
-  // authoritative.
   const { module: m, action: a, msg, ...rest } = fields;
   const ctx = getContext() as Record<string, unknown>;
   const redactedRest = redact(rest) as Record<string, unknown>;
@@ -266,34 +209,10 @@ function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
   if (MODE === "pretty") emitPretty(level, fields);
   else emitNdjson(level, fields);
-  // Suppress the audit-mirror line from the ring.
-  // `audit/audit.ts` calls `logger.info({ module: "audit", action,
-  // ... })` for every persisted audit row. Without this filter, every
-  // /v1/diagnostics/logs tail produces an `audit.diagnostics.logs_tailed`
-  // ring entry that the next tail observes, creating an unbounded echo
-  // on `sk logs --follow`. The audit row itself is still durable in
-  // `audit_log` and visible via `/v1/audit-log`; we just don't loop
-  // it back through the diagnostics ring.
   if (fields.module === "audit") return;
   recordToRing(level, fields);
 }
 
-/**
- * Build the structured `error` / `cause` / `stack` fields for a logger call
- * out of an unknown thrown value. Surfaces `err.cause` as a sibling field
- * because drizzle-orm's `DrizzleQueryError` wraps the underlying pg
- * error in `.cause` and only puts the SQL + params in `.message` —
- * without this helper a `Failed query: …` log line carries no Postgres
- * reason at all (we hit this on the v4.1.0 deploy, where `err.cause`
- * was the real signal but had been silently dropped). Spread into the
- * log fields, e.g.:
- *
- *   logger.error({ module: "x", action: "y", msg: "z", ...errorFields(err) });
- *
- * Also stamps `error_class` (see `error-class.ts`) so every call site that
- * already spreads `errorFields(err)` gains an operator-facetable bucket for
- * free — `error_class=upstream_auth`, `=transient`, etc.
- */
 export function errorFields(err: unknown): {
   error: string;
   error_class: ErrorClass;
@@ -312,10 +231,6 @@ export function errorFields(err: unknown): {
   return out;
 }
 
-/**
- * Core logger. Prefer the domain helpers (`log.http.request.started`, etc.)
- * below for common events so that `module` / `action` stay consistent.
- */
 export const logger = {
   trace: (fields: LogFields) => emit("trace", fields),
   debug: (fields: LogFields) => emit("debug", fields),
@@ -327,10 +242,6 @@ export const logger = {
 
 type Ctx = Record<string, unknown>;
 
-/**
- * Namespaced helpers. Each helper sets `module` + `action` and forwards to
- * the core logger. Adding a new helper is a single line here.
- */
 export const log = {
   ...logger,
   http: {
@@ -342,8 +253,6 @@ export const log = {
   },
   queue: {
     job: {
-      // Info (not debug) because operators already alert on dequeue cadence
-      // in existing dashboards; downgrading to debug would silence them.
       dequeued: (ctx: Ctx) => logger.info({ module: "queue", action: "job.dequeued", ...ctx }),
       completed: (ctx: Ctx) => logger.info({ module: "queue", action: "job.completed", ...ctx }),
       failed: (ctx: Ctx) => logger.error({ module: "queue", action: "job.failed", ...ctx }),
@@ -376,9 +285,6 @@ export const log = {
     },
   },
   webhooks: {
-    // Module name is plural to match the `webhooks/` directory and the
-    // existing raw callers that already emit `module: "webhooks.outbound"`
-    // / `module: "webhooks.inbound"`.
     inbound: {
       received: (ctx: Ctx) =>
         logger.info({ module: "webhooks.inbound", action: "received", ...ctx }),
@@ -412,8 +318,6 @@ export const log = {
   },
   conversation: {
     created: (ctx: Ctx) => logger.info({ module: "conversation", action: "created", ...ctx }),
-    // Distinct event so log readers tailing on `action="created"`
-    // don't accidentally bucket forks.
     forked: (ctx: Ctx) => logger.info({ module: "conversation", action: "forked", ...ctx }),
     appended: (ctx: Ctx) => logger.debug({ module: "conversation", action: "appended", ...ctx }),
     completed: (ctx: Ctx) => logger.info({ module: "conversation", action: "completed", ...ctx }),
@@ -445,33 +349,19 @@ export const log = {
         logger.info({ module: "skill", action: "candidate.approved", ...ctx }),
       rejected: (ctx: Ctx) =>
         logger.warn({ module: "skill", action: "candidate.rejected", ...ctx }),
-      // `promoted` deliberately omitted — candidate.approved already
-      // carries the `promoted_skill_id`; a second event would be
-      // redundant.
       dedup: (ctx: Ctx) => logger.debug({ module: "skill", action: "candidate.dedup", ...ctx }),
     },
   },
   knowledge: {
     ingested: (ctx: Ctx) => logger.info({ module: "knowledge", action: "ingested", ...ctx }),
-    // Info (not debug): retrieval quality is the signal the evidence
-    // process measures (FTS hit/miss rate per query). At debug it was
-    // invisible in real traffic, so a retrieval miss could not be
-    // observed. Fields: query_length, hit_count, top_match_id, top_rank.
     searched: (ctx: Ctx) => logger.info({ module: "knowledge", action: "searched", ...ctx }),
     analyzed: (ctx: Ctx) => logger.info({ module: "knowledge", action: "analyzed", ...ctx }),
     analyze_skipped: (ctx: Ctx) =>
       logger.warn({ module: "knowledge", action: "analyze_skipped", ...ctx }),
   },
-  // Connector-docs retrieval signal — symmetrical to knowledge.searched.
-  // searchDocs previously emitted nothing on the read path, so a docs
-  // retrieval miss was unobservable. Same fields for cross-channel
-  // comparison in the evidence probe.
   docs: {
     searched: (ctx: Ctx) => logger.info({ module: "docs", action: "searched", ...ctx }),
   },
-  // Template-matching retrieval signal — the third retrieval path
-  // (in-memory token-overlap scoring, no FTS). Logged so the probe set
-  // can compare template-match quality against the two FTS channels.
   connectorTemplates: {
     suggested: (ctx: Ctx) =>
       logger.info({ module: "connector-templates", action: "suggested", ...ctx }),
@@ -486,17 +376,10 @@ export const log = {
         logger.info({ module: "self-healing", action: "patch.proposed", ...ctx }),
       applied: (ctx: Ctx) =>
         logger.info({ module: "self-healing", action: "patch.applied", ...ctx }),
-      // An approved/auto-applied patch the engine could not perform on the
-      // definition. Warn, never info: the workflow is unchanged, so someone
-      // has to look. When readiness proves the patch undecidable the
-      // candidate is closed right after (`closedInapplicable`), so this fires
-      // once per candidate and version, not on every scan.
       notApplicable: (ctx: Ctx) =>
         logger.warn({ module: "self-healing", action: "patch.not_applicable", ...ctx }),
       closedInapplicable: (ctx: Ctx) =>
         logger.info({ module: "self-healing", action: "patch.closed_inapplicable", ...ctx }),
-      // The undecidable-candidate sweep could not evaluate or close a row or a
-      // workflow's rows. Isolated: the rest of the sweep and the drift scan go on.
       sweepFailed: (ctx: Ctx) =>
         logger.error({ module: "self-healing", action: "patch.sweep_failed", ...ctx }),
       rejected: (ctx: Ctx) =>
@@ -561,24 +444,12 @@ export const log = {
     reconciled: (ctx: Ctx) => logger.debug({ module: "scheduler", action: "reconciled", ...ctx }),
     lifecycle: (ctx: Ctx) => logger.info({ module: "scheduler", action: "lifecycle", ...ctx }),
   },
-  // Boot-phase timing. `phase` records one named startup step's elapsed
-  // ms (+ rss snapshot); `heartbeat` fires on a timer until the engine is
-  // ready so a stalled boot is visible as a growing elapsed/rss trend
-  // instead of a silent gap; `ready` marks the listener accepting traffic.
   boot: {
     phase: (ctx: Ctx) => logger.info({ module: "boot", action: "phase", ...ctx }),
-    // A normal boot ticks a few heartbeats at INFO; only a boot that drags
-    // past the slow-boot threshold escalates to WARN via `heartbeatSlow`.
-    // Both keep `action: "heartbeat"` so operator greps are unaffected.
     heartbeat: (ctx: Ctx) => logger.info({ module: "boot", action: "heartbeat", ...ctx }),
     heartbeatSlow: (ctx: Ctx) => logger.warn({ module: "boot", action: "heartbeat", ...ctx }),
     ready: (ctx: Ctx) => logger.info({ module: "boot", action: "ready", ...ctx }),
   },
-  // Process-level runtime telemetry. `memory.sample` is the periodic
-  // rss/heap series; `event_loop.lag` fires when sampled loop drift
-  // crosses the alert threshold; `operation` is the generic
-  // success/failure+duration line emitted by the shared `instrument()`
-  // wrapper for any operation that doesn't have a bespoke helper.
   process: {
     memory: (ctx: Ctx) => logger.info({ module: "process", action: "memory.sample", ...ctx }),
     eventLoopLag: (ctx: Ctx) =>

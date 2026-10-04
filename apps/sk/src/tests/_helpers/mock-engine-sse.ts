@@ -1,16 +1,3 @@
-// Async-iterable SSE source for unit/integration tests.
-//
-// Replaces ad-hoc fakes scattered through engine-client-recovery.test.ts
-// and similar suites with one shared interface. The source exposes
-// `pushDelta(text)`, `pushTool(call)`, `pushDone()`, `pushError(env)`
-// and surfaces them through a real `ReadableStream` so callers can
-// pipe into `EngineClient.streamConversation` (or any consumer that
-// expects an SSE byte stream).
-//
-// Each push enqueues the canonical `data: ...\n\n` frame matching the
-// engine's `text/event-stream` response. The stream stays open until
-// `close()` is called, mirroring the engine's behavior.
-
 import { TextEncoder } from "node:util";
 
 export interface MockSseHandle {
@@ -26,9 +13,7 @@ export interface MockSseHandle {
   }) => void;
   pushRaw: (event: string, data: unknown) => void;
   close: () => void;
-  /** ReadableStream the consumer pipes into. */
   stream: ReadableStream<Uint8Array>;
-  /** True until close() is called. */
   isOpen: () => boolean;
 }
 
@@ -47,7 +32,6 @@ export function createMockEngineSse(): MockSseHandle {
   const stream = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
-      // Drain anything pushed before the consumer subscribed.
       for (const p of queue) flush(p);
       queue.length = 0;
     },

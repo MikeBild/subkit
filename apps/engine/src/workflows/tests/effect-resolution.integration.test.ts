@@ -198,8 +198,6 @@ test("the preview names the unavailable connector exactly as the run admission r
         reason,
       },
     ]);
-    // Outside the manifest: availability never moves the digest (a changed
-    // auth type is configuration, and does).
     if (reason !== "credential_unavailable") expect(preview.digest).toBe(healthy.digest);
     await expect(
       capturePreparedWorkflowReferences(ctx.db, f.input.tenant_id, "dev", definition),
@@ -271,12 +269,6 @@ test("response-driven pagination cannot authorize a changing body recipient", as
 });
 
 test("a paginating read whose boundary names its paging keys is not a rewritten target", async () => {
-  // The other half of the pagination gate. The compiler accepts the boundary,
-  // but the effect still carried `rewrites_target: true` for anything that
-  // paginates — so the workflow stayed unapprovable with a perfectly bound
-  // step, and no authoring could ever clear it: the extra requests come from
-  // the engine. What was missing is exactly what the boundary now states —
-  // which keys move, and how many requests there may be.
   const paged = await fixture({
     method: "GET",
     body: undefined,
@@ -298,8 +290,6 @@ test("a paginating read whose boundary names its paging keys is not a rewritten 
     max_requests: 6,
   });
 
-  // And without that boundary it is still a rewritten target — the exemption is
-  // the statement, not the pagination.
   const open = await fixture({
     method: "GET",
     body: undefined,

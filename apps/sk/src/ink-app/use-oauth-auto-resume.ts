@@ -1,14 +1,3 @@
-// OAuth auto-resume (plan/read-sk-synthetic-wirth.md Fix #1).
-//
-// When the engine pauses on a `review_after_execution` elicitation
-// for `authenticate_oauth`, the operator has just been handed an
-// authorization URL and needs to complete the dance in a browser.
-// Pre-fix the operator had to manually type "done" once the browser
-// tab landed on the success page — no signal flowed back. Now the
-// engine emits `connector.oauth.callback_succeeded` on the
-// `connector.oauth` channel the instant the callback persists the
-// credential, and this hook resolves the elicitation automatically.
-
 import type { PendingElicitation } from "@cli-core/index.ts";
 import { useEffect } from "react";
 import type { EngineClient } from "../engine-client.ts";
@@ -51,20 +40,12 @@ export function useOAuthAutoResume(
           },
         });
         ac.signal.addEventListener("abort", () => handle.cancel(), { once: true });
-      } catch {
-        // Subscription couldn't open (transport error, auth failure).
-        // The operator can still type "done" / approve manually; we
-        // never want a missing auto-resume channel to block the flow.
-      }
+      } catch {}
     })();
     return () => {
       cancelled = true;
       ac.abort();
     };
-    // `respond` (submitElicitationResponse) is a stable closure over
-    // busyRef and session; listing it would force the effect to re-run
-    // on every turn. Pending-elicitation id changes already trigger
-    // the gate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingElicitation, engineClient]);
 }

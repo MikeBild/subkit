@@ -1,20 +1,3 @@
-// The metrics scope is advertised by a CONFIGURED installation, not only by a
-// fresh one.
-//
-// 6.33.0 enforced `metrics:read` on `/metrics` and added it to the schema
-// default for `auth.mcp_oauth.scopes_supported`. Every test read that default
-// and passed. Production on 2026-09-04 — engine reporting 6.33.0 — still
-// served `["mcp:admin","mcp:authoring","mcp:read"]` from
-// `/.well-known/oauth-authorization-server`, because a running installation
-// does not ride the default: its settings document carries an explicit list
-// persisted by an earlier settings write, and an explicit value wins over a
-// default forever. The scope was enforced on a route and offerable nowhere, so
-// a monitoring system could not connect at all.
-//
-// These tests drive the production path — a stored document installed through
-// `installRuntimeConfig`, which is what `applyRuntimeConfig` calls for a
-// PostgreSQL revision — and read the answer off the real discovery endpoint.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   setupMcpOauthServer,
@@ -37,7 +20,6 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  // Put the process back on the configuration the rest of the run expects.
   installRuntimeConfig(originalDocument);
   await teardownMcpOauthServer(ctx, priorBaseUrl);
 }, 30_000);
@@ -46,15 +28,12 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** The smallest document that keeps this process able to serve requests. */
 function productionShapedDocument(): Record<string, unknown> {
   const current = getConfig();
   return {
     database: { url: current.database.url },
     server: { public_base_url: current.server.public_base_url },
     auth: { session: { secret: current.auth.session.secret } },
-    // What the droplet's stored settings actually carry for MCP: the
-    // transport block. Nothing anywhere about scopes.
     mcp: { api_key: "", read_only: false },
   };
 }
@@ -75,17 +54,12 @@ async function protectedResourceScopes(): Promise<string[]> {
 
 describe("scopes_supported on a configured installation", () => {
   test("a settings document that says nothing about scopes still advertises metrics:read", async () => {
-    // The control: this one rides the schema default and was already green in
-    // 6.33.0. It is here because "the droplet's settings show only the mcp
-    // block" was the reading that had to be tested rather than assumed — the
-    // next test is the one that was red.
     installRuntimeConfig(productionShapedDocument());
     expect(await advertisedScopes()).toContain(METRICS_SCOPE);
     expect(await protectedResourceScopes()).toContain(METRICS_SCOPE);
   });
 
   test("a settings document that lists scopes explicitly cannot drop metrics:read", async () => {
-    // Byte-for-byte the list the droplet served on 2026-09-04, in its order.
     const stored = ["mcp:admin", "mcp:authoring", "mcp:read"];
     installRuntimeConfig({
       ...productionShapedDocument(),
@@ -96,16 +70,11 @@ describe("scopes_supported on a configured installation", () => {
     });
     const advertised = await advertisedScopes();
     expect(advertised).toContain(METRICS_SCOPE);
-    // The operator's list is honoured, in their order — the scope is added,
-    // nothing of theirs is reordered or dropped.
     expect(advertised.slice(0, stored.length)).toEqual(stored);
     expect(await protectedResourceScopes()).toContain(METRICS_SCOPE);
   });
 
   test("an explicit list that already names every mandatory advertised scope is left exactly as written", async () => {
-    // The authorization-server document also serves the dedicated CLI
-    // audience, so it always advertises sk:login in addition to the
-    // non-removable MCP metrics scope.
     const stored = [METRICS_SCOPE, CLI_LOGIN_SCOPE, "mcp:read"];
     installRuntimeConfig({
       ...productionShapedDocument(),

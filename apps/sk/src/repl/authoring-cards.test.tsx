@@ -1,13 +1,3 @@
-// Unit tests for extractKnowledgeSourceSummary (Fix #3) and
-// isPolicyGatePending / renderAuthoringCard (Fix #4).
-//
-// Both helpers operate on plain ToolCallState fixtures — no React
-// rendering is needed for the pure-function assertions in Fix #3 and
-// the isPolicyGatePending predicate in Fix #4. renderAuthoringCard
-// is tested at the null / non-null level: we verify it returns null
-// when a policy-pending call is in chat mode, and non-null when the
-// same call is in inspect mode.
-
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
 import { render } from "ink-testing-library";
@@ -26,10 +16,6 @@ function frameOf(call: ToolCallState, mode: "chat" | "inspect" = "chat"): string
   r.unmount();
   return frame;
 }
-
-// ---------------------------------------------------------------------------
-// Fixture helpers
-// ---------------------------------------------------------------------------
 
 function makeKsCall(overrides: {
   resultMimeType?: string;
@@ -105,10 +91,6 @@ function makePolicyPendingCall(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Fix #3 — extractKnowledgeSourceSummary reads content_type from engine
-// ---------------------------------------------------------------------------
-
 describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
   test("engine-echoed mime_type wins over mode-derived fallback", () => {
     const call = makeKsCall({ resultMimeType: "text/markdown", argMode: "from_attachment" });
@@ -142,15 +124,11 @@ describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
       includeResultMime: false,
       argMode: "inline",
     });
-    // No argMimeType set, no resultMimeType set.
     const summary = extractKnowledgeSourceSummary(call);
     expect(summary?.mime_type).toBe("text/markdown");
   });
 
   test("when neither carries mime_type and mode=from_attachment, fallback is application/octet-stream", () => {
-    // The stored row carries no MIME. The from_attachment branch can't know
-    // the type without querying the file row again, so octet-stream is the
-    // safe default.
     const call = makeKsCall({
       includeResultMime: false,
       argMode: "from_attachment",
@@ -166,10 +144,6 @@ describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
   });
 
   test("empty-string mime_type from engine falls through to next tier (no '' label)", () => {
-    // Code-review hardening: `??` only treats nullish as missing, so a
-    // future engine that returns `mime_type: ""` would surface as an
-    // empty content-type label. Coerce empty strings to "missing" so
-    // the chain falls through to the args / mode default.
     const call = makeKsCall({
       resultMimeType: "",
       argMimeType: "text/markdown",
@@ -202,10 +176,6 @@ describe("extractKnowledgeSourceSummary — mime_type resolution order", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Fix #4 — isPolicyGatePending predicate
-// ---------------------------------------------------------------------------
-
 describe("isPolicyGatePending", () => {
   test("returns true for a full confirm_before_execution sentinel envelope", () => {
     const call = makePolicyPendingCall();
@@ -213,8 +183,6 @@ describe("isPolicyGatePending", () => {
   });
 
   test("returns false when policy_mode is missing (generic {pending: true} must not false-positive)", () => {
-    // A tool that returns `{ pending: true }` for other reasons (e.g. a
-    // background job) must NOT be suppressed as if it were policy-gated.
     const call = makePolicyPendingCall({ includePolicyMode: false });
     expect(isPolicyGatePending(call)).toBe(false);
   });
@@ -235,31 +203,17 @@ describe("isPolicyGatePending", () => {
   });
 
   test("returns false for confirm_after_execution (only confirm_before_execution emits this envelope)", () => {
-    // Code-review hardening: a previous draft used `startsWith("confirm_")`
-    // which would catch a future after-execution flow and silently
-    // suppress real result cards.
     const call = makePolicyPendingCall({ policyMode: "confirm_after_execution" });
     expect(isPolicyGatePending(call)).toBe(false);
   });
 
   test("returns true with case-folded policy_mode (CONFIRM_BEFORE_EXECUTION)", () => {
-    // Defensive: case-folded so a future emitter that capitalises the
-    // policy_mode string doesn't slip past the predicate.
     const call = makePolicyPendingCall({ policyMode: "CONFIRM_BEFORE_EXECUTION" });
     expect(isPolicyGatePending(call)).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// Fix #8 — meta-authoring tools suppressed in chat (6.2.13)
-// ---------------------------------------------------------------------------
-
 describe("renderAuthoringCard — meta-authoring tools suppressed in chat (Fix #8, 6.2.13)", () => {
-  // validate_draft, inspect_workflow_draft, inspect_connector_draft were
-  // removed from IN_FLIGHT_VISIBLE_TOOLS. In chat mode the operator should
-  // never see their in-flight or completion cards — the assistant's text
-  // narrative is what surfaces instead.
-
   const META_TOOLS = [
     "validate_draft",
     "inspect_workflow_draft",
@@ -310,12 +264,6 @@ describe("renderAuthoringCard — meta-authoring tools suppressed in chat (Fix #
     expect(renderAuthoringCard(call, "chat")).not.toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// author_workflow milestone card — the one-shot authoring pipeline result
-// must render in chat mode: name/slug, step count + kinds, recorded-eval
-// verdict, attempts, and the next action (dry_run_workflow).
-// ---------------------------------------------------------------------------
 
 function makeAuthorWorkflowCall(overrides: {
   recordedEval?: Record<string, unknown>;
@@ -412,7 +360,6 @@ describe("renderAuthoringCard — author_workflow milestone card", () => {
     expect(frame).toContain("is not an array");
     expect(frame).toContain("2 attempts");
     expect(frame).toContain("→ dry_run_workflow");
-    // ok-status expressions are not findings.
     expect(frame).not.toContain("3 findings");
   });
 
@@ -449,11 +396,6 @@ describe("renderAuthoringCard — author_workflow milestone card", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// start_workflow_from_goal is deleted engine-side — sk must no longer
-// treat it as a milestone (no card in chat, no dedicated case).
-// ---------------------------------------------------------------------------
-
 describe("renderAuthoringCard — start_workflow_from_goal removed", () => {
   const doneCall: ToolCallState = {
     id: "call-swfg",
@@ -480,10 +422,6 @@ describe("renderAuthoringCard — start_workflow_from_goal removed", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Fix #4 — renderAuthoringCard dispatcher with policy-pending
-// ---------------------------------------------------------------------------
-
 describe("renderAuthoringCard — policy-pending short-circuit", () => {
   test("returns null in chat mode when call is policy-pending and status=done", () => {
     const call = makePolicyPendingCall();
@@ -500,19 +438,11 @@ describe("renderAuthoringCard — policy-pending short-circuit", () => {
   test("returns non-null (SummaryCard path) for a genuine success result in chat mode", () => {
     const call = makeKsCall({ resultMimeType: "text/markdown" });
     const result = renderAuthoringCard(call, "chat");
-    // Not null — the genuine success card should render.
     expect(result).not.toBeNull();
   });
 
   test("generic {pending:true} without policy_mode does NOT suppress (renders normally)", () => {
-    // If a tool returns `{pending: true}` for a non-policy reason, the
-    // card must NOT be suppressed in chat mode.
     const call = makePolicyPendingCall({ includePolicyMode: false });
-    // isPolicyGatePending returns false, so the dispatcher falls through
-    // to the switch — create_knowledge_source with this shape will try
-    // extractKnowledgeSourceSummary (returns null since `knowledge_source`
-    // key is missing) and fall back to GenericMilestoneCard, which is
-    // non-null.
     const result = renderAuthoringCard(call, "chat");
     expect(result).not.toBeNull();
   });

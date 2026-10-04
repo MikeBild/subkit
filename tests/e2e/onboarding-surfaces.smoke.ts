@@ -1,12 +1,3 @@
-// Docker-backed smoke for the two end-user surfaces highlighted in the
-// zero-to-running guide: MCP over streamable HTTP and the conversational REPL.
-//
-// The production application container is intentionally stateless. This smoke
-// therefore uses docker-compose.test.yml to provide external PostgreSQL and S3
-// services and asserts that the engine itself has no mounts.
-//
-// Run: SMOKE_IMAGE=mikebild/subkit:6.23.0 bun run smoke:surfaces
-
 import { spawnSync } from "node:child_process";
 
 const IMAGE = process.env.SMOKE_IMAGE ?? "subkit:cintest";

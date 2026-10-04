@@ -1,8 +1,3 @@
-// Drift detection — surfaces the actionable signal a silent schema mismatch otherwise hides.
-//
-// We seed `subkit.__drizzle_migrations` with rows that don't belong
-// to this binary's embedded set and confirm `detectDrift` reports them.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { detectDrift, listEmbeddedMigrations } from "../migrate.ts";
@@ -37,10 +32,8 @@ describe("detectDrift", () => {
     const unknownHashes = report.unknown_in_db.map((r) => r.hash);
     expect(unknownHashes).toContain(fakeHash);
     expect(report.historical_in_db).toEqual([]);
-    // Sanity: the embedded set is still considered fully applied.
     expect(report.missing_in_db).toEqual([]);
 
-    // Cleanup so the next test runs against a clean ring.
     await ctx.db.execute(sql`DELETE FROM "subkit"."__drizzle_migrations" WHERE hash = ${fakeHash}`);
   });
 
@@ -63,7 +56,6 @@ describe("detectDrift", () => {
   });
 
   test("a deleted row surfaces in missing_in_db", async () => {
-    // Drop the most recently applied embedded migration row.
     const lastTag = listEmbeddedMigrations().at(-1)!.tag;
     await ctx.db.execute(
       sql`DELETE FROM "subkit"."__drizzle_migrations"

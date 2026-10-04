@@ -1,25 +1,8 @@
-// Unit coverage for the pure / no-DB-touch parts of the approval store.
-//
-// `consumeApproval` short-circuits BEFORE it ever reaches Postgres for two
-// inputs: a missing `confirm_id` and a syntactically-invalid one (the `uuid`
-// column would abort the statement rather than resolve to "no such
-// approval" — see the `UUID_RE` comment in approval.ts). Both branches are
-// pure and unit-testable with a `db` stub that throws if touched, proving
-// the short-circuit actually happens — including that neither mints an
-// `audit_log` row off a model-suppliable garbage string.
-//
-// The DB-backed lifecycle (request → consume, single-use, expiry, wrong
-// principal, wrong tool, tamper-at-rest, audit resource_id linkage) lives in
-// approval.int.test.ts against a real Postgres — `consumeApproval`'s CAS and
-// `requestApproval`'s encrypt-then-insert are not meaningfully mockable.
-
 import { describe, expect, test } from "bun:test";
 import type { Db } from "../db/client.ts";
 import { consumeApproval, hashToolArgs, stripConfirmMarkers } from "./approval.ts";
 import { makeTestPrincipal } from "./tests/_helpers.ts";
 
-/** A `db` that throws the moment anything touches it — proves the branch
- *  under test never reaches Postgres. */
 function unreachableDb(): Db {
   return new Proxy(
     {},

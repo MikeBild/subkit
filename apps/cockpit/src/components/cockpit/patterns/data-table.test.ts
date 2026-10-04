@@ -18,7 +18,6 @@ describe("the column that carries a row's link", () => {
   });
 
   test("moves only to a column without links of its own when the name is hidden", () => {
-    // Relation chips first: wrapping them in the row's link would nest links.
     expect(rowLinkColumn([usedBy, status], "name")).toBe("status");
     expect(rowLinkColumn([usedBy, status])).toBe("status");
   });

@@ -1,10 +1,3 @@
-// Webhook adapter unit tests.
-//
-// Validates the retry contract: success returns a message id; transient
-// 5xx + 429 retry with backoff or Retry-After; permanent 4xx aborts;
-// network failure falls back to exponential backoff and surfaces the
-// last error after the budget is exhausted.
-
 import { describe, expect, test } from "bun:test";
 import { WEBHOOK_MAX_ATTEMPTS, WebhookNotificationAdapter } from "../channels/webhook.ts";
 
@@ -26,10 +19,6 @@ function makeFetchSequence(
   const calls: FetchCall[] = [];
   const sleeps: number[] = [];
   let cursor = 0;
-  // Use the simpler `fetch`-shaped function the adapter accepts. The
-  // adapter's option type is the lib `fetch` signature, but Bun's
-  // global `fetch` carries an extra `preconnect` property that we do
-  // not need — cast away to keep the test mock minimal.
   const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     const headers: Record<string, string> = {};

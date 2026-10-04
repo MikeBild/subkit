@@ -1,14 +1,3 @@
-// The preflight and the host commands run BEFORE this release's migrations,
-// against the schema the previous release left behind. A query on that path
-// that names a column this release added does not refuse — it crashes, and
-// exit 1 instead of 0 or 3 rolls a deploy back. Learned on a production
-// rollout on 2026-09-03; this file is what keeps it learned.
-//
-// The database here is migrated only up to 0047, the last migration of
-// 6.28. 0048 (this release) adds `pending_since`, `prepared_by` and
-// `pending_bindings` to `runtime_secret_versions`, `connection_id` to
-// `credentials`, `client_uri` to `mcp_oauth_clients`, and two tables.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +18,6 @@ import { preflightOutcome } from "../runner.ts";
 import { parseVaultCliArgs, runVaultCli } from "../vault-cli.ts";
 import { createVaultOps, rebindSettingPath } from "../vault-ops.ts";
 
-/** The last migration of the previous release. Bump it when the next release ships. */
 const PREVIOUS_RELEASE_LAST_MIGRATION_IDX = 47;
 
 let tdb: TestDb;
@@ -53,9 +41,6 @@ beforeAll(async () => {
     env: { DATABASE_URL: tdb.url, NODE_ENV: "test" },
     configPathOverride: join(scratch, "seed.json"),
   });
-  // Revision 1, then a secret version bound into the ACTIVE document the
-  // way the previous release's `--vault-set --bind` did it — exactly what
-  // check 5 has to read, and what check 3 reads for a stored binding.
   await initializeRuntimeConfig(tdb.db, getConfig());
   const created = await createSecretVersion(tdb.db, {
     name: SECRET_NAME,
@@ -63,8 +48,6 @@ beforeAll(async () => {
     created_by: null,
   });
   await rebindSettingPath(tdb.db, BINDING_PATH, SECRET_NAME, created.version);
-  // The object store comes from the revision-1 seed variables; the probe is
-  // replaced in the one test that asserts a pass.
   Object.assign(process.env, OBJECT_STORE_ENV);
 });
 
@@ -93,10 +76,7 @@ describe("the previous release's schema", () => {
   });
 
   test("--preflight answers 0 on it, with every database-backed check having run", async () => {
-    // The active document really binds the secret written above.
     expect(await readSecretVersion(tdb.db, SECRET_NAME, 1)).toBe("written-under-the-old-schema");
-    // The object-store probe is the one network call; everything else is
-    // the real read path against the real old schema.
     const env = createPreflightEnvironment(tdb.db, getConfig());
     const outcome = await runPreflightChecks({ ...env, probeObjectStore: async () => {} });
     expect(firstRefusal(outcome)).toBeNull();
@@ -111,8 +91,6 @@ describe("the previous release's schema", () => {
   });
 
   test("the full command against the same schema refuses or passes — it never crashes", async () => {
-    // Without a reachable object store this is a refusal (exit 3), and the
-    // refusal must be about the store, not about a column.
     const outcome = await preflightOutcome(tdb.db, getConfig());
     expect([PREFLIGHT_EXIT_OK, PREFLIGHT_EXIT_REFUSED]).toContain(outcome.exitCode);
     if (outcome.exitCode === PREFLIGHT_EXIT_REFUSED) {

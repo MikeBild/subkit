@@ -1,12 +1,3 @@
-// End-to-end HTTP tests for RBAC permission transparency, against a real
-// Hono server bound to a disposable Postgres (createHttpTestServer):
-//
-//   - GET /v1/identity/permissions returns the effective connector level
-//     (read-write / read-only / none) and rejects bad input;
-//   - a connector:write 403 carries the actionable envelope (hint +
-//     details.connector_level + details.required), for both a role/grant
-//     denial AND a credential-ceiling denial.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, connectors, roles, users } from "../../db/schema/index.ts";
@@ -18,7 +9,6 @@ function sha256Hex(v: string): string {
   return createHash("sha256").update(v).digest("hex");
 }
 
-// Mint an api key bound to a user with explicit scopes / allowed_connectors.
 async function mintKey(opts: {
   userId: string;
   scopes?: string[];
@@ -42,13 +32,12 @@ async function mintKey(opts: {
 const connectorC1 = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
 const connectorC2 = "c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2";
 
-let memberKey = ""; // empty-role user, read-only grant on C1
-let ceilingKey = ""; // admin user, allowed_connectors=[C2] → ceiling blocks C1
+let memberKey = "";
+let ceilingKey = "";
 
 beforeAll(async () => {
   srv = await createHttpTestServer("rbac-transparency");
 
-  // Two connectors.
   for (const id of [connectorC1, connectorC2]) {
     await srv.db.insert(connectors).values({
       id,
@@ -59,8 +48,6 @@ beforeAll(async () => {
     });
   }
 
-  // Empty custom role so the principal holds NO connector permission by
-  // role — the level then reflects only the resource grant below.
   const [noperm] = await srv.db
     .insert(roles)
     .values({ tenant_id: srv.tenantId, name: "noperm" })
@@ -77,7 +64,6 @@ beforeAll(async () => {
     .returning({ id: users.id });
   if (!member) throw new Error("seed member user");
 
-  // Read-only grant on C1 (nothing on C2).
   const { grantResource } = await import("../../rbac/grants.ts");
   await grantResource(srv.db, {
     tenant_id: srv.tenantId,
@@ -89,7 +75,6 @@ beforeAll(async () => {
   });
 
   memberKey = await mintKey({ userId: member.id });
-  // Admin user (srv.userId) but a connector allowlist that excludes C1.
   ceilingKey = await mintKey({ userId: srv.userId, allowed_connectors: [connectorC2] });
 }, 60_000);
 

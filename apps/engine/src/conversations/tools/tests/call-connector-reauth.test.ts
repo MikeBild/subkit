@@ -1,16 +1,3 @@
-// `call_connector` as a chat/MCP tool, and the connector's re-auth flag.
-//
-// A successful call clears `needs_reauth` because it proves the stored
-// credential live. That is only true of a call the stored credential
-// authenticated: the tool merges caller headers on top of the connector's, a
-// caller's `Authorization` replaces the stored one, and a full URL sends the
-// request to whatever host the caller names. A 200 under any of those says
-// nothing about the credential the flag is about — and neither does a GraphQL
-// reply that carries its refusal in `errors`.
-//
-// The same file pins the switch: a disabled connector is refused by the tool
-// exactly as a workflow step is, and nothing is sent.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { eq } from "drizzle-orm";
@@ -29,7 +16,6 @@ import { type ConversationTestCtx, createConversationTestCtx } from "../../tests
 import { callConnectorTool } from "../call-connector.ts";
 import type { ToolContext } from "../index.ts";
 
-// Fixture markers, not credentials.
 const STORED_TOKEN = "fixture-stored-token-not-real";
 const CALLER_TOKEN = "fixture-caller-token-not-real";
 
@@ -39,7 +25,6 @@ let ctx: ConversationTestCtx;
 let home: MockServer;
 let elsewhere: MockServer;
 let authorizationSeen: Array<string | undefined> = [];
-/** What the GraphQL endpoint answers with; flipped per test. */
 let graphqlReply: unknown = { data: { viewer: { id: "1" } } };
 
 beforeAll(async () => {
@@ -78,7 +63,6 @@ function toolContext(): ToolContext {
   };
 }
 
-/** A bearer connector with a stored credential, flagged as needing re-auth. */
 async function seedFlagged(slug: string, driver: "http" | "graphql" = "http"): Promise<string> {
   const [row] = await ctx.testDb.db
     .insert(connectors)
@@ -149,7 +133,6 @@ describe("call_connector tool — the re-auth clearing edge", () => {
       headers: { authorization: `Bearer ${CALLER_TOKEN}` },
     });
     expect(result.ok).toBe(true);
-    // The upstream never saw the stored credential, so it proved nothing about it.
     expect(authorizationSeen).toEqual([`Bearer ${CALLER_TOKEN}`]);
     expect(await flagged(connector_id)).toBe(true);
   });
@@ -221,7 +204,6 @@ describe("call_connector tool — a disabled connector", () => {
     expect(data.details).toEqual(stepRefusal?.details);
     expect(data.error.message).toContain("is disabled");
     expect(home.callCount()).toBe(before);
-    // A refusal proves nothing about the credential either.
     expect(await flagged(connector_id)).toBe(true);
   });
 });

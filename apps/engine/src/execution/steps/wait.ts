@@ -1,10 +1,3 @@
-// Wait step. Same-day in-process pause with restart-safe
-// resumption: a checkpoint row in `workflow_waits` is written before the
-// setTimeout starts and deleted on completion. Engine boot reaps any
-// rows still present, advancing or re-arming as needed.
-//
-// Cap is 24h via Zod (`WaitStepSchema.duration_ms.max`). Multi-day
-// patterns belong on the Schedule + State recipe, not here.
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { WaitStep } from "../../workflows/types.ts";
@@ -15,15 +8,8 @@ export async function runWaitStep(p: { ctx: StepRunContext; step: WaitStep }): P
   const start = Date.now();
   const sleepUntil = new Date(start + p.step.duration_ms);
 
-  // Checkpoint the wait BEFORE arming the timer. If the engine dies
-  // between this insert and the resolve, the boot-time reaper finds the
-  // row and resumes (or re-arms) the wait. Skipped for runs the reaper
-  // could not resume anyway — see `wait-checkpoint.ts`.
   await writeWaitCheckpoint(p.ctx, p.step.id, sleepUntil);
 
-  // First step-level audit pair in subkit. `wait_completed` fires
-  // unconditionally below (timer / cancelled / error), preserving the
-  // pairing invariant the operator can grep for.
   await auditAwait(
     {
       tenant_id: p.ctx.tenant_id,

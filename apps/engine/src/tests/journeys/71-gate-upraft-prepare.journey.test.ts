@@ -1,20 +1,3 @@
-// User story: As an author whose report e-mail is built with the engine's own
-// `sk.buildMimeMessage` — a named sender and a plain-text alternative — I am
-// told that the review only lacks a preparation run, not handed a code patch
-// for a message that is fine.
-// Acceptance criteria:
-//   - AC1: Before any preparation, GET /v1/workflows/{id}/diagnosis names the
-//     report step with remedy `prepare` and no fixer.
-//   - AC2: Asking for repairs files nothing: proposeGateRepairs returns no
-//     candidate, POST /v1/workflows/{id}/repairs is refused, and no patch
-//     candidate exists for the workflow.
-//   - AC3: After a preparation run the diagnosis offers no fixer for the step
-//     either — whatever the review then says, no encoder patch is proposed.
-//   - AC4: A held capture recorded before message inspections existed (no
-//     inspection on the step) reads as missing evidence — remedy `prepare` —
-//     not as a defect the author has to fix.
-// Spec refs: docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -138,8 +121,6 @@ describe("journey 71: a buildMimeMessage report is told to prepare, never patche
     expect(await candidates()).toEqual([]);
   });
   test("AC4: a capture that predates inspections asks for a preparation", async () => {
-    // The newest held run as an older engine stored it: no inspection and no
-    // proposal on the report step.
     const [held] = await ctx.db
       .select({ id: executions.id })
       .from(executions)

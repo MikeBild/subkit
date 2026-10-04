@@ -66,8 +66,6 @@ describe("connections model", () => {
   });
 
   test("dropping the callback's words keeps the section the page is open at", () => {
-    // The old page cleared the whole query, which would now also drop
-    // `section=grants` and scroll a returning person to the top.
     expect(withoutCallbackParams("?section=grants&connected=wiki&renewed=1")).toBe(
       "?section=grants",
     );

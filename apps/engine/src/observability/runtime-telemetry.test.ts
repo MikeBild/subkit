@@ -1,4 +1,3 @@
-// Telemetry must not be able to break what it measures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { instrument, sampleMemory } from "./runtime-telemetry.ts";
 
@@ -8,12 +7,6 @@ afterEach(() => {
   process.memoryUsage = realMemoryUsage;
 });
 
-/**
- * `process.memoryUsage()` is a syscall and it can fail. A CI runner returned
- * `SystemError: Failed to get memory usage, errno: 4` (EINTR) from inside
- * `instrument()`; it propagated out of a transform step and failed the workflow
- * that step belonged to — a workflow whose only crime was being measured.
- */
 const breakMemoryUsage = () => {
   process.memoryUsage = (() => {
     throw Object.assign(new Error("Failed to get memory usage"), {
@@ -36,9 +29,6 @@ describe("when the memory syscall fails", () => {
   });
 
   test("and a failing operation still throws ITS OWN error, not the telemetry one", async () => {
-    // The dangerous regression is not "it throws" — it is throwing the WRONG
-    // error, which would send whoever reads the log after a memory problem
-    // instead of the failure that actually happened.
     breakMemoryUsage();
     const failing = instrument({
       module: "test",
@@ -53,8 +43,6 @@ describe("when the memory syscall fails", () => {
 
   test("sampleMemory reports zeroes rather than throwing", () => {
     breakMemoryUsage();
-    // Zero is visibly wrong in a dashboard, which is how a missing measurement
-    // should look. Plausible-but-invented numbers would be worse.
     expect(sampleMemory()).toEqual({
       rss_mb: 0,
       heap_used_mb: 0,

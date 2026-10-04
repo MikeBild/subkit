@@ -114,7 +114,6 @@ for (const writer of ["update", "restore", "rotation", "repair"] as const) {
                 { tenant_id, candidate_id: candidate.id, actor_id: null },
                 ctx.db,
               );
-    // Observe a real blocked PostgreSQL statement, not an arbitrary delay.
     const completed = Promise.allSettled([holder, writing]);
     try {
       await waitFor(

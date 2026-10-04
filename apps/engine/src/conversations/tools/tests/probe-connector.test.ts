@@ -1,12 +1,3 @@
-// probe_connector tool tests.
-//
-// Uses a real HTTP mock server on an ephemeral port (Bun.serve-equivalent)
-// via Node's http module so we can assert what the probe actually sent:
-// resolved URL host, auth header, method, body. The test does NOT mock
-// `fetch` — it proves end-to-end that placeholders are substituted and
-// credentials arrive at the remote, while the audit row records only the
-// token NAMES, never values.
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { desc, eq } from "drizzle-orm";
@@ -147,9 +138,6 @@ async function seedProbeConnector(opts: {
   }
   return {
     tenant_id: tenant!.id,
-    // Conversations table has an id — we don't need a real row for the
-    // tool context except its id; inserts routed through the rate
-    // bucket use conversation_id as a key.
     conversation_id: crypto.randomUUID(), // allow-random: legacy; review before changing
     connector_id: conn!.id,
   };
@@ -276,8 +264,6 @@ describe("probe_connector — dispatch + credential substitution", () => {
     expect(rows.some((row) => row.action === "policy.denied")).toBe(true);
     expect(rows.some((row) => row.action === "approval.requested")).toBe(false);
 
-    // The chat gate must retain the same credential ceiling, even when its
-    // engine context has no actor (as on a transport-created tool context).
     const permission = probeConnectorTool.permission;
     if (!permission) throw new Error("probe permission missing");
     const decision = await checkToolPermission({ ...tctx, principal }, permission, {
@@ -385,13 +371,9 @@ describe("probe_connector — dispatch + credential substitution", () => {
     expect(out.status_code).toBe(200);
     expect(out.persistence).toBe("none");
     expect(Array.isArray(out.placeholders_used)).toBe(true);
-    // body is already a plain JS object (content-type=json); confirm
-    // the first customer row is visible.
     const body = out.body as { data: Array<{ id: string }> };
     expect(body.data[0]!.id).toBe("cust_42");
 
-    // Mock server saw the request with the real auth token (bearer
-    // auth header synthesised by the HTTP driver from the credential).
     expect(captured.length).toBe(1);
     const req = captured[0]!;
     expect(req.method).toBe("GET");
@@ -404,9 +386,6 @@ describe("probe_connector — dispatch + credential substitution", () => {
     const env = await seedProbeConnector({ slug: "hd1", tokenValue: "custom-auth-v2" });
     const tctx = makeToolContext(env);
 
-    // `${input.trace}` cannot be resolved — ctx.input is not provided
-    // and the placeholder resolver returns unresolved=[...]. The probe
-    // tool must refuse to dispatch in that case.
     const result = await probeConnectorTool.execute(tctx, {
       connector_slug: "hd1",
       method: "GET",
@@ -453,14 +432,8 @@ describe("probe_connector — audit hygiene", () => {
       path: "/ping",
       environment: "dev",
     });
-    // Sanity-check: the probe actually succeeded (a failed probe still writes
-    // an audit, but for this test we want the success path).
     expect(probeResult.ok).toBe(true);
 
-    // Pull all audit rows for this tenant — there should be a
-    // conversation.probe_connector entry plus a credential.created entry
-    // from the seed step. We find the probe one explicitly so the assertion
-    // fails loudly if the row is missing.
     const rows = await ctx.db
       .select()
       .from(auditLog)
@@ -475,7 +448,6 @@ describe("probe_connector — audit hygiene", () => {
     expect(meta.status_code).toBe(200);
     expect(typeof meta.url_host).toBe("string");
     expect((meta.url_host as string).startsWith("127.0.0.1")).toBe(true);
-    // Canary must NOT appear anywhere in the audit row.
     const serialised = JSON.stringify(row);
     expect(serialised.includes(CANARY)).toBe(false);
   });
@@ -510,15 +482,6 @@ describe("probe_connector — rate limit", () => {
 });
 
 describe("probe_connector — credential pre-gate (oauth2)", () => {
-  // Regression coverage for the credential pre-gate introduced alongside
-  // the empty-Bearer fix in `applyAuthMaterial`.
-  //
-  // The pre-gate sits in probe_connector BEFORE dispatch: for auth_type !==
-  // "none" connectors it checks (a) whether a saved credential exists and
-  // (b) whether an oauth2 credential has a non-empty access_token. This
-  // prevents an empty-Bearer 401 from reaching the remote and prevents the
-  // LLM from misreading it as an API-path error.
-
   test("oauth2 connector with a valid access_token → dispatches and returns credential descriptor", async () => {
     const [tenant] = await ctx.db
       .insert(tenants)
@@ -541,7 +504,6 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
       })
       .returning();
 
-    // Seed an oauth2 credential with a real access_token.
     await upsertCredential(
       {
         tenant_id: tenant!.id,
@@ -569,18 +531,15 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
       environment: "dev",
     });
 
-    // Pre-gate passed → request was dispatched and returned a real response.
     expect(result.ok).toBe(true);
     const out = result.data as Record<string, unknown>;
     expect(out.status_code).toBe(200);
 
-    // Credential descriptor surfaces on success envelope.
     const cred = out.credential as { mode: string; present: boolean } | undefined;
     expect(cred).toBeDefined();
     expect(cred!.mode).toBe("oauth2");
     expect(cred!.present).toBe(true);
 
-    // Auth header was injected — mock server saw `Authorization: Bearer <token>`.
     expect(captured.length).toBeGreaterThan(0);
     const req = captured[captured.length - 1]!;
     expect(req.headers.authorization).toBe("Bearer live-oauth2-token-xyz");
@@ -617,7 +576,6 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
       environment: "dev",
     });
 
-    // Pre-gate fired — no network dispatch.
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("credential_required");
@@ -647,7 +605,6 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
       })
       .returning();
 
-    // Credential row exists but access_token was never minted (empty string).
     await upsertCredential(
       {
         tenant_id: tenant!.id,
@@ -675,12 +632,10 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
       environment: "dev",
     });
 
-    // Pre-gate fired — no empty-Bearer request dispatched.
     expect(result.ok).toBe(false);
     const err = (result.data as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("authenticate_oauth_required");
     expect(err.message).toContain("oauth2-empty-tok");
-    // Verify the mock server was never called — no empty Bearer went out.
     expect(captured.length).toBe(prevCapturedLen);
   });
 
@@ -697,7 +652,6 @@ describe("probe_connector — credential pre-gate (oauth2)", () => {
     expect(result.ok).toBe(true);
     const out = result.data as Record<string, unknown>;
     expect(out.status_code).toBe(200);
-    // credential descriptor is absent for auth_type:none.
     expect(out.credential).toBeUndefined();
   });
 });
@@ -724,8 +678,6 @@ describe("probe_connector — downstream error handling", () => {
   });
 
   test("connection failure returns ok:false with probe_fetch_failed", async () => {
-    // Seed against a host that does not exist — server port gets closed
-    // momentarily to force an ECONNREFUSED.
     const [tenant] = await ctx.db
       .insert(tenants)
       .values({ slug: `t-fail-${Math.random().toString(36).slice(2, 8)}`, display_name: "T" }) // allow-random: legacy; review before changing
@@ -739,7 +691,7 @@ describe("probe_connector — downstream error handling", () => {
         driver: "http",
         environment: "dev",
         auth_type: "none",
-        base_url: "http://127.0.0.1:1", // reserved port; refused
+        base_url: "http://127.0.0.1:1",
       })
       .returning();
     const tctx = makeToolContext({

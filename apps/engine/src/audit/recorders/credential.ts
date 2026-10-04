@@ -1,10 +1,3 @@
-// Credential audit recorders.
-//
-// Used by `saveConnectorAtomic` and `save_connector_draft` to log
-// credential lifecycle events alongside the connector audit row.
-// These recorders MUST NOT carry the credential value — only the mode
-// + environment + the connector it belongs to.
-
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
 import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";

@@ -1,13 +1,3 @@
-# CI-only compose for the Docker-image E2E track (tests/docker/*.docker.test.ts).
-#
-# Builds and runs the production image with real external PostgreSQL and S3
-# services and no application data volume, exactly as the supported stateless
-# topology requires — but
-# pinned for hermetic CI: a fixed MASTER_KEY and deterministic onboarding
-# key. Runtime settings, including the mock LLM provider, are written through
-# POST /v1/setup rather than injected as process environment. The application has one loopback-published
-# port. Its Compose healthcheck calls both /health and /ready, so
-# `docker compose up --wait` blocks on readiness without fixed sleeps.
 configs:
   object_store_identities:
     content: |
@@ -68,10 +58,7 @@ services:
     environment:
       DATABASE_URL: postgres://subkit:subkit-test@postgres:5432/subkit
       NODE_ENV: production
-      # Fixed 64-hex key so encrypted state is reproducible across runs and
-      # the harness never has to scrape a generated key.
       MASTER_KEY: "00000000000000000000000000000000000000000000000000000000000000aa"
-      # Deterministic only for this isolated test deployment.
       SUBKIT_BOOTSTRAP_KEY: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       OBJECT_STORAGE_ENDPOINT: http://object-store:9000
       OBJECT_STORAGE_REGION: us-east-1

@@ -1,33 +1,8 @@
-// User story: As an operator, I want to manage notification channels and
-// rules via the `sk notifications` CLI so I can wire up event fanout
-// without writing HTTP calls by hand.
-//
-// Acceptance criteria:
-//   - AC1: `notifications channels list --json` returns an array (may be empty).
-//   - AC2: A channel seeded directly via HTTP appears in the list.
-//   - AC3: `notifications channels update <id> --config '{"active":false}'`
-//          patches the channel and the update is reflected.
-//   - AC4: `notifications channels delete <id>` outputs "deleted".
-//   - AC5: After delete, the channel id is gone from the list.
-//   - AC6: `notifications rules list --json` returns an array.
-//   - AC7: A rule seeded directly via HTTP appears in the rules list.
-//   - AC8: `notifications rules delete <id>` outputs "deleted".
-//   - AC9: `notifications rules create --event … --workspace-id … --channel-id …`
-//          creates a rule the engine accepts (`event_pattern` + target pair).
-//   - AC10: deleting a non-existent channel id returns an error.
-//   - AC11: `notifications channels create --platform … --workspace-id …
-//          --channel-id …` creates a channel the engine accepts (the
-//          platform + target pair, not a name/kind/config shape).
-//   - AC12: a channel of this tenant is not visible under a bogus api key.
-// Spec refs: docs/developers/input-surfaces.md, docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { notificationsCommand } from "../../../../sk/src/commands/notifications.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
 let ctx: JourneyCtx;
-
-// ---------- stdout capture ----------
 
 interface Captured {
   stdout: string;
@@ -79,9 +54,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through to multi-line scan
-    }
+    } catch {}
   }
   const text = stdout;
   let depth = 0;
@@ -98,9 +71,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue walking
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -191,8 +162,6 @@ async function runExpectError(
   return { message, captured: { stdout: cli.stdout, stderr: cli.stderr } };
 }
 
-// ---------- seed helpers ----------
-
 async function seedChannel(opts: {
   workspace_id: string;
   channel_id: string;
@@ -220,8 +189,6 @@ async function seedRule(opts: {
   return res.json() as Promise<{ id: string }>;
 }
 
-// ---------- test state ----------
-
 let channelId = "";
 let ruleId = "";
 
@@ -234,8 +201,6 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 40: sk notifications CLI", () => {
-  // ---- channels section ----
-
   test("AC1: notifications channels list returns an array (may be empty)", async () => {
     const { stdout } = await run(notificationsCommand, ["channels", "list"]);
     const body = JSON.parse(extractLastJson(stdout));
@@ -260,7 +225,6 @@ describe("journey 40: sk notifications CLI", () => {
   });
 
   test("AC3: notifications channels update patches a channel field", async () => {
-    // Update the channel's rate_limit_per_minute via the CLI.
     const { stdout } = await run(
       notificationsCommand,
       ["channels", "update", channelId],
@@ -272,7 +236,6 @@ describe("journey 40: sk notifications CLI", () => {
   });
 
   test("AC4: notifications channels delete outputs 'deleted'", async () => {
-    // Seed a second channel specifically for deletion so channelId stays for rules.
     const ch = await seedChannel({
       workspace_id: "W_DEL",
       channel_id: "C_DEL",
@@ -299,8 +262,6 @@ describe("journey 40: sk notifications CLI", () => {
     const ids = (items as Array<{ id: string }>).map((c) => c.id);
     expect(ids).not.toContain(deleteId);
   });
-
-  // ---- rules section ----
 
   test("AC6: notifications rules list returns an array", async () => {
     const { stdout } = await run(notificationsCommand, ["rules", "list"]);
@@ -378,8 +339,6 @@ describe("journey 40: sk notifications CLI", () => {
   });
 
   test("AC10: deleting a non-existent channel id returns an error", async () => {
-    // RFC-4122-compliant — the pinned contract is the tenant-scoped
-    // not-found, not the uuid-shape 400 (see journey 37's note).
     const fakeId = "00000000-0000-4000-8000-000000000099";
     const { message, captured } = await runExpectError(notificationsCommand, [
       "channels",
@@ -395,23 +354,18 @@ describe("journey 40: sk notifications CLI", () => {
     ).toBe(true);
   });
 
-  // ---- tenant isolation ----
-
   test("AC12: channel seeded for this tenant is not visible under a different api key", async () => {
-    // Another tenant's API key should return an empty (or unrelated) channel list.
     const otherChannel = await seedChannel({
       workspace_id: "W_ISOLATION",
       channel_id: "C_ISOLATION",
       platform: "slack",
     });
 
-    // Fetch with a bogus key — expect 401/403, not the channel row.
     const res = await fetch(`${ctx.baseUrl}/v1/notifications/channels`, {
       headers: { authorization: "Bearer wf_live_boguskey" },
     });
     expect(res.status).toBe(401);
 
-    // Verify the channel does exist under the correct tenant.
     const ok = await journeyFetch(ctx, "/v1/notifications/channels");
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { items: Array<{ id: string }> };

@@ -1,9 +1,3 @@
-// /resume conversation rewind sub-mode.
-// Asserts the ConversationBrowser's `t` toggle flips into the
-// rewind view, that an empty `currentTurns` shows the empty state,
-// that supplied turns render with selectable rows, and that Enter
-// invokes onForkFromTurn with the correct message_id.
-
 import { describe, expect, test } from "bun:test";
 import { type AssistantTurnRef, ConversationBrowser } from "@chat-ui/index.ts";
 import { renderInk } from "./helpers/ink.tsx";
@@ -128,8 +122,6 @@ describe("ConversationBrowser — rewind toggle (M10 + G10)", () => {
       await ui.type("t");
       await ui.waitFor((t) => t.includes("from earlier turn"));
       await ui.press("enter");
-      // Two flush cycles drain microtasks + the next macrotask so
-      // any onSelect handler that *would* have fired has a chance.
       await ui.flush();
       await ui.flush();
       expect(selected).toBe("");

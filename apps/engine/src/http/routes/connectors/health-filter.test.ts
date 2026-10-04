@@ -1,11 +1,3 @@
-// GET /v1/connectors?health=not_ok — the list a red connector-health tile opens.
-//
-// The cockpit used to read 200 enabled connectors and filter them itself, so
-// past 200 the list was short and its total counted rows it then hid. The
-// narrowing is the engine's now, with the ratio's own predicate
-// (`connectorCountsAgainstHealth`): what the ratio counts against, the list
-// holds — with a total and pages that describe the narrowed list.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { connectors } from "../../../db/schema/index.ts";
 import {
@@ -49,7 +41,6 @@ beforeAll(async () => {
       seed("reauth", "needs_reauth"),
       seed("degraded", "degraded"),
       seed("outdated", "needs_update"),
-      // Not in the ratio at all: switched off, or gone.
       seed("switched-off", "degraded", { enabled: false }),
       seed("removed", "degraded", { deleted_at: new Date(getTestNow()) }),
     ])
@@ -87,7 +78,6 @@ test("the list holds what the overview's connector-health ratio counts against",
   const component = overview.core.health.components.find(
     (c) => c.id === "connectors.healthy_ratio",
   );
-  // Four counted (the disabled and the deleted are not), one healthy.
   expect(component?.raw_value).toBe(1 / 4);
   const body = await list("health=not_ok");
   expect(body.total).toBe(4 - 1);

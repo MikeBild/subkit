@@ -1,16 +1,3 @@
-// Proactive sk-stdlib drift scan.
-//
-// Unlike the shape-drift path (which is driven by a failing step), the
-// stdlib-version drift is surfaced proactively: the engine's current
-// STDLIB_VERSION is compared against the version recorded on every
-// persisted workflow and before-request-hook. A major-version gap
-// means the surface may have changed semantically — operators get a
-// Patch Candidate to review before the next run.
-//
-// This module is pure + DB-only; it does not propose patches. The
-// caller (self-healing service or a scheduled job) turns the emitted
-// signals into PatchCandidate rows.
-
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { requestHooks } from "../db/schema/request_hooks.ts";
@@ -30,19 +17,10 @@ function readDagStdlibVersion(dag: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-/**
- * Scan every current workflow version and every enabled request hook
- * in the tenant and return a `stdlib_version_drift` signal for each
- * major-version mismatch against the engine's STDLIB_VERSION.
- *
- * Pure + read-only: issuing the signals to the Patch-Candidate table
- * is the caller's responsibility.
- */
 export async function scanStdlibDrift(tenant_id: string, exec?: Executor): Promise<DriftSignal[]> {
   const db: Executor = exec ?? ((await import("../db/client.ts")).getDb() as Db);
   const out: DriftSignal[] = [];
 
-  // Workflows: join workflows → current version, skip soft-deleted rows.
   const wfRows = await db
     .select({
       workflow_id: workflows.id,

@@ -5,9 +5,6 @@ import { presentStorageScope } from "@/lib/authority-storage";
 import { useI18n } from "@/lib/i18n-context";
 import type { WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
 
-/** The permission panels for one workflow's effects — this one's own, or one
- *  it starts. Keys are (call path, step id): a parent and a child may share a
- *  step id, and a shared key would drop one of the two from the list. */
 export function BoundaryPanels({
   effects,
 }: {

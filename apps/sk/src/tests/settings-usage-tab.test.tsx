@@ -1,11 +1,3 @@
-// Usage tab.
-// Asserts the Usage tab renders month-to-date token usage sourced from
-// the tenant-scoped /v1/stats/llm endpoint (grouped by flow) plus the
-// monthly budget denominator from /v1/status. The former audit-log
-// (`llm.invocation`) scrape is gone. The former Stats tab lives as an
-// embedded ActivityHeatmap in the Status tab — coverage in
-// apps/sk/src/settings-ui/__tests__/StatusTab.heatmap.ink.test.tsx.
-
 import { describe, expect, mock, test } from "bun:test";
 import type React from "react";
 import type { EngineClient } from "../engine-client.ts";
@@ -19,8 +11,6 @@ interface FlowTokens {
   total: number;
 }
 
-/** Minimal /v1/stats/llm response — the UsageTab reads only
- *  groups[].key.flow, groups[].totals.tokens, and totals.tokens. */
 function statsLlmResponse(flows: FlowTokens[]) {
   const sum = (k: "prompt" | "completion" | "total") => flows.reduce((acc, f) => acc + f[k], 0);
   return {
@@ -112,14 +102,11 @@ describe("UsageTab — token aggregation by flow (M5 + G6 closure)", () => {
       await ui.waitFor((t) => t.includes("Token usage"));
       await ui.waitFor((t) => t.includes("chat") && t.includes("summarize"));
       const txt = ui.text();
-      // chat: 1200 prompt + 600 completion = 1800 total
       expect(txt).toContain("chat");
       expect(txt).toContain("1,800");
       expect(txt).toContain("summarize");
       expect(txt).toContain("tool-chain");
-      // window totals row: 2,050 input + 675 output = 2,725 tokens
       expect(txt).toMatch(/totals: 2,050 input \+ 675 output = 2,725 tokens/);
-      // no budget configured → unlimited
       expect(txt).toContain("monthly budget: unlimited");
     } finally {
       ui.unmount();

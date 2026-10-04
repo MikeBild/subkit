@@ -1,8 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
-// ----- enums -----------------------------------------------------------------
-
 export const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
 export const KnowledgeSourceStatusSchema = z.enum(["active", "inactive", "processing", "error"]);
 export const KnowledgeSourceRefreshSchema = z.enum(["manual", "scheduled", "webhook"]);
@@ -10,8 +8,6 @@ export const KnowledgeSourceRefreshSchema = z.enum(["manual", "scheduled", "webh
 export type KnowledgeSourceScope = z.infer<typeof KnowledgeSourceScopeSchema>;
 export type KnowledgeSourceStatus = z.infer<typeof KnowledgeSourceStatusSchema>;
 export type KnowledgeSourceRefresh = z.infer<typeof KnowledgeSourceRefreshSchema>;
-
-// ----- view types ------------------------------------------------------------
 
 export const KnowledgeSourceSchema = z
   .object({
@@ -24,7 +20,6 @@ export const KnowledgeSourceSchema = z
     scope: KnowledgeSourceScopeSchema,
     workflow_id: z.string().nullable(),
     status: KnowledgeSourceStatusSchema,
-    /** Terminal ingest-failure message; null when the last ingest succeeded. */
     last_error: z.string().nullable(),
     source_type: z.string(),
     source_uri: z.string(),
@@ -41,8 +36,6 @@ export const KnowledgeSourceSchema = z
   .openapi("KnowledgeSource");
 
 export type KnowledgeSourceView = z.infer<typeof KnowledgeSourceSchema>;
-
-// ----- input types -----------------------------------------------------------
 
 export const CreateKnowledgeSourceSchema = z
   .object({
@@ -67,35 +60,14 @@ export const CreateKnowledgeSourceSchema = z
 
 export type CreateKnowledgeSourceInput = z.infer<typeof CreateKnowledgeSourceSchema>;
 
-/**
- * Web-scraper — inline JSON body for POST /v1/knowledge-sources.
- *
- * Recipes (most notably `crawl-sitemap-to-knowledge`) post a single
- * page's extracted markdown directly, without a multipart upload. The
- * route detects `Content-Type: application/json` and parses against
- * this schema; the service routes the content through the existing
- * chunker so dedup, budget enforcement, and fingerprinting are
- * inherited verbatim.
- */
 export const CreateKnowledgeSourceInlineSchema = CreateKnowledgeSourceSchema.extend({
   content: z.string().min(1),
   mime_type: z.string().default("text/markdown"),
-  /** When set, must be a fully-qualified URL — `https://example.com/page`.
-   *  Rejects path-shaped values like `../etc/passwd` so the audit-log
-   *  `source_uri` is trustworthy provenance. Optional; defaults to a
-   *  derived filename when absent. */
   source_uri: z.string().url().optional(),
 }).openapi("CreateKnowledgeSourceInlineBody");
 
 export type CreateKnowledgeSourceInlineInput = z.infer<typeof CreateKnowledgeSourceInlineSchema>;
 
-/**
- * Knowledge bundle — a directory of markdown files posted as one JSON body
- * (`sk knowledge-sources import`, REPL `/knowledge import`). One Knowledge
- * Source per bundle, one chunk per file; frontmatter is read tolerantly
- * (OKF-compatible by construction — see `bundle.ts`). Upsert by slug: an
- * unchanged bundle is a no-op, a changed one re-ingests in place.
- */
 export const BundleFileSchema = z
   .object({
     path: z.string().min(1).max(512),
@@ -106,8 +78,6 @@ export const BundleFileSchema = z
 export const CreateKnowledgeSourceBundleSchema = CreateKnowledgeSourceSchema.extend({
   files: z.array(BundleFileSchema).min(1).max(500),
 })
-  // Enforced at the Zod boundary so a missing workflow_id is a 422
-  // validation error (the service throw would otherwise surface as 500).
   .refine((body) => body.scope !== "workflow" || body.workflow_id !== undefined, {
     message: "workflow_id is required when scope is 'workflow'",
     path: ["workflow_id"],
@@ -131,24 +101,17 @@ export const UpdateKnowledgeSourceSchema = z
 
 export type UpdateKnowledgeSourceInput = z.infer<typeof UpdateKnowledgeSourceSchema>;
 
-// ----- search types ----------------------------------------------------------
-
 export interface KnowledgeSearchHit {
   id: string;
   knowledge_source_id: string;
-  /** Human-readable name of the owning Knowledge Source — provenance for the model. */
   source_name: string;
-  /** Topical tags on the owning Knowledge Source. */
   source_tags: string[];
   title: string | null;
   path: string | null;
   snippet: string;
   rank: number;
-  /** ISO-8601 timestamp of the source's last successful refresh. */
   fetched_at: string | null;
 }
-
-// ----- ingest result ---------------------------------------------------------
 
 export interface KnowledgeIngestResult {
   knowledge_source_id: string;
@@ -157,8 +120,6 @@ export interface KnowledgeIngestResult {
   total_bytes: number;
   budget_exceeded: boolean;
 }
-
-// ----- service params --------------------------------------------------------
 
 export interface CreateKnowledgeSourceParams {
   tenant_id: string;
@@ -169,15 +130,8 @@ export interface CreateKnowledgeSourceParams {
     mime?: string;
   };
   actor_id: string | null;
-  /** Web-scraper — when the source comes from an inline JSON body
-   *  rather than a file upload, the route stamps these on the row so
-   *  later refreshes know where the content originated. Defaults to
-   *  `"file_upload"` + `upload.filename` for back-compat. */
   source_type_override?: "file_upload" | "inline" | "url" | "seed" | "bundle";
   source_uri_override?: string;
-  /** Pre-parsed chunks (bundle imports): skips `parseFileToChunks` and feeds
-   *  the existing fingerprint/dedup/insert pipeline directly — one chunk per
-   *  bundle file, `path` = bundle-relative path. */
   parsed_chunks?: RawChunk[];
 }
 
@@ -204,7 +158,6 @@ export interface AnalyzeKnowledgeSourceParams {
   tenant_id: string;
   id: string;
   actor_id: string | null;
-  /** When true, overwrite an existing description; otherwise only fill a null one. */
   force?: boolean;
 }
 
@@ -214,7 +167,6 @@ export interface SearchKnowledgeParams {
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
   knowledge_source_ids?: string[];
-  /** Narrow results to sources carrying any of these tags (tenant-scoped). */
   tags?: string[];
   limit?: number;
 }
@@ -229,7 +181,6 @@ export interface IngestKnowledgeSourceParams {
   };
   actor_id: string | null;
   expected_version?: string;
-  /** See `CreateKnowledgeSourceParams.parsed_chunks`. */
   parsed_chunks?: RawChunk[];
 }
 
@@ -254,8 +205,6 @@ export interface UpdateKnowledgeSourceContentParams {
   actor_id: string | null;
 }
 
-// ----- bundle upsert ---------------------------------------------------------
-
 export interface UpsertKnowledgeBundleParams {
   tenant_id: string;
   actor_id: string | null;
@@ -266,14 +215,10 @@ export interface UpsertKnowledgeBundleParams {
 export interface KnowledgeBundleUpsertResult {
   knowledge_source: KnowledgeSourceView;
   outcome: "created" | "updated" | "unchanged";
-  /** Chunks now stored for the source (post dedup/split). */
   ingested_count: number;
-  /** Reserved (`index.md`/`log.md`) and duplicate-path files skipped by the parser. */
   skipped_count: number;
   skipped_files: string[];
 }
-
-// ----- chunk read ------------------------------------------------------------
 
 export interface KnowledgeChunkView {
   ordinal: number;
@@ -286,7 +231,6 @@ export interface KnowledgeChunkView {
 export interface ListKnowledgeChunksParams {
   tenant_id: string;
   knowledge_source_id: string;
-  /** Narrow to chunks whose `path` equals this bundle-relative path. */
   path?: string;
   limit?: number;
   offset?: number;

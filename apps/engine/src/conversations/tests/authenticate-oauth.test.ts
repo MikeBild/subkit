@@ -1,11 +1,3 @@
-// authenticate_oauth conversation tool — failure-path coverage.
-//
-// We don't reach the live `startAuthorizationCode` call (that would
-// require a configured identity provider). The test exercises the
-// guard rails: missing connector_id, unknown connector, and
-// non-OAuth connector — all of which must produce structured tool
-// errors rather than blowing up the loop.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors as connectorsTable, conversations, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

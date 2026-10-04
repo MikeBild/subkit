@@ -1,10 +1,3 @@
-// inspect_workflow returns config + captured run
-// result for every requested step in one call. This is the schema-first
-// preflight that lets the
-// LLM author the next patch against the actual scope shape instead of
-// guessing — closes the gap that drove the 30-iteration update_param
-// loops.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -160,9 +153,6 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     const draft = draftWithSteps([
       { id: "fetch", kind: "request", method: "GET", path: "/v2/projects" },
     ]);
-    // Canonical surface: latest_preview.step_traces. The legacy
-    // step_outputs fallback was removed when step_traces became the
-    // source of truth.
     const draftWithPreview: DraftDocument = {
       ...draft,
       latest_preview: {
@@ -216,10 +206,6 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(data.output_behavior).toBe("last_step_passthrough");
   });
 
-  // The output_transform section's `output_behavior` field lives in
-  // `important_notes` documentation, not a Zod schema.
-  // Assert the literal field name + literal enum members so a silent
-  // rename trips a test before shipping.
   test("output_transform section keeps the literal field name 'output_behavior'", async () => {
     const draft = draftWithSteps([{ id: "fetch_page", kind: "request", method: "GET", path: "/" }]);
     const toolCtx = makeCtx(draft);
@@ -229,16 +215,12 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect(Object.keys(data)).toContain("output_behavior");
-    // Literal enum members must remain stable.
     expect(["explicit_transform", "transform_function", "last_step_passthrough"]).toContain(
       data.output_behavior as string,
     );
   });
 
   test("input_schema section surfaces the resolved contract + sample (D4)", async () => {
-    // Payload-first: a workflow authored WITH a sample (and no declared
-    // input_schema) must expose a real required-list derived from that
-    // sample, plus the literal sample, so the model can author against it.
     const empty = createEmptyDraftDocument();
     const draft = withWorkflowDraft(
       empty,
@@ -256,9 +238,7 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     const result = await inspectWorkflowTool.execute(toolCtx, { sections: ["input_schema"] });
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
-    // No declared schema — that's the point of the sample idiom.
     expect(data.input_schema).toBeNull();
-    // The resolved contract carries the sample-derived required-list.
     const contract = data.input_contract as {
       source: string;
       required: string[];
@@ -267,7 +247,6 @@ describe("inspect_workflow · multi-section + multi-step in one call", () => {
     expect(contract.source).toBe("sample");
     expect(contract.required.sort()).toEqual(["filename", "markdown"]);
     expect(contract.properties.sort()).toEqual(["filename", "markdown"]);
-    // And the literal sample rides alongside.
     expect(data.input_schema_sample).toEqual({ markdown: "# hi", filename: "deck.md" });
   });
 

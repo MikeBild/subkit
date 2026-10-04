@@ -1,8 +1,3 @@
-// One line naming what happened in a run, read from the engine's structured
-// `outcome` — never inferred from `status` alone, which calls a hold-writes
-// preview (nothing written) and a run with a tolerated step failure both
-// "succeeded".
-
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 
 type ExecutionOutcome = components["schemas"]["ExecutionOutcome"];
@@ -14,7 +9,6 @@ export function executionOutcomeLine(outcome: ExecutionOutcome | null): string |
   if (outcome.failed_step) {
     parts.push(`at step ${outcome.failed_step.step_key} (${outcome.failed_step.kind})`);
   }
-  // The refusal reason says which rule of the approval the step broke.
   const cause = [outcome.cause_class, outcome.error_code, outcome.refusal_reason]
     .filter(Boolean)
     .join(", ");

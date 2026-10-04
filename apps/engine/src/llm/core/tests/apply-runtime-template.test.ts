@@ -1,19 +1,5 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${…}` tokens are the subject under test — these are intentional placeholders, not accidental template-literal typos.
 
-// Tests for applyRuntimeTemplate — the pre-LLM template step that
-// substitutes whitelisted runtime-context tokens (engine_url,
-// tenant_slug, actor_email, actor_role, surface) into a skill body
-// BEFORE it reaches the model. This mirrors Claude Code's pattern of
-// rendering concrete environment values into the system prompt at
-// build time instead of leaving the model to splice them at runtime.
-//
-// The point is to prevent the "model sees `${engine_url}` and either
-// leaves it as a literal or invents `your-subkit-instance.com`" class
-// of bug. Only whitelisted keys are substituted; unknown `${…}` tokens
-// (e.g. `${plaintext_key}`, `${cred.slack.token}`, `${input.path}`)
-// pass through untouched so the skill author can still describe
-// placeholders the user or the executor will fill in later.
-
 import { describe, expect, it } from "bun:test";
 import { SK_INSTALL_GROUNDING } from "../../../conversations/agent/prompts.ts";
 import { applyRuntimeTemplate } from "../context-assembler.ts";
@@ -27,8 +13,6 @@ describe("applyRuntimeTemplate", () => {
   });
 
   it("renders the install-grounding command with the real host (the P1 outcome)", () => {
-    // The base prompt is run through applyRuntimeTemplate in the assembler,
-    // so the install command comes out pre-filled instead of `${engine_url}`.
     const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {
       engine_url: "https://engine.example.com",
     });
@@ -37,8 +21,6 @@ describe("applyRuntimeTemplate", () => {
   });
 
   it("leaves the install token literal when no engine_url is known", () => {
-    // No runtime URL → token preserved; the RUNTIME CONTEXT block's
-    // cannot_help rule then keeps the model from inventing a host.
     const out = applyRuntimeTemplate(SK_INSTALL_GROUNDING, {});
     expect(out).toContain("${engine_url}/install");
   });
@@ -81,9 +63,6 @@ describe("applyRuntimeTemplate", () => {
   });
 
   it("leaves ${engine_url} unresolved when the value is missing from context", () => {
-    // Only `tenant_slug` is supplied — engine_url stays as a literal so
-    // a downstream output guard can flag it rather than being silently
-    // dropped.
     const out = applyRuntimeTemplate("engine=${engine_url}, tenant=${tenant_slug}", {
       tenant_slug: "acme",
     });

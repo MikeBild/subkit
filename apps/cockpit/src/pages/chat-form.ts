@@ -9,7 +9,6 @@ export interface ChatForm {
   question: string;
   fields: ChatFormField[];
   expiresAt: string;
-  /** What the harness does with the answer, e.g. `save_connector_draft`. */
   intentKind?: string;
 }
 export function chatForm(detail: ConversationDetail | undefined): ChatForm | null {
@@ -31,7 +30,6 @@ export function chatForm(detail: ConversationDetail | undefined): ChatForm | nul
   };
 }
 
-/** A field whose answer is a secret: masked on entry, never pre-filled or echoed. */
 export function isSecretField(field: Pick<ChatFormField, "type" | "sensitive">): boolean {
   return field.type === "password" || field.sensitive === true;
 }
@@ -45,11 +43,6 @@ export type FormInputKind =
   | "secret"
   | "text";
 
-/**
- * The control a field renders as. Exhaustive over the engine's field types:
- * when the engine learns a new one, this stops compiling until the card can
- * show it — a form the reader cannot answer is a dead end.
- */
 export function formInputKind(field: Pick<ChatFormField, "type" | "sensitive">): FormInputKind {
   switch (field.type) {
     case "boolean":
@@ -60,7 +53,6 @@ export function formInputKind(field: Pick<ChatFormField, "type" | "sensitive">):
       return "multi";
     case "password":
       return "secret";
-    // A sensitive typed value is masked too; its type still validates it.
     case "json":
       return field.sensitive ? "secret" : "textarea";
     case "number":
@@ -74,22 +66,12 @@ export function formInputKind(field: Pick<ChatFormField, "type" | "sensitive">):
   }
 }
 
-/** The value a field starts with. Secrets always start empty. */
 export function initialFieldValue(field: ChatFormField): string | boolean | string[] {
   if (field.default === undefined || isSecretField(field))
     return field.type === "boolean" ? false : "";
   return typeof field.default === "number" ? String(field.default) : field.default;
 }
 
-/**
- * A field's label as a reader sees it.
- *
- * The engine sends a label; when the model gave none it is the field's own
- * name — `report_recipient_email`. A handful of names have a word in the
- * catalogue. Every other one is the input's name, shown AS a name (machine
- * styled): spacing it into "Report recipient email" dressed an identifier as
- * English prose on a German page.
- */
 export function formFieldLabel(
   field: Pick<ChatFormField, "name" | "label">,
   known: Readonly<Record<string, string>>,

@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { runJs } from "../../runtime.ts";
 
-// Stdlib behavior is validated inside the QuickJS sandbox — not by
-// evaluating stdlib.js in Node — so the tests exercise the same
-// execution environment user code will see.
-
 describe("sk.http.isMutating / isSafe", () => {
   test("classifies write methods as mutating", async () => {
     const { output } = await runJs<Record<string, boolean>>({

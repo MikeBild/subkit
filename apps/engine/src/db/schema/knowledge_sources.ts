@@ -1,16 +1,3 @@
-// Knowledge Sources — persistent tenant-scoped knowledge from uploaded
-// enterprise files (PDF, DOCX, CSV, Excel, Markdown, etc.).
-//
-// Two tables:
-//   - knowledge_sources: one row per uploaded source (metadata, lifecycle,
-//     refresh strategy).
-//   - knowledge_chunks: one row per chunk carved from the parsed source.
-//     A generated tsvector column powers full-text search; GIN index keeps
-//     lookups fast.
-//
-// Budgets (50 MB per source, 500 MB per tenant) are enforced at the service
-// layer — the schema just stores what made it through the pipeline.
-
 import { sql } from "drizzle-orm";
 import {
   customType,
@@ -29,8 +16,6 @@ import { files } from "./files.ts";
 import { tenants } from "./identity.ts";
 import { workflows } from "./workflows.ts";
 
-// ----- enums -----------------------------------------------------------------
-
 export const knowledgeSourceScopeEnum = pgEnum("knowledge_source_scope", ["global", "workflow"]);
 
 export const knowledgeSourceStatusEnum = pgEnum("knowledge_source_status", [
@@ -46,16 +31,11 @@ export const knowledgeSourceRefreshEnum = pgEnum("knowledge_source_refresh", [
   "webhook",
 ]);
 
-// drizzle-orm has no native tsvector — declare a custom column so the
-// field round-trips as a string in JS. The SQL migration installs it as a
-// GENERATED column so inserts never need to set it.
 const tsvector = customType<{ data: string; driverData: string }>({
   dataType() {
     return "tsvector";
   },
 });
-
-// ----- knowledge_sources -----------------------------------------------------
 
 export const knowledgeSources = pgTable(
   "knowledge_sources",
@@ -65,27 +45,16 @@ export const knowledgeSources = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     description: text("description"),
-    // Auto-generated topical/routing tags (or operator-supplied). REPLACE
-    // semantics in the service guard against array-doubling; the GIN index
-    // below powers the `&&` overlap tag filter in `searchKnowledge`.
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
     status: knowledgeSourceStatusEnum("status").notNull().default("active"),
-    // Terminal ingest-failure message. Set (with status='error') by the
-    // knowledge.ingest queue handler on a failed run; cleared on the
-    // next successful ingest. Surfaces on the list/get views so an
-    // operator can see *why* a refresh broke without reading logs.
     last_error: text("last_error"),
-    source_type: text("source_type").notNull(), // file_upload | url | inline | discovery_endpoint_index
-    source_uri: text("source_uri").notNull(), // original filename or URL
-    // Unified-files pointer. Populated for `source_type='file_upload'`;
-    // NULL for the `url|inline|discovery_endpoint_index` variants which
-    // continue to read through `source_uri`. ON DELETE SET NULL so a
-    // file purge does not cascade-delete the knowledge source row.
+    source_type: text("source_type").notNull(),
+    source_uri: text("source_uri").notNull(),
     file_id: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
     mime_type: text("mime_type"),
-    version: text("version").notNull(), // SHA-256 fingerprint of content
+    version: text("version").notNull(),
     bytes_total: integer("bytes_total").notNull().default(0),
     chunk_count: integer("chunk_count").notNull().default(0),
     refresh_strategy: knowledgeSourceRefreshEnum("refresh_strategy").notNull().default("manual"),
@@ -96,10 +65,6 @@ export const knowledgeSources = pgTable(
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
-    // Partial: soft-deleted rows keep their slug without blocking a
-    // re-create/re-import under the same slug (delete → import used to 500
-    // on the full unique index while every lookup already filtered
-    // `deleted_at IS NULL`).
     uniqueIndex("knowledge_sources_tenant_slug_key")
       .on(t.tenant_id, t.slug)
       .where(sql`deleted_at IS NULL`),
@@ -109,8 +74,6 @@ export const knowledgeSources = pgTable(
     index("knowledge_sources_tenant_tags_idx").using("gin", t.tags),
   ],
 );
-
-// ----- knowledge_chunks ------------------------------------------------------
 
 export const knowledgeChunks = pgTable(
   "knowledge_chunks",
@@ -129,11 +92,6 @@ export const knowledgeChunks = pgTable(
     tsv: tsvector("tsv").generatedAlwaysAs(
       sql`to_tsvector('english', (COALESCE(title, '') || ' ') || content)`,
     ),
-    // Semantic embedding for hybrid retrieval (FTS prefilter → vector
-    // rerank). Stored as a plain real[] — no pgvector extension, because
-    // the rerank runs over the small FTS-prefiltered candidate set in JS,
-    // not as a corpus-wide ANN scan. Nullable so FTS keeps working before
-    // backfill; embedding_model tags the producing model for invalidation.
     embedding: real("embedding").array(),
     embedding_model: text("embedding_model"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

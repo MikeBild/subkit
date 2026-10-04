@@ -1,11 +1,3 @@
-// inspect_execution — surface-agnostic whole-execution diagnosis read.
-//
-// Covers the shared `buildExecutionDiagnosis` builder via the tool:
-// explicit-id and latest-fallback resolution, the no_executions and
-// execution_not_found rejections, tenant isolation, and that the
-// refactored draft_write `diagnose_latest_execution` still delegates to
-// the same builder and produces its chat lifecycle payload.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executionSteps, executions, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
@@ -156,7 +148,6 @@ describe("inspect_execution · whole-execution diagnosis", () => {
           step_key: "shape",
           kind: "transform",
           status: "succeeded",
-          // a warning embedded in the step preview must surface in warning_sources
           output_preview: { value: { ok: true }, warnings: [{ code: "loop_truncated" }] },
         },
       ],
@@ -222,7 +213,6 @@ describe("diagnose_latest_execution · delegates to the shared builder", () => {
     const toolCtx = makeCtx();
     const result = await diagnoseLatestExecutionTool.execute(toolCtx, { execution_id });
     expect(result.ok).toBe(true);
-    // The chat draft was mutated with the diagnosis.
     expect(toolCtx.draft.state?.latest_diagnosis?.execution_id).toBe(execution_id);
   });
 });

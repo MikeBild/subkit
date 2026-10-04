@@ -1,17 +1,3 @@
-// User story: As an operator whose webhook-triggered workflow is refused by
-// the authority gate, I want the overview to name the webhook that waits and
-// the review to prepare a held run from a real delivery, so that I can grant
-// the workflow instead of staring at a schedule that does not exist.
-// Acceptance criteria:
-//   - AC1: The attention item of a refused hook names the trigger kind
-//     `inbound_hook` and the hook's slug.
-//   - AC2: Preparing without an input answers `input_required` for the hook
-//     and starts no run — never a silent run over `{}`.
-//   - AC3: Preparing with a sample delivery starts a held run with exactly
-//     that input; a sample that violates the input schema is refused (400).
-//     A step the run could not observe comes back as a diagnosis.
-// Spec refs: docs/developers/input-surfaces.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -49,8 +35,6 @@ const prepare = (body: Record<string, unknown>) =>
 
 beforeAll(async () => {
   ctx = await createJourneyCtx("webhook-hold");
-  // A write whose content comes from the delivery: the review needs a held
-  // run to observe it, and only a real payload gives that run its shape.
   const notify = {
     id: "notify",
     kind: "request",
@@ -67,7 +51,6 @@ beforeAll(async () => {
   });
   workflowId = wf.id;
   versionId = wf.version_id;
-  // A webhook delivery is an envelope; the workflow reads its `body`.
   await ctx.db
     .update(workflowVersions)
     .set({
@@ -93,7 +76,6 @@ beforeAll(async () => {
     }),
   });
   expect(binding.status).toBe(201);
-  // One refused delivery: no authority exists, so the gate holds the hook.
   const body = JSON.stringify({ raw: "cmVmdXNlZA" });
   const webhookId = "refused-delivery";
   // allow-wall-clock: the HTTP ingress verifies the live signature window.
@@ -157,8 +139,6 @@ describe("journey: a refused webhook is actionable", () => {
     };
     const res = await prepare({ input: sample });
     expect(res.status).toBe(200);
-    // The sample's `raw` is no readable message, so the run observed nothing:
-    // the answer says so instead of a bare green "prepared".
     expect(await res.json()).toEqual({
       prepared: true,
       diagnoses: [

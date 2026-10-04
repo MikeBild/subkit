@@ -3,9 +3,6 @@ import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import { extractSpecHrefs, htmlScrapeStrategy } from "./html-scrape.ts";
 import { DiscoveryError } from "./types.ts";
 
-// Spy signature covers only the (input, init) subset the strategies use
-// — `typeof fetch` would force every mockImplementation to also carry
-// `preconnect`.
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 let fetchSpy: ReturnType<typeof mock<FetchLike>>;
@@ -14,10 +11,6 @@ beforeEach(() => {
   fetchSpy = mock<FetchLike>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }

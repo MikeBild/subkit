@@ -1,8 +1,3 @@
-// Verify pg-boss retries a failing job per the queue config and that the
-// dead-letter queue receives the payload after the retries are
-// exhausted. To keep the test fast we create a custom queue with a very
-// low retry count + zero delay.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Job, PgBoss } from "pg-boss";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -49,7 +44,6 @@ describe("queue: retries and dead-letter", () => {
       },
     );
 
-    // Also watch the DLQ; once a row lands there, resolve.
     await boss.work<BoomJob>(
       DLQ,
       { batchSize: 1, pollingIntervalSeconds: 0.5 },
@@ -60,13 +54,11 @@ describe("queue: retries and dead-letter", () => {
 
     await boss.send(QUEUE, { boom: true });
 
-    // Bounded wait so the test can't hang.
     const guard = new Promise<void>(
       (_resolve, reject) => setTimeout(() => reject(new Error("dlq never got the job")), 20_000), // allow-wall-clock: DLQ deadline — pg-boss retry policy operates in real wall-clock time
     );
     await Promise.race([donePromise, guard]);
 
-    // attempts must be retryLimit + 1 (initial attempt + retries).
     expect(attempts).toBeGreaterThanOrEqual(3);
   }, 30_000);
 });

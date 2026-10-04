@@ -1,7 +1,3 @@
-// The attention list says a version waits for its approval BEFORE a start is
-// refused, and that an approval is about to end — one item per workflow, the
-// same item a later hold takes over.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
@@ -61,7 +57,6 @@ afterAll(async () => {
 
 beforeEach(() => {
   invalidateAttention();
-  // After every fixture row of the test was written with the database's clock.
   now = new Date(getTestNow() + 5_000);
 });
 
@@ -123,8 +118,6 @@ async function approve(
 }
 
 async function itemsOf(workflow_id: string): Promise<AttentionItem[]> {
-  // Every read is a fresh build: the tenant's facts are cached for seconds,
-  // and a cached list would answer for fixtures written after it.
   invalidateAttention();
   const { items } = await buildAttention(testDb.db, owner, { now });
   return items.filter((item) => item.subject?.id === workflow_id);
@@ -167,11 +160,9 @@ describe("a version nobody has approved yet", () => {
       trigger: { kind: "schedule", name: null },
       approval: { version: 1, environment: "prod" },
     });
-    // The next scheduled start is when the decision is due.
     expect(item?.deadline).not.toBeNull();
     expect(Date.parse(item?.deadline ?? "")).toBeGreaterThan(now.getTime());
     expect(item?.since).not.toBeNull();
-    // It leads to the workflow page's panel, where the approval is given.
     expect(item?.actions).toEqual([
       {
         verb: "open",
@@ -248,7 +239,6 @@ describe("a version nobody has approved yet", () => {
   });
 
   test("is not listed where nothing would start it", async () => {
-    // Paused schedule, deactivated hook.
     const paused = await workflow("paused");
     await schedule(paused.workflow_id, { paused: true });
     const off = await hook(paused.workflow_id, `${paused.slug}-in`);
@@ -257,10 +247,8 @@ describe("a version nobody has approved yet", () => {
       .set({ active: false })
       .where(and(eq(webhooksInbound.tenant_id, tenant_id), eq(webhooksInbound.id, off.id)));
     expect(await itemsOf(paused.workflow_id)).toEqual([]);
-    // No trigger at all: runs on request only.
     const manual = await workflow("manual");
     expect(await itemsOf(manual.workflow_id)).toEqual([]);
-    // Not active: a draft starts nothing until a person applies it.
     const draft = await workflow("draft");
     await schedule(draft.workflow_id);
     await testDb.db
@@ -277,7 +265,6 @@ describe("a version nobody has approved yet", () => {
     expect((await itemsOf(wf.workflow_id)).map((item) => item.reason)).toEqual([
       "version_awaiting_approval",
     ]);
-    // Revoked, ended and used-up approvals cover nothing either.
     const base = getTestNow();
     const spent = await workflow("spent");
     await schedule(spent.workflow_id);
@@ -321,7 +308,6 @@ describe("an approval that is about to end", () => {
   test("is a notice without a date when its runs are what runs out", async () => {
     const wf = await workflow("spending");
     await hook(wf.workflow_id, `${wf.slug}-in`);
-    // One run short of the threshold: 1 of 20 left is below a tenth.
     expect(1 / 20).toBeLessThan(AUTHORITY_EXTEND_BELOW_RUN_SHARE);
     await approve(wf.workflow_id, wf.version_id, { max_runs: 20, reserved_runs: 19 });
     const [item] = await itemsOf(wf.workflow_id);
@@ -340,7 +326,6 @@ describe("an approval that is about to end", () => {
     expect((await itemsOf(wf.workflow_id)).map((item) => item.reason)).toEqual([
       "approval_expiring",
     ]);
-    // Extending adds a second approval; the first keeps running out beside it.
     await approve(wf.workflow_id, wf.version_id);
     expect(await itemsOf(wf.workflow_id)).toEqual([]);
   });
@@ -348,7 +333,6 @@ describe("an approval that is about to end", () => {
   test("is never listed for an approval that stands until revoked", async () => {
     const wf = await workflow("open-ended");
     await schedule(wf.workflow_id);
-    // No end date and no run limit, with many runs already counted.
     await approve(wf.workflow_id, wf.version_id, {
       valid_until: null,
       max_runs: null,
@@ -384,12 +368,10 @@ describe("an approval that is about to end", () => {
 
 describe("a version no approval may cover", () => {
   const SENDER = "ops@example.com";
-  // Nothing leaves the engine: an approval can cover it as it stands.
   const bounded = {
     name: "bounded",
     steps: [{ kind: "transform", id: "shape", language: "javascript", expression: "return {};" }],
   };
-  // Where this request goes is decided by its input: no approval can bound it.
   const unbounded = {
     name: "unbounded",
     steps: [
@@ -402,8 +384,6 @@ describe("a version no approval may cover", () => {
       },
     ],
   };
-  // A report mail without a declared recipient that nobody has watched yet: a
-  // trial run supplies what it sends.
   const unprepared = {
     name: "unprepared",
     steps: [
@@ -450,7 +430,6 @@ describe("a version no approval may cover", () => {
       repair: { step_id: "fetch_target", remedy_kind: "author", steps: 1 },
     });
     expect(item?.repair?.code).toBeTruthy();
-    // Only an author can change where the request goes: a conversation, not "approve".
     expect(item?.actions).toEqual([
       {
         verb: "chat",
@@ -487,7 +466,6 @@ describe("a version no approval may cover", () => {
   });
 
   test("is judged on the running version, never on a draft beside it", async () => {
-    // Running: blocked. Draft: a different block. The item is about what runs.
     const blocked = await workflow("draft-beside");
     await version(blocked.workflow_id, 2, unbounded);
     await version(blocked.workflow_id, 3, unprepared, false);
@@ -497,7 +475,6 @@ describe("a version no approval may cover", () => {
       reason: "version_needs_repair",
       repair: { step_id: "fetch_target" },
     });
-    // Running: approvable. Draft: blocked. Still awaiting an approval.
     const fine = await workflow("fine-draft");
     await version(fine.workflow_id, 2, bounded);
     await version(fine.workflow_id, 3, unbounded, false);

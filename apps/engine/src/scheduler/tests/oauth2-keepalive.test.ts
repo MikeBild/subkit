@@ -1,23 +1,3 @@
-// Integration tests for runOAuth2RefreshKeepAliveForTenant.
-//
-// The sweep only selects candidates and enqueues `connector.refresh-oauth`
-// jobs — no IdP traffic — so a capture stub stands in for pg-boss and the
-// assertions run entirely against the candidate query.
-//
-// Coverage:
-//   - credential idle past OAUTH2_KEEPALIVE_IDLE_MS on a healthy connector
-//     → exactly one send with { tenant_id, credential_id }.
-//   - fresh credential → no send.
-//   - connector flagged needs_reauth → excluded (refresh token known-dead).
-//   - credential without oauth2_refresh_ciphertext (client_credentials_json
-//     shape) → excluded.
-//   - soft-deleted credential / soft-deleted connector → excluded.
-//   - tenant isolation: another tenant's stale credential is untouched.
-//   - circuit-open connector with a stale credential → INCLUDED. This pins
-//     the deliberate no-circuit-filter decision: the IdP token endpoint is
-//     not the broken API endpoint, and keeping the token alive during an
-//     API outage is the point of the sweep.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -30,8 +10,6 @@ import {
   runOAuth2RefreshKeepAliveForTenant,
 } from "../connector-reauth-scan-runner.ts";
 
-// Frozen sweep timestamp — all staleness is expressed relative to NOW, so
-// the test never depends on the wall clock (no argless `new Date()`).
 const NOW = new Date("2026-06-01T00:00:00.000Z");
 const STALE = new Date(NOW.getTime() - OAUTH2_KEEPALIVE_IDLE_MS - 24 * 60 * 60 * 1000);
 
@@ -146,7 +124,6 @@ describe("oauth2 refresh keep-alive sweep", () => {
     }
     expect(sentIds).not.toContain(otherTenantStale);
 
-    // The other tenant's sweep picks up only its own stale credential.
     const other = captureBoss();
     await runOAuth2RefreshKeepAliveForTenant(otherTenantId, NOW, db.db, other.boss);
     expect(other.sent.map((j) => j.credential_id)).toEqual([otherTenantStale]);
@@ -165,9 +142,6 @@ describe("oauth2 refresh keep-alive sweep", () => {
     } as unknown as Pick<PgBoss, "send">;
 
     await runOAuth2RefreshKeepAliveForTenant(tenantId, NOW, db.db, boss);
-    // The stale credentials from the previous test plus the new one are
-    // still candidates (the stub never actually refreshed them). The first
-    // send throws; every remaining candidate must still be attempted.
     expect(attempted.length).toBe(3);
     expect(attempted).toContain(survivor);
   });

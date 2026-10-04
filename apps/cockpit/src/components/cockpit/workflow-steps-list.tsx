@@ -46,7 +46,6 @@ const STEP_MARK_KEYS = {
   moved: "stepEditor.mark.moved",
 } as const;
 
-/** One copy action per block: the same "Kopieren" beside two blocks is two acts. */
 function Copyable({ children }: { children: ReactNode }) {
   return (
     <div className="min-w-0" data-action-scope="copy">
@@ -55,10 +54,6 @@ function Copyable({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The saved steps and their previews. One hook for the table and the sheet,
- * so a preview started in a step's sheet is the same press as anywhere else.
- */
 export function useWorkflowSteps({
   workflowId,
   versionId,
@@ -78,7 +73,6 @@ export function useWorkflowSteps({
       ),
   });
   const lastRun = lastExecution.data?.items[0];
-  // Evidence belongs to an exact version, not merely to a workflow or step id.
   const executionId = versionId && lastRun?.workflow_version_id === versionId ? lastRun.id : null;
   const runSteps = useQuery({
     queryKey: ["execution", executionId, "steps"],
@@ -123,7 +117,6 @@ export function useWorkflowSteps({
 
 export type WorkflowSteps = ReturnType<typeof useWorkflowSteps>;
 
-/** "Testlauf": the whole saved workflow as a preview without effects, and its result. */
 export function WorkflowTestRun({
   steps,
   definition,
@@ -162,11 +155,6 @@ export function WorkflowTestResult({ steps }: { steps: WorkflowSteps }) {
   );
 }
 
-/**
- * The saved steps as one table (V4c): number, id, kind, what it does and how
- * it last ended. A row opens the step's sheet with its whole configuration,
- * its last result and its own preview.
- */
 export function WorkflowStepsList({
   steps,
   canRun,
@@ -175,9 +163,7 @@ export function WorkflowStepsList({
 }: {
   steps: WorkflowSteps;
   canRun: boolean;
-  /** The step editor (R16), for a reader who may change the workflow. */
   editor?: StepDraft;
-  /** "Schritt hinzufügen", where there is no step yet. */
   emptyAction?: ReactNode;
 }) {
   const { t, dateTime } = useI18n();
@@ -333,7 +319,6 @@ export function WorkflowStepsList({
   );
 }
 
-/** One step (O6): what it is configured with, how it last ended, and its own preview. */
 function StepSheet({
   view,
   index,

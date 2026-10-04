@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { bytes, MISSING, stringValue } from "@/components/cockpit/table-columns";
 
-// CUI-SEV-2 lives here: a value nobody sent is not zero, and a measured zero
-// is not a missing value. Both directions are checked, because only enforcing
-// one of them is how the list cells drifted apart in the first place.
 describe("a missing number is never zero", () => {
   test("nothing at all reads as a missing value", () => {
     expect(stringValue(null)).toBe(MISSING);

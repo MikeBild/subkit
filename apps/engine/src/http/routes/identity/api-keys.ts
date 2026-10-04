@@ -1,5 +1,3 @@
-// GET / POST / POST :id/rotate / DELETE /v1/identity/api-keys
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
@@ -138,10 +136,6 @@ function serialize(v: identity.ApiKeyView) {
 }
 
 export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating. The legacy `enforce(policy.adminOrSelf(...))` path
-  // still runs inside the handler to filter member-visible rows to
-  // their own keys; the middleware is the authoritative permission
-  // boundary.
   app.use("/v1/identity/api-keys", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("api_key:read")(c, next);
     if (c.req.method === "POST") return requirePermission("api_key:write")(c, next);
@@ -162,10 +156,8 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    // members may list their own keys (read-only allowed)
     enforce(principal, policy.adminReadOnly(principal), { resource_type: "api_key" }, db);
     const items = await identity.listApiKeys(principal.tenant_id, db);
-    // members only see their own
     const filtered = principal.roles.includes("admin")
       ? items
       : items.filter((k) => principal.kind === "user" && k.user_id === principal.id);
@@ -177,7 +169,6 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const body = c.req.valid("json");
 
-    // policy: admin can issue for anyone; member can only issue for self
     const selfMatch =
       body.owner_kind === "user" && principal.kind === "user" && body.owner_id === principal.id;
     enforce(
@@ -223,7 +214,6 @@ export function registerApiKeyRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
 
-    // Look up the key first to determine self-match for policy
     const existing = await identity.getApiKey(principal.tenant_id, id, db);
     if (!existing) throw new NotFoundError("api_key");
     const selfMatch = principal.kind === "user" && existing.user_id === principal.id;

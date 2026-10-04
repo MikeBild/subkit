@@ -197,8 +197,6 @@ async function fixture(
     );
     expect(preview.eligible_for_repeated_runs).toBe(true);
     const now = await databaseNow(tdb.db);
-    // Human issuance is tested at the service/browser boundary. This fixture
-    // installs its exact server-resolved result to exercise the real ingress.
     [authority] = await tdb.db
       .insert(workflowExecutionAuthorities)
       .values({
@@ -501,8 +499,6 @@ for (const rotated of [false, true]) {
     }
     const result = await f.confirmPrepared();
     expect(result.synthetic_result?.ok).toBe(!rotated);
-    // The upstream read returns the same data with both tokens. That does not
-    // allow its new access revision to inherit the previous write decision.
     expect(remote.callCount()).toBe(before + (rotated ? 2 : 3));
   });
 }
@@ -724,7 +720,6 @@ test("parallel dispatch reservations cannot exceed the prepared retry limit", as
   if (!run) throw new Error("missing approved execution");
   const stepId = Object.keys(run.tool_approval_dispatches)[0];
   if (!stepId) throw new Error("missing dispatch reservation");
-  // Simulate a resumed worker; the persisted counter, not process memory, is authoritative.
   await tdb.db
     .update(executions)
     .set({ status: "running" })

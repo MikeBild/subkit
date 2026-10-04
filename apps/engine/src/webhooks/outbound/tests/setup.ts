@@ -1,10 +1,3 @@
-// Shared test scaffolding for outbound webhook tests.
-//
-//   * createOutboundCtx — disposable DB + pg-boss + seeded tenant +
-//     a ready-to-use subscription factory.
-//   * startMockReceiver — a tiny http.Server that records every hit
-//     and optionally fails N times before succeeding.
-
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { PgBoss } from "pg-boss";
 import type { Db } from "../../../db/client.ts";
@@ -61,8 +54,6 @@ export async function createOutboundCtx(label: string): Promise<OutboundTestCtx>
   };
 }
 
-// ------------------ mock receiver ------------------------------------
-
 export interface RecordedHit {
   method: string;
   headers: Record<string, string>;
@@ -74,7 +65,6 @@ export interface MockReceiver {
   port: number;
   url: string;
   hits: RecordedHit[];
-  /** Set a behavior function. Returns a status code. */
   behavior: (hit: RecordedHit, hitIndex: number) => number;
   close: () => Promise<void>;
 }

@@ -1,26 +1,3 @@
-// Chained-Workflow Pattern Detector — surfaces a workflow seed when
-// `discover_systems_from_files` returned a non-empty
-// `potential_connections[]` graph between candidates.
-//
-// Input: knowledge_sources rows of source_type =
-// "connector_endpoint_candidates" for a tenant. Each row's single chunk
-// holds the full `ConnectorEndpointCandidateEnvelope` JSON the discovery
-// tool persisted, including the cross-system connection graph.
-//
-// Output: one Skill Candidate per unique `(from_system, to_system, data_type)`
-// triple — globally scoped (the chain is conceptual, the operator decides
-// later which connectors to bind it to). Every emitted signal is a
-// concrete authoring seed the operator can approve into a Skill that
-// teaches `propose_step` how to wire the two systems together.
-//
-// Why this is its own pattern_kind. The other three detectors
-// (repair / failure / success) all consume execution history. This one
-// consumes discovery output — a forward-looking signal that the operator
-// MIGHT want to chain two systems they have only just enumerated. Mixing
-// it into `success_pattern` would conflate "we observed this work" with
-// "we observed this is desirable" — different evidence weights, different
-// approval bars.
-
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type {
@@ -44,13 +21,8 @@ interface ChainSignalKey {
 interface ChainAggregate {
   key: ChainSignalKey;
   occurrences: number;
-  /** Distinct knowledge_sources rows the chain was observed in. */
   evidence_source_ids: Set<string>;
-  /** Latest evidence string (pulled from `potential_connections.evidence`
-   *  when the LLM supplied one; falls back to a synthesised summary). */
   latest_evidence: string;
-  /** Snapshots of the from/to candidates so the body can name their
-   *  drivers + capabilities without a second lookup. */
   from_candidate: ConnectorEndpointCandidate | undefined;
   to_candidate: ConnectorEndpointCandidate | undefined;
 }
@@ -73,7 +45,6 @@ export async function detectChainedWorkflowPatterns(
   tenant_id: string,
   exec: Db,
 ): Promise<PatternSignal[]> {
-  // 1. Pull every candidates envelope this tenant has stashed.
   const sourceRows = await exec
     .select()
     .from(knowledgeSources)
@@ -94,10 +65,6 @@ export async function detectChainedWorkflowPatterns(
     return [];
   }
 
-  // 2. Aggregate connections across every envelope. The same (from, to,
-  //    data_type) edge mentioned in two separate uploads strengthens
-  //    confidence (more diverse evidence) without inflating the count
-  //    artificially.
   const aggregate = new Map<string, ChainAggregate>();
 
   for (const src of sourceRows) {
@@ -163,11 +130,6 @@ export async function detectChainedWorkflowPatterns(
     return [];
   }
 
-  // 3. Materialise one signal per unique chain. Confidence is driven by
-  //    (a) evidence diversity — appearing across multiple uploads is a
-  //    stronger signal than a single mention — and (b) capability
-  //    alignment: a `read`-capable source paired with a `write`-capable
-  //    destination is a textbook workflow seed.
   const signals: PatternSignal[] = [];
   for (const agg of aggregate.values()) {
     const fromDriver = agg.from_candidate?.kind ?? "unknown";

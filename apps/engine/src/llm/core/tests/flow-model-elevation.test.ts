@@ -1,19 +1,3 @@
-// Code-level model elevation for quality-critical, low-frequency flows.
-//
-// `judge` and `generate` are routed to the tenant route's FALLBACK
-// model (by convention the stronger one — prod: primary Haiku 4.5,
-// fallback Sonnet 4.6) in code, with no env vars involved:
-//
-//   - judge / generate → primary becomes the fallback model id
-//     (provider + context_cap follow),
-//   - every other flow → route unchanged,
-//   - no distinct fallback configured → primary kept unchanged,
-//   - `applyFlowEnvOverrides` still applies ON TOP, so a per-flow
-//     {FLOW}_MODEL override wins over the elevation,
-//   - end-to-end through `invoke()` with the mock provider:
-//     `model_used` is the fallback model for judge/generate and the
-//     primary for chat-frequency flows.
-
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,8 +20,6 @@ const BASE_ROUTE: ModelRoute = {
   enable_prompt_cache: false,
 };
 
-// Keep the per-flow env override surface clean — the elevation is
-// code-level and must be observable without any env var set.
 const ENV_KEYS = ["JUDGE_MODEL", "GENERATE_MODEL", "CONVERSE_MODEL"] as const;
 let savedEnv: Record<string, string | undefined>;
 
@@ -62,10 +44,6 @@ describe("applyFlowModelElevation", () => {
     const out = applyFlowModelElevation(BASE_ROUTE, "judge");
     expect(out.primary).toBe("claude-sonnet-4-6");
     expect(out.provider).toBe(BASE_ROUTE.fallback_provider);
-    // The fallback becomes the ORIGINAL primary — an overloaded strong
-    // model degrades to the cheaper model instead of retrying itself
-    // (primary === fallback would fail harder than converse on the
-    // overload path).
     expect(out.fallback).toBe("claude-haiku-4-5");
     expect(out.fallback_provider).toBe(BASE_ROUTE.provider);
   });
@@ -109,15 +87,11 @@ describe("applyFlowModelElevation", () => {
   });
 });
 
-// ── invoke() end-to-end with the mock provider ──────────────────────────────
-
 async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not yet loaded — fall through.
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-elevation-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/elevation-test", NODE_ENV: "test" },

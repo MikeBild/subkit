@@ -1,7 +1,3 @@
-// find_connector — fuzzy lookup over the saved-connector catalog.
-// Same surface as find_workflow. Use when the operator says
-// "do we have a Stripe connector?" before list_connectors.
-
 import { z } from "@hono/zod-openapi";
 import { categoryOfConnector } from "../../connectors/categorize.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -40,24 +36,9 @@ interface ConnectorSummary {
   template_slug: string | null;
   base_url: string | null;
   description: string | null;
-  /**
-   * Canonical request paths copied from the matching template's
-   * `example_paths`. Surfaced so the propose-step LLM does not have to
-   * guess `/v2` prefixes when the base_url already includes them.
-   * Pre-fix session f00b8d1c emitted `/v2/projects` against a connector
-   * with base_url `https://api.digitalocean.com/v2` and 404'd 19 times.
-   */
   example_paths: string[];
-  /**
-   * Re-auth health. `true` when the connector's credential is dead and a
-   * human must reconnect it (OAuth refresh revoked, API key rotated, login
-   * lapsed). Surfaced so the LLM can flag broken connectors proactively and
-   * reach for `request_connector_reauth` instead of reporting empty results.
-   */
   needs_reauth: boolean;
-  /** ISO timestamp of the first auth failure that flagged the connector, or null. */
   auth_failed_at: string | null;
-  /** Catalog block — a connector's driver (`categoryOfConnector`). */
   category?: string;
 }
 
@@ -79,10 +60,6 @@ function summarize(c: {
     snap && Array.isArray(snap.example_paths)
       ? snap.example_paths.filter((p): p is string => typeof p === "string")
       : [];
-  // Surface the `general` quirk as the connector summary blurb so
-  // discovery tools have a one-line human description without the
-  // LLM dragging in auth/pagination/rate-limit detail it doesn't need
-  // for ranking and selection.
   const description = c.operator_quirks?.general?.trim() || null;
   return {
     id: c.id,
@@ -127,8 +104,6 @@ export const findConnectorTool: ConversationTool = {
   ],
   inputSchema,
   category: "tenant_read",
-  // Same connector inventory as list_connectors/get_connector — gate it
-  // identically so search cannot bypass the connector:read requirement.
   permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);

@@ -1,10 +1,3 @@
-// Every builder, held against the parser its page reads the address back with.
-//
-// A parameter the link sends and the page drops is indistinguishable from no
-// filter at all, so a builder is only right when its own page understands it.
-// `link-targets.test.ts` proves each address leads to a page; this proves the
-// page reads what the address says.
-
 import { describe, expect, test } from "bun:test";
 import { openPeopleSection, readablePeopleSections } from "@/pages/admin-model";
 import { openApiAccessSection, readableSections } from "@/pages/api-access-model";
@@ -70,7 +63,6 @@ describe("router-relative, and absolute only on request", () => {
   });
 
   test("absolute adds the base exactly once", () => {
-    // The shipped defect: `/cockpit/cockpit/runs`.
     expect(absolute("/runs")).toBe("/cockpit/runs");
     expect(absolute(absolute("/runs"))).toBe("/cockpit/runs");
     expect(absolute("/")).toBe("/cockpit");
@@ -87,7 +79,6 @@ describe("router-relative, and absolute only on request", () => {
     expect(routerPath("/cockpit?review=skills")).toBe("/?review=skills");
     expect(routerPath(`/cockpit/connectors/${ID}`)).toBe(`/connectors/${ID}`);
     expect(routerPath("/runs")).toBe("/runs");
-    // A fragment is not part of the path: the router takes it apart.
     expect(routerTarget(`/cockpit/workflows/${ID}#workflow-automation`)).toEqual({
       to: `/workflows/${ID}`,
       hash: WORKFLOW_AUTOMATION_ANCHOR,
@@ -97,7 +88,6 @@ describe("router-relative, and absolute only on request", () => {
       to: "/",
       search: { review: "skills" },
     });
-    // The run sheets live in the query; a query inside `to` would never open them.
     expect(routerTarget(`/cockpit?runs=all&workflow_id=${ID}&status=failed`)).toEqual({
       to: "/",
       search: { runs: "all", workflow_id: ID, status: "failed" },
@@ -136,7 +126,6 @@ describe("runs", () => {
   test("a window that is not two instants is dropped, never forwarded", () => {
     expect(filterFromUrl("?started_from=yesterday").startedFrom).toBeNull();
     expect(filterFromUrl("?started_to=2026-13-45T99:00:00Z").startedTo).toBeNull();
-    // An offset is taken and said in UTC, the way the engine is asked.
     expect(filterFromUrl("?started_from=2026-08-03T14:00:00%2B02:00").startedFrom).toBe(
       "2026-08-03T12:00:00.000Z",
     );
@@ -167,7 +156,6 @@ describe("Übersicht", () => {
     for (const id of [`workflow:${ID}`, "skills", `connector:${ID}`, "secret-approval:mail@3"])
       expect(reviewFromUrl(query(attentionHref({ review: id })))).toBe(id);
     expect(reviewFromUrl(query(attentionHref()))).toBeNull();
-    // A value that could not be an entry id opens nothing.
     expect(reviewFromUrl("?review=<script>")).toBeNull();
   });
 });
@@ -229,7 +217,6 @@ describe("usage", () => {
   test("the window a link opens is the window the page reads", () => {
     for (const window of ["24h", "7d", "30d"] as const)
       expect(usageWindowFromUrl(query(usageHref({ window })))).toBe(window);
-    // Thirty days is the page's default and is left out of the address.
     expect(usageHref({ window: "30d" })).toBe("/usage");
     expect(usageWindowFromUrl(query(usageHref()))).toBe("30d");
     expect(usageWindowFromUrl("?window=1y")).toBe("30d");
@@ -277,7 +264,6 @@ describe("the remaining addresses", () => {
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), all)).toBe("clients");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
-    // The retired section is no address any more: it opens the first tab.
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("keys");
     const keysOnly = readableSections({ clients: false, keys: true });
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), keysOnly)).toBe(
@@ -292,8 +278,6 @@ describe("Personen & Rechte", () => {
       const href = peopleHref(section);
       expect(href.startsWith("/people")).toBe(true);
       const read = peopleSectionFromUrl(query(href));
-      // The default needs no parameter: the bare address reads back as none
-      // and opens at the people list.
       expect(read ?? "people").toBe(section);
     }
     expect(peopleHref("roles")).toBe("/people?section=roles");
@@ -313,12 +297,10 @@ describe("Personen & Rechte", () => {
     expect(both).toEqual(["people", "roles", "groups", "grants"]);
     expect(openPeopleSection(null, both)).toBe("people");
     expect(openPeopleSection("grants", both)).toBe("grants");
-    // Rights only: no people list, and the default is the first readable one.
     const rbacOnly = readablePeopleSections({ identity: false, rbac: true });
     expect(rbacOnly).toEqual(["roles", "groups", "grants"]);
     expect(openPeopleSection(null, rbacOnly)).toBe("roles");
     expect(openPeopleSection("people", rbacOnly)).toBe("roles");
-    // The directory only: roles and grants are absent, not failed loads.
     const identityOnly = readablePeopleSections({ identity: true, rbac: false });
     expect(identityOnly).toEqual(["people"]);
     expect(openPeopleSection("roles", identityOnly)).toBe("people");

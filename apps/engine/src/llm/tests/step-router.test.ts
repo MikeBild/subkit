@@ -1,5 +1,3 @@
-// Unit tests for the converse-loop step router.
-
 import { describe, expect, it, test } from "bun:test";
 import type { ConversationTool } from "../../conversations/tools/index.ts";
 import {
@@ -45,9 +43,6 @@ const TOOLS: Record<string, ConversationTool> = Object.fromEntries([
   fakeTool("author_workflow", "draft_write", { authoring_resource: "workflow" }),
   fakeTool("inspect_connector_draft", "draft_write", { authoring_resource: "connector" }),
   fakeTool("probe_connector_draft", "draft_write", { authoring_resource: "connector" }),
-  // delete_workflow / update_workflow target an existing workflow by explicit
-  // id/slug — they are NOT requires_persisted_workflow (see cleanup.ts /
-  // update-workflow.ts) and must stay reachable on a fresh conversation.
   fakeTool("delete_workflow", "tenant_write"),
   fakeTool("update_workflow", "tenant_write"),
   fakeTool("create_schedule", "tenant_write", { requires_persisted_workflow: true }),
@@ -76,9 +71,6 @@ describe("routeUp / routeTop ladder", () => {
   });
 
   it("escalates opus-4-7 to opus-4-8 (the new ladder top)", () => {
-    // opus-4-7 used to be the top (identity → escalation no-op, which the
-    // runtime-logs review flagged via step_router.no_upgrade_available).
-    // opus-4-8 is now the top, so the authoring-seed tier escalates.
     expect(routeUp("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-8");
     expect(routeTop("anthropic", "claude-opus-4-7")).toBe("claude-opus-4-8");
   });
@@ -145,30 +137,16 @@ describe("prepareStep — passthrough as default", () => {
   });
 
   it("drops run_workflow on the FIRST authoring turn — nothing persisted yet", () => {
-    // Load-bearing. This is the assurance that let the hard-coded
-    // premium-model authoring seed be deleted: the failure it was bought
-    // for — `conversation_start("build a workflow ...")` firing
-    // `run_workflow{}` on a not-yet-persisted draft until loop detection
-    // stopped it — is prevented structurally, not by paying for a model
-    // clever enough to resist the temptation. The tool is not in the
-    // palette, so no model can pick it.
     const decision = prepareStep(
       baseParams({ signals: { stage: "idle", hasPersistedWorkflow: false } }),
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
     expect(decision?.activeTools).not.toContain("create_schedule");
-    // Authoring itself must stay reachable, or the drop would just trade
-    // one dead end for another.
     expect(decision?.activeTools).toContain("save_workflow_draft");
   });
 
   it("returns undefined when stage and persisted-workflow signal are both unset (synthetic)", () => {
-    // With no stage AND no hasPersistedWorkflow flag, the gate defaults
-    // to "no persisted workflow" which would normally narrow the
-    // palette. But there are no `requires_persisted_workflow` tools
-    // visible in the tools map if we strip the test fixture down, so
-    // here we explicitly assert the gate fires (activeTools defined).
     const decision = prepareStep(baseParams({ signals: {} }));
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
@@ -207,7 +185,6 @@ describe("prepareStep — escalation rules", () => {
         signals: { priorCriticFail: true },
       }),
     );
-    // No-op upgrade — opus-4-8 is already top, so modelId is not set.
     expect(decision?.modelId).toBeUndefined();
   });
 
@@ -224,19 +201,12 @@ describe("prepareStep — escalation rules", () => {
 
 describe("prepareStep — chat surface suppresses the authoring hard-stage escalation (P2)", () => {
   it("does NOT escalate on stage='workflow_persisted' when surface='chat'", () => {
-    // The production bug: a chat conversation with a bound workflow parks on
-    // `workflow_persisted` (an AUTHORING marker) and escalated haiku→sonnet on
-    // every turn with reason `hard_stage:workflow_persisted`. Chat is
-    // read-only and cannot author, so no swap must happen.
     const decision = prepareStep(
       baseParams({
         tenantDefaultModelId: "claude-haiku-4-5",
         signals: { stage: "workflow_persisted", surface: "chat" },
       }),
     );
-    // No model swap and no hard_stage reason. `workflow_persisted` returns the
-    // full palette (undefined activeTools) and no other signal fires, so the
-    // whole decision collapses to `undefined`.
     expect(decision?.modelId).toBeUndefined();
     expect(decision?.reason ?? "").not.toContain("hard_stage");
   });
@@ -259,8 +229,6 @@ describe("prepareStep — chat surface suppresses the authoring hard-stage escal
         signals: { surface: "chat", priorCriticFail: true },
       }),
     );
-    // priorCriticFail is a genuine difficulty signal — it must escalate on
-    // every surface, chat included, all the way to the top tier.
     expect(decision?.modelId).toBe("claude-opus-4-8");
     expect(decision?.reason).toContain("prior_critic_fail");
   });
@@ -272,7 +240,7 @@ describe("prepareStep — activeTools narrowing", () => {
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("inspect_workflow");
     expect(decision?.activeTools).toContain("list_workflows");
-    expect(decision?.activeTools).toContain("ask_user_text"); // always-available
+    expect(decision?.activeTools).toContain("ask_user_text");
     expect(decision?.activeTools).not.toContain("save_workflow_draft");
     expect(decision?.activeTools).not.toContain("delete_workflow");
   });
@@ -296,20 +264,12 @@ describe("prepareStep — activeTools narrowing", () => {
 
   it("returns full palette on commit/execute stages", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_persisted" } }));
-    // workflow_persisted is hard, so escalation fires; activeTools stays
-    // unset (full palette) so save_workflow_draft / delete_workflow remain
-    // available.
     expect(decision?.activeTools).toBeUndefined();
   });
 });
 
 describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BUG-3)", () => {
   it("keeps a forced run_workflow in activeTools even though the stage drops tenant_write", () => {
-    // `workflow_previewed` narrows to tenant_read + draft_write and
-    // would otherwise drop `run_workflow` (a tenant_write tool). The AI
-    // SDK validates the turn-level forced tool against EVERY step's
-    // activeTools — if it is missing the SDK throws
-    // `Tool 'run_workflow' not found in provided tools`.
     const decision = prepareStep(
       baseParams({
         signals: { stage: "workflow_previewed" },
@@ -319,7 +279,6 @@ describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BU
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("run_workflow");
-    // The narrowing itself still happens — only the forced tool is re-added.
     expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).not.toContain("delete_workflow");
   });
@@ -343,9 +302,6 @@ describe("prepareStep — forced tool survives activeTools narrowing (FIX 4 / BU
 });
 
 describe("prepareStep — multi-artifact continuation", () => {
-  // Synthesise the AI SDK step-shape the router reads — only the
-  // toolResults[].toolName / toolResults[].output.{source,ok} fields
-  // matter to `priorStepWasSuccessfulConnectorAutoPersist`.
   function priorStep(toolName: string, output: unknown) {
     return { toolResults: [{ toolName, output }] };
   }
@@ -402,10 +358,6 @@ describe("prepareStep — multi-artifact continuation", () => {
     expect(decision?.toolChoice).toBeUndefined();
   });
 
-  // Fix 4: Anthropic API rejects thinking + forced tool_choice. When
-  // the loop has enabled thinking for the turn, the router must NOT
-  // upgrade the nudge into a hard `toolChoice: "required"` — the
-  // systemNudge alone has to do the work.
   it("does NOT force toolChoice when turnThinkingEnabled is true (Anthropic API constraint)", () => {
     const decision = prepareStep(
       baseParams({
@@ -415,8 +367,6 @@ describe("prepareStep — multi-artifact continuation", () => {
       }),
     );
     expect(decision?.toolChoice).toBeUndefined();
-    // The systemNudge should still fire — it's a soft instruction
-    // compatible with thinking.
     expect(decision?.system).toMatch(/connector AND a workflow/i);
     expect(decision?.reason).toContain("multi_artifact_continue_nudge_only");
   });
@@ -433,12 +383,6 @@ describe("prepareStep — multi-artifact continuation", () => {
   });
 });
 
-// 6.0.3 hotfix — FIX 1: pre-persistence workflow stages must drop tools
-// that require a persisted `workflows` row. Without this the LLM picked
-// `run_workflow` on a `build a workflow called X` turn, failing 3x and
-// tripping `tool.loop_detected`. The fix exposes a tool-level
-// `requires_persisted_workflow: true` flag; the step-router filters on
-// it for the workflow-side pre-persistence stages.
 describe("prepareStep — pre-persistence stages drop tools requiring a persisted workflow (6.0.3)", () => {
   const PRE_PERSISTENCE_STAGES = [
     "workflow_draft_started",
@@ -451,16 +395,11 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
     it(`drops run_workflow + peers on stage='${stage}'`, () => {
       const decision = prepareStep(baseParams({ signals: { stage } }));
       expect(decision?.activeTools).toBeDefined();
-      // These stages narrow to tenant_read + draft_write, so EVERY tenant_write
-      // tool is gone here — run_workflow/create_schedule (flagged) and
-      // delete_workflow/update_workflow (dropped by category, not the flag).
       expect(decision?.activeTools).not.toContain("run_workflow");
       expect(decision?.activeTools).not.toContain("update_workflow");
       expect(decision?.activeTools).not.toContain("delete_workflow");
       expect(decision?.activeTools).not.toContain("create_schedule");
       expect(decision?.activeTools).not.toContain("save_workflow_draft");
-      // The authoring tools the LLM should be picking instead must
-      // still be in the palette.
       expect(decision?.activeTools).toContain("author_workflow");
       expect(decision?.activeTools).toContain("edit_workflow_patch");
       expect(decision?.activeTools).toContain("inspect_workflow");
@@ -470,8 +409,6 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
 
   it("INCLUDES run_workflow on stage='workflow_persisted' (post-persistence — full palette)", () => {
     const decision = prepareStep(baseParams({ signals: { stage: "workflow_persisted" } }));
-    // workflow_persisted returns undefined (full palette) — every
-    // tenant_write tool, including run_workflow, is back on the menu.
     expect(decision?.activeTools).toBeUndefined();
   });
 
@@ -481,21 +418,12 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
   });
 
   it("forced run_workflow SURVIVES the requires_persisted_workflow drop", () => {
-    // The two invariants coexist: the drop pass governs the default
-    // authoring palette; the forced-tool path is an explicit operator
-    // override that the AI SDK validates against the per-step
-    // activeTools — if the router doesn't keep it the SDK throws
-    // `Tool 'run_workflow' not found in provided tools` and the turn
-    // fails.
     for (const stage of PRE_PERSISTENCE_STAGES) {
       const decision = prepareStep(
         baseParams({ signals: { stage }, stepNumber: 0, forcedTool: "run_workflow" }),
       );
       expect(decision?.activeTools).toBeDefined();
       expect(decision?.activeTools).toContain("run_workflow");
-      // At these draft stages the category narrowing (tenant_read +
-      // draft_write) drops every other tenant_write tool — the flagged
-      // create_schedule and the unflagged delete/update_workflow alike.
       expect(decision?.activeTools).not.toContain("update_workflow");
       expect(decision?.activeTools).not.toContain("delete_workflow");
       expect(decision?.activeTools).not.toContain("create_schedule");
@@ -503,13 +431,6 @@ describe("prepareStep — pre-persistence stages drop tools requiring a persiste
   });
 });
 
-// SHOULD-FIX 1 + 2 (6.0.3 review): the drop pass must be GATED ON THE
-// LIVE DRAFT STATE, not just the stage. The original production failure
-// fired at stage='idle' (first turn of `conversation_start("build a
-// workflow ...")`), which the stage-only gate did not cover. The fix
-// drops `requires_persisted_workflow` tools whenever
-// `hasPersistedWorkflow` is false — including `idle`, `repairing`, and
-// `connector_persisted` when no workflow is bound yet.
 describe("prepareStep — live-state gate drops persisted-workflow tools across stages (6.0.3)", () => {
   it("idle + no persisted workflow → drops run_workflow (matches the production failure mode)", () => {
     const decision = prepareStep(
@@ -518,14 +439,8 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
     expect(decision?.activeTools).not.toContain("create_schedule");
-    // Regression guard (session 85ce71d7): delete_workflow / update_workflow
-    // are NOT requires_persisted_workflow — they resolve an existing workflow
-    // by explicit id/slug, so on a fresh "list then delete/rename workflow X"
-    // conversation they must stay reachable. Hiding them is what forced the
-    // model onto delete_connector and the connector_not_found dead-end.
     expect(decision?.activeTools).toContain("delete_workflow");
     expect(decision?.activeTools).toContain("update_workflow");
-    // Authoring tools (and the always-available set) remain.
     expect(decision?.activeTools).toContain("author_workflow");
     expect(decision?.activeTools).toContain("edit_workflow_patch");
     expect(decision?.activeTools).toContain("ask_user_text");
@@ -535,8 +450,6 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     const decision = prepareStep(
       baseParams({ signals: { stage: "idle", hasPersistedWorkflow: true } }),
     );
-    // No narrowing, full palette — the conversation can use any tool
-    // because a saved workflow is bound.
     expect(decision?.activeTools).toBeUndefined();
   });
 
@@ -547,7 +460,6 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).not.toContain("run_workflow");
     expect(decision?.activeTools).not.toContain("create_schedule");
-    // Unflagged management ops survive the full-palette drop (see idle case).
     expect(decision?.activeTools).toContain("delete_workflow");
     expect(decision?.activeTools).toContain("update_workflow");
   });
@@ -584,7 +496,6 @@ describe("prepareStep — live-state gate drops persisted-workflow tools across 
     );
     expect(decision?.activeTools).toBeDefined();
     expect(decision?.activeTools).toContain("run_workflow");
-    // Flagged peer still drops; unflagged management ops survive.
     expect(decision?.activeTools).not.toContain("create_schedule");
     expect(decision?.activeTools).toContain("delete_workflow");
     expect(decision?.activeTools).toContain("update_workflow");

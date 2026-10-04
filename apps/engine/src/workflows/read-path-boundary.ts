@@ -12,8 +12,6 @@ export const ReadPathBoundarySchema = z
   .strict();
 export type ReadPathBoundary = z.infer<typeof ReadPathBoundarySchema>;
 
-/** Only whole identifier segments in a GET path may vary. No variable host,
- * query, headers, body, method, pagination or partial path expressions. */
 export function readPathBoundary(
   step: RequestStep,
   baseUrl?: string | null,
@@ -62,7 +60,6 @@ export function readPathBoundary(
       .split("/")
       .map((segment) => (segment === "subkit_variable_identifier" ? null : segment));
     if (segments.filter((segment) => segment === null).length !== positions.length) return null;
-    // A changing root path is too broad: require a fixed resource collection.
     if (!segments[1] || !segments.some((segment, index) => index > 1 && segment === null))
       return null;
     return { origin: resolved.origin, segments, search: resolved.search };

@@ -1,6 +1,3 @@
-// Unit tests for apps/sk/src/status-line.ts — the scriptable
-// status-line pipeline.
-
 import { describe, expect, test } from "bun:test";
 import {
   buildStatusLine,
@@ -56,7 +53,6 @@ describe("sk status line", () => {
       "{user}{@tenant} · {model} · {turn_tokens}t (today {tokens_today}t) · [{permission_mode}]",
       sparse,
     );
-    // No `—` filler; empty fields collapse along with the adjacent ` · ` pair.
     expect(out).toBe("0t (today 0t) · [ask]");
   });
 

@@ -1,6 +1,3 @@
-// The operations bar on the Übersicht: six figures, each a link into the
-// list or page that counts the same thing over the same window (§10.1).
-
 import { describe, expect, test } from "bun:test";
 import { auditFilterFromUrl } from "@/pages/audit-model";
 import { connectorHealthFilterFromUrl } from "@/pages/connectors-model";
@@ -40,7 +37,6 @@ describe("the engine's operating figures", () => {
       operatingCounts({
         schema_version: "operating-figures.v1",
         window: { from: "a", to: "b" },
-        // 36 of 40 would be 90 here; the engine's number is the one shown.
         runs: { total: 40, succeeded: 36, failed: 4, success_rate_percent: 91 },
         connectors: { enabled: 8, not_ok: 2, healthy_percent: 75 },
         repairs: { decided: 4, applied: 3, applied_percent: 75 },
@@ -82,7 +78,6 @@ describe("the operations figures", () => {
     remaining_monthly_budget_tokens: 109_500_000,
     monthly_budget_state: "ample",
   });
-  // The calendar month's money — what the budget figure leads with.
   const monthPriced = {
     calls: 900,
     cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
@@ -121,7 +116,6 @@ describe("the operations figures", () => {
     expect(stats(executionStatsEndpoint(WEEK)).get("from")).toBe("2026-08-03T12:00:00.000Z");
     expect(windowBucket("24h")).toBe("hour");
     expect(windowBucket("30d")).toBe("day");
-    // Runs, connectors and repairs are counted over the very same bounds.
     const figures = stats(operatingFiguresEndpoint(WEEK));
     expect([figures.get("from"), figures.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
@@ -137,12 +131,9 @@ describe("the operations figures", () => {
       ["budget", 135.8],
     ]);
     const [runs, rate, connectors, repairs, cost, budget] = figures.map(value);
-    // Cost: Nutzung over the very window the amount was read over.
     expect(usageWindowFromUrl(query(cost?.href ?? null))).toBe("7d");
     expect(cost?.href).toBe("/usage?window=7d");
-    // Budget: the month, on Nutzung — the window does not narrow a month.
     expect(budget?.href).toBe("/usage");
-    // Runs: the runs that started in the window — the stats query's bounds.
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
     const statsQuery = stats(operatingFiguresEndpoint(WEEK));
@@ -150,11 +141,8 @@ describe("the operations figures", () => {
       window.startedFrom,
       window.startedTo,
     ]);
-    // Success rate: the failed runs of that same window.
     expect(filterFromUrl(query(rate?.href ?? null))).toMatchObject({ status: "failed", ...window });
-    // Connector health: the connectors unwell now.
     expect(connectorHealthFilterFromUrl(query(connectors?.href ?? null))).toBe("not_ok");
-    // Repair rate: the decided repairs of the window, by exactly the counted verbs.
     const audit = auditFilterFromUrl(query(repairs?.href ?? null));
     expect(audit).toMatchObject({ scope: "all", tsFrom: WEEK.from, tsTo: WEEK.to });
     expect(audit.actions).toEqual([...DECIDED_REPAIR_ACTIONS]);
@@ -190,7 +178,6 @@ describe("the operations figures", () => {
       }),
       spend: answered({ calls: 0, cost: windowCost({ cost: { amount: 0, currency: "USD" } }) }),
     });
-    // Always six: the bar keeps its shape, and each empty slot says why.
     expect(figures.map((figure) => [figure.id, figure.state])).toEqual([
       ["runs", "none"],
       ["successRate", "none"],
@@ -199,7 +186,6 @@ describe("the operations figures", () => {
       ["cost", "none"],
       ["budget", "value"],
     ]);
-    // A rate of nought over real runs is a fact, and it stays.
     expect(
       figuresOf({
         counts: counts({
@@ -238,7 +224,6 @@ describe("the operations figures", () => {
     const endpoint = stats(llmStatsEndpoint(WEEK));
     expect([endpoint.get("from"), endpoint.get("to")]).toEqual([WEEK.from, WEEK.to]);
     expect(endpoint.get("group_by")).toBeNull();
-    // Nutzung asks the same window, with its breakdown axis.
     expect(stats(llmStatsEndpoint(WEEK, "model")).get("group_by")).toBe("model");
     expect(
       windowSpend({
@@ -303,7 +288,6 @@ describe("the operations figures", () => {
       at(750, "tightening")?.budget?.percent,
       at(750, "tightening")?.budget?.pressure,
     ]).toEqual([75, "tightening"]);
-    // 89.6 % reads "89 %" beside "Wird knapp" — the engine's exact share.
     expect([
       at(896, "tightening")?.budget?.percent,
       at(896, "tightening")?.budget?.pressure,

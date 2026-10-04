@@ -20,7 +20,6 @@ export function validate(fixture: FixtureRecord): ValidationResult {
   for (const slug of input.expected_recipe_slugs) {
     if (!block.includes(`\`${slug}\``)) fails.push(`missing recipe ${slug}`);
   }
-  // Block must surface the helper sentence so the LLM has the right tool name.
   if (!block.includes("start_workflow_from_recipe")) {
     fails.push("missing tool-name hint `start_workflow_from_recipe`");
   }

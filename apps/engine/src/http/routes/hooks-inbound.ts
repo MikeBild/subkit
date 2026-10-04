@@ -1,12 +1,3 @@
-// Inbound webhook HTTP surface.
-//
-//   POST   /v1/webhooks/inbound          — create slug binding (authed)
-//   GET    /v1/webhooks/inbound          — list bindings
-//   GET    /v1/webhooks/inbound/:id      — fetch one
-//   DELETE /v1/webhooks/inbound/:id      — remove one
-//   POST   /v1/hooks/:slug               — public ingestion endpoint
-//                                          (signature IS the auth)
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/index.ts";
@@ -24,10 +15,6 @@ const InboundSchema = z
     workflow_id: z.string(),
     verifier: z.enum(["standard", "github", "stripe", "hmac", "custom"]),
     active: z.boolean(),
-    /** Provenance — `crud` for direct API-managed bindings, `trigger`
-     *  for rows reverse-bound by a workflow's `webhook` trigger.
-     *  Trigger-bound rows fire `webhook.trigger.fired` at receive
-     *  time; CRUD rows fire `webhook.inbound.received`. */
     origin: z.enum(["crud", "trigger"]),
     created_at: z.string(),
     updated_at: z.string(),
@@ -110,9 +97,6 @@ const deleteRoute = createRoute({
 });
 
 export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating for the authenticated CRUD surface. The public
-  // `POST /v1/hooks/:slug` ingress is left untouched — signature auth
-  // is the gate there.
   app.use("/v1/webhooks/inbound", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("inbound_hook:read")(c, next);
     if (c.req.method === "POST") return requirePermission("inbound_hook:write")(c, next);
@@ -152,8 +136,6 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
-    // The hmac verifier is driven entirely by its config; reject a bad one
-    // here instead of storing a binding that denies every delivery.
     let nativeConfig = body.native_verifier_config ?? null;
     if (body.verifier === "hmac") {
       const parsed = svc.HmacVerifierConfig.safeParse(nativeConfig?.hmac);
@@ -191,7 +173,6 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ deleted: true }, 200);
   });
 
-  // POST /v1/hooks/:slug — unauthenticated ingress.
   app.post("/v1/hooks/:slug", async (c) => {
     const slug = c.req.param("slug");
     const rawBody = await c.req.text();
@@ -200,8 +181,6 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
       headers[key.toLowerCase()] = value;
     });
     const db = c.get("db");
-    // Resolve pg-boss lazily: tests without a boss can pass one via
-    // c.get("boss") (the openapi type isn't strict about extras).
     const bossOverride = (c as unknown as { get: (k: string) => unknown }).get("boss") as
       | ReturnType<typeof getBoss>
       | undefined;

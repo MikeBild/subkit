@@ -1,14 +1,3 @@
-// Filterable run-history table.
-//
-// Use cases:
-//   - "what failed in the last hour"
-//   - "show running runs"
-//   - "open run X to inspect"
-//
-// Layout: one row per run, columns: status badge · workflow name · started_at · duration.
-// Filter bar at the top lets the operator narrow by status (`f` toggles
-// the status quick-filter through ok / running / failed / all).
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
@@ -32,7 +21,6 @@ export interface RunsTableProps {
   filter?: RunsFilter;
   onFilterChange?: (next: RunsFilter) => void;
   onSelect?: (run: RunSummary) => void;
-  /** Maximum visible rows. Defaults to 12. */
   maxVisible?: number;
 }
 
@@ -79,7 +67,6 @@ export function RunsTable({
       if (r) onSelect?.(r);
     }
     if (input === "f") {
-      // Cycle status filter.
       const idx = STATUS_CYCLE.findIndex(
         (s) => JSON.stringify(s) === JSON.stringify(effective.status),
       );

@@ -1,5 +1,3 @@
-// `sk connector-templates search` — pure ranking logic.
-
 import { describe, expect, test } from "bun:test";
 import { rankTemplates } from "../commands/connector-templates.ts";
 

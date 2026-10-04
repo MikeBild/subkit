@@ -1,7 +1,3 @@
-// Branch step. Evaluates a JSONata predicate against the scope. Returns
-// the chosen arm as the output. The engine consumer reads `output.arm` and
-// `output.next` to decide which downstream step ids to skip.
-
 import { logger } from "../../logging/logger.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
@@ -18,26 +14,11 @@ export async function runBranchStep(p: {
   const start = Date.now();
   try {
     const expr = compileJsonata(p.step.when);
-    // A branch predicate is a downstream JSONata consumer of the scope.
-    // Re-hydrate any `OffloadRef`s an upstream loop spilled so the
-    // predicate sees original arrays; no-op when nothing was offloaded.
     p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
-    // Same binding surface as transform.expression and loop.over —
-    // `$scope.<id>.data` reads identically across every author site.
     const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
     const matched = await expr.evaluate(p.scope, bindings);
     const truthy = !!matched;
 
-    // Authoring-bug detector: when the predicate text names a
-    // `$scope.X` step id that doesn't exist in the runtime scope,
-    // the LLM very likely typo'd a reference. JSONata silently
-    // resolves the missing path to undefined → comparisons against
-    // it return false → branch picks "else" every time and the LLM
-    // never sees a signal. Surface a non-fatal warning with
-    // did_you_mean candidates so the next retry can fix the path.
-    // Pre-fix this looked like a working branch that just happened
-    // to pick the else arm every time (session ebd66982 wasted 4
-    // retries on this exact pattern).
     const warnings: NonNullable<StepResult["warnings"]> = [];
     {
       const referenced = extractStepIdReferences(p.step.when);

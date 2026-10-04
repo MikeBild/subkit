@@ -1,6 +1,3 @@
-// `generate` flow — natural-language prompt → WorkflowDef draft.
-// Thin wrapper around `core/invoke.ts`.
-
 import type { Db } from "../../db/client.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 import { invoke } from "../core/invoke.ts";

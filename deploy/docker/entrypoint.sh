@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Stateless application bootstrap. PostgreSQL and the product object-store
-# bucket are the only durable state owners; this container uses /tmp as scratch.
 set -euo pipefail
 
 log() { printf '[subkit] %s\n' "$*" >&2; }
 
 export NODE_ENV="${NODE_ENV:-production}"
-# The container is the trust boundary; bind all interfaces so Docker's
-# published-port mapping can reach the engine (loopback-only is unreachable
-# through `-p`). resolveListenHostname() honours this override.
 export ENGINE_LISTEN_HOST="${ENGINE_LISTEN_HOST:-0.0.0.0}"
 
 export CONFIGURATION_DIRECTORY="${CONFIGURATION_DIRECTORY:-/tmp/subkit-state}"
@@ -33,9 +28,6 @@ if [ -n "${DATABASE_URL_FILE:-}" ]; then
   export DATABASE_URL="$file_database_url"
 fi
 
-# Some container platforms expose managed database bindings through a component
-# variable and may alias the same value to DATABASE_URL. Preserve an explicitly
-# supplied URL and apply compatibility options only to the unchanged binding.
 if [ -z "${DATABASE_URL:-}" ] && [ -n "${UPRAFT_DB_PRIMARY_URL:-}" ]; then
   export DATABASE_URL="$UPRAFT_DB_PRIMARY_URL"
 fi
@@ -50,7 +42,6 @@ fi
   exit 64
 }
 
-# --- MASTER_KEY: env or secret-file binding -------------------------------
 if [ -n "${MASTER_KEY_FILE:-}" ]; then
   file_master_key="$(read_secret_file MASTER_KEY "$MASTER_KEY_FILE")"
   if [ -n "${MASTER_KEY:-}" ] && [ "$MASTER_KEY" != "$file_master_key" ]; then
@@ -82,5 +73,4 @@ cat >&2 <<'BANNER'
 ──────────────────────────────────────────────────────────────────────
 BANNER
 
-# The engine auto-runs its embedded migrations before accepting traffic.
 exec /usr/local/bin/engine.bin "$@"

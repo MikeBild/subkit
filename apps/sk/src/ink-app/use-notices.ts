@@ -1,10 +1,3 @@
-// Transient notice-strip state for the Ink REPL.
-//
-// Owns the NoticeStack item list (info/warning/error strips above the
-// transcript), their auto-expiry, and the structured-error path that
-// mirrors engine failures into both the legacy strip and the richer
-// ErrorPanel toast.
-
 import type { PendingElicitation } from "@cli-core/index.ts";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -55,9 +48,6 @@ export function useNotices(): NoticesApi {
     },
     [pushNotice],
   );
-  // Kept around for future warning notices (e.g. yolo expiry, queue
-  // overflow). The setup-validation banner that previously used this
-  // moved to a sticky row above the welcome panel — see SetupBanner.
   const _showWarning = useCallback(
     (message: string, persistent = true) => {
       pushNotice("warning", message, persistent);
@@ -72,12 +62,6 @@ export function useNotices(): NoticesApi {
     },
     [pushNotice],
   );
-  /**
-   * Structured-error path: pushes the humanized headline through the
-   * legacy notice strip AND surfaces the new ErrorPanel via the
-   * ToastQueue. Both render — the toast carries the rich envelope
-   * (status, code, hint, retry_after countdown) the legacy strip can't.
-   */
   const showStructuredError = useCallback(
     (err: unknown, slashName?: string) => {
       const headline = humanizeRequestError(err);
@@ -96,15 +80,11 @@ export function useNotices(): NoticesApi {
           id: `err-${slashName ?? "engine"}-${Date.now().toString(36)}`,
           level: panel.kind === "rate-limit" || panel.kind === "network" ? "warn" : "error",
           title: titleByKind[panel.kind] ?? "error",
-          // bodyOf() narrows the discriminated union once and returns
-          // a string — no double `as`-cast leaks across the boundary.
           body: bodyOf(panel) ?? headline,
           ttlMs: 8000,
         };
         toast.push(t);
-      } catch {
-        // Toast is best-effort; legacy notice always fires above.
-      }
+      } catch {}
     },
     [pushNotice, toast],
   );
@@ -130,18 +110,12 @@ export function useNotices(): NoticesApi {
   };
 }
 
-/**
- * Keeps the "Waiting for input" fallback notice in lockstep with the
- * pending elicitation, and mirrors the pending flag into the ref the
- * queue drains consult (their `session` closure is stale by design).
- */
 export function usePendingElicitationNotice(
   pendingElicitation: PendingElicitation | null,
   pendingElicitationRef: React.MutableRefObject<boolean>,
   setNotices: React.Dispatch<React.SetStateAction<TranscriptNotice[]>>,
 ): void {
   useEffect(() => {
-    // Keep the drain-side ref in lockstep with session state.
     pendingElicitationRef.current = pendingElicitation !== null;
     const message = pendingElicitation ? pendingNoticeMessage(pendingElicitation) : null;
     setNotices((current) => {

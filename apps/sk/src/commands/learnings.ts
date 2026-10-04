@@ -1,9 +1,3 @@
-// `sk learnings` — the human curation gate of the coding-agent capture
-// loop. Session learnings arrive as `session_learning` skill candidates
-// (status: proposed); this command reviews them one by one: approve
-// (optionally after editing) promotes to an ACTIVE skill that the next
-// session briefing carries, reject retires the fingerprint for good.
-
 import * as prompts from "@clack/prompts";
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
@@ -106,8 +100,6 @@ const reviewCommand = defineCommand({
         const result = await client.approveSkillCandidate(candidate.id, {
           title,
           body,
-          // Straight to active: the review IS the human gate, and only
-          // active skills reach the session briefing.
           status: "active",
         });
         approved += 1;

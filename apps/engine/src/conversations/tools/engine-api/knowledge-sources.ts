@@ -20,9 +20,6 @@ export const listKnowledgeSourcesTool: ConversationTool = {
     "List the tenant's Knowledge Sources with their description and tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
   inputSchema: ListInput,
   category: "tenant_read",
-  // Enumeration is gated like the typed fast-path list intent
-  // (`knowledge:read`). `search_knowledge` stays ungated so grounding
-  // over the global `sk-ref-*` reference still works for any principal.
   permission: { action: "knowledge:read", resourceType: "knowledge" },
   async execute(ctx) {
     const rows = await ctx.engineClient.knowledgeSources.list();
@@ -85,8 +82,6 @@ const ReadKnowledgeInput = z
   })
   .openapi("ReadKnowledgeToolInput");
 
-/** Per-call content budget — keeps a full-source read LLM-friendly; callers
- *  page via `next_offset` until it disappears. */
 const READ_KNOWLEDGE_MAX_CHARS = 64_000;
 const READ_KNOWLEDGE_PAGE_SIZE = 50;
 
@@ -119,8 +114,6 @@ export const readKnowledgeTool: ConversationTool = {
       };
     }
 
-    // Byte-bound the page: stop consuming once the budget is spent so a
-    // 50-MB source can never land in one tool result.
     const chunks: {
       ordinal: number;
       title: string | null;

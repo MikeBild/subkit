@@ -1,21 +1,3 @@
-// Which upstream rejection means "this credential is dead"?
-//
-// `needs_reauth` is not a label — it takes the connector out of service. Every
-// step bound to it becomes unavailable (workflows/effect-resolution.ts), which
-// holds the workflow's schedule, and `execution/prepared-workflow-references.ts`
-// then refuses the prepared run that would clear the flag again. A connector
-// flagged in error is stranded until a human re-authenticates it.
-//
-// So the classification has to be exact:
-//   401 → the credential itself was rejected. Flag it.
-//   403 → this identity may not touch THIS resource: a wrong id in a path, a
-//         scope the grant never covered. The credential is alive. Do not flag.
-//
-// This is the split the rest of the codebase already makes — probe
-// classification maps 401 to `credential_invalid` and 403 to
-// `scope_insufficient`, and the proactive scan
-// (scheduler/connector-reauth-scan-runner.ts) flags only the former.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { createConnector } from "../connectors/service.ts";
@@ -32,7 +14,6 @@ import type { StepRunContext } from "./types.ts";
 let testDb: TestDb;
 let tenantId: string;
 let mock: MockServer;
-/** The status the fixture upstream answers with for the test in flight. */
 let upstreamStatus = 403;
 const TEST_NOW_MS = getTestNow();
 
@@ -96,7 +77,6 @@ async function readFlag(connector_id: string): Promise<boolean> {
   return row.needs_reauth;
 }
 
-/** Runs one GET against the fixture upstream and returns the step's verdict. */
 async function runOnce(connector_id: string): Promise<string> {
   const [exec] = await testDb.db
     .insert(executions)
@@ -134,10 +114,6 @@ async function runOnce(connector_id: string): Promise<string> {
     db: testDb.db,
     tenant_id: tenantId,
     execution_id: exec.id,
-    // A single-step run names no saved workflow, which `persist_workflow_refs:
-    // false` below declares. The nil UUID is the shape the auth-failed event
-    // payload accepts for "no workflow"; an empty string is not a UUID and
-    // would fail its schema before the classification under test is reached.
     workflow_id: "00000000-0000-0000-0000-000000000000",
     workflow_version_id: "00000000-0000-0000-0000-000000000000",
     request_source: "api",
@@ -164,8 +140,6 @@ test("a 403 does not take the connector out of service — the credential is ali
   upstreamStatus = 403;
   const connector_id = await seedConnector("denies-with-403");
   expect(await runOnce(connector_id)).toBe("failed");
-  // The step failed, as it must — but one forbidden resource is not grounds
-  // for stranding every other workflow that shares this connector.
   expect(await readFlag(connector_id)).toBe(false);
 });
 

@@ -1,6 +1,3 @@
-// Read-only `/context` snapshot — projection over what the next
-// prompt assembly would inject. No LLM calls.
-
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { getConversationBudgetReport } from "../../llm/core/conversation-budget-report.ts";
@@ -92,12 +89,6 @@ export interface ContextSnapshot {
   };
   tool_calls_total: number;
   pending_elicitations: number;
-  /**
-   * Compact "what's in scope for the LLM right now" payload used by sk's
-   * `/context` pane. Thin projections over state that already lives on
-   * the draft or elsewhere — no extra DB reads beyond what
-   * getConversation + retrieveApplicableSkills already pull.
-   */
   attachments: {
     total: number;
     items: Array<{ slug: string; filename: string | null; bytes: number | null }>;
@@ -106,9 +97,6 @@ export interface ContextSnapshot {
     ok: boolean;
     summary: string | null;
     failure_code: string | null;
-    /** ISO-8601 timestamp the probe ran. Operators reading the
-     *  `/context` snapshot use this with the cooldown gate
-     *  (save-connector.ts) to see how stale a failed probe is. */
     probed_at: string | null;
   } | null;
   latest_preview: {
@@ -120,32 +108,18 @@ export interface ContextSnapshot {
     workflow_id: string;
     current_version: number | null;
   } | null;
-  /** What the LAST assembled turn dropped to fit the model context —
-   *  the in-band answer to "why doesn't the agent remember X?". Null
-   *  when no turn ran since engine start (in-process cache — see
-   *  llm/core/conversation-budget-report.ts). */
   last_context_budget: {
     cap_tokens: number;
     total_tokens: number;
     dropped_sections: string[];
     assembled_at: string;
   } | null;
-  /** Whether the draft's grounding is still current, checked at resume by
-   *  recomputing the fingerprint for the draft's connectors. Advisory only —
-   *  never blocks; any recompute error resolves to `unknown`, never a false
-   *  `stale`. `null` when the draft carries no grounding fingerprint. */
   grounding_status: {
     state: "fresh" | "stale" | "unknown";
     advisory: string | null;
   } | null;
 }
 
-/**
- * Read-only snapshot of the context the engine would inject if we
- * assembled a prompt right now. Powers the `/context` CLI panel —
- * skill counts / names in scope, recent activity, pending
- * elicitations. Does not invoke the LLM provider.
- */
 export async function getContextSnapshot(
   tenant_id: string,
   conversation_id: string,
@@ -187,8 +161,6 @@ export async function getContextSnapshot(
 
   const lastMessage = detail.messages[detail.messages.length - 1];
 
-  // Attachments live on the unified `file_links` join; surface a count
-  // + first few so the user sees what the LLM can reference inline.
   const { fileLinks, files } = await import("../../db/schema/index.ts");
   const attachmentRows = await exec
     .select({ link: fileLinks, file: files })
@@ -208,8 +180,6 @@ export async function getContextSnapshot(
     bytes: typeof a.file.size_bytes === "number" ? a.file.size_bytes : null,
   }));
 
-  // Latest probe + preview live on the draft; mirror into the snapshot
-  // so the `/context` pane doesn't have to re-normalise the draft.
   const latestProbeRaw = detail.draft?.connector?.latest_probe ?? null;
   const latestProbe = latestProbeRaw
     ? {
@@ -229,9 +199,6 @@ export async function getContextSnapshot(
     : null;
   const draftSummary = detail.draft?.summary ?? null;
 
-  // Workflow version context for committed conversations — surfaces
-  // the current version number for the bound workflow, so `/context`
-  // can show operators where they are on the version timeline.
   let workflowVersion: ContextSnapshot["workflow_version"] = null;
   if (detail.conversation.target_workflow_id) {
     try {

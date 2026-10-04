@@ -1,19 +1,3 @@
-// Anthropic tool-API conformance lint. Pins every constraint the
-// real API would reject a tool definition over, so a regression
-// surfaces as a failing unit test instead of "HTTP 503 ·
-// llm_provider_unavailable" the next time someone runs sk-CLI.
-//
-// Failure modes this catches:
-//   1. Root JSON Schema not an object ({type:"object"})
-//   2. Tool name violates `^[a-zA-Z0-9_-]{1,64}$`
-//   3. Description missing or empty
-//   4. Duplicate tool names (registry collision)
-//   5. Top-level `properties` is not an object
-//   6. `additionalProperties` is allowed but enums in nested
-//      properties must be string|number|boolean only
-//   7. Required field references a property that doesn't exist
-//   8. Recursive / circular schemas (would blow up serialisation)
-
 import { describe, expect, test } from "bun:test";
 import type { ZodType } from "zod";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
@@ -66,10 +50,6 @@ describe("Anthropic tool-API conformance · per-tool", () => {
       });
 
       test("can be JSON-serialised (no circular references)", () => {
-        // If a schema accidentally goes recursive, JSON.stringify
-        // throws TypeError: Converting circular structure. The
-        // Anthropic SDK serialises tool definitions before sending
-        // — circular schemas would blow up there. Catch it here.
         expect(() => JSON.stringify(json)).not.toThrow();
       });
 
@@ -95,10 +75,6 @@ describe("Anthropic tool-API conformance · global", () => {
   });
 
   test("input_schemas serialise within a sane size budget (< 16KB each)", () => {
-    // Anthropic doesn't publish a hard size limit on tool defs but
-    // very large schemas eat into the prompt-cache budget and slow
-    // every turn. 16KB is a soft alarm — bump if we ever genuinely
-    // need it.
     for (const t of listTools()) {
       const size = JSON.stringify(toJsonSchema(t.inputSchema)).length;
       if (size > 16_384) {

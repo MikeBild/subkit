@@ -1,15 +1,3 @@
-// User story: As an author who builds a report e-mail with the engine's own
-// `sk.buildMimeMessage` — a named sender, a Unicode subject, an HTML body with
-// a plain-text alternative — I can have it reviewed from a preparation run, and
-// the review shows exactly whom it goes to.
-// Acceptance criteria:
-//   - AC1: A held preparation records an ok report inspection on the held send
-//     step, and a proposal naming the bare recipient and sender addresses and
-//     `multipart/alternative` as the content type.
-//   - AC2: The review proposes that boundary, reports no refusal for the step,
-//     and is eligible for repeated runs.
-// Spec refs: docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";

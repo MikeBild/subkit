@@ -1,9 +1,3 @@
-// Unit tests for `classifyHttpSideEffect` — the ONE shared rule that
-// decides read vs. write for the engine's hold-writes mechanism AND the
-// conversation/MCP confirm-gate. The load-bearing case is the one that
-// produced the "gemeldet ≠ geschrieben" no-op in prod: a search over
-// POST is a WRITE unless the author marks it `override: "read"`.
-
 import { describe, expect, test } from "bun:test";
 import {
   classifyHttpSideEffect,
@@ -182,8 +176,6 @@ describe("helpers", () => {
 
 describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
   test("no annotations at all is a write", () => {
-    // Silence is not a claim of harmlessness. A tool that says nothing
-    // about itself gets the treatment a tool that says nothing deserves.
     expect(classifyMcpToolSideEffect(undefined)).toBe("write");
     expect(classifyMcpToolSideEffect(null)).toBe("write");
     expect(classifyMcpToolSideEffect({})).toBe("write");
@@ -191,8 +183,6 @@ describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
 
   test("annotations that do not assert read-only are a write", () => {
     expect(classifyMcpToolSideEffect({ readOnlyHint: false })).toBe("write");
-    // Partial annotations — the server answered other questions and left
-    // this one open — do not answer it by omission.
     expect(classifyMcpToolSideEffect({ idempotentHint: true, openWorldHint: false })).toBe("write");
   });
 
@@ -202,20 +192,11 @@ describe("classifyMcpToolSideEffect — the remote's own annotations", () => {
   });
 
   test("destructiveHint overrides a readOnlyHint rather than being averaged with it", () => {
-    // A server contradicting itself is not evidence of safety. The hint
-    // can only escalate.
     expect(classifyMcpToolSideEffect({ readOnlyHint: true, destructiveHint: true })).toBe("write");
   });
 
   test("THE GATE DOES NOT READ IT: a tools/call stays a write however the tool is annotated", () => {
-    // This is the whole security property. `classifyHttpSideEffect` is
-    // what the hold-writes mechanism and the confirm gate consult, and it
-    // takes no annotations — so there is no argument a third-party server
-    // can send that turns its own write into an unconfirmed call. If this
-    // ever fails, a remote has been handed the power to gate itself.
     expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" } })).toBe("write");
-    // A tenant's authoring agent can also supply this label: it is not
-    // evidence of a human-approved execution boundary.
     expect(classifyHttpSideEffect({ mcp: { operation: "call_tool" }, override: "read" })).toBe(
       "write",
     );

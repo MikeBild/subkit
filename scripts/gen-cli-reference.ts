@@ -1,32 +1,5 @@
-// Generate docs/developers/cli-reference.md — the non-interactive
-// `sk <subcommand>` surface.
-//
-// Reads the live SUB_COMMANDS inventory exported from
-// apps/sk/src/index.ts (bare `sk` opens the REPL; every entry here is a
-// scriptable subcommand). For each command we print its description,
-// the UX permission gate (`requires`), and any nested subcommands —
-// resolved straight from the citty `CommandDef` metadata so the table
-// can never drift from the registered commands.
-//
-// EVERY ARGUMENT IS LISTED, not just command names. The CLI is the authoring
-// surface, and this file is what a coding agent reads (directly, or through
-// `docs/llms-full.txt`, which concatenates it verbatim). Telling an agent that
-// `sk connectors create` exists while leaving `--file` to `--help` means the
-// agent has to guess or shell out to discover it — and a guessed flag is a
-// failed command. Anything absent here is absent from the agent's world.
-//
-// Output is byte-stable: commands sorted alphabetically, no timestamps.
-//
-// Wired into `bun run gen:cli-reference` (writes the file) and
-// `bun run check:cli-reference-drift` (regenerate + git-diff gate).
-//
-// Usage:
-//   bun run scripts/gen-cli-reference.ts > docs/developers/cli-reference.md
-
 import { SUB_COMMANDS } from "../apps/sk/src/index.ts";
 
-// citty's CommandDef metadata is loosely typed (meta + subCommands may
-// each be a value or a resolver). Narrow just what we read.
 type Resolvable<T> = T | (() => T | Promise<T>);
 interface AnyArgDef {
   type?: string;
@@ -60,11 +33,6 @@ function escapeCell(value: string): string {
   return value.replace(/\|/g, "\\|");
 }
 
-/** One argument as a compact bullet: how to spell it, then what it is.
- *
- *  Deliberately not a table — this file is concatenated into
- *  `docs/llms-full.txt`, and a table per subcommand across ~200 subcommands
- *  costs far more tokens than the same facts as bullets. */
 function renderArg(name: string, def: AnyArgDef): string {
   const positional = def.type === "positional";
   const spelling = positional ? `<${name}>` : `--${name}`;
@@ -82,7 +50,6 @@ function renderArg(name: string, def: AnyArgDef): string {
   return `- \`${spelling}\`${meta}${description}`;
 }
 
-/** A command and its subcommands, with every argument spelled out. */
 async function renderCommandDetail(name: string, cmd: AnyCommandDef): Promise<string[]> {
   const out: string[] = ["", `### \`sk ${name}\``, ""];
   const description = await descriptionOf(cmd);

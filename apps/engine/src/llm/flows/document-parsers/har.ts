@@ -1,6 +1,3 @@
-// Deterministic HAR (HTTP Archive) parser. No LLM required.
-// HAR files are captured real HTTP traffic — highest precision.
-
 import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 interface HarEntry {
@@ -48,9 +45,7 @@ export function parseHar(content: string): EndpointSpec[] {
             ),
           };
         }
-      } catch {
-        // skip
-      }
+      } catch {}
     }
 
     if (existing) {

@@ -3,9 +3,6 @@ import { isUndefinedTable } from "../environment.ts";
 
 describe("check 2 on a fresh database", () => {
   test("recognises the undefined table through the driver's wrapper", () => {
-    // Measured 2026-09-03 (6.27.3 compose smoke): the driver throws
-    // "Failed query: SELECT … params:" and keeps the PostgreSQL error as
-    // `cause`. The SQLSTATE lives one level down.
     const wrapped = new Error(
       'Failed query: SELECT hash, tag FROM "subkit"."__drizzle_migrations" ORDER BY id params:',
       {

@@ -1,22 +1,3 @@
-// GET / — the entry point for someone who was handed nothing but a URL.
-//
-// That is the realistic starting condition: a colleague sends a link, or an
-// agent is told "this is the engine". Until now the most obvious address
-// answered 404, and a 2026-09-02 baseline run started exactly there — its first
-// recorded uncertainty was "is this even the right service, or did I mistype
-// the domain?", resolved only by guessing at /health.
-//
-// So the root lists what this engine hands out, with absolute links, and names
-// its version. Everything it points at is embedded in the binary: the source
-// repository is private and nothing here needs it.
-//
-// Content-negotiated, because both kinds of reader arrive at this URL: a person
-// pastes it into a browser and gets HTML; curl, an agent or an MCP client gets
-// the same list as Markdown. One source of truth for the entries, two
-// renderings, so the two can never disagree.
-//
-// Public and unauthenticated like its siblings — it exposes only URLs.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
@@ -29,8 +10,6 @@ interface Entry {
   what: string;
 }
 
-/** Ordered so a newcomer reads it top to bottom as a path: install it, then
- *  learn it, then call it. */
 const ENTRIES: ReadonlyArray<Entry> = [
   { path: "/docker-compose.yml", what: "The topology that runs this exact release" },
   { path: "/install", what: "Installer for the matching sk command-line client" },
@@ -129,9 +108,6 @@ const route = createRoute({
 });
 
 function wantsHtml(c: Context<AppEnv>): boolean {
-  // A browser sends `text/html` first; curl sends `*/*`, and an agent usually
-  // sends nothing at all. Anything that does not explicitly ask for HTML gets
-  // the Markdown, which is the friendlier default for a machine reader.
   return (c.req.header("accept") ?? "").includes("text/html");
 }
 
@@ -147,5 +123,4 @@ export function registerRootRoute(app: OpenAPIHono<AppEnv>): void {
   });
 }
 
-/** Exported for the test: the paths the entry point promises must exist. */
 export const ROOT_ENTRY_PATHS: ReadonlyArray<string> = ENTRIES.map((e) => e.path);

@@ -1,14 +1,3 @@
-// Hono app factory. Wires:
-//   - trace + logging + auth + error middleware
-//   - /health
-//   - /v1/identity/* routes
-//   - /openapi.json
-//   - /docs (Scalar)
-//   - /llms.txt + /llms-full.txt (llms-txt docs for LLM clients)
-//
-// Tests construct an app via `createApp({ db, registry })` so they can swap
-// in a per-test database and registry without touching env globals.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { PgBoss } from "pg-boss";
 import { createTokenExchangeProvider } from "../auth/oauth/token-exchange.ts";
@@ -115,69 +104,36 @@ import { registerWorkflowRoutes } from "./routes/workflows.ts";
 
 export interface CreateAppOptions {
   db?: Db;
-  /** Bind a queue runtime to this app. Disposable test apps must inject
-   * their own instance so parallel databases cannot share the global boss. */
   boss?: PgBoss;
   registry?: AuthProviderRegistry;
   chatRegistry?: ChatAdapterRegistry;
-  /** Override for the chat-route enqueue callback. Default forwards to
-   *  pg-boss via `getBoss().send(CHAT_EVENT_QUEUE, …)`, mirroring the
-   *  hooks-inbound pattern. Tests that exercise the chat HTTP surface
-   *  without running a real boss can pass a stub here. */
   chatEnqueue?: (job: ChatEventJob) => Promise<void>;
-  /** Override for the agent-session capture enqueue callback. Same
-   *  lazy-boss rationale as `chatEnqueue`; tests inject a stub. */
   agentSessionEnqueue?: (job: AgentSessionAnalyzeJob) => Promise<void>;
-  /** Override the in-memory rate limiter (default 100 req / 60s). Used
-   *  by the http test scaffold to bump the ceiling so per-leaf sweep
-   *  tests fit under the budget even as the schema grows. */
   rateLimit?: { max?: number; windowMs?: number };
 }
 
 export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProviderRegistry {
   const reg = new AuthProviderRegistry();
 
-  // The set of registered providers is config-driven. When the config
-  // loader has not been initialised (some unit/test paths build an app
-  // before boot), fall back to the always-on local providers so the
-  // engine never starts with an empty registry.
   let auth = cfg;
   if (!auth) {
     try {
       auth = getConfig().auth;
-    } catch {
-      /* loader not initialised — fall through to local defaults below */
-    }
+    } catch {}
   }
   const enableMcpOAuth = auth?.mcp_oauth.enabled ?? true;
   const registered: string[] = [];
 
-  // Registration order is a latency optimisation, not a correctness
-  // requirement: the registry returns the first non-null principal and each
-  // prefix-bound provider rejects foreign tokens before touching the DB. The
-  // unambiguous-prefix machine providers come first; the JWT/cookie human
-  // provider (if any) follows.
   if (enableMcpOAuth) {
     reg.register(createMcpOAuthAuthProvider(db ? { db } : {}));
     registered.push("mcp_oauth");
   }
   reg.register(createPortalTokenProvider(db ? { db } : {}));
   registered.push("portal_token");
-  // The exchanged token (RFC 8693, minted from an API key) sits right before
-  // the key: it is a JWT with its own `typ`, so the check is a header decode.
   reg.register(createTokenExchangeProvider(db ? { db } : {}));
   registered.push("token_exchange");
   reg.register(createApiKeyProvider(db ? { db } : {}));
   registered.push("api_key");
-  // The `subkit_session` cookie, LAST: it only reads a cookie, so it costs a
-  // token-bearing request nothing and can never shadow one.
-  //
-  // Unconditional on purpose. The login funnel mints this cookie on every path
-  // (API-key paste form and OIDC callback alike), but the only resolver used to
-  // live inside the OIDC provider — so on the default api_key-only config the
-  // middleware ignored it and a freshly logged-in human was anonymous to every
-  // route. That is what made the approval portal record `granted_by_user_id:
-  // NULL` for every grant.
   reg.register(createBrowserSessionProvider(db ? { db } : {}));
   registered.push("browser_session");
 
@@ -208,28 +164,17 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   const app = createOpenApiApp();
   const registry = opts.registry ?? buildDefaultRegistry(opts.db);
 
-  // Order matters: trace -> logging -> metrics -> error wrap -> db -> auth -> anonymous
-  // rate-limit -> routes. The limiter must see the resolved principal so authenticated
-  // cockpit/API reads do not consume the shared anonymous per-IP budget.
   app.use("*", traceMiddleware());
   app.use("*", loggingMiddleware());
   app.use("*", metricsMiddleware());
   app.use("*", errorMiddleware());
 
-  // Hono's default onError resolves before middleware catch blocks see
-  // the exception, so map known envelopes here too. Note: onError MUST
-  // return a Response.
   app.onError((err, c) => {
     const traceId = c.get("trace_id") ?? null;
     const principal = c.get("principal") as { tenant_id?: string } | undefined;
     const path = new URL(c.req.url).pathname;
     const knownResponse = mapKnownErrorResponse(c, err);
     if (knownResponse) return knownResponse;
-    // Unhandled / non-HttpError. Log the full diagnostic AND write the
-    // error ring — the middleware's catch never sees this path because
-    // Hono's router resolves the onError handler first. Without the
-    // ring write, the 500 is invisible to /v1/diagnostics/errors which
-    // is exactly where operators look.
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? (err.stack ?? null) : null;
     logger.error({
@@ -270,7 +215,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       await next();
     });
   } else {
-    // Lazy bind to the shared pool.
     app.use("*", async (c, next) => {
       const { getDb } = await import("../db/client.ts");
       c.set("db", getDb());
@@ -290,10 +234,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
-  // Before the binary route: that one owns `/install/{asset}` and answers 404
-  // for any asset it does not know, which on 6.25.0 in production swallowed
-  // `/install/skill` while the unit test, registering the skill route alone,
-  // stayed green. install-skill.test.ts now goes through createApp().
   registerInstallSkillRoute(app);
   registerInstallBinaryRoute(app);
   registerSetupRoute(app);
@@ -320,9 +260,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerLoginRoutes(app);
   registerCockpitIdentityRoutes(app);
   registerMcpOAuthRoutes(app);
-  // Authenticated admin surface for platform-global OAuth clients.
-  // Placed after the unauthenticated bootstrap set (registerMcpOAuthRoutes)
-  // to make the registration order clear: bootstrap first, then admin.
   registerOAuthClientAdminRoutes(app);
   registerWhoamiRoute(app);
   registerEffectivePermissionsRoute(app);
@@ -342,8 +279,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     enqueue:
       opts.agentSessionEnqueue ??
       (async (job: AgentSessionAnalyzeJob) => {
-        // Lazily resolved like chatEnqueue: boot order stays intact and
-        // tests that don't start a boss inject their own stub.
         await (opts.boss ?? getBoss()).send(AGENT_SESSION_ANALYZE_QUEUE, job);
       }),
   });
@@ -370,9 +305,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     enqueue:
       opts.chatEnqueue ??
       (async (job: ChatEventJob) => {
-        // getBoss() is resolved lazily at request time so the engine
-        // boot order (boss start → migrations → http listen) stays
-        // intact; tests that don't start a boss don't hit this path.
         await (opts.boss ?? getBoss()).send(CHAT_EVENT_QUEUE, job);
       }),
   });
@@ -380,10 +312,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerChatIdentityRoutes(app);
   registerChatSpaceRoutes(app);
   registerSubscriptionRoutes(app);
-  // GET/POST /v1/tool-approvals/decide are deliberately NOT gated by
-  // requirePermission: the approver is a human with a browser and no API key.
-  // Authentication is the single-use `skag_…` grant token, resolved inside the
-  // handlers. Same discipline as the credential-setup and OAuth callback routes.
   registerToolApprovalRoutes(app);
   registerNotificationRoutes(app);
   registerEventRoutes(app);
@@ -394,14 +322,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerMcpHttpRoutes(app);
   registerCockpitRoutes(app);
 
-  // OpenAPI document
   app.doc31("/openapi.json", {
     openapi: "3.1.0",
     info: OPENAPI_INFO,
   });
 
-  // Inject security schemes manually because @hono/zod-openapi's `doc()`
-  // does not accept a `components` block in this version.
   app.openAPIRegistry.registerComponent(
     "securitySchemes",
     "bearerAuth",
@@ -414,11 +339,6 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
     SECURITY_SCHEMES.browserSession,
   );
 
-  // Scalar UI. The page loads the Scalar bundle from jsdelivr; scope a
-  // Content-Security-Policy to this response so the API origin can't be
-  // turned into an arbitrary-script host — script/style are limited to
-  // self + the Scalar CDN, connect to self (for /openapi.json), and the
-  // page may not be framed.
   app.get("/docs", (c) => {
     c.header(
       "Content-Security-Policy",

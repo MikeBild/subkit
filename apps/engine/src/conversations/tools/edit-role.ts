@@ -1,11 +1,3 @@
-// edit_role — patch a role's metadata + permission set in a single
-// call. Built-in roles are
-// rejected with `builtin_immutable` (the underlying service throws).
-//
-// Confirmation: this is a `tenant_write` tool — the gate is enforced
-// at the higher policy layer (confirm_before_execution by default for
-// tenant_write tools touching identity / RBAC).
-
 import { z } from "@hono/zod-openapi";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -25,17 +17,12 @@ const inputSchema = z
     role_id: z.string().uuid(),
     name: z.string().min(1).max(100).optional(),
     description: z.string().max(1000).nullable().optional(),
-    /** Replace the entire permission set in one atomic patch. The
-     *  diff vs. current is computed inside the tool — operators
-     *  don't need to know which permissions to add vs. revoke. */
     permissions: z
       .array(z.string().min(1))
       .optional()
       .describe(
         "Full replacement permission list. Diff vs. current is applied: missing → revoked, added → granted.",
       ),
-    /** Targeted add/remove when the operator wants to nudge a single
-     *  permission without re-stating the whole list. */
     add_permissions: z.array(z.string().min(1)).optional(),
     remove_permissions: z.array(z.string().min(1)).optional(),
   })
@@ -62,14 +49,10 @@ export const editRoleTool: ConversationTool = {
     if (args.description !== undefined) metadataPatch.description = args.description;
 
     try {
-      // Patch metadata first if any changes were supplied. This also
-      // throws built-in / not-found before we touch permissions.
       if (Object.keys(metadataPatch).length > 0) {
         await updateRole(ctx.db, ctx.tenant_id, args.role_id, metadataPatch);
       }
 
-      // Permission diff. `permissions` (full replacement) wins over
-      // add/remove when both are supplied.
       const current = new Set(await listRolePermissions(ctx.db, args.role_id));
       const granted: string[] = [];
       const revoked: string[] = [];

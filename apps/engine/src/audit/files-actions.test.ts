@@ -1,8 +1,3 @@
-// Audit action vocabulary test for the unified files resource.
-//
-// Pins the string values of every FILE_* action so a rename or a typo
-// in types.ts produces a test failure rather than silent audit-log drift.
-
 import { describe, expect, test } from "bun:test";
 import { AuditAction, FILE_AUDIT_ACTIONS } from "./types.ts";
 
@@ -48,11 +43,6 @@ describe("FILE_* audit actions", () => {
       .filter(([, v]) => String(v).startsWith("file."))
       .map(([, v]) => v);
 
-    // Set equality (not `toContain`) so the test fails when a NEW
-    // FILE_* action lands without being declared here. Catches
-    // vocabulary drift: a future `FILE_RESTORED` / `FILE_REHASHED`
-    // addition forces the dev to extend this list, which forces a
-    // review-pass on SIEM filters that scan on the FILE_* prefix.
     expect(new Set(fileActions)).toEqual(
       new Set([
         "file.created",
@@ -71,11 +61,6 @@ describe("FILE_* audit actions", () => {
   });
 
   test("FILE_AUDIT_ACTIONS matches the file.* prefix membership", () => {
-    // The declarative set should equal the prefix-derived set so a
-    // future addition that updates one but not the other fails loudly.
-    // Downstream SIEM / MCP filters import `FILE_AUDIT_ACTIONS` instead
-    // of re-deriving the prefix grammar inline — this assertion keeps
-    // the two views from drifting.
     const prefixMatched = new Set(
       Object.values(AuditAction).filter((v) => String(v).startsWith("file.")),
     );

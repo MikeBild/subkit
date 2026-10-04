@@ -14,8 +14,6 @@ function makeClient() {
   });
 }
 
-// ---------- query ----------
-
 const queryCmd = defineCommand({
   meta: { name: "query", description: "Filter the audit log" },
   args: {
@@ -66,8 +64,6 @@ const queryCmd = defineCommand({
   },
 });
 
-// ---------- show ----------
-
 const showCmd = defineCommand({
   meta: { name: "show", description: "Fetch one audit event by id" },
   args: { id: { type: "positional", required: true, description: "Audit event id" } },
@@ -80,8 +76,6 @@ const showCmd = defineCommand({
     }
   },
 });
-
-// ---------- export ----------
 
 const exportCmd = defineCommand({
   meta: { name: "export", description: "Stream audit log as NDJSON to stdout or a file" },
@@ -137,14 +131,6 @@ const exportCmd = defineCommand({
   },
 });
 
-// ---------- root ----------
-
-// There is no `tail`. It advertised "Follow new audit events via SSE stream"
-// and called `GET /v1/audit-log/stream`, a route registered nowhere — the
-// engine only serves the list, the single entry, and `export.ndjson`
-// (apps/engine/src/http/routes/audit-log.ts). Every invocation 404'd, so the
-// subcommand is deleted rather than pointed at a substitute: `query` answers
-// "what happened", `export` streams the log out.
 export const auditCommand = defineCommand({
   meta: { name: "audit", description: "Query the append-only audit log" },
   subCommands: { query: queryCmd, show: showCmd, export: exportCmd },

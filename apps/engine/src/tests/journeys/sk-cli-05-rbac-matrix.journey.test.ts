@@ -1,30 +1,3 @@
-// User story: As a platform operator, I need every built-in role to
-// grant exactly the conversation:*, memory:*, and mcp:* permissions
-// the sk-cli rollout requires — no more, no less. This file is the
-// guardrail against silent regressions in the RBAC seed map that
-// would either lock endusers out of chat or over-grant commit rights
-// to portal-token principals.
-//
-// Acceptance criteria:
-//
-//   AC1. admin — allowed every new conversation:*/memory:*/mcp:* perm.
-//   AC2. member — allowed every new conversation:*/memory:*/mcp:* perm.
-//   AC3. enduser — allowed conversation:read/write/cancel/list; denied
-//        conversation:approve, conversation:commit, memory:write,
-//        mcp:read (endusers chat against approved workflows only, they
-//        cannot approve their own drafts, commit, attach memory, or
-//        introspect MCP).
-//   AC4. portal_token_user — allowed conversation:read/write/cancel;
-//        denied conversation:list, conversation:approve,
-//        conversation:commit, memory:write, mcp:read.
-//   AC5. metrics_scraper — denied every new perm (machine role, not a
-//        chat participant).
-//
-// Audit coverage:
-//   - policy.denied rows are not asserted here — the /rbac/can endpoint
-//     does not emit denials, only the middleware does. A separate audit
-//     journey asserts the middleware contract.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { users } from "../../db/schema/index.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -50,11 +23,6 @@ const NEW_PERMISSIONS = [
 
 type NewPermission = (typeof NEW_PERMISSIONS)[number];
 
-/**
- * Expected allow/deny decisions for every (role, permission) pair.
- * Hand-maintained; the test fails loudly if this map and the seeder
- * drift apart.
- */
 const EXPECTED: Record<string, Record<NewPermission, boolean>> = {
   admin: {
     "conversation:read": true,
@@ -109,24 +77,18 @@ const EXPECTED: Record<string, Record<NewPermission, boolean>> = {
 };
 
 describe("journey: sk-cli rbac matrix", () => {
-  // Per-role user rows. Admin is the journey user itself.
   const users_by_role: Record<string, string> = {};
 
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-05-rbac-matrix");
     users_by_role.admin = ctx.userId;
 
-    // For every non-admin built-in role, seed a dedicated user row and
-    // pin role_id so the evaluator sees the exact role we intend to test.
     for (const roleName of ["member", "enduser", "portal_token_user", "metrics_scraper"] as const) {
       const [u] = await ctx.db
         .insert(users)
         .values({
           tenant_id: ctx.tenantId,
           email: `${roleName}@sk-cli-05.test`,
-          // The legacy enum column is constrained to admin/member/enduser,
-          // so we pick the closest legacy value for rows whose built-in
-          // role has no enum equivalent. The evaluator only reads role_id.
           role_id: ctx.rbacRoleIds[roleName],
         })
         .returning();

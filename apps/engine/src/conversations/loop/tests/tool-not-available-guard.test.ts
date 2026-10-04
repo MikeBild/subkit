@@ -77,8 +77,6 @@ describe("detectToolHallucinatedAbsence", () => {
       assistantText: "the foo tool is not available",
       palette: new Set(["foo"]),
     });
-    // `foo` is too short to be in the candidate set; the regex
-    // requires ≥ 4 chars to avoid e.g. "the env tool" false positives.
     expect(v.hallucinated).toBe(false);
   });
 

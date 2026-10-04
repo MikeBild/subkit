@@ -1,11 +1,3 @@
-// Persistence refactor sanity check.
-//
-// `saveConnectorAtomic` (in persistence/save-connector.ts) and the
-// `save_connector_draft` tool wrapper must produce the same DB state
-// for the same input. This test exercises both paths against
-// equivalent draft snapshots and asserts the resulting connector +
-// credential rows are equivalent (modulo the audit `source` tag).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { connectors, conversations, credentials, tenants } from "../../db/schema/index.ts";
@@ -110,7 +102,6 @@ function buildToolCtx(conversation_id: string, draftRef: { current: DraftDocumen
 
 describe("persistence/save-connector vs tool wrapper", () => {
   test("both paths produce identical connector + credential rows", async () => {
-    // Path A: tool wrapper.
     const convA = await seedConversation();
     const draftRefA = { current: readyDraft("ps-tool") };
     const resA = await saveConnectorDraftTool.execute(buildToolCtx(convA, draftRefA), {
@@ -120,7 +111,6 @@ describe("persistence/save-connector vs tool wrapper", () => {
     expect(resA.ok).toBe(true);
     const idA = (resA.data as { connector: { id: string } }).connector.id;
 
-    // Path B: direct call to saveConnectorAtomic.
     const convB = await seedConversation();
     const draftRefB = { current: readyDraft("ps-direct") };
     const resB = await saveConnectorAtomic({
@@ -131,8 +121,6 @@ describe("persistence/save-connector vs tool wrapper", () => {
     expect(resB.ok).toBe(true);
     const idB = (resB.data as { connector: { id: string } }).connector.id;
 
-    // Connector rows match in shape (different ids/slugs, but same
-    // driver + environment + auth_type + base_url).
     const [connA] = await ctx.db
       .select()
       .from(connectors)
@@ -146,7 +134,6 @@ describe("persistence/save-connector vs tool wrapper", () => {
     expect(connA?.auth_type).toBe(connB?.auth_type);
     expect(connA?.base_url).toBe(connB?.base_url);
 
-    // Credential rows match in shape.
     const [credA] = await ctx.db
       .select()
       .from(credentials)

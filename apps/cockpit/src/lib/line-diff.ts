@@ -5,7 +5,6 @@ export interface DiffLine {
   text: string;
 }
 
-/** Stable, human-readable rendering of a step shape so two versions compare line by line. */
 export function toDiffLines(value: unknown): string[] {
   if (value === null || value === undefined) return [];
   const text = typeof value === "string" ? value : JSON.stringify(value, sortedKeys(value), 2);
@@ -24,10 +23,6 @@ function sortedKeys(_value: unknown): (key: string, val: unknown) => unknown {
   };
 }
 
-/**
- * Longest-common-subsequence diff. Step shapes are a handful of lines, so the
- * quadratic table is cheaper than pulling in a diff dependency.
- */
 export function computeLineDiff(before: readonly string[], after: readonly string[]): DiffLine[] {
   const rows = before.length;
   const cols = after.length;
@@ -65,7 +60,6 @@ export function computeLineDiff(before: readonly string[], after: readonly strin
   return lines;
 }
 
-/** True when both sides render identically — the card then says so instead of showing an empty diff. */
 export function isUnchanged(lines: readonly DiffLine[]): boolean {
   return lines.every((line) => line.type === "context");
 }
@@ -75,12 +69,6 @@ export type ChangeView =
   | { kind: "patch"; lines: string[] }
   | { kind: "unchanged" };
 
-/**
- * Distinguishes the three kinds of emptiness a proposal can have: a real
- * before/after, a scan-found patch with no run to compare against, and a
- * proposal that genuinely changes nothing. Reporting the middle one as
- * "changes nothing" hides the change from the person deciding.
- */
 export function selectChangeView(input: {
   before: unknown;
   after: unknown;

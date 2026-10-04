@@ -1,10 +1,3 @@
-// GitHub native verifier.
-//
-// GitHub signs webhooks with `X-Hub-Signature-256: sha256=<hex>`. The
-// shared secret is the one configured in the GitHub repo/org webhook
-// settings. There is no timestamp header, so there is no replay
-// window — we lean on the `X-GitHub-Delivery` UUID for dedup.
-
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { logger } from "../../../logging/logger.ts";
 import type { VerifierResult, VerifyInput } from "./types.ts";

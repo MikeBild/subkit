@@ -1,10 +1,3 @@
-// Run-side execution surface — POST /v1/executions.
-//
-// The single runtime entry point. Discriminated union over `source`:
-//   • saved  → references a persisted workflow by id
-//   • draft  → inline WorkflowDef, no commit required
-//   • step   → single StepDef, one-step synthetic workflow
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
@@ -65,9 +58,6 @@ const runExecutionRoute = createRoute({
   },
 });
 
-/** Enduser allowlist gate for saved-workflow runs. Shared with the
- *  rerun route (rerun.ts), which targets the original execution's
- *  workflow. */
 export async function enforceSavedWorkflowAllowlist(
   principal: ResolvedPrincipal,
   workflow_id: string,
@@ -97,23 +87,13 @@ export async function enforceSavedWorkflowAllowlist(
       },
       db,
     );
-  } catch {
-    // Preserve the deny even if audit persistence fails.
-  }
+  } catch {}
 
   throw new HttpError(403, "forbidden", "workflow_not_in_allowlist", {
     hint: "your account's allowed_workflows grant does not include this workflow — ask an operator to add it (sk rbac / api-key allowed_workflows) or run a workflow you are granted",
   });
 }
 
-/** The origin a run started over HTTP is recorded under. It comes from who
- *  authenticated the request — a verified cockpit session is "ui" — never
- *  from what the body claims. Only when the context says no more than "a key
- *  called the API" may the caller name the program holding it ("cli") — and
- *  only when the credential really is an API key. An MCP OAuth token or a
- *  browser session without the cockpit header also reads as "api" here, and
- *  none of them is the CLI; letting them say so would put a label on a run
- *  that no credential behind it can back. Shared with the rerun route. */
 export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource): RequestSource {
   const verified = readRequestSource(c) ?? "api";
   if (verified !== "api") return verified;
@@ -131,9 +111,6 @@ async function enforceWorkflowAllowlist(
 }
 
 export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
-  // Run-side RBAC: read for the index isn't relevant here, but POST
-  // gates per-tenant `workflow:run`, with resource-scoped grant when
-  // the body carries a workflow_id.
   app.use("/v1/executions", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("execution:read")(c, next);
     if (c.req.method === "POST") {
@@ -142,12 +119,8 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         const savedTarget = z
           .object({ source: z.literal("saved"), workflow_id: z.string().uuid() })
           .safeParse(await c.req.json().catch(() => null));
-        // A resource grant authorizes that saved workflow only. Inline bodies
-        // must not borrow it through an otherwise ignored workflow_id field.
         workflowId = savedTarget.success ? savedTarget.data.workflow_id : undefined;
-      } catch {
-        // Body may be missing / invalid — fall through to the unscoped check.
-      }
+      } catch {}
       if (workflowId) {
         const targetId = workflowId;
         return requirePermission("workflow:run", () => ({
@@ -174,8 +147,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
     await enforceWorkflowAllowlist(principal, body, db);
     const request_source = runRequestSource(c, body.request_source);
 
-    // Both live reservations and preparation replays validate the full stored
-    // boundary. A known key alone must not release a different workflow.
     const idempotencyKey =
       body.source === "saved"
         ? (body.idempotency_key ?? c.req.header("idempotency-key")?.trim() ?? null)
@@ -186,7 +157,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       });
     }
 
-    // Resolve execution_mode from the `x-subkit-environment` header.
     const envHeader = c.req.header("x-subkit-environment");
     let execution_mode: ExecutionMode = "dev";
     if (envHeader === "dev" || envHeader === "prod") execution_mode = envHeader;
@@ -200,9 +170,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           },
         );
       }
-      // Authorization is product-local: the id selects a stored human grant,
-      // not a claim from the calling agent. Admission reserves atomically and
-      // validates idempotent retries against the original complete boundary.
       let admitted: Awaited<ReturnType<typeof admitWorkflowRun>>;
       try {
         admitted = await admitWorkflowRun(
@@ -242,8 +209,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         );
       }
       if (body.async) {
-        // A queue outage leaves the SAME reserved run retryable. Re-enqueueing
-        // never spends another allowance; worker startup claims queued rows.
         try {
           await (c.get("boss") ?? getBoss()).send(
             EXECUTION_RUN_QUEUE,
@@ -259,8 +224,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             { id: admitted.execution_id },
           );
         } catch (error) {
-          // Without a caller key there is no safe retry handle. Do not strand
-          // an undiscoverable queued row; a reservation is never refunded.
           if (!idempotencyKey)
             await finalizeExecution(
               db,
@@ -286,9 +249,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           202,
         );
       }
-      // A refusal before the first step — a connector the prepared run cannot
-      // use — is the same kind of answer as one at admission: a 409 that
-      // names what to fix, never a 500. The engine has already failed the row.
       let result: Awaited<ReturnType<typeof runExecution>>;
       try {
         result = await runExecution({

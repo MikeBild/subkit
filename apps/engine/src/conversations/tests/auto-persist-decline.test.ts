@@ -1,10 +1,3 @@
-// Auto-persist decline path.
-//
-// Operator declines `ask_user_confirm` (or submits an empty form) →
-// no DB write, but a synthetic tool-result with
-// `error_code: "user_declined"` (or `"empty_submission"`) is injected
-// so the LLM's next turn carries the signal.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -147,7 +140,6 @@ describe("auto-persist — decline path", () => {
     expect(dispatch.synthetic_result?.error_code).toBe("user_declined");
     expect(dispatch.synthetic_result?.next_best_actions).toContain("cannot_help");
 
-    // No connector or credential rows exist.
     const conn = await ctx.db
       .select()
       .from(connectors)
@@ -159,7 +151,6 @@ describe("auto-persist — decline path", () => {
       .where(eq(credentials.tenant_id, tenant_id));
     expect(cred).toHaveLength(0);
 
-    // Synthetic tool-call row carries the decline payload.
     const calls = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -171,16 +162,6 @@ describe("auto-persist — decline path", () => {
   });
 
   test("ask_user_confirm portal-approved {approved:true} → write gate clears (NOT user_declined)", async () => {
-    // Regression for the portal-approval bug: the web portal posts
-    // `{ approved: true }`, not `{ confirmed: true }`. The decline gate
-    // must read it as an approval and run the underlying write. Pre-fix
-    // this exact shape was turned into a `user_declined` synthetic and
-    // the save_workflow_draft / save_connector_draft commit was silently
-    // skipped. We assert the gate CLEARED — the dispatcher reached the
-    // real write path — by checking the synthetic is not a decline.
-    // (The save then reports `credential_required` because the real
-    // respondElicitation flow caches the credential before dispatch;
-    // that plumbing is orthogonal to the decline-gate fix under test.)
     const conversation_id = await seedConversationWithDraft("ap-approved");
     const elicitation = await insertCarrier({
       conversation_id,
@@ -211,8 +192,6 @@ describe("auto-persist — decline path", () => {
     });
 
     expect(dispatch.dispatched).toBe(true);
-    // The decisive assertion: the portal approval was NOT mis-read as a
-    // decline. Pre-fix this was exactly `user_declined`.
     expect(dispatch.synthetic_result?.error_code).not.toBe("user_declined");
     expect(dispatch.synthetic_result?.tool).toBe("save_connector_draft");
   });

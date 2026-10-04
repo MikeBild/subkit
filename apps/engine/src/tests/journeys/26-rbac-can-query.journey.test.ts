@@ -1,12 +1,3 @@
-// User story: As an operator, I want to ask `POST /v1/rbac/can`
-// directly so my dashboards and CI can verify permission decisions
-// without minting keys and hitting every route.
-// Acceptance criteria:
-//   - AC1-AC15: A matrix of (principal, permission, resource) cases
-//               produces the expected allow/deny decisions.
-//   - AC16: Built-in admin always wins.
-// Spec refs: gap-pass-2 C4 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
 import { roles, users } from "../../db/schema/index.ts";
@@ -91,37 +82,27 @@ describe("journey: rbac can query", () => {
   }
 
   test("matrix of decisions", async () => {
-    // AC16: admin short-circuit.
     expect((await can(adminUserId, "workflow:run")).allow).toBe(true);
     expect((await can(adminUserId, "rbac:write")).allow).toBe(true);
     expect((await can(adminUserId, "audit:read")).allow).toBe(true);
 
-    // Member positive cases.
     expect((await can(memberUserId, "workflow:read")).allow).toBe(true);
     expect((await can(memberUserId, "workflow:run")).allow).toBe(true);
     expect((await can(memberUserId, "execution:read")).allow).toBe(true);
     expect((await can(memberUserId, "connector:read")).allow).toBe(true);
     expect((await can(memberUserId, "skill:read")).allow).toBe(true);
-    // Members manage the lifecycle of operational resources they
-    // create — including delete. Pre-fix the blanket :delete deny
-    // produced session 0aed284f's "I can't delete things I just
-    // created" failure mode.
     expect((await can(memberUserId, "workflow:delete")).allow).toBe(true);
     expect((await can(memberUserId, "connector:delete")).allow).toBe(true);
 
-    // Member deny cases — secrets, RBAC mutations, audit reads,
-    // api_key lifecycle stay admin-only.
     expect((await can(memberUserId, "credential:delete")).allow).toBe(false);
     expect((await can(memberUserId, "credential:write")).allow).toBe(false);
     expect((await can(memberUserId, "rbac:write")).allow).toBe(false);
     expect((await can(memberUserId, "audit:read")).allow).toBe(false);
     expect((await can(memberUserId, "api_key:revoke")).allow).toBe(false);
 
-    // Bare role deny cases.
     expect((await can(bareUserId, "workflow:read")).allow).toBe(false);
     expect((await can(bareUserId, "rbac:read")).allow).toBe(false);
 
-    // Resource-scoped lookups.
     const wfRead = await can(memberUserId, "workflow:read", {
       type: "workflow",
       id: workflowId,

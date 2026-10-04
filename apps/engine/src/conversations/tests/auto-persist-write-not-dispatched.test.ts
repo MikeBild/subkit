@@ -1,18 +1,3 @@
-// Auto-persist honest-failure path (RC3 — "reported ≠ written").
-//
-// An `ask_user_confirm` whose `kind` declares a WRITE (external_write /
-// save_workflow_draft) that the operator APPROVED, yet carries no
-// commit_intent the harness can dispatch, must NOT silently no-op.
-// Pre-fix the harness wrote nothing and gave the LLM no signal, so it
-// narrated success it never achieved (render-upload-slides: a
-// description edit the model mis-tagged `kind:external_write` after
-// drifting). Now the dispatcher injects a synthetic
-// `error_code:"write_not_dispatched"` so the next turn must recover.
-//
-// Plain `generic` confirms and declined/ambiguous answers keep the
-// silent skip — only an approved write-shaped confirm is a write the
-// operator expected to land.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -93,7 +78,6 @@ describe("auto-persist — write_not_dispatched honest failure", () => {
     expect(dispatch.synthetic_result?.error_code).toBe("write_not_dispatched");
     expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
 
-    // The signal reached the conversation timeline so the next turn sees it.
     const calls = await ctx.db
       .select()
       .from(conversationToolCalls)
@@ -106,7 +90,6 @@ describe("auto-persist — write_not_dispatched honest failure", () => {
 
   test("approved save_workflow_draft-kind confirm with NO commit_intent → write_not_dispatched", async () => {
     const conversation_id = await seedConversation();
-    // Portal spelling `{approved:true}` must read as confirmed too.
     const elicitation = await insertConfirm({
       conversation_id,
       input: { question: "Commit the workflow?", kind: "save_workflow_draft" },

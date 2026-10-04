@@ -8,7 +8,6 @@ import { Button, type CockpitColumn, ContextHelp, Section } from "@/components/c
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
 
-/** A secret version somebody prepared and nobody has approved yet. */
 export type PreparedChange = {
   name: string;
   version: number;
@@ -26,15 +25,10 @@ interface ApprovalOutcome {
 
 const QUERY_KEY = ["admin", "prepared-changes"] as const;
 
-/** The settings path a secret name stands for, without the `settings.` stem the vault adds. */
 export function preparedChangeTarget(name: string): string {
   return name.replace(/^settings\./, "").replace(/^tenants\.[^.]+\.settings\./, "");
 }
 
-/**
- * "Vorbereitete Änderungen": what waits for a person on this installation.
- * Two buttons, no field — the value is already stored and is never shown.
- */
 export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();

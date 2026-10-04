@@ -1,20 +1,9 @@
-// Characterization snapshot — policy decision matrix.
-//
-// Pins the EXACT ExecutionMode that `resolveToolMode()`
-// (conversations/tool-policies.ts) returns for a representative set of
-// tools today. `policyDecide()` — the ONE gate every surface calls —
-// consults `resolveToolMode` plus the confirm marker, so locking the
-// resolver locks every surface. Any drift fails this snapshot, which is
-// what we want.
-
 import { describe, expect, test } from "bun:test";
 import { resolveToolMode, type ToolPolicies } from "../../conversations/tool-policies.ts";
 
 const EMPTY_OVERRIDES: ToolPolicies = {};
 
 describe("policy-gate snapshot — resolveToolMode characterization", () => {
-  // ---- tenant_read tools — must be no_confirm regardless of input ----
-
   test("test_connector tenant_read → no_confirm (any input)", () => {
     expect(
       resolveToolMode({
@@ -36,8 +25,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
       }),
     ).toBe("no_confirm");
   });
-
-  // ---- probe_connector — escalates on prod + non-GET ----
 
   test("probe_connector dev GET → no_confirm", () => {
     expect(
@@ -73,8 +60,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
   });
 
   test("probe_connector dev POST → confirm_before_execution (development does not grant writes)", () => {
-    // This request is not a proven read. A diagnostic label must not authorize
-    // creating an order, even against a development connector.
     expect(
       resolveToolMode({
         tool: "probe_connector",
@@ -108,8 +93,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("confirm_before_execution");
   });
 
-  // ---- draft_write tools — save_workflow_draft is the canonical destructive gate ----
-
   test("save_workflow_draft draft_write → confirm_before_execution (default)", () => {
     expect(
       resolveToolMode({
@@ -131,8 +114,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
       }),
     ).toBe("no_confirm");
   });
-
-  // ---- permission_mode overrides ----
 
   test("permission_mode=yolo → no_confirm for save_workflow_draft (escape hatch honored)", () => {
     expect(
@@ -158,8 +139,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
     ).toBe("confirm_before_execution");
   });
 
-  // ---- per-tool overrides win over defaults ----
-
   test("per-tool overrides shadow the default mode", () => {
     expect(
       resolveToolMode({
@@ -170,8 +149,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
       }),
     ).toBe("no_confirm");
   });
-
-  // ---- unknown tool falls back to category default ----
 
   test("unknown tool tenant_read → no_confirm (category default, permissive)", () => {
     expect(
@@ -185,9 +162,6 @@ describe("policy-gate snapshot — resolveToolMode characterization", () => {
   });
 
   test("unknown tool tenant_write → confirm_before_execution (category default IS confirm)", () => {
-    // Pins the actual category-default: tenant_write IS gated by default.
-    // The policyDecide() extraction must preserve this so a new tenant_write
-    // tool added without an explicit policy entry still demands confirm.
     expect(
       resolveToolMode({
         tool: "imaginary_tool_xyz",

@@ -1,10 +1,3 @@
-// Unit tests for MCP-standard tool annotations (Tool.annotations).
-//
-// These hints are the signal a generic MCP client reads to decide whether a
-// tool may be invoked without its own per-call gate. A regression here
-// re-blocks the write-classified authoring tools on strict clients (the
-// conversation_start "tool security check" failure).
-
 import { describe, expect, test } from "bun:test";
 import { listConversationTools } from "./conversations.ts";
 import {
@@ -33,8 +26,6 @@ describe("buildToolAnnotations", () => {
   });
 
   test("write tools are not read-only AND are advertised destructive (spec default)", () => {
-    // A non-read-only tool defaults to destructiveHint:true in MCP. Asserting
-    // false here (the old bug) let claude.ai file writes under "always allow".
     const a = buildToolAnnotations("tenant_write", "save_settings");
     expect(a.readOnlyHint).toBe(false);
     expect(a.idempotentHint).toBe(false);
@@ -42,9 +33,6 @@ describe("buildToolAnnotations", () => {
   });
 
   test("write-capable tools mislabeled tenant_read are advertised as writes", () => {
-    // call_connector / authenticate / self_healing_scan are tenant_read for
-    // VISIBILITY but mutate state — they must NOT advertise read-only, or a
-    // model fires connector PATCH/DELETE with no approval prompt.
     for (const name of ["call_connector", "authenticate", "self_healing_scan"]) {
       const a = buildToolAnnotations("tenant_read", name);
       expect(a.readOnlyHint).toBe(false);
@@ -53,7 +41,6 @@ describe("buildToolAnnotations", () => {
   });
 
   test("additive session-only writes are not read-only but not destructive", () => {
-    // The authoring loop must not be gated on every turn.
     for (const name of [
       "conversation_start",
       "conversation_append",
@@ -137,9 +124,6 @@ describe("listConversationTools annotations", () => {
   });
 
   test("conversation_start description names no engine-internal tools (strict clients call phantom tools)", () => {
-    // A strict client reads identifiers in a description as
-    // callable tool names. Naming the engine-internal authoring steps made it
-    // try to invoke a non-existent `author_workflow` tool and abort.
     const desc = byName.get("conversation_start")?.description ?? "";
     for (const phantom of ["author_workflow", "edit_workflow_patch", "dry_run_workflow"]) {
       expect(desc).not.toContain(phantom);

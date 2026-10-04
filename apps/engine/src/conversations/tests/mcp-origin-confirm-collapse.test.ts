@@ -1,6 +1,3 @@
-// Conversation gates use local decisions on every transport. Catalogue hints
-// never grant a call; auto preparation remains autonomous through the resolver.
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
@@ -73,9 +70,6 @@ function toolCtxFor(conversation_id: string, surface: ToolContext["surface"]): T
   };
 }
 
-// Drive a single tool through the SAME per-tool wrapper `wrapTools`
-// installs for a turn on the given surface, and return the wrapped
-// execute result + emitted events.
 async function runGatedTool(
   conversation_id: string,
   surface: ToolContext["surface"],
@@ -174,7 +168,6 @@ describe("conversation confirmation — no transport bypass", () => {
     expect(pending).toHaveLength(1);
     expect(pending[0]?.tool_name).toBe("ask_user_confirm");
 
-    // No collapse audit row for a kept pause.
     const audits = await ctx.testDb.db
       .select()
       .from(auditLog)

@@ -1,13 +1,3 @@
-// Contract: the terminal `citations` stream frame — engine Zod schema
-// (CitationsEventSchema) and the cli-core TurnEvent variant it feeds — stay
-// in lockstep.
-//
-// Honest scope note: citations (like `next_suggestion`) ride the SSE
-// `events` array, typed `z.array(z.any())` at the OpenAPI boundary, so
-// neither appears as an OpenAPI component (verified: NextSuggestionEvent is
-// not a component either). The real contract for these frames is the
-// engine-Zod ↔ cli-core-type agreement pinned below, not the OpenAPI spec.
-
 import { describe, expect, test } from "bun:test";
 import {
   CitationSchema,
@@ -39,7 +29,6 @@ describe("contract · citations frame engine↔cli-core lockstep", () => {
       parent_message_id: "a1",
     };
     expect(CitationsEventSchema.safeParse(frame).success).toBe(true);
-    // parent_message_id is optional (client falls back to the last message).
     const { parent_message_id: _drop, ...noParent } = frame;
     expect(CitationsEventSchema.safeParse(noParent).success).toBe(true);
   });

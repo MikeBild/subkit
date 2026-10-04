@@ -1,8 +1,3 @@
-// Guards the declarative RBAC consolidation: the migrated write tools must
-// carry the exact `permission` descriptor their inline `can()` check used, and
-// the central gate must allow system/unauthenticated actors (null principal),
-// matching the pre-consolidation inline behaviour.
-
 import { describe, expect, it } from "bun:test";
 import { callConnectorTool } from "../call-connector.ts";
 import { analyzeKnowledgeSourceTool } from "../engine-api/writes/analyze-knowledge-source.ts";
@@ -134,7 +129,6 @@ describe("declarative RBAC descriptors on the migrated hold-out tools", () => {
     expect(callConnectorTool.permission?.action).toBe("connector:read");
     expect(callConnectorTool.permission?.resourceIdArg).toBe("connector_id");
     const denied = callConnectorTool.permission?.denyResult?.("connector:read", "nope");
-    // call_connector's structuredError nests error as {code,message}.
     expect(denied).toEqual({
       ok: false,
       data: { error: { code: "permission_denied", message: "nope" }, permission: "connector:read" },
@@ -145,8 +139,6 @@ describe("declarative RBAC descriptors on the migrated hold-out tools", () => {
     expect(requestConnectorReauthTool.permission?.action).toBe("connector:write");
     expect(typeof requestConnectorReauthTool.permission?.resolveResourceId).toBe("function");
     const denied = requestConnectorReauthTool.permission?.denyResult?.("connector:write", "nope");
-    // its structuredError is the top-level {error_code, message} form; the
-    // extra `permission` rides along at runtime (not part of the ToolResult type).
     expect(denied as Record<string, unknown>).toEqual({
       ok: false,
       error_code: "permission_denied",
@@ -190,23 +182,12 @@ describe("delete_workflow resolveResourceId — resolves the UUID before can()",
 });
 
 describe("restore_workflow_version carries a permission gate, not just a confirm gate", () => {
-  // Regression: the tool is `tenant_write` and called the service directly with
-  // no `permission` descriptor and no RBAC_OVERRIDES entry. The dispatcher only
-  // calls can() when rbac is set, so its ONLY gate was the confirm policy — a
-  // human gate standing where the HTTP route (`workflow:restore`) enforces a
-  // permission one. Confirming is not the same as being allowed.
   it("declares workflow:restore on the workflow resource", () => {
     expect(restoreWorkflowVersionTool.permission?.action).toBe("workflow:restore");
     expect(restoreWorkflowVersionTool.permission?.resourceType).toBe("workflow");
   });
 
   it("is also gated on the dispatcher path (MCP/admin), not only the LLM path", async () => {
-    // Two independent enforcement points: sdk-wrap/invoke.ts reads
-    // `tool.permission`, while the dispatcher reads `descriptor.rbac` built
-    // from RBAC_OVERRIDES. The provider calls tool.execute() directly, so a
-    // descriptor without rbac would leave the MCP surface ungated even though
-    // the conversation path is covered. The provider's own coverage rule says
-    // every tenant_write tool reachable from MCP needs an entry.
     const { conversationToolProvider } = await import("../../../tools/providers/conversation.ts");
     const descriptor = conversationToolProvider
       .list({ surface: "mcp", mcpMode: "admin" })
@@ -216,8 +197,6 @@ describe("restore_workflow_version carries a permission gate, not just a confirm
   });
 
   it("resolves the id rather than gating on a slug", () => {
-    // can() matches resource grants by exact id, so passing a slug through
-    // would produce a decision about a resource that does not exist.
     expect(typeof restoreWorkflowVersionTool.permission?.resolveResourceId).toBe("function");
     expect(restoreWorkflowVersionTool.permission?.resourceIdArg).toBeUndefined();
   });
@@ -253,8 +232,6 @@ describe("restore_workflow_version carries a permission gate, not just a confirm
     });
 
     it("returns null for an unknown slug so the gate defers to workflow_not_found", async () => {
-      // Deferring matters: a permission_denied here would misreport a typo as
-      // an authorization problem.
       expect(await resolve?.(dbReturning([]), { slug: "ghost", version: 1 })).toBeNull();
     });
 
@@ -267,8 +244,6 @@ describe("restore_workflow_version carries a permission gate, not just a confirm
 
 describe("checkToolPermission — null principal (system actor) is allowed", () => {
   it("returns allow without calling can() when the actor is system", async () => {
-    // engineClient.context with a system actor → resolveConversationPrincipal
-    // returns null → the gate allows (system work is trusted).
     const ctx = {
       db: {} as ToolContext["db"],
       tenant_id: "t1",

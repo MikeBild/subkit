@@ -1,11 +1,3 @@
-// Recorded-evaluation pass over `language: "javascript"` transforms
-// (Fix F). The authored code is a FUNCTION BODY executed in the same
-// QuickJS sandbox as production (`execution/steps/transform.ts` →
-// `runJs`), with the production context shape: one `input` value,
-// upstream data at `input.scope.<step_id>.data…`, workflow input at
-// `input.input`. Pure compute — zero egress (QuickJS has no host
-// globals), no LLM, no DB.
-
 import { describe, expect, test } from "bun:test";
 import { runRecordedEval } from "../../recorded-eval.ts";
 import { stepFingerprint } from "../../step-fingerprint.ts";
@@ -64,7 +56,6 @@ describe("runRecordedEval — javascript transform evaluation", () => {
     const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
     expect(finding?.status).toBe("ok");
     expect(finding?.value_preview).toEqual(["Ada", "Grace"]);
-    // The JS scope reference is resolved and classified like a JSONata one.
     const ref = report.scope_refs.find(
       (r) => r.site === "steps.shape.expression" && r.referenced_step_id === "fetch",
     );
@@ -95,10 +86,6 @@ describe("runRecordedEval — javascript transform evaluation", () => {
   });
 
   test("empty result over TRUNCATED evidence is non-blocking (against_truncated_evidence)", async () => {
-    // The Gmail divergence (F2): the preview showed `[]` because the
-    // upstream payload was offloaded/omitted in the recorded evidence, while
-    // the live run returned 174. An empty result over a stubbed payload is
-    // not a confirmed problem and must not block the commit gate.
     const fetch = fetchStep();
     const report = await runRecordedEval(
       {
@@ -120,8 +107,6 @@ describe("runRecordedEval — javascript transform evaluation", () => {
     const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
     expect(finding?.status).toBe("empty_result");
     expect(finding?.against_truncated_evidence).toBe(true);
-    // Must NOT block the gate, and must steer to a faithful re-run rather than
-    // a transform rewrite.
     expect(report.ok).toBe(true);
     expect(report.next_actions).toContain("dry_run_workflow");
     expect(report.next_actions).not.toContain("dry_run_transform");
@@ -211,7 +196,6 @@ describe("runRecordedEval — javascript transform evaluation", () => {
     const finding = report.expressions.find((f) => f.site === "steps.shape.expression");
     expect(finding?.status).toBe("empty_result");
     expect(finding?.path_candidates).toContain("input.scope.fetch.data.items");
-    // JS empty results do not recommend the JSONata path tool.
     expect(report.next_actions).toContain("dry_run_transform");
     expect(report.next_actions).not.toContain("suggest_jsonata_paths");
     expect(report.ok).toBe(false);

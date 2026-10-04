@@ -244,12 +244,9 @@ describe("categories", () => {
   });
 
   test("a workflow slugged like the prefix is not chipped inside a category token", () => {
-    // `@kategorie` is a prefix of `@kategorie/notion`; the slash continues
-    // the word, so the workflow's token does not match there.
     const text = `Zeig mir die Workflows in ${categoryMentionToken("notion")}`;
     expect(scanMentionTokens(text, [wf("kategorie")])).toEqual([]);
     expect(reconcileReferences(text, [wf("kategorie")])).toEqual([]);
-    // …and the same workflow mentioned on its own still is one.
     expect(scanMentionTokens("run @kategorie now", [wf("kategorie")])).toHaveLength(1);
   });
 

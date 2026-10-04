@@ -1,17 +1,3 @@
-// Tests for the request_connector_reauth conversation tool.
-//
-// Follows the call-connector.test.ts pattern: seeds connectors via direct DB
-// inserts, constructs a ToolContext via makeToolContext, and exercises the
-// tool's execute() function directly — no HTTP boundary.
-//
-// Coverage:
-//   - happy path: connector_id → ok:true, correct reauth fields returned.
-//   - slug resolution: slug → ok:true (resolved to connector_id internally).
-//   - neither id nor slug → invalid_input.
-//   - unknown slug → connector_not_found.
-//   - unknown connector_id (UUID not in DB) → connector_not_found.
-//   - needs_reauth flag reflected in data.needs_reauth.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { setConfigKey } from "../../config/loader.ts";
 import { connectors, conversations } from "../../db/schema/index.ts";
@@ -36,10 +22,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
 
 async function seedConnector(opts: {
   slug: string;
@@ -89,10 +71,6 @@ function makeToolContext(
   };
 }
 
-// ---------------------------------------------------------------------------
-// happy paths
-// ---------------------------------------------------------------------------
-
 describe("request_connector_reauth — happy path", () => {
   test("connector_id → ok:true with reauth fields", async () => {
     const { connector_id } = await seedConnector({ slug: "rr-happy-id" });
@@ -111,7 +89,6 @@ describe("request_connector_reauth — happy path", () => {
     expect(data.method === "oauth2" || data.method === "portal_setup").toBe(true);
     expect(typeof data.instructions).toBe("string");
     expect(data.instructions.length).toBeGreaterThan(0);
-    // needs_reauth reflects the current DB state (false for a healthy connector).
     expect(data.needs_reauth).toBe(false);
   });
 
@@ -125,7 +102,7 @@ describe("request_connector_reauth — happy path", () => {
     expect(result.ok).toBe(true);
     const data = result.data as { connector: string };
     expect(data.connector).toBe("rr-happy-slug");
-    void connector_id; // verified via slug match
+    void connector_id;
   });
 
   test("needs_reauth=true is reflected in the response data", async () => {
@@ -139,18 +116,9 @@ describe("request_connector_reauth — happy path", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// error envelopes
-// ---------------------------------------------------------------------------
-
 type ErrorResult = { ok: false; error_code?: string; message?: string };
 
 describe("request_connector_reauth — cognito USER_PASSWORD_AUTH", () => {
-  // Regression: a Cognito (cognito_user_password) connector must NOT get a
-  // browser authorization-code link — the password isn't stored, there is no
-  // authorization endpoint, and the dance throws "unexpected HTTP response
-  // status code", burning the grant and showing a misleading "link used up"
-  // page. It must route to the in-chat email+password re-issue instead.
   test("cognito_user_password → in-chat re-issue, never a browser reauth_url", async () => {
     const { connector_id } = await seedConnector({
       slug: "rr-cognito",
@@ -174,18 +142,12 @@ describe("request_connector_reauth — cognito USER_PASSWORD_AUTH", () => {
     expect(data.method).toBe("portal_setup");
     expect(data.mode).toBe("credential_re_issue");
     expect(data.grant_type).toBe("cognito_user_password");
-    // The bug was minting a browser link — assert there is none.
     expect("reauth_url" in data).toBe(false);
     expect(String(data.next_prompt).toLowerCase()).toContain("password");
   });
 });
 
 describe("request_connector_reauth — MCP surface routes to a secure setup URL (D7)", () => {
-  // Over MCP the in-chat ask_user_form credential re-issue is unreachable
-  // (a secret must never be collected as chat text). The non-OAuth path must
-  // instead mint a real single-use credential-setup grant URL
-  // (/v1/connectors/:id/credentials/setup?grant=sksg_…) and NOT bind a
-  // re-issue draft nor instruct ask_user_form.
   test("non-OAuth connector over MCP → URL elicitation pause, no URL in tool data", async () => {
     await setConfigKey("server.public_base_url", "https://engine.test");
     const { connector_id } = await seedConnector({ slug: "rr-mcp-bearer", auth_type: "bearer" });
@@ -211,7 +173,6 @@ describe("request_connector_reauth — MCP surface routes to a secure setup URL 
     );
     expect(pauseInput.single_use).toBe(true);
     expect(typeof pauseInput.expires_at).toBe("string");
-    // No in-chat form and no draft binding over MCP.
     expect("next_prompt" in data).toBe(false);
     expect(bound).toBe(false);
     expect((pauseInput.commit_intent as { kind?: string }).kind).toBe(

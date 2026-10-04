@@ -1,18 +1,3 @@
-// Authoring scenario (Fix E / CI mode): the `author_workflow` one-shot
-// pipeline contract. One goal in, against the deterministic mock LLM
-// provider:
-//
-//   - a schema-valid COMPLETE definition comes back (validation green),
-//   - JS-first: authored transforms keep `language: "javascript"` and
-//     the ONE generation prompt carries the verbatim JS function-body
-//     contract (`FUNCTION BODY`, `input.scope.<step_id>.data`,
-//     `input.input`) plus the item_var retirement,
-//   - the recorded-eval report is attached with zero compile errors,
-//   - the goal is stashed on the conversation draft (the preview judge
-//     reads it after dry_run),
-//   - `next` is exactly `dry_run_workflow`,
-//   - exactly ONE generation pass was spent, and zero live HTTP fired.
-
 import { runAuthoringPipeline } from "../../src/conversations/authoring-pipeline.ts";
 import { getMockProvider } from "../../src/llm/mock-provider.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
@@ -61,14 +46,12 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       `slug ${result.definition.slug} != ${input.expect.slug}`,
     );
 
-    // JS-first transform contract survives the pipeline verbatim.
     const transform = result.definition.steps.find((s) => s.kind === "transform");
     c.check(
       transform?.language === input.expect.transform_language,
       `authored transform language is ${String(transform?.language)}, expected ${input.expect.transform_language}`,
     );
 
-    // Recorded evaluation attached, expressions compiled.
     const compileErrors = result.recorded_eval.expressions.filter(
       (f) => f.status === "compile_error",
     );
@@ -77,7 +60,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       `recorded_eval reported compile errors: ${JSON.stringify(compileErrors)}`,
     );
 
-    // Goal stashed on the draft for the preview judge.
     const draft = toolCtx.current();
     c.check(
       (draft.workflow as { goal?: string } | undefined)?.goal === input.goal,
@@ -88,7 +70,6 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       "definition was not stashed as the conversation draft",
     );
 
-    // The ONE generation prompt carries the authoring contracts.
     const generateCalls = getMockProvider().calls.filter((call) => call.flow === "generate");
     c.check(generateCalls.length === 1, `expected 1 generate call, saw ${generateCalls.length}`);
     const prompt = generateCalls[0]?.last_user ?? "";

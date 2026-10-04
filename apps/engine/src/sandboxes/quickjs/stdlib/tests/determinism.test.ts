@@ -1,24 +1,11 @@
-// Determinism is tamper-proof: the host injects the deterministic
-// clock/seed as VM globals (`__sandbox_now__` / `__sandbox_seed__`) BEFORE
-// the stdlib installs. The stdlib must capture them ONCE into closure
-// consts and DELETE the writable globals — otherwise untrusted user JS
-// could overwrite them between `sk.now()` / `sk.uuid()` calls and corrupt
-// determinism (two calls in one run observing different clocks/seeds).
-//
-// These tests run real user JS inside the QuickJS sandbox via `runJs`,
-// exactly the path production transforms use.
-
 import { describe, expect, test } from "bun:test";
 import { runJs } from "../../runtime.ts";
 
-const FIXED_NOW = 1_717_000_000_000; // a fixed, non-zero instant
+const FIXED_NOW = 1_717_000_000_000;
 const SEED = "exec-abc:step-1";
 
 describe("sk.now()/sk.uuid() determinism is tamper-proof", () => {
   test("user code reassigning globalThis.__sandbox_now__ = 0 does NOT change sk.now()", async () => {
-    // The classic attack: stash now(), clobber the (formerly) backing
-    // global, then read now() again. With the capture-once + delete fix
-    // both reads return the injected instant.
     const code = `
       const before = sk.now();
       globalThis.__sandbox_now__ = 0;
@@ -60,9 +47,6 @@ describe("sk.now()/sk.uuid() determinism is tamper-proof", () => {
       input: {},
       clock: { now_ms: FIXED_NOW, seed: SEED },
     });
-    // A clean run with the same injected seed and no tampering must
-    // produce the identical first uuid — proving the global write was
-    // ignored.
     const clean = await runJs<string>({
       code: "return sk.uuid();",
       input: {},

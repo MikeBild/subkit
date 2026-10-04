@@ -1,27 +1,9 @@
-// Placeholder scanner — flags placeholder hosts, fake URLs, masked-key
-// templates and similar "fill-in-the-blank" markers that the assistant
-// has no business producing. Each match is one violation; the scanner
-// never deduplicates so the operator sees how many times the model
-// reached for a given placeholder.
-//
-// The blacklist is intentionally narrow: only patterns that have no
-// legitimate use in subkit's chat surface. False positives on quoted
-// example text inside docs are acceptable — the assistant should not
-// be quoting "<your-host>" verbatim either; it should be calling
-// cannot_help instead.
-
 import type { Scanner, ScannerContext, Violation } from "../types.ts";
 
 interface Pattern {
   kind: string;
   re: RegExp;
   message: string;
-  /**
-   * When true, and `ctx.engine_url` is available, the matched span is
-   * repaired in-place with the grounded origin's host (preserving the
-   * surrounding scheme / path). Lets the user get a usable config on
-   * the first turn instead of a `[guard:placeholder.host]` marker.
-   */
   repairFromEngineUrl?: boolean;
 }
 
@@ -75,7 +57,6 @@ export const placeholderScanner: Scanner = {
     const out: Violation[] = [];
     const engineHost = engineHostFromCtx(ctx);
     for (const p of PATTERNS) {
-      // Fresh exec loop so the global flag's lastIndex does not stick across calls.
       p.re.lastIndex = 0;
       let m: RegExpExecArray | null;
       // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop.
@@ -86,16 +67,12 @@ export const placeholderScanner: Scanner = {
           span: { start: m.index, end: m.index + m[0].length },
           details: { match: m[0] },
         };
-        // Heal placeholder hosts in-place when we know the grounded host.
-        // Only the host substring is repaired; surrounding scheme/path
-        // are untouched. Falls through to the standard `[guard:…]`
-        // marker when the runtime context does not expose engine_url.
         if (p.repairFromEngineUrl && engineHost) {
           violation.repair = engineHost;
           (violation.details as Record<string, unknown>).repaired_to = engineHost;
         }
         out.push(violation);
-        if (m[0].length === 0) p.re.lastIndex += 1; // safety against zero-width
+        if (m[0].length === 0) p.re.lastIndex += 1;
       }
     }
     return out;

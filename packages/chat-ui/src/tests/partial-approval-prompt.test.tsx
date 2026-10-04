@@ -1,7 +1,3 @@
-// Regression: PartialApprovalPrompt renders one Approve/Reject
-// row per diff (default-approved), tracks per-row state on space, and
-// emits `{ confirmed, partial?, approved_indices }` on Enter.
-
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
 import { PartialApprovalPrompt } from "../elicit/PartialApprovalPrompt.tsx";
@@ -15,9 +11,6 @@ function snapshot(s: ReturnType<typeof render>): string {
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
 
-// Deterministic flush — yields the microtask queue + one macrotask tick.
-// Pre-fix this used `setTimeout(_, ms)` which the determinism gate
-// forbids; ink's render loop only needs a microtask flush to settle.
 function tick(): Promise<void> {
   return new Promise<void>((resolve) => {
     setImmediate(resolve);
@@ -117,12 +110,4 @@ describe("PartialApprovalPrompt (Bug TT)", () => {
       approved_indices: [0, 1],
     });
   });
-
-  // Esc-cancel is wired in the component (see PartialApprovalPrompt
-  // useInput handler on `key.escape`) but ink-testing-library does
-  // not reliably translate a bare ESC byte into the `key.escape`
-  // event the hook listens for — Esc is part of every other terminal
-  // escape sequence, so the harness waits for a follow-on byte. The
-  // feature is exercised manually + by the screenshot test above; we
-  // skip the unit assertion to avoid a flaky test.
 });

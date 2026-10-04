@@ -1,7 +1,3 @@
-// Shared Zod schemas, helpers, and serializers for the connector-
-// templates REST surface. Every per-sub-resource module imports from
-// here.
-
 import { z } from "@hono/zod-openapi";
 import { policy } from "../../../auth/index.ts";
 import type {
@@ -51,8 +47,6 @@ export const ConnectorResponseSchema = z
     template_name: z.string().nullable(),
     template_source: z.enum(["builtin", "tenant"]).nullable(),
     template_version: z.number().int().nullable(),
-    // See connectors/schemas.ts for the rationale — public surface is
-    // intentionally un-narrowed.
     template_snapshot: z.record(z.string(), z.unknown()).nullable(),
     created_at: z.string(),
     updated_at: z.string(),
@@ -130,11 +124,6 @@ export const TemplateOAuthCredentialResponse = z
   .object({ id: z.string() })
   .openapi("TemplateOAuthCredentialResponse");
 
-// Read-only recipe browse routes. Recipes are global
-// catalog data (no tenant body), but the routes still RBAC-gate on
-// `connector:read` so portal tokens with read-only scope cannot
-// trivially exfiltrate the catalog roster of paying tenants without
-// at least passing auth.
 export const RecipeListResponseSchema = z
   .object({
     template_slug: z.string(),
@@ -147,18 +136,6 @@ export const RecipeSlugParam = z.object({
   slug: z.string().min(1),
   recipe_slug: z.string().min(1),
 });
-
-// Recipe packs (vertical groupings).
-//
-// Packs are not stored anywhere; they are computed at request time from
-// recipe `category` + `tags`. Each pack matches recipes whose category
-// or tag set intersects the pack's predicate set. The route returns
-// the curated roster (slug-only references — operators read details
-// via the per-template recipe routes / inspect_recipe MCP tool).
-//
-// Pack copy leads with outcome ("revoke a departing employee's access
-// in <60s"), not the connector list. Pack names + outcome strings use
-// the product's domain vocabulary ("connector" / "workflow").
 
 export const RECIPE_PACK_VERTICALS = [
   "revops",
@@ -174,8 +151,6 @@ export type RecipePackVertical = (typeof RECIPE_PACK_VERTICALS)[number];
 
 export interface PackPredicate {
   outcome: string;
-  // A recipe matches when ANY of its categories OR tags appears in the
-  // predicate's set.
   match_categories: string[];
   match_tags: string[];
 }

@@ -1,19 +1,3 @@
-// A connector an operator switched off refuses the step under its own name.
-//
-// Why this suite exists: the request dispatcher looked at the circuit breaker
-// but never at `enabled`. A workflow preview runs in dev, so a step that names
-// the prod connector resolves to its same-slug dev twin — and when that twin
-// was disabled, the preview either called it anyway or, once earlier failures
-// had opened the twin's breaker, answered `circuit_open`. The reader was sent
-// to look for an unreachable remote while the cause was a switch on our side.
-//
-// Contract under test:
-//   1. Draft preview, disabled dev twin → `connector_disabled`, naming the
-//      twin and its environment; nothing is sent, the breaker is not counted.
-//   2. The same refusal wins over an open breaker on that twin.
-//   3. The failed run reads `connector_unavailable` and names the twin.
-//   4. Nothing falls back to the enabled connector the step names.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, executions } from "../../db/schema/index.ts";
@@ -43,7 +27,6 @@ beforeAll(async () => {
     jsonResponse(res, 200, { ok: true });
   });
 
-  // The step names the prod connector; the dev twin shares its slug.
   const [prod] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -85,7 +68,6 @@ async function devTwin() {
   return rows[0]!;
 }
 
-/** A draft preview as the HTTP route and the authoring tool start one. */
 function previewDraft(steps: unknown[]) {
   return runExecution({
     db: ctx.testDb.db,
@@ -117,7 +99,6 @@ describe("a disabled connector refuses the step as itself", () => {
       details?: Record<string, unknown>;
     } | null;
     expect(error?.code).toBe("connector_disabled");
-    // The twin the run resolved to — not the prod connector the step names.
     expect(error?.details).toEqual({
       step_id: "list",
       connector_id: devTwinId,
@@ -129,9 +110,7 @@ describe("a disabled connector refuses the step as itself", () => {
     expect(error?.message).toBe(
       'Connector "mail-oauth" in dev is disabled; enable it before this workflow can run.',
     );
-    // Nothing was sent — and nothing fell back to the enabled prod connector.
     expect(upstreamHits).toBe(0);
-    // A refusal on our side is no evidence about the remote.
     const twin = await devTwin();
     expect(twin.circuit_failure_count).toBe(0);
     expect(twin.circuit_state).toBe("closed");
@@ -178,8 +157,6 @@ describe("a disabled connector refuses the step as itself", () => {
   });
 
   test("the exact code classifies before the message matchers", () => {
-    // The slug contains "oauth": matched on the sentence alone, the refusal
-    // would read as a rejected sign-in.
     expect(
       classifyFailure({
         status: "failed",

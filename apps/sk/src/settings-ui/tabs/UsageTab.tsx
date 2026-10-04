@@ -1,11 +1,3 @@
-// Usage tab — month-to-date token usage, sourced from the tenant-scoped
-// /v1/stats/llm endpoint grouped by `flow`, plus the monthly
-// budget bar whose denominator comes from /v1/status.monthly_budget_tokens.
-// Replaces the prior `llm.invocation` audit-log scraping: stats aggregate
-// at read time and carry the cache-read breakdown the bar visualizes.
-//
-// Keymap: `r` re-fetches; Esc is owned by the outer modal.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -27,7 +19,6 @@ interface UserRow {
   total: number;
 }
 
-/** First-of-month UTC, ISO — matches the engine's monthly budget window. */
 function startOfMonthIso(): string {
   const d = new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
@@ -72,8 +63,6 @@ export const UsageTab: React.FC<Props> = ({ client }) => {
         setCacheRead(stats.totals.tokens.cache_read);
         setBudget(status.monthly_budget_tokens);
 
-        // Per-user breakdown is admin-only — gated on stats:read:all, the
-        // same mechanism the admin surfaces use for audit:read.
         const allowed = (bootstrap.permissions ?? []).includes("stats:read:all");
         setCanReadAll(allowed);
         if (allowed) {

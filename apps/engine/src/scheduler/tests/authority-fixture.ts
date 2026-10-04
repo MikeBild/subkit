@@ -4,7 +4,6 @@ import { workflowExecutionAuthorities, workflows } from "../../db/schema/index.t
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 
-/** Scheduler tests seed a reviewed boundary explicitly; runtime never creates it. */
 export async function grantScheduleAuthorityFixture(
   db: Db,
   tenant_id: string,

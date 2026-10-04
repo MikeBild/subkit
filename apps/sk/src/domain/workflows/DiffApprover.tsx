@@ -1,15 +1,3 @@
-// Per-hunk approve/reject UI for AI-proposed edits.
-//
-// When the LLM proposes a workflow change as a series of diff hunks
-// the operator may want to accept some but not others. Space toggles
-// the active hunk's selection; Tab moves down; Shift+Tab moves up;
-// `a` selects all; `n` selects none; Enter submits the current
-// selection via `onAccept(selectedIds)`.
-//
-// The component renders unified-style diffs (one column, +/- prefix);
-// long hunks are truncated with "(+N more lines)" so the whole list
-// stays scannable.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
@@ -21,7 +9,6 @@ export interface DiffHunkLine {
 
 export interface DiffHunk {
   id: string;
-  /** Human label — usually a file path or a step name. */
   label: string;
   lines: DiffHunkLine[];
 }
@@ -31,9 +18,7 @@ export interface DiffApproverProps {
   onAccept: (selectedIds: string[]) => void;
   onReject: (rejectedIds: string[]) => void;
   onAbort?: () => void;
-  /** Initial selection; defaults to all hunks selected. */
   initialSelected?: string[];
-  /** Maximum lines to show per hunk before truncating. Defaults to 8. */
   maxLinesPerHunk?: number;
 }
 

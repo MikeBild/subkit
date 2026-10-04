@@ -1,25 +1,3 @@
-// User story: As a security reviewer, I need a regression net that
-// proves Tenant A's API key cannot read, write, run, or otherwise
-// influence Tenant B's resources — across HTTP, MCP, and webhook
-// surfaces. This pins findings #5 from the deep review (no cross-tenant
-// denial integration test exists today).
-//
-// Acceptance criteria:
-//   - AC1: HTTP — Tenant B's API key gets 404 reading/updating/deleting
-//          Tenant A's workflow.
-//   - AC2: HTTP — Tenant B's API key cannot run Tenant A's workflow.
-//   - AC3: HTTP — Tenant B's API key gets 404 reading Tenant A's
-//          connector.
-//   - AC4: HTTP — Tenant B's audit query never surfaces Tenant A rows.
-//   - AC5: MCP — Tenant B's MCP client does not see Tenant A's workflow
-//          in `tools/list`, and a `tools/call` against Tenant A's slug
-//          either returns an error or executes against Tenant B's
-//          (non-existent) workflow.
-//   - AC6: Webhook — when Tenant A and Tenant B both register the same
-//          slug with different secrets, Tenant A's signature does not
-//          unlock Tenant B's binding (and vice versa). The slug+secret
-//          pair is tenant-scoped by construction.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, createHmac } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -54,9 +32,6 @@ const TEST_NOW_MS = getTestNow();
 
 let ctx: JourneyCtx;
 
-// Deterministic ID factories — replace crypto.randomBytes / randomUUID
-// per the determinism gate. Distinct seeds keep the produced values
-// from colliding with each other across the test.
 const hex = createDeterministicHexFactory(0xc1055_7e51);
 const uuid = createDeterministicUuidFactory(0xc1055_7e52);
 
@@ -76,9 +51,6 @@ interface TenantBundle {
   apiKey: string;
 }
 
-/** Seed a second tenant directly through the DB so we can drive
- *  cross-tenant calls from the same engine. Mirrors the bootstrap
- *  `createJourneyCtx` does for ctx's primary tenant. */
 async function seedTenant(ctx: JourneyCtx, label: string): Promise<TenantBundle> {
   const slug = `b-${label}-${hex(3)}`.slice(0, 32);
   const [tenant] = await ctx.db
@@ -131,7 +103,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     ctx = await createJourneyCtx("31-cross-tenant");
     tenantB = await seedTenant(ctx, "31");
 
-    // Tenant A: a workflow + a connector.
     tenantAWorkflowSlug = "tenant-a-only";
     const wf = await seedWorkflow(ctx, {
       slug: tenantAWorkflowSlug,
@@ -163,8 +134,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     const get = await fetchAs(ctx, tenantB.apiKey, `/v1/workflows/${tenantAWorkflowId}`);
     expect(get.status).toBe(404);
 
-    // Pass schema validation first so we are sure the failure is the
-    // tenant-scope check, not a syntax 400 short-circuit.
     const put = await fetchAs(ctx, tenantB.apiKey, `/v1/workflows/${tenantAWorkflowId}`, {
       method: "PUT",
       body: JSON.stringify({
@@ -180,7 +149,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     });
     expect(del.status).toBe(404);
 
-    // Sanity: Tenant B's listing has zero items because they own nothing.
     const list = await fetchAs(ctx, tenantB.apiKey, "/v1/workflows");
     expect(list.status).toBe(200);
     const body = (await list.json()) as { items?: unknown[] };
@@ -228,12 +196,8 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       await client.connect(transport as unknown as Transport);
       const list = await client.listTools();
       const names = list.tools.map((t) => t.name);
-      // The seeded workflow lives in Tenant A; Tenant B must not see it.
       expect(names).not.toContain(`wf_${tenantAWorkflowSlug}`);
 
-      // Calling Tenant A's tool name from Tenant B must not run Tenant
-      // A's workflow. The MCP server may either reject (isError=true)
-      // or treat the slug as a tenant-scoped lookup miss.
       const result = await client
         .callTool({ name: `wf_${tenantAWorkflowSlug}`, arguments: {} })
         .catch((err: unknown) => ({ isError: true, errorCause: err }));
@@ -249,7 +213,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     const SECRET_A = `whsec_a_${hex(8)}`;
     const SECRET_B = `whsec_b_${hex(8)}`;
 
-    // Tenant A: register the shared-slug binding via the public API.
     const bindA = await journeyFetch(ctx, "/v1/webhooks/inbound", {
       method: "POST",
       body: JSON.stringify({
@@ -261,7 +224,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     });
     expect(bindA.status).toBe(201);
 
-    // Tenant B: seed a workflow + register the SAME slug with a DIFFERENT secret.
     const [b_wf] = await ctx.db
       .insert(workflows)
       .values({
@@ -302,21 +264,13 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     });
     expect(bindB.status).toBe(201);
 
-    // Signatures select a tenant's binding, not its execution permission.
-    // Give each immutable version its own finite production authority so
-    // this test reaches the cross-tenant execution isolation boundary.
     await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, tenantAWorkflowId, "prod", 1);
     await grantScheduleAuthorityFixture(ctx.db, tenantB.tenantId, b_wf.id, "prod", 1);
 
-    // Sanity: there are now two distinct rows, one per tenant, both
-    // carrying the same slug. The unique constraint is `(tenant_id, slug)`.
     const countRows = await ctx.db.select().from(webhooksInbound);
     const sharedRows = countRows.filter((r) => r.slug === SHARED_SLUG);
     expect(sharedRows.length).toBeGreaterThanOrEqual(2);
 
-    // Tenant A signs a payload with SECRET_A. The slug routes to *some*
-    // binding; we verify A's signature is rejected when used against
-    // any binding bound to SECRET_B by re-issuing it under both secrets.
     const body = JSON.stringify({ ts: TEST_NOW_MS });
     const webhookId = uuid();
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
@@ -325,12 +279,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     const sigA = `v1,${createHmac("sha256", SECRET_A).update(baseStr, "utf8").digest("base64")}`;
     const sigB = `v1,${createHmac("sha256", SECRET_B).update(baseStr, "utf8").digest("base64")}`;
 
-    // The public endpoint resolves slug → tenant by looking at all
-    // bindings; what matters is that A's secret cannot ever validate
-    // against B's binding. Forge a request with sigA targeted at the
-    // slug — the resolver may pick A's binding (signature ok) or B's
-    // (signature rejected). To prove no cross-tenant leakage, we send
-    // sigA AND verify the response is *not* a tenant B execution.
     const reqA = await fetch(`${ctx.baseUrl}/v1/hooks/${SHARED_SLUG}`, {
       method: "POST",
       headers: {
@@ -341,13 +289,9 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       },
       body,
     });
-    // Either accepted under A's binding (200) or denied (401). Never
-    // accepted into B's tenant.
     expect([200, 401, 404]).toContain(reqA.status);
     if (reqA.status === 200) {
       const env = (await reqA.json()) as { execution_id?: string };
-      // If execution started, it must belong to tenant A (looked up
-      // via DB to be sure — the response itself doesn't carry tenant_id).
       if (env.execution_id) {
         const exRows = await ctx.db
           .select({ tenant_id: executions.tenant_id })
@@ -357,7 +301,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       }
     }
 
-    // Re-issue with sigB — must *not* land in tenant A.
     const webhookIdB = uuid();
     const baseStrB = `${webhookIdB}.${ts}.${body}`;
     const sigBOnly = `v1,${createHmac("sha256", SECRET_B).update(baseStrB, "utf8").digest("base64")}`;

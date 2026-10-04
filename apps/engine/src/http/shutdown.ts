@@ -10,7 +10,6 @@ export interface HttpShutdown {
   waitUntilClosed: (timeoutMs: number) => Promise<boolean>;
 }
 
-/** Stop admission immediately while allowing active requests to finish with their queue work. */
 export function beginHttpShutdown(server: ShutdownHttpServer): HttpShutdown {
   const closed = new Promise<void>((resolve) => {
     server.close(resolve);

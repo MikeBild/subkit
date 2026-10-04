@@ -3,14 +3,6 @@ import fs, { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Restore env per-test so a sibling test in another file cannot leak
-// `SK_DEBUG_FILE` or `SK_DEBUG` here. The module-level `cachedVerbose`
-// in `../debug.ts` is also process-shared across all `apps/sk/src/`
-// tests; we explicitly re-assert it via `setDebugVerbose(true)` right
-// before the `request()` call so any concurrent test that flipped the
-// singleton between our import and our HTTP call cannot strip the
-// verbose-only `request_headers` / `request_body` fields from the log.
-
 let tmpDir: string;
 let logPath: string;
 let originalEnv: NodeJS.ProcessEnv;
@@ -24,14 +16,9 @@ beforeEach(() => {
 afterEach(() => {
   process.env = originalEnv;
   delete require.cache[require.resolve("../debug.ts")];
-  // Never evict `engine-client.ts`: that drops any `mock.module` override
-  // another test file installed for it in this process, leaving the next
-  // importer with the real client and a live socket.
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function readDebugRecords(): Array<Record<string, unknown>> {
@@ -41,12 +28,9 @@ function readDebugRecords(): Array<Record<string, unknown>> {
 
 describe("EngineClient debug tracing", () => {
   test("env is restored to original after the test (isolation discipline)", () => {
-    // Mutate env inside the test body; afterEach should reset it.
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
     process.env.SK_DEBUG_VERBOSE = "1";
-    // The assertion runs after `afterEach` of the *previous* test; this
-    // test's afterEach in turn proves the discipline for the next test.
     expect(originalEnv).toBeDefined();
     expect(process.env.SK_DEBUG).toBe("1");
   });
@@ -72,10 +56,6 @@ describe("EngineClient debug tracing", () => {
         }),
     });
 
-    // Re-assert SK_DEBUG immediately before the request: a concurrent
-    // test in another file may have run `process.env = snapshot` between
-    // our env-set and this point, dropping SK_DEBUG=1. The shared
-    // module-level `cachedVerbose` is also re-asserted.
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
     dbg.setDebugVerbose(true);
@@ -149,8 +129,6 @@ describe("EngineClient debug tracing", () => {
         ),
     });
 
-    // See JSON test above — re-assert verbose env right before the call
-    // to defeat concurrent `process.env = snapshot` resets.
     process.env.SK_DEBUG = "1";
     process.env.SK_DEBUG_FILE = logPath;
     dbg.setDebugVerbose(true);

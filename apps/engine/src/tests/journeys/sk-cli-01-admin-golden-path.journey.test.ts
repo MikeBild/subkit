@@ -1,24 +1,3 @@
-// User story: As an admin operator, I can drive a full conversation
-// turn via `sk -p "..."` against the engine, see the assistant
-// response, commit a workflow through an approval, and find every
-// step of the session in the audit log.
-//
-// Acceptance criteria:
-//
-//   AC1. Given an empty tenant, when I call runHeadless with a
-//        list-users prompt, then a CONVERSATION_CREATED audit row
-//        exists attributed to my user id AND memory_included=false.
-//   AC2. When I append a second message with a memory payload, then
-//        a CONVERSATION_MEMORY_INJECTED audit row exists.
-//   AC3. When I compact the conversation, then a CONVERSATION_COMPACTED
-//        audit row exists and the response reports messages_collapsed.
-//   AC4. When I PATCH the conversation with a new model + title, then
-//        a CONVERSATION_UPDATED audit row exists and GET returns them.
-//   AC5. When I list conversations with owner=me, the list contains
-//        the conversation I just created (owner_id plumbing).
-//   AC6. When I cancel the conversation, a CONVERSATION_CANCELLED row
-//        exists and the status flips to 'abandoned'.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runHeadless } from "../../../../sk/src/headless.ts";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
@@ -67,7 +46,7 @@ describe("journey: sk-cli admin golden path", () => {
       },
       prompt: "list users from the JSONPlaceholder connector",
       output: "json",
-      noMemory: true, // the working dir may pick up stray SUBKIT.md files
+      noMemory: true,
       stdout: { write: (s) => stdoutBuf.push(s) },
       stderr: { write: (s) => stderrBuf.push(s) },
     });
@@ -85,15 +64,6 @@ describe("journey: sk-cli admin golden path", () => {
   });
 
   test("AC2: memory injection emits CONVERSATION_MEMORY_INJECTED", async () => {
-    // Under the post-rebuild contract the canned list-users plan ends
-    // with `ask_user_confirm` before `save_workflow_draft`, parking the
-    // conversation in `awaiting_input`. Resolve that elicitation
-    // (operator confirms) before posting a follow-up message;
-    // `POST /v1/conversations/{id}/messages` returns 409
-    // `pending_elicitation_blocked` while one is still open. The
-    // pending elicitation surfaces under
-    // `resume_summary.pending_approval` on the conversation detail
-    // endpoint.
     const detail = (await (
       await journeyFetch(ctx, `/v1/conversations/${conversationId}`)
     ).json()) as {

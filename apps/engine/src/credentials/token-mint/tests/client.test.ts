@@ -1,7 +1,3 @@
-// Pure-function tests for the token-mint client. Mocks fetch so
-// the three shape envelopes can be asserted independently of any real
-// IdP.
-
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runTokenMintGrant } from "../client.ts";
@@ -12,10 +8,6 @@ beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
 });
 
-// Driver-fetch seam: the token-mint client reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
@@ -55,10 +47,6 @@ describe("runTokenMintGrant — shape: aws_initiate_auth (Cognito)", () => {
       expect(bundle.access_token).toBe("eyJ.id-token");
       expect(bundle.refresh_token).toBe("rt-1");
       expect(bundle.expires_at).toBeInstanceOf(Date);
-      // 3600s ExpiresIn: bundle.expires_at lands ~1h from the wall clock.
-      // We assert the gap against current wall time (the mint client uses
-      // wall time itself; mocking it would just shadow the same Date.now
-      // call). Tolerance: 100ms before / 3600.1s after.
       const ageMs = bundle.expires_at!.getTime() - Date.now(); // allow-wall-clock: this assertion exists to verify wall-time math the client itself runs
       expect(ageMs).toBeLessThanOrEqual(3_600_000);
       expect(ageMs).toBeGreaterThan(3_590_000);
@@ -109,7 +97,7 @@ describe("runTokenMintGrant — shape: json (Firebase / generic)", () => {
     expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
     const body = JSON.parse(String(init.body));
     expect(body.username).toBe("u@e.com");
-    expect(body.returnSecureToken).toBe(true); // Firebase-friendly default
+    expect(body.returnSecureToken).toBe(true);
     expect(bundle.access_token).toBe("fb-id");
     expect(bundle.refresh_token).toBe("fb-rt");
     expect(bundle.expires_at).toBeInstanceOf(Date);

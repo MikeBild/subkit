@@ -1,7 +1,3 @@
-// Pure unit tests for the skill-candidates section formatter + trim helpers.
-// No DB, no Docker. Drives formatSkillCandidates and trimCandidatesToBudget
-// from formatters.ts/loaders.ts directly.
-
 import { describe, expect, test } from "bun:test";
 import type { SkillCandidateView } from "../../../skill-candidates/types.ts";
 import { countTokens } from "../../accounting/index.ts";
@@ -10,10 +6,6 @@ import {
   SKILL_CANDIDATES_SECTION_CAP,
 } from "../context-assembler/formatters.ts";
 import { trimCandidatesToBudget } from "../context-assembler/loaders.ts";
-
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
 
 let idCounter = 0;
 function makeCandidate(overrides: Partial<SkillCandidateView> = {}): SkillCandidateView {
@@ -44,10 +36,6 @@ function makeCandidate(overrides: Partial<SkillCandidateView> = {}): SkillCandid
     ...overrides,
   };
 }
-
-// ---------------------------------------------------------------------------
-// AC1: proposed-only rendering
-// ---------------------------------------------------------------------------
 
 describe("formatSkillCandidates — AC1 proposed-only render", () => {
   test("renders a proposed candidate with [pending approval] marker", () => {
@@ -85,10 +73,6 @@ describe("formatSkillCandidates — AC1 proposed-only render", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// AC2: sort order preserved in rendered output
-// ---------------------------------------------------------------------------
-
 describe("formatSkillCandidates — AC2 sort order", () => {
   test("renders candidates in the order supplied (sort is caller's responsibility)", () => {
     const c1 = makeCandidate({ title: "First" });
@@ -101,10 +85,6 @@ describe("formatSkillCandidates — AC2 sort order", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Decision 5: 1200-token pre-trim drops lowest-ranked first
-// ---------------------------------------------------------------------------
-
 describe("trimCandidatesToBudget — 1200-token cap", () => {
   test("single small candidate fits without trimming", () => {
     const result = trimCandidatesToBudget([makeCandidate()]);
@@ -115,7 +95,6 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
   });
 
   test("50 candidates → section ≤ 1200 tokens with elision notice", () => {
-    // Build 50 small candidates — enough to overflow the 1200-token cap.
     const candidates = Array.from({ length: 50 }, (_, i) =>
       makeCandidate({
         id: `bulk-${i}`,
@@ -136,8 +115,6 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
   });
 
   test("lowest-ranked (last in array) dropped first", () => {
-    // Provide many candidates — trimmer should keep the first ones
-    // and drop the later ones because `trimCandidatesToBudget` pops from the tail.
     const candidates = Array.from({ length: 20 }, (_, i) =>
       makeCandidate({
         id: `order-${i}`,
@@ -147,7 +124,6 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
     );
     const result = trimCandidatesToBudget(candidates);
     if (result.trimmed > 0 && result.survivors.length > 0) {
-      // First candidate (index 0) should survive; last one (index 19) should not.
       const survivorIds = result.survivors.map((c) => c.id);
       expect(survivorIds).toContain("order-0");
       expect(survivorIds).not.toContain(`order-${candidates.length - 1}`);
@@ -155,38 +131,26 @@ describe("trimCandidatesToBudget — 1200-token cap", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Single oversized survivor — binary-search body truncation + warning log
-// ---------------------------------------------------------------------------
-
 describe("trimCandidatesToBudget — oversized single survivor", () => {
   test("single candidate with oversized body is truncated to ≤ ceil(cap × 0.9) tokens with notice", () => {
-    // Create a candidate with a very large body that exceeds the 1200-token cap on its own.
-    const hugeBody = "x ".repeat(2000); // ~4000 tokens worth of text
+    const hugeBody = "x ".repeat(2000);
     const c = makeCandidate({ id: "oversized-1", title: "Oversized Candidate", body: hugeBody });
 
     const result = trimCandidatesToBudget([c]);
 
-    // Should have triggered the oversized path
     expect(result.oversized_item_id).toBe("oversized-1");
     expect(result.survivors).toHaveLength(1);
     expect(result.section).not.toBeNull();
 
-    // Truncated body must contain the truncation notice
     const survivorBody = result.survivors[0]!.body;
     expect(survivorBody).toContain("candidate body truncated for section cap");
 
-    // The final section must be within 90% of the cap (approximately)
     const targetTokens = Math.ceil(SKILL_CANDIDATES_SECTION_CAP * 0.9);
     if (result.section !== null) {
       const tokens = countTokens(result.section);
       expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
-      // The truncated version must be at least somewhat substantial
-      // (binary search found a fit at targetTokens)
       expect(tokens).toBeGreaterThan(10);
-      // Should be near the target (within the section cap)
       expect(tokens).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
-      // The target for binary search
       expect(targetTokens).toBe(Math.ceil(1200 * 0.9));
     }
   });
@@ -195,12 +159,9 @@ describe("trimCandidatesToBudget — oversized single survivor", () => {
     const hugeBody = "The long body. ".repeat(500);
     const c = makeCandidate({ id: "warn-test-1", body: hugeBody });
     const result = trimCandidatesToBudget([c]);
-    // trimCandidatesToBudget itself does not log — the assembler does.
-    // But it DOES set oversized_item_id so the assembler can log.
     if (result.oversized_item_id !== null) {
       expect(result.oversized_item_id).toBe("warn-test-1");
     }
-    // Regardless, no section overflow
     if (result.section !== null) {
       expect(countTokens(result.section)).toBeLessThanOrEqual(SKILL_CANDIDATES_SECTION_CAP);
     }

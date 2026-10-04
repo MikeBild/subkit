@@ -1,17 +1,3 @@
-// Workflow MCP resource subscribe.
-//
-// Asserts the three contracts that close the tenant-leak risk called
-// out in the issue:
-//   1. A session subscribed to `workflow://<id>` receives a
-//      `notifications/resources/updated` whenever a `workflow.lifecycle`
-//      event for that workflow fires inside the session's tenant.
-//   2. Events for *other* workflows on the same tenant are filtered out
-//      (URI match).
-//   3. Events from a *different* tenant are filtered out (tenant match).
-//      This is the load-bearing isolation check the issue calls out
-//      explicitly — a leak here would expose cross-tenant workflow
-//      activity to any MCP client.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { ResourceUpdatedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { globalEmitter } from "../../pubsub/emitter.ts";
@@ -46,13 +32,6 @@ describe("mcp resources/subscribe workflow:// updates", () => {
 
     await client.subscribeResource({ uri: `workflow://${id}` });
 
-    // Re-dispatch every poll iteration rather than fire-once-and-pray;
-    // see the matching comment in resources-subscribe.test.ts. MCP's
-    // StreamableHTTPClientTransport opens the server-initiated SSE
-    // notification stream LAZILY, and on a saturated CI runner the GET
-    // /mcp request can land after the first sendResourceUpdated has
-    // already fired (notification dropped — MCP is at-most-once on
-    // this channel). Forwarder is idempotent, assertion is `>= 1`.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 15_000;
     let dispatchAttempt = 0;
@@ -118,9 +97,6 @@ describe("mcp resources/subscribe workflow:// updates", () => {
     });
     await client.subscribeResource({ uri: `workflow://${id}` });
 
-    // Synthesize an event under a *different* tenant_id but with the
-    // same workflow_id. The resource capability MUST filter this out
-    // before forwarding — anything else is a tenant leak.
     await globalEmitter.dispatch({
       id: 3,
       tenant_id: "00000000-0000-0000-0000-0000000000ff",

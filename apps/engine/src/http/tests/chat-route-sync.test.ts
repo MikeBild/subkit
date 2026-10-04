@@ -1,25 +1,3 @@
-// The chat ingest route's synchronous fast path (`handleSyncInteraction`)
-// carries a widened return contract:
-//
-//   { handled: false }                          → enqueue + ack {ok:true}
-//   { handled: true }                           → respond {ok:true}, NO enqueue
-//                                                 (Slack legacy shape)
-//   { handled: true, response, enqueue: false } → respond with `response`
-//                                                 verbatim, NO enqueue
-//                                                 (Google OPEN_DIALOG: the
-//                                                 HTTP body IS the dialog)
-//   { handled: true, response, enqueue: true }  → respond with `response`
-//                                                 AND enqueue exactly once
-//                                                 (Google dialog submit:
-//                                                 sync close-ack + async
-//                                                 LLM resolution)
-//
-// These tests drive `registerChatRoutes` on a bare Hono app with a fake
-// adapter + injected `enqueue`, asserting the HTTP body and the enqueue
-// count for each arm. No real DB or platform verification involved —
-// the fake adapter's verify() always succeeds and the sync handler
-// never touches `db`, so a stub object satisfies the context.
-
 import { beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,16 +12,11 @@ import type { Db } from "../../db/client.ts";
 import type { AppEnv } from "../openapi.ts";
 import { registerChatRoutes } from "../routes/chat.ts";
 
-/** The F2 branch reads `getConfig().platform.googlechat.sync_turn_timeout_ms`.
- *  Production always has config loaded at boot; this bootstraps it
- *  idempotently for the bare route test. */
 async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not yet loaded — fall through.
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-chat-sync-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/http-test", NODE_ENV: "test" },
@@ -67,10 +40,7 @@ const INTERACTION_EVENT: ChatEvent = {
 
 type SyncResult = { handled: boolean; response?: unknown; enqueue?: boolean };
 
-function makeHarness(opts: {
-  /** Omit entirely to build an adapter WITHOUT handleSyncInteraction. */
-  sync?: () => Promise<SyncResult>;
-}) {
+function makeHarness(opts: { sync?: () => Promise<SyncResult> }) {
   const enqueued: Array<{ event: ChatEvent }> = [];
   const syncCalls: Array<{ event: ChatEvent }> = [];
 
@@ -101,9 +71,6 @@ function makeHarness(opts: {
   );
 
   const app = new OpenAPIHono<AppEnv>();
-  // The route handler reads `c.get("db")` and only forwards it to the
-  // adapter's sync handler (which our fake ignores). A stub is enough —
-  // and it must be truthy or the sync fast path is skipped entirely.
   app.use("*", async (c, next) => {
     c.set("db", {} as Db);
     await next();
@@ -203,22 +170,6 @@ describe("POST /v1/chat/google/events — handleSyncInteraction contract", () =>
   });
 });
 
-// ── F2: synchronous Google-Chat response path ───────────────────────────────
-//
-// For a Google-Chat MESSAGE (mention / slash_command), the route runs the
-// turn inline via `runChatTurnSync` and returns its verdict:
-//
-//   { deliver:"sync", text } → HTTP body { text }; nothing enqueued.
-//   { deliver:"acked" }      → HTTP body { ok:true }; nothing enqueued
-//                              (awaiting_input card sent inline, or the
-//                              turn was detached on timeout).
-//   { deliver:"defer" }      → route falls through to enqueue + { ok:true }
-//                              (first-DM: worker owns the whole event).
-//
-// The seam (`deps.runSyncTurn`) is faked so these arms are exercised
-// without a live DB or LLM turn. `runChatTurnSync`'s own no-double-send
-// guarantee is proven in chat/tests/sync-turn.test.ts.
-
 const MENTION_EVENT: ChatEvent = {
   platform: "google_chat",
   workspace_id: WORKSPACE_ID,
@@ -231,12 +182,7 @@ const MENTION_EVENT: ChatEvent = {
   raw: {},
 };
 
-function makeSyncHarness(opts: {
-  syncResult: ChatSyncResult;
-  /** Omit for a mention; pass "interaction" to prove the F2 branch is
-   *  skipped for non-MESSAGE events. */
-  eventKind?: ChatEvent["kind"];
-}) {
+function makeSyncHarness(opts: { syncResult: ChatSyncResult; eventKind?: ChatEvent["kind"] }) {
   const enqueued: Array<{ event: ChatEvent }> = [];
   const syncTurnCalls: Array<{ event: ChatEvent; timeoutMs: number }> = [];
 
@@ -298,11 +244,9 @@ describe("POST /v1/chat/google/events — F2 synchronous MESSAGE path", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json");
     expect(await res.json()).toEqual({ text: "*20°C* and sunny" });
-    // Single delivery via the HTTP body — the queue is never touched.
     expect(h.enqueued.length).toBe(0);
     expect(h.syncTurnCalls.length).toBe(1);
     expect(h.syncTurnCalls[0]?.event.kind).toBe("mention");
-    // The route threaded the configured bounded timeout.
     expect(h.syncTurnCalls[0]?.timeoutMs).toBeGreaterThan(0);
   });
 
@@ -312,7 +256,6 @@ describe("POST /v1/chat/google/events — F2 synchronous MESSAGE path", () => {
     const res = await h.post();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    // Card/detached delivery is owned by the dispatcher — NOT the queue.
     expect(h.enqueued.length).toBe(0);
     expect(h.syncTurnCalls.length).toBe(1);
   });
@@ -323,24 +266,18 @@ describe("POST /v1/chat/google/events — F2 synchronous MESSAGE path", () => {
     const res = await h.post();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    // The worker owns the whole event on the defer path.
     expect(h.enqueued.length).toBe(1);
     expect(h.enqueued[0]?.event.kind).toBe("mention");
     expect(h.syncTurnCalls.length).toBe(1);
   });
 
   test("no-double-send: sync arm delivers via body AND enqueues nothing", async () => {
-    // Both delivery owners can never fire for the same event: on the sync
-    // arm the body carries the reply and the queue is untouched (0), so
-    // the queue worker never runs a second turn / second send.
     const h = makeSyncHarness({ syncResult: { deliver: "sync", text: "done" } });
     await h.post();
     expect(h.enqueued.length).toBe(0);
   });
 
   test("interaction MESSAGE is NOT hijacked by the sync path (only mention/slash_command)", async () => {
-    // An `interaction` kind must skip runChatTurnSync entirely and take
-    // the existing enqueue path (kept for elicitation button clicks).
     const h = makeSyncHarness({
       syncResult: { deliver: "sync", text: "should not be used" },
       eventKind: "interaction",

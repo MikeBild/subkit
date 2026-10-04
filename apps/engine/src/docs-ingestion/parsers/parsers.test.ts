@@ -1,10 +1,3 @@
-// Binary parser unit tests.
-//
-// Exercises each strategy (PDF / DOCX / XLSX / PPTX) against an
-// in-memory fixture and the negative paths (wrong magic, malformed
-// archive). Fixtures live in `fixtures.test-helper.ts` so the suite
-// stays portable — no binary blobs in the repo.
-
 import { describe, expect, test } from "bun:test";
 import { gzipSync } from "node:zlib";
 import {
@@ -100,9 +93,6 @@ describe("binary parsers: parse", () => {
   });
 
   test("pptx with an oversized single slide throws BinaryParseError", async () => {
-    // One slide whose `<a:t>` body is ~3 MB — over the 2 MB
-    // PPTX_SLIDE_XML_MAX_BYTES per-slide ceiling. The parser must
-    // abort the read instead of allocating the whole string.
     const hugeSlide = "x".repeat(3 * 1024 * 1024);
     const pptx = await buildPptxFixture([hugeSlide]);
     await expect(parseBinaryFile(pptx, "pptx")).rejects.toBeInstanceOf(BinaryParseError);
@@ -173,10 +163,8 @@ describe("archive strategies: recursive extraction", () => {
     ]);
     const gz = gzipSync(midZip);
     const parsed = await parseBinaryFile(gz, "gzip");
-    // keep.pdf lives at level 2 (gzip -> zip) and extracts.
     expect(parsed.text).toContain("Deeply nested.");
     expect(parsed.entries.some((e) => e.path.endsWith("keep.pdf"))).toBe(true);
-    // nested.zip would be level 3 — refused with a reason.
     expect(parsed.skipped.some((s) => s.reason === "nested_archive_depth")).toBe(true);
     expect(parsed.entries.some((e) => e.path.includes("too-deep"))).toBe(false);
   });
@@ -214,7 +202,6 @@ describe("archive strategies: recursive extraction", () => {
   });
 
   test("corrupt member degrades to a skip instead of failing the archive", async () => {
-    // %PDF magic but garbage body — detected as pdf, parse fails.
     const fakePdf = Buffer.from("%PDF-1.7 not really a pdf");
     const zip = buildZipFixture([
       { name: "broken.pdf", data: fakePdf },
@@ -237,7 +224,6 @@ describe("pdf table extraction", () => {
     ]);
     const parsed = await parseBinaryFile(pdf, "pdf");
     expect(parsed.format).toBe("pdf");
-    // Structured table data surfaced for consumers that want it…
     expect(parsed.tables).toEqual([
       {
         page: 1,
@@ -250,8 +236,6 @@ describe("pdf table extraction", () => {
         ],
       },
     ]);
-    // …and the rendered text carries the markdown table so every text
-    // consumer (knowledge chunking, LLM text_extract) benefits.
     expect(parsed.text).toContain("| Name | Amount | Status |");
     expect(parsed.text).toContain("| Alpha | 100 | paid |");
   });

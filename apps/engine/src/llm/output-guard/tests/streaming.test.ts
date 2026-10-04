@@ -1,5 +1,3 @@
-// Unit tests for the streaming output-guard short-circuit.
-
 import { describe, expect, it } from "bun:test";
 import { runOutputGuardStream } from "../index.ts";
 import type { Scanner, ScannerContext, Violation } from "../types.ts";
@@ -75,7 +73,7 @@ describe("runOutputGuardStream", () => {
     );
     expect(v.length).toBe(1);
     expect(v[0]?.kind).toBe("violator.bad");
-    expect(calls).toEqual(["probe", "violator"]); // tail never ran
+    expect(calls).toEqual(["probe", "violator"]);
   });
 
   it("treats a thrown scanner as a no-op (does not crash drain, does not short-circuit)", () => {

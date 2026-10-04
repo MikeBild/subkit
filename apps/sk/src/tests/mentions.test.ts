@@ -1,9 +1,3 @@
-// Unit tests for apps/sk/src/mentions.ts.
-//
-// We don't stand up a real EngineClient here — the `@workflow:` and
-// `@execution:` paths are covered in the journey tests which drive
-// the compiled binary against a live engine.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,9 +1,3 @@
-// Integration test for /v1/diagnostics/logs and /v1/diagnostics/logs/stream.
-//
-// Drives the live engine, drops a structured log line via the engine's
-// own logger module, and asserts both the paginated tail and the SSE
-// stream surface it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, gte } from "drizzle-orm";
@@ -51,8 +45,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Drain the ring before tearing down so a neighbouring suite picking
-  // up the singleton doesn't see leftover synthetic entries.
   logRing.clear();
   await srv.cleanup();
 });
@@ -99,7 +91,6 @@ describe("/v1/diagnostics/logs", () => {
     expect(body.size).toBeGreaterThan(0);
     expect(body.next_since_ms).toBeGreaterThanOrEqual(matching!.ts);
 
-    // Assert the JSON-tail audit row landed.
     const rows = await srv.db
       .select()
       .from(auditLog)
@@ -152,8 +143,6 @@ describe("/v1/diagnostics/logs", () => {
   test("tail filters foreign-tenant entries before serving", async () => {
     const FOREIGN_TENANT = "00000000-0000-0000-0000-000000000fee";
     const before = Date.now(); // allow-wall-clock: ring window bound
-    // Emit one log line under a different tenant context — must not be
-    // visible to this admin (tenant isolation on the log tail).
     await withContext(
       { trace_id: "tenant-leak-test", tenant_id: FOREIGN_TENANT, request_source: "api" },
       async () => {
@@ -164,7 +153,6 @@ describe("/v1/diagnostics/logs", () => {
         });
       },
     );
-    // Sanity: the local tenant should not see it.
     const foreignRes = await fetch(
       `${srv.baseUrl}/v1/diagnostics/logs?since=${before - 100}&module=test_tenant_leak`,
       { headers: adminHeaders() },
@@ -176,7 +164,6 @@ describe("/v1/diagnostics/logs", () => {
     const foreignActions = foreignBody.entries.map((e) => e.action);
     expect(foreignActions).not.toContain("foreign_emitted");
 
-    // Same tenant context → visible.
     await withContext(
       { trace_id: "same-tenant-test", tenant_id: srv.tenantId, request_source: "api" },
       async () => {
@@ -199,9 +186,6 @@ describe("/v1/diagnostics/logs", () => {
 
   test("system-scope entries (no tenant_id) remain visible to tenant admins", async () => {
     const before = Date.now(); // allow-wall-clock: ring window bound
-    // Emit without withContext — entry has no tenant_id field. Boot
-    // logs and cross-tenant subsystem logs land here; tenant admins
-    // need them for operator visibility.
     logger.info({
       module: "test_system_scope",
       action: "boot_like",
@@ -216,7 +200,6 @@ describe("/v1/diagnostics/logs", () => {
   });
 
   test("SSE stream replays buffered entries then emits live ones", async () => {
-    // Plant a "history" entry first.
     logger.info({
       module: "test_logs_stream",
       action: "history",
@@ -239,7 +222,6 @@ describe("/v1/diagnostics/logs", () => {
     const seen: string[] = [];
     let buffer = "";
 
-    // Live emit on the next microtask now that the stream is open.
     queueMicrotask(() => {
       logger.info({
         module: "test_logs_stream",
@@ -262,18 +244,14 @@ describe("/v1/diagnostics/logs", () => {
         try {
           const payload = JSON.parse(dataLine.slice(6)) as { action?: string };
           if (payload.action) seen.push(payload.action);
-        } catch {
-          /* heartbeat or malformed — skip */
-        }
+        } catch {}
       }
       if (seen.includes("history") && seen.includes("live")) break;
     }
     ac.abort();
     try {
       reader.releaseLock();
-    } catch {
-      /* already released */
-    }
+    } catch {}
 
     expect(seen).toContain("history");
     expect(seen).toContain("live");

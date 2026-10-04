@@ -1,14 +1,3 @@
-// Connector-capability Skill Candidate proposed when an authoring
-// conversation saves an MCP connector after a green probe.
-//
-// A connector created from a template gets the template's `default_skill`.
-// One authored from a description gets nothing — and the model then has no
-// idea how the server is navigated (it reported "no tables" for a server that
-// lists them behind `metabase://database/{id}/tables`). This module writes
-// down what the handshake learned, deterministically and without an LLM call,
-// as a PROPOSED candidate: a person approves it before it ever reaches a
-// prompt.
-
 import { createHash } from "node:crypto";
 import type { McpProbeManifest } from "../../connectors/drivers/mcp.ts";
 import { getConnector } from "../../connectors/service.ts";
@@ -36,16 +25,12 @@ export interface ConnectorCapabilityInput {
     base_url: string | null;
     auth_type: string;
   };
-  /** The author's own description of the connector, when the draft had one. */
   purpose?: string | null;
   manifest: McpProbeManifest;
 }
 
-/** `scheme://…` addresses a tool description names, web URLs excluded (they
- *  are documentation links, and a query string can carry a token). */
 const DATA_PATH_RE = /\b([a-z][a-z0-9+.-]*):\/\/[^\s,;"'`<>()[\]]+/gi;
 const WEB_SCHEMES = new Set(["http", "https", "ws", "wss", "ftp"]);
-/** `user:password@` in an address is a credential, never a data path. */
 const USERINFO_RE = /^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i;
 const PAGING_RE =
   /\b(page|pages|paging|paginat\w*|cursor|continuation_token|next_page|offset|caps? at|per page)\b/i;
@@ -79,7 +64,6 @@ function claimOf(tool: RemoteToolDescriptor): string {
   return "no read/write claim";
 }
 
-/** Data paths named in the tool descriptions, deduplicated and sorted. */
 export function extractDataPaths(tools: readonly RemoteToolDescriptor[]): string[] {
   const found = new Set<string>();
   for (const tool of tools) {
@@ -93,7 +77,6 @@ export function extractDataPaths(tools: readonly RemoteToolDescriptor[]): string
   return [...found].sort().slice(0, MAX_DATA_PATHS);
 }
 
-/** Sentences about paging or list caps, attributed to the tool that said them. */
 export function extractPagingHints(tools: readonly RemoteToolDescriptor[]): string[] {
   const hints: string[] = [];
   const seen = new Set<string>();
@@ -110,12 +93,6 @@ export function extractPagingHints(tools: readonly RemoteToolDescriptor[]): stri
   return hints;
 }
 
-/**
- * The connector-capability PatternSignal. Pure: the same connector and the
- * same catalog always yield the same body and fingerprint, so a re-probe of
- * an unchanged server refreshes the one candidate instead of adding another,
- * while a changed catalog supersedes it (connector-keyed, endpoint_key null).
- */
 export function buildConnectorCapabilitySignal(input: ConnectorCapabilityInput): PatternSignal {
   const { connector, manifest } = input;
   const tools = [...manifest.tools].sort((a, b) => a.name.localeCompare(b.name));
@@ -127,12 +104,6 @@ export function buildConnectorCapabilitySignal(input: ConnectorCapabilityInput):
     ? clip(manifest.instructions, MAX_INSTRUCTIONS_CHARS)
     : null;
 
-  // Everything but the tool list is fixed; the tool list takes what is left
-  // of the size cap, so a large catalog can never push the data paths or the
-  // paging hints out of the body.
-  // Ambient connector skills render as a one-line index entry (title + the
-  // body's first line); the rest arrives only on load_skill. The first line
-  // therefore carries the one fact that prevents "no data": where to start.
   const startPath =
     [...dataPaths].filter((p) => !p.includes("{")).sort((a, b) => a.length - b.length)[0] ??
     dataPaths[0];
@@ -213,7 +184,6 @@ export function buildConnectorCapabilitySignal(input: ConnectorCapabilityInput):
   };
 }
 
-/** True when the connector came from a template that seeds its own skill. */
 async function templateSeedsSkill(
   db: Db,
   tenant_id: string,
@@ -225,12 +195,6 @@ async function templateSeedsSkill(
   return Boolean(match?.template.default_skill);
 }
 
-/**
- * Propose (or refresh) the connector-capability candidate after an authoring
- * conversation saved a connector on a green MCP probe. Returns a one-line
- * notice for the tool result, or null. Best-effort: the connector is already
- * saved, so every failure is logged and swallowed.
- */
 export async function proposeConnectorCapabilityCandidate(args: {
   db: Db;
   tenant_id: string;

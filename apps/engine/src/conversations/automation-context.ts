@@ -3,7 +3,6 @@ import type { Db } from "../db/client.ts";
 import { can } from "../rbac/evaluator.ts";
 import { inspectAutomationReview } from "./automation-review.ts";
 
-/** Fresh, permission-scoped evidence. A preview cannot supply this status. */
 export async function renderAutomationContext(
   tenant_id: string,
   workflow_id: string | null | undefined,
@@ -19,9 +18,6 @@ export async function renderAutomationContext(
     !(await can(db, { tenant_id, principal, permission: "schedule:read" })).allow
   )
     return `${rule}\nCurrent scheduling permission cannot be verified for this caller.`;
-  // A webhook starts runs as a schedule does; without it a held hook-only
-  // workflow read as "no scheduling evidence" and the model said nothing needs
-  // repair. Hooks and refusal reasons each behind their own permission.
   const allowed = async (permission: "inbound_hook:read" | "audit:read") =>
     (await can(db, { tenant_id, principal, permission, quiet: true })).allow;
   const review = await inspectAutomationReview(db, tenant_id, workflow_id, {
@@ -30,9 +26,6 @@ export async function renderAutomationContext(
       : {}),
   });
   const statuses = [...(review?.schedules ?? []), ...(review?.inbound_hooks ?? [])];
-  // A saved change waits for a person whether or not anything starts the
-  // workflow automatically; without it a manual workflow read as "nothing to
-  // review" while its run was refused for want of exactly that review.
   const savedChange = review?.saved_change
     ? `\nSaved change waiting to be applied (version ${review.saved_change.workflow_version_id}, ${review.saved_change.environment}): nothing runs it until a person applies it in the review card; call review_workflow_automation to show that card.`
     : "";

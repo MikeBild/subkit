@@ -1,11 +1,3 @@
-// Recipe browse + vertical-pack endpoints. Recipes are global catalog
-// data; the routes RBAC-gate on `connector:read` so portal tokens
-// without read scope cannot exfiltrate the catalog roster.
-//
-//   GET /v1/connector-templates/{slug}/recipes
-//   GET /v1/connector-templates/{slug}/recipes/{recipe_slug}
-//   GET /v1/recipe-packs/{vertical}
-
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
@@ -145,7 +137,5 @@ export function registerRecipeRoutes(app: OpenAPIHono<AppEnv>): void {
     );
   });
 
-  // Touch the constants so the biome unused-import pass does not reject
-  // a future refactor that prunes the set.
   void RECIPE_PACK_VERTICALS;
 }

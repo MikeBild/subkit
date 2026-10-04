@@ -1,15 +1,3 @@
-// Workflow output contract (Fix 11).
-//
-// Unit layer: the shared Ajv validator reports field-level
-// `$output/...` paths and refuses schemas that don't compile.
-//
-// Integration layer: a LIVE run whose final output violates the
-// definition's `output_schema` still SUCCEEDS — the violation rides
-// `RunResult.warnings` as a non-blocking `output_contract_violation`
-// with the field paths in `details.violations`. (The blocking behavior
-// lives in dry_run_workflow and is covered by the conversations-layer
-// test.)
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import {
@@ -26,8 +14,6 @@ const CONTRACT = {
     items: { type: "array" },
   },
   required: ["total", "items"],
-  // Unknown keywords must be tolerated (strict-but-lenient): LLM-
-  // authored schemas routinely carry annotations.
   examples: [{ total: 1, items: [] }],
 };
 
@@ -106,7 +92,6 @@ describe("live run — output_schema violation is a NON-blocking warning", () =>
       source: { kind: "saved", workflow_id },
       input: null,
     });
-    // NON-blocking: the live run is still a success.
     expect(result.status).toBe("succeeded");
     expect(result.error).toBeNull();
     const warning = (result.warnings ?? []).find((w) => w.code === "output_contract_violation");
@@ -129,7 +114,6 @@ describe("live run — output_schema violation is a NON-blocking warning", () =>
           expression: "return { count: 2 };",
         },
       ],
-      // The contract validates the FINAL output — post output_transform.
       output_transform: "{ 'total': count, 'items': [] }",
       output_schema: CONTRACT,
     });

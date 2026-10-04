@@ -1,12 +1,3 @@
-// Unit tests for the output-guard secret pre-pass and the streaming
-// text_delta scrubber.
-//
-// The pre-pass is a security invariant, NOT a scanner: a secret-shaped
-// span is always redacted and the turn continues — in soft mode, in
-// hard mode (no throw for a secrets-only text), and even in off mode.
-// Secret spans never enter `violations`, so a hard-mode throw caused
-// by a real scanner violation carries no token material.
-
 import { describe, expect, it } from "bun:test";
 import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
@@ -14,7 +5,6 @@ import { createStreamScrubber } from "../stream-scrub.ts";
 
 const ctx = { engine_url: "https://subkit-api.acme.dev" };
 
-// Obviously fake, regex-shaped fixture (Atlassian ATATT pat).
 const FAKE_TOKEN = "ATATTexampleexampleexample123Aa456";
 
 describe("runOutputGuard — secret pre-pass (soft mode)", () => {
@@ -74,26 +64,22 @@ describe("runOutputGuard — secret pre-pass (off mode)", () => {
 
 describe("createStreamScrubber", () => {
   it("redacts a token split across two push() chunks", () => {
-    // Each half alone is unmatchable (the prefix run is too short, the
-    // suffix has no ATATT anchor) — only the joined buffer matches.
     const half1 = "Here is the credential: ATATTexampleexample";
     const half2 = "example123Aa456 — keep it safe.\n\n";
-    const filler = "lorem ipsum dolor sit amet, ".repeat(20); // > holdback, with boundaries
+    const filler = "lorem ipsum dolor sit amet, ".repeat(20);
     const scrubber = createStreamScrubber();
     const emitted =
       scrubber.push(half1) + scrubber.push(half2) + scrubber.push(filler) + scrubber.flush();
     expect(emitted).not.toContain(FAKE_TOKEN);
     expect(emitted).toContain("***REDACTED:pat***");
-    // Everything except the token survives verbatim — the scrubber must
-    // not drop or reorder text around the holdback seams.
     expect(emitted).toBe((half1 + half2 + filler).replace(FAKE_TOKEN, "***REDACTED:pat***"));
   });
 
   it("flush() drains the held tail so nothing is lost", () => {
     const scrubber = createStreamScrubber();
     const text = "short reply, well under the holdback window";
-    expect(scrubber.push(text)).toBe(""); // held
-    expect(scrubber.flush()).toBe(text); // drained verbatim
+    expect(scrubber.push(text)).toBe("");
+    expect(scrubber.flush()).toBe(text);
   });
 
   it("reassembles clean text verbatim across many small chunks", () => {
@@ -108,9 +94,6 @@ describe("createStreamScrubber", () => {
   });
 
   it("never emits a partial token even when the cut lands inside it", () => {
-    // Push enough trailing token-charset filler that the naive cut
-    // would land inside the secret run; the boundary nudge must hold
-    // the whole run back instead of splitting it.
     const scrubber = createStreamScrubber(32);
     const out1 = scrubber.push(`prefix text ${FAKE_TOKEN}`);
     const out2 = scrubber.push(" trailing words that push the buffer well past the holdback");

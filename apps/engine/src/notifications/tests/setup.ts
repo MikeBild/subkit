@@ -1,10 +1,3 @@
-// Shared scaffolding for notification tests.
-//
-// Each test file gets its own disposable DB, a seeded tenant, and a
-// clean rate-limiter / circuit-breaker state. A `FakeAdapter` that
-// records every `send` call is also provided so dispatch tests can
-// assert on payloads.
-
 import type { ChatAdapter } from "../../chat/adapter.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../../chat/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -39,7 +32,6 @@ export async function createNotificationCtx(label: string): Promise<Notification
   };
 }
 
-/** Fake chat adapter that records every send / sendApproval call. */
 export class FakeAdapter implements ChatAdapter {
   readonly platform = "slack" as const;
   sends: ChatDelivery[] = [];

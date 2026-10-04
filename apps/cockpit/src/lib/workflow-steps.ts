@@ -5,19 +5,11 @@ export type ExecutionStep = components["schemas"]["ExecutionStep"];
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-/**
- * What a step does, in the parts a sentence is built from. One shape per step
- * kind of the engine's schema (`apps/engine/src/workflows/types.ts`); a kind
- * this build does not know is `other` and says only its name.
- */
 export type StepEssence =
   | {
       kind: "request";
-      /** How the request travels: plain HTTP, or one of the driver variants. */
       via: "http" | "sql" | "graphql" | "s3" | "mcp";
-      /** HTTP method, SQL verb or MCP operation. */
       verb: string | null;
-      /** Path, URL, first statement line, object key or tool name. */
       target: string | null;
     }
   | { kind: "branch"; when: string; thenSteps: string[]; elseSteps: string[] }
@@ -34,19 +26,10 @@ export type StepEssence =
   | { kind: "transform"; language: string }
   | { kind: "other" };
 
-/**
- * A short fact of the step's configuration, shown as label and value. A value
- * the engine spells as an enum word carries the catalogue key for it instead.
- */
 export type StepFact =
   | { labelKey: TranslationKey; value: string }
   | { labelKey: TranslationKey; valueKey: TranslationKey };
 
-/**
- * A piece of configuration shown in a fenced block — a body, a query, an
- * expression. It is PAYLOAD: rendered byte for byte, never rewritten. An
- * identifier in it is content the reader may have to copy.
- */
 export interface StepBlock {
   labelKey: TranslationKey;
   language: "json" | "javascript" | "sql" | "graphql" | "text";
@@ -56,9 +39,7 @@ export interface StepBlock {
 export interface WorkflowStepDefinition {
   id: string;
   kind: string;
-  /** Connector slug when the step names one. */
   connector: string | null;
-  /** Connector reference, resolved to a name before display — never rendered raw. */
   connectorId: string | null;
   essence: StepEssence;
   facts: StepFact[];
@@ -66,7 +47,6 @@ export interface WorkflowStepDefinition {
   raw: Record<string, unknown>;
 }
 
-/** The connector a step uses, as a name. Returns null rather than an id. */
 export function connectorNameOf(
   definition: WorkflowStepDefinition,
   namesById: ReadonlyMap<string, string>,
@@ -78,7 +58,6 @@ export function connectorNameOf(
 
 export interface WorkflowStepView {
   definition: WorkflowStepDefinition;
-  /** The same step in the most recent run, when it ran at all. */
   lastRun: ExecutionStep | null;
 }
 
@@ -94,7 +73,6 @@ const STEP_KIND_KEYS: Record<string, TranslationKey> = {
   tool: "workflow.kind.tool",
 };
 
-/** Names an engine step kind for people; an unknown enum never leaks into UI. */
 export function workflowStepKindKey(kind: string): TranslationKey {
   return STEP_KIND_KEYS[kind] ?? "workflow.stepType";
 }
@@ -116,7 +94,6 @@ function count(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** The first line that says something, so a statement fits one row. */
 function firstLine(value: string): string {
   return (
     value
@@ -148,22 +125,10 @@ function code(
   return source ? [{ labelKey, language, code: source }] : [];
 }
 
-/** A header whose value is a credential, by its name. */
 const SENSITIVE_HEADER = /authorization|cookie|token|secret|password|api[-_]?key|signature/i;
 
-/** A reference the engine resolves at run time: `${…}` or `{{…}}`. */
 const REFERENCE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
 
-/**
- * A request's headers as name and value, as the step declares them.
- *
- * A definition holds references — `Bearer {{credentials.token}}`,
- * `${input.id}` — and a reference is the configuration, not a secret: it is
- * shown and copied byte for byte, like everything else in a fenced block. The
- * one exception is a LITERAL value under a credential-shaped name, with no
- * reference in it. That is a secret someone pasted into a definition, where it
- * does not belong; the page is read over a shoulder, so it stays masked.
- */
 function headerLines(value: unknown): string | null {
   if (!record(value)) return null;
   const lines = Object.entries(value).map(([name, entry]) => {
@@ -225,8 +190,6 @@ function readRequest(raw: Record<string, unknown>): {
     };
   }
 
-  // The request line and everything sent with it. The address is payload too:
-  // it stands in a fenced block, exactly as the step declares it.
   if (essence.via === "http") {
     blocks.push(
       ...code("workflow.block.request", "text", `${essence.verb} ${essence.target ?? ""}`.trim()),
@@ -338,23 +301,15 @@ function readKind(
   }
 }
 
-/**
- * Reads a step's configuration per kind, against the engine's step schema.
- * Nothing here rewrites a value: facts and blocks carry what the definition
- * says, and the block renderer shows it unaltered.
- */
 export function readStepDefinition(step: unknown, index: number): WorkflowStepDefinition {
   const raw = record(step) ? step : {};
   const kind = text(raw.kind) ?? text(raw.type) ?? "";
   const { essence, facts, blocks } = readKind(kind, raw);
-  // What every kind may carry.
   blocks.push(...code("workflow.block.forEach", "javascript", raw.for_each));
   if (kind !== "loop") blocks.push(...code("workflow.block.selector", "text", raw.data_selector));
-  // A wait-for-event names its own limit in its sentence; elsewhere it is a fact.
   const timeout = kind === "wait_for_event" ? null : count(raw.timeout_ms);
   if (timeout !== null)
     facts.push({ labelKey: "workflow.fact.timeout", value: formatDuration(timeout) });
-  // `fail` is the default and says nothing; continuing past an error does.
   if (raw.on_error === "continue")
     facts.push({ labelKey: "workflow.fact.onError", valueKey: "workflow.fact.onErrorContinue" });
   return {
@@ -369,7 +324,6 @@ export function readStepDefinition(step: unknown, index: number): WorkflowStepDe
   };
 }
 
-/** A duration in the largest unit that keeps it a whole number: 90 s, 5 min, 2 h. */
 export function formatDuration(ms: number): string {
   if (ms < 1_000) return `${ms} ms`;
   if (ms % 3_600_000 === 0) return `${ms / 3_600_000} h`;
@@ -388,12 +342,6 @@ const VIA_KEYS: Record<
   mcp: "workflow.via.mcp",
 };
 
-/**
- * One line that says what the step does — "GET /users · Example API",
- * "if status = 200 → shape_success, else shape_failure". It stands outside a
- * fenced block, so an identifier inside it is masked like any other on the
- * page; the unaltered value is in the step's blocks.
- */
 export function stepEssenceText(
   definition: WorkflowStepDefinition,
   t: Translate,
@@ -456,11 +404,6 @@ const TRANSFORM_LANGUAGES: Record<string, string> = {
   "structured-data": "Structured Data",
 };
 
-/**
- * Joins the saved definition with the most recent run by step id — the
- * execution rows carry it as `step_key`. A step that never ran keeps a null
- * result rather than borrowing another step's.
- */
 export function joinStepsWithLastRun(
   steps: readonly unknown[],
   runSteps: readonly ExecutionStep[],
@@ -477,10 +420,6 @@ export function joinStepsWithLastRun(
   });
 }
 
-/**
- * What a step's last run produced, preferring the structured value. Shown in a
- * fenced block, so it is the run's own output, unaltered.
- */
 export function stepResultPreview(step: ExecutionStep | null): string | null {
   if (!step) return null;
   return render(step.error) ?? render(step.output_preview) ?? render(step.result_preview);
@@ -493,10 +432,6 @@ function render(value: unknown): string | null {
 
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
-/**
- * Replaces identifiers in a line that stands OUTSIDE a fenced block, where a
- * UUID is a label nobody reads. Never applied to a block: there it is payload.
- */
 export function maskIdentifiers(value: string): string {
   return value.replace(UUID, "…");
 }

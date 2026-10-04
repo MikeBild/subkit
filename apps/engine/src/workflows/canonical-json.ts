@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
 
-/** Stable JSON for persisted workflow definitions. Object key order is not
- * semantic; array order is. Matches the existing draft/version comparison. */
 export function canonicalWorkflowJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalWorkflowJson).join(",")}]`;
   if (value !== null && typeof value === "object") {

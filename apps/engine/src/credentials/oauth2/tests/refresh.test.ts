@@ -30,12 +30,6 @@ beforeAll(async () => {
       environment: "dev",
       auth_type: "oauth2",
       base_url: "https://example.test",
-      // resolveConnectorOAuthConfig (template-binding.ts) reads
-      // `config.oauth.*`, not the top-level config keys. The test
-      // setup originally put issuer_url / client_id / etc. at the
-      // top level — refresh-worker found no oauth config + skipped
-      // the refresh + the assertion that the access_token rotated
-      // failed. Nest the block correctly.
       config: {
         oauth: {
           issuer_url: mock.baseUrl,
@@ -57,7 +51,6 @@ afterAll(async () => {
 
 describe("oauth2 refresh", () => {
   test("stale token is refreshed inline and replaced in the db", async () => {
-    // Issue a short-lived token (1s) via client credentials.
     mock.setExpiresIn(1);
     const initial = await runClientCredentialsGrant({
       issuer_url: mock.baseUrl,
@@ -86,11 +79,8 @@ describe("oauth2 refresh", () => {
     );
     const issuedBefore = mock.issuedCount();
 
-    // Wait past expiry; any read after this should trigger refresh.
     await new Promise((r) => setTimeout(r, 1200)); // allow-wall-clock: token-refresh skew window for the OAuth2 fixture clock
 
-    // Reset the mock's expires_in to a long window so the refreshed
-    // token doesn't also immediately expire.
     mock.setExpiresIn(3600);
 
     const fetched = await getCredentialForConnector(tenantId, connectorId, "dev", ctx.db);
@@ -105,7 +95,6 @@ describe("oauth2 refresh", () => {
     expect(mock.issuedCount()).toBeGreaterThan(issuedBefore);
     expect(mock.lastGrantType()).toBe("refresh_token");
 
-    // Persisted row has the new access token.
     const persisted = await getCredentialForConnector(tenantId, connectorId, "dev", ctx.db);
     if (persisted!.value.mode === "oauth2") {
       expect(persisted!.value.access_token).not.toBe(initial.access_token);

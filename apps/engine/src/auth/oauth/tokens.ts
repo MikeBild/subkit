@@ -1,12 +1,3 @@
-// MCP OAuth token helpers — generation, parsing, PKCE.
-//
-// Token format mirrors the api_keys pattern from identity/api-key.ts:
-//   access  token: wf_mcp_<32 url-safe chars>  prefix = first 12 chars
-//   refresh token: wf_mcr_<32 url-safe chars>  prefix = first 12 chars
-//   auth code:     <32 url-safe chars>  (no prefix — only used server-side)
-//
-// Only SHA-256 hashes are persisted; plaintext never touches the database.
-
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { sha256Hex } from "../../identity/api-key.ts";
 
@@ -83,7 +74,6 @@ export function parseMcpToken(plaintext: string): ParsedMcpToken | null {
   return null;
 }
 
-// Constant-time hex comparison — reuse the same logic as api-key.ts.
 export function constantTimeHexEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   const ba = Buffer.from(a, "hex");
@@ -92,11 +82,8 @@ export function constantTimeHexEquals(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-// PKCE S256 verification.
-// RFC 7636: code_verifier → BASE64URL(SHA256(ASCII(code_verifier))) == code_challenge
 export function verifyS256(verifier: string, challenge: string): boolean {
   const digest = createHash("sha256").update(verifier).digest("base64url");
-  // Constant-time comparison on equal-length base64url strings.
   if (digest.length !== challenge.length) return false;
   const a = Buffer.from(digest, "base64url");
   const b = Buffer.from(challenge, "base64url");

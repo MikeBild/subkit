@@ -1,16 +1,3 @@
-// Read-time aggregation for GET /v1/stats/executions.
-//
-// Pure SQL builder over the `executions` table. NO new persistence:
-// every number is a `date_trunc()` + `percentile_cont` query computed
-// at read time. Three rollups come back in one round-trip so callers
-// never re-sum: per-bucket series, per-group totals, window totals.
-//
-// TENANT ISOLATION (the critical invariant): `tenant_id = $tenantId` is
-// the FIRST predicate in every WHERE clause and is bound from the
-// authenticated principal — never from a user-supplied filter. A
-// caller-supplied `workflow_id` / `status` / `request_source` can only
-// narrow within the tenant; it can never widen across tenants.
-
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";
@@ -22,13 +9,11 @@ export interface ExecutionsStatsParams {
   bucket: BucketUnit;
   from: Date;
   to: Date;
-  /** IANA tz used for bucket-boundary computation. Default "UTC". */
   tz: string;
   workflowId?: string | undefined;
   status?: string[] | undefined;
   requestSource?: string[] | undefined;
   executionMode?: "dev" | "prod" | undefined;
-  /** ≤2 dims. Empty → a single synthetic group keyed `{}`. */
   groupBy: ExecutionGroupDim[];
 }
 
@@ -61,7 +46,6 @@ export interface ExecutionsStatsResult {
   };
 }
 
-/** Column expression for a group dimension. */
 function dimColumn(dim: ExecutionGroupDim): SQL {
   switch (dim) {
     case "workflow_id":
@@ -73,13 +57,9 @@ function dimColumn(dim: ExecutionGroupDim): SQL {
   }
 }
 
-/** Duration in ms = finished_at - started_at, expressed as a numeric. */
 const DURATION_MS = sql`(extract(epoch from (finished_at - started_at)) * 1000)`;
 
 function durationSelect(): SQL {
-  // percentile_cont needs a numeric domain; coalesce so unfinished /
-  // null-duration rows contribute 0 to count-bearing aggregates but are
-  // excluded from percentiles (filtered below) to avoid skewing latency.
   return sql`
     coalesce(sum(${DURATION_MS}) filter (where finished_at is not null), 0)::float8 as dur_total,
     coalesce(avg(${DURATION_MS}) filter (where finished_at is not null), 0)::float8 as dur_avg,
@@ -103,7 +83,6 @@ function readDuration(row: Record<string, unknown>): DurationAgg {
 }
 
 function buildWhere(p: ExecutionsStatsParams): SQL {
-  // tenant_id FIRST — see module header. started_at window next.
   const conds: SQL[] = [
     sql`tenant_id = ${p.tenantId}`,
     sql`started_at is not null`,
@@ -121,18 +100,10 @@ function buildWhere(p: ExecutionsStatsParams): SQL {
   return sql.join(conds, sql` and `);
 }
 
-/** `date_trunc(bucket, started_at at the requested tz)`. Both `bucket`
- *  and `tz` are bound parameters — no string interpolation. The SELECT
- *  aliases this `bucket_ts` and every GROUP BY references that alias (see
- *  `GROUP_BY_BUCKET`) so the expression text appears exactly once,
- *  sidestepping ERROR 42803 without duplicating placeholders. */
 function bucketExpr(p: ExecutionsStatsParams): SQL {
   return sql`date_trunc(${p.bucket}, started_at at time zone ${p.tz})`;
 }
 
-/** GROUP BY reference to the bucket: the SELECT alias, never the
- *  parameterized expression (which would emit a second placeholder
- *  Postgres cannot match against the SELECT one). */
 const GROUP_BY_BUCKET = sql`bucket_ts`;
 
 export async function aggregateExecutions(
@@ -143,7 +114,6 @@ export async function aggregateExecutions(
   const bucket = bucketExpr(p);
   const dims = p.groupBy.slice(0, 2);
 
-  // --- per-bucket × per-group series -------------------------------------
   const dimSelects =
     dims.length > 0
       ? sql.join(
@@ -169,7 +139,6 @@ export async function aggregateExecutions(
     `)
   ).rows as Record<string, unknown>[];
 
-  // --- group key helpers -------------------------------------------------
   const keyOf = (row: Record<string, unknown>): Record<string, string> => {
     const key: Record<string, string> = {};
     for (const d of dims) {
@@ -181,7 +150,6 @@ export async function aggregateExecutions(
   const keyStr = (key: Record<string, string>): string =>
     dims.map((d) => `${d}=${key[d]}`).join("|");
 
-  // --- per-group totals (one row per group) ------------------------------
   const groupTotalRows =
     dims.length > 0
       ? ((
@@ -197,7 +165,6 @@ export async function aggregateExecutions(
         ).rows as Record<string, unknown>[])
       : [];
 
-  // --- window totals + by_status -----------------------------------------
   const windowRow = ((
     await db.execute(sql`
       select
@@ -217,7 +184,6 @@ export async function aggregateExecutions(
     `)
   ).rows as Record<string, unknown>[];
 
-  // --- assemble groups ---------------------------------------------------
   const groupMap = new Map<string, ExecutionsGroup>();
   const ensure = (key: Record<string, string>): ExecutionsGroup => {
     const ks = keyStr(key);
@@ -254,7 +220,6 @@ export async function aggregateExecutions(
       };
     }
   } else {
-    // Single synthetic group: its totals are the window totals.
     const g = ensure({});
     g.totals = {
       executions: Number(windowRow.executions ?? 0),

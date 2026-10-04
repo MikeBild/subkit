@@ -1,6 +1,3 @@
-// AiSdkModel unit tests — bun:test with an injected generateText mock
-// via the constructor `generateTextFn` option (no SDK module mocking).
-
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
@@ -70,16 +67,13 @@ function makeMultiStub(results: GenerateTextStubResult[]) {
   return { fn, calls };
 }
 
-// A stub that mimics the AI SDK's abort behaviour: it never resolves on its
-// own and rejects with an `AbortError`-named error the moment the supplied
-// `abortSignal` fires (timeout or caller). Records each call's opts.
 function makeAbortAwareStub() {
   const calls: Array<{ abortSignal: AbortSignal | undefined; model: unknown }> = [];
   const fn = (opts: { abortSignal?: AbortSignal; model: unknown }) => {
     calls.push({ abortSignal: opts.abortSignal, model: opts.model });
     return new Promise((_resolve, reject) => {
       const signal = opts.abortSignal;
-      if (!signal) return; // never resolves — would hang without a signal
+      if (!signal) return;
       const onAbort = () => {
         const err = new Error("The operation was aborted");
         err.name = "AbortError";
@@ -110,7 +104,6 @@ describe("AiSdkModel per-call timeout + abort", () => {
     const stub = makeAbortAwareStub();
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
-      // long timeout so the caller signal is what fires
       callTimeoutMs: 60_000,
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
@@ -119,7 +112,6 @@ describe("AiSdkModel per-call timeout + abort", () => {
     const p = model.generateText([{ role: "user", content: "hi" }], {
       signal: controller.signal,
     });
-    // Abort on the next microtask — deterministic, no wall clock.
     queueMicrotask(() => controller.abort());
     await expect(p).rejects.toBeInstanceOf(LlmCallAbortedError);
   });
@@ -150,18 +142,14 @@ describe("AiSdkModel per-call timeout + abort", () => {
   });
 
   it("bounds the fallback model call with the same timeout", async () => {
-    // Primary throws a fallback-eligible provider error immediately; the
-    // fallback call then hangs and must abort at the injected timeout.
     const calls: Array<{ model: unknown; abortSignal: AbortSignal | undefined }> = [];
     let i = 0;
     const fn = (opts: { model: unknown; abortSignal?: AbortSignal }) => {
       calls.push({ model: opts.model, abortSignal: opts.abortSignal });
       i += 1;
       if (i === 1) {
-        // Primary: overloaded → fallback-eligible.
         return Promise.reject(new Error("overloaded"));
       }
-      // Fallback: hang until the signal aborts.
       return new Promise((_resolve, reject) => {
         const signal = opts.abortSignal;
         if (!signal) return;
@@ -184,7 +172,6 @@ describe("AiSdkModel per-call timeout + abort", () => {
     await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
       LlmCallAbortedError,
     );
-    // Both the primary and the fallback were attempted.
     expect(calls.length).toBe(2);
   });
 
@@ -269,8 +256,6 @@ describe("AiSdkModel.generateText", () => {
       runtimeContext: Record<string, unknown>;
     };
     expect(call.temperature).toBe(0.7);
-    // AI SDK 7 dropped TelemetryOptions.metadata; attribution now flows via
-    // runtimeContext, surfaced into telemetry through includeRuntimeContext.
     expect(call.runtimeContext.tenant_id).toBe("t1");
     expect(call.telemetry.functionId).toBe("converse");
     expect(call.telemetry.includeRuntimeContext.tenant_id).toBe(true);

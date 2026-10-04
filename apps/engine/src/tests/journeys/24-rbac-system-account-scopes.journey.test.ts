@@ -1,10 +1,3 @@
-// User story: As an operator, I want machine accounts to inherit
-// narrow roles rather than being implicit admins.
-// Acceptance criteria:
-//   - AC1: A metrics_scraper system account is denied workflow:read.
-//   - AC2: The default-bot system account remains full admin.
-// Spec refs: gap-pass-2 C7 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -69,7 +62,6 @@ describe("journey: rbac system account scopes", () => {
   });
 
   test("AC2: default-bot (admin) retains full access", async () => {
-    // The journey bootstrap seeds the admin API key under ctx.apiKey.
     const res = await req(ctx.apiKey, "/v1/workflows");
     expect(res.status).toBe(200);
   });

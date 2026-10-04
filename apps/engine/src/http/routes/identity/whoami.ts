@@ -1,5 +1,3 @@
-// Minimal identity shape — just enough for the persona banner, no second probe needed.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { roles, systemAccounts, tenants, users } from "../../../db/schema/index.ts";
@@ -16,20 +14,7 @@ const WhoamiSchema = z
     email: z.string().nullable(),
     role_name: z.string().nullable(),
     provider: z.string(),
-    /**
-     * Public origin (`https://host[:port]`) the engine was reached at —
-     * lets clients (chat UI, sk CLI, Skills) emit paste-ready snippets
-     * without hard-coding placeholder hosts. Reflects the host header on
-     * the request, then canonical `server.public_base_url`, else null.
-     */
     base_url: z.string().nullable(),
-    /**
-     * The RAW scopes the calling credential carries — NOT the enforced
-     * permission set. `null` for sessions where scopes are not enumerable;
-     * `["*"]` for full access. `mcp:*` scopes select the MCP catalog mode
-     * and do not bound REST permissions. For the ENFORCED effective rights
-     * on a resource, call `GET /v1/identity/permissions`.
-     */
     scopes: z.array(z.string()).nullable(),
   })
   .openapi("Whoami");

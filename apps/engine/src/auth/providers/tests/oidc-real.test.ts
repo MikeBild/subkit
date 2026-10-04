@@ -1,24 +1,3 @@
-// Pass 2 A1 — real OIDC provider end-to-end coverage.
-//
-// This suite exercises the full `createOidcProvider()` surface against
-// a mock OpenID Connect provider spun up on a random loopback port. It
-// is the first test that proves the engine's OIDC path past the old
-// `return null` stub: session rows land in Postgres, cookies sign and
-// verify, sliding + absolute TTLs enforce, and logout flips the row.
-//
-// The round trip is staged manually so the test doesn't depend on a
-// full browser redirect:
-//
-//   1. Issue a tenant + seed.
-//   2. Have the fixture stage claims for the next `/token` hop.
-//   3. Call `provider.finishLogin(req)` with a synthetic callback URL
-//      that carries the fixture's `code` and the provider's `state`.
-//   4. Read the `Set-Cookie` header and build a follow-up request.
-//
-// The provider sits on a disposable test database so every assertion
-// looks at concrete rows (`sessions`, `audit_log`) without racing the
-// rest of the suite.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -58,9 +37,7 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     await mock.stop();
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   if (testDb) await testDb.cleanup();
 });
 
@@ -71,8 +48,6 @@ function buildProvider(overrides: { enableSignup?: boolean } = {}) {
     clientId: CLIENT_ID,
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
-    // Most cases exercise the JIT path; the signup-gate suite below
-    // covers the production default (false) explicitly.
     enableSignup: overrides.enableSignup ?? true,
   });
 }
@@ -89,8 +64,6 @@ describe("oidc provider — real flow", () => {
   test("finishLogin: issues session row, cookie resolves principal", async () => {
     const provider = buildProvider();
 
-    // 1. Start a login so the provider creates the `oidc_login_states`
-    //    row with a real state + PKCE verifier.
     const startUrl = `http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real`;
     const startRes = await provider.startLogin!(new Request(startUrl));
     expect(startRes.status).toBe(302);
@@ -98,16 +71,8 @@ describe("oidc provider — real flow", () => {
     const state = authorizeUrl.searchParams.get("state") ?? "";
     expect(state.length).toBeGreaterThan(0);
 
-    // 2. Follow the authorize URL so the mock captures the nonce the
-    //    engine staged for this login attempt. openid-client's
-    //    `authorizationCodeGrant` validates `claims.nonce ===
-    //    expectedNonce`, so the mock must echo it back in the eventual
-    //    id_token.
     await fetch(authorizeUrl.toString(), { redirect: "manual" });
 
-    // 3. Tell the fixture what claims the next `/token` hop should
-    //    mint an id_token for. The mock merges the staged nonce in
-    //    during token response assembly.
     const issued = mock.issueFor(
       {
         sub: "mock-sub-1",
@@ -116,14 +81,12 @@ describe("oidc provider — real flow", () => {
       { state, redirect_uri: REDIRECT_URI },
     );
 
-    // 3. Drive the engine's finishLogin.
     const finishRes = await provider.finishLogin!(new Request(issued.callbackUrl));
     expect(finishRes.status).toBe(302);
 
     const cookie = parseSetCookie(finishRes.headers.get("set-cookie"));
     expect(cookie).not.toBeNull();
 
-    // 4. The sessions row should exist.
     const sessionRows = await testDb.db
       .select()
       .from(sessions)
@@ -134,7 +97,6 @@ describe("oidc provider — real flow", () => {
     expect(session.absolute_expires_at).not.toBeNull();
     expect(session.last_seen_at).not.toBeNull();
 
-    // 5. A follow-up request carrying the cookie should resolve.
     const resolveRes = await provider.resolve(
       new Request("http://127.0.0.1:0/v1/identity/tenants", {
         headers: { cookie: `subkit_session=${cookie}` },
@@ -145,7 +107,6 @@ describe("oidc provider — real flow", () => {
     expect(resolveRes?.kind).toBe("user");
     expect(resolveRes?.session_id).toBe(session.id);
 
-    // Audit trail: session.issued + user.logged_in.
     const auditRows = await testDb.db
       .select()
       .from(auditLog)
@@ -161,9 +122,6 @@ describe("oidc provider — real flow", () => {
     );
     const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
-    // Fire a no-redirect fetch at /authorize so the mock stashes the
-    // nonce. openid-client's response-processing step will require the
-    // id_token to carry that nonce back.
     await fetch(authorizeUrl.toString(), { redirect: "manual" });
     const issued = mock.issueFor(
       { sub: "sliding-sub", email: "sliding@test.local" },
@@ -173,8 +131,6 @@ describe("oidc provider — real flow", () => {
     const cookie = parseSetCookie(finishRes.headers.get("set-cookie"));
     expect(cookie).not.toBeNull();
 
-    // Fetch the session row we just created and force last_seen_at far
-    // into the past.
     const sessionRowList = await testDb.db
       .select()
       .from(sessions)
@@ -213,9 +169,6 @@ describe("oidc provider — real flow", () => {
     );
     const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
-    // Fire a no-redirect fetch at /authorize so the mock stashes the
-    // nonce. openid-client's response-processing step will require the
-    // id_token to carry that nonce back.
     await fetch(authorizeUrl.toString(), { redirect: "manual" });
     const issued = mock.issueFor(
       { sub: "absolute-sub", email: "absolute@test.local" },
@@ -262,9 +215,6 @@ describe("oidc provider — real flow", () => {
     );
     const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
-    // Fire a no-redirect fetch at /authorize so the mock stashes the
-    // nonce. openid-client's response-processing step will require the
-    // id_token to carry that nonce back.
     await fetch(authorizeUrl.toString(), { redirect: "manual" });
     const issued = mock.issueFor(
       { sub: "revoke-sub", email: "revoke@test.local" },
@@ -288,7 +238,6 @@ describe("oidc provider — real flow", () => {
     );
     expect(principal).toBeNull();
 
-    // The provider-neutral identity binding and user row should still exist.
     const identities = await testDb.db
       .select()
       .from(userIdentities)
@@ -313,7 +262,6 @@ describe("oidc provider — auth.enable_signup gate", () => {
     );
     const authorizeUrl = new URL(startRes.headers.get("location") ?? "");
     const state = authorizeUrl.searchParams.get("state") ?? "";
-    // The mock must stash the nonce for the eventual id_token.
     await fetch(authorizeUrl.toString(), { redirect: "manual" });
     const issued = mock.issueFor(claims, { state, redirect_uri: REDIRECT_URI });
     return provider.finishLogin!(new Request(issued.callbackUrl));
@@ -361,13 +309,11 @@ describe("oidc provider — auth.enable_signup gate", () => {
   });
 
   test("signup disabled: an existing user_identities link keeps signing in", async () => {
-    // Provision once with signups enabled …
     const first = await loginAttempt(buildProvider({ enableSignup: true }), {
       sub: "gate-existing-sub",
       email: "gate-existing@test.local",
     });
     expect(first.status).toBe(302);
-    // … then the same identity logs in fine with signups disabled.
     const second = await loginAttempt(buildProvider({ enableSignup: false }), {
       sub: "gate-existing-sub",
       email: "gate-existing@test.local",

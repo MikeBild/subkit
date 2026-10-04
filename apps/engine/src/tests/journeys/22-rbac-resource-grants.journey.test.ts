@@ -1,12 +1,3 @@
-// User story: As an admin, I want to grant a member user access to
-// run exactly one workflow, without expanding their role.
-// Acceptance criteria:
-//   - AC1: Admin issues a workflow:run grant on workflow X to user U.
-//   - AC2: User U can run workflow X via POST /v1/executions.
-//   - AC3: User U gets 403 when running workflow Y (no grant).
-//   - AC4: DELETE /v1/rbac/grants/:id removes the grant, revoking access.
-// Spec refs: gap-pass-2 C2 / C4 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
@@ -48,7 +39,6 @@ describe("journey: rbac resource grants", () => {
     });
     workflowY = y.id;
 
-    // Seed a member user with member built-in role.
     const memberRole = await ctx.db
       .select({ id: roles.id })
       .from(roles)
@@ -89,11 +79,6 @@ describe("journey: rbac resource grants", () => {
   }
 
   test("AC1-AC3: scoped workflow:run grant", async () => {
-    // Member role already has workflow:run per the catalog filter, so
-    // a raw grant is not strictly required to prove the member can run
-    // X. To prove the grant path rather than the role path, we first
-    // bind the member user to a stripped-down empty custom role, then
-    // issue the resource grant.
     const createRole = await journeyFetch(ctx, "/v1/rbac/roles", {
       method: "POST",
       body: JSON.stringify({ name: "bare", description: "no perms" }),
@@ -105,14 +90,12 @@ describe("journey: rbac resource grants", () => {
       body: JSON.stringify({ role_id: bare.id }),
     });
 
-    // Confirm the member now cannot run X.
     const preX = await asMember("/v1/executions", {
       method: "POST",
       body: JSON.stringify({ source: "saved", workflow_id: workflowX, input: {} }),
     });
     expect(preX.status).toBe(403);
 
-    // AC1: grant workflow:run on X to the member.
     const grant = await journeyFetch(ctx, "/v1/rbac/grants", {
       method: "POST",
       body: JSON.stringify({
@@ -127,14 +110,12 @@ describe("journey: rbac resource grants", () => {
     const grantBody = (await grant.json()) as { id: string };
     grantId = grantBody.id;
 
-    // AC2: now member can run X.
     const postX = await asMember("/v1/executions", {
       method: "POST",
       body: JSON.stringify({ source: "saved", workflow_id: workflowX, input: {} }),
     });
     expect([200, 202]).toContain(postX.status);
 
-    // AC3: member still can't run Y.
     const postY = await asMember("/v1/executions", {
       method: "POST",
       body: JSON.stringify({ source: "saved", workflow_id: workflowY, input: {} }),

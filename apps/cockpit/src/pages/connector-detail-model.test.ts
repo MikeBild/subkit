@@ -1,10 +1,3 @@
-// The connector detail page's decisions: the words for the engine's machine
-// values (and the fallback for one this build has no word for), the runtime
-// figures and the audit links that count the same thing over the same window
-// (§10.1), the credential body a replaced key is posted as, what the page
-// says when a sign-in comes back, and the one line and one action the sign-in
-// card offers.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -241,7 +234,6 @@ describe("coming back from a sign-in", () => {
       "utf8",
     );
     expect(engine).toContain(`export const SIGNED_IN_MARKER = "${SIGNED_IN_PARAM}";`);
-    // The page the engine redirects to is this page's own address.
     const id = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
     expect(absolute(connectorHref(id))).toBe(`/cockpit/connectors/${id}`);
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the source text is checked, not its result
@@ -252,7 +244,6 @@ describe("coming back from a sign-in", () => {
     expect(connectorNotice({ enabled: true, authState: "connected", returned: true })).toBe(
       "signed_in",
     );
-    // Signed in is true as soon as the flag is clear, whatever else is unproven.
     expect(connectorNotice({ enabled: true, authState: "unproven", returned: true })).toBe(
       "signed_in",
     );
@@ -270,7 +261,6 @@ describe("coming back from a sign-in", () => {
   });
 
   test("a flag the connector does not bear out confirms nothing", () => {
-    // Anyone can type the flag into the address.
     for (const authState of ["expired", "credentials_missing", "not_required"] as const) {
       expect(connectorNotice({ enabled: true, authState, returned: true })).toBeNull();
       expect(connectorNotice({ enabled: false, authState, returned: true })).toBe("off");
@@ -288,8 +278,6 @@ describe("the sign-in card's one line and one action", () => {
         canWrite,
       });
     expect(way("oauth2")).toBe("provider");
-    // An OAuth that runs machine to machine states no browser sign-in: there
-    // is no provider page to send the reader to, and no key to replace.
     expect(
       renewalWay({
         authType: "oauth2_client",

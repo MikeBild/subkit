@@ -1,16 +1,3 @@
-// conversation.run-turn.dlq consumer (integration).
-//
-// Pins the B1 fix: when the run-turn worker PROCESS dies mid-turn the
-// turn's own `catch` never runs, so pg-boss expires the job and
-// dead-letters it. The DLQ consumer reconciles the stranded
-// `mcp_tasks` row — marks it `failed` with `worker_expired` and writes
-// the `CONVERSATION_TURN_FAILED` audit row — so a Tasks client does
-// not poll `working` forever.
-//
-// A process death cannot be staged in-process, so the test enqueues a
-// job directly onto `conversation.run-turn.dlq` — exactly the envelope
-// pg-boss moves there on expiry — and drives the GENUINE consumer.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,9 +21,7 @@ async function ensureConfig(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    // not loaded
-  }
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-runturn-dlq-test-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/runturn-dlq-test", NODE_ENV: "test" },
@@ -95,14 +80,10 @@ async function seedConversationAndTask(
 describe("conversation.run-turn.dlq consumer", () => {
   test("B1: a dead-lettered job marks the non-terminal mcp_tasks row failed/worker_expired + writes the audit row", async () => {
     const { conversation_id, mcp_task_id } = await seedConversationAndTask("worker dies mid-turn");
-    // The mcp_tasks row is non-terminal — the worker process died
-    // before writing result / failure_reason / cancelled_at.
     const before = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
     expect(before?.result).toBeNull();
     expect(before?.failure_reason).toBeNull();
 
-    // pg-boss moves the original job envelope to the DLQ on expiry —
-    // enqueue exactly that envelope.
     await queue.boss.send(CONVERSATION_RUN_TURN_DLQ, {
       tenant_id: tenantId,
       conversation_id,
@@ -141,10 +122,6 @@ describe("conversation.run-turn.dlq consumer", () => {
   }, 30_000);
 
   test("B1: a dead-lettered job whose mcp_tasks row is already terminal is an idempotent no-op", async () => {
-    // The worker DID finish (or the row was cancelled) before the
-    // process died — or this is a DLQ redelivery. The consumer must
-    // not clobber the terminal column and must not write a second
-    // audit row.
     const { conversation_id, mcp_task_id } = await seedConversationAndTask("already cancelled");
     await setMcpTaskCancelled(tenantId, mcp_task_id, queue.testDb.db);
 
@@ -156,11 +133,9 @@ describe("conversation.run-turn.dlq consumer", () => {
       kind: "start",
     });
 
-    // Let the consumer dequeue and early-return.
     await waitFor(async () => true, { tries: 12, sleepMs: 250, label: "dlq dequeue window" });
 
     const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
-    // The terminal marker survived — failure_reason was NOT stamped.
     expect(row?.cancelled_at).toBeInstanceOf(Date);
     expect(row?.failure_reason).toBeNull();
     const audits = await queue.testDb.db

@@ -1,15 +1,3 @@
-// Integration tests for McpDbOAuthClientProvider + makeMcpOAuthProvider.
-//
-// Uses a real Postgres test DB (createTestDb) because the provider reads
-// and writes to:
-//   - `credentials`       (oauth2 + oauth2_client slots)
-//   - `mcp_oauth_states`  (code_verifier + authorization_url)
-//   - `connectors`        (config.mcp.auth.client_id mirror)
-//
-// No SDK auth() network round-trip occurs here — we call the provider
-// methods directly. Secret-at-rest assertions read the raw `credentials`
-// row (still encrypted) and verify ciphertext != plaintext.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { credentials, mcpOauthStates, tenants } from "../../db/schema/index.ts";
@@ -26,15 +14,9 @@ const FAKE_REDIRECT_URI = "https://engine.acmeauth.test/v1/connectors/mcp/oauth/
 const FAKE_SERVER_URL = "https://examplemcp.acmeauth.test/mcp";
 const FAKE_ISSUER = "https://auth.acmeauth.test";
 
-// Deterministic, wall-clock-free expiry seams. The state-row "still valid"
-// lookup is `expires_at > now()` against the REAL db `now()`, so we use a
-// fixed far-future absolute instant (stable across runs, always ahead of
-// real now). The backdated "already expired" instant is a fixed point in
-// 2023 — firmly before real now — so the provider's expiry branch fires.
 const STATE_FAR_FUTURE = new Date("2999-01-01T00:00:00.000Z");
 const TOKEN_EXPIRED_AT = new Date(FROZEN_NOW - 120_000);
 
-/** Seed an oauth2 MCP server for tenant, return its id. */
 async function seedOAuth2Server(tenantId: string, slug: string): Promise<string> {
   const row = await seedMcpConnector(ctx.db, {
     tenant_id: tenantId,
@@ -46,7 +28,6 @@ async function seedOAuth2Server(tenantId: string, slug: string): Promise<string>
   return row.id;
 }
 
-/** Seed a fresh mcp_oauth_states row to simulate the authorize route's INSERT. */
 async function seedStateRow(tenantId: string, serverId: string, state: string): Promise<void> {
   await ctx.db.insert(mcpOauthStates).values({
     tenant_id: tenantId,
@@ -58,7 +39,6 @@ async function seedStateRow(tenantId: string, serverId: string, state: string): 
   });
 }
 
-/** Build an interactive provider bound to the given state row. */
 function makeInteractiveProvider(tenantId: string, serverId: string, state: string) {
   return makeMcpOAuthProvider({
     db: ctx.db,
@@ -73,7 +53,6 @@ function makeInteractiveProvider(tenantId: string, serverId: string, state: stri
   });
 }
 
-/** Build a non-interactive provider (pool handshake mode). */
 function makeNonInteractiveProvider(tenantId: string, serverId: string) {
   return makeMcpOAuthProvider({
     db: ctx.db,
@@ -106,8 +85,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
-
-// ── clientMetadata shape ──────────────────────────────────────────────────────
 
 describe("McpDbOAuthClientProvider.clientMetadata", () => {
   test("always contains redirect_uris and grant_types", async () => {
@@ -152,8 +129,6 @@ describe("McpDbOAuthClientProvider.clientMetadata", () => {
   });
 });
 
-// ── saveClientInformation / clientInformation round-trip ─────────────────────
-
 describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", () => {
   test("persists client_id to credentials oauth2_client slot + mirrors to auth_config", async () => {
     const serverId = await seedOAuth2Server(tenantA, "saveclient1");
@@ -179,7 +154,6 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
       client_secret: "acme-plaintext-secret-002",
     });
 
-    // Read the raw row from DB and check ciphertext is not just the plaintext UTF-8.
     const rows = await ctx.db
       .select({ ciphertext: credentials.ciphertext })
       .from(credentials)
@@ -198,9 +172,7 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
       client_secret: "acme-plaintext-secret-002",
     });
     const plaintextBytes = Buffer.from(plaintextJson);
-    // The ciphertext must NOT be equal to the plaintext in any form.
     expect(Buffer.compare(Buffer.from(storedBytes), plaintextBytes)).not.toBe(0);
-    // And must not CONTAIN the secret string as a substring.
     expect(Buffer.from(storedBytes).toString("utf8")).not.toContain("acme-plaintext-secret-002");
   });
 
@@ -216,7 +188,6 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
   });
 
   test("clientInformation falls back to auth_config.client_id when no credential exists", async () => {
-    // Create a server with a pre-provisioned client_id on auth_config (no credential row).
     const serverId = await seedOAuth2Server(tenantA, "saveclient4");
     const provider = makeMcpOAuthProvider({
       db: ctx.db,
@@ -243,8 +214,6 @@ describe("McpDbOAuthClientProvider.saveClientInformation / clientInformation", (
     expect(info).toBeUndefined();
   });
 });
-
-// ── saveTokens / tokens round-trip ───────────────────────────────────────────
 
 describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
   test("a non-interactive handshake cannot establish a new credential", async () => {
@@ -319,7 +288,6 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     expect(t).toBeDefined();
     expect(t!.access_token).toBe("acme-access-tok-abc");
     expect(t!.refresh_token).toBe("acme-refresh-tok-abc");
-    // expires_in should be around 3600 (minus some clock drift; assert > 3500).
     expect(t!.expires_in).toBeGreaterThan(3500);
   });
 
@@ -327,9 +295,6 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const serverId = await seedOAuth2Server(tenantA, "tokens3");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok3");
 
-    // Save WITH a refresh_token so the row has the refresh triple — only then
-    // does getCredentialForMcpServer populate value.expires_at (the field
-    // tokens() reads to derive expires_in). Save with a future expiry first.
     await provider.saveTokens({
       access_token: "acme-access-tok-past",
       token_type: "Bearer",
@@ -337,7 +302,6 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       expires_in: 3600,
     });
 
-    // Overwrite oauth2_expires_at to a past timestamp directly on the row.
     const rows = await ctx.db
       .select({ id: credentials.id })
       .from(credentials)
@@ -363,14 +327,12 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const serverId = await seedOAuth2Server(tenantA, "tokens-norefresh");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok-norefresh");
 
-    // Save a token WITHOUT a refresh_token, with a future expiry first.
     await provider.saveTokens({
       access_token: "acme-access-no-refresh",
       token_type: "Bearer",
       expires_in: 3600,
     });
 
-    // Backdate oauth2_expires_at into the past.
     const rows = await ctx.db
       .select({ id: credentials.id })
       .from(credentials)
@@ -387,9 +349,6 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       .set({ oauth2_expires_at: TOKEN_EXPIRED_AT })
       .where(eq(credentials.id, rows[0]!.id));
 
-    // With no refresh_token and a past expiry, tokens() must return undefined
-    // (the "authorization required" path) rather than expires_in:0 (which
-    // would drive an impossible refresh).
     const t = await provider.tokens();
     expect(t).toBeUndefined();
   });
@@ -398,7 +357,6 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
     const serverId = await seedOAuth2Server(tenantA, "tokens4");
     const provider = makeInteractiveProvider(tenantA, serverId, "state-tok4");
 
-    // First save with a refresh_token.
     await provider.saveTokens({
       access_token: "acme-access-v1",
       token_type: "Bearer",
@@ -406,22 +364,17 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       expires_in: 3600,
     });
 
-    // Second save without a refresh_token (non-rotating IdP).
     await provider.saveTokens({
       access_token: "acme-access-v2",
       token_type: "Bearer",
-      // No refresh_token.
       expires_in: 7200,
     });
 
     const t = await provider.tokens();
     expect(t!.access_token).toBe("acme-access-v2");
-    // The prior refresh_token must be carried forward.
     expect(t!.refresh_token).toBe("acme-refresh-v1-keeper");
   });
 });
-
-// ── saveCodeVerifier / codeVerifier round-trip ───────────────────────────────
 
 describe("McpDbOAuthClientProvider.saveCodeVerifier / codeVerifier", () => {
   test("interactive: saveCodeVerifier persists to state row; codeVerifier reads it back", async () => {
@@ -439,10 +392,8 @@ describe("McpDbOAuthClientProvider.saveCodeVerifier / codeVerifier", () => {
     const serverId = await seedOAuth2Server(tenantA, "verifier2");
     const provider = makeNonInteractiveProvider(tenantA, serverId);
 
-    // Should not throw, and should not write anything.
     await expect(provider.saveCodeVerifier("some-verifier")).resolves.toBeUndefined();
 
-    // No mcp_oauth_states row was written by the non-interactive provider.
     const rows = await ctx.db
       .select()
       .from(mcpOauthStates)
@@ -459,14 +410,11 @@ describe("McpDbOAuthClientProvider.saveCodeVerifier / codeVerifier", () => {
 
   test("interactive: codeVerifier() throws when no matching state row exists", async () => {
     const serverId = await seedOAuth2Server(tenantA, "verifier4");
-    // Provider with an interactive flag but NO corresponding state row.
     const provider = makeInteractiveProvider(tenantA, serverId, "no-such-state");
 
     await expect(provider.codeVerifier()).rejects.toThrow();
   });
 });
-
-// ── redirectToAuthorization ───────────────────────────────────────────────────
 
 describe("McpDbOAuthClientProvider.redirectToAuthorization", () => {
   test("interactive: persists authorization_url to the state row", async () => {
@@ -489,17 +437,12 @@ describe("McpDbOAuthClientProvider.redirectToAuthorization", () => {
       .where(and(eq(mcpOauthStates.tenant_id, tenantA), eq(mcpOauthStates.state, state)))
       .limit(1);
     expect(rows[0]!.authorization_url).toBe(authUrl.toString());
-    // The authorization-server ORIGIN must be persisted for the RFC 9207
-    // iss check at callback (origin only — no path/query).
     expect(rows[0]!.as_issuer).toBe("https://auth.acmeauth.test");
   });
 
   test("non-interactive: redirectToAuthorization is a NO-OP — authorization_url stays null", async () => {
     const serverId = await seedOAuth2Server(tenantA, "redirect2");
     const state = "state-redirect2";
-    // Seed a state row (as if the interactive authorize route had created one)
-    // then give the same state to a non-interactive provider to prove it can't
-    // write the URL even if the row exists.
     await seedStateRow(tenantA, serverId, state);
 
     const provider = makeNonInteractiveProvider(tenantA, serverId);
@@ -511,13 +454,9 @@ describe("McpDbOAuthClientProvider.redirectToAuthorization", () => {
       .from(mcpOauthStates)
       .where(and(eq(mcpOauthStates.tenant_id, tenantA), eq(mcpOauthStates.state, state)))
       .limit(1);
-    // The row must still have a null authorization_url — the non-interactive
-    // provider must NEVER write to it.
     expect(rows[0]!.authorization_url).toBeNull();
   });
 });
-
-// ── invalidateCredentials ─────────────────────────────────────────────────────
 
 describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
   test("'tokens' scope removes the oauth2 credential row", async () => {
@@ -562,7 +501,6 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       client_secret: "secret-to-remove",
     });
 
-    // Confirm row exists.
     const beforeRows = await ctx.db
       .select({ id: credentials.id })
       .from(credentials)
@@ -589,7 +527,6 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
       );
     expect(afterRows.length).toBe(0);
 
-    // The mirrored client_id should be gone from config.mcp.auth.
     const { connectors } = await import("../../db/schema/index.ts");
     const serverRows = await ctx.db
       .select({ config: connectors.config })
@@ -619,11 +556,8 @@ describe("McpDbOAuthClientProvider.invalidateCredentials", () => {
   });
 });
 
-// ── Tenant isolation ──────────────────────────────────────────────────────────
-
 describe("McpDbOAuthClientProvider tenant isolation", () => {
   test("tenant A's provider cannot read tenant B's tokens", async () => {
-    // Seed a server for B and save tokens using B's provider.
     const serverIdB = await seedOAuth2Server(tenantB, "isolate1");
     const providerB = makeMcpOAuthProvider({
       db: ctx.db,
@@ -638,7 +572,6 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     });
     await providerB.saveTokens({ access_token: "b-only-token", token_type: "Bearer" });
 
-    // Seed a server for A with the SAME namespace (scoped by tenant).
     const serverIdA = await seedOAuth2Server(tenantA, "isolate1");
     const providerA = makeMcpOAuthProvider({
       db: ctx.db,
@@ -652,7 +585,6 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       request_source: "api",
     });
 
-    // A has no tokens — should NOT see B's token.
     const aTokens = await providerA.tokens();
     expect(aTokens).toBeUndefined();
   });
@@ -685,8 +617,6 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
       request_source: "api",
     });
 
-    // A has no client credential row; without a pre-provisioned client_id on
-    // auth_config either, it returns undefined (not B's "b-client-id").
     const aInfo = await providerA.clientInformation();
     expect(aInfo).toBeUndefined();
   });

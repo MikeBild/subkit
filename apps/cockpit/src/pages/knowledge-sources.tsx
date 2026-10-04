@@ -76,7 +76,6 @@ const RHYTHM_KEYS = {
   custom: "knowledge.rhythm.custom",
 } as const satisfies Record<RefreshRhythm, string>;
 
-/** How often an address is read again, as the fact a reader sees. */
 function rhythmLabel(t: Translate, source: KnowledgeSource): string {
   const rhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
   return rhythm === "custom" && source.refresh_cron
@@ -84,7 +83,6 @@ function rhythmLabel(t: Translate, source: KnowledgeSource): string {
     : t(RHYTHM_KEYS[rhythm]);
 }
 
-/** "Aktualisierung": Nie / Täglich / Wöchentlich for a source read from an address. */
 function RefreshField({
   value,
   onChange,
@@ -124,7 +122,6 @@ function sectionsLine(t: Translate, count: number): string {
   return t(count === 1 ? "knowledge.sections.one" : "knowledge.sections.other", { count });
 }
 
-/** Quellen (V7): what SubKit reads — one list, one way in, one way to add. */
 export function KnowledgeSourcesPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -156,7 +153,6 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
           width: "w-[34%]",
         },
       ),
-      // A phone card shows the first three cells: the name, its state, its kind.
       column.custom(
         "status",
         (row) => row.status,
@@ -228,7 +224,6 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         <PageHeader
           eyebrow={t("nav.group.knowledge")}
           title={title}
-          // An empty list carries the action itself, so it never stands twice.
           action={empty ? undefined : addButton("knowledge-add")}
           secondary={
             canChat ? (
@@ -303,7 +298,6 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
 
 type AddMode = "url" | "file" | "text";
 
-/** "Quelle hinzufügen": an address, a file or a pasted text — one dialog, three ways. */
 function AddSourceDialog({
   open,
   onOpenChange,
@@ -472,12 +466,6 @@ interface SourceContent {
   documents: { path: string; content: string }[];
 }
 
-/**
- * One source (V7d): its state in the strip, what it holds — the pages of an
- * address, the text of a file or a pasted note — and the technical facts
- * folded away. "Jetzt einlesen" reads an address again; a file or a text
- * changes only when someone edits it.
- */
 export function KnowledgeSourcePage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -777,7 +765,6 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   );
 }
 
-/** The pages of an address as a list; one document as itself. */
 function SourceContentView({
   kind,
   name,
@@ -866,7 +853,6 @@ function SourceContentView({
   );
 }
 
-/** "Bearbeiten": the name, and the text where the source is one editable document. */
 function EditSourceDialog({
   source,
   open,

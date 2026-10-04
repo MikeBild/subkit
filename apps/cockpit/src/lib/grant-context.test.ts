@@ -69,7 +69,6 @@ describe("an approval that already covers what is reviewed", () => {
       }),
     ).toBe("Bereits freigegeben bis 30.03.2030, 01:00 · 28 Läufe übrig");
     expect(CATALOGS.de["authority.existing.titleOne"]).toContain("1 Lauf übrig");
-    // The further approval is named for what it is — never the first one again.
     expect(CATALOGS.de["authority.existing.confirm"]).toBe("Verlängern / Grenzen ändern");
     expect(CATALOGS.en["authority.existing.confirm"]).toBe("Extend / change limits");
   });
@@ -119,11 +118,9 @@ describe("the scope of an approval", () => {
 
   test("the ordinary case says nothing", () => {
     expect(grantScopeWarnings({ ...base, environment: "prod" })).toEqual([]);
-    // Started in both: either environment is one it runs in.
     expect(grantScopeWarnings({ ...base, startedIn: ["prod", "dev"], environment: "dev" })).toEqual(
       [],
     );
-    // Nothing starts it automatically: there is no "wrong" environment.
     expect(grantScopeWarnings({ ...base, startedIn: [], environment: "dev" })).toEqual([]);
   });
 
@@ -165,7 +162,6 @@ describe("what opening the dialog sets off", () => {
         mayRun: true,
       }),
     ).toBeNull();
-    // Without the right to run, the dialog starts nothing.
     expect(
       grantOpeningNotice({ diagnoses: prepare, hookStarted: false, mayRun: false }),
     ).toBeNull();
@@ -177,7 +173,6 @@ describe("what opening the dialog sets off", () => {
     expect(hookStartedOnly([hook], 1)).toBe(true);
     expect(hookStartedOnly([hook, schedule], 1)).toBe(false);
     expect(hookStartedOnly([hook, { ...schedule, paused: true }], 1)).toBe(true);
-    // A hook the reader may not list is known by the record's count.
     expect(hookStartedOnly([], 2)).toBe(true);
     expect(hookStartedOnly([], 0)).toBe(false);
   });

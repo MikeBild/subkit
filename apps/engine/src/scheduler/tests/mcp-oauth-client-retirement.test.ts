@@ -1,19 +1,3 @@
-// Integration tests for the retirement of dead dynamic client registrations.
-//
-// Production held ~500 registrations against four real applications: a
-// deploy verifier registered a new client on every run and never came back.
-// Every one of them read "no valid approval", and the real applications —
-// and the account connections below them — drowned.
-//
-// The rule under test: a DCR registration created more than 7 days ago, with
-// no valid grant (no live access or refresh token) and no use in 7 days (no
-// access token used, no refresh token minted, no authorization code issued),
-// is retired — `disabled_at` and `retired_at` set; the retirement deletes
-// nothing (the separate 30-day sweep may later remove a registration with no
-// token or code rows left, retired or not). A person
-// who later completes an authorization for it brings it back; an
-// administrator's revocation stays a revocation.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
@@ -129,7 +113,6 @@ afterAll(async () => {
 
 describe("retiring dead dynamic registrations", () => {
   test("a registration nobody holds a grant for and nobody used in a week is retired by the retirement step, not deleted", async () => {
-    // The deploy verifier's shape: registered, authorized once, token long expired.
     const dead = await seedClient({ client_name: "Deploy verify" });
     await seedAccess(dead, { expires_at: at(-9 * DAY), last_used_at: at(-9 * DAY) });
     const bare = await seedClient({ client_name: "Deploy verify" });
@@ -144,10 +127,8 @@ describe("retiring dead dynamic registrations", () => {
   });
 
   test("a registration with a valid grant is never retired — Claude and ChatGPT keep working", async () => {
-    // A live refresh token, nothing used for weeks: the person still holds the grant.
     const claude = await seedClient({ client_name: "Claude", created_at: at(-60 * DAY) });
     await seedRefresh(claude, { created_at: at(-40 * DAY), expires_at: at(30 * DAY) });
-    // A live access token alone is a valid grant too.
     const chatgpt = await seedClient({ client_name: "ChatGPT", created_at: at(-60 * DAY) });
     await seedAccess(chatgpt, { expires_at: at(1 * DAY), last_used_at: null });
 
@@ -175,8 +156,6 @@ describe("retiring dead dynamic registrations", () => {
       code_challenge_method: "S256",
       redirect_uri: "https://client.example.com/callback",
       scope: "mcp:read",
-      // A code lives minutes and is purged a day past expiry, so an
-      // authorization within the last day is what this guard can see.
       expires_at: at(-11 * 60 * 60 * 1000),
       created_at: at(-12 * 60 * 60 * 1000),
     });
@@ -243,9 +222,6 @@ describe("retiring dead dynamic registrations", () => {
 });
 
 describe("a sweep that lands between consent and exchange", () => {
-  // The sweep's NOT EXISTS over codes cannot see a code that is not yet
-  // committed, so it can retire a registration a person is authorizing at that
-  // moment. The exchange must still hand out tokens the resource server takes.
   async function issueThenDisable(values: { retired: boolean }) {
     const clientId = await seedClient({ client_name: "Consent during the sweep" });
     const provider = createMcpOAuthProvider({ db: srv.db, config: makeConfig() });
@@ -342,7 +318,6 @@ describe("a retired registration comes back when a person authorizes it", () => 
     expect(row.disabled_at).toBeNull();
     expect(row.retired_at).toBeNull();
 
-    // The whole flow works: the code exchanges for a pair.
     const pair = await provider.exchangeAuthorizationCode({
       code,
       clientId,

@@ -29,7 +29,6 @@ describe("error ring", () => {
     ring.record(mk({ trace_id: "4" }));
     expect(ring.size()).toBe(3);
     const traces = ring.tail({ limit: 10 }).map((e) => e.trace_id);
-    // Newest first.
     expect(traces).toEqual(["4", "3", "2"]);
   });
 

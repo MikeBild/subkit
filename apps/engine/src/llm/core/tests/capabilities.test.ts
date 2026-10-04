@@ -53,8 +53,6 @@ describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () 
   beforeEach(() => {
     savedBaseUrl = process.env.OPENAI_BASE_URL;
     delete process.env.OPENAI_BASE_URL;
-    // The predicate reads getConfig() first; drop any leaked config state so
-    // the env-driven assertions below are authoritative.
     _resetConfigForTests();
   });
   afterEach(() => {
@@ -68,7 +66,6 @@ describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () 
     const caps = getStaticCapabilities("openai");
     expect(caps.supportsAudio).toBe(false);
     expect(caps.supportsVideo).toBe(false);
-    // Inline paths and page cap are intentionally preserved.
     expect(caps.supportsImage).toBe(true);
     expect(caps.supportsFile).toBe(true);
     expect(caps.maxPdfPages).toBe(100);
@@ -92,9 +89,8 @@ describe("getStaticCapabilities — OpenAI-compatible custom base_url gate", () 
   });
 
   it("routes files to inline/text-extract by size", () => {
-    const caps = getStaticCapabilities("openai"); // maxFileSizeMB = 32
+    const caps = getStaticCapabilities("openai");
     expect(chooseFileStrategy(caps, 6 * 1024 * 1024, "application/pdf")).toBe("file_part");
-    // Oversized (> maxFileSizeMB) falls back to text extraction.
     expect(chooseFileStrategy(caps, 40 * 1024 * 1024, "application/pdf")).toBe("text_extract");
   });
 });

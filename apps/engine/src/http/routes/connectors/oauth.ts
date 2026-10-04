@@ -1,47 +1,3 @@
-// OAuth2 authorization-code flow.
-//
-//   POST /v1/connectors/{id}/oauth/start    — authenticated. Issues the
-//                                             authorization URL + state.
-//                                             redirect_uri is synthesized
-//                                             server-side; the operator
-//                                             never sees a per-connector
-//                                             callback path.
-//
-//   GET  /v1/connectors/{id}/oauth/start    — UNAUTHENTICATED (grant-token
-//                                             auth). Consumes a single-use
-//                                             skog_… grant token, then
-//                                             begins the OAuth dance and
-//                                             302-redirects to the provider.
-//
-//                                             Every flow records where it
-//                                             was started (cli | cockpit |
-//                                             chat), so the callback can
-//                                             send the person back there.
-//
-//   GET  /v1/oauth/callback                 — UNAUTHENTICATED. The OAuth
-//                                             provider redirects here with
-//                                             `?code=…&state=…` (success)
-//                                             OR `?error=…&state=…` (denial
-//                                             / scope rejection). The state
-//                                             row carries tenant_id +
-//                                             connector_id, so the engine
-//                                             routes the credential write
-//                                             to the right tenant without
-//                                             requiring an API key in the
-//                                             user's browser session.
-//
-// Single global callback URL = operators add one entry to their OAuth
-// provider's allowlist (e.g. `https://subkit-api.example.com/v1/oauth/callback`)
-// and reuse it across every OAuth2 connector. The callback is
-// connector-agnostic and `state` decodes back to the connector id.
-//
-// A stored credential IS the re-authorization: the callback clears the
-// connector's sign-in flag and closes its circuit breaker
-// (`settleConnectorReauthorization`). It never switches a disabled connector
-// on — it says so instead. A flow started in the Cockpit is redirected back to
-// the connector's page; every other flow, and every failure, gets a result
-// page worded for where the person came from (./signin-result.ts).
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, gt } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
@@ -99,9 +55,6 @@ const oauthStartRoute = createRoute({
   },
 });
 
-// Single-use grant token query parameter. Min-20 guards against random short
-// strings but no semantic validation — the consumeStartGrant service enforces
-// the sha256 match and expiry check atomically.
 const OAuthStartGrantQuery = z
   .object({ grant: z.string().min(20) })
   .openapi("OAuthStartGrantQuery");
@@ -111,11 +64,6 @@ const oauthGrantStartRoute = createRoute({
   path: "/v1/connectors/{id}/oauth/start",
   tags: ["connectors"],
   summary: "Browser-openable OAuth2 start (single-use grant token)",
-  // Unauthenticated: the LLM hands this URL to the operator to open in a
-  // browser. Authentication is by way of the single-use opaque `grant`
-  // query parameter (skog_… token), which the engine generated and stored
-  // in connector_oauth_start_grants as a sha256 hash. Same comment
-  // discipline as the unauthenticated /v1/oauth/callback route below.
   request: {
     params: IdParam,
     query: OAuthStartGrantQuery,
@@ -134,10 +82,6 @@ const oauthCallbackRoute = createRoute({
   path: "/v1/oauth/callback",
   tags: ["connectors"],
   summary: "Complete an OAuth2 authorization-code flow",
-  // Unauthenticated: the OAuth provider redirects the user's browser
-  // here with no API key. Authentication is by way of the opaque
-  // single-use `state` token, which the engine generated and stored
-  // in connector_oauth_states with the (tenant_id, connector_id) pair.
   request: { query: OAuthCallbackQuery },
   responses: {
     200: { description: "OK (HTML)", content: { "text/html": { schema: z.string() } } },
@@ -147,8 +91,6 @@ const oauthCallbackRoute = createRoute({
 });
 
 export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
-  // ── POST /v1/connectors/{id}/oauth/start ─────────────────────────────────
-  // Authenticated bearer-token path. Thin wrapper around beginConnectorOAuthDance.
   app.openapi(oauthStartRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -171,18 +113,9 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id: id,
         actor_id: principal.id,
         redirect_uri,
-        // `ui` is set only for a request the Cockpit sent under a live browser
-        // session (middleware/auth.ts); every other caller of this route is a
-        // terminal or a script.
         origin: readRequestSource(c) === "ui" ? "cockpit" : "cli",
       });
     } catch (err) {
-      // An error from the sign-in service itself — its discovery document
-      // was missing or did not match the issuer, or it refused the request —
-      // is a remote fault with a name, not an engine crash: a bare 500 left
-      // the person with nothing to correct. Everything else (a named refusal,
-      // a database failure) stays what it is. The raw message can carry a URL
-      // with its query, so only its sanitized form is logged.
       if (!isOAuthProviderError(err)) throw err;
       logger.warn({
         module: "oauth",
@@ -201,25 +134,18 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     }
 
     if (result.kind === "done") {
-      // Return a synthetic authorization_url so callers that check for the
-      // field don't break. An empty state signals "no browser flow needed".
       return c.json({ authorization_url: "", state: "" }, 200);
     }
     return c.json({ authorization_url: result.authorization_url, state: result.state }, 200);
   });
 
-  // ── GET /v1/connectors/{id}/oauth/start?grant=skog_… ─────────────────────
-  // Unauthenticated browser-grant path. Atomically consumes the single-use
-  // grant token, then begins the dance and 302-redirects to the provider.
   app.openapi(oauthGrantStartRoute, async (c) => {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const { grant } = c.req.valid("query");
 
-    // Atomic claim: wrong connector_id does NOT burn the grant.
     const claimed = await consumeStartGrant(db, { token: grant, connector_id: id });
     if (!claimed) {
-      // Do not echo the grant token in HTML or logs.
       logger.warn({
         module: "oauth",
         action: "oauth.grant_start.invalid",
@@ -229,13 +155,8 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       return resultResponse(c, signInFailedPage(requestLocale(c), "chat", "link_expired"));
     }
 
-    // Tenant is derived ONLY from the claimed row — never from the request.
     const { tenant_id, connector_id, created_by_actor_id } = claimed;
 
-    // The consumer is an unauthenticated browser — the grant token IS the
-    // auth. Attribution to the minting principal lives in metadata (and on
-    // the paired GRANT_ISSUED row); recording it as the acting principal
-    // here would claim a user performed a request they never made.
     await auditAwait(
       {
         tenant_id,
@@ -262,12 +183,10 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_id,
         actor_id: null,
         redirect_uri,
-        // A grant link is handed out in a conversation.
         origin: "chat",
       });
 
       if (result.kind === "done") {
-        // No browser step: the exchange already stored the credential.
         const connector = await connectorSvc.getConnector(tenant_id, connector_id, db);
         return resultResponse(
           c,
@@ -285,7 +204,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         );
       }
 
-      // 302 to provider authorization URL.
       return c.redirect(result.authorization_url, 302);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -301,15 +219,9 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     }
   });
 
-  // ── GET /v1/oauth/callback ────────────────────────────────────────────────
   app.openapi(oauthCallbackRoute, async (c) => {
     const db = c.get("db");
     const q = c.req.valid("query");
-    // Atomic single-use claim: DELETE … RETURNING the state row. If
-    // two callers race on the same `state`, only one wins; the second
-    // sees no row and renders the not-found page. Removes the read /
-    // exchange / delete TOCTOU window where two callbacks could both
-    // exchange the (now-redeemed) code and write a credential.
     // tenant-filter:exempt — this route is unauthenticated (OAuth
     // provider redirects the user's browser back with no API key).
     // Authentication is by way of the opaque single-use `state` token,
@@ -338,12 +250,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         had_code: Boolean(q.code),
         had_error: Boolean(q.error),
       });
-      // No `callback_failed` publish here: with no `stateRow` there is
-      // no tenant_id/connector_id to scope the event to. A waiter is
-      // keyed to a real state token, so a bogus/expired callback simply
-      // lets that waiter time out — which is the correct outcome.
-      // Nothing identifies the flow, so nothing identifies a connector: the
-      // page names no surface and offers no link.
       return resultResponse(c, signInFailedPage(requestLocale(c), null, "link_expired"));
     }
 
@@ -360,9 +266,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         }),
       );
 
-    // Provider error path — user denied access, scope rejected, etc.
-    // The state row has been claimed (deleted) above; that's fine —
-    // the operator must call authenticate_oauth again anyway.
     if (q.error) {
       logger.warn({
         module: "oauth",
@@ -374,17 +277,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         provider_error: q.error,
         provider_error_description: q.error_description ?? null,
       });
-      // `reason` is a sanitized token, not `q.error` verbatim: provider
-      // error strings can embed request fragments (state tokens,
-      // redirect URIs) and this event is broadcast over pub/sub. The
-      // verbose `q.error` stays in the `logger.warn` above only.
       await publishCallbackFailed(db, {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
         reason: "provider_error",
       });
-      // The provider's own description is free text from an unauthenticated
-      // query string; the page shows the error code and nothing else of it.
       return failed("provider_declined", q.error);
     }
 
@@ -424,10 +321,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         code_verifier: stateRow.code_verifier,
         state: stateRow.state,
       });
-      // The requested-vs-granted scope diff, by the one rule every surface
-      // uses (`diffOauthScopes`). A provider that leaves `scope` out of its
-      // token response granted what was asked (RFC 6749 §5.1), so that is not
-      // a partial grant — only a reported set that lacks a requested scope is.
       const scopeDiff = connectorSvc.diffOauthScopes(stateRow.requested_scopes, bundle.scope);
       const requestedScopes = scopeDiff?.expected ?? [];
       const grantedScopes = scopeDiff?.granted ?? [];
@@ -447,28 +340,12 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           },
           oauth2_refresh_token: bundle.refresh_token ?? null,
           oauth2_expires_at: bundle.expires_at,
-          // G6: stash the granted scope string on the credential row
-          // so probe_connector / test_connector can surface a
-          // `partial_grant` warning without re-fetching the bundle.
           oauth2_granted_scopes: bundle.scope ?? null,
-          // Anonymous browser hit — no operator principal. The
-          // state-row tenant scope is the auth proof; the credential
-          // service writes `actor_type: "system"` for null actor_id.
           actor_id: null,
-          // Provenance tag so operators can distinguish callback-
-          // triggered credential writes from tool-issued ones or
-          // refresh-worker rotations in the audit + metadata trail.
           source: "oauth_callback",
         },
         db,
       );
-      // The credential is stored: that is the re-authorization. Resolve what
-      // it exists to resolve — the sign-in flag and the breaker that counted
-      // the old credential's failures — before anything is reported as done.
-      // A partial grant still clears the flag: the sign-in succeeded, and the
-      // missing permissions are said by name on the page.
-      // Past this point the page must not say "nothing was stored", so the
-      // resolution is settled, not awaited for its failure.
       await settleConnectorReauthorization(db, {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
@@ -498,8 +375,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
           granted_scopes: grantedScopes,
         });
       }
-      // Settle whoever waits on this connector's sign-in: a conversation
-      // paused on the link, a terminal tailing `connector.oauth`.
       await signalSignInSucceeded(db, {
         module: "oauth",
         tenant_id: stateRow.tenant_id,
@@ -507,8 +382,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         connector_slug: connector.slug,
         has_refresh_token: bundle.refresh_token != null,
       });
-      // A Cockpit flow goes straight back to the connector's page, which
-      // reads the connector again and says what it finds.
       if (origin === "cockpit") {
         const back = cockpitReturn(stateRow);
         if (back) return back;
@@ -538,10 +411,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         state_prefix: stateRow.state.slice(0, 8),
         error: message,
       });
-      // `reason` is a sanitized token, not the exchange `message`
-      // verbatim: a token-exchange exception can embed request fragments
-      // (state tokens, redirect URIs) and this event is broadcast over
-      // pub/sub. The verbose `message` stays in the `logger.warn` above.
       await publishCallbackFailed(db, {
         tenant_id: stateRow.tenant_id,
         connector_id: stateRow.connector_id,
@@ -552,19 +421,6 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 }
 
-/**
- * Record an OAuth-callback failure for a claimed state row, then publish
- * the `connector.oauth.callback_failed` event.
- *
- * The callback DELETEs the `connector_oauth_states` row at the start of
- * the request — a state change. AGENTS.md requires every state change to
- * write an `audit_log` entry, so the durable, append-only audit row is
- * written FIRST (awaited — it must not be lost), then the best-effort
- * pubsub event is published for live waiters.
- *
- * The state-not-found branch does NOT call this: with no claimed row
- * there is no tenant_id/connector_id to scope the audit row to.
- */
 async function publishCallbackFailed(
   db: import("../../../db/client.ts").Db,
   p: {
@@ -573,9 +429,6 @@ async function publishCallbackFailed(
     reason: SignInFailedReason;
   },
 ): Promise<void> {
-  // Durable compliance record for the state change (the claimed state
-  // row was deleted). The sanitized `reason` token — never the verbose
-  // provider/exchange error — carries the failure classification.
   await auditAwait(
     {
       tenant_id: p.tenant_id,

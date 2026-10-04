@@ -1,7 +1,3 @@
-// The settings page's parts, rendered: a grouped section list and no tab
-// strip, a status line only when something waits, rows without a technical
-// disclosure, and one answer below the list on how a change is stored.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -70,7 +66,6 @@ describe("the section list", () => {
   });
 
   test("carries no counters", () => {
-    // The tabs each said how many settings they held; a count is not a reason to open one.
     expect(html).not.toMatch(/tabular-nums/);
   });
 
@@ -189,13 +184,10 @@ describe("a setting's row", () => {
   });
 
   test("has no technical disclosure, and neither the key nor the engine's English as text", () => {
-    // The collapsed "Technische Angaben" on every row is gone: in the DOM,
-    // not merely closed — closed <details> content is still in the markup.
     expect(html).not.toContain("<details");
     expect(html).not.toContain("setting-technical-");
     expect(html).not.toContain("Hard cap on tokens");
     expect(html).not.toContain("Wortlaut der Engine");
-    // The key is an address the row carries, not text a reader sees.
     expect(html).toContain('data-setting-path="tokens.monthly_budget"');
     expect(html.replace(/data-setting-path="[^"]*"/, "")).not.toContain("tokens.monthly_budget");
   });
@@ -212,7 +204,6 @@ describe("a setting's row", () => {
   });
 
   test("says what it applies to only where a workspace can differ", () => {
-    // Tenant-scoped leaf: the line stands.
     expect(html).toContain('data-testid="setting-applies-to-3"');
     expect(html).toContain("Gilt für: Arbeitsbereich");
     const global = render(
@@ -256,7 +247,6 @@ describe("what a row says it applies to", () => {
 
 describe("how a change is stored", () => {
   test("is answered once, behind the summary line's (?), in the plan's words", () => {
-    // Behind (?): the summary counts, the answer is the tooltip of its help.
     const html = render(
       <SettingsSummary total={6} changed={1} filter="all" onFilter={() => undefined} />,
     );

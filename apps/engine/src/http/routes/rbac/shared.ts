@@ -1,7 +1,3 @@
-// Shared serializers, Zod schemas + helpers for the RBAC HTTP surface.
-// Every per-resource module imports from here. The schemas mirror the
-// serializers exactly — same fields, same nullability.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
@@ -146,7 +142,6 @@ export async function buildQueryPrincipal(
   roles: string[];
 } | null> {
   const { roles: rolesTable, systemAccounts } = await import("../../../db/schema/index.ts");
-  // Try user first.
   const uRows = await db
     .select({ id: usersTable.id, role_name: rolesTable.name })
     .from(usersTable)
@@ -162,7 +157,6 @@ export async function buildQueryPrincipal(
       roles: uRows[0].role_name ? [uRows[0].role_name] : [],
     };
   }
-  // Fall back to system account.
   const sRows = await db
     .select({
       id: systemAccounts.id,

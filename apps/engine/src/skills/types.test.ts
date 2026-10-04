@@ -1,8 +1,3 @@
-// SkillSchema — capability/safety contract + activates_when discriminator.
-// Pinned in unit tests so the no-backwards-compat invariant from
-// migration 0006 (auto_load + trigger_keywords removed; activates_when
-// added) cannot silently regress.
-
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import {
@@ -110,11 +105,6 @@ describe("CreateSkillSchema", () => {
   });
 
   test("legacy front-matter keys are not part of the schema", () => {
-    // SkillSchema replaced auto_load + trigger_keywords-as-top-level
-    // inputs with `activates_when`. This guards the no-backwards-compat
-    // invariant: a payload that carries one of the old keys must NOT
-    // round-trip through CreateSkillSchema.parse — the unknown keys
-    // are stripped silently because the Zod object is open-shaped.
     const input = {
       scope: "global" as const,
       title: "T",

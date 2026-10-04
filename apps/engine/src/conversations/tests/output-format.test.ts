@@ -1,8 +1,3 @@
-// Pure unit tests for `output-format.ts`.
-//
-// All helpers are fully deterministic — no I/O, no LLM, no DB.
-// Tests run in `bun run test:unit` without any external dependencies.
-
 import { describe, expect, test } from "bun:test";
 import {
   detectNamedOutputFormat,
@@ -80,11 +75,9 @@ describe("outputMatchesFormat — markdown_table", () => {
   });
 
   test("table rows present but NO separator → ok:false, separator in missing only", () => {
-    // Has pipe-delimited rows but no `| --- |` separator.
     const rowsOnly = "| rank | city |\n| 1 | Berlin |";
     const result = outputMatchesFormat("markdown_table", rowsOnly);
     expect(result.ok).toBe(false);
-    // Only the separator is missing — the row check passes.
     expect(result.missing).toHaveLength(1);
     expect(result.missing[0]).toContain("separator");
   });
@@ -155,7 +148,6 @@ describe("detectNamedOutputFormat · json", () => {
     expect(detectNamedOutputFormat("produce a json object with fields x and y")).toBe("json");
   });
   test('incidental "the API returns JSON" does NOT trigger json (no output-intent)', () => {
-    // "returns json" is not an output-intent phrasing the gate matches.
     expect(detectNamedOutputFormat("call the endpoint that returns json from the vendor")).toBe(
       null,
     );
@@ -176,12 +168,7 @@ describe("outputMatchesFormat · json", () => {
   });
 });
 
-// (formatGuidance tests removed with the helper — rolled back after the A/B
-// showed it did not improve format fidelity. The detector + matcher tests above
-// remain; they cover the format-aware judge's logic.)
-
 describe("findMissingNamedFields", () => {
-  // CATCHES the miss: a "columns A, B, C, D" enumeration with a column absent.
   test("flags columns named in the goal that are absent from the output", () => {
     const goal = "HTML <table> with columns Title, HN points, GitHub stars, Language.";
     const out =
@@ -191,7 +178,6 @@ describe("findMissingNamedFields", () => {
     expect(missing.some((m) => /language/i.test(m))).toBe(true);
   });
 
-  // PASSES a complete parenthesized enumeration — no false downgrade.
   test("parenthesized column list, all present → []", () => {
     const goal = "a <table> (Title, HN points, GitHub stars, Language) sorted by stars desc.";
     const out =
@@ -199,8 +185,6 @@ describe("findMissingNamedFields", () => {
     expect(findMissingNamedFields(goal, out)).toEqual([]);
   });
 
-  // DOES NOT FIRE on an inline list without a parenthesized/`columns` signal —
-  // left to the LLM, so plain-data and EMPTY-result goals are never downgraded.
   test("inline 'table with A, B, C' (no parens/columns keyword) → [] (not parsed)", () => {
     const goal =
       "an html <table> with serial number, customer, location, health state, and recent-error count.";
@@ -221,7 +205,6 @@ describe("findMissingNamedFields", () => {
 
 describe("findFilterViolations", () => {
   test("parenthesized exclusion present in output → flagged (the golden case)", () => {
-    // goal "OFFLINE (not connected) chargers only" + a row showing "connected".
     expect(
       findFilterViolations(
         "Digest of OFFLINE (not connected) chargers only.",
@@ -261,7 +244,6 @@ describe("findFilterViolations", () => {
   });
 
   test("forbidden token only as a substring → [] (whole-word match)", () => {
-    // "(not connected)" excluded, but the output only has "disconnected".
     expect(
       findFilterViolations("Only chargers (not connected).", "status: disconnected since 9am")[0],
     ).toBeUndefined();

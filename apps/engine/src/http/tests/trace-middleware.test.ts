@@ -1,8 +1,3 @@
-// Trace middleware accepts an inbound `x-sk-trace-id` (or `x-trace-id`)
-// header so the CLI's debug.log records and the engine's structured
-// logs share one id. Also rejects malformed values to prevent
-// log-injection.
-
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { parseTraceparent, traceMiddleware } from "../middleware/trace.ts";

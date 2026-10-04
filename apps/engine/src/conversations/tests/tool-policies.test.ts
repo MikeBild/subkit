@@ -85,10 +85,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("load_skill stays no_confirm despite tenant_write category (benign context-load, must not gate)", () => {
-    // Regression: flipping load_skill to tenant_write (so it audits its
-    // loaded_skills write) must NOT make the autonomous loop / MCP clients hit a
-    // confirm gate — an explicit no_confirm policy overrides the tenant_write
-    // category default.
     const mode = resolveToolMode({
       tool: "load_skill",
       category: "tenant_write",
@@ -99,10 +95,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("never-gate pins survive permission_mode=ask/plan", () => {
-    // Production regression: a client advertising `ask` gated `load_skill` with
-    // `resolver_reason: "permission_mode"`, because the permission_mode
-    // short-circuit fires BEFORE the per-tool `no_confirm` pin. The pin exists
-    // precisely so a benign context-load never pauses an authoring turn.
     for (const permission_mode of ["ask", "plan"] as const) {
       for (const tool of ["load_skill", "save_learning", "create_skill"]) {
         const decision = decideToolMode({
@@ -119,9 +111,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("an explicit per-conversation override still gates a never-gate tool", () => {
-    // The override is the documented opt-out (see dangerous-tools.ts): an
-    // operator who deliberately gated load_skill keeps the pause, even though
-    // the tool is pinned never-gate for the permission_mode short-circuit.
     const withPermissionMode = decideToolMode({
       tool: "load_skill",
       category: "tenant_write",
@@ -130,9 +119,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
       permission_mode: "ask",
     });
     expect(withPermissionMode.mode).toBe("confirm_before_execution");
-    // The never-gate bypass must not swallow the operator's explicit choice.
-    // (Which branch gets the credit depends on whether the client also sent a
-    // permission_mode; either way the pause is honoured, never skipped.)
     expect(withPermissionMode.rule).not.toBe("never_gate");
 
     const withoutPermissionMode = decideToolMode({
@@ -146,7 +132,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("dry_run_workflow remains preparation in every environment", () => {
-    // Draft writes stay held.
     const heldWritesProd = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
@@ -163,7 +148,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
     });
     expect(heldWritesDev.mode).toBe("no_confirm");
 
-    // Auto does not need a redundant decision over a held preview.
     const heldWritesAuto = decideToolMode({
       tool: "dry_run_workflow",
       category: "draft_write",
@@ -188,8 +172,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("yolo still honours an explicitly-armed override for a live write run", () => {
-    // yolo is gated at a higher layer (tenant policy + typed confirmation +
-    // expiry); by the time it reaches the resolver the user has armed it.
     const decision = decideToolMode({
       tool: "run_workflow",
       category: "tenant_write",
@@ -262,7 +244,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("save_connector_draft requires confirm whether or not credential is present", () => {
-    // No credential: still confirm by default (defaultMode).
     expect(
       resolveToolMode({
         tool: "save_connector_draft",
@@ -271,7 +252,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
         overrides: {},
       }),
     ).toBe("confirm_before_execution");
-    // With credential: computeModeFromInput holds the line at confirm.
     expect(
       resolveToolMode({
         tool: "save_connector_draft",
@@ -283,11 +263,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 
   it("authenticate_oauth runs first, then pauses for review (confirm_after_execution)", () => {
-    // The OAuth dance produces a staged
-    // credential; the operator reviews the captured scopes / expiry
-    // BEFORE the loop continues. Pre-fix this was
-    // confirm_before_execution which had the operator approve a
-    // flow they couldn't see the result of yet.
     expect(
       resolveToolMode({
         tool: "authenticate_oauth",
@@ -320,11 +295,6 @@ describe("resolveToolMode — dynamic TOOL_POLICIES", () => {
   });
 });
 
-// Locks the contract for the `yolo` permission mode: hard-armed
-// escape hatch that lifts the dangerous-tool gate. The tenant gate +
-// non-stickiness + expiry live elsewhere; the resolver itself just
-// honours the override unconditionally except for the inline-
-// credential safeguard.
 describe("resolveToolMode — yolo mode", () => {
   it("yolo bypasses the dangerous-tools gate", () => {
     for (const tool of [
@@ -358,11 +328,6 @@ describe("resolveToolMode — yolo mode", () => {
   });
 
   it("yolo still respects the inline-credential safeguard", () => {
-    // `update_connector_draft` is the canonical safeguarded write —
-    // pasting a token shape into config must still trigger a confirm
-    // step even under yolo so the user sees what's being staged. The
-    // credentialFields list (see tool-policies.ts:276) names paths
-    // like `config.token`, so the input must mirror that shape.
     expect(
       resolveToolMode({
         tool: "update_connector_draft",
@@ -389,13 +354,6 @@ describe("resolveToolMode — yolo mode", () => {
   });
 
   it("replacing an EXISTING workflow is dangerous — creating one is not", () => {
-    // Production, two calls four seconds apart, both under permission_mode
-    // "auto": the first hit `slug_conflict_with_live_workflow`, whose recovery
-    // text names the argument that lifts the block and says to use it "after
-    // the user confirms". The model supplied the argument and skipped the
-    // confirming, overwriting a verified 14-step workflow. Nothing gated it,
-    // because `auto` short-circuits every tool that is not *dangerous* and this
-    // one never declared itself dangerous.
     const overwrite = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",
@@ -404,10 +362,8 @@ describe("resolveToolMode — yolo mode", () => {
       overrides: {},
     });
     expect(overwrite.mode).toBe("confirm_before_execution");
-    // The audit explains the actual overwrite, not merely a tool default.
     expect(overwrite.rule).toBe("computed_from_input");
 
-    // `force_commit` overrules a preview that was NOT green — same class.
     const forced = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",
@@ -418,10 +374,6 @@ describe("resolveToolMode — yolo mode", () => {
     expect(forced.mode).toBe("confirm_before_execution");
     expect(forced.rule).toBe("computed_from_input");
 
-    // The counter-proof matters as much as the guard: an ordinary save — a new
-    // workflow, or an in-place update of the conversation's own bound draft —
-    // carries neither argument and must stay frictionless. A gate that stops
-    // everything is not an improvement.
     const ordinary = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",
@@ -431,8 +383,6 @@ describe("resolveToolMode — yolo mode", () => {
     });
     expect(ordinary.mode).toBe("no_confirm");
 
-    // `yolo` is an explicitly armed, expiring, tenant-policy-gated override —
-    // it keeps clearing this, exactly as it does for every other dangerous tool.
     const yolo = decideToolMode({
       tool: "save_workflow_draft",
       category: "tenant_write",

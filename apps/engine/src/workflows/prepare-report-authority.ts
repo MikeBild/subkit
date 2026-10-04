@@ -11,38 +11,12 @@ import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { diagnoseWorkflow } from "./gate-diagnosis.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
 
-/**
- * Run this workflow once with every write held, so the review has something to
- * read.
- *
- * A held run resolves each step's real target and content and records both. For
- * a report that is how the recipient is observed; for any other unbounded step
- * it is the evidence the boundary derivation needs, and for a step that sends
- * content it is the only place its size is written down.
- *
- * It used to run ONLY for the report profile and return silently otherwise —
- * while the endpoint above answered `prepared: true` either way. A reviewer was
- * told the preparation had happened, five workflows produced no run at all, and
- * the derivation that depended on it reported "these steps have never run".
- * The result now says which of the two happened.
- *
- * The held run needs the input a real start would give it. A schedule carries
- * its own; a webhook's input is a delivery, and a refused delivery is not kept.
- * For a hook-started workflow the reviewer's sample wins; without one the
- * newest admitted delivery serves, and only when there is none either is the
- * answer `input_required` — a run over `{}` observes a workflow that never runs
- * that way, and its evidence describes nothing. The delivery itself never
- * appears in the answer.
- *
- * This cannot activate a version, send a message or create an execution grant.
- */
 export async function prepareReportAuthority(
   input: {
     tenant_id: string;
     workflow_id: string;
     workflow_version_id: string;
     execution_environment: "dev" | "prod";
-    /** A sample of what really starts this workflow, supplied by the reviewer. */
     input?: unknown;
   },
   db: Db,
@@ -57,10 +31,6 @@ export async function prepareReportAuthority(
     },
     db,
   );
-  // A review can read as bindable while granted runs are still refused at
-  // dispatch — the approval fits the declaration, the materialized message
-  // does not. When the diagnosis asks for a preparation to name that refusal,
-  // refusing it here as "already bindable" would leave the reader in a loop.
   const asking =
     (
       await diagnoseWorkflow(db, input.tenant_id, input.workflow_id, input.execution_environment, {
@@ -73,27 +43,9 @@ export async function prepareReportAuthority(
       prepared: false,
       reason: preview.eligible_for_repeated_runs ? "already_bindable" : "nothing_to_prepare",
     };
-  // The evidence a refused run needs is that run's own delivery: it reached
-  // the refused step. The newest admitted call may be one that branches away
-  // before it (a heartbeat beside a finding), and a preparation on that would
-  // succeed while inspecting nothing.
   const replay = input.input === undefined ? await refusedRunInput(db, input, asking) : undefined;
   const start = replay !== undefined ? { input: replay } : await preparationInput(input, db);
   if ("trigger" in start) return start;
-  // One preparation at a time for one version in one environment.
-  //
-  // The dialog showed a bare "loading" for as long as this takes, and a run
-  // that reads several remote systems takes minutes. People opened a second
-  // tab, and three held runs started at once against the same workflow — each
-  // reading the same remote systems, each writing evidence the others would
-  // overwrite. A flag inside the component cannot see a second tab; this can,
-  // and it sees a second ENGINE too.
-  //
-  // The lock is held only while deciding, then released with the transaction.
-  // The run itself is deliberately outside it: holding a lock for the length of
-  // a six-hour run would turn every later request into a wait rather than an
-  // answer. Pre-creating the row inside the lock is what makes the decision
-  // stick — the next caller sees a row, not an absence.
   const executionId = await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`prepare:${input.tenant_id}:${input.workflow_id}:${input.workflow_version_id}:${input.execution_environment}`}, 0))`,
@@ -125,9 +77,6 @@ export async function prepareReportAuthority(
       hold_writes: true,
     });
   });
-  // Not an error: opening the dialog twice is ordinary, and a repair reload
-  // takes this path routinely. Rendering it red would turn correct behaviour
-  // into an alarm.
   if (executionId === null) return { prepared: false, reason: "preparation_in_flight" };
   const result = await runExecution({
     db,
@@ -151,10 +100,6 @@ export async function prepareReportAuthority(
     throw Object.assign(new Error("The preparation did not complete; external writes were held"), {
       code: "authority_preparation_failed",
     });
-  // A preparation that ran and still left a step unbound — an unreadable
-  // message, a step it never reached — answers with WHY, so the reviewer is
-  // not left with a green "prepared" over a review that still refuses. The
-  // diagnosis names steps, codes and remedies; never the message contents.
   const diagnosis = await diagnoseWorkflow(
     db,
     input.tenant_id,
@@ -175,14 +120,6 @@ export async function prepareReportAuthority(
     : { prepared: true as const };
 }
 
-/**
- * The one input both the execution row and the run receive: the reviewer's
- * sample, else the single schedule's, else the newest admitted delivery of the
- * hook that starts this workflow, else — only when no hook starts it — an empty
- * one.
- */
-/** The stored input of the newest refused run a preparation diagnosis names,
- *  when it belongs to this workflow version and environment. */
 async function refusedRunInput(
   db: Db,
   input: Parameters<typeof prepareReportAuthority>[0],
@@ -223,7 +160,6 @@ async function preparationInput(
 > {
   if (input.input !== undefined) {
     const supplied = normalizeWorkflowRunInput(input.input);
-    // Refused here, not by the run: the run would already own an execution row.
     const { def } = await resolveDefinition(db, input.tenant_id, {
       kind: "saved",
       workflow_id: input.workflow_id,
@@ -241,13 +177,11 @@ async function preparationInput(
   const schedules = (await listSchedules(db, input.tenant_id, input.workflow_id)).rows.filter(
     (row) => row.execution_mode === input.execution_environment && !row.paused,
   );
-  // Multiple distinct inputs need separate previews. Never silently pick one.
   if (schedules.length > 1)
     throw Object.assign(new Error("Review one schedule at a time"), {
       code: "authority_preparation_ambiguous",
     });
   if (schedules[0]) return { input: schedules[0].input ?? {} };
-  // Hooks deliver to production only; a dev preparation has no delivery to wait for.
   if (input.execution_environment === "prod") {
     const [hook] = await db
       .select({ slug: webhooksInbound.slug })
@@ -274,18 +208,6 @@ async function preparationInput(
   return { input: {} };
 }
 
-/**
- * The newest delivery the engine admitted for this workflow, when it still fits
- * the version under review.
- *
- * Only admitted deliveries leave an execution row (`admitWebhookExecution`); a
- * refused one is audited and dropped, so this can never resurrect a payload the
- * gate turned away. Any version of the workflow counts — the version under
- * review is usually the new one that has not admitted anything yet — but the
- * sample must satisfy THIS version's input schema. One that no longer does is
- * not an error the reviewer caused: the answer falls back to asking for a
- * sample rather than refusing the preparation.
- */
 async function latestAdmittedDelivery(
   input: Parameters<typeof prepareReportAuthority>[0],
   db: Db,

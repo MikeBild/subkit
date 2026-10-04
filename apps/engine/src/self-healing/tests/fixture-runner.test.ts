@@ -25,7 +25,6 @@ describe("self-healing/fixture-runner", () => {
       makeProposal({ op: "replace", path: "/data/id", value: "data/result/id" }),
     );
     expect(patched.data_selector).toBe("data.result.id");
-    // Original must be untouched.
     expect(step.data_selector).toBe("data.id");
   });
 

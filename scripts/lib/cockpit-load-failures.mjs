@@ -1,17 +1,3 @@
-// A read that fails must look like a failure.
-//
-// Several pages asked only "still loading?" and then rendered rows. A failed
-// read has no rows either, so it fell through to the empty state: the people
-// page said nobody was a member, the settings page showed an installation
-// with nothing configured, and a conversation that could not be opened turned
-// into the empty new-chat screen with a composer that would have posted into
-// the conversation that had just failed.
-//
-// Every other fixture in this sweep answers. This one refuses — 500 on the
-// three reads — and asserts the page names the failure (`*-load-failed`) and
-// does NOT show the state it used to fall through to. A sweep whose fixtures
-// always succeed cannot see this class at all.
-
 const FAILURES = [
   {
     route: "people",
@@ -27,7 +13,6 @@ const FAILURES = [
   },
 ];
 
-/** Matches the path exactly, whatever the query — `?limit=200` defeats a plain glob. */
 const exactPath = (path) => (url) => new URL(url).pathname === path;
 
 const refuse = (route) =>
@@ -38,8 +23,6 @@ const refuse = (route) =>
   });
 
 async function expectFailure(page, where, failed, notShown) {
-  // React Query retries a failed read before giving up; the page must say so
-  // after the first failure, well inside this bound.
   await page.getByTestId(failed).waitFor({ state: "visible", timeout: 10_000 });
   for (const testId of notShown) {
     if (
@@ -67,8 +50,6 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
     }
   }
 
-  // A conversation that cannot be opened: an error with a way back, not the
-  // new-chat screen and not a composer aimed at the id that just failed.
   const detail = exactPath(`/v1/conversations/${conversation.id}`);
   await page.route(detail, refuse);
   try {
@@ -77,13 +58,10 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
       "chat-empty",
       "chat-composer-area",
     ]);
-    // The ways on stand once, in the page header — not a second time in the
-    // failure line.
     if (!(await page.getByTestId("conversation-new").isVisible()))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way on");
     if (!(await listReachable(page)))
       throw new Error("/chat/<id>: a conversation that cannot be opened offers no way to the list");
-    // The conversation's head must not call a failed conversation a new one.
     const title = (await page.getByTestId("chat-title").innerText()).trim();
     if (title === "Neue Unterhaltung" || title === "New conversation")
       throw new Error("/chat/<id>: the header titles a failed conversation as a new one");
@@ -92,9 +70,6 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
     await page.unroute(detail, refuse);
   }
 
-  // Unknown or not the reader's: said as that, with the list and a new
-  // conversation — and no retry, which used to be offered with "reload the
-  // page or try again in a moment", advice that could never work.
   const missing = (route) =>
     route.fulfill({
       status: 404,
@@ -134,7 +109,6 @@ export async function verifyLoadFailures(page, stand, conversation, capture) {
   }
 }
 
-/** The conversation list is in reach: beside the page, or one toggle away on a phone. */
 async function listReachable(page) {
   return (
     (await page.getByTestId("conversation-list").isVisible()) ||

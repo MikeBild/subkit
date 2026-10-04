@@ -1,8 +1,3 @@
-// Unit tests for buildProbeDiagnostics.
-//
-// Pure helper — no server, no DB. Covers body truncation, JSON
-// stringification, secret scrubbing, and the header allowlist.
-
 import { describe, expect, test } from "bun:test";
 import { buildProbeDiagnostics } from "./probe-diagnostics.ts";
 
@@ -41,7 +36,7 @@ describe("buildProbeDiagnostics — body snippet", () => {
   });
 
   test("secrets in the body are scrubbed (ghp_ PAT never present)", () => {
-    const token = `ghp_${"A1b2C3d4E5".repeat(3)}`; // ghp_ + 30 alnum chars
+    const token = `ghp_${"A1b2C3d4E5".repeat(3)}`;
     const d = buildProbeDiagnostics(undefined, `token ${token} rejected`);
     expect(d.body_snippet).toBeDefined();
     expect(d.body_snippet).not.toContain(token);

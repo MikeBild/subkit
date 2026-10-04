@@ -17,9 +17,6 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-/** Fingerprint of the drift a candidate was created to heal — read from the
- *  `drift_signal` the candidate stored at creation. `null` for candidates
- *  with no recorded signal (legacy rows, workflow-scoped signals). */
 export function candidateDriftFingerprint(
   candidate: typeof patchCandidates.$inferSelect,
 ): string | null {
@@ -27,8 +24,6 @@ export function candidateDriftFingerprint(
   return diff?.drift_signal == null ? null : signalFingerprint(diff.drift_signal as DriftSignal);
 }
 
-/** Fingerprint of a live drift signal — the same canonical form candidates
- *  store, so a candidate and a fresh signal are directly comparable. */
 export function signalFingerprint(signal: DriftSignal): string {
   switch (signal.kind) {
     case "http_status_new_shape":
@@ -106,7 +101,6 @@ export async function findMatchingTerminalEndpointCandidate(
     signal: DriftSignal;
     base_version_id?: string | null;
     workflow_step_id?: string | null;
-    /** The failing execution step of a reactive signal — its other anchor. */
     step_id?: string | null;
   },
 ) {
@@ -137,8 +131,6 @@ export async function findMatchingTerminalEndpointCandidate(
   );
 }
 
-/** Whether a live signal names the step a patch would rewrite — directly, or
- *  through its failing execution step (`resolveCandidateStepKey`'s two anchors). */
 function signalCarriesAnchor(params: {
   workflow_step_id?: string | null;
   step_id?: string | null;
@@ -146,14 +138,6 @@ function signalCarriesAnchor(params: {
   return !!params.workflow_step_id || isExecutionStepId(params.step_id);
 }
 
-/**
- * An `inapplicable` candidate was proven undecidable against ONE workflow
- * version. It suppresses re-proposal only while the workflow still sits on
- * that version — strictly, never the lenient either-side-null boundary: a new
- * version is exactly what can make a repair possible again, so it re-opens
- * evaluation. Without the strict match the sweep would close, the next scan
- * re-propose, and the pair would loop on every cadence tick.
- */
 function matchesInapplicableBoundary(
   candidate: typeof patchCandidates.$inferSelect,
   params: {
@@ -167,11 +151,6 @@ function matchesInapplicableBoundary(
 ): boolean {
   const diff = candidate.diff as Record<string, unknown>;
   const candidateFingerprint = candidateDriftFingerprint(candidate);
-  // A candidate closed for having no step anchor proved something about
-  // itself, not about the version: it says nothing about a re-proposal that
-  // DOES carry an anchor, which a person could decide. It suppresses only an
-  // equally anchorless re-proposal — the one that would be closed at birth
-  // again and loop on every scan.
   if (candidate.closed_reason === "no_step_anchor" && signalCarriesAnchor(params)) return false;
   return (
     !!candidate.closed_against_version_id &&
@@ -179,19 +158,11 @@ function matchesInapplicableBoundary(
     (!params.workflow_step_id ||
       !diff.workflow_step_id ||
       diff.workflow_step_id === params.workflow_step_id) &&
-    // Same legacy fallback as the active lookup: a row with no stored signal
-    // on an anchored endpoint dedups by endpoint alone.
     (candidateFingerprint === fingerprint ||
       (candidateFingerprint === null && !!params.connector_id && !!params.endpoint_key))
   );
 }
 
-/**
- * Find an already-active patch candidate (status proposed|applied) for
- * the same endpoint anchor, newest first. The proactive scan uses this
- * to refresh-or-skip instead of inserting a fresh row every cadence
- * tick — including workflow-scoped signals whose endpoint fields are null.
- */
 export async function findActiveEndpointCandidate(
   exec: Executor,
   params: {
@@ -204,14 +175,6 @@ export async function findActiveEndpointCandidate(
     workflow_step_id?: string | null;
   },
 ) {
-  // return the active candidate that heals THIS drift's fingerprint,
-  // not merely the most-recent candidate on the endpoint. The pre-fix
-  // single-row lookup masked new breakage: when an endpoint had an applied
-  // candidate for drift A and a genuinely different drift B appeared, the
-  // lookup returned A and the `status==="applied"` short-circuit skipped B —
-  // so B was never proposed or healed. Matching by fingerprint (the same
-  // canonical form findMatchingTerminalEndpointCandidate uses) lets a new
-  // drift fall through to a fresh proposal while the same drift still dedups.
   const rows = await exec
     .select()
     .from(patchCandidates)
@@ -235,11 +198,6 @@ export async function findActiveEndpointCandidate(
   );
   if (match) return match;
   if (!params.connector_id || !params.endpoint_key) return null;
-  // No fingerprint match. A legacy candidate (created before drift_signal was
-  // stored) carries no fingerprint to compare — dedup against it to preserve
-  // the old endpoint-only behaviour and avoid re-proposal flood for those
-  // rows. If every active candidate is fingerprinted and none match, this is
-  // a NEW drift → return null so it gets a fresh proposal.
   return (
     rows.find(
       (r) => matchesCandidateBoundary(r, params) && candidateDriftFingerprint(r) === null,

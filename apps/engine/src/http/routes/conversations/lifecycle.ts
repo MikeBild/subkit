@@ -1,12 +1,3 @@
-// Maintenance / lifecycle endpoints — none drive the LLM, so no SSE
-// branch needed.
-//
-//   POST   /v1/conversations/{id}/cancel
-//   DELETE /v1/conversations/{id}
-//   GET  /v1/conversations/{id}/context-snapshot
-//   POST /v1/conversations/{id}/compact
-//   POST /v1/conversations/{id}/fork-from-message/{message_id}
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
@@ -33,12 +24,6 @@ const ForkFromMessageResponse = z
     source_conversation_id: z.string().uuid(),
     anchor_message_id: z.string().uuid(),
     copied_message_count: z.number().int().nonnegative(),
-    /**
-     * True when the fork hit the per-fork copy cap and only the most
-     * recent N messages up to the anchor were copied. The anchor
-     * message is always preserved. Audit metadata records the
-     * original source-side count alongside this flag.
-     */
     truncated: z.boolean(),
   })
   .openapi("ForkFromMessageResponse");
@@ -169,10 +154,6 @@ const forkFromMessageRoute = createRoute({
       description: "OK",
       content: { "application/json": { schema: ForkFromMessageResponse } },
     },
-    // Document the auth + RBAC error shapes so generated CLIs see the
-    // envelope. 401 fires from `requireAuth` (no/invalid bearer); 403
-    // fires from `requireAnyPermission(["conversation:write",
-    // "workflow:write"])` registered alongside the route.
     401: {
       description: "Unauthenticated",
       content: { "application/json": { schema: ErrorSchema } },
@@ -292,16 +273,7 @@ export function registerLifecycleRoutes(app: OpenAPIHono<AppEnv>): void {
         source_conversation_id: id,
         anchor_message_id: message_id,
         actor_id: principal.id,
-        // Thread the principal kind through so the audit row uses
-        // the same `actor_type` taxonomy as every other emit site —
-        // `system_account` callers no longer get collapsed to
-        // `user`. `actorType()` is the canonical projector hoisted
-        // out into `audit/actor.ts`.
         actor_type: actorType(principal),
-        // Every HTTP entry into the fork service tags the audit row
-        // as `api`. Other channels (CLI direct invocation, scheduler)
-        // pass their own value when they invoke `forkConversation`
-        // directly.
         request_source: "api",
       },
       db,

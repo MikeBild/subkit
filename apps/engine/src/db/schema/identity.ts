@@ -12,17 +12,9 @@ import {
 } from "drizzle-orm/pg-core";
 import { bytea, tenantId, timestamps } from "./_common.ts";
 
-// ----- enums ----------------------------------------------------------------
-
-// Provisioning lifecycle: `invited` once an admin issues an invite that
-// has not yet been redeemed, `active` after redemption (or for any user
-// created directly), `disabled` after a soft-deactivation. Distinct from
-// `deleted_at` — a disabled user keeps their row for audit continuity.
 export const userStatusEnum = pgEnum("user_status", ["invited", "active", "disabled"]);
 export const auditActorKindEnum = pgEnum("audit_actor_kind", ["user", "system_account", "system"]);
 export const egressGuardModeEnum = pgEnum("egress_guard_mode", ["strict", "permissive"]);
-
-// ----- tenants --------------------------------------------------------------
 
 export const tenants = pgTable(
   "tenants",
@@ -32,43 +24,15 @@ export const tenants = pgTable(
     display_name: text("display_name").notNull(),
     llm_primary: text("llm_primary"),
     llm_fallback: text("llm_fallback"),
-    // `llm_monthly_token_budget` lived here as the oldest of three homes for
-    // the monthly cap. It had no writer; the cap is now owned solely by the
-    // `tokens.monthly_budget` config leaf (see `resolveMonthlyBudget`).
     egress_guard_mode: egressGuardModeEnum("egress_guard_mode"),
-    // Default timezone for cron triggers authored from natural language.
-    // Resolution chain: conversation prompt → this column → 'UTC'.
     timezone: text("timezone").default("UTC").notNull(),
-    // Stamp set by the scheduler when a proactive self-healing drift scan
-    // last fired for this tenant. The reconciler uses a compare-and-set on
-    // this column to ensure exactly-once firing per cadence across multi-
-    // instance deployments. NULL means "never scanned" — the next pass
-    // fires immediately.
     last_proactive_scan_at: timestamp("last_proactive_scan_at", { withTimezone: true }),
-    // Stamp set by the scheduler when the skill-candidate pattern analysis
-    // last fired for this tenant. The reconciler claims due tenants with a
-    // single atomic `UPDATE ... WHERE (col IS NULL OR col < cutoff)
-    // RETURNING id`, so the `skill-candidate.analyze` job is enqueued
-    // exactly once per cadence across multi-instance deployments. The
-    // range-based predicate is microsecond-safe (unlike a read-then-CAS on
-    // an equality, which truncates to milliseconds on read). NULL means
-    // "never analysed" — the next reconciler pass fires immediately.
     last_skill_candidate_analyze_at: timestamp("last_skill_candidate_analyze_at", {
       withTimezone: true,
     }),
-    // Stamp set by the scheduler when the connector re-auth scan last fired
-    // for this tenant. Same atomic compare-and-set claim pattern as the
-    // other last_*_scan_at columns — exactly-once firing per cadence across
-    // multi-instance deployments. NULL means "never scanned" — the next pass
-    // fires immediately.
     last_connector_reauth_scan_at: timestamp("last_connector_reauth_scan_at", {
       withTimezone: true,
     }),
-    // Stamp set by the scheduler when the endpoint-contract scan (probing the
-    // actual operations committed workflows reference, classifying 410/
-    // deprecation BEFORE a live run hits them) last fired for this tenant.
-    // Same atomic compare-and-set claim pattern as the other last_*_scan_at
-    // columns. NULL means "never scanned" — the next pass fires immediately.
     last_endpoint_contract_scan_at: timestamp("last_endpoint_contract_scan_at", {
       withTimezone: true,
     }),
@@ -78,24 +42,12 @@ export const tenants = pgTable(
   (t) => [uniqueIndex("tenants_slug_key").on(t.slug)],
 );
 
-/** Internal engine state store — bootstrap sentinel + token envelope only.
- *  User-facing runtime configuration moved to immutable PostgreSQL revisions
- *  (see `apps/engine/src/config/schema.ts`). This table now persists
- *  exclusively system-level state that boot-path code mutates without
- *  going through the audit + tenant scope rules of the config loader.
- *
- *  The pre-v3.5 use cases (per-tenant LLM keys, observability endpoints,
- *  token budgets) have all migrated to the config file; existing rows
- *  for those keys are ignored after the v3.5 upgrade and can be deleted
- *  by the operator at any time. */
 export const engineSettings = pgTable("engine_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").$type<unknown>().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   updated_by: uuid("updated_by"),
 });
-
-// ----- users ----------------------------------------------------------------
 
 export const users = pgTable(
   "users",
@@ -104,10 +56,6 @@ export const users = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     role_id: uuid("role_id").notNull(),
-    // Provisioning lifecycle (invited|active|disabled). Defaults to
-    // `active` so directly-created and pre-invite-feature users are
-    // unaffected; the invite-redeem path flips a fresh invited user to
-    // `active`.
     status: userStatusEnum("status").default("active").notNull(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -115,9 +63,6 @@ export const users = pgTable(
   (t) => [uniqueIndex("users_tenant_email_key").on(t.tenant_id, t.email)],
 );
 
-// Provider-neutral identity bindings. A user may authenticate through more
-// than one configured adapter; subjects are namespaced by provider id instead
-// of being stored in protocol-specific columns on `users`.
 export const userIdentities = pgTable(
   "user_identities",
   {
@@ -147,8 +92,6 @@ export const userIdentities = pgTable(
   ],
 );
 
-// ----- sessions -------------------------------------------------------------
-
 export const sessions = pgTable(
   "sessions",
   {
@@ -159,15 +102,8 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
-    // GC6: sliding + absolute TTL tracking. `last_seen_at` is bumped on
-    // every successful resolve and participates in the 8 h sliding window.
-    // `absolute_expires_at` is set once at creation and caps the session
-    // at 30 d regardless of activity.
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }),
     absolute_expires_at: timestamp("absolute_expires_at", { withTimezone: true }),
-    // Pass-2 A1: sha256 of the 32-byte random nonce embedded in the
-    // signed session cookie so the resolver can look up the row without
-    // trusting the cookie body.
     token_sha256: text("token_sha256"),
     ...timestamps,
   },
@@ -178,12 +114,6 @@ export const sessions = pgTable(
     index("sessions_token_sha256_idx").on(t.token_sha256),
   ],
 );
-
-// ----- oidc_login_states ---------------------------------------------------
-//
-// Pending authorization codes. A row lands in `startLogin` and is
-// atomically read + deleted in `finishLogin` before the token exchange.
-// The `state` column is the anti-CSRF value echoed back by the IdP.
 
 export const oidcLoginStates = pgTable(
   "oidc_login_states",
@@ -203,8 +133,6 @@ export const oidcLoginStates = pgTable(
   ],
 );
 
-// ----- system_accounts ------------------------------------------------------
-
 export const systemAccounts = pgTable(
   "system_accounts",
   {
@@ -212,16 +140,12 @@ export const systemAccounts = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
-    // Pass-2 C1: role assignment for machine accounts. Null-safe —
-    // providers fall back to the `member` role when unset.
     role_id: uuid("role_id"),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [uniqueIndex("system_accounts_tenant_name_key").on(t.tenant_id, t.name)],
 );
-
-// ----- api_keys -------------------------------------------------------------
 
 export const apiKeys = pgTable(
   "api_keys",
@@ -232,12 +156,6 @@ export const apiKeys = pgTable(
     system_account_id: uuid("system_account_id"),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
-    // Operator-facing label. The issue route always accepted a `name` and
-    // dropped it, so every key was identified only by a UUID and a prefix.
-    // That was survivable while one key did everything; it is not now that
-    // scopes decide what a key may do — an operator running one key per
-    // channel (a read key in a browser client, an authoring key in a coding
-    // agent) needs to tell them apart to revoke the right one.
     name: text("name"),
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     allowed_workflows: jsonb("allowed_workflows").$type<string[]>(),
@@ -256,8 +174,6 @@ export const apiKeys = pgTable(
     index("api_keys_rotating_out_at_idx").on(t.rotating_out_at),
   ],
 );
-
-// ----- portal_tokens --------------------------------------------------------
 
 export const portalTokens = pgTable(
   "portal_tokens",
@@ -278,16 +194,6 @@ export const portalTokens = pgTable(
   ],
 );
 
-// ----- user_invites ---------------------------------------------------------
-//
-// Single-use admin-issued invite. The admin creates the (invited) user and
-// mints an invite carrying the EXACT scopes the user's personal API key
-// will receive on redemption — no auto-grant beyond these. The token is
-// modelled on `portal_tokens`: a `wf_invite_` prefix literal stored
-// unhashed for indexed lookup plus a sha256 of the full plaintext. The
-// admin never sees the resulting api key; the invited user mints it (and
-// only it) at the unauthenticated `redeem` endpoint.
-
 export const userInvites = pgTable(
   "user_invites",
   {
@@ -298,8 +204,6 @@ export const userInvites = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     prefix: text("prefix").notNull(),
     token_sha256: text("token_sha256").notNull(),
-    // Scopes the redeemed api key receives verbatim. NEVER widened at
-    // redemption time.
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     allowed_workflows: jsonb("allowed_workflows").$type<string[]>(),
     allowed_connectors: jsonb("allowed_connectors").$type<string[]>(),
@@ -315,8 +219,6 @@ export const userInvites = pgTable(
   ],
 );
 
-// ----- auth_provider_configs ------------------------------------------------
-
 export const authProviderConfigs = pgTable(
   "auth_provider_configs",
   {
@@ -325,7 +227,6 @@ export const authProviderConfigs = pgTable(
     provider: text("provider").notNull(),
     priority: integer("priority").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
-    // AES-256-GCM ciphertext (see apps/engine/src/crypto/aes-gcm.ts). Writers call encryptSecret(), readers decryptSecret(), keyed by env.MASTER_KEY.
     config_ciphertext: bytea("config_ciphertext"),
     config_iv: bytea("config_iv"),
     config_auth_tag: bytea("config_auth_tag"),

@@ -1,8 +1,3 @@
-// Integration tests for tryFastPath.
-// Uses testcontainers postgres (createTestDb) — no mocks of the DB.
-// The LLM is NOT called for fast-path hits — we assert zero LLM calls
-// via getMockProvider().calls.length.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
@@ -51,10 +46,6 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
   return {
     provider: "test",
     kind: "user",
-    // Must be a UUID so audit writes (which target the `users` FK or
-    // similar UUID columns) don't blow up. The id doesn't need to match
-    // a real user row because we don't FK-enforce audit's actor_id in
-    // this schema, but it must parse as a UUID.
     id: "00000000-0000-0000-0000-0000000000fb",
     tenant_id: tenantId,
     roles: ["admin"],
@@ -71,12 +62,6 @@ async function makeConversation(): Promise<string> {
   return conv.id;
 }
 
-// actor_id is null in tests (no users table seed); the fast-path's
-// authenticated-route invariant only fires when principal is non-null
-// AND actor_id is null — both come from the same auth resolution in
-// production, so either both set (authenticated) or both null (test) is
-// allowed. Tests that need the authenticated invariant met override
-// both fields.
 function makeParams(msg: string, overrides: Partial<FastPathParams> = {}): FastPathParams {
   return {
     db: tdb.db,
@@ -109,16 +94,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   resetMockProvider();
-  // Fresh conversation per test
   conversationId = await makeConversation();
-  // Clean up workflows between tests
   await tdb.db.delete(workflowVersions);
   await tdb.db.delete(workflows);
 });
-
-// ---------------------------------------------------------------------------
-// List intents — English
-// ---------------------------------------------------------------------------
 
 describe("tryFastPath — list intents (English)", () => {
   test("'list my workflows' returns a fast-path hit with skipped_llm=true", async () => {
@@ -126,7 +105,6 @@ describe("tryFastPath — list intents (English)", () => {
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
     expect(result?.status).toBe("active");
-    // No LLM call was made
     expect(getMockProvider().calls.length).toBe(0);
   });
 
@@ -198,7 +176,6 @@ describe("tryFastPath — list intents (English)", () => {
         content: { tool: "list_workflows", output: {} },
         created_at: at(2),
       },
-      // A loop turn cut off after its tool ran is really unfinished: left alone.
       {
         tenant_id: tenantId,
         conversation_id: loopConversationId,
@@ -230,10 +207,6 @@ describe("tryFastPath — list intents (English)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// List intents — German
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — list intents (German)", () => {
   test("'zeige meine workflows' returns a fast-path hit", async () => {
     const result = await tryFastPath(makeParams("zeige meine workflows"));
@@ -249,10 +222,6 @@ describe("tryFastPath — list intents (German)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Multi-catalog enumeration — "list X and Y and Z"
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — multi-catalog list intents", () => {
   test("'list my connectors and workflows and knowledge sources' renders all three deterministically", async () => {
     const result = await tryFastPath(
@@ -261,8 +230,6 @@ describe("tryFastPath — multi-catalog list intents", () => {
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_catalogs");
     expect(result?.status).toBe("active");
-    // No LLM turn — so it cannot leak tool-call markup for a catalog the
-    // snapshot lacked (the reported bug).
     expect(getMockProvider().calls.length).toBe(0);
     const reply = result?.assistant_text ?? "";
     expect(reply.toLowerCase()).toContain("connector");
@@ -289,29 +256,18 @@ describe("tryFastPath — multi-catalog list intents", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// run <slug> — unknown slug falls through (returns null)
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — unknown slug falls through", () => {
   test("'run nonexistent-workflow' returns null (falls through to LLM)", async () => {
     const result = await tryFastPath(makeParams("run nonexistent-workflow"));
-    // Unknown slug → null; LLM will handle it
     expect(result).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Embedded command does NOT match (anchored to start)
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — embedded run-verb NOT matched (anchored regex)", () => {
   test("'if it is friday run my-workflow' does NOT trigger fast path", async () => {
-    // Seed the workflow so it exists
     await seedMinimalWorkflow("my-workflow");
 
     const result = await tryFastPath(makeParams("if it is friday run my-workflow"));
-    // The regex is anchored to ^, so mid-sentence run commands fall through
     expect(result).toBeNull();
     expect(getMockProvider().calls.length).toBe(0);
   });
@@ -323,36 +279,16 @@ describe("tryFastPath — embedded run-verb NOT matched (anchored regex)", () =>
   });
 });
 
-// ---------------------------------------------------------------------------
-// Principal is required (non-nullable) — the production caller in
-// `service/run-turn.ts` filters `principal === null` before reaching
-// `tryFastPath`. The contract is self-documenting now; previous tests
-// that asserted "no-principal" behaviour are obsolete.
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — list intents render under an authenticated principal", () => {
   test("list intents render under an authenticated principal", async () => {
-    // List intents check `*:read` permission against the principal; an
-    // admin role gets full access. The dropped "with principal=null"
-    // case lives at the caller boundary now.
     const result = await tryFastPath(makeParams("list workflows"));
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
   });
 });
 
-// ---------------------------------------------------------------------------
-// run <slug> two-turn confirmation gate (T10 from manifest)
-// ---------------------------------------------------------------------------
-
 describe("tryFastPath — run <slug> with a required input contract defers to the LLM loop", () => {
   test("a placeholder-driven workflow falls through (the run_workflow tool pauses with the auto-form)", async () => {
-    // The fast path always runs with input:null, so any workflow whose
-    // contract (declared input_schema, else synthesized from
-    // `${input.*}` placeholders) requires a key cannot complete here.
-    // Pre-fix it ran anyway and failed at runtime with
-    // "$input: required field '<k>' is missing" (live
-    // get-jira-ticket-details run, 2026-06-11).
     const [wf] = await tdb.db
       .insert(workflows)
       .values({
@@ -408,10 +344,6 @@ describe("tryFastPath — read-only run <slug>", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// renderRunOutput — the success reply leads with the result, not a step trace
-// ---------------------------------------------------------------------------
-
 describe("renderRunOutput", () => {
   test("a flat scalar object renders as a key: value bullet list, no JSON fence", () => {
     const out = renderRunOutput({ min_temp: 16.9, max_temp: 20.9, city: "Berlin" });
@@ -454,10 +386,6 @@ describe("renderRunOutput", () => {
     expect(out).not.toMatch(/\(transform\)|\(request\)/);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Tenant isolation + RBAC denial
-// ---------------------------------------------------------------------------
 
 describe("tryFastPath — tenant isolation", () => {
   test("principal from tenant B never sees tenant A's workflows on 'list workflows'", async () => {
@@ -508,8 +436,6 @@ describe("tryFastPath — tenant isolation", () => {
       user_message: "run tenant-a-runable",
       answer_actor: TEST_HUMAN_ANSWER,
     });
-    // The slug doesn't exist in tenant B's scope, so resolveWorkflowByIdOrSlug
-    // returns null → fast-path falls through to LLM (returns null).
     expect(result).toBeNull();
   });
 });
@@ -528,9 +454,6 @@ describe("tryFastPath — RBAC denial", () => {
     });
     expect(result?.assistant_text).toContain("Permission denied");
     expect(result?.fast_path_tool).toBe("run_workflow");
-    // Audit hygiene: the helper must have committed a POLICY_DENIED
-    // row keyed on the workflow before the deny returned. A future
-    // refactor to fire-and-forget audit would break this assertion.
     const audit = await tdb.db
       .select()
       .from(auditLog)
@@ -557,8 +480,6 @@ describe("tryFastPath — RBAC denial", () => {
     });
     expect(result?.assistant_text).toContain("Permission denied");
     expect(result?.fast_path_tool).toBe("list_workflows");
-    // List-intent deny path writes the POLICY_DENIED row against the
-    // conversation resource (the list call has no per-resource target).
     const audit = await tdb.db
       .select()
       .from(auditLog)
@@ -571,14 +492,6 @@ describe("tryFastPath — RBAC denial", () => {
     ).toBe(true);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Ground-truth cardinality (Fix 3 regression — sessions 2026-06-11/12).
-// The fast path previously rendered "10 workflows:" (LIST_LIMIT = 10) as
-// if complete while the tenant had 20. Bounded catalogs must enumerate
-// COMPLETELY with the exact total in the headline; executions stay paged
-// but render from the true total.
-// ---------------------------------------------------------------------------
 
 function findToolResultOutput(events: TurnEvent[] | undefined): Record<string, unknown> {
   const tr = events?.find((e) => e.type === "tool_result") as
@@ -598,12 +511,10 @@ describe("tryFastPath — ground-truth cardinality on list surfaces", () => {
     const result = await tryFastPath(makeParams("list my workflows"));
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
-    // Headline states the EXACT total — and only because all 25 are shown.
     expect(result?.assistant_text?.startsWith("25 workflows:")).toBe(true);
     for (const slug of slugs) {
       expect(result?.assistant_text).toContain(slug);
     }
-    // Self-describing tool result envelope.
     const output = findToolResultOutput(result?.events);
     expect(output.total).toBe(25);
     expect(output.returned).toBe(25);
@@ -634,7 +545,6 @@ describe("tryFastPath — ground-truth cardinality on list surfaces", () => {
     expect(data.has_more).toBe(false);
     expect(data.items).toHaveLength(25);
 
-    // An explicit page still reports the full total and flags has_more.
     const page = await listWorkflowsTool.execute(ctx, { limit: 10 });
     const pageData = page.data as { items: unknown[]; total: number; has_more: boolean };
     expect(pageData.items).toHaveLength(10);
@@ -687,10 +597,6 @@ describe("tryFastPath — ground-truth cardinality on list surfaces", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
 async function seedMinimalWorkflow(slug: string): Promise<{ id: string }> {
   const [wf] = await tdb.db
     .insert(workflows)
@@ -723,13 +629,6 @@ async function seedMinimalWorkflow(slug: string): Promise<{ id: string }> {
 
   return { id: wf.id };
 }
-
-// ---------------------------------------------------------------------------
-// One catalog block. The cockpit chip "notion 8" sends "Zeig mir die
-// notion-Workflows und was sie tun"; the model answered from a 40-row
-// slug-ordered snapshot and denied the notion workflows past the cap. The
-// fast path answers from the category index the chip count comes from.
-// ---------------------------------------------------------------------------
 
 describe("matchCategoryListIntent", () => {
   test.each([
@@ -766,12 +665,9 @@ async function workflowIdBySlug(slug: string): Promise<string> {
 }
 
 async function seedCategoryCatalog(): Promise<{ notion: string[] }> {
-  // 41 `aa-*` slugs sort before every `notion-*` slug, so the 40-row
-  // snapshot never shows one — the exact shape of the reported bug.
   for (let i = 0; i < 41; i++) await seedMinimalWorkflow(`aa-filler-${String(i).padStart(2, "0")}`);
   const notion = ["notion-archive", "notion-digest", "notion-search", "notion-sync"];
   for (const slug of notion) await seedMinimalWorkflow(slug);
-  // Column description wins; a definition-only description is the fallback.
   await tdb.db
     .update(workflows)
     .set({ description: "Copies new Notion pages\ninto the archive." })
@@ -787,7 +683,6 @@ async function seedCategoryCatalog(): Promise<{ notion: string[] }> {
       },
     })
     .where(eq(workflowVersions.workflow_id, await workflowIdBySlug("notion-digest")));
-  // A deleted member counts nowhere — not on the chip, not in the answer.
   const gone = await seedMinimalWorkflow("notion-retired");
   await tdb.db
     .update(workflows)
@@ -803,7 +698,6 @@ describe("tryFastPath — one catalog block", () => {
     expect(result).not.toBeNull();
     expect(result?.fast_path_tool).toBe("list_workflows");
     const text = result?.assistant_text ?? "";
-    // Asked in German, answered in German; a name equal to its slug is not repeated.
     expect(text.startsWith("4 Workflows in **notion**:")).toBe(true);
     for (const slug of notion) expect(text).toContain(`- ${slug} (aktiv)`);
     expect(text).not.toContain("(active)");
@@ -854,10 +748,8 @@ describe("tryFastPath — one catalog block", () => {
 
   test("every category the chip row shows answers with exactly its members", async () => {
     await seedCategoryCatalog();
-    // A third block, so the check is not about one example.
     for (const slug of ["radar-collect", "radar-normalize", "radar-publish"])
       await seedMinimalWorkflow(slug);
-    // The chip row's source: GET /v1/workflows derives its blocks from this index.
     const index = await loadCategoryIndex(tenantId, tdb.db);
     const members = new Map<string, string[]>();
     for (const [slug, category] of index)
@@ -865,7 +757,6 @@ describe("tryFastPath — one catalog block", () => {
     const categories = [...members.keys()];
     expect(categories.length).toBeGreaterThanOrEqual(3);
     for (const category of categories) {
-      // The exact text the chip sends.
       const result = await tryFastPath(
         makeParams(`Zeig mir die Workflows in @kategorie/${category}`),
       );
@@ -926,7 +817,6 @@ describe("tryFastPath — one catalog block", () => {
       ["show me the failed workflows", "failed"],
       ["zeig mir die aktiven workflows", "aktiven"],
     ] as const) {
-      // Preconditions: only the category matcher sees this text.
       expect(matchListIntent(text), text).toBeNull();
       expect(matchCategoryListIntent(text), text).toBe(word);
       expect(await tryFastPath({ ...makeParams(text), principal: restricted }), text).toBeNull();
@@ -947,7 +837,6 @@ describe("tryFastPath — one catalog block", () => {
       (await loadEnumerationCoverage(tenantId, "Zeig mir die notion-Workflows", tdb.db))
         .names_existing_workflow,
     ).toBe(false);
-    // A deleted workflow is not named.
     expect(
       (await loadEnumerationCoverage(tenantId, "workflow notion-retired", tdb.db))
         .names_existing_workflow,

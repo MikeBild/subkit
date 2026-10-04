@@ -1,11 +1,3 @@
-// Locks the validateProviderSetup() report shape — surfaced via
-// /v1/status so the CLI status line can warn before the first turn.
-//
-// v3.5: readEnv() reads getConfig() FIRST and falls back to env. Tests
-// here must run with a fresh loader state so a previously-loaded
-// config (with llm.provider="mock" default) doesn't pollute their
-// process.env-driven assertions.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { _resetConfigForTests } from "../../config/loader.ts";
 import { validateProviderSetup } from "../core/model-init.ts";
@@ -33,9 +25,6 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
-  // Drop any config state leaked from earlier suites (the schema
-  // default for llm.provider is "mock", which overrides the absence
-  // of LLM_PROVIDER in env unless we reset).
   _resetConfigForTests();
 });
 

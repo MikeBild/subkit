@@ -1,27 +1,3 @@
-// Conversation-quality end-to-end integration test.
-//
-// Exercises the full chain the new conversation-quality feature set
-// enables, calling the real tools (not mocks) in the order an operator-
-// driven LLM would: probe → build → verify → DLP → audit.
-//
-// Scope:
-//   1. Seed a Stripe-like connector + bearer credential.
-//   2. probe_connector GET /v1/customers against a Bun.serve mock →
-//      verify the tool substituted the credential into the outbound
-//      Authorization header and returned a truncated envelope.
-//   3. edit_workflow_patch assembles a ${cred.*}-bearing request step
-//      whose response will contain a canary PII email →
-//      (a) passes schema + placeholder-form validation,
-//      (b) persists to the conversation draft.
-//   4. Default DLP filters applied to the sample response mask the
-//      canary email so the canary value cannot survive downstream.
-//   5. Audit trail contains conversation.probe_connector with only
-//      url_host (no path) and no credential value anywhere.
-//
-// Skipped here (deferred to the mock-provider-driven acceptance test):
-//   - Full LLM conversation loop. We drive the tools directly so the
-//     assertions are deterministic and fast (<1s).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { and, eq } from "drizzle-orm";
@@ -76,7 +52,6 @@ beforeAll(async () => {
   const addr = server.address();
   baseUrl = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
 
-  // Seed connector + credential
   const [conn] = await ctx.db
     .insert(connectors)
     .values({
@@ -134,7 +109,6 @@ describe("convo-quality integration chain", () => {
     const out = result.data as { status_code: number; body: { data: unknown[] } };
     expect(out.status_code).toBe(200);
     expect(Array.isArray(out.body.data)).toBe(true);
-    // Mock server saw the real token in the outbound Authorization header.
     expect(seenAuth).toContain(`Bearer ${CANARY_TOKEN}`);
   });
 
@@ -183,8 +157,6 @@ describe("convo-quality integration chain", () => {
   });
 
   test("DLP filters mask the canary email before the LLM sees step output", () => {
-    // Represents the payload the mock server returned in step (1), then
-    // fed through the default DLP rules the executor applies.
     const mockResponseFromStep = {
       data: [
         { id: "cus_1", email: CANARY_EMAIL, name: "Ada" },
@@ -195,7 +167,6 @@ describe("convo-quality integration chain", () => {
     expect(redacted.length).toBeGreaterThanOrEqual(2);
     const paths = redacted.map((r) => r.path).sort();
     expect(paths.some((p) => p.endsWith(".email"))).toBe(true);
-    // Canary email never appears in the redacted body.
     const serialised = JSON.stringify(value);
     expect(serialised.includes(CANARY_EMAIL)).toBe(false);
   });
@@ -210,7 +181,6 @@ describe("convo-quality integration chain", () => {
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const serialised = JSON.stringify(rows);
     expect(serialised.includes(CANARY_TOKEN)).toBe(false);
-    // url_host is present; the URL path is intentionally omitted.
     expect(serialised).toContain('"url_host":"127.0.0.1"');
     expect(serialised.includes("/v1/customers")).toBe(false);
   });

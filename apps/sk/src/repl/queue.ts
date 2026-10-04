@@ -1,19 +1,3 @@
-// Busy-turn command queue.
-//
-// While the REPL is streaming a turn we normally gate the composer
-// so a held-down Enter key can't spawn duplicate turns. That has one
-// annoying side effect: a user who is thinking three moves ahead
-// has no way to stage the next instruction until the current turn
-// finishes.
-//
-// `createQueue` tracks a FIFO of staged prompts. The composer feeds
-// it via `enqueue(text)` while `busy` is true, and the InkApp drains
-// the queue once the streaming loop finishes — one prompt at a time,
-// preserving order.
-//
-// The queue is bounded (default 16 entries). Overflow drops the
-// newest push so a runaway script can't balloon memory.
-
 export interface CommandQueue {
   enqueue(text: string): boolean;
   dequeue(): string | undefined;
@@ -24,7 +8,6 @@ export interface CommandQueue {
 }
 
 export interface QueueOptions {
-  /** Max entries kept in the queue. Overflow is dropped. */
   maxSize?: number;
 }
 

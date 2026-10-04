@@ -1,9 +1,3 @@
-// Persona-variant selection — sk_headless surface always wins, then
-// authoring mode picks AUTHORING / EXECUTION / DIAGNOSIS. Verifies
-// the cache-prefix anchor sentence is byte-stable across same-mode
-// turns and that the CLI_HEADLESS_PERSONA never references web UI
-// affordances (sidebars, modals, "click", "Save Changes").
-
 import { describe, expect, test } from "bun:test";
 import type { AuthoringPromptHint } from "../../../llm/types.ts";
 import type { AuthoringSurfaceMode } from "../../types.ts";
@@ -40,9 +34,6 @@ describe("persona-variant selection", () => {
 
   test("CLI_HEADLESS persona never names web UI affordances", async () => {
     const r = await generateMainAgentSystemPrompt({ surface: "sk_headless" });
-    // The whole prompt body — persona + general rules + skills — is
-    // checked. Skills are also expected to avoid web affordance prose
-    // since they are universal.
     const forbidden = ["sidebar", "Save Changes button", "click here", "modal"];
     for (const phrase of forbidden) {
       expect(r.content.toLowerCase()).not.toContain(phrase.toLowerCase());
@@ -71,7 +62,6 @@ describe("persona-variant selection", () => {
       authoring_hint: makeHint("execution"),
     });
     expect(r.content).toContain("In execution mode the workflow is already persisted");
-    // Anti-regression: the AUTHORING-only sentence must not leak in.
     expect(r.content).not.toContain("In authoring mode you are drafting");
   });
 
@@ -98,20 +88,11 @@ describe("persona-variant selection", () => {
       surface: "sk_interactive",
       authoring_hint: makeHint("workflow"),
     });
-    // The whole prompt should be byte-stable across same-mode turns
-    // (focus blocks + skill bodies + verbosity all derive from the
-    // same input). If this drifts, the prompt cache stops re-using.
     expect(t1.content).toBe(t2.content);
   });
 });
 
 describe("install-grounding rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
-  // The rule is injected by generateMainAgentSystemPrompt only on user-facing
-  // ANSWER surfaces (chat, mcp, web), NOT baked into GENERAL_RULES. So an MCP
-  // client driving the engine's conversation loop is grounded the same way the
-  // chat channel is — but the sk_interactive / sk_headless AUTHORING base is
-  // left unchanged (keeps it under the small-model context cap the assembler
-  // drop-ladder tests pin). Pins "does the corrected install answer work via MCP?".
   test("MCP and web surfaces carry the grounding rule", async () => {
     for (const surface of ["mcp", "web"] as const) {
       const r = await generateMainAgentSystemPrompt({
@@ -121,7 +102,6 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
       expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
       expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
-      // Names the invented npm package only inside its negation, never as a path.
       expect(r.content).toContain("@subkit/cli");
     }
   });
@@ -138,11 +118,6 @@ describe("install-grounding rule is surface-gated (chat/mcp/web), not in the aut
 });
 
 describe("action-honesty rule reaches EVERY real surface, not the surface-less base", () => {
-  // Unlike the answer-surface groundings above, ACTION HONESTY guards the
-  // REPL too: the observed fabrication ("deleted the conversation" with no
-  // such tool in the palette) happened on sk_interactive. Only the
-  // surface-less assembly — the drop-ladder tests' pinned base — stays
-  // without it.
   test("all real surfaces carry the action-honesty rule", async () => {
     for (const surface of ["sk_interactive", "sk_headless", "mcp", "web", "chat"] as const) {
       const r = await generateMainAgentSystemPrompt({
@@ -162,10 +137,6 @@ describe("action-honesty rule reaches EVERY real surface, not the surface-less b
 });
 
 describe("concept-grounding rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
-  // Same architecture as install-grounding: the Skills-vs-Knowledge / model-a-
-  // domain rule is injected only on user-facing ANSWER surfaces so the concept
-  // answer is grounded there, but the authoring base prompt stays under the
-  // small-model context cap the assembler drop-ladder tests pin.
   test("MCP and web surfaces carry the concept-grounding rule", async () => {
     for (const surface of ["mcp", "web"] as const) {
       const r = await generateMainAgentSystemPrompt({
@@ -189,10 +160,6 @@ describe("concept-grounding rule is surface-gated (chat/mcp/web), not in the aut
 });
 
 describe("count-hygiene rule is surface-gated (chat/mcp/web), not in the authoring base", () => {
-  // Kept OUT of GENERAL_RULES so the authoring/CLI base prompt stays under the
-  // small-model cap the assembler drop-ladder tests pin (adding it to
-  // GENERAL_RULES tipped that base over the 12k mock cap). Fixes the observed
-  // list-summary miscount on chat.
   test("MCP and web surfaces carry the count-hygiene rule", async () => {
     for (const surface of ["mcp", "web"] as const) {
       const r = await generateMainAgentSystemPrompt({
@@ -224,8 +191,6 @@ describe("chat surface persona", () => {
       expect(r.content).toContain(ANCHOR);
       expect(r.content).toContain("external chat channel");
       expect(r.content).toContain("CANNOT create or edit");
-      // No authoring persona and no authoring focus block: the chat
-      // palette carries no tools that could progress a draft.
       expect(r.content).not.toContain("In authoring mode you are drafting");
       expect(r.content).not.toContain("AUTHORING FOCUS:");
     }
@@ -236,8 +201,6 @@ describe("chat surface persona", () => {
       surface: "chat",
       authoring_hint: makeHint("execution"),
     });
-    // P1: sk self-questions must be grounded, and the real install one-liner
-    // must be named so the bot stops inventing @subkit/cli / docker-compose.
     expect(r.content).toContain("GROUNDING sk SELF-QUESTIONS");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal grounding token asserted verbatim; the assembler substitutes it.
     expect(r.content).toContain("curl -fsSL ${engine_url}/install | bash");
@@ -250,8 +213,6 @@ describe("chat surface persona", () => {
       surface: "chat",
       authoring_hint: makeHint("execution"),
     });
-    // P3: connector-inspect answers must not print ${connector...} / ${cred...}
-    // authoring template syntax to a read-only chat user.
     expect(r.content).toContain("NO AUTHORING PLACEHOLDERS ON CHAT");
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal authoring placeholder syntax the persona rule must name verbatim.
     expect(r.content).toContain("${connector.<slug>...}");
@@ -268,9 +229,6 @@ describe("chat surface persona", () => {
       surface: "web",
       authoring_hint: makeHint("workflow"),
     });
-    // conversational-authoring is the ~1.8k-token authoring narrative
-    // gated on workflow/connector mode — the chat prompt must not carry
-    // it while the web prompt in the same mode does.
     expect(web.content.length).toBeGreaterThan(chat.content.length);
     expect(chat.content).not.toContain("inspect -> validate -> preview -> commit");
   });

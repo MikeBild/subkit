@@ -1,7 +1,3 @@
-// Engine smoke tests for the v3.5 config-file boot path. tmpdir-only;
-// no DB. Each test runs loadConfig() against a fresh config file and
-// asserts the documented boot invariants.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,10 +35,8 @@ describe("smoke — zero-config boot", () => {
     expect(cfg.database.url).toBe("postgres://localhost/x");
     expect(cfg.log.level).toBe("info");
     expect(cfg.server.port).toBe(3000);
-    // session.secret was missing → loader auto-generated and persisted.
     expect(cfg.auth.session.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
-    // Diagnostics show zero pending restarts and zero overrides.
     const diag = getDiagnostics();
     expect(diag.pending_restart_keys).toEqual([]);
     expect(diag.override_keys).toEqual([]);

@@ -1,11 +1,6 @@
-// In-memory tracker for failed authentication attempts per IP.
-// Emits a warning log when failures exceed a threshold within a time
-// window, enabling brute-force / credential-stuffing detection without
-// adding external dependencies.
-
 import { logger } from "../logging/logger.ts";
 
-const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const WINDOW_MS = 5 * 60 * 1000;
 const THRESHOLD = 10;
 const PRUNE_INTERVAL_MS = 60_000;
 
@@ -31,7 +26,6 @@ function pruneStale(now: number): void {
 export function recordAuthFailure(ip: string): void {
   const now = Date.now();
 
-  // Periodic prune to prevent unbounded growth.
   if (now - lastPrune > PRUNE_INTERVAL_MS) {
     pruneStale(now);
   }

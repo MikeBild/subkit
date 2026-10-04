@@ -28,8 +28,6 @@ function denied(reason: string): never {
   throw new PreparedDispatchDenied(reason);
 }
 
-/** Charge each outbound attempt before dispatch. The row lock serializes
- * parallel steps and a stored counter survives queue/process recovery. */
 export async function assertToolApprovalDispatch(
   db: Db,
   tenant: string,
@@ -297,8 +295,6 @@ export async function assertToolApprovalDispatch(
     });
 }
 
-/** A reservation precedes network dispatch; a failed attempt may have reached
- * the remote. Never report failure as proof that no external write occurred. */
 export async function approvedDispatchOutcome(db: Db, tenant: string, executionId: string) {
   const [run] = await db
     .select({
@@ -344,8 +340,6 @@ export async function approvedDispatchOutcome(db: Db, tenant: string, executionI
   };
 }
 
-/** Reuse only the server-recorded preparation clock and seed. Fresh reads and
- * exact outbound proof checks still run; no cached step outputs are replayed. */
 export async function preparedApprovalClock(
   db: Db,
   tenant: string,

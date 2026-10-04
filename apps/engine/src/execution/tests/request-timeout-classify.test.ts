@@ -1,16 +1,7 @@
-// Deterministic unit test for the timeout-is-terminal contract
-// (2026-06-21 Gmail send outage): a per-request TIMEOUT must classify as
-// `timeout` — NOT `connection` — so it is terminal and never retried
-// "regardless of method" (which retried a stalled Gmail POST 5× and risked
-// double-sending). `classifyTransportError` is the pure core of that
-// decision; testing it directly needs no DB, no socket, no async-context
-// plumbing (the reason the earlier behavioural test was flaky).
-
 import { describe, expect, test } from "bun:test";
 import { classifyTransportError } from "../steps/request/dispatch.ts";
 
 function timeoutError(): Error {
-  // Mirrors Bun's AbortSignal.timeout rejection: DOMException "TimeoutError".
   const e = new Error("The operation timed out.");
   e.name = "TimeoutError";
   return e;

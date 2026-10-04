@@ -1,5 +1,3 @@
-// The repository must stay free of installation-specific domains. The needle
-// is assembled from fragments so this guard file never matches itself.
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -18,7 +16,6 @@ describe("no installation-specific references", () => {
       });
     } catch (error) {
       const err = error as { status?: number; stdout?: string };
-      // git grep exits 1 with empty stdout when there are no matches — success.
       if (err.status === 1 && !err.stdout) return;
       throw error;
     }

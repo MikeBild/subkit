@@ -1,5 +1,3 @@
-// Unit tests for the D7 secret-shaped elicitation detector.
-
 import { describe, expect, test } from "bun:test";
 import { detectSecretElicitation } from "./secret-detection.ts";
 
@@ -21,8 +19,6 @@ describe("detectSecretElicitation — ask_user_form", () => {
   });
 
   test("an UNMARKED but secret-named text field is caught (name)", () => {
-    // The classic bypass: a plain `text` field named `api_key` with no
-    // password type and no sensitive flag — SENSITIVE_KEY_PATTERN catches it.
     const hit = detectSecretElicitation("ask_user_form", {
       question: "Connect",
       fields: [{ name: "api_key", label: "Key", type: "text" }],

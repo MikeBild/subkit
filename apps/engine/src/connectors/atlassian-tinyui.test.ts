@@ -1,7 +1,3 @@
-// Tinyui decoder + URL parser tests. The session-0498925e regression
-// fixture (y4ozBQ → 87263947) is the canonical example; the rest
-// covers padding edge cases and rejection of invalid shapes.
-
 import { describe, expect, it } from "bun:test";
 import { decodeAtlassianTinyui, parseAtlassianCloudResourceUrl } from "./atlassian-tinyui.ts";
 
@@ -11,19 +7,14 @@ describe("decodeAtlassianTinyui", () => {
   });
 
   it("decodes when no padding is needed (length % 4 == 0)", () => {
-    // 4 chars → 3 bytes after decode → returns null (< 4 bytes).
-    // Construct a known 8-char shortlink: encodeURIComponent(btoa('\x01\x00\x00\x00').replace(/=+$/,''))
-    // = "AQAAAA". Decodes to 0x00 0x00 0x00 0x01 — little-endian = 1.
     expect(decodeAtlassianTinyui("AQAAAA")).toBe(1);
   });
 
   it("decodes when 2 chars of padding are needed (length % 4 == 2)", () => {
-    // "y4ozBQ" has length 6 → 6 % 4 = 2 → pad with "==" → 8 chars → 6 bytes.
     expect(decodeAtlassianTinyui("y4ozBQ")).toBe(87263947);
   });
 
   it("returns null on input shorter than 4 decoded bytes", () => {
-    // 3 chars of base64 → 2 bytes decoded → not enough for a uint32.
     expect(decodeAtlassianTinyui("AQA")).toBe(null);
   });
 
@@ -41,8 +32,6 @@ describe("decodeAtlassianTinyui", () => {
   });
 
   it("handles base64url alphabet characters (- and _)", () => {
-    // Replacing `+`/`/` with `-`/`_` is a no-op for "AQAAAA"; the test
-    // proves the mapping pass doesn't break decoding either way.
     expect(decodeAtlassianTinyui("AQAAAA")).toBe(1);
   });
 });
@@ -84,7 +73,6 @@ describe("parseAtlassianCloudResourceUrl", () => {
   });
 
   it("does NOT swallow a tinyui that fails to decode (short < 4 bytes)", () => {
-    // 3-char short → 2 decoded bytes → page_id null but kind still set.
     const r = parseAtlassianCloudResourceUrl("https://x.atlassian.net/wiki/x/AQA");
     expect(r).toEqual({ kind: "confluence_tinyui", short: "AQA", page_id: null });
   });

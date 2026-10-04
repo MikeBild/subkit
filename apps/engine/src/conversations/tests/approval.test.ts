@@ -1,25 +1,3 @@
-// Elicitation pause / resolve test.
-//
-// Covers:
-//   - an `ask_user_confirm` tool writes a `conversation_elicitations`
-//     row in `pending` and flips the conversation to `awaiting_input`
-//   - responding with `{ confirmed: false }` resolves that row with the
-//     decline recorded (status `resolved`, `decision_reason` preserved)
-//     and the shared APPROVAL_APPROVED audit action (emitted for every
-//     resolved — i.e. non-cancelled — elicitation, confirmed or declined;
-//     the diagnostic detail lives in the stored `output`, not the action
-//     name)
-//   - the mock model's canned plan retries the SAME save_workflow_draft
-//     call right after the decline. No tool schema carries a
-//     model-settable confirm marker (`__policy_confirmed` was removed as
-//     a self-approval escape hatch), so that retry is challenged by a
-//     FRESH `ask_user_confirm` rather than silently bypassing the write
-//     gate — the conversation legitimately re-enters `awaiting_input` on
-//     a NEW elicitation, distinct from the one just declined
-//   - the conversation is genuinely resumable (not stuck): declining the
-//     second confirm too drives the loop to a terminal, non-paused state
-//     with no workflow ever committed.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -82,16 +60,6 @@ describe("conversations/elicitation", () => {
       },
       ctx.testDb.db,
     );
-    // After rejection the loop drives another turn with the negative
-    // tool_result injected as a synthetic `save_workflow_draft` decline.
-    // The mock's canned plan is a fixed script, not a real model reasoning
-    // over that decline — its next scripted step re-issues
-    // `save_workflow_draft` regardless. Under the new write-safety
-    // contract no tool schema carries a model-settable confirm marker, so
-    // that retry cannot bypass the gate; it is challenged by a brand-new
-    // `ask_user_confirm` instead. The conversation therefore legitimately
-    // pauses again — on a DIFFERENT elicitation than the one we just
-    // declined.
     expect(responded.conversation.status).toBe("awaiting_input");
     const secondElicitationId = responded.result.pending_elicitation_id;
     expect(secondElicitationId).toBeDefined();
@@ -105,10 +73,6 @@ describe("conversations/elicitation", () => {
     expect(afterRow[0]?.status).toBe("resolved");
     expect(afterRow[0]?.decision_reason).toBe("not ready");
 
-    // APPROVAL_APPROVED audit row is emitted for every resolved
-    // elicitation today (the code treats any non-cancelled outcome as
-    // "user answered"). That's fine — the diagnostic info is in the
-    // stored `output`.
     const auditRows = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -143,7 +107,6 @@ describe("conversations/elicitation", () => {
     expect(resolvedPayload.reason).toBe("not ready");
     expect((resolvedPayload.response as { confirmed?: boolean }).confirmed).toBe(false);
 
-    // No committed workflow — the draft was never committed.
     const detail = await getConversation(ctx.tenant_id, outcome.conversation.id, ctx.testDb.db);
     expect(detail?.conversation.target_workflow_id).toBeNull();
   });
@@ -162,7 +125,6 @@ describe("conversations/elicitation", () => {
     const elicitationId = outcome.result.pending_elicitation_id;
     if (!elicitationId) throw new Error("no elicitation id");
 
-    // First response — should succeed and move the row to resolved.
     await respondElicitationForTest(
       {
         tenant_id: ctx.tenant_id,
@@ -174,9 +136,6 @@ describe("conversations/elicitation", () => {
       ctx.testDb.db,
     );
 
-    // Second response — must reject. Without the gate this would re-run
-    // the conversation loop and double-charge the LLM (the silent-hang
-    // failure mode in session 79bf2cca).
     await expect(
       respondElicitationForTest(
         {

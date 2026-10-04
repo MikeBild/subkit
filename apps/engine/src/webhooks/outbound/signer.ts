@@ -1,30 +1,17 @@
-// Standard Webhooks signer.
-//
-// Signature base string:  `${webhook_id}.${timestamp}.${body}`
-// Digest:                  HMAC-SHA256 with the subscription secret
-// Header encoding:         `v1,<base64(digest)>`
-//
-// During secret rotation a subscription may carry a primary AND a
-// rotating secret. The header becomes `v1,<old> v1,<new>` (space
-// separated) so receivers see both candidates and can accept either.
-
 import { createHmac } from "node:crypto";
 
 export interface SignedEnvelope {
   webhook_id: string;
-  timestamp: string; // unix seconds as a string — matches the spec wire format
+  timestamp: string;
   body: string;
-  /** Header value. Space-separates multiple `v1,<b64>` tokens. */
   signature: string;
 }
 
 export interface SignOptions {
   webhook_id: string;
-  timestamp: number; // unix seconds
+  timestamp: number;
   body: string;
-  /** Primary secret (current). Used first in the multi-sig list. */
   secret: string;
-  /** Optional rotating secret (previous). Appended after the primary. */
   rotatingSecret?: string | null;
 }
 
@@ -47,16 +34,10 @@ export function sign(opts: SignOptions): SignedEnvelope {
   };
 }
 
-/** Just the header value — convenience for tests + delivery worker. */
 export function signatureHeader(opts: SignOptions): string {
   return sign(opts).signature;
 }
 
-/**
- * Constant-time check that `header` contains a valid `v1,<b64>` token
- * for the given base string and one of the candidate secrets. Used by
- * the inbound verifier.
- */
 export function verifySignatureHeader(header: string, base: string, secrets: string[]): boolean {
   const tokens = header.split(/\s+/).filter((t) => t.length > 0);
   if (tokens.length === 0) return false;

@@ -1,13 +1,3 @@
-// GET /v1/attention — what needs the calling person now.
-//
-// Authenticated, with no tenant-wide permission of its own: every item is
-// checked with `can()` on its subject inside `buildAttention`, and a source the
-// caller may not read is reported as `not_permitted` rather than hidden. A
-// route-level gate would refuse exactly the readers the per-item check exists
-// for — a person holding a grant on one workflow.
-//
-// Read-only: no audit row is written.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { buildAttention } from "../../../operator/attention.ts";
 import { requireAuth } from "../../middleware/auth.ts";

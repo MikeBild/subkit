@@ -1,18 +1,3 @@
-// Admin role-gated CRUD.
-// AdminTab is no longer reachable from /settings — it's mounted via
-// /admin → AdminCommand (apps/sk/src/settings-ui/AdminCommand.tsx)
-// which wraps AdminTab in SinglePane. These unit tests cover the tab
-// body directly:
-//   * Sub-tab strip renders all 7 sub-tabs
-//   * 1–7 jumps directly to a sub-tab
-//   * API key revoke flow ends in revokeApiKey() and an inline status flash
-//   * Portal token revoke flow ends in revokePortalToken().
-//
-// The "Admin tab hidden for non-admin" UX gate now lives in
-// AdminCommand (probes skBootstrap, shows a "no admin permissions"
-// message). See PermissionsCommand/ProfileCommand tests for the
-// SinglePane parity.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../engine-client.ts";
 import { AdminTab } from "../settings-ui/tabs/AdminTab.tsx";
@@ -105,12 +90,6 @@ describe("AdminTab — role-gated CRUD (M8)", () => {
   });
 
   test("API key revoke flow → revokeApiKey called + flash", async () => {
-    // Render the API Keys sub-tab directly to avoid the
-    // sub-tab-via-digit-keypress timing race that occasionally drops
-    // the digit when the AdminTab.useInput hook is still mid-mount.
-    // The sub-tab digit nav itself is exercised in the "`3` jumps to
-    // API Keys sub-tab" test above, so the revoke flow does not need
-    // to retest it.
     const { client, revokeApiKey } = makeClient({
       apiKeys: [{ id: "k99", name: "deploy-bot", status: "active" }],
     });
@@ -145,7 +124,6 @@ describe("AdminTab — role-gated CRUD (M8)", () => {
       await ui.waitFor((t) => t.includes("API keys"));
       await ui.type("c");
       await ui.waitFor((t) => t.includes("Issue API key"));
-      // Owner id field is the active default; type its value.
       for (const ch of "11111111-2222-3333-4444-555555555555") await ui.type(ch);
       await ui.press("down");
       for (const ch of "user") await ui.type(ch);
@@ -157,7 +135,6 @@ describe("AdminTab — role-gated CRUD (M8)", () => {
         owner_id: "11111111-2222-3333-4444-555555555555",
         owner_kind: "user",
       });
-      // Secret panel must show the plaintext exactly once.
       await ui.waitFor((t) => t.includes("secret_AAA"));
       expect(ui.text()).toContain("New api key");
     } finally {

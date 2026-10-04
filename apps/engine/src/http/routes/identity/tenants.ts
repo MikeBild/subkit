@@ -1,6 +1,3 @@
-// GET /v1/identity/tenants — admin only; returns the principal's tenant.
-// GET /v1/identity/tenants/:id — admin only.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../../api/common-schemas.ts";
 import { policy } from "../../../auth/index.ts";
@@ -53,9 +50,6 @@ function serialize(t: NonNullable<Awaited<ReturnType<typeof identity.getTenant>>
 }
 
 export function registerTenantRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC is enforced by the `requirePermission(...)` middleware below
-  // (identity:read). The legacy `enforce(adminOnly)` calls inside the
-  // handlers are strict duplicates kept as defense-in-depth.
   app.use("/v1/identity/tenants", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("identity:read")(c, next);
     return next();

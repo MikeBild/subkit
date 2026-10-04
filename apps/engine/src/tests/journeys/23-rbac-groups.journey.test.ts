@@ -1,12 +1,3 @@
-// User story: As an admin, I want to bundle users into a group and
-// assign a role to the group so new members inherit access
-// transitively.
-// Acceptance criteria:
-//   - AC1: Admin creates group `oncall`, adds a member, assigns `member` role.
-//   - AC2: The group member inherits `workflow:read` via the group path.
-//   - AC3: Removing the member revokes access.
-// Spec refs: gap-pass-2 C3 / C4 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, users } from "../../db/schema/index.ts";
@@ -69,10 +60,6 @@ describe("journey: rbac groups", () => {
   }
 
   test("AC1-AC2: group role assignment grants transitive access", async () => {
-    // Initial state: user is not in a group and has no role_id. The
-    // evaluator's legacy-enum fallback resolves to the built-in
-    // `member` role (tests inherit the enum value `member`). To
-    // isolate the group path we bind the user to a bare custom role.
     const roleRes = await journeyFetch(ctx, "/v1/rbac/roles", {
       method: "POST",
       body: JSON.stringify({ name: "bare-23", description: "no perms" }),
@@ -86,7 +73,6 @@ describe("journey: rbac groups", () => {
     const preList = await asUser("/v1/workflows");
     expect(preList.status).toBe(403);
 
-    // AC1: create group + assign member role.
     const grpRes = await journeyFetch(ctx, "/v1/rbac/groups", {
       method: "POST",
       body: JSON.stringify({ name: "oncall" }),
@@ -95,7 +81,6 @@ describe("journey: rbac groups", () => {
     const grp = (await grpRes.json()) as { id: string };
     groupId = grp.id;
 
-    // Find the member built-in role id.
     const rolesRes = await journeyFetch(ctx, "/v1/rbac/roles");
     const rolesBody = (await rolesRes.json()) as {
       items: Array<{ id: string; name: string; is_builtin: boolean }>;
@@ -104,19 +89,16 @@ describe("journey: rbac groups", () => {
     expect(memberRole).toBeDefined();
     if (!memberRole) return;
 
-    // Assign the role to the group.
     const assignRes = await journeyFetch(ctx, `/v1/rbac/groups/${groupId}/roles/${memberRole.id}`, {
       method: "POST",
     });
     expect(assignRes.status).toBe(200);
 
-    // Add the user as a member of the group.
     const addRes = await journeyFetch(ctx, `/v1/rbac/groups/${groupId}/members/${userId}`, {
       method: "POST",
     });
     expect(addRes.status).toBe(200);
 
-    // AC2: user can now list workflows via the group path.
     const postList = await asUser("/v1/workflows");
     expect(postList.status).toBe(200);
   });

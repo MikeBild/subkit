@@ -16,7 +16,6 @@ import {
 import { collectFileRefs } from "../utils/file-ref.ts";
 import { resolveTime } from "./stats.ts";
 
-/** Candidate rows for the interactive execution picker (TTY only). */
 const fetchExecutionRows = async (client: EngineClient) => {
   const { items } = await client.listExecutions({ limit: 20 });
   return (items as Record<string, unknown>[]).map((r) => ({
@@ -26,9 +25,6 @@ const fetchExecutionRows = async (client: EngineClient) => {
   }));
 };
 
-/** Where a run came from, mirroring the engine's operator digest:
- *  authoring trial-runs and manual test runs are NOT production
- *  incidents, so the list tags each row honestly. */
 function originOf(row: Record<string, unknown>): string {
   const sourceKind = typeof row.source_kind === "string" ? row.source_kind : "saved";
   const reqSource = typeof row.request_source === "string" ? row.request_source : "";
@@ -37,7 +33,6 @@ function originOf(row: Record<string, unknown>): string {
   return "manual";
 }
 
-/** Compact human-readable byte formatter (matches files.ts / audit). */
 function humanBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n < 1024) return `${Math.round(n)} B`;
@@ -51,17 +46,10 @@ function humanBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-/** Walk an execution payload's step outputs, collect every `$file`
- *  reference, and print a one-line summary per fid with a hint at how
- *  to download. Silent when no refs are present. Stays out of the JSON
- *  surface — only the text rendering changes. */
 async function maybePrintOutputFiles(
   client: EngineClient,
   execution: Record<string, unknown>,
 ): Promise<void> {
-  // The full execution payload may carry `result`, `output`,
-  // `steps[*].output`, or `step_outputs` — collect from the whole
-  // object to stay resilient to engine-side renames.
   const fids = new Set<string>();
   for (const ref of collectFileRefs(execution)) fids.add(ref);
   if (fids.size === 0) return;
@@ -73,9 +61,6 @@ async function maybePrintOutputFiles(
         `  ${fid} (${row.filename}, ${humanBytes(row.size_bytes)}) — sk files download ${fid}\n`,
       );
     } catch {
-      // The file may have been soft-deleted or the principal lacks
-      // file:read; print the fid plus a hint so the operator still
-      // sees the reference exists.
       process.stdout.write(`  ${fid} — sk files download ${fid}\n`);
     }
   }
@@ -118,17 +103,10 @@ const listCommand = defineCommand({
       if (args.source) query.request_source = String(args.source);
       if (args.parent) query.parent_execution_id = String(args.parent);
       if (args.cursor) query.cursor = String(args.cursor);
-      // The window `sk stats operations` and `sk stats executions` count over.
       const nowMs = Date.now();
       if (args.from) query.started_from = resolveTime(String(args.from), nowMs).toISOString();
       if (args.to) query.started_to = resolveTime(String(args.to), nowMs).toISOString();
       const { items, total, next_cursor } = await client.listExecutions(query);
-      // Tag each row by origin so authoring/manual trial-runs are not
-      // mistaken for production incidents, and surface a wall-clock
-      // duration (finished_at − started_at). A still-running row has no
-      // finished_at → render "running" so the column never shows a bogus
-      // zero. JSON output keeps the raw timestamps untouched; the derived
-      // `duration` column is text-surface-only.
       const rows = (items as Record<string, unknown>[]).map((r) => {
         const ms = executionDurationMs(r.started_at, r.finished_at);
         const running = r.finished_at == null && r.started_at != null;
@@ -143,8 +121,6 @@ const listCommand = defineCommand({
         ["id", "workflow_id", "origin", "status", "duration", "started_at"],
         rows,
       );
-      // Executions are an unbounded history — always say how big the
-      // filtered set really is and how to page deeper.
       if (!args.json) {
         process.stdout.write(
           next_cursor
@@ -175,40 +151,21 @@ const getCommand = defineCommand({
       });
       const execution = await client.getExecution(id);
       printJson(execution);
-      // Text-output surfaces an extra `Output files:` block per
-      // `$file` ref found anywhere in the execution payload. JSON
-      // output stays unchanged so script consumers see no drift.
       if (!args.json) {
-        // Pull the steps once and reuse them for the failure block AND
-        // the bottleneck view — the steps payload carries `duration_ms`.
         let steps: Record<string, unknown>[] = [];
         try {
           const res = await client.executionSteps(id);
           steps = res.items as Record<string, unknown>[];
-        } catch {
-          /* best-effort: telemetry blocks are decorative */
-        }
-        // Execution-cost card: weighted tokens, cache-read %, LLM
-        // latency, external cost_usd (when non-zero), and a per-flow
-        // breakdown. Best-effort — a 403 (no stats:read) omits the card.
+        } catch {}
         try {
           const cost = await client.executionCost(id);
           printExecutionCostCard(cost);
-        } catch {
-          /* best-effort: cost card is decorative */
-        }
-        // Step bottleneck view: each step's duration as a share of the
-        // summed step duration, slowest-first.
+        } catch {}
         printStepBottlenecks(steps);
-        // What happened, from the engine's structured outcome — a held
-        // preview or a tolerated step failure both finalize "succeeded".
         const outcomeLine = executionOutcomeLine(
           (execution as { outcome: Parameters<typeof executionOutcomeLine>[0] }).outcome,
         );
         if (outcomeLine) process.stderr.write(`\n${pc.dim("outcome:")} ${outcomeLine}\n`);
-        // A failed execution is useless without the reason — print the
-        // step errors inline instead of making the operator run
-        // `executions steps … --json | grep`.
         if (execution.status === "failed") {
           printFailedStepErrors(steps);
         }
@@ -239,9 +196,6 @@ const resultCommand = defineCommand({
         fetch: () => fetchExecutionRows(client),
       });
       const execution = (await client.getExecution(id)) as Record<string, unknown>;
-      // The produced value lives on the final step's `output_preview`
-      // (`result_preview` is its stringified form; large results are offloaded
-      // to `result_storage_uri`). The execution row itself carries no output.
       const { items } = await client.executionSteps(id);
       const steps = items as Record<string, unknown>[];
       const last = steps.length > 0 ? steps[steps.length - 1] : undefined;
@@ -284,10 +238,6 @@ const stepsCommand = defineCommand({
         fetch: () => fetchExecutionRows(client),
       });
       const { items } = await client.executionSteps(id);
-      // Flatten request_meta so operators can see, at a glance, which URL
-      // was hit with what status, size, retry count, and which auth method
-      // actually applied to the request. The `error` column carries the
-      // failing step's code so the table no longer hides why a run failed.
       const rows = (items as Record<string, unknown>[]).map((s) => {
         const rm = (s.request_meta ?? null) as Record<string, unknown> | null;
         const conn = (rm?.connector ?? null) as Record<string, unknown> | null;
@@ -306,9 +256,6 @@ const stepsCommand = defineCommand({
         ["step_key", "status", "duration_ms", "url", "status_code", "error", "auth_method"],
         rows,
       );
-      // The table truncates the error to a code. For failed steps,
-      // print the full message + connector guidance below it — the most
-      // actionable field, previously only reachable via `--json | grep`.
       if (!args.json) {
         printFailedStepErrors(items as Record<string, unknown>[]);
       }
@@ -318,10 +265,6 @@ const stepsCommand = defineCommand({
   },
 });
 
-/** Execution-cost card: weighted tokens, cache-read %, summed LLM
- *  latency, external cost_usd (only when non-zero so a pure-LLM run
- *  doesn't render a noisy `$0.00` line), and a per-flow breakdown.
- *  No-op when there was no recorded LLM or external spend. */
 function printExecutionCostCard(cost: ExecutionCost): void {
   const { llm, external } = cost;
   if (llm.calls === 0 && external.calls === 0) return;
@@ -333,8 +276,6 @@ function printExecutionCostCard(cost: ExecutionCost): void {
         ` · ${llm.calls} call${llm.calls === 1 ? "" : "s"}` +
         ` · ${humanMs(llm.latency_ms)}\n`,
     );
-    // Per-flow breakdown (e.g. authoring vs. execution vs. suggest-next)
-    // sorted by weighted tokens so the dominant cost centre reads first.
     const flows = [...llm.by_flow].sort((a, b) => b.weighted_tokens - a.weighted_tokens);
     for (const f of flows) {
       process.stdout.write(
@@ -353,9 +294,6 @@ function printExecutionCostCard(cost: ExecutionCost): void {
   }
 }
 
-/** Step bottleneck view: each step's `duration_ms` as a percentage of
- *  the summed step duration, slowest-first. No-op when no step carried a
- *  positive duration (e.g. a queued-only run). */
 function printStepBottlenecks(steps: Record<string, unknown>[]): void {
   const ranked = computeStepBottlenecks(steps);
   if (ranked.length === 0) return;
@@ -370,8 +308,6 @@ function printStepBottlenecks(steps: Record<string, unknown>[]): void {
   }
 }
 
-/** Print a red error block for each failed step: code, message, and the
- *  connector-authored guidance hint. No-op when nothing failed. */
 function printFailedStepErrors(steps: Record<string, unknown>[]): void {
   const failed = steps.filter((s) => s.status === "failed" && s.error);
   if (failed.length === 0) return;
@@ -448,8 +384,6 @@ const rerunCommand = defineCommand({
         argValue: args.id,
         fetch: () => fetchExecutionRows(client),
       });
-      // The engine pins the original workflow version, reuses its
-      // persisted input, and links the new run via parent_execution_id.
       const body = {
         ...(inputOverride !== undefined ? { input: inputOverride } : {}),
         ...(args.follow ? { async: true } : {}),
@@ -485,9 +419,6 @@ const tailCommand = defineCommand({
         argValue: args.id,
         fetch: () => fetchExecutionRows(client),
       });
-      // Shared with `sk workflows run --follow`: one JSON line per
-      // event frame; the engine closes the stream after the terminal
-      // frame and the exit code mirrors the run's outcome.
       const terminal = await tailExecution(client, id);
       process.exitCode = exitCodeForTerminalStatus(terminal);
     } catch (err) {

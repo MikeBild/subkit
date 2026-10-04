@@ -1,33 +1,7 @@
-// Bootstrap preflight — the six checks, in the order the contract fixes.
-//
-// See `docs/BOOTSTRAP-PREFLIGHT.md` for the contract text and
-// `docs/admins/bootstrap-preflight.md` for the check-to-implementation map.
-//
-// Two properties this module is built around:
-//
-//   * It changes NOTHING. Every probe is a read, except check 3's object
-//     probe, which writes and then deletes one object under a
-//     `.preflight/` key prefix — the contract asks for exactly that. In
-//     particular it does NOT call `detectDrift()`, whose
-//     `ensureMigrationsTable` side effect would create the schema, install
-//     pgcrypto and create the journal table; the schema check reads the
-//     journal read-only and treats "relation does not exist" as a virgin
-//     database, which is a state this release can migrate forward from.
-//
-//   * It stops at the first refusal. A refusal is a decision, not a
-//     report: once the release cannot run on this bootstrap, running the
-//     later checks would only produce noise that looks like more problems
-//     than there are.
-//
-// Everything the checks touch arrives through `PreflightEnvironment`, so
-// the whole set is unit-testable with no process, no database and no S3.
-// `createPreflightEnvironment()` is the one production wiring.
-
 import { ConfigSchema } from "../config/schema.ts";
 import { listConfigLeaves } from "../config/walk.ts";
 import type { PreflightCheckResult, PreflightNote, PreflightOutcome } from "./contracts.ts";
 
-/** The object-store binding a release will use, as the contract describes it. */
 export interface ObjectStoreBinding {
   endpoint: string;
   region: string;
@@ -38,47 +12,20 @@ export interface ObjectStoreBinding {
   force_path_style: boolean;
 }
 
-/** One `secret://name/version` the current settings bind to. */
 export interface SecretBinding {
   name: string;
   version: number;
-  /** The dotted settings path that binds it — for the refusal detail. */
   path: string;
 }
 
-/**
- * Everything the checks read. A fake implementation is a plain object
- * literal; see `tests/preflight-checks.test.ts`.
- */
 export interface PreflightEnvironment {
-  /** Read straight from the process environment — check 1 must not need a loaded config. */
   masterKey(): string | undefined;
   databaseUrl(): string | undefined;
-  /** `SELECT 1`. Throws with the driver's message when unreachable. */
   pingDatabase(): Promise<void>;
-  /**
-   * Migration identities present in the database that this binary does not
-   * carry. Non-empty means the schema is AHEAD of this release. An empty
-   * array covers both "exactly current" and "behind, migrate forward" — and
-   * a virgin database with no journal table at all.
-   */
   schemaAheadTags(): Promise<string[]>;
-  /** The active revision's document, or null when no revision exists yet. */
   activeSettingsDocument(): Promise<Record<string, unknown> | null>;
-  /**
-   * The object store the release will actually use: the active revision's
-   * block when a revision exists, otherwise the revision-1 environment
-   * seed. Null when neither names a complete binding.
-   *
-   * Async because the stored block's credential leaves are `secret://`
-   * references that have to be decrypted before anything can be probed with
-   * them; it THROWS when one of those does not decrypt, and the caller
-   * reports that as `secret_unreadable`.
-   */
   objectStoreBinding(document: Record<string, unknown> | null): Promise<ObjectStoreBinding | null>;
-  /** Bucket reachable, and one probe object written then read back. */
   probeObjectStore(binding: ObjectStoreBinding): Promise<void>;
-  /** Decrypt one stored version under the running MASTER_KEY. Throws when it cannot. */
   readSecretVersion(name: string, version: number): Promise<void>;
 }
 
@@ -100,21 +47,6 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// ---------------------------------------------------------------------------
-// Settings-document helpers (checks 4, 5, 6)
-// ---------------------------------------------------------------------------
-
-/**
- * Dotted paths of keys in `document` that this release's schema does not
- * know. These are the contract's "retired keys": they are reported and then
- * ignored, never a reason to refuse. Descent stops at a known leaf (a leaf
- * may legitimately be an object or array) and at an unknown key (whatever
- * hangs under a retired section is retired with it, and listing every
- * sub-key would bury the one name an operator needs).
- *
- * `tenants.<id>` overlays are walked with the same rules against the same
- * leaf set — an overlay names the very same settings paths.
- */
 export function retiredSettingsKeys(document: Record<string, unknown>): string[] {
   const known = new Set<string>();
   const prefixes = new Set<string>();
@@ -140,7 +72,6 @@ export function retiredSettingsKeys(document: Record<string, unknown>): string[]
     }
   };
 
-  // Global sections.
   for (const key of Object.keys(document)) {
     if (key === "tenants") continue;
     if (known.has(key) || prefixes.has(key)) {
@@ -150,7 +81,6 @@ export function retiredSettingsKeys(document: Record<string, unknown>): string[]
     dropped.push(key);
   }
 
-  // Tenant overlays: one level of tenant id, then the same leaf set.
   const tenants = document.tenants;
   if (tenants !== null && typeof tenants === "object" && !Array.isArray(tenants)) {
     for (const [tenantId, overlay] of Object.entries(tenants as Record<string, unknown>)) {
@@ -170,12 +100,6 @@ export function retiredSettingsKeys(document: Record<string, unknown>): string[]
   return dropped.sort();
 }
 
-/**
- * Every `secret://name/version` the document binds, with the settings path
- * that binds it. Duplicates are collapsed on `name/version` — the same
- * version bound twice is one thing to decrypt, and reporting it twice would
- * misstate how much is broken.
- */
 export function secretBindingsOf(document: Record<string, unknown>): SecretBinding[] {
   const found = new Map<string, SecretBinding>();
   const walk = (node: unknown, prefix: string[]): void => {
@@ -208,19 +132,9 @@ export function secretBindingsOf(document: Record<string, unknown>): SecretBindi
 interface IdentityFinding {
   ok: boolean;
   detail: string;
-  /** The log line the contract names, emitted when the check passes. */
   note: PreflightNote | null;
 }
 
-/**
- * Check 6 over an already-parsed config. SubKit's OIDC client type is
- * STRUCTURAL, not a flag: `AuthProviders`' oidc member is `.strict()` and
- * has no `client_secret` field, so a parsed provider cannot carry one, and
- * `issuer_url` has already been refined to https-outside-localhost. This
- * check therefore re-states the two properties against the parsed value —
- * a schema that stopped enforcing them would surface here rather than at
- * the first login.
- */
 export function identityFinding(config: ReturnType<typeof ConfigSchema.parse>): IdentityFinding {
   const oidc = config.auth.providers.filter((p) => p.protocol === "oidc");
   for (const provider of oidc) {
@@ -251,15 +165,6 @@ export function identityFinding(config: ReturnType<typeof ConfigSchema.parse>): 
   };
 }
 
-/**
- * Check 1, on its own.
- *
- * Exported because it is the one check that needs NOTHING — no config, no
- * database, no network — and `engine --preflight` runs it before the config
- * loader for exactly that reason: an operator whose settings file is broken
- * AND whose key is wrong should be told about the key first, since a wrong
- * key is the cheaper of the two to be wrong about.
- */
 export function checkMasterKey(value: string | undefined): PreflightCheckResult {
   if (value === undefined || value === "") {
     return refuse("master_key", "master_key_missing", "MASTER_KEY is not set");
@@ -274,15 +179,6 @@ export function checkMasterKey(value: string | undefined): PreflightCheckResult 
   return ok("master_key");
 }
 
-// ---------------------------------------------------------------------------
-// The preflight
-// ---------------------------------------------------------------------------
-
-/**
- * Run the six checks in order and stop at the first refusal. Never throws:
- * an unexpected error inside a probe becomes that check's refusal, because
- * a preflight that crashes tells an operator less than one that refuses.
- */
 export async function runPreflightChecks(env: PreflightEnvironment): Promise<PreflightOutcome> {
   const results: PreflightCheckResult[] = [];
   const notes: PreflightNote[] = [];
@@ -296,11 +192,9 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     return result.ok;
   };
 
-  // 1. MASTER_KEY is present in production and is exactly 64 hex characters.
   const masterKeyResult = checkMasterKey(env.masterKey());
   if (!push(masterKeyResult)) return done();
 
-  // 2. DATABASE_URL reaches PostgreSQL and the schema is not ahead of us.
   const databaseUrl = env.databaseUrl();
   if (databaseUrl === undefined || databaseUrl === "") {
     push(refuse("schema", "database_url_missing", "DATABASE_URL is not set"));
@@ -331,7 +225,6 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
   }
   push(ok("schema"));
 
-  // The document every remaining check reads. A fresh database has none.
   let document: Record<string, unknown> | null;
   try {
     document = await env.activeSettingsDocument();
@@ -340,12 +233,6 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     return done();
   }
 
-  // 3. The object store the release will use answers.
-  //
-  // Resolving the binding can itself fail on an unreadable secret — the
-  // credential leaves of a stored revision are `secret://` references. That
-  // is check 5's failure arriving early, so it carries check 5's code: the
-  // cause an operator has to act on is the key, not the bucket.
   let binding: ObjectStoreBinding | null;
   try {
     binding = await env.objectStoreBinding(document);
@@ -377,12 +264,7 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
   }
   push(ok("object_store"));
 
-  // 4. The current settings revision parses under this release's schema
-  //    after retired keys are dropped.
   if (document === null) {
-    // No revision exists — nothing to parse, and nothing to bind. Checks 4
-    // and 5 pass by having nothing to refuse; check 6 runs against the
-    // schema defaults, which is what revision 1 will be written from.
     push(ok("settings_revision"));
     push(ok("secret_bindings"));
   } else {
@@ -404,7 +286,6 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     }
     push(ok("settings_revision"));
 
-    // 5. Every secret version the current settings bind to decrypts.
     for (const binding of secretBindingsOf(document)) {
       try {
         await env.readSecretVersion(binding.name, binding.version);
@@ -422,11 +303,6 @@ export async function runPreflightChecks(env: PreflightEnvironment): Promise<Pre
     push(ok("secret_bindings"));
   }
 
-  // 6. The identity provider configuration is well-formed.
-  //
-  // With no revision yet, the document revision 1 will be written from is
-  // the schema defaults plus the bootstrap DSN — so that is what the check
-  // reads, rather than nothing.
   const forIdentity = ConfigSchema.safeParse(
     document === null ? { database: { url: databaseUrl } } : document,
   );

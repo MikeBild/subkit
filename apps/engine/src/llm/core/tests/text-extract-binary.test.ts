@@ -1,10 +1,3 @@
-// LLM file-context: binary text_extract branch.
-//
-// Asserts that PDF / DOCX / XLSX / PPTX attachments routed through the
-// `text_extract` strategy run through the binary parser registry and
-// produce a populated, non-placeholder text block. Same harness as the
-// per-turn cap test — uses the in-process file resolver and a fake
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import { conversations, tenants } from "../../../db/schema/index.ts";
@@ -47,9 +40,6 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-// Capabilities that force text_extract: no Files API and small enough
-// per-file ceiling that file_part is skipped — keeps the test focused
-// on the binary parsing branch.
 function forceTextExtractCaps() {
   return {
     ...getStaticCapabilities("mock"),

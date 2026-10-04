@@ -1,12 +1,6 @@
-// Eventing surfaces of the engine client: inbound webhooks, outbound
-// subscriptions + delivery replay, the tenant event feed, and
-// notification channels / rules / deliveries / inbox. Method group
-// merged into `EngineClient` by `../engine-client.ts`.
-
 import type { EngineClient } from "../engine-client.ts";
 
 export const eventsMethods = {
-  // -------------------- Inbound Hooks --------------------
   listHooksInbound(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/webhooks/inbound");
   },
@@ -23,7 +17,6 @@ export const eventsMethods = {
     return this.request("DELETE", `/v1/webhooks/inbound/${encodeURIComponent(id)}`);
   },
 
-  // -------------------- Subscriptions --------------------
   listSubscriptions(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/subscriptions");
   },
@@ -57,7 +50,6 @@ export const eventsMethods = {
     );
   },
 
-  // -------------------- Events --------------------
   listEvents(
     this: EngineClient,
     query: Record<string, string | number | undefined> = {},
@@ -65,7 +57,6 @@ export const eventsMethods = {
     return this.request("GET", "/v1/events", undefined, query);
   },
 
-  // -------------------- Notifications --------------------
   listNotificationChannels(this: EngineClient): Promise<{ items: Record<string, unknown>[] }> {
     return this.request("GET", "/v1/notifications/channels");
   },

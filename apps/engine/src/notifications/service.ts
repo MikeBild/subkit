@@ -1,24 +1,3 @@
-// P-GC5: notification dispatch service.
-//
-// `dispatchEvent(db, event)` is the top-level entry point called from
-// the outbox fanout worker. For each matching rule it resolves (or
-// auto-creates) a `notification_channels` row, passes the rate limit
-// gate, passes the circuit breaker gate, and then invokes the supplied
-// chat adapter. Every outcome writes a `notification_deliveries` row
-// and an audit entry, reusing existing audit actions:
-//
-//   - sent               → CHAT_MESSAGE_SENT
-//   - rate_limited       → CHAT_MESSAGE_DENIED
-//   - breaker_open       → CHAT_MESSAGE_DENIED
-//   - failed             → WEBHOOK_OUTBOUND_FAILED
-//
-// The adapter is injected so tests (and the real fanout worker) can
-// swap in a fake or a platform-specific bundle. When no adapter is
-// provided the service records a `deliveries` row with status
-// `skipped` and does not call the adapter. An adapter that reports it
-// skipped the event (the sk CLI inbox passing on a non-actionable event)
-// likewise yields a `skipped` row and no audit entry: nothing was sent.
-
 import { and, eq } from "drizzle-orm";
 import { audit } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -41,16 +20,11 @@ import {
 } from "./matcher.ts";
 import { tryAcquire } from "./rate-limit.ts";
 
-/**
- * Minimal chat-adapter surface used by the notification dispatcher.
- * A full `ChatAdapter` satisfies it, as does the fake used in tests.
- */
 export interface NotificationAdapter {
   readonly platform?: string;
   send(delivery: ChatDelivery): Promise<OutboundSendResult>;
 }
 
-/** Resolver that maps a rule to an adapter. Tests pass a fake. */
 export type AdapterResolver = (
   channel: NotificationChannelRow,
 ) => NotificationAdapter | ChatAdapter | null;
@@ -58,7 +32,6 @@ export type AdapterResolver = (
 export interface DispatchDeps {
   db: Db;
   resolveAdapter?: AdapterResolver;
-  /** Override for deterministic tests. */
   now?: () => number;
 }
 
@@ -78,11 +51,6 @@ export interface DispatchResult {
   outcomes: DeliveryOutcome[];
 }
 
-/**
- * Look up (or create on first use) the channel row pointed at by a
- * rule. Rules store plain `(workspace_id, channel_id)` strings so a
- * single channel row can serve multiple rules without duplication.
- */
 async function ensureChannel(
   db: Db,
   tenant_id: string,
@@ -211,13 +179,6 @@ function auditOutcome(
   }
 }
 
-/**
- * Entry point used by the outbox fanout worker. Matches rules, gates
- * each dispatch through the rate limiter + circuit breaker, and
- * forwards approved deliveries to the supplied adapter. Always
- * resolves (never throws) — per-rule failures are logged and recorded
- * as `failed` outcomes.
- */
 export async function dispatchEvent(
   deps: DispatchDeps,
   event: NotificationEvent,
@@ -231,12 +192,6 @@ export async function dispatchEvent(
 
   for (const rule of rules) {
     let channel: NotificationChannelRow;
-    // Derive the channel platform from the rule's target. The default
-    // sk CLI inbox rule targets the reserved `_cli` workspace; every
-    // other rule targets a real chat workspace (Slack is the only
-    // platform that auto-creates a channel row today). Hardcoding
-    // "slack" here previously mislabeled the sk_cli channel and routed
-    // a local-insert delivery through the full chat adapter path.
     const platformHint = rule.row.target_workspace_id === "_cli" ? "sk_cli" : "slack";
     try {
       channel = await ensureChannel(db, event.tenant_id, rule.row, platformHint);
@@ -272,10 +227,6 @@ export async function dispatchEvent(
       continue;
     }
 
-    // The sk CLI inbox is a local INSERT — no remote API to throttle and
-    // no transient endpoint to circuit-break. Skip both gates so a
-    // healthy CLI inbox never records a spurious `rate_limited` /
-    // `breaker_open` outcome. Real chat platforms still pass through.
     const isLocalInbox = channel.platform === "sk_cli";
 
     if (!isLocalInbox) {
@@ -361,11 +312,6 @@ export async function dispatchEvent(
       kind: "message",
       text: buildText(event, rule.severity),
       notification: {
-        // The CLI inbox is a consumer-facing queue, so it carries the EVENT's
-        // own severity (e.g. connector.auth_failed = "error"), not the rule's
-        // matching floor — otherwise a critical alert would read as "info".
-        // `rule.severity` (the floor) still drives the deliveries audit row and
-        // the Slack message header below, unchanged.
         severity: event.severity ?? rule.severity,
         event_type: event.type,
         event_payload: (event.payload ?? null) as Record<string, unknown> | null,
@@ -373,12 +319,6 @@ export async function dispatchEvent(
     };
 
     try {
-      // Route real chat platforms through the chat dispatcher's shared
-      // `deliver` helper so metrics line up with conversation-driven
-      // sends. The `sk_cli` adapter is a local INSERT (not a full
-      // ChatAdapter — it has no verify/receive/update/sendApproval), so
-      // it is invoked directly via the minimal `send` interface, the
-      // same path test doubles use.
       const sendResult: OutboundSendResult =
         adapter.platform && adapter.platform !== "sk_cli"
           ? await chatDeliver(adapter as unknown as ChatAdapter, delivery)
@@ -445,7 +385,6 @@ export async function dispatchEvent(
   return result;
 }
 
-/** Helper to list delivery rows for the HTTP route. */
 export async function listDeliveries(
   db: Db,
   tenant_id: string,

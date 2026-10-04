@@ -1,12 +1,3 @@
-// Integration test: workflow steps that reference a $file ref in their output.
-//
-// Use-case: a transform step whose JS body returns
-// `{ "$file": fid }` — the execution result carries the ref intact so
-// downstream consumers can call GET /v1/files/{id}/content.
-//
-// We also verify the attached file's bytes are still readable after the
-// execution completes (the file row and object-store entry are intact).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -22,18 +13,14 @@ import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.
 
 let ctx: EngineTestCtx;
 
-// Deterministic 16-byte prefix per call: keeps sha256 unique across
-// fixtures within the test while remaining replayable run-to-run.
 const nextHex = createDeterministicHexFactory(0xf00e2f);
 
-/** Unique bytes to avoid sha256 collision. */
 function uniqueBytes(tag: string): Buffer {
   return Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.from(tag)]);
 }
 
 const FAKE_CONV_ID = "00000000-0000-0000-0000-000000000002";
 
-/** Spin up an HTTP server that returns a JSON body embedding a $file ref. */
 function createFileRefServer(fid: string): {
   baseUrl: string;
   close: () => Promise<void>;
@@ -72,9 +59,6 @@ describe("workflow file-output: $file ref in step result", () => {
       slug: "output-pdf",
     });
 
-    // A transform step whose JS body produces a JSON object containing the
-    // $file ref. We seed the input with the fid so the transform can pass
-    // it through.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "file-output-wf",
       steps: [
@@ -82,7 +66,6 @@ describe("workflow file-output: $file ref in step result", () => {
           kind: "transform",
           id: "wrap",
           language: "javascript",
-          // JS: return an object that passes through the fid from input.input.
           expression: `return { file_ref: input.input.fid, status: "done" };`,
         },
       ],
@@ -96,7 +79,6 @@ describe("workflow file-output: $file ref in step result", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // The file ref is in the execution output.
     const output = result.output as Record<string, unknown>;
     expect(output).not.toBeNull();
     expect(output.file_ref).toBe(att.file_id);
@@ -115,7 +97,6 @@ describe("workflow file-output: $file ref in step result", () => {
       slug: "http-output-bin",
     });
 
-    // A mock HTTP server returns a JSON body with a $file ref.
     const srv = createFileRefServer(att.file_id);
     try {
       const { workflow_id } = await createWorkflowRow(ctx, {
@@ -145,7 +126,6 @@ describe("workflow file-output: $file ref in step result", () => {
       await srv.close();
     }
 
-    // The file row and bytes must still be intact after the execution.
     const fileRow = await requireFileForTenant(ctx.testDb.db, ctx.tenantId, att.file_id);
     expect(fileRow.status).toBe("ready");
     expect(fileRow.filename).toBe("http-output.bin");
@@ -157,9 +137,6 @@ describe("workflow file-output: $file ref in step result", () => {
   });
 
   test("execution result with $file ref for unknown fid does not break engine", async () => {
-    // The engine should succeed even if the output contains a fid that's
-    // unknown — the step-runner does NOT validate output $file refs.
-    // Only input resolution (walkAndResolve) triggers FileNotFoundError.
     const ghostFid = "fid_00000000-dead-beef-cafe-000000000002";
     const srv = createFileRefServer(ghostFid);
     try {
@@ -182,7 +159,6 @@ describe("workflow file-output: $file ref in step result", () => {
         input: null,
       });
 
-      // The HTTP step succeeds; the ghost fid in the output is just data.
       expect(result.status).toBe("succeeded");
       const output = result.output as { result: { $file: string } };
       expect(output.result.$file).toBe(ghostFid);
@@ -192,7 +168,6 @@ describe("workflow file-output: $file ref in step result", () => {
   });
 });
 
-/** Serve fixed bytes with configurable headers (binary download vendor). */
 function createBytesServer(
   bytes: Buffer,
   headers: Record<string, string>,
@@ -231,8 +206,6 @@ async function runDownloadWorkflow(name: string, url: string) {
 }
 
 describe("workflow file-output: binary HTTP response promoted to engine-managed file", () => {
-  // Deliberately invalid UTF-8 (0x00, 0x80, 0xff) — the pre-promotion
-  // driver decoded these to U+FFFD irreversibly.
   const pdfBytes = Buffer.concat([
     Buffer.from("%PDF-1.7\n"),
     Buffer.from([0x00, 0x80, 0xff, 0xfe, 0x01]),
@@ -254,14 +227,12 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
       expect(output.content_type).toBe("application/pdf");
       expect(output.size_bytes).toBe(pdfBytes.byteLength);
 
-      // files row via the tenant chokepoint
       const fileRow = await requireFileForTenant(ctx.testDb.db, ctx.tenantId, output.file.$file);
       expect(fileRow.status).toBe("ready");
       expect(fileRow.filename).toBe("report.pdf");
       expect(fileRow.content_type).toBe("application/pdf");
       expect(Number(fileRow.size_bytes)).toBe(pdfBytes.byteLength);
 
-      // workflow_run link with role=output pointing at THIS execution
       const links = await ctx.testDb.db
         .select()
         .from(fileLinks)
@@ -276,7 +247,6 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
       expect(links[0]!.resource_id).toBe(result.execution_id);
       expect(links[0]!.role).toBe("output");
 
-      // Bytes round-trip EXACTLY (the corruption regression lock)
       const stored = await getObjectStore().get(buildObjectKey(ctx.tenantId, fileRow.id));
       expect(Buffer.compare(Buffer.from(stored), pdfBytes)).toBe(0);
     } finally {
@@ -298,7 +268,7 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
 
       const fid1 = (r1.output as PromotedEnvelope).file.$file;
       const fid2 = (r2.output as PromotedEnvelope).file.$file;
-      expect(fid1).toBe(fid2); // one row, sha256 dedup
+      expect(fid1).toBe(fid2);
 
       const fileRow = await requireFileForTenant(ctx.testDb.db, ctx.tenantId, fid1);
       const links = await ctx.testDb.db
@@ -348,12 +318,11 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
 
   test("chained runs: run 1's promoted output file feeds run 2's multipart input", async () => {
     const chainBytes = Buffer.concat([
-      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]), // PNG magic + NUL
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]),
       uniqueBytes("chained-png-payload"),
     ]);
     const download = createBytesServer(chainBytes, { "content-type": "image/png" });
 
-    // Capture server for run 2's multipart POST.
     let capturedBody: Buffer | null = null;
     const capture = createServer((req: IncomingMessage, res: ServerResponse) => {
       const chunks: Buffer[] = [];
@@ -393,7 +362,6 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
       });
       expect(r2.status).toBe("succeeded");
       expect(capturedBody).not.toBeNull();
-      // The promoted bytes round-tripped into the multipart body intact.
       expect(capturedBody!.toString("binary")).toContain(chainBytes.toString("binary"));
     } finally {
       await download.close();

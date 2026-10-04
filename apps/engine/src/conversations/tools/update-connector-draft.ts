@@ -12,25 +12,9 @@ import type { ConnectorDraftDocument } from "../types.ts";
 import { buildDraftMutationPayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 
-/**
- * Sensitive key names that must NOT appear in `config`. The scrubber's
- * SENSITIVE_KEY_PATTERN is substring-anchored (e.g. `bot_token`, `client_secret`
- * all match). We extend it to a full-word anchor pattern so `static_headers`
- * with an `Authorization` key is caught regardless of nesting.
- */
 const CREDENTIAL_KEY_RE =
   /^(token|api[_-]?key|password|credential|secret|.*_token|authorization|access[_-]?token|client[_-]?secret|private[_-]?key)$/i;
 
-/**
- * OAuth2 / Cognito metadata fields that *contain* the substring "token"
- * or "authorization" but are NOT secrets. These are public URLs that
- * the LLM legitimately needs to write to `update_connector_draft.config`
- * when wiring an OAuth2 connector.
- *
- * Pre-fix the credential-leak guard fired on `token_endpoint` (matched
- * `SENSITIVE_KEY_PATTERN.token`) and refused the update — the LLM then
- * couldn't fix the AppSync Cognito config and the operator was stuck.
- */
 const NON_SECRET_KEYS = new Set<string>([
   "token_endpoint",
   "authorization_endpoint",
@@ -41,20 +25,11 @@ const NON_SECRET_KEYS = new Set<string>([
   "token_content_type",
 ]);
 
-/**
- * Walk `value` recursively and return the key path of the first credential-shaped
- * field found, or `null` if none. A field is credential-shaped when:
- *   a) its key name matches CREDENTIAL_KEY_RE, OR
- *   b) its string value matches any known secret-token pattern.
- *
- * The returned path is used ONLY for logging — the actual value is never echoed.
- */
 function containsCredentialShape(value: unknown, path: string, depth: number): string | null {
   if (depth > 12) return null;
   if (value === null || value === undefined) return null;
 
   if (typeof value === "string") {
-    // Check string value against known token patterns.
     for (const { regex } of SECRET_PATTERNS) {
       regex.lastIndex = 0;
       if (regex.test(value)) {
@@ -70,12 +45,7 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     const childPath = path ? `${path}.${key}` : key;
-    // Allow-list: well-known OAuth2 / Cognito *metadata* keys that
-    // happen to contain "token" / "authorization" as a substring but
-    // carry public URLs / enums, not secrets.
     if (!NON_SECRET_KEYS.has(key.toLowerCase())) {
-      // Key name check — uses the scrubber's SENSITIVE_KEY_PATTERN as the broad
-      // net, plus our stricter CREDENTIAL_KEY_RE for full-word anchoring.
       if (SENSITIVE_KEY_PATTERN.test(key) || CREDENTIAL_KEY_RE.test(key)) {
         return childPath;
       }
@@ -86,24 +56,6 @@ function containsCredentialShape(value: unknown, path: string, depth: number): s
   return null;
 }
 
-/**
- * Top-level config keys the LLM invents to "store the query parameter
- * name" for query auth. None of these exist in any driver's config
- * schema — `HttpConnectorConfig` is `.strict()` and rejects them at save
- * with the opaque "invalid http connector config". The param name lives
- * in the credential's `param` field, never in config.
- *
- * Matched by regex rather than a fixed deny-list so future LLM inventions
- * (`query_arg_name`, `auth_query_param`, …) are caught without a redeploy.
- * To match, a key must carry a *qualifier* — either an `auth_`/`query_`
- * prefix OR at least one `_name`/`_param`/`_parameter`/`_key`/`_arg`
- * trailing segment. A bare generic token on its own (`key`, `token`,
- * `query`, `param`, `arg`) does NOT match, so the detector never collides
- * with an ordinary config key (static_headers, static_query, query_defaults,
- * timeout_ms, oauth, key, token, …).
- * Known matches: query_param_name, query_parameter_name, query_param,
- * param_name, query_key, auth_param, auth_query_param, token_param.
- */
 const AUTH_PARAM_CONFIG_KEY_RE =
   /^((auth_|query_)(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))*|(param|parameter|query|token|key|arg)(_(name|param|parameter|key|arg))+)$/i;
 
@@ -150,15 +102,6 @@ export const updateConnectorDraftTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
 
-    // The oauth block is owned by template-enrichment (at save time) plus
-    // the OAuth2 client snapshot fallback in resolveConnectorOAuthConfig.
-    // The LLM cannot rewrite it from scratch — letting that happen creates
-    // two writers and reproduces session 18467df2 where bearer drafts
-    // ended up carrying oauth metadata that strict-mode then rejected at
-    // save. The single carve-out is `config.oauth.client_id`: it's a
-    // public id (not a secret), and the cognito_user_password flow needs
-    // the operator to provide it when the matched template doesn't seed
-    // a default. Every other oauth key is rejected.
     if (args.config !== undefined && Object.hasOwn(args.config, "oauth")) {
       const oauthPatch = (args.config as { oauth?: unknown }).oauth;
       const isClientIdOnlyPatch =
@@ -169,13 +112,6 @@ export const updateConnectorDraftTool: ConversationTool = {
         Object.hasOwn(oauthPatch as Record<string, unknown>, "client_id") &&
         typeof (oauthPatch as { client_id?: unknown }).client_id === "string";
       if (!isClientIdOnlyPatch) {
-        // The dead-end depends on whether a template is bound. A
-        // template-less oauth2 draft can NEVER carry oauth metadata
-        // authored here — the only writers are template enrichment (at
-        // save) and the snapshot fallback. Pre-fix the LLM looped this
-        // call when no template existed (e.g. LinkedIn before the
-        // builtin template landed), burning a turn per retry. Point it
-        // at the real path instead of "start a new draft".
         const draft = ctx.getDraft().connector ?? {};
         const hasTemplate = Boolean(draft.template_slug);
         if (draft.auth_type === "oauth2" && !hasTemplate) {
@@ -195,10 +131,6 @@ export const updateConnectorDraftTool: ConversationTool = {
           next_best_actions: ["authenticate_oauth", "save_connector_draft"],
         };
       }
-      // Merge the client_id patch into the existing config.oauth so the
-      // template-seeded keys (token_endpoint, grant_type, scopes, ...)
-      // survive. The patch object is replaced below in the spread; we
-      // mutate args.config so the rest of the flow sees the merged shape.
       const draftSoFar = ctx.getDraft().connector ?? {};
       const existingOauth =
         (draftSoFar.config as { oauth?: Record<string, unknown> } | undefined)?.oauth ?? {};
@@ -209,26 +141,8 @@ export const updateConnectorDraftTool: ConversationTool = {
     }
 
     if (args.config !== undefined) {
-      // Reject the LLM-invented query-auth param-name keys FIRST — before
-      // the generic credential-shape guard below. There is NO config slot
-      // for the query parameter name: for `auth_type: "query"` the param
-      // name lives in the credential's `param` field (collected via
-      // ask_user_form + save_connector_draft({credential:{mode:"query",
-      // param, value}})). `HttpConnectorConfig` is `.strict()`, so a key
-      // like `config.query_param_name` is rejected at save time with the
-      // opaque "invalid http connector config" — and the model, given no
-      // actionable hint, re-added the key and looped (production session
-      // aba4551f, the Browserless connector: the save retried for minutes).
-      // This runs ahead of `containsCredentialShape` so keys that also
-      // carry a credential substring (`token_param`, `query_key`) get the
-      // precise "param belongs in credential.param" message instead of the
-      // generic "use a form" one. Generalized, not vendor-specific.
       const authParamKey = findAuthParamConfigKey(args.config);
       if (authParamKey !== null) {
-        // Telemetry parity with the credential-shape rejection below:
-        // emit the structured log line AND an audit_log row so operator
-        // tooling that tails either surface sees the policy decision. The
-        // offending KEY name is safe to record; its value never is.
         log.connector.draft.auth_param_in_config({
           conversation_id: ctx.conversation_id,
           tenant_id: ctx.tenant_id,
@@ -255,23 +169,13 @@ export const updateConnectorDraftTool: ConversationTool = {
         };
       }
 
-      // Hard-reject any attempt to store a credential-shaped value in config.
-      // The only correct path for credentials is ask_user_form(type: password,
-      // sensitive: true) followed by save_connector_draft({credential}).
       const hitPath = containsCredentialShape(args.config, "", 0);
       if (hitPath !== null) {
         log.connector.draft.credential_rejected({
           conversation_id: ctx.conversation_id,
           tenant_id: ctx.tenant_id,
           matched_key_path: hitPath,
-          // Value is intentionally NOT logged — only the path is safe to emit.
         });
-        // Also land the rejection in the audit log so compliance
-        // tooling that scans `audit_log` (rather than tailing structured
-        // logs) sees the policy decision. Reason and metadata mirror the
-        // structured log line; the value is NEVER recorded. Fire-and-
-        // forget — a stub-ctx unit test must not pivot the rejection
-        // envelope on whether the audit insert succeeded.
         recordConnectorDraftCredentialRejected({
           tenant_id: ctx.tenant_id,
           actor_id: ctx.actor_id,
@@ -294,13 +198,6 @@ export const updateConnectorDraftTool: ConversationTool = {
 
     const current = ctx.getDraft().connector ?? {};
 
-    // Guard against the LLM reasoning itself in circles by toggling
-    // auth_type back to "none" on a connector that already has a
-    // credential staged. The user's session bab50df1 looped exactly
-    // here: probe failed, the LLM "tried something else" by setting
-    // auth_type=none, which made the next probe credential_required,
-    // and the cycle repeated. The legitimate path to drop auth is to
-    // start a fresh draft, not flip auth_type on an existing one.
     if (
       args.auth_type === "none" &&
       current.auth_type !== undefined &&
@@ -347,14 +244,8 @@ export const updateConnectorDraftTool: ConversationTool = {
       next,
       templates.map((entry) => entry.template),
     );
-    // An auth edit the draft cannot hold is refused whole: applied, it left a
-    // draft that could no longer be probed and — through the cache rule below —
-    // threw away the key the operator had typed in. Other findings (a
-    // placeholder host, a field still missing) stay on the draft as before.
     const isAuthIssue = (issue: { path: string }) =>
       issue.path === "auth_type" || /^(config\.)?mcp\.auth(\.|$)/.test(issue.path);
-    // By path alone: a finding the draft already carried is not new because
-    // its wording changed since it was recorded.
     const knownPaths = new Set((current.validation?.errors ?? []).map((issue) => issue.path));
     const introduced = validation.errors.filter(
       (issue) => isAuthIssue(issue) && !knownPaths.has(issue.path),
@@ -370,12 +261,6 @@ export const updateConnectorDraftTool: ConversationTool = {
         next_best_actions: ["update_connector_draft", "inspect_connector_draft"],
       };
     }
-    // Cache consistency: switching auth_type invalidates any cached
-    // draft credential — it was collected for the OLD auth shape. Pre-fix
-    // a bearer token cached before a bearer→basic switch survived and the
-    // next probe went out with `Authorization: Bearer …` against a
-    // basic-auth endpoint (session 97679846). The downgrade-to-"none"
-    // case is already blocked above; this covers mode-to-mode flips.
     let credentialCacheCleared = false;
     if (
       args.auth_type !== undefined &&
@@ -406,13 +291,6 @@ export const updateConnectorDraftTool: ConversationTool = {
   },
 };
 
-/**
- * An MCP draft signs in with `config.mcp.auth.kind`, and `auth_type` names the
- * same thing. A switch of `auth_type` alone used to leave the old kind behind,
- * and the edit was refused for a mismatch the caller had not asked for. When
- * `config` is not part of the edit, the kind follows the new `auth_type`; a
- * caller who sends `config` states the kind itself and is validated as sent.
- */
 function withMcpAuthKindFollowing(
   auth_type: AuthType | undefined,
   current: { driver: string | undefined; config: Record<string, unknown> | undefined },

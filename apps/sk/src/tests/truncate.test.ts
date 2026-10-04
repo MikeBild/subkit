@@ -36,7 +36,6 @@ describe("truncateMiddle", () => {
     expect(truncateMiddle("abcdef", 2)).toBe("…");
   });
   it("counts code points for emoji", () => {
-    // 5 code points; max=4 → head=2 + … + tail=1 → "a😀…c"
     expect(truncateMiddle("a😀b😀c", 4)).toBe("a😀…c");
   });
 });

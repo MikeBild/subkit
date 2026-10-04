@@ -1,26 +1,3 @@
-// browser_session auth provider — resolves the `subkit_session` cookie.
-//
-// The cookie is minted by the provider-neutral login funnel
-// (`http/routes/identity/login.ts`): the API-key paste form and every OIDC
-// callback both end in `issueBrowserSession`. Until this provider existed, only
-// the OIDC provider could read it back — the resolver lived inside `oidc.ts`
-// — so on the default `api_key`-only configuration the middleware ignored
-// `subkit_session` entirely. A human who had just logged in through the funnel
-// was, to every route, an anonymous browser.
-//
-// That is why the approval portal recorded `granted_by_user_id: NULL` for 100%
-// of grants: `portalApproverUserId` needs a same-tenant USER principal on the
-// request, and a browser sends a cookie, not a Bearer header.
-//
-// Registered unconditionally, and last among the human providers: it only ever
-// looks at a cookie, so it costs nothing for machine callers and cannot shadow
-// a token-bearing request.
-//
-// Same liveness rules the OIDC resolver applies — revoked, absolute expiry,
-// sliding idle window — re-read from `sessions` on EVERY request, so a
-// revocation or a downgrade takes effect on the next call rather than whenever
-// the JWT happens to expire.
-
 import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -42,15 +19,12 @@ export function createBrowserSessionProvider(
     capabilities: {
       human: true,
       machine: false,
-      // The funnel owns the interactive part; this provider only reads the
-      // cookie the funnel already issued.
       interactive: false,
       refresh: false,
       revoke: true,
     },
     async resolve(req: Request): Promise<ResolvedPrincipal | null> {
       const payload = await browserSessionFromRequest(req);
-      // No cookie, or a signature/expiry the JWS layer already rejected.
       if (!payload) return null;
 
       const db = opts.db ?? getDb();
@@ -92,7 +66,6 @@ export function createBrowserSessionProvider(
         return null;
       }
 
-      // Sliding-window bump, fire-and-forget: the request must not wait on it.
       void Promise.resolve().then(() => {
         db.update(sessions)
           .set({ last_seen_at: new Date() })

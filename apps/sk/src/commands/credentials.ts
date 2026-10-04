@@ -38,7 +38,6 @@ const listCommand = defineCommand({
   },
 });
 
-/** Parse "k=v,k2=v2" (or "k: v") pairs into a record for header/query modes. */
 function parsePairs(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of raw.split(",")) {

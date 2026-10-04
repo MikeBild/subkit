@@ -54,8 +54,6 @@ describe("<DiffApprover>", () => {
       await ui.type(" ");
       await flush();
       const text = ui.text();
-      // Either "1/2 hunks selected" or "1/2 hunks selected" — assert
-      // the count dropped to 1.
       expect(text).toContain("1/2 hunks selected");
     } finally {
       ui.unmount();

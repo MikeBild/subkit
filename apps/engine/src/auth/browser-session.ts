@@ -1,5 +1,3 @@
-// Shared browser-session primitives for all interactive MCP login methods.
-
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as jose from "jose";
@@ -24,9 +22,7 @@ export function browserSessionSecret(): Uint8Array {
   let configured = "";
   try {
     configured = (getConfig().auth.session.secret ?? "").trim();
-  } catch {
-    // Tests may construct auth routes without loading the full config.
-  }
+  } catch {}
   if (configured) return new TextEncoder().encode(configured);
   return new Uint8Array(
     createHash("sha256")

@@ -1,7 +1,3 @@
-// Centralised error middleware — converts thrown errors into a typed JSON
-// envelope, injects the trace_id, and lets the logging middleware see the
-// failure as a `request.failed` event.
-
 import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
@@ -63,17 +59,6 @@ function captureToRing(
   });
 }
 
-/**
- * Map AI SDK and LLM-layer errors to HTTP envelopes. Keeps the mapping
- * in one place so routes don't each reinvent it.
- *
- *  - `LlmQuotaExhausted`            → 429 llm_quota_exhausted
- *  - `LlmProviderError`             → typed 4xx/5xx provider envelope
- *  - `NoObjectGeneratedError` (ai)  → 502 llm_no_object (provider output
- *                                     didn't validate against the schema)
- *  - `APICallError` (ai)            → typed provider envelope
- *  - Abort/timeout                  → 504 llm_timeout
- */
 function readRetryAfter(details: unknown): number | undefined {
   if (!details || typeof details !== "object") return undefined;
   const d = details as Record<string, unknown>;
@@ -87,10 +72,6 @@ function readRetryAfter(details: unknown): number | undefined {
 }
 
 function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
-  // A provider whose key/region/etc. is not configured. Matched by name to
-  // avoid importing the heavy model-init module into the HTTP layer. Surface
-  // the actionable message + hint as a 400 instead of a masked 500 "internal
-  // error" — this is the difference between a confusing dead-end and a fix.
   if (err instanceof Error && err.name === "ProviderMisconfiguredError") {
     captureToRing(c, err, 400, "llm_provider_misconfigured", "llm_provider");
     return envelope(c, 400, "llm_provider_misconfigured", err.message, {
@@ -151,8 +132,6 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       },
     });
   }
-  // AbortError from AbortSignal.timeout fires as a DOMException with
-  // name "TimeoutError" on Node and "AbortError" on some runtimes.
   if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
     captureToRing(c, err, 504, "llm_timeout", "llm_timeout");
     return envelope(c, 504, "llm_timeout", "llm call exceeded the timeout");
@@ -163,9 +142,6 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
-    // Emit WWW-Authenticate header when the error carries one.
-    // Scoped to UnauthorizedError so the header only appears on 401s
-    // that explicitly set it (e.g. the /mcp resource server).
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {
       c.header("WWW-Authenticate", err.wwwAuthenticate);
     }

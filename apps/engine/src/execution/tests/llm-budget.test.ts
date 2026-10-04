@@ -1,12 +1,3 @@
-// Per-run LLM-token budget — integration test.
-//
-// Mocks an LLM provider as a local HTTP server and runs a workflow with
-// `max_llm_tokens_per_run: 100`. The mock returns a usage envelope that
-// drives the run accumulator past the cap on the second call; the
-// executor must refuse to dispatch the third call and fail the run with
-// the typed `llm_budget_exceeded` error code. The mock's call counter
-// proves no provider charge was incurred for the rejected call.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,10 +28,6 @@ beforeAll(async () => {
     env: { NODE_ENV: "test", DATABASE_URL: ctx.testDb.url },
     configPathOverride: join(configDir, "subkit.config.json"),
   });
-  // Mock an OpenAI-shaped responses endpoint. Each call returns a
-  // usage envelope with prompt + completion totaling 60 tokens — two
-  // calls land at 120 cumulative, well past the 100-token cap, so the
-  // executor must fail the run before dispatching call #2.
   mock = await createMockServer((_, res) => {
     jsonResponse(res, 200, {
       id: "resp_test",
@@ -53,9 +40,6 @@ beforeAll(async () => {
       },
     });
   });
-  // Mark the mock host as an LLM provider for budget detection. The
-  // production whitelist covers the real provider hosts; runtime config
-  // makes the local provider visible to accounting without an env seam.
   previousProviderHosts = [...getConfig().egress.provider_hosts_extra];
   await setConfigKey("egress.provider_hosts_extra", ["127.0.0.1"], { force: true });
 });
@@ -70,9 +54,6 @@ afterAll(async () => {
 
 describe("execution · per-run LLM token budget", () => {
   test("fails with llm_budget_exceeded when cumulative usage would exceed cap", async () => {
-    // Two LLM calls. First call: usage = 60 → running 60 (under cap).
-    // Second call: pre-call estimate (≥256 floor) + running 60 > 100 →
-    // refuse dispatch, fail run with `llm_budget_exceeded`.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "llm-budget-test",
       max_llm_tokens_per_run: 100,
@@ -104,13 +85,8 @@ describe("execution · per-run LLM token budget", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error?.code).toBe("llm_budget_exceeded");
-    // Mock must have served exactly one call — the second was refused
-    // before dispatch so no provider charge was incurred.
     expect(callsAfter - callsBefore).toBe(1);
 
-    // The first step's per-call audit row carries provider + model +
-    // running total. The execution-completed audit row carries the
-    // final accumulated total.
     const auditRows = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -128,8 +104,6 @@ describe("execution · per-run LLM token budget", () => {
     expect(llmMeta.run_total_tokens).toBe(60);
     expect(llmMeta.model).toBe("gpt-4.1-mini");
 
-    // Execution-completed row carries `total_llm_tokens` — observability
-    // dashboards plot a per-tenant burn-down without joining.
     const execAudits = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -144,8 +118,6 @@ describe("execution · per-run LLM token budget", () => {
   });
 
   test("uncapped run accumulates total_llm_tokens without enforcing", async () => {
-    // No `max_llm_tokens_per_run` declared. Both calls dispatch; the
-    // execution-completed audit still records `total_llm_tokens: 120`.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "llm-budget-uncapped",
       steps: [

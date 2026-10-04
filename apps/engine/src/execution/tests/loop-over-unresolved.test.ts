@@ -1,12 +1,3 @@
-// Bug F regression: when a loop's `over` expression resolves to a
-// non-array (undefined / null / scalar / plain object), the loop
-// silently produced [] with no signal. Session 86de186b: the LLM
-// authored `over: "$scope.fetch_projects.data.projects"` 9 times
-// against an output where `data` was the projects array directly,
-// so the path resolved to undefined and the loop ran zero
-// iterations. Post-fix the driver emits `loop_over_unresolved`
-// with the resolved type + scope keys so the LLM can fix the path.
-
 import { describe, expect, test } from "bun:test";
 import { RunLlmBudget } from "../../llm/accounting/index.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -99,8 +90,6 @@ describe("runLoopStep · loop_over_unresolved warning", () => {
   });
 
   test("empty array source resolves cleanly without the warning", async () => {
-    // Empty array is a legitimate "no data to iterate" shape, not a
-    // path mismatch — the warning would over-flag legitimate flows.
     const result = await runLoopStep({
       ctx: ctx({ src: [] }),
       step: {

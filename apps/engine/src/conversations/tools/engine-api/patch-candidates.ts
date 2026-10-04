@@ -26,9 +26,6 @@ export const listPatchCandidatesTool: ConversationTool = {
     return {
       ok: true,
       data: {
-        // Proposed AND reviewable on the current workflow version — the count
-        // to quote as "awaiting review". A proposed row with a `review_reason`
-        // cannot be decided as it stands.
         open_total: open.open_total,
         candidates: rows.map((p) => ({
           id: p.id,

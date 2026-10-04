@@ -1,10 +1,3 @@
-// Unit tests for the structured-error builder shared by every driver.
-//
-// Locks down the behaviour that addresses session f00b8d1c: every
-// driver failure must surface a useful message (never `[object
-// Object]`), and HTTP failures must thread response_body / status /
-// headers through to the persisted envelope.
-
 import { describe, expect, test } from "bun:test";
 import { buildStepErrorDetail } from "../error-detail.ts";
 
@@ -14,7 +7,6 @@ describe("buildStepErrorDetail", () => {
       code: "request_error",
       err: { foo: "bar" },
     });
-    // The message must NOT be "[object Object]".
     expect(detail.message).not.toBe("[object Object]");
     expect(detail.code).toBe("request_error");
   });
@@ -106,7 +98,6 @@ describe("buildStepErrorDetail", () => {
     }
     const detail = buildStepErrorDetail({ code: "http_5xx", err: new FakeRequestError() });
     expect(detail.response_body_excerpt).toBeDefined();
-    // Excerpt should be substantially shorter than the original.
     expect(detail.response_body_excerpt!.length).toBeLessThan(huge.length / 2);
     expect(detail.response_body_excerpt).toContain("…[truncated]");
   });
@@ -125,12 +116,6 @@ describe("buildStepErrorDetail", () => {
     expect(buildStepErrorDetail({ code: "x", err: undefined }).message).toBeTruthy();
   });
 
-  // Regression: in session fb930dcb the transform step driver caught a
-  // JSONata *runtime* failure (the library throws a plain object, not an
-  // Error instance) and stringified it as `[object Object]`, sending that
-  // string back to the LLM author. The author then spent 4 dry-runs
-  // guessing what the real error was. `buildStepErrorDetail` must
-  // extract `.message` from JSONata's runtime shape verbatim.
   test("extracts .message from JSONata runtime-shape throwables (plain object, no Error proto)", () => {
     const jsonataRuntimeErr = {
       code: "T2001",
@@ -144,15 +129,6 @@ describe("buildStepErrorDetail", () => {
     expect(detail.message).toContain("$match");
   });
 
-  // Regression: production logs on 2026-05-27 (executions ef957eab +
-  // b8ae30b2) emitted `error_msg:"[object Object]"` despite the
-  // safeMessage helper. Root cause: somewhere upstream, an Error
-  // instance was constructed with `new Error(String(someObject))`,
-  // so its `.message` was the literal string `"[object Object]"`,
-  // and safeMessage's `instanceof Error` branch propagated it
-  // verbatim. Treat that literal as "no detail" and fall through to
-  // the cause chain / fallback so the logged value is at least
-  // diagnostic ("<code> (no detail)") instead of misleading.
   test("does not propagate the literal '[object Object]' string from a poisoned Error", () => {
     const poisoned = new Error("[object Object]");
     const detail = buildStepErrorDetail({ code: "transform_error", err: poisoned });
@@ -173,11 +149,7 @@ describe("buildStepErrorDetail", () => {
       code: "transform_error",
       err: { message: "[object Object]", code: "T9999", token: "$munge" },
     });
-    // Equality, not substring: a JSON.stringify dump that *contains*
-    // the noisy substring inside extra context is still strictly more
-    // useful than the bare "[object Object]" we used to log.
     expect(detail.message).not.toBe("[object Object]");
-    // And the rest of the object's content makes it through.
     expect(detail.message).toContain("T9999");
     expect(detail.message).toContain("$munge");
   });

@@ -1,54 +1,15 @@
-// OpenTelemetry tracer bootstrap.
-//
-// Hooks AI SDK 7 `telemetry` calls into an OTel SDK. Two backends
-// are supported:
-//
-//   - OTLP/HTTP exporter (`OTEL_EXPORTER_OTLP_ENDPOINT`) — works with
-//     any OTel collector: Jaeger, Grafana Tempo, Honeycomb, etc.
-//   - Langfuse (`LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`) — LLM-
-//     specific trace UI with token/cost breakdowns.
-//
-// Both can be enabled simultaneously. When neither is configured the
-// tracer is a no-op so local `bun run dev` stays silent. Exporter
-// failures are caught and logged at warn level so a flaky Langfuse
-// instance can never stall a user request.
-//
-// Invoked from `http/server.ts` at boot. Idempotent — safe to call
-// multiple times (tests).
-
 import { OpenTelemetry } from "@ai-sdk/otel";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { registerTelemetry } from "ai";
 import { getConfig } from "../config/loader.ts";
 import { logger } from "../logging/logger.ts";
 
-// AI SDK 7 no longer auto-emits OTel spans from `telemetry.isEnabled: true`
-// alone (OpenTelemetry moved to @ai-sdk/otel). A telemetry integration must be
-// registered globally or NO spans reach any exporter — Langfuse/OTLP go dark.
-//
-// We use the v7-native `OpenTelemetry` integration (GenAI semantic conventions:
-// gen_ai.usage.*, gen_ai.request.model, gen_ai.prompt/completion, ai.usage.*),
-// which Langfuse's OTLP ingestion reads directly, and export over OTLP to
-// Langfuse's native `/api/public/otel` endpoint — retiring the v6-locked
-// `langfuse-vercel` exporter. `enrichSpan` maps our per-call runtimeContext
-// ({tenant_id, conversation_id, provider, model}) into the `langfuse.*`
-// attribute namespace so tenant/conversation trace grouping is preserved:
-// a subkit conversation IS a Langfuse session.
-//
-// registerTelemetry APPENDS to a process-global list, so register exactly once
-// (the integration resolves the current global tracer per span, so a
-// reconfigure that swaps the NodeSDK pipeline still routes correctly).
-
-/** Map the AI SDK runtimeContext onto Langfuse's OTLP attribute namespace.
- *  Exported for the tracing telemetry test. */
 export function langfuseEnrich(options: {
   runtimeContext: Record<string, unknown> | undefined;
 }): Record<string, string> | undefined {
   const rc = options.runtimeContext;
   if (!rc) return undefined;
   const attrs: Record<string, string> = {};
-  // A conversation maps to a Langfuse session; tenant/provider/model become
-  // filterable trace metadata.
   if (rc.conversation_id) attrs["langfuse.session.id"] = String(rc.conversation_id);
   if (rc.tenant_id) attrs["langfuse.trace.metadata.tenant_id"] = String(rc.tenant_id);
   if (rc.provider) attrs["langfuse.trace.metadata.provider"] = String(rc.provider);
@@ -67,18 +28,12 @@ function ensureTelemetryIntegration(): void {
 
 interface TracingState {
   started: boolean;
-  /** True only when at least one exporter (OTLP / Langfuse) is configured
-   *  and the SDK started — i.e. spans actually go somewhere. */
   active: boolean;
   shutdown?: () => Promise<void>;
 }
 
 const state: TracingState = { started: false, active: false };
 
-/**
- * Start OpenTelemetry if any exporter is configured. Returns a
- * shutdown function (the SDK's internal one, or a no-op).
- */
 export async function startTracing(): Promise<() => Promise<void>> {
   if (state.started) {
     return state.shutdown ?? (async () => {});
@@ -100,8 +55,6 @@ export async function startTracing(): Promise<() => Promise<void>> {
     return noop;
   }
 
-  // Lazy-import the heavy SDK bundles so engines built for cold-start
-  // latency don't pay the OTel load cost when no exporter is set.
   const [{ NodeSDK }, { OTLPTraceExporter }] = await Promise.all([
     import("@opentelemetry/sdk-node"),
     import("@opentelemetry/exporter-trace-otlp-http"),
@@ -112,10 +65,6 @@ export async function startTracing(): Promise<() => Promise<void>> {
     exporters.push(new OTLPTraceExporter({ url: otlpEndpoint }));
   }
   if (langfuseKey) {
-    // Export to Langfuse's native OTLP endpoint (HTTP/protobuf). Basic auth is
-    // base64(public_key:secret_key); the ingestion-version header pins the
-    // GenAI-semconv mapping. Both keys are required for OTLP Basic auth — warn
-    // and skip rather than emit unauthenticated spans that 401 silently.
     const publicKey = cfg.langfuse.public_key || undefined;
     if (!publicKey) {
       logger.warn({
@@ -138,11 +87,6 @@ export async function startTracing(): Promise<() => Promise<void>> {
     }
   }
 
-  // A configured backend may still yield no usable exporter (e.g. Langfuse
-  // secret_key without public_key). Treat that as disabled rather than start
-  // the SDK with an undefined exporter.
-  // NodeSDK's `traceExporter` accepts only one; chain them via a
-  // composite if needed. With a single exporter we pass it directly.
   const primary = exporters[0];
   if (!primary) {
     logger.info({
@@ -163,8 +107,6 @@ export async function startTracing(): Promise<() => Promise<void>> {
 
   try {
     sdk.start();
-    // Wire the AI SDK 7 telemetry integration onto the now-started global
-    // tracer. Without this, `telemetry.isEnabled: true` emits nothing.
     ensureTelemetryIntegration();
     state.active = true;
     logger.info({
@@ -209,44 +151,10 @@ export function isTracingStarted(): boolean {
   return state.started;
 }
 
-/**
- * True only when spans actually reach an exporter. The AI SDK's
- * `telemetry` EAGERLY stringifies the full prompt (every
- * message, system block, tool definition) and output into span
- * attributes on every call — per STEP for streaming — even when the
- * tracer is a noop. Callers gate `recordInputs`/`recordOutputs` on this
- * so a no-exporter deployment doesn't pay megabytes of serialization
- * garbage per turn for attributes nobody ever sees.
- */
 export function isTracingActive(): boolean {
   return state.active;
 }
 
-/**
- * Hot-reload the OTel SDK after an `observability.*` config change.
- *
- * Shuts down the existing exporter pipeline (best-effort), clears the
- * started flag, and re-runs startTracing(). Called by setConfigKey()
- * when an `observability.langfuse.*` or `observability.otlp.*` leaf
- * is updated, so operators see `sk settings set
- * observability.langfuse.secret_key '"…"'` take effect on the next
- * span without a process restart.
- *
- * Safe to call when tracing was never started (e.g. operator flips an
- * exporter on for the first time after boot) — the start path itself
- * checks for the no-config short-circuit.
- */
-/** Test-only seam: when set, the next call to `reconfigureTracing()`
- *  throws synchronously. Used by audit-parity tests to fence the
- *  `metadata.reconfigure_failed = true` contract on the audit row.
- *  Test sets it; reconfigureTracing reads-and-clears it; the throw
- *  exercises the loader's catch branch. Production callers never set
- *  this.
- *
- *  Defensive cleanup: tests should always invoke
- *  `_clearReconfigureFailureForTests()` in a finally block (or
- *  afterEach) so a thrown assertion doesn't leak the flag into the
- *  next test's reconfigure. */
 let _throwOnNextReconfigureForTests = false;
 export function _failNextReconfigureForTests(): void {
   _throwOnNextReconfigureForTests = true;
@@ -255,14 +163,6 @@ export function _clearReconfigureFailureForTests(): void {
   _throwOnNextReconfigureForTests = false;
 }
 
-/** Hard upper bound on the per-call shutdown wait. The OTel
- *  BatchSpanProcessor + Langfuse SDKs both expose internal forceFlush
- *  budgets, but those are exporter-side and don't bound the SDK's
- *  network-export retries. Without this race, a hung Langfuse host
- *  could pin reconfigureTracing() — and therefore setConfigKey()'s
- *  global write lock — for 30+ seconds, starving every other settings
- *  write on the engine. 5 s is well above any healthy shutdown and
- *  short enough that an unrelated /v1/settings PUT doesn't notice. */
 const RECONFIGURE_SHUTDOWN_TIMEOUT_MS = 5_000;
 
 async function awaitWithTimeout(
@@ -293,8 +193,6 @@ export async function reconfigureTracing(): Promise<void> {
   delete state.shutdown;
   if (prev) {
     await awaitWithTimeout(
-      // Wrap the shutdown in a try-catch — exporter throws are not a
-      // gate, just a degraded-warn (current behavior).
       Promise.resolve()
         .then(() => prev())
         .catch((err) => {
@@ -307,11 +205,6 @@ export async function reconfigureTracing(): Promise<void> {
         }),
       RECONFIGURE_SHUTDOWN_TIMEOUT_MS,
       () => {
-        // Timeout: log the bounded wait, then fall through to
-        // startTracing() so the new config still takes effect. The
-        // OTel SDK's prior shutdown is not awaited further — its
-        // exporter retries continue in the background and the
-        // process either drains them or exits.
         logger.warn({
           module: "observability",
           action: "tracing.reconfigure_shutdown_timeout",

@@ -1,25 +1,10 @@
-// askUser.confirm with kind: "partial_diff_approval" — per-row approve/
-// reject toggle.
-//
-// State machine: every row starts as "approved" (default). The user
-// toggles individual rows to "rejected" with space. Enter submits;
-// the response carries the indices of approved rows so the engine
-// can apply only the approved subset via applyDiffsToConfig.
-//
-// Three submit shapes the engine's response envelope accepts:
-//   - all approved   → { confirmed: true, partial: false, approved_indices: [0..N-1] }
-//   - all rejected   → { confirmed: false }
-//   - mixed (some)   → { confirmed: true, partial: true, approved_indices: [...] }
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 import { useTheme } from "../theme/Provider.tsx";
 
 export interface PartialDiffEntry {
-  /** One-line summary the user sees on the row (e.g. JSON-Pointer path + op). */
   label: string;
-  /** Optional second-line preview shown dim-coloured under the label. */
   preview?: string;
 }
 
@@ -43,8 +28,6 @@ export const PartialApprovalPrompt: React.FC<PartialApprovalPromptProps> = ({
 }) => {
   const theme = useTheme();
   const [focused, setFocused] = useState(0);
-  // Default-approved set: every index starts approved. Toggle moves
-  // an index between approved (in the set) and rejected (out of it).
   const [approved, setApproved] = useState<Set<number>>(() => new Set(diffs.map((_, i) => i)));
 
   useInput(
@@ -60,10 +43,8 @@ export const PartialApprovalPrompt: React.FC<PartialApprovalPromptProps> = ({
           return next;
         });
       } else if (input === "a") {
-        // Bulk approve every diff.
         setApproved(new Set(diffs.map((_, i) => i)));
       } else if (input === "r") {
-        // Bulk reject every diff.
         setApproved(new Set());
       } else if (key.return) {
         const approvedIndices = [...approved].sort((a, b) => a - b);
@@ -99,8 +80,6 @@ export const PartialApprovalPrompt: React.FC<PartialApprovalPromptProps> = ({
         const isFocused = i === focused;
         const isApproved = approved.has(i);
         const marker = isApproved ? "✓" : "✗";
-        // theme.severity has no "success" channel; the "info" hue is
-        // green-friendly across both default + light themes.
         const markerColor = isApproved ? theme.severity.info : theme.severity.warning;
         return (
           <Box key={i} flexDirection="column">

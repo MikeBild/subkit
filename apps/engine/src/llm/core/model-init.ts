@@ -10,12 +10,6 @@ import { getConfig } from "../../config/loader.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
 
-// Engine LLM config is read from the active PostgreSQL runtime snapshot. Each historical
-// env-var name maps to a dotted config path; existing call sites use
-// `readEnv(name)` / `requireEnv(name, provider)` which now read from
-// `getConfig()` via this map. Operator-facing diagnostics (status line,
-// /v1/diagnostics/llm) keep using the env-var names as labels because
-// they remain familiar to operators who upgrade from v3.4.x.
 const ENV_TO_CONFIG_PATH: Record<string, string[]> = {
   LLM_PROVIDER: ["llm", "provider"],
   LLM_FALLBACK_PROVIDER: ["llm", "fallback_provider"],
@@ -84,25 +78,16 @@ export type ProviderKind = "gateway" | "mock" | DirectProviderKind;
 export type ProviderState = ProviderKind | "unconfigured";
 
 export interface ModelInitOptions {
-  /** Env var that selects the provider kind. Default `LLM_PROVIDER`. */
   providerEnvVar?: string;
-  /** Tenant whose effective LLM settings should be used for provider resolution. */
   tenantId?: string;
-  /**
-   * Explicit provider — when set, the env-derived selection is bypassed
-   * entirely.
-   */
   providerOverride?: ProviderKind;
-  /** Default model id used when the provider env var does not supply one. */
   defaultModel?: string;
-  /** If set, overrides any env-driven model choice. */
   modelOverride?: string;
 }
 
 export interface ResolvedModel {
   provider: ProviderKind;
   modelId: string;
-  /** Value ready to hand to `generateText({ model })`. */
   model: LanguageModel | string;
 }
 
@@ -144,13 +129,9 @@ function isDirectProviderKind(value: string): value is DirectProviderKind {
 }
 
 export interface ProviderSetupReport {
-  /** Provider the engine would dispatch to with the current env. */
   detected: ProviderState;
-  /** True when detected !== "unconfigured" AND no required env var is missing. */
   ok: boolean;
-  /** Human-readable summary for the CLI status line / web setup page. */
   message: string;
-  /** Each missing env var the detected provider needs, in stable order. */
   missing: ReadonlyArray<string>;
 }
 
@@ -158,18 +139,11 @@ const PROVIDER_REQUIREMENTS: Record<DirectProviderKind, ReadonlyArray<string>> =
   anthropic: ["ANTHROPIC_API_KEY"],
   openai: ["OPENAI_API_KEY"],
   gemini: ["GEMINI_API_KEY"],
-  azure: ["AZURE_API_KEY"], // resource_name OR base_url checked separately
+  azure: ["AZURE_API_KEY"],
   bedrock: ["AWS_REGION"],
   vertex: ["GOOGLE_VERTEX_PROJECT", "GOOGLE_VERTEX_LOCATION"],
 };
 
-/**
- * Probe the current process env for misconfigured providers WITHOUT
- * resolving a model (no SDK side effects, no auth calls). Surfaced via
- * `GET /v1/status` so the CLI status line can show
- * `⚠ bedrock: AWS_REGION missing` before the user fires their first
- * turn — instead of the failure landing as a 5xx mid-conversation.
- */
 export function validateProviderSetup(): ProviderSetupReport {
   const detected = detectConfiguredProvider();
   if (detected === "unconfigured") {
@@ -255,12 +229,6 @@ function resolveGatewayModel(
   };
 }
 
-/**
- * Resolve the Anthropic provider options (api key, base url, 1M-context
- * beta header) once so both the model build and the web-search tool build
- * share an identical client configuration. Reads the same config leaves /
- * env labels as the rest of the provider resolvers.
- */
 function anthropicOptions(tenantId?: string): Record<string, unknown> {
   const options: Record<string, unknown> = {
     apiKey: requireEnv("ANTHROPIC_API_KEY", "anthropic", tenantId),
@@ -285,12 +253,6 @@ function resolveAnthropic(
   };
 }
 
-/**
- * Whether the Anthropic-native web-search tool applies for this turn:
- * an Anthropic Claude model AND the tenant's `llm.web_search` leaf on.
- * Exported as a pure predicate so the loop and its unit test exercise the
- * SAME gate (no re-implemented copy that can silently drift).
- */
 export function anthropicWebSearchApplies(
   provider: string,
   modelId: string,
@@ -299,29 +261,11 @@ export function anthropicWebSearchApplies(
   return provider === "anthropic" && /claude/i.test(modelId) && enabled === true;
 }
 
-/**
- * Build the Anthropic provider-defined server-side web-search tool. The
- * search runs on Anthropic's side (billed per search) and is only valid
- * for Anthropic models — never construct this on the mock or any
- * non-Anthropic provider path. Reuses the same client options as the
- * model build so credentials / base URL stay in lockstep.
- */
 export function buildAnthropicWebSearchTool(maxUses: number): Tool {
   const provider = createAnthropic(anthropicOptions());
-  // The provider-defined tool is generically typed (`Tool<{query}, …>`);
-  // widen to the SDK's base `Tool` so it merges cleanly into the
-  // heterogeneous `ToolSet` the loop hands to `streamText`.
   return provider.tools.webSearch_20250305({ maxUses }) as unknown as Tool;
 }
 
-/**
- * The configured OpenAI base URL (empty/undefined ⇒ real OpenAI). Single
- * source of truth for the `OPENAI_BASE_URL ↔ llm.providers.openai.base_url`
- * mapping — it routes through `readEnv`, the same config-leaf → process.env
- * cascade every other provider read uses, so capability gating and model
- * construction can never drift on the env-name or the config path. Returns
- * `undefined` when no custom endpoint is configured.
- */
 export function readOpenAiBaseUrl(tenantId?: string): string | undefined {
   return readEnv("OPENAI_BASE_URL", tenantId);
 }
@@ -338,10 +282,6 @@ function resolveOpenAi(
   const baseURL = readOpenAiBaseUrl(tenantId);
   if (baseURL) openaiOptions.baseURL = baseURL;
   const provider = createOpenAI(openaiOptions);
-  // Custom OpenAI-compatible endpoints implement /chat/completions, not the
-  // Responses API (the AI-SDK default callable since v5). Pin `.chat` when a
-  // base URL is set so the default Responses route never 404s; real OpenAI
-  // (no base URL) keeps the Responses default — no behavioural change.
   const model = (baseURL ? provider.chat(modelId) : provider(modelId)) as unknown as LanguageModel;
   return {
     provider: "openai",
@@ -482,18 +422,8 @@ function resolveVertex(
   };
 }
 
-/** The model `initializeModel` resolves when neither caller nor environment names one. */
 export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";
 
-/**
- * Resolve a model ready for `generateText`.
- *
- * Precedence:
- *   1. Explicit provider override when present.
- *   2. Gateway mode when both `AI_GATEWAY_API_KEY` and `AI_GATEWAY_MODEL` exist.
- *   3. Direct provider mode via `LLM_PROVIDER`.
- *   4. Mock sentinel when explicitly requested.
- */
 export async function initializeModel(options?: ModelInitOptions): Promise<ResolvedModel> {
   const providerEnvVar = options?.providerEnvVar ?? "LLM_PROVIDER";
   const defaultModel = options?.defaultModel ?? DEFAULT_INIT_MODEL;

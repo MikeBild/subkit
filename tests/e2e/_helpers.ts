@@ -1,10 +1,3 @@
-// Shared helpers for the docker-backed e2e acceptance scripts.
-//
-// `docker-local.acceptance.ts` and `issue-149-embedded.acceptance.ts`
-// both need the same trio (poll engine health, read the dev API key
-// from the engine container's logs, and resolve the base URL); pulling
-// them here keeps a path/format change in one file (review S3).
-
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -49,10 +42,6 @@ export interface HealthResponse {
   version: string;
 }
 
-/** Poll the canonical family probes until liveness and readiness agree.
- *  The public health response is intentionally minimal (no operational
- *  posture fields). For drift / version data, hit
- *  `/v1/diagnostics/version` with an `audit:read` token. */
 export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -74,24 +63,12 @@ export async function waitForHealth(timeoutMs = 120_000): Promise<HealthResponse
           return body;
         }
       }
-    } catch {
-      /* retry */
-    }
+    } catch {}
     await Bun.sleep(2_000);
   }
   fail(`engine at ${BASE_URL} did not become healthy within ${timeoutMs}ms`);
 }
 
-/**
- * Resolve the dev admin API key.
- *
- * The migrate + seed compose services are gone — the engine binary
- * runs both in-process on every boot, including the dev
- * fixtures seed in non-prod (which prints a one-time admin key for
- * tenant `default`). Grab it from the engine container's logs.
- *
- * Honors `SUBKIT_DOCKER_API_KEY` for callers that already minted a key.
- */
 export function readDevApiKey(): string {
   const provided = process.env.SUBKIT_DOCKER_API_KEY;
   if (provided) return provided;

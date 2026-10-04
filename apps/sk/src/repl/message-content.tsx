@@ -7,16 +7,6 @@ import { memo, useMemo } from "react";
 export interface MessageContentProps {
   content: string;
   parts?: RenderableMessagePart[] | undefined;
-  /**
-   * Available width for the body, in columns. Equals
-   * `terminal_columns - indent` where the indent is the row's leading
-   * glyph + speaker-label gutter (2 + 6 = 8 cols today). Pre-fix the
-   * Text wrapped at full terminal width regardless of the speaker
-   * indent — continuation lines lost the indent and words split
-   * mid-glyph (session 86de186b: "transf\norm)" + "wrapper,\n" at
-   * col 0). Passing an explicit width keeps wrap inside the body
-   * column.
-   */
   width?: number;
 }
 
@@ -32,16 +22,6 @@ function normalizeInlineMarkdown(text: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
-// Plain text parts (and the no-parts fallback) pipe through the shared
-// OSC 8 helper so every URL the assistant prints is clickable in
-// supporting terminals (plain copyable text otherwise — detection
-// lives in @chat-ui/hyperlink.ts). Applied AFTER normalizeInlineMarkdown
-// so markdown stripping can never corrupt the escape sequence. Ink's
-// wrap-ansi understands OSC 8: when a long URL wraps, each visual line
-// re-opens the full link target, so every segment stays clickable to
-// the complete URL (verified by message-content-links.test.tsx).
-// Code blocks and tables are NOT linkified — code must stay byte-exact
-// for copy-paste, and the Table renderer owns its own cell layout.
 function linkifyProse(text: string): string {
   return renderTextWithLinks(normalizeInlineMarkdown(text));
 }
@@ -52,12 +32,6 @@ const MessageContentImpl: React.FC<MessageContentProps> = ({ content, parts, wid
     return parseRenderableMessageContent(content).parts;
   }, [content, parts]);
 
-  // When a width is provided we constrain the box so Ink's text
-  // layout wraps WITHIN this column instead of using the full
-  // terminal width. Without this constraint Ink wraps at the
-  // terminal edge AND continuation lines render at col 0, breaking
-  // the speaker-indent the row layout established. Width is clamped
-  // to a sane minimum so a tiny terminal still gets readable lines.
   const boxWidth = typeof width === "number" && width > 16 ? width : undefined;
 
   if (resolved.length === 0) {

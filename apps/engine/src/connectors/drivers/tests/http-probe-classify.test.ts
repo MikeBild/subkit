@@ -1,14 +1,3 @@
-// G10 / H3: typed error classification for HTTP probe failures.
-//
-// Pre-G10 a Google Drive 404 looked identical to a 401 looked
-// identical to "Drive API not enabled" — operators (and the LLM) had
-// no discrete signal to branch on. Post-G10 the probe reports a typed
-// `error_code` derived from the upstream status code; H3 adds
-// body-aware upgrades for known provider error shapes (Google's
-// `accessNotConfigured` reason) so the LLM gets the specific
-// `remote_api_disabled` signal + console deep link instead of a
-// generic `scope_insufficient`.
-
 import { describe, expect, test } from "bun:test";
 import type { ConnectorView } from "../../types.ts";
 import { classifyHttpProbeStatus } from "../http.ts";
@@ -51,11 +40,6 @@ describe("classifyHttpProbeStatus — status-only (G10)", () => {
 });
 
 describe("classifyHttpProbeStatus — body-aware (H3)", () => {
-  // Verbatim Google API error shape for "API not enabled in this
-  // project". Pre-H3 this classified as `scope_insufficient` (generic
-  // 403 fallback) and the model spent ~10 min of session ed20f48d
-  // chasing wrong hypotheses (HTTPS, callback URL, OAuth scopes)
-  // before the user volunteered the Gmail-works comparison.
   const driveAccessNotConfiguredBody = {
     error: {
       code: 403,
@@ -81,8 +65,6 @@ describe("classifyHttpProbeStatus — body-aware (H3)", () => {
   test("remote_api_disabled carries a Google console deep link extracted from base_url", () => {
     const r = classifyHttpProbeStatus(403, googleDriveConnector, driveAccessNotConfiguredBody);
     expect(r.provider_action_url).toBeDefined();
-    // The deep link names the actual API service (Drive) parsed from
-    // the body's message, NOT the bare host.
     expect(r.provider_action_url).toContain("console.cloud.google.com/apis/library/");
     expect(r.provider_action_url).toContain("drive.googleapis.com");
   });
@@ -115,9 +97,6 @@ describe("classifyHttpProbeStatus — body-aware (H3)", () => {
   });
 
   test("500 with accessNotConfigured body still classifies as 5xx (body upgrade gated on 4xx)", () => {
-    // 5xx are clearly server-side; even if the body talks about
-    // disabled APIs we don't upgrade — a Google 500 is a Google
-    // problem, not a config problem the user can fix.
     const r = classifyHttpProbeStatus(500, googleDriveConnector, driveAccessNotConfiguredBody);
     expect(r.code).toBe("unknown_upstream_error");
   });

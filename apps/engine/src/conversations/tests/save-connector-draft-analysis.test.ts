@@ -1,8 +1,3 @@
-// Verifies that save_connector_draft auto-runs runDocumentAnalysisFlow
-// when the conversation has a structured-document attachment, persists
-// rows to connector_endpoint_schemas, and emits a DOCUMENT_ANALYZED
-// audit row.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -53,7 +48,6 @@ beforeAll(async () => {
     .values({ tenant_id, status: "active" })
     .returning();
   conversation_id = conv!.id;
-  // Seed the OpenAPI spec via the unified files resource.
   await attachInlineForTest({
     db: ctx.db,
     tenant_id,
@@ -70,7 +64,6 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clean up registry + audit between cases so assertions are precise.
   await ctx.db
     .delete(connectorEndpointSchemas)
     .where(eq(connectorEndpointSchemas.tenant_id, tenant_id));
@@ -153,7 +146,6 @@ describe("saveConnectorDraftTool — auto document analysis on attachment", () =
     expect(data.document_analysis).toBeDefined();
     expect(data.document_analysis!.endpoint_count).toBeGreaterThanOrEqual(2);
 
-    // Registry persisted at least the GET + POST.
     const registryRows = await ctx.db
       .select()
       .from(connectorEndpointSchemas)
@@ -163,7 +155,6 @@ describe("saveConnectorDraftTool — auto document analysis on attachment", () =
     expect(post?.expected_statuses).toContain(201);
     expect(post?.expected_statuses).toContain(422);
 
-    // Audit row emitted.
     const audit = await ctx.db
       .select()
       .from(auditLog)

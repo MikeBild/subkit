@@ -1,33 +1,3 @@
-// Fail-closed DM auto-registration.
-//
-// One `chat_workspaces` row per space means a 1:1 DM space would need a
-// manual admin install before the bot ever answers a direct message —
-// unworkable for a team. This module bootstraps the DM space from the
-// sender's EXISTING linked identity instead:
-//
-//   - Gated on `PLATFORM_HAS_GLOBAL_USER_IDS`: the cross-workspace
-//     identity match below relaxes the workspace-scoping invariant and
-//     is only sound when a platform user id names one human globally.
-//     Google `users/<People-id>` does (and arrives JWT-verified);
-//     Slack `U…` / Teams ids are workspace-scoped — matching them
-//     across workspaces would BRIDGE tenants, so those platforms stay
-//     off until a sound scoping exists.
-//   - Fail-closed on the match: an unlinked sender is denied
-//     (`dm_sender_not_linked`); a sender linked in MORE than one
-//     (tenant, user) pair — e.g. a consultant in two subkit tenants —
-//     is denied (`dm_sender_ambiguous`) rather than guessing a tenant.
-//   - Exactly one match provisions the DM space under that tenant and
-//     seeds the DM-space identity row, so the dispatcher's existing
-//     exact-key lookups resolve on this and every later message with
-//     ZERO dispatcher changes. The turn then runs under the linked
-//     user's real roles + the read-only chat palette — no elevation.
-//
-// No schema change: `chat_workspaces` + `chat_identities` already carry
-// every needed column; the cipher columns get the same placeholder →
-// row-bound-AAD sentinel dance the install route uses for google
-// (outbound auth is the app-level service account; nothing reads the
-// per-workspace token back).
-
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -47,21 +17,10 @@ export type DmAutoRegistrationResult =
   | { workspace: typeof chatWorkspaces.$inferSelect; user_id: string }
   | { denied: DmAutoRegistrationDenial };
 
-/**
- * Provision a `chat_workspaces` + `chat_identities` pair for an
- * unregistered 1:1 DM space when (and only when) the sender is already
- * linked in exactly one tenant. Called from the chat.event worker's
- * unknown-workspace branch; every deny falls through to the caller's
- * existing drop path.
- */
 export async function ensureDmAutoRegistration(
   db: Db,
   event: ChatEvent,
 ): Promise<DmAutoRegistrationResult> {
-  // Only USER-INITIATED events may provision. Without this gate a
-  // `removed_from_space` (which also carries is_direct_message) would
-  // resurrect the workspace + identity rows and emit an "installed"
-  // audit at the exact moment the user removes the app.
   const userInitiated =
     event.kind === "mention" ||
     event.kind === "slash_command" ||
@@ -76,10 +35,6 @@ export async function ensureDmAutoRegistration(
     return { denied: "not_dm_autoregistrable" };
   }
 
-  // Cross-workspace identity match on the SUBSET key (platform,
-  // platform_user_id) — never on workspace_id, never trusting the
-  // payload's space name for tenant resolution. The linked identity IS
-  // the tenant resolver.
   // tenant-filter:exempt — DM bootstrap is pre-tenant by construction;
   // the fail-closed distinct-pair rule below is the isolation guard.
   const rows = await db
@@ -101,8 +56,6 @@ export async function ensureDmAutoRegistration(
 
   let workspace: typeof chatWorkspaces.$inferSelect | undefined;
   await db.transaction(async (tx) => {
-    // Same placeholder → row-bound-AAD dance as the install route: the
-    // NOT-NULL cipher columns need the row id for the AAD.
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
       .insert(chatWorkspaces)
@@ -115,14 +68,6 @@ export async function ensureDmAutoRegistration(
         bot_iv: placeholder.iv,
         bot_auth_tag: placeholder.auth_tag,
       })
-      // Targetless on purpose: chat_workspaces carries BOTH a
-      // tenant-scoped unique index and the GLOBAL (platform,
-      // workspace_id) one. A targeted arbiter only suppresses conflicts
-      // on ITS index — two truly concurrent first-DM jobs would have
-      // the loser throw a raw unique_violation on the global index.
-      // Targetless suppresses both; the re-select below is the truth
-      // check (both racers resolved the same tenant via the fail-closed
-      // identity match, so the winner's row is always ours).
       .onConflictDoNothing()
       .returning();
     workspace = inserted[0];
@@ -158,8 +103,6 @@ export async function ensureDmAutoRegistration(
         tx,
       );
     } else {
-      // Concurrent first-DM race: a sibling job won the insert. The
-      // winner already bound the cipher — reuse its row untouched.
       const [existing] = await tx
         .select()
         .from(chatWorkspaces)
@@ -216,7 +159,6 @@ export async function ensureDmAutoRegistration(
   });
 
   if (!workspace) {
-    // Unreachable (the tx throws first), narrows the type for TS.
     return { denied: "not_dm_autoregistrable" };
   }
   logger.info({

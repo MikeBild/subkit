@@ -1,7 +1,3 @@
-// Hook that resolves the active keybinding map for a context. The
-// component supplies a context name and a dispatch table; useKeybinding
-// returns the per-keystroke matcher consumed inside `useInput`.
-
 import type { Key } from "ink";
 import { DEFAULT_BINDINGS } from "./default-bindings.ts";
 import type { SettingsAction, SettingsContext } from "./schema.ts";

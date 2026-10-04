@@ -1,8 +1,3 @@
-// Integration tests for RC4: commitWorkflowAtomic resolves
-// target_workflow_id from the bound resource when the draft slug
-// matches — enabling update-in-place without triggering
-// slug_conflict_with_live_workflow.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversations, workflows, workflowVersions } from "../../db/schema/index.ts";
@@ -28,7 +23,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// Build a minimal ToolContext for the save tool.
 function toolCtx(
   tenantId: string,
   conversationId: string,
@@ -50,7 +44,6 @@ function toolCtx(
   };
 }
 
-// Seed a live workflow with one version, return its IDs.
 async function seedLiveWorkflow(
   slug: string,
   name: string,
@@ -83,11 +76,6 @@ async function seedLiveWorkflow(
   return { id: wf.id, version_id: version.id };
 }
 
-// Build a ready-to-commit draft that:
-//   - has a real step (so inspect/validate pass)
-//   - has the workflow_persisted checkpoint fresh (from bindPersistedWorkflow)
-//   - has latest_preview (so the preview gate passes)
-//   - carries the slug + name of the existing persisted workflow
 function boundReadyDraft(opts: {
   name: string;
   slug: string;
@@ -112,7 +100,6 @@ function boundReadyDraft(opts: {
     step_id: "t1",
     summary: "Dry-run succeeded.",
   });
-  // Bind the persisted resource — this is what loadDraft does after hydration.
   return bindPersistedWorkflow(withPreview, {
     kind: "workflow",
     id: opts.workflow_id,
@@ -139,14 +126,11 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       },
     ]);
 
-    // Conversation has no target_workflow_id — simulates the state
-    // just after hydration via loadDraft (target not yet written back).
     const [conv] = await ctx.testDb.db
       .insert(conversations)
       .values({
         tenant_id: ctx.tenant_id,
         status: "active",
-        // No target_workflow_id — key to the RC4 scenario.
         draft: { workflow: { name: "RC4 Update In Place", steps: [] } },
       })
       .returning();
@@ -164,12 +148,9 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       {},
     );
 
-    // Must succeed as an update-in-place — NOT a slug_conflict_with_live_workflow.
     expect(result.ok).toBe(true);
-    // The committed workflow id must be the SAME as the existing one.
     expect(result.committed_workflow_id).toBe(existing.id);
 
-    // A new version row must have been added to the same workflow id.
     const versionRows = await ctx.testDb.db
       .select({ version: workflowVersions.version })
       .from(workflowVersions)
@@ -184,7 +165,6 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
     expect(workflowAfter?.draft_version_id).toBeTruthy();
     expect(workflowAfter?.draft_version_id).not.toBe(existing.version_id);
 
-    // The conversation must now be pinned to the existing workflow id.
     const convAfter = await ctx.testDb.db
       .select({ target_workflow_id: conversations.target_workflow_id })
       .from(conversations)
@@ -194,11 +174,9 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
   });
 
   test("a draft whose slug matches a DIFFERENT workflow (not the bound one) still fails with slug_conflict_with_live_workflow", async () => {
-    // The bound workflow.
     const bound = await seedLiveWorkflow("rc4-bound-wf", "RC4 Bound WF", [
       { id: "s1", kind: "transform", language: "javascript", expression: "return input.input;" },
     ]);
-    // A different workflow occupying the slug the draft uses.
     const conflicting = await seedLiveWorkflow("rc4-conflict-slug", "RC4 Conflict Slug", [
       { id: "s2", kind: "transform", language: "javascript", expression: "return input.input;" },
     ]);
@@ -213,7 +191,6 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       .returning();
     if (!conv) throw new Error("conversation insert failed");
 
-    // Draft is bound to `bound`, but its slug is `rc4-conflict-slug` (a different wf).
     const step = {
       id: "t1",
       kind: "transform",
@@ -232,11 +209,10 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       step_id: "t1",
       summary: "Dry-run succeeded.",
     });
-    // Bound to the FIRST workflow, but slug points to the second — genuine conflict.
     const draft = bindPersistedWorkflow(withPreview, {
       kind: "workflow",
       id: bound.id,
-      slug: "rc4-bound-wf", // bound slug differs from the draft slug
+      slug: "rc4-bound-wf",
       name: "RC4 Bound WF",
       version_id: bound.version_id,
       version: 1,
@@ -249,9 +225,6 @@ describe("commitWorkflowAtomic — RC4: bound workflow resolves update-in-place"
       {},
     );
 
-    // The draft slug ("rc4-conflict-slug") does NOT match the bound slug
-    // ("rc4-bound-wf"), so bound-resolution is skipped. The slug-conflict
-    // check fires because "rc4-conflict-slug" belongs to a different wf.
     expect(result.ok).toBe(false);
     const data = result.data as { error_code?: unknown; conflict?: { workflow_id?: unknown } };
     expect(data.error_code).toBe("slug_conflict_with_live_workflow");

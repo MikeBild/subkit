@@ -1,9 +1,3 @@
-// Fan-out test. Seeds two subscriptions, one that matches
-// `execution.*` and one that doesn't. Calls `fanoutEvent` with a
-// synthetic `execution.succeeded`, then drains the webhook.deliver
-// queue via `boss.fetch` and asserts exactly one job was enqueued and
-// that it targets the matching subscription.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { WEBHOOK_DELIVER_QUEUE, type WebhookDeliverJob } from "../delivery-worker.ts";
 import { deterministicEventId, fanoutEvent } from "../fanout.ts";
@@ -47,7 +41,6 @@ describe("outbound: fanout", () => {
     expect(stats.matched).toBe(1);
     expect(stats.enqueued).toBe(1);
 
-    // Drain one job from the queue and assert it targets the good sub.
     const jobs = await ctx.boss.fetch<WebhookDeliverJob>(WEBHOOK_DELIVER_QUEUE, {
       batchSize: 5,
     });
@@ -57,13 +50,9 @@ describe("outbound: fanout", () => {
     expect(j?.data.event_type).toBe("execution.succeeded");
     expect(j?.data.attempt_number).toBe(1);
 
-    // Clean up: complete the fetched job so pg-boss teardown is happy.
     if (j) await ctx.boss.complete(WEBHOOK_DELIVER_QUEUE, j.id);
   });
 
-  // #19: the delivery event_id is derived deterministically from the outbox
-  // row id, so a retried event.fanout re-emits the SAME event_id — the
-  // receiver/deliveries table can dedup, making fanout retries safe.
   test("deterministicEventId is stable + a valid v5 UUID", () => {
     const a = deterministicEventId(4242);
     const b = deterministicEventId(4242);
@@ -90,12 +79,11 @@ describe("outbound: fanout", () => {
       });
 
     await fan();
-    await fan(); // simulate a retried event.fanout job for the same outbox row
+    await fan();
 
     const jobs = await ctx.boss.fetch<WebhookDeliverJob>(WEBHOOK_DELIVER_QUEUE, { batchSize: 10 });
     const ids = (jobs ?? []).map((x) => x.data.event_id);
     expect(ids.length).toBeGreaterThanOrEqual(2);
-    // Every re-emitted delivery carries the SAME, deterministic event_id.
     expect(new Set(ids).size).toBe(1);
     expect(ids[0]).toBe(deterministicEventId(4242));
     for (const x of jobs ?? []) await ctx.boss.complete(WEBHOOK_DELIVER_QUEUE, x.id);

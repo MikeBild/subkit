@@ -1,8 +1,3 @@
-// What an enumeration question needs to know before the loop pins its first
-// step: whether the TENANT SNAPSHOT lists every row of each kind, and whether
-// the question names one existing workflow — then it is about that workflow,
-// not about the catalog, and neither the list tool nor the no-tools pin fits.
-
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { workflows } from "../../db/schema/index.ts";

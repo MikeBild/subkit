@@ -1,11 +1,3 @@
-// /metrics is a product-internal surface. It requires the dedicated
-// metrics:read scope so smoke tests and Prometheus can use a high-volume
-// principal without weakening the rest of the authenticated API.
-//
-// The test spins up its own http server so we can seed the extra api
-// keys directly and still reach the same route surface as a real
-// scraper.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -30,8 +22,6 @@ function newKeyPlaintext(): { plaintext: string; prefix: string; hash: string } 
 beforeAll(async () => {
   srv = await createHttpTestServer("metrics-scoped");
 
-  // A system account tagged as the metrics scraper with the sole scope
-  // required by the endpoint.
   const [scraperAcct] = await srv.db
     .insert(systemAccounts)
     .values({
@@ -50,7 +40,6 @@ beforeAll(async () => {
   });
   scraperKey = skey.plaintext;
 
-  // A regular (non-admin) user whose api key carries an unrelated scope.
   const [nonAdmin] = await srv.db
     .insert(users)
     .values({
@@ -86,7 +75,6 @@ describe("/metrics requires metrics:read", () => {
     });
     expect(res.status).toBe(403);
 
-    // The audit write is fire-and-forget.
     for (let i = 0; i < 10; i += 1) {
       await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: matches the fire-and-forget audit window
     }

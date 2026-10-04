@@ -1,15 +1,8 @@
-// Workflow read tools — list_workflows, get_workflow, get_workflow_by_slug.
-
 import { z } from "@hono/zod-openapi";
 import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
 import { UNCATEGORIZED } from "../../../workflows/categorize.ts";
 import type { ConversationTool } from "../index.ts";
 
-// Workflows are a bounded catalog: no server-side default cap — an
-// unqualified call returns the COMPLETE set (the 1000 max is a safety
-// bound, not a page size). The result is self-describing
-// (`total`/`returned`/`offset`/`has_more`) so the model can never
-// mistake a page for the universe.
 const ListInput = z
   .object({
     status: z.enum(["draft", "active", "archived"]).optional(),
@@ -53,8 +46,6 @@ export const listWorkflowsTool: ConversationTool = {
       ...(args.category !== undefined ? { category: args.category } : {}),
       ...(args.connector !== undefined ? { connector: args.connector } : {}),
     });
-    // Derived over the whole catalog, not the returned page, so an item
-    // reports the same block whether or not the caller filtered.
     const [categories, connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.categories(),
       ctx.engineClient.workflows.connectorRefs(),

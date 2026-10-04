@@ -1,9 +1,3 @@
-// Skill-schema gate — pure unit tests for the structural superset check.
-//
-// The DB-backed wrapper that loads the skill row lives in
-// apps/engine/src/workflows/service.ts and is exercised in the
-// integration suite. This file pins just the shape comparison.
-
 import { describe, expect, test } from "bun:test";
 import { validateOutputSchemaSuperset } from "./validator.ts";
 

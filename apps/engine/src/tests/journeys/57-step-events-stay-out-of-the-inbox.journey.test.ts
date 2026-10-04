@@ -1,19 +1,3 @@
-// User story: As an operator, I want a running workflow to leave the
-// notification log quiet — a step starting or finishing is not something a
-// person has to act on, so it must not show up as a sent notification or a
-// `chat.message.sent` audit row. A failed run still has to reach my inbox.
-// Acceptance criteria:
-//   - AC1: A tenant seeded with its default sk CLI inbox rule runs a
-//          multi-step workflow; draining the event fan-out the way the
-//          production worker does (chat registry with the `sk_cli`
-//          fallback) records no `sent` delivery and no `chat.message.sent`
-//          audit row for any `execution.step.*` event.
-//   - AC2: A failing run still produces a `sent` delivery, an audit row and
-//          an inbox row for `execution.failed`.
-//   - AC3: A user-made `*` rule on the inbox still sees step events, but the
-//          adapter skips them: a `skipped` delivery, no `sent` row, no audit.
-// Spec refs: docs/operators/notifications.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, like } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
@@ -40,11 +24,8 @@ import {
 
 let ctx: JourneyCtx;
 let resolver: AdapterResolver;
-/** Outbox rows already drained by this file, so each test fans out only its own. */
 let drainedUpTo = 0;
 
-/** Fan out every not-yet-drained outbox row of the tenant through the same
- *  resolver the production `event.fanout` worker builds at boot. */
 async function drainFanout(): Promise<string[]> {
   const rows = await ctx.db
     .select({ id: events.id, type: events.type })
@@ -65,7 +46,6 @@ async function runWorkflow(workflowId: string): Promise<void> {
     method: "POST",
     body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
   });
-  // A failing run may answer non-2xx; the outbox carries its events either way.
   await res.text();
 }
 
@@ -94,8 +74,6 @@ async function sentAuditEventTypes(): Promise<string[]> {
 beforeAll(async () => {
   ctx = await createJourneyCtx("step-events-inbox");
   await seedDefaultCliNotificationRule(ctx.db, ctx.tenantId);
-  // Pre-create the inbox channel row: the background fan-out worker and this
-  // file's drain both resolve it, and neither should race to create it.
   await ctx.db.insert(notificationChannels).values({
     tenant_id: ctx.tenantId,
     workspace_id: "_cli",
@@ -125,7 +103,6 @@ describe("journey 57: step events stay out of the notification log", () => {
     });
     await runWorkflow(wf.id);
     const types = await drainFanout();
-    // The run really emitted step events — otherwise the absence below proves nothing.
     expect(types.filter((t) => t.startsWith("execution.step.")).length).toBeGreaterThanOrEqual(6);
 
     expect(await sentStepDeliveries()).toBe(0);

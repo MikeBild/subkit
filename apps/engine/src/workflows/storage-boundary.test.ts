@@ -88,9 +88,6 @@ test("unsupported storage options never become reusable authority", () => {
     const changed = RequestStepSchema.parse({ ...step, s3: { ...step.s3, ...extra } });
     expect(storageBoundary(changed, base)).toBeNull();
   }
-  // A removal needs its own declared ceiling. Without `max_deletes` the scope
-  // above is a PUT/GET scope and stays unusable for DELETE — the body on this
-  // fixture is refused too, so the next test isolates the ceiling as the reason.
   expect(storageBoundary(RequestStepSchema.parse({ ...step, method: "DELETE" }), base)).toBeNull();
 });
 const deleteStep = RequestStepSchema.parse({
@@ -105,7 +102,6 @@ const deleteStep = RequestStepSchema.parse({
   },
 });
 test("a removal is only bounded once the author declares a ceiling", () => {
-  // Same step, ceiling removed: the ONLY difference, so it names the reason.
   const { max_deletes: _ceiling, ...noCeiling } = deleteStep.s3!.scope!;
   expect(
     storageBoundary(
@@ -116,12 +112,9 @@ test("a removal is only bounded once the author declares a ceiling", () => {
   const bounded = storageBoundary(deleteStep, base);
   expect(bounded?.operation).toBe("DELETE");
   expect(bounded?.max_deletes).toBe(500);
-  // A DELETE that carries a body is refused before a reviewer ever sees it.
   expect(
     storageBoundary(RequestStepSchema.parse({ ...deleteStep, body: "payload" }), base),
   ).toBeNull();
-  // And the coupling holds wherever the boundary is parsed, not just where it
-  // is built — a hand-assembled one cannot smuggle DELETE in without a ceiling.
   expect(StorageBoundarySchema.safeParse({ ...bounded, max_deletes: undefined }).success).toBe(
     false,
   );
@@ -150,10 +143,6 @@ test("a bounded removal cannot leave its reviewed folder", () => {
     );
 });
 test("a storage boundary without a ceiling keeps its digest — live grants must not move", () => {
-  // The four production authorities were granted against boundaries compiled
-  // before `max_deletes` existed. If the key were ever emitted unconditionally
-  // (including as `undefined`, which canonicalises to null) this digest moves
-  // and every one of those grants dies at its next dispatch.
   expect(workflowJsonDigest(boundary)).toBe(
     "1de1f8dfaeb9d1fc33c75f27c0df83d554a3e0383c15e9ddd84d1072d70a708d",
   );
@@ -192,9 +181,6 @@ test("LIST cannot change bucket, prefix, page size or operation", () => {
   ).toThrow();
 });
 
-// A bare null told a repairing author THAT a step was unbounded, never why. In
-// production that produced 33 hints saying "add s3.scope" on steps that already
-// had one, and the repair looped. The refusal now names its cause.
 test("a refused boundary names the one thing to change", () => {
   const reasonFor = (change: Record<string, unknown>) =>
     compileStorageBoundary(RequestStepSchema.parse({ ...deleteStep, ...change }), base).refusal;
@@ -207,8 +193,6 @@ test("a refused boundary names the one thing to change", () => {
   expect(compileStorageBoundary(deleteStep, base).refusal).toBeUndefined();
 });
 test("empty query/headers objects and a null body are absent, not present", () => {
-  // Generated definitions write these out. Treating `{}` as "has a query"
-  // refused a boundary for a request that sends none.
   const generated = RequestStepSchema.parse({
     ...deleteStep,
     body: null,

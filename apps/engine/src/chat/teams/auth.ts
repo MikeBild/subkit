@@ -1,20 +1,9 @@
-// Microsoft Teams outbound auth.
-//
-// In production this uses `openid-client` against the real AAD token
-// endpoint. For unit tests we take an injectable `tokenEndpoint` and
-// make the actual POST ourselves so the mock Hono server can observe
-// the client_credentials request. The cache returns the same token
-// until `expires_in - 60s` has elapsed.
-
 export interface TeamsAuthOptions {
   clientId: string;
   clientSecret: string;
-  /** Direct token endpoint URL, e.g. https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token */
   tokenEndpoint: string;
   scope?: string;
-  /** Injectable clock for tests. */
   now?: () => number;
-  /** Injectable fetch for tests. */
   fetchImpl?: typeof fetch;
 }
 
@@ -61,7 +50,6 @@ export class TeamsAuth {
     return this.cached.access_token;
   }
 
-  /** Test helper. */
   reset(): void {
     this.cached = null;
     this.fetchCount = 0;

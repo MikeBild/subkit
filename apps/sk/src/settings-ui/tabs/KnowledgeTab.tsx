@@ -1,13 +1,3 @@
-// Knowledge tab — list of tenant knowledge sources with inline ingest,
-// delete, and refresh. Pressing `i` opens an inline path-input that
-// reads the file from disk and POSTs via createKnowledgeSource.
-//
-// Path resolution: the typed value is treated as either an absolute
-// path or a path relative to the current cwd. Drag-and-drop on
-// terminals that paste the absolute path also works. Mime type is
-// guessed from the file extension; unknown extensions fall back to
-// `application/octet-stream`.
-
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, resolve } from "node:path";
 import { Box, Text, useInput } from "ink";
@@ -36,11 +26,6 @@ function mimeFor(filename: string): string {
 
 interface Props {
   client: EngineClient;
-  /**
-   * Fired when this tab "owns Esc" — see ConfigTab for the contract.
-   * KnowledgeTab owns Esc while search is active, while the ingest
-   * prompt is open, or while a delete confirmation is pending.
-   */
   onInnerEscape?: (active: boolean) => void;
 }
 
@@ -130,22 +115,12 @@ export const KnowledgeTab: React.FC<Props> = ({ client, onInnerEscape }) => {
     setActionFlash(null);
     try {
       const abs = isAbsolute(ingestPath) ? ingestPath : resolve(process.cwd(), ingestPath);
-      // UX guard lives in `lib/knowledge-ingest-guard.ts` so the
-      // contract is unit-testable and a future widening of the
-      // deny-list cannot drift past the test suite. The guard covers
-      // both Unix (/etc /proc /sys /var /dev /root + ~/.ssh ~/.aws
-      // ~/.gnupg ~/.kube ~/.docker ~/.config ~/.sk) and Windows
-      // (C:\Windows, C:\Program Files, AppData, ~/.ssh).
       const stats = await stat(abs);
       const guard = checkIngestGuard({ absolutePath: abs, sizeBytes: stats.size });
       if (guard.rejected) {
         setActionFlash(guard.reason ?? "ingest refused");
         return;
       }
-      // Async read so a multi-MB knowledge source (PDFs, large docs)
-      // doesn't hitch the Ink render thread while the file is being
-      // slurped from disk. The surrounding state (`ingesting`) drives
-      // the spinner.
       const content = await readFile(abs);
       const name = abs.split("/").pop() ?? ingestPath;
       const mime = mimeFor(name);

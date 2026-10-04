@@ -1,23 +1,3 @@
-// inspect_recipe — read-only fetcher for the heavier per-recipe fields
-// (description, sample_input, expected_output_preview, prerequisites,
-// workflow shape summary) that `formatConnectorRecipes` deliberately
-// keeps out of every-turn context to stay within the token budget.
-//
-// Workflow:
-//   1. The per-turn context surfaces the recipe roster as
-//      `slug + title + category + tags + difficulty + intent_keywords`.
-//   2. The LLM narrows to 1-3 candidates from that roster.
-//   3. The LLM calls `inspect_recipe(template_slug, recipe_slug)` to
-//      see whether each candidate matches the operator intent before
-//      paying for `start_workflow_from_recipe`'s clone.
-//
-// The tool is read-only — no draft mutation, no audit beyond the
-// standard tool-call log. It does not return the full workflow body
-// (only step kinds + step ids) because the body is large and the
-// downstream `start_workflow_from_recipe` tool already gives the LLM
-// the editable draft. If the operator confirms the candidate, the LLM
-// then calls `start_workflow_from_recipe`.
-
 import { z } from "@hono/zod-openapi";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -78,11 +58,6 @@ export const inspectRecipeTool: ConversationTool = {
   category: "tenant_read" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    // Consult the tenant-aware resolver so tenant-scoped template
-    // overrides (rows in connector_templates) win over built-ins —
-    // matches the deleted mcp/tools/recipes.ts behavior. Built-ins
-    // alone would skip operators who've shadowed a built-in template
-    // with a tenant-customized version.
     const resolved = await resolveConnectorTemplate({
       db: ctx.db,
       tenant_id: ctx.tenant_id,

@@ -1,7 +1,3 @@
-// inspect_role — returns the full draft state of a role: name,
-// description, permissions list, members, built-in flag, so the LLM can
-// read the current configuration before proposing edits via edit_role.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { users } from "../../db/schema/index.ts";
@@ -38,9 +34,6 @@ export const inspectRoleTool: ConversationTool = {
       };
     }
     const permissions = await listRolePermissions(ctx.db, role.id);
-    // Members: users whose role_id matches OR whose legacy enum
-    // role.name matches the role we're inspecting. Done as one query
-    // each so the second predicate doesn't expand the row count.
     const byRoleId = await ctx.db
       .select({ id: users.id, email: users.email })
       .from(users)

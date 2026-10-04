@@ -2,12 +2,6 @@ export type ReleaseWorkflowRun = {
   databaseId: number;
 };
 
-/**
- * A release version is immutable once its workflow has started, regardless of
- * whether that run succeeded, failed, or was cancelled. Git tags and GitHub
- * Releases can be deleted, but the Actions history remains an independent
- * record that the version has already been used.
- */
 export function releaseVersionWasUsed(raw: string): boolean {
   const parsed: unknown = JSON.parse(raw);
   if (!Array.isArray(parsed)) {

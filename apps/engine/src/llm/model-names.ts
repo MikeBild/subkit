@@ -1,10 +1,3 @@
-// The names people know the catalog's models by.
-//
-// A usage breakdown lists models, and `claude-haiku-4-5-20251001` is an id,
-// not a name. The names live beside the price catalog — every catalog model
-// has one (a test pins that) — so every surface shows the same name and no
-// client keeps its own list of vendor ids.
-
 import { bareModelId } from "./pricing.ts";
 
 const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({
@@ -29,11 +22,6 @@ const MODEL_NAMES: Readonly<Record<string, string>> = Object.freeze({
   "gemini-2.5-flash": "Gemini 2.5 Flash",
 });
 
-/**
- * The display name of a model id — a dated snapshot, a provider-prefixed id
- * or a Bedrock/Vertex id names the model it serves. `null` for a model the
- * catalog does not know; the caller shows the id then.
- */
 export function modelDisplayName(modelId: string): string | null {
   if (!modelId) return null;
   return MODEL_NAMES[bareModelId(modelId)] ?? null;

@@ -1,6 +1,3 @@
-// find_user — fuzzy lookup over the tenant's users. Returns email,
-// name, role assignments.
-
 import { z } from "@hono/zod-openapi";
 import { eq, inArray } from "drizzle-orm";
 import { roles } from "../../db/schema/index.ts";
@@ -75,7 +72,6 @@ export const findUserTool: ConversationTool = {
       };
     }
     const list = await listUsers(ctx.tenant_id, { limit: 200 }, ctx.db);
-    // Bulk-resolve role names so we don't issue N queries.
     const roleIds = list.map((u) => u.role_id);
     const roleRows =
       roleIds.length > 0

@@ -38,10 +38,6 @@ async function newConversation(tool_policies: Record<string, string> = {}): Prom
   return conversation.id;
 }
 
-/** Hold the row until BOTH writers are waiting in PostgreSQL. With the old
- * unlocked SELECT both would have read the same JSONB before their UPDATE
- * blocked. Release in finally, before awaiting the writers, so even a failed
- * assertion cannot strand their transactions or the pool's teardown. */
 async function racePolicies(conversationId: string, writes: (() => Promise<void>)[]) {
   const blocker = await testDb.pool.connect();
   let outcomes: Promise<PromiseSettledResult<void>[]> | undefined;

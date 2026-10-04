@@ -1,5 +1,3 @@
-// Push notifications + /session QR.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../config.ts";
@@ -18,8 +16,6 @@ class FakeStream {
 
 describe("notifications — env wiring contract", () => {
   test("SK_PUSH_NOTIFY=1 turns shouldNotify on at the default threshold", () => {
-    // The contract verified here is what ink-app.tsx applyEventStream
-    // reads at turn-end. Documented in apps/sk/src/repl/notifications/.
     const prev = process.env.SK_PUSH_NOTIFY;
     try {
       process.env.SK_PUSH_NOTIFY = "1";
@@ -38,7 +34,6 @@ describe("notifications — env wiring contract", () => {
       process.env.SK_PUSH_NOTIFY_THRESHOLD_MS = "60000";
       const t = Number(process.env.SK_PUSH_NOTIFY_THRESHOLD_MS);
       expect(t).toBe(60_000);
-      // 45s elapsed should NOT fire when threshold is 60s.
       expect(shouldNotify(45_000, { enabled: true, thresholdMs: t })).toBe(false);
     } finally {
       if (prev !== undefined) process.env.SK_PUSH_NOTIFY_THRESHOLD_MS = prev;
@@ -183,15 +178,12 @@ describe("/session slash (M12)", () => {
       openedPanes.push(spec);
     };
     const out = await handleSlash("session", ["wf-7"], makeCtx(client, { openPane }));
-    // The plaintext URL is NEVER in
-    // the slash return value — it goes to the pane spec only.
     expect(typeof out).toBe("string");
     expect(out ?? "").not.toContain("secret-token-123");
     expect(out ?? "").not.toContain("/portal#token=");
     expect(out).toContain("portal token issued");
     expect(out).toContain("pt_short");
     expect(out).toContain("15 min");
-    // The pane spec carries the URL.
     expect(openedPanes.length).toBe(1);
     const pane = openedPanes[0] as { kind: string; url: string; ttl_minutes: number };
     expect(pane.kind).toBe("portal-token");

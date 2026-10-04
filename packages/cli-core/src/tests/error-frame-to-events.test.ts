@@ -1,12 +1,3 @@
-// errorFrameToEvents — translates an engine `error` SSE frame into the
-// synthetic TurnEvents the session reducer applies.
-//
-// The critical case is `pending_elicitation_blocked`: the engine ships
-// the still-open dialog inside `details.pending_elicitation`, and the
-// client must REPLAY it as an `elicit_request` so the session restores
-// the dialog. Without that, a raced prompt left `pendingElicitation`
-// null and every later prompt deadlocked.
-
 import { describe, expect, test } from "bun:test";
 import { applyTurnEvent, errorFrameToEvents, initialSessionState } from "../turn-event.ts";
 
@@ -48,8 +39,6 @@ describe("errorFrameToEvents", () => {
   });
 
   test("applying the events restores pendingElicitation and ends awaiting_input", () => {
-    // Mirrors the deadlock repro: a fresh per-turn state (pendingElicitation
-    // null) receives the blocked-prompt error frame.
     let state = initialSessionState("conv-1");
     for (const ev of errorFrameToEvents({
       code: "pending_elicitation_blocked",
@@ -64,8 +53,6 @@ describe("errorFrameToEvents", () => {
     })) {
       state = applyTurnEvent(state, ev);
     }
-    // The dialog is live again — the CLI re-renders it and routes the
-    // next answer to it instead of sending a phantom prompt.
     expect(state.pendingElicitation?.id).toBe("elic-2");
     expect(state.status).toBe("awaiting_input");
     expect(state.validationErrors).toHaveLength(1);

@@ -1,8 +1,3 @@
-// Conversation-quality: verifier catches a scope reference that
-// targets a step declared later in the workflow (forward reference).
-// This regression gate prevents a class of confusing silent-null
-// bugs at run time.
-
 import { verifyWorkflow } from "../../src/conversations/verifier.ts";
 import type { FixtureRecord, ValidationResult } from "../runner.ts";
 

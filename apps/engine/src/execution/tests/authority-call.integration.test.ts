@@ -1,16 +1,3 @@
-// A run started by an approved run is covered by that approval — and by
-// nothing else.
-//
-// Before this, `assertExecutionAuthorityCurrent` returned as soon as a row had
-// no `execution_authority_id` of its own. That is the right answer for an
-// ordinary unapproved run, which is refused elsewhere. It would be the wrong
-// one for a workflow a `call` step started under an approval: the row carries
-// no authority id, so every dispatch inside it would have gone out unmeasured
-// while the root's grant paid for it.
-//
-// These run against the real database, because half of what holds the rule up
-// is a CHECK constraint and a trigger.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { executions, workflowExecutionAuthorities } from "../../db/schema/index.ts";
@@ -42,10 +29,6 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-/** A root run holding an approval whose manifest covers one call step, and the
- *  child workflow that call starts. The manifest is compiled with `calls`
- *  directly: no resolver passes them yet, which is exactly why the runtime
- *  cover has to land before the resolver does. */
 async function fixture() {
   const db = ctx.testDb.db;
   const n = ++sequence;
@@ -139,7 +122,6 @@ async function fixture() {
       workflow_version_id: parent.version_id,
       source_kind: "saved",
       source_ref: null,
-      // The reservation trigger admits an authorized run only as `queued`.
       status: "queued",
       request_source: "api",
       execution_mode: "dev",
@@ -170,8 +152,6 @@ async function linkedChild(root_execution_id: string, child_workflow: string, ve
   return row;
 }
 
-/** Drizzle wraps a database error as "Failed query: …" and keeps the real
- *  message — a CHECK name or a trigger's RAISE — on the cause chain. */
 function reasonOf(err: unknown): string {
   const parts: string[] = [];
   let cur: unknown = err;
@@ -197,10 +177,6 @@ test("a linked child is measured against the root's approval, not waved through"
   const child = await linkedChild(f.root.id, f.child.workflow_id, f.child.version_id);
   const effect = f.manifest.effects.find((e) => e.call_path?.[0] === "run_child");
   if (!effect) throw new Error("missing folded child effect");
-  // Until the resolver passes `calls`, the recompute at the end of the check
-  // cannot reproduce a manifest containing them, so even the approved child
-  // step is refused. That is the intended state of this increment: the cover
-  // lands first and fails closed, and only then does anything resolve a child.
   await expect(
     assertExecutionAuthorityCurrent(ctx.testDb.db, ctx.tenantId, child.id, {
       step_id: effect.step_id,
@@ -211,9 +187,6 @@ test("a linked child is measured against the root's approval, not waved through"
       request: { method: "POST", url: `${mock.baseUrl}/child`, headers: {}, body: null as never },
     }),
   ).rejects.toMatchObject({ code: "execution_authority_changed" });
-  // A step the root's manifest does not hold at this path is refused at the
-  // effect lookup, before any recompute. Before the early return was closed,
-  // this RESOLVED — the child had no authority id, so nothing was checked.
   await expect(
     assertExecutionAuthorityCurrent(ctx.testDb.db, ctx.tenantId, child.id, {
       step_id: "somewhere_else",
@@ -227,9 +200,6 @@ test("a linked child is measured against the root's approval, not waved through"
 });
 
 test("the parent's own step is not reachable from inside the child", async () => {
-  // `collect` is approved — at the root, with no call path. Asking for it from
-  // a linked child must miss, or a child could dispatch anything the parent
-  // was allowed to do.
   const f = await fixture();
   const child = await linkedChild(f.root.id, f.child.workflow_id, f.child.version_id);
   const own = f.manifest.effects.find((e) => e.call_path === undefined);
@@ -302,12 +272,10 @@ test("the database refuses a link that does not hang together", async () => {
     }
     return out;
   };
-  // Naming each case means a regression says WHICH shape slipped through.
   expect(
     await named({
       root_without_path: { authority_root_execution_id: f.root.id },
       path_without_root: { authority_call_path: ["run_child"] },
-      // "who started this" and "whose permission is this" must not differ.
       parent_is_someone_else: { ...linked, parent_execution_id: null },
       holds_its_own_approval: {
         ...linked,
@@ -323,7 +291,6 @@ test("the database refuses a link that does not hang together", async () => {
     holds_its_own_approval: true,
     is_a_preview: true,
   });
-  // The shape the engine actually writes is accepted.
   expect(await refused(insert({ ...linked, parent_execution_id: f.root.id }))).toBeNull();
 });
 
@@ -342,7 +309,6 @@ test("a link cannot be attached, moved or removed after the run exists", async (
       update(child.id, { authority_root_execution_id: null, authority_call_path: null }),
     ),
   ).toMatch(/authority link cannot be/);
-  // An unlinked run cannot acquire one either.
   const [plain] = await db
     .insert(executions)
     .values({
@@ -364,17 +330,13 @@ test("a link cannot be attached, moved or removed after the run exists", async (
       }),
     ),
   ).toMatch(/authority link cannot be/);
-  // What the approval was measured against stays put.
   expect(await refused(update(child.id, { workflow_version_id: f.parent.version_id }))).toMatch(
     /immutable/,
   );
-  // An ordinary status update still works.
   expect(await refused(update(child.id, { status: "succeeded" }))).toBeNull();
 });
 
 test("the link columns exist only where the shape check allows them", async () => {
-  // Guards the constraint itself: if it were dropped, every test above that
-  // expects a rejection would still pass for the wrong reason.
   const rows = await ctx.testDb.db.execute(
     sql`SELECT conname FROM pg_constraint WHERE conname = 'executions_authority_link_shape_check'`,
   );

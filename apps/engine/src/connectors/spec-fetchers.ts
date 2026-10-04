@@ -1,9 +1,3 @@
-// Spec fetchers: pull OpenAPI or GraphQL introspection documents from a
-// remote URL at connector-creation time. Results feed docs-ingestion.
-//
-// SSRF guard: private RFC-1918 / link-local addresses are blocked unless
-// SUBKIT_ALLOW_PRIVATE_SPEC_FETCH=1 is set.
-
 import { getIntrospectionQuery } from "graphql";
 import { getConfig } from "../config/loader.ts";
 import { getDriverFetch } from "./drivers/fetch-seam.ts";
@@ -91,18 +85,10 @@ async function fetchWithBudget(url: string, init: RequestInit): Promise<Budgeted
   let allowPrivate = false;
   try {
     allowPrivate = getConfig().spec.allow_private_fetch;
-  } catch {
-    /* loader not initialised — keep default deny */
-  }
+  } catch {}
   if (isPrivateHost(u.hostname) && !allowPrivate) {
     throw new SpecFetchError(`refusing to fetch private host ${u.hostname}`, url);
   }
-  // Defence on every fetch path. The LLM-issued
-  // `import_connector_from_spec` tool accepts an arbitrary
-  // `Record<string,string>` headers field; without this guard a
-  // non-RFC-token header name crashes inside `new Headers()` with
-  // the obtuse "Invalid header name" error and the LLM has no
-  // actionable repair signal. (Audit anti-pattern C2.)
   if (init.headers !== undefined) validateOutboundHeaders(init.headers);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

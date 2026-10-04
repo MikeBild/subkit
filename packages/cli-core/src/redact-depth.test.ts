@@ -1,9 +1,3 @@
-// Operator-debugging depth for the CLI redactor. Pre-fix
-// MAX_DEPTH=4 collapsed the legitimate nesting of tool envelopes
-// (build_workflow.errors[].path; propose_step.summary.checkpoints[…])
-// to "[depth-exceeded]" markers — exactly what session 0a01c5f3
-// surfaced as "warnings disappear before I can read them".
-
 import { describe, expect, test } from "bun:test";
 import { redact } from "./redact.ts";
 
@@ -30,8 +24,6 @@ describe("redact · operator-debugging depth", () => {
     const out = redact(envelope);
     const serialised = JSON.stringify(out);
     expect(serialised).not.toContain("[depth-exceeded]");
-    // The leaf path that pre-fix was hidden — the actual `did_you_mean`
-    // list — must round-trip readably.
     expect(serialised).toContain("projects");
     expect(serialised).toContain("$scope.project.name");
   });
@@ -40,8 +32,6 @@ describe("redact · operator-debugging depth", () => {
     // biome-ignore lint/suspicious/noExplicitAny: deliberately circular
     const a: any = { name: "a" };
     a.self = a;
-    // Should not throw / hang — the secret-shape scrubber's seen-set
-    // breaks the cycle.
     const out = redact(a);
     expect(typeof out).toBe("object");
   });

@@ -1,6 +1,3 @@
-// Unit tests for the runtime-context module — the per-turn ground
-// truth block injected into the system prompt.
-
 import { describe, expect, it } from "bun:test";
 import { renderRuntimeContextBlock, resolveEngineUrl } from "../runtime-context.ts";
 
@@ -39,11 +36,6 @@ describe("renderRuntimeContextBlock", () => {
   });
 
   it("drops the cannot_help fallback only when engine_url is present", () => {
-    // The rule text always mentions cannot_help — ensures the model has a
-    // structured escape hatch even when the host slot is filled. The
-    // *other* manifests (tenant, vendor recipe) drive their own
-    // cannot_help calls; this block's contract is just the engine_url
-    // honesty rule.
     const block = renderRuntimeContextBlock({ engine_url: "https://e" });
     expect(block).toContain("cannot_help");
   });

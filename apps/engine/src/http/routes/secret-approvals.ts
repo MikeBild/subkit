@@ -1,13 +1,3 @@
-// Prepared secret versions — the Cockpit's "Vorbereitete Änderungen".
-//
-//   GET  /v1/secret-approvals                              what waits for a person
-//   POST /v1/secret-approvals/{name}/{version}/approve     "Freigeben": make it current, re-pin
-//   POST /v1/secret-approvals/{name}/{version}/reject      "Ablehnen": revoke it
-//
-// Own prefix rather than /v1/secrets/…: that surface lists what IS, this one
-// lists what is being ASKED, and the two permissions differ in weight —
-// reading the queue is settings:read, deciding is settings:write.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait, readRequestSource } from "../../audit/index.ts";

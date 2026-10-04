@@ -1,16 +1,3 @@
-// JSONPath-lite. Subset:
-//   $              -> root
-//   .key           -> object property access
-//   ['key']        -> bracketed object access (allows dots / spaces)
-//   [N]            -> integer index
-//   [N:M]          -> array slice
-//   [*]            -> wildcard expanding all elements/values
-//
-// Unsupported: filters (?), descendants (..), unions, scripts.
-// The selector compiles to a list of operations; applying the operations
-// against a value returns either a single value or an array (for any path
-// that traverses a wildcard / slice).
-
 type Op =
   | { type: "key"; key: string }
   | { type: "index"; index: number }

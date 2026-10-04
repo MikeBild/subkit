@@ -7,19 +7,12 @@ import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
 
-/** Preserve the last refused admission across restarts, without creating a
- * decision on every scheduler tick. Only the owner of the cadence claim may
- * change it; a stale worker cannot overwrite a later successful admission.
- * Returns whether the standing state changed — the edge a caller reacts to
- * once, not on every refused tick. */
 export async function recordScheduleAdmission(
   db: Db,
   context: { tenant_id: string; schedule_id: string; claimed_at: Date },
   reason: "execution_authority_required" | "execution_authority_unavailable" | null,
 ): Promise<boolean> {
   const changedState = await db.transaction(async (tx) => {
-    // Serialize with human grants. A refusal observed before a grant must not
-    // resurrect its cleared decision after that grant commits.
     if (reason) {
       const [schedule] = await tx
         .select()
@@ -60,15 +53,10 @@ export async function recordScheduleAdmission(
         action: AuditAction.SCHEDULE_ADMISSION_CHANGED,
         resource_type: "workflow_schedule",
         resource_id: context.schedule_id,
-        // The edge, not the tick: one row per state change. A hold IS a
-        // refusal and says so in the column every other refusal uses, so
-        // "show me what was refused" finds it without knowing this action
-        // exists. Clearing the hold is the admission going through.
         result: reason ? "denied" : "success",
         reason: reason ?? null,
         metadata: {
           request_source: "scheduler",
-          // Kept alongside `reason` for readers that already parse it.
           reason_code: reason,
           state: reason ? "held" : "admitted",
         },

@@ -1,10 +1,3 @@
-// `discover` flow — file contents → structured artifact proposals.
-//
-// Asks the LLM to identify three kinds of artifacts:
-//   - Connectors (OpenAPI specs, code with API calls, config files)
-//   - Skills (SOPs, compliance docs, best-practice runbooks)
-//   - Knowledge Sources (glossaries, reference material)
-
 import { z } from "zod";
 import type { Db } from "../../db/client.ts";
 import { invoke } from "../core/invoke.ts";
@@ -19,17 +12,6 @@ export const DiscoverArtifactSchema = z.object({
 });
 export type DiscoverArtifact = z.infer<typeof DiscoverArtifactSchema>;
 
-/**
- * Kind-aware shape check for the unconstrained `draft: Record` field
- * on a discover artifact. The Zod schema only enforces presence of a
- * record; this catches LLM hallucinations where the draft is
- * structurally unusable (missing the minimum fields the downstream
- * candidate persistence requires).
- *
- * Returns null when the draft passes; otherwise a list of human
- * readable issues. Designed to compose into a "drop or surface"
- * decision in `runDiscoverFlow`.
- */
 export function validateDiscoverDraft(artifact: DiscoverArtifact): string[] | null {
   const draft = artifact.draft;
   const issues: string[] = [];
@@ -63,14 +45,11 @@ export type DiscoverEnvelope = z.infer<typeof DiscoverEnvelopeSchema>;
 export interface DiscoverParams {
   tenant_id: string;
   run_id: string;
-  /** { filename: parsedContent } map — parser output from knowledge/parsers.ts. */
   files: Record<string, string>;
 }
 
 export interface DiscoverResult {
   artifacts: DiscoverArtifact[];
-  /** Drafts the LLM emitted that failed kind-aware validation. Surfaced for
-   *  operator review (drift signal) but never persisted as candidates. */
   rejected: Array<{ artifact: DiscoverArtifact; issues: string[] }>;
   raw_text: string;
   model_used: string;
@@ -96,11 +75,6 @@ export async function runDiscoverFlow(p: DiscoverParams, exec?: Db): Promise<Dis
     exec,
   );
 
-  // Kind-aware validation pass: drop any artifact whose draft is
-  // structurally unusable (missing fields downstream candidate
-  // persistence relies on). The rejected list is surfaced so the
-  // discovery service can log a drift signal without persisting the
-  // broken draft.
   const raw = r.object?.artifacts ?? [];
   const accepted: DiscoverArtifact[] = [];
   const rejected: DiscoverResult["rejected"] = [];

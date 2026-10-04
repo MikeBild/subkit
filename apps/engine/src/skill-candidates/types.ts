@@ -1,7 +1,5 @@
 import { z } from "@hono/zod-openapi";
 
-// ----- enums -----------------------------------------------------------------
-
 export const SkillCandidateStatusSchema = z.enum([
   "proposed",
   "approved",
@@ -14,24 +12,14 @@ export const SkillCandidatePatternSchema = z.enum([
   "failure_pattern",
   "success_pattern",
   "chained_workflow_pattern",
-  // Authoring-time capability summary proposed on workflow commit. Its own
-  // pattern_kind keeps the workflow-keyed supersede isolated from the
-  // run-derived success detector (see db/schema/skills.ts).
   "authoring_capability",
-  // Learning captured from an external coding-agent session (transcript
-  // distillation or explicit `save_learning`). Always `proposed`.
   "session_learning",
-  // Navigation guide for a connector authored without a template skill,
-  // built from what its green probe learned. Connector-keyed supersede: one
-  // live candidate per connector.
   "connector_capability",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
 export type SkillCandidateConfidence = z.infer<typeof SkillCandidateConfidenceSchema>;
 export type SkillCandidatePattern = z.infer<typeof SkillCandidatePatternSchema>;
-
-// ----- view types ------------------------------------------------------------
 
 export const SkillCandidateSchema = z
   .object({
@@ -78,8 +66,6 @@ export const SkillCandidateEvidenceSchema = z
 
 export type SkillCandidateEvidenceView = z.infer<typeof SkillCandidateEvidenceSchema>;
 
-// ----- pattern detection types -----------------------------------------------
-
 export interface PatternSignal {
   pattern_kind: SkillCandidatePattern;
   scope: "global" | "connector" | "workflow";
@@ -94,7 +80,6 @@ export interface PatternSignal {
   doc_refs: string[];
   fingerprint: string;
   confidence: SkillCandidateConfidence;
-  /** Carried onto the promoted skill (e.g. `domain:<slug>` for session learnings). */
   tags?: string[];
   evidence: Array<{
     execution_id?: string;
@@ -104,8 +89,6 @@ export interface PatternSignal {
   }>;
 }
 
-// ----- confidence scoring ----------------------------------------------------
-
 export function computeConfidence(
   evidenceCount: number,
   consistencyRatio: number,
@@ -114,8 +97,6 @@ export function computeConfidence(
   if (evidenceCount >= 5 && consistencyRatio >= 0.8) return "medium";
   return "low";
 }
-
-// ----- service params --------------------------------------------------------
 
 export interface ListSkillCandidatesParams {
   tenant_id: string;

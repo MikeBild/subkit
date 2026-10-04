@@ -8,10 +8,6 @@ import {
   windowCost,
 } from "./usage-model";
 
-// The operations bar on the Übersicht: six figures, each one link into the
-// list or page that counts the same thing. Nutzung reads its windows from
-// here too — one definition of a window, not two.
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -20,11 +16,6 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/**
- * The windows figures and the runtime table can be read over. The engine
- * takes any window within its bucket caps (stats/bucket-window.ts): a day in
- * hours, a week and a month in days.
- */
 export const STATS_WINDOWS = ["24h", "7d", "30d"] as const;
 export type StatsWindow = (typeof STATS_WINDOWS)[number];
 
@@ -34,17 +25,10 @@ const WINDOW_SHAPE: Record<StatsWindow, { bucket: "hour" | "day"; hours: number 
   "30d": { bucket: "day", hours: 30 * 24 },
 };
 
-/** Whether the window's table has one row per hour or per day. */
 export function windowBucket(window: StatsWindow): "hour" | "day" {
   return WINDOW_SHAPE[window].bucket;
 }
 
-/**
- * One window as two fixed instants. Fixed, not "the last 7 days" re-read at
- * every request: the figures and the lists they link to must count over the
- * very same bounds, and a window that slid between the stats query and the
- * click would count different runs.
- */
 export interface WindowBounds {
   window: StatsWindow;
   from: string;
@@ -56,13 +40,11 @@ export function windowBounds(window: StatsWindow, now = new Date()): WindowBound
   return { window, from: from.toISOString(), to: now.toISOString() };
 }
 
-/** The window an address names (`?window=24h`), or Nutzung's default of thirty days. */
 export function usageWindowFromUrl(search: string): StatsWindow {
   const raw = new URLSearchParams(search).get("window");
   return (STATS_WINDOWS as readonly string[]).includes(raw ?? "") ? (raw as StatsWindow) : "30d";
 }
 
-/** A window as the stats routes take it: its bucket and both bounds. */
 function windowQuery(bounds: WindowBounds): string {
   return [
     `bucket=${WINDOW_SHAPE[bounds.window].bucket}`,
@@ -71,68 +53,40 @@ function windowQuery(bounds: WindowBounds): string {
   ].join("&");
 }
 
-/** The runs over one window. The engine rejects a call without a window. */
 export function executionStatsEndpoint(bounds: WindowBounds): string {
   return `/v1/stats/executions?${windowQuery(bounds)}`;
 }
 
-/**
- * Model calls over one window, and what they cost. Without an axis the engine
- * answers with the window's totals and its `cost` alone — what the cost figure
- * needs; Nutzung asks the same window with an axis for its breakdown, so the
- * figure and the page it links to read one query shape over the same bounds.
- */
 export function llmStatsEndpoint(bounds: WindowBounds, axis?: ConsumptionAxis): string {
   return `/v1/stats/llm?${windowQuery(bounds)}${axis ? `&group_by=${axis}` : ""}`;
 }
 
-/**
- * The calendar month so far as a model-call window: from the first of the
- * month, 00:00 UTC, to now, in days. UTC because the cap is counted per UTC
- * month (`llm_usage.month_bucket`, engine/src/llm/accounting/budget.ts) — the
- * money beside the share must count the same calls.
- */
 export function monthSpendEndpoint(now = new Date()): string {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   return `/v1/stats/llm?bucket=day&from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(now.toISOString())}`;
 }
 
-/** The calendar month's tokens against the cap — the budget figure's one read. */
 export const STATUS_ENDPOINT = "/v1/status";
 
 export interface WindowSpend {
-  /** Model calls in the window; `null` when the engine did not send the count. */
   calls: number | null;
-  /** The priced amount, or `null` when no call of the window had a price. */
   cost: WindowCost | null;
 }
 
-/** The window's calls and money, from the `/v1/stats/llm` envelope. */
 export function windowSpend(envelope: unknown): WindowSpend {
   const totals = isRecord(envelope) && isRecord(envelope.totals) ? envelope.totals : {};
   const calls = isRecord(totals.calls) ? numberOrNull(totals.calls.total) : null;
   return { calls, cost: windowCost(envelope) };
 }
 
-/**
- * The runs, success rate, connector health and repair rate over one window,
- * as the engine counts them — one read, the one `GET /v1/stats/operating-figures`
- * answers for the MCP tool `get_operating_figures` and the operational
- * overview too. The bar does not count on its own: a second copy of a
- * definition is how two surfaces come to quote two rates for one question.
- */
 export function operatingFiguresEndpoint(bounds: WindowBounds): string {
   return `/v1/stats/operating-figures?from=${encodeURIComponent(bounds.from)}&to=${encodeURIComponent(bounds.to)}`;
 }
 
-/** What the four engine-counted figures are made of. */
 export interface OperatingCounts {
   runs: {
-    /** Runs that started in the window. */
     total: number;
-    /** Runs of the window that ended `failed` — what the success rate's link lists. */
     failed: number;
-    /** The engine's whole percent over the runs that ended; null when none has ended. */
     successRatePercent: number | null;
   };
   connectors: { enabled: number; notOk: number; healthyPercent: number | null };
@@ -144,7 +98,6 @@ function countOf(value: unknown): number | null {
   return n !== null && n >= 0 ? n : null;
 }
 
-/** The counts from the `operating-figures.v1` envelope, or null when it is not one. */
 export function operatingCounts(envelope: unknown): OperatingCounts | null {
   if (!isRecord(envelope)) return null;
   const { runs, connectors, repairs } = envelope;
@@ -163,19 +116,12 @@ export function operatingCounts(envelope: unknown): OperatingCounts | null {
   };
 }
 
-/**
- * The audit verbs a decided repair leaves: approved by a person, applied on
- * its own, or rejected. The engine's repair rate is counted over exactly these
- * (operator/operating-figures.ts, DECIDED_REPAIR_ACTIONS), and the link opens
- * exactly these — the number and the list it leads to are the same rows.
- */
 export const DECIDED_REPAIR_ACTIONS = [
   "patch_candidate.approved",
   "patch_candidate.auto_applied",
   "patch_candidate.rejected",
 ] as const;
 
-/** The six figures, in reading order. The bar always holds all six. */
 export const OPERATING_FIGURE_IDS = [
   "runs",
   "successRate",
@@ -186,132 +132,63 @@ export const OPERATING_FIGURE_IDS = [
 ] as const;
 export type OperatingFigureId = (typeof OPERATING_FIGURE_IDS)[number];
 
-/**
- * What a figure is measured over, said beside its label: the chosen window,
- * the state of now ("Stand jetzt"), or the calendar month ("Monat") — the
- * budget is spent against the month whichever window is chosen.
- */
 export type FigureBasis = "window" | "now" | "month";
 
-/** The setting the cap is: `tokens.monthly_budget`, where 0 means no cap. */
 export const BUDGET_SETTING = "tokens.monthly_budget";
 
-/** A read the figures depend on: its answer, or that it could not be read. */
 export type Read<T> = { state: "answered"; value: T } | { state: "failed" };
 
 export type OperatingFigure =
   | {
       id: OperatingFigureId;
       state: "value";
-      /**
-       * The raw figure: a count for runs, a whole percentage for the rates and
-       * the budget, an amount of money for the cost.
-       */
       value: number;
-      /**
-       * The list or page the value counts, narrowed to the same window and
-       * filter. Null where the reader may not open it, or where it would be
-       * empty — a link to no failed runs beside "100 %" leads nowhere.
-       */
       href: string | null;
       basis: FigureBasis;
-      /**
-       * Cost only. `unpricedCalls > 0` makes the amount a floor ("mind."), and
-       * the figure says how many calls it leaves out — never a silent partial sum.
-       */
       money?: { currency: string; unpricedCalls: number };
-      /**
-       * Budget only: the month's share of the cap, the cap, what is left of
-       * it, and its pressure word. Absent when nothing bounds the month.
-       */
       budget?: {
         percent: number;
         budgetTokens: number;
         remainingTokens: number | null;
         pressure: "ample" | "tightening" | "critical";
       };
-      /** Budget only: the month's money is the value, and no cap bounds the month. */
       uncapped?: true;
     }
   | {
       id: OperatingFigureId;
-      /**
-       * `none`: answered, and there is nothing to count — said in words, never
-       * as a tile reading 0. `unreadable`: the read failed — said so, with a
-       * way to ask again, never as "nothing to report". `not_permitted`: the
-       * reader may not read what the figure is made of.
-       */
       state: "none" | "unreadable" | "not_permitted";
       basis: FigureBasis;
     }
   | {
-      /**
-       * Cost: the window had model calls and none of them had a price. Not an
-       * amount of nought — that would say the window was free — but a sentence,
-       * and the way to Nutzung, which names the models without a price.
-       */
       id: "cost";
       state: "unpriced";
       href: string | null;
       basis: FigureBasis;
     }
   | {
-      /**
-       * Budget: nothing bounds the workspace (`tokens.monthly_budget` is 0).
-       * Said as "kein Kontingent", with no percentage; the link is the setting,
-       * for someone who may change it.
-       */
       id: "budget";
       state: "uncapped";
       href: string | null;
       basis: FigureBasis;
     };
 
-/**
- * The operations figures, always six, in reading order, each with the one
- * list or page it opens.
- *
- * Every link carries the window the figure counted over, so the list it opens
- * holds the rows the number counted: the runs that started in the window, the
- * failed ones among them, the repairs decided in it, the money spent in it
- * (Nutzung over the same window). Connector health is a state of now and its
- * list is the connectors unwell now; the budget is the calendar month's and
- * opens Nutzung, where the month is broken down.
- *
- * A figure with nothing to say says so — no runs in the window, no enabled
- * connector, no decided repair, no model call — and never reads 0 behind a
- * link. A read that FAILED is not "nothing to say": the figure is unreadable,
- * with a retry.
- *
- * Nothing here is a task — what needs someone is the attention list below the
- * bar, and the bar repeats none of it.
- */
 export function operatingFigures(input: {
   bounds: WindowBounds;
-  /** The engine's counts for runs, connectors and repairs; null when the answer was not one. */
   counts: Read<OperatingCounts | null>;
-  /**
-   * Whether the reader may read connectors. The engine answers the connector
-   * totals under `stats:read`; the bar keeps saying "not permitted" to a
-   * reader who could not open a single connector the figure counts.
-   */
   connectorsPermitted: boolean;
   spend: Read<WindowSpend>;
   budget: Read<BudgetSummary>;
-  /** The calendar month's calls and money — the budget figure's amount. */
   monthSpend: Read<WindowSpend>;
   canOpen: {
     runs: boolean;
     connectors: boolean;
     audit: boolean;
     usage: boolean;
-    /** Whether the reader may change the cap — the only reason to link the setting. */
     budgetSetting: boolean;
   };
 }): OperatingFigure[] {
   const { bounds, counts, connectorsPermitted, spend, budget, monthSpend, canOpen } = input;
   const window = { startedFrom: bounds.from, startedTo: bounds.to };
-  // An answer that is not the figures is no more readable than a failed read.
   const read = counts.state === "answered" ? counts.value : null;
 
   let runs: OperatingFigure;
@@ -395,11 +272,6 @@ export function operatingFigures(input: {
   ];
 }
 
-/**
- * The window's money. No model call in the window is "none" — not an amount of
- * nought behind a link. Calls without any price are "unpriced", said in words.
- * A partly priced window is a floor: the amount carries the calls it leaves out.
- */
 function costFigure(
   spend: Read<WindowSpend>,
   bounds: WindowBounds,
@@ -423,17 +295,6 @@ function costFigure(
   };
 }
 
-/**
- * The calendar month's usage: what the month's model calls cost, with the
- * month's share of the cap and its pressure word beneath. The money leads
- * because it is what a reader asks first — "what are we spending" — and the
- * share alone ("5 % of 150 M tokens") never said it.
- *
- * Without a priced amount (no call this month, or none with a price) the
- * figure falls back to the share of the cap. No cap and no amount is
- * "uncapped" — no percentage — and its link is the setting, for someone who
- * may change it.
- */
 function budgetFigure(
   budget: Read<BudgetSummary>,
   monthSpend: Read<WindowSpend>,
@@ -458,7 +319,6 @@ function budgetFigure(
         money,
         uncapped: true,
       };
-    // A cap without the month's consumption beside it is not a share.
     if (percent === null || pressure === null)
       return { id: "budget", state: "unreadable", basis: "month" };
     return {
@@ -483,7 +343,6 @@ function budgetFigure(
       href: canOpen.budgetSetting ? settingsHref(BUDGET_SETTING) : null,
       basis: "month",
     };
-  // A cap without the month's consumption beside it is not a percentage.
   if (percent === null || pressure === null)
     return { id: "budget", state: "unreadable", basis: "month" };
   return {

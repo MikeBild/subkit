@@ -1,12 +1,3 @@
-// What a finishing run records once its status is final.
-//
-// The output_schema verdict is taken while the run still reads `succeeded`;
-// the total timeout or an abort can turn it `timed_out` / `aborted` after
-// that. A verdict recorded before the status settled would then report
-// `passed` on a run that did not complete. Settle the status first, then keep
-// the verdict only for a run that really succeeded — and give a run stopped
-// that way a failure record, so it does not read as failed-without-a-cause.
-
 import type { OutputContractVerdict } from "./state.ts";
 import type { ExecutionStatus } from "./types.ts";
 

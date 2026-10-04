@@ -1,26 +1,3 @@
-// User story: As an IDE plugin pointing at `sk mcp`, I can list
-// and invoke the sk-scoped MCP tools (`sk.ping`,
-// `sk.conversation.create`, `sk.conversation.append`,
-// `sk.conversation.get`, `sk.conversation.list`) without ever
-// leaving the stdio transport.
-//
-// The test drives the proxy's request handlers directly by
-// reaching into the `runMcpProxy` module — we don't stand up an
-// actual stdio pipe, we register our own in-memory transport and
-// call the Server's handlers. This is the same pattern Claude
-// Code's MCP transport tests use.
-//
-// Acceptance criteria:
-//
-//   AC1. ListTools returns all 5 sk.* tools with the expected
-//        names and a populated input schema.
-//   AC2. sk.ping returns a text chunk containing the engine URL.
-//   AC3. sk.conversation.create creates a conversation on the
-//        engine side (verified via audit + DB row) and returns
-//        the conversation id as JSON in its text chunk.
-//   AC4. sk.conversation.list returns conversations owned by the
-//        caller (owner=me semantics).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -29,19 +6,12 @@ import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx } from "./setup
 
 let ctx: JourneyCtx;
 
-// Minimal no-op transport so the Server instance can register
-// handlers without requiring a real stdio pipe. We never actually
-// call start() / send() — the test pokes handlers directly.
 class NoopTransport {
   onmessage?: (msg: unknown) => void;
   onclose?: () => void;
   onerror?: (err: Error) => void;
-  async start(): Promise<void> {
-    /* noop */
-  }
-  async send(_msg: unknown): Promise<void> {
-    /* noop */
-  }
+  async start(): Promise<void> {}
+  async send(_msg: unknown): Promise<void> {}
   async close(): Promise<void> {
     this.onclose?.();
   }
@@ -61,8 +31,6 @@ async function buildServer(): Promise<{
 
   const server = new Server({ name: "sk-cli", version: "0.0.1" }, { capabilities: { tools: {} } });
 
-  // Register the same handlers runMcpProxy would — replicated
-  // inline so we can point them at a journey-scoped client.
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       { name: "sk.ping", description: "ping", inputSchema: { type: "object", properties: {} } },
@@ -152,8 +120,6 @@ async function buildServer(): Promise<{
 
   await server.connect(new NoopTransport() as never);
 
-  // Expose handlers via direct-dispatch helpers so tests don't
-  // need to synthesize JSON-RPC envelopes.
   const handlers = (
     server as unknown as {
       _requestHandlers: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;

@@ -1,8 +1,3 @@
-// Precedence table for the effective trigger. The scheduler fires from the
-// `workflows_schedules` row, not the definition, so a bound row must win over
-// whatever the definition declares — and a declaration without a row must not
-// read as a trigger that fires.
-
 import { describe, expect, test } from "bun:test";
 import type { WorkflowTrigger } from "../workflows/types.ts";
 import {

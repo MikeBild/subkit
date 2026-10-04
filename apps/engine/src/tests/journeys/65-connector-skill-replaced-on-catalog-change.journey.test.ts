@@ -1,18 +1,3 @@
-// User story: As an operator whose MCP server changed its tool catalog after
-// I approved the skill that explains it, I approve the new proposal and the
-// model then reads ONE description of that server — the current one — not
-// the old one next to it.
-// Acceptance criteria:
-//   - AC1: A changed catalog proposes a second connector skill candidate
-//          while the first stays approved.
-//   - AC2: Approving the new candidate as active leaves exactly one active
-//          connector skill for that connector, the new one. The old skill is
-//          archived (restorable), and the archive is audited under the
-//          person who approved.
-//   - AC3: Approving a newer candidate as a draft keeps the active skill;
-//          activating the draft retires the one it replaces.
-// Spec refs: docs/concepts/knowledge-and-skills.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -34,7 +19,6 @@ const BASE_TOOLS = [
   },
 ];
 
-/** The server's catalog as the next handshake will list it. */
 let catalog: Array<Record<string, unknown>> = [...BASE_TOOLS];
 
 function fakeClient(): McpClientLike {
@@ -138,7 +122,6 @@ async function turn(
   return output.auto_saved === true ? (output.connector?.id ?? null) : null;
 }
 
-/** The catalog changes; the next probe must see it, not a cached session. */
 async function changeCatalogAndReprobe(extraTool: string): Promise<void> {
   catalog = [
     ...catalog,

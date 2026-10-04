@@ -54,9 +54,6 @@ describe("groupMessageParts", () => {
   });
 
   test("a result without an output leaves the call running, not completed", () => {
-    // The engine emits a `tool_result` part next to every call, output or not.
-    // Treating its mere presence as completion put a green tick and the word
-    // "completed" on every abandoned call in the transcript.
     const groups = groupMessageParts([call("a", "run_workflow"), result("a", null)]);
     const only = groups[0];
     if (only?.kind !== "tool") throw new Error("expected a tool group");

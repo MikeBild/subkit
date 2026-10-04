@@ -1,30 +1,3 @@
-// Instruction-grounded preview judge (Fix C).
-//
-//   - wrong-content fixture (green preview, goal asks for project
-//     names + droplet specs, output has empty names) → `failed` with
-//     missing items, auto-commit BLOCKED, result carries the verdict,
-//   - passing fixture in ask mode → green + save_required; auto mode commits,
-//   - goal absent → `skipped`/`no_goal`, green preview is NOT auto-committed
-//     (returns save_required so the user/model persists deliberately),
-//   - judge infrastructure error → `skipped`/`judge_unavailable`; the judge
-//     still never BLOCKS (the envelope stays ok), but with a human present the
-//     auto-commit is withheld: an unjudged preview is persisted deliberately,
-//     not silently. Backgrounded MCP turns surface the durable approval URL
-//     through conversation_get and therefore do not weaken the gate,
-//   - circuit-breaker: after the block cap the edit LOOP is broken but the
-//     preview is HELD (never auto-committed) and a terminal done-signal is
-//     surfaced so the model stops re-running and asks the user; the counter
-//     holds at the cap (only a real commit resets it),
-//   - explicit save (`save_workflow_draft`, incl. force_commit) still
-//     works after a failed verdict — the judge only gates AUTO-commit,
-//   - the goal stash survives the draft normalize round-trip for both
-//     entry points (author_workflow pipeline-emit shape + build_workflow
-//     carry-over).
-//
-// LLM provider is the in-process mock (`LLM_PROVIDER=mock` via the
-// conversation test ctx + `generateOverrides.judge`) — no network,
-// deterministic.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
@@ -110,9 +83,6 @@ function makeCtx(
   };
 }
 
-/** A green-previewable draft: one pure transform step, empty project
- *  names — the "Project: ()" incident shape. `goal` rides the draft
- *  exactly as the authoring pipeline's EMIT stage stashes it. */
 function wrongContentDraft(slug: string, goal: string | null): DraftDocument {
   return {
     workflow: {
@@ -158,9 +128,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const warning = (data.warnings ?? []).find((w) => w.code === "judge_goal_mismatch");
     expect(warning?.message).toContain("project names are empty strings");
 
-    // The blocked preview joins the requires_repair path on the draft.
     expect(toolCtx.current().latest_preview?.requires_repair).toBe(true);
-    // The breaker recorded the block as blocks-since-commit (P3).
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
   });
 
@@ -217,17 +185,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
   });
 
   test("goal absent: judge skipped with no_goal, green preview is NOT auto-committed", async () => {
-    // Override would FAIL the preview if the judge ran — proving the
-    // skip really skipped the LLM call rather than passing by luck.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-no-goal", null));
 
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
-    // a green dry-run with no stashed goal is no longer auto-persisted —
-    // the judge is skipped, so the engine cannot vouch for the result. The
-    // preview is still `ok` and returns the save_workflow_draft next-action so
-    // the model/user commits once, deliberately (no per-iteration version churn).
     expect(result.ok).toBe(true);
     const data = result.data as JudgeEnvelope;
     expect(data.auto_committed).toBe(false);
@@ -240,8 +202,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
   });
 
   test("backgrounded MCP surface does not bypass the explicit save gate", async () => {
-    // conversation_get can surface the durable approval URL even without a
-    // live elicitation bridge. Transport shape is not permission to persist.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-mcp", null), {
       surface: "mcp",
@@ -254,15 +214,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.auto_committed).toBe(false);
     expect(data.save_required).toBe(true);
     expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
-    // Audit metadata stays honest: the judge was skipped (no goal), not passed.
     expect(data.judge).toEqual({ verdict: "skipped", reason: "no_goal" });
-    // The judge LLM never ran — no_goal short-circuits before the call.
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(0);
   });
 
   test('UNATTENDED (permission_mode "auto"): green + no-goal preview AUTO-COMMITS', async () => {
-    // "auto" is the explicit "don't ask" signal on any surface — a no-goal
-    // green preview auto-commits rather than returning save_required.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-auto", null), {
       permission_mode: "auto",
@@ -278,10 +234,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
   });
 
   test("UNATTENDED does NOT weaken the quality gate: a failed verdict STILL blocks the auto-commit", async () => {
-    // MUST-KEEP: unattended relaxes only the no-goal SAVE deferral. A goal is
-    // present and the judge FAILS → the preview must NOT auto-commit even on a
-    // backgrounded MCP turn (the load-bearing "never mint a goal-mismatched
-    // workflow" guard).
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-unattended-blocks", GOAL), {
       surface: "mcp",
@@ -301,8 +253,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
   });
 
   test("ATTENDED (sk_interactive): green + no-goal preview is UNCHANGED — defers to explicit save", async () => {
-    // The default attended sk-cli path must not regress: no goal → judge
-    // skipped → save_required, no auto-commit.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-attended-nogoal", null), {
       surface: "sk_interactive",
@@ -319,12 +269,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
   });
 
   test("judge infrastructure error, human present: skipped with judge_unavailable and NOT auto-committed", async () => {
-    // The judge fails open — it never turns an infra outage into a blocked
-    // preview, and the envelope stays `ok`. What it must not do is let an
-    // UNJUDGED preview mint a workflow version while a human is sitting there:
-    // keying the deferral on `no_goal` alone meant a provider outage silently
-    // auto-committed work nobody vouched for. The green result plus an explicit
-    // save is one keystroke; the silent commit is unrecoverable trust.
     getMockProvider().generateOverrides.judge = () => {
       throw new Error("provider exploded");
     };
@@ -342,10 +286,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-breaker", GOAL));
 
-    // Edit the draft to a fresh, still-failing transform between every
-    // preview so the definition fingerprint changes each time — the OLD
-    // per-fingerprint breaker would reset to 0 and never cap. The P3
-    // blocks-since-commit breaker is monotonic across edits.
     const editToFreshFailing = async (marker: string) => {
       await toolCtx.setDraft(
         normalizeDraftDocument({
@@ -372,14 +312,9 @@ describe("preview judge · dry_run_workflow wiring", () => {
     await editToFreshFailing("v2");
     const second = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(second.ok).toBe(false);
-    // Counter advanced even though the fingerprint changed.
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
 
     await editToFreshFailing("v3");
-    // At the cap now: the breaker breaks the edit LOOP but NOT the quality
-    // gate — the still-failing preview is HELD (not committed) and carries a
-    // terminal done-signal with the missing items so the model stops re-running
-    // dry_run_workflow and asks the user instead.
     const third = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(third.ok).toBe(false);
     const thirdData = third.data as JudgeEnvelope;
@@ -389,11 +324,7 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(thirdData.judge_done?.missing).toEqual(FAILED_VERDICT.missing);
     expect(thirdData.judge_done?.next_action).toContain("NOT committed");
     expect(thirdData.judge_done?.next_action).toContain("ask how to proceed");
-    // No commit happened, so the breaker counter is NOT reset — it holds at
-    // the cap so a model that ignores the EXIT keeps hitting the hold branch
-    // rather than slipping an unsatisfied commit through.
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
-    // First hold at the cap is recorded.
     expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
   });
 
@@ -401,7 +332,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-escalate", GOAL));
 
-    // Drive blocks 1..MAX (each ok:false), then the first hold at the cap.
     for (let i = 1; i <= JUDGE_BREAKER_MAX_BLOCKS; i++) {
       await dryRunWorkflowTool.execute(toolCtx, { input: null });
     }
@@ -409,8 +339,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect((firstHold.data as JudgeEnvelope).judge_done?.escalate).toBe(false);
     expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(1);
 
-    // The model ignores the EXIT and re-runs — at ESCALATE_AFTER holds the gate
-    // forces an operator-choice escalation instead of another silent hold.
     const escalated = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(escalated.ok).toBe(false);
     expect((escalated as { error_code?: string }).error_code).toBe("preview_judge_exhausted");
@@ -419,14 +347,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(data.judge_done?.committed_as_is).toBe(false);
     expect(data.judge_done?.next_action).toContain("STOP");
     expect(data.judge_done?.next_action).toContain("ask the user to choose");
-    // Only the commit-as-is tool action is offered — editing/re-running is gone.
     expect(data.next_best_actions).toEqual(["save_workflow_draft"]);
     expect(toolCtx.current().state?.judge_breaker?.holds_at_cap).toBe(2);
   });
 
   test("a commit resets the blocks-since-commit counter", async () => {
-    // First a passing preview commits (counter is 0 → stays 0/clears).
-    // Then re-block twice and confirm the counter restarts from 1.
     getMockProvider().generateOverrides.judge = () => FAILED_VERDICT;
     const toolCtx = makeCtx(wrongContentDraft("judge-commit-reset", GOAL), {
       permission_mode: "auto",
@@ -436,7 +361,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     expect(block1.ok).toBe(false);
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(1);
 
-    // Force a clean commit by switching the verdict to passes + editing.
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "passes",
       reason: "ok now",
@@ -461,7 +385,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const committed = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(committed.ok).toBe(true);
     expect((committed.data as JudgeEnvelope).auto_committed).toBe(true);
-    // Commit cleared the breaker.
     expect(toolCtx.current().state?.judge_breaker ?? null).toBeNull();
   });
 
@@ -474,15 +397,11 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const callsAfterFirst = getMockProvider().calls.filter((c) => c.flow === "judge").length;
     expect(callsAfterFirst).toBe(1);
 
-    // Re-preview the UNCHANGED draft (same fingerprint). The verdict is
-    // reused from the memo — no second judge LLM call fires.
     const second = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(second.ok).toBe(false);
     const callsAfterSecond = getMockProvider().calls.filter((c) => c.flow === "judge").length;
     expect(callsAfterSecond).toBe(1);
-    // The block still counted (blocks-since-commit is monotonic).
     expect(toolCtx.current().state?.judge_breaker?.blocks_since_commit).toBe(2);
-    // The reused verdict still rode the result.
     expect((second.data as JudgeEnvelope).judge?.verdict).toBe("failed");
   });
 
@@ -503,7 +422,6 @@ describe("preview judge · dry_run_workflow wiring", () => {
     const blocked = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(blocked.ok).toBe(false);
 
-    // Operator explicitly confirms the save despite the verdict.
     await ctx.testDb.db.insert(conversationElicitations).values({
       tenant_id: ctx.tenant_id,
       conversation_id: conv.id,
@@ -551,7 +469,6 @@ describe("preview judge · goal stash round-trip", () => {
   });
 
   test("a goal change resets blocks_since_commit (no carry-over across goals)", () => {
-    // A draft accumulated 2 blocks against goal A (now at advisory).
     const atCap = normalizeDraftDocument({
       workflow: { name: "A", slug: "a", goal: "goal A", steps: [] },
       state: {
@@ -564,8 +481,6 @@ describe("preview judge · goal stash round-trip", () => {
       },
     });
     expect(atCap.state?.judge_breaker?.blocks_since_commit).toBe(2);
-    // Re-author under a DIFFERENT goal → breaker must reset, so the
-    // first judge on goal B can still BLOCK (not silently advisory-commit).
     const pivoted = withWorkflowDraft(
       atCap,
       { name: "B", slug: "b", goal: "goal B", steps: [] },
@@ -619,10 +534,6 @@ describe("preview judge · goal stash round-trip", () => {
 });
 
 describe("preview judge · filter-violation downgrade wiring", () => {
-  // The goal EXPLICITLY excludes a value ("(not connected)"); if that value
-  // shows up in the rendered output the LLM "passes" must be downgraded to
-  // "partial". Mock provider returns "passes"; the deterministic
-  // findFilterViolations check decides. No real LLM key needed.
   const FILTER_GOAL = "Digest of OFFLINE (not connected) chargers only.";
 
   test('judge "passes" + excluded value present in output → downgraded to "partial"', async () => {
@@ -681,15 +592,8 @@ describe("preview judge · filter-violation downgrade wiring", () => {
 });
 
 describe("preview judge · format-fidelity downgrade wiring", () => {
-  // These tests call judgePreview() directly to isolate the format-mismatch
-  // guard from the dry_run_workflow tool machinery. The mock provider's
-  // generateOverrides.judge controls what the LLM "returns", and the
-  // deterministic outputMatchesFormat check then decides whether to
-  // downgrade a "passes" verdict.
-
   const MARKDOWN_GOAL = "return a markdown table that ranks the top cities by population";
 
-  // A JSON-array output_preview — structurally NOT a markdown table.
   const jsonArrayArtifacts: JudgeStepArtifact[] = [
     {
       step_id: "shape",
@@ -702,7 +606,6 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     },
   ];
 
-  // A proper markdown table output_preview.
   const markdownTableArtifacts: JudgeStepArtifact[] = [
     {
       step_id: "shape",
@@ -728,7 +631,6 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     });
 
     expect(outcome.verdict).toBe("partial");
-    // missing must contain at least the two markdown-table structural gaps.
     if (outcome.verdict === "partial") {
       expect(outcome.missing.length).toBeGreaterThan(0);
     }
@@ -762,10 +664,7 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     const outcome = await judgePreview({
       goal: MARKDOWN_GOAL,
       definition_summary: "- render (transform): build table; - wrap: output_transform",
-      // The render STEP produced a proper markdown table…
       step_artifacts: markdownTableArtifacts,
-      // …but the workflow's FINAL output (post output_transform) is a JSON
-      // array — exactly the real defect this fix targets.
       final_output: [
         { rank: 1, city: "Berlin", max_temp_c: 25 },
         { rank: 2, city: "Hamburg", max_temp_c: 23 },
@@ -774,7 +673,6 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
       db: ctx.testDb.db,
     });
 
-    // Must downgrade: the caller receives structured data, not a markdown table.
     expect(outcome.verdict).toBe("partial");
     if (outcome.verdict === "partial") {
       expect(outcome.missing.length).toBeGreaterThan(0);
@@ -791,9 +689,7 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     const outcome = await judgePreview({
       goal: MARKDOWN_GOAL,
       definition_summary: "- collect (transform); - render: output_transform",
-      // Steps are structured…
       step_artifacts: jsonArrayArtifacts,
-      // …but the FINAL output is a proper markdown table string.
       final_output: "| rank | city |\n| ---: | --- |\n| 1 | Berlin |\n| 2 | Hamburg |",
       tenant_id: ctx.tenant_id,
       db: ctx.testDb.db,
@@ -810,16 +706,13 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
     });
 
     const outcome = await judgePreview({
-      // No format keyword — "email me the droplet specs" names no format.
       goal: "email me the droplet specs for each project",
       definition_summary: "- shape (transform): collect specs",
-      // JSON-array output — would fail a markdown-table check if the guard fired.
       step_artifacts: jsonArrayArtifacts,
       tenant_id: ctx.tenant_id,
       db: ctx.testDb.db,
     });
 
-    // Guard must NOT fire: no format was named, so "passes" is untouched.
     expect(outcome.verdict).toBe("passes");
   });
 
@@ -838,7 +731,6 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
       db: ctx.testDb.db,
     });
 
-    // Already "partial" — format guard does not run a second time.
     expect(outcome.verdict).toBe("partial");
     if (outcome.verdict === "partial") {
       expect(outcome.reason).toContain("city names");
@@ -865,20 +757,13 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
 });
 
 describe("preview judge · bounded-field coercion + retry (fail-open fix)", () => {
-  // Root cause: `invoke` validates the model output against the JSON-Schema-7
-  // projection of JudgeVerdictSchema, which DROPS zod's `.max()` length
-  // bounds. A verdict with an over-long `reason` / oversized `missing`
-  // satisfied the provider but FAILED the old strict re-parse → it was
-  // discarded as `judge_unavailable` and the commit proceeded UNGATED. The
-  // fix clamps the bounded fields so a valid verdict is never skipped on a
-  // length overflow.
   const GOAL_PLAIN = "email me the droplet specs for each project";
 
   test("over-bounds verdict is CLAMPED, not skipped (no fail-open)", async () => {
     getMockProvider().generateOverrides.judge = () => ({
       verdict: "failed",
-      reason: "x".repeat(2000), // > 800-char bound
-      missing: Array.from({ length: 30 }, (_, i) => `${"m".repeat(500)}-${i}`), // > 12 entries, each > 300
+      reason: "x".repeat(2000),
+      missing: Array.from({ length: 30 }, (_, i) => `${"m".repeat(500)}-${i}`),
     });
 
     const outcome = await judgePreview({
@@ -891,16 +776,12 @@ describe("preview judge · bounded-field coercion + retry (fail-open fix)", () =
       db: ctx.testDb.db,
     });
 
-    // The verdict survives (was a real "failed" — must not become a skip).
     expect(outcome.verdict).toBe("failed");
     if (outcome.verdict === "failed") {
-      // reason clamped to the 800-char bound, missing clamped to ≤12 entries
-      // each ≤300 chars — the bounds the JSON schema dropped.
       expect(outcome.reason.length).toBeLessThanOrEqual(800);
       expect(outcome.missing.length).toBeLessThanOrEqual(12);
       for (const m of outcome.missing) expect(m.length).toBeLessThanOrEqual(300);
     }
-    // Exactly one judge call — a coercible verdict does NOT trigger the retry.
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(1);
   });
 
@@ -908,8 +789,7 @@ describe("preview judge · bounded-field coercion + retry (fail-open fix)", () =
     let n = 0;
     getMockProvider().generateOverrides.judge = () =>
       n++ === 0
-        ? // first response carries no valid `verdict` enum
-          ({ nonsense: true } as never)
+        ? ({ nonsense: true } as never)
         : { verdict: "passes", reason: "ok on retry", missing: [] };
 
     const outcome = await judgePreview({
@@ -923,7 +803,6 @@ describe("preview judge · bounded-field coercion + retry (fail-open fix)", () =
     });
 
     expect(outcome.verdict).toBe("passes");
-    // Retried exactly once.
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(2);
   });
 
@@ -940,10 +819,7 @@ describe("preview judge · bounded-field coercion + retry (fail-open fix)", () =
       db: ctx.testDb.db,
     });
 
-    // Fail-OPEN — a persistently un-judgeable preview skips (commit proceeds),
-    // it does NOT block (that would deadlock authoring).
     expect(outcome).toEqual({ verdict: "skipped", reason: "judge_unavailable" });
-    // One initial call + one bounded retry.
     expect(getMockProvider().calls.filter((c) => c.flow === "judge").length).toBe(2);
   });
 });
@@ -958,9 +834,6 @@ describe("preview judge · helpers", () => {
   });
 
   test("buildJudgeStepArtifacts prioritizes transforms under budget pressure and keeps definition order", () => {
-    // Many small keys: structurally truncation-resistant, so each
-    // artifact lands near the ~1.5KB per-step cap and the 6KB total
-    // budget genuinely bites on the later request steps.
     const big = Object.fromEntries(
       Array.from({ length: 60 }, (_, i) => [`key_${i}`, "v".repeat(20)]),
     );
@@ -976,11 +849,8 @@ describe("preview judge · helpers", () => {
         output_preview: { html: "<p>final</p>" },
       },
     ]);
-    // The transform is always in; the trailing requests get dropped
-    // once the total budget is exhausted.
     expect(artifacts.some((a) => a.step_id === "shape")).toBe(true);
     expect(artifacts.length).toBeLessThan(5);
-    // Definition order restored (shape last).
     expect(artifacts[artifacts.length - 1]?.step_id).toBe("shape");
   });
 

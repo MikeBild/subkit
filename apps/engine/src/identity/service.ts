@@ -1,8 +1,3 @@
-// Identity domain service. CRUD for tenants, users, system_accounts,
-// api_keys, portal_tokens. Every mutation writes a corresponding audit_log
-// row inside the same transaction so partial failures cannot orphan an
-// audit entry.
-
 import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -24,10 +19,8 @@ import { generateKey, hashKey } from "./api-key.ts";
 import { assertAdminRemains } from "./last-admin.ts";
 import { generatePortalToken } from "./portal-token.ts";
 
-// GC6 — session TTL defaults. Sliding 8h / absolute 30d per
-// docs/operators/observability.md.
-export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000; // 8 h
-export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 d
+export const SESSION_SLIDING_TTL_MS = 8 * 60 * 60 * 1000;
+export const SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface ListOptions {
   limit?: number;
@@ -41,8 +34,6 @@ function clampLimit(limit?: number): number {
   if (!limit || limit <= 0) return DEFAULT_LIMIT;
   return Math.min(limit, MAX_LIMIT);
 }
-
-// ---------- tenants ---------------------------------------------------------
 
 export async function getTenant(tenantId: string, exec?: Executor) {
   const db = exec ?? getDb();
@@ -58,8 +49,6 @@ export async function listTenantsForPrincipal(tenantId: string, exec?: Executor)
   const t = await getTenant(tenantId, exec);
   return t ? [t] : [];
 }
-
-// ---------- users -----------------------------------------------------------
 
 export async function listUsers(tenantId: string, opts: ListOptions = {}, exec?: Executor) {
   const db = exec ?? getDb();
@@ -93,11 +82,6 @@ export interface UpdateUserInput {
   actor_id: string | null;
 }
 
-/**
- * Update a user's role, by built-in role name or `role_id`. Writes a
- * `USER_ROLE_CHANGED` audit row carrying the before/after role. Returns
- * `null` when no matching non-deleted user exists in the tenant.
- */
 export async function updateUser(input: UpdateUserInput, exec?: Executor) {
   const db = exec ?? getDb();
   return db.transaction(async (tx) => {
@@ -158,8 +142,6 @@ export async function updateUser(input: UpdateUserInput, exec?: Executor) {
     return row;
   });
 }
-
-// ---------- system accounts -------------------------------------------------
 
 export async function listSystemAccounts(
   tenantId: string,
@@ -250,8 +232,6 @@ export async function deleteSystemAccount(input: DeleteSystemAccountInput, exec?
   });
 }
 
-// ---------- api keys --------------------------------------------------------
-
 export interface ApiKeyView {
   id: string;
   tenant_id: string;
@@ -318,16 +298,12 @@ export interface IssueApiKeyInput {
   tenant_id: string;
   owner_kind: "user" | "system_account";
   owner_id: string;
-  /** Operator-facing label, e.g. "claude-code" or "claude-ai-readonly".
-   *  Persisted so a key can be identified by what it is for rather than by
-   *  its UUID — which matters once one key per channel is the normal setup. */
   name?: string;
   scopes?: string[];
   allowed_workflows?: string[];
   allowed_connectors?: string[];
   expires_at?: Date;
   actor_id: string | null;
-  // When set, the new key carries a rotated_from_id pointing at the old key.
   rotated_from_id?: string;
 }
 
@@ -419,7 +395,6 @@ export async function rotateApiKey(
     const existing = existingRows[0];
     if (!existing) return null;
 
-    // Issue replacement key inheriting owner + scopes + allow lists.
     const key = generateKey();
     const [created] = await tx
       .insert(apiKeys)
@@ -429,9 +404,6 @@ export async function rotateApiKey(
         system_account_id: existing.system_account_id ?? null,
         prefix: key.prefix,
         token_sha256: key.hash,
-        // The label rides along with the scopes: a rotated key is the same key
-        // for the same channel, so losing its name would leave the operator
-        // with an anonymous replacement for the one they meant to keep.
         name: existing.name ?? null,
         scopes: existing.scopes,
         allowed_workflows: existing.allowed_workflows ?? null,
@@ -442,10 +414,6 @@ export async function rotateApiKey(
       .returning();
     assertInsertRow(created, "api_keys");
 
-    // Schedule the old key to be phased out at now + overlap. We use the
-    // dedicated `rotating_out_at` column so the original `expires_at`
-    // (caller-supplied lifetime) is preserved untouched. The api_key
-    // provider treats `rotating_out_at <= now()` as a soft revoke.
     const overlapDeadline = new Date(now() + overlapMs);
     const [rotatedOut] = await tx
       .update(apiKeys)
@@ -454,8 +422,6 @@ export async function rotateApiKey(
       .returning();
     if (!rotatedOut) throw new Error("api_keys rotate update returned no row");
 
-    // Audit the new key as `api_key.issued` so the chain of issued events
-    // remains complete, then the `api_key.rotated` event on the old key.
     await auditAwait(
       {
         tenant_id: existing.tenant_id,
@@ -557,8 +523,6 @@ export async function revokeApiKey(
   });
 }
 
-// ---------- portal tokens ---------------------------------------------------
-
 export interface PortalTokenView {
   id: string;
   tenant_id: string;
@@ -595,7 +559,7 @@ export async function listPortalTokens(tenantId: string, exec?: Executor) {
 
 export interface IssuePortalTokenInput {
   tenant_id: string;
-  user_id: string; // used as enduser_ref in P2
+  user_id: string;
   allowed_workflows: string[];
   ttl_minutes?: number;
   actor_id: string | null;
@@ -611,7 +575,6 @@ export async function issuePortalToken(
   exec?: Executor,
 ): Promise<IssuePortalTokenResult> {
   const db = exec ?? getDb();
-  // Default portal-token TTL — 24 h per docs/admins/rbac-and-roles.md.
   const ttlMs = (input.ttl_minutes ?? 24 * 60) * 60_000;
   return db.transaction(async (tx) => {
     const key = generatePortalToken();
@@ -698,10 +661,7 @@ export async function revokePortalToken(input: RevokePortalTokenInput, exec?: Ex
   });
 }
 
-// Re-export hashKey for callers that need to seed test rows.
 export { hashKey };
-
-// ---------- sessions -------------------------------------------------------
 
 export interface SessionView {
   id: string;
@@ -734,15 +694,6 @@ export interface CreateSessionInput {
   actor_id?: string | null;
 }
 
-/**
- * Create a fresh session row with sliding + absolute TTL columns set:
- *   - `last_seen_at` = now (the 8 h sliding window starts here)
- *   - `absolute_expires_at` = created_at + 30 d (hard ceiling)
- *   - `expires_at` mirrors `absolute_expires_at` so legacy callers that
- *     only look at `expires_at` still reject well-past-lifetime sessions.
- *
- * Every call writes a `session.issued` audit row.
- */
 export async function createSession(
   input: CreateSessionInput,
   exec?: Executor,
@@ -789,14 +740,6 @@ export interface ResolveSessionResult {
   reason?: ResolveSessionReason;
 }
 
-/**
- * Resolve a session by id and enforce the sliding + absolute TTLs.
- *
- * Rejection paths write a `session.revoked` audit row with a typed
- * `reason` so operators can distinguish between "user sat idle" and
- * "session hit its 30 d ceiling." On success the row's `last_seen_at`
- * is bumped to `now` so the sliding window restarts.
- */
 export async function resolveSession(
   sessionId: string,
   exec?: Executor,
@@ -851,8 +794,6 @@ export async function resolveSession(
     return { session: null, reason: "expired_sliding" };
   }
 
-  // Bump sliding window on successful resolve. Best-effort: the session
-  // is valid for *this* request regardless of whether the update lands.
   const [bumped] = await db
     .update(sessions)
     .set({ last_seen_at: resolvedAt })

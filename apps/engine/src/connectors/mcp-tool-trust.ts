@@ -1,22 +1,3 @@
-// Per-tool "Ohne Rückfrage" for an mcp connector — an operator decision.
-//
-// Every `tools/call` against an external MCP server pauses for a human by
-// default, whatever the server claims about the tool. An operator may name
-// individual remote tools that run without that pause; the names live at
-// `config.mcp.tools_without_confirmation`.
-//
-// ONE WRITER. The list is a grant of trust, so it has exactly one way in:
-// `setMcpToolConfirmation`, behind its own audited, permission-gated route.
-// `config` is otherwise writable by PATCH, by the create/upsert path an
-// authoring conversation drives, and by promotion. Each of those carries the
-// stored list over (`carryMcpTrustList`) and refuses a payload that names a
-// different one — otherwise a model editing a connector draft could grant its
-// own calls a pass through the confirm gate.
-//
-// The list is read fresh at call time (`readMcpToolsWithoutConfirmation`),
-// never from the pool's cached session, so a revoked grant stops applying on
-// the very next call.
-
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -34,7 +15,6 @@ function mcpBlock(config: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** The remote tool names stored on a connector config, sorted and de-duplicated. */
 export function mcpTrustedTools(config: unknown): string[] {
   const list = mcpBlock(config)?.[MCP_TRUST_KEY];
   if (!Array.isArray(list)) return [];
@@ -45,17 +25,6 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-/**
- * The config a non-trust writer may store: the incoming config with the
- * stored trust list carried over.
- *
- * - The incoming config omits the list → the stored one is kept (a PATCH
- *   that rewrites `config.mcp` does not silently revoke the operator's grant).
- * - The incoming config names the SAME list → accepted as is (a client that
- *   read the config back and sends it unchanged).
- * - The incoming config names a DIFFERENT list → refused. `prior` is null on
- *   create, so any non-empty list there is refused.
- */
 export function carryMcpTrustList(
   driver: string,
   prior: unknown,
@@ -79,7 +48,6 @@ export function carryMcpTrustList(
   return { ...next, mcp: { ...(incomingBlock ?? {}), [MCP_TRUST_KEY]: stored } };
 }
 
-/** The config with the trust list removed — a copy starts by asking again. */
 export function withoutMcpTrustList(config: unknown): Record<string, unknown> {
   const base =
     config && typeof config === "object" ? { ...(config as Record<string, unknown>) } : {};
@@ -89,8 +57,6 @@ export function withoutMcpTrustList(config: unknown): Record<string, unknown> {
   return { ...base, mcp: rest };
 }
 
-/** The live list for one connector, read at call time. Empty when the
- *  connector is gone, is not an mcp connector, or names no tool. */
 export async function readMcpToolsWithoutConfirmation(
   db: Executor,
   tenant_id: string,
@@ -115,9 +81,7 @@ export async function readMcpToolsWithoutConfirmation(
 export interface SetMcpToolConfirmationParams {
   tenant_id: string;
   connector_id: string;
-  /** The remote tool's own name, as `tools/list` reports it. */
   tool: string;
-  /** true = ask before every call (the default); false = run without asking. */
   confirm: boolean;
   actor_id: string | null;
 }
@@ -128,14 +92,6 @@ export interface McpToolConfirmationResult {
   tools_without_confirmation: string[];
 }
 
-/**
- * Record the operator's decision for one remote tool. The only writer of
- * `config.mcp.tools_without_confirmation`. One `connector.updated` row per
- * call names the actor, the tool, and the old and new setting — also when
- * the setting did not change, so the trail shows the operator's decision.
- *
- * Returns null when no live mcp connector matches.
- */
 export async function setMcpToolConfirmation(
   db: Executor,
   p: SetMcpToolConfirmationParams,

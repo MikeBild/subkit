@@ -1,6 +1,3 @@
-// applyDiffsToConfig + partitionDiffs are pure
-// JSON-Patch helpers powering per-patch partial approval.
-
 import { describe, expect, test } from "bun:test";
 import {
   applyApprovedDiffs,
@@ -70,8 +67,6 @@ describe("partitionDiffs", () => {
       { op: "replace", path: "/c", value: 3 },
       { op: "replace", path: "/d", value: 4 },
     ];
-    // Approved indices in non-sorted order — output order should
-    // still match the original.
     const { approved } = partitionDiffs(diffs, [3, 0]);
     expect(approved.map((d) => d.path)).toEqual(["/a", "/d"]);
   });
@@ -92,7 +87,6 @@ describe("applyApprovedDiffs · end-to-end partial approval", () => {
       { op: "replace", path: "/b", value: 20 },
       { op: "replace", path: "/c", value: 30 },
     ];
-    // Operator approved diffs 0 and 2 (a + c), rejected b.
     const result = applyApprovedDiffs(config, diffs, [0, 2]);
     expect(result).toEqual({ a: 10, b: 2, c: 30 });
   });

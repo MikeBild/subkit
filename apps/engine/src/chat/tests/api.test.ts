@@ -1,10 +1,3 @@
-// Unit tests for chat/api.ts — the per-kind elicitation output
-// schemas + the envelope/view-metadata schemas added under W2.
-//
-// Pure-function tests, no DB. Locks the canonical shape so a future
-// renderer regression that sends a different envelope shape gets
-// caught here before the dispatcher silently treats it as ignored.
-
 import { describe, expect, test } from "bun:test";
 import {
   ChatEventJobSchema,
@@ -13,9 +6,6 @@ import {
   validateElicitationOutput,
 } from "../api.ts";
 
-// Valid UUID v4 shape (version digit 4, variant digit 8/9/a/b).
-// Zod's .uuid() validates the version + variant digits, so a
-// pattern like "11111111-2222-3333-4444-555555555555" rejects.
 const UUID = "11111111-1111-4111-8111-111111111111";
 const UUID_2 = "22222222-2222-4222-8222-222222222222";
 
@@ -132,9 +122,6 @@ describe("validateElicitationOutput", () => {
   });
 
   test("form: accepts a dict of primitives (incl. null for cleared fields)", () => {
-    // Slack emits `null` for a cleared optional input — the schema
-    // accepts null so a form with cleared fields round-trips without
-    // crashing the loop.
     const ok = validateElicitationOutput("form", {
       name: "alice",
       age: 30,

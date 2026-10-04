@@ -1,11 +1,3 @@
-// Self-update module for `sk` and `engine` binaries.
-// Downloads new versions from GitHub Releases, verifies a signed
-// `SHA256SUMS` (Ed25519 over the file body) and the per-binary
-// SHA256, then atomically replaces the running binary in place.
-// Retains the prior signed binary under
-// `<cacheDir>/versions/<version>/<binaryName>` so a bad release can
-// be reverted via `rollbackTo()` without internet access.
-
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
 import {
   chmodSync,
@@ -29,9 +21,6 @@ import { RELEASE_PUBLIC_KEY } from "./release-public-key.ts";
 
 export const GITHUB_REPO = "mikebild/subkit";
 
-/** How many prior signed binaries to keep on disk for `--rollback`.
- *  Storage cost is bounded; rollback usefulness scales sub-linearly
- *  beyond the most recent few. */
 export const RETAINED_VERSIONS_KEEP = 3;
 
 export interface UpdaterConfig {
@@ -41,14 +30,7 @@ export interface UpdaterConfig {
   githubRepo: string;
   checkIntervalMs: number;
   channel: "stable" | "beta";
-  /** Override for tests / rotation transitions. Defaults to the
-   *  baked-in `RELEASE_PUBLIC_KEY` constant. */
   publicKey?: string;
-  /** Optional GitHub token for the releases API. REQUIRED when the repo
-   *  is PRIVATE — GitHub returns 404 (not 401) to unauthenticated reads
-   *  of a private repo's releases, which otherwise silently reads as
-   *  "already at latest". Sourced from GITHUB_TOKEN / SUBKIT_UPDATE_TOKEN
-   *  in `defaultUpdaterConfig`. */
   authToken?: string;
 }
 
@@ -66,15 +48,11 @@ export interface UpdateCache {
   current_version_at_check: string;
 }
 
-/** Returned by `performUpdate()` so the engine-side audit recorder
- *  has the metadata it needs. */
 export interface PerformUpdateResult {
   from_version: string;
   to_version: string;
   sha256: string;
 }
-
-// ── Platform detection ──
 
 export function platformArch(): { os: string; arch: string; ext: string } | null {
   const osMap: Record<string, string> = { darwin: "darwin", linux: "linux", win32: "windows" };
@@ -85,8 +63,6 @@ export function platformArch(): { os: string; arch: string; ext: string } | null
   return { os, arch, ext: os === "windows" ? ".exe" : "" };
 }
 
-// ── Semver comparison ──
-
 export function isNewer(remote: string, local: string): boolean {
   const r = remote.split(".").map(Number);
   const l = local.split(".").map(Number);
@@ -96,8 +72,6 @@ export function isNewer(remote: string, local: string): boolean {
   }
   return false;
 }
-
-// ── Cache management ──
 
 function cachePath(cacheDir: string): string {
   return join(cacheDir, "update-check.json");
@@ -119,8 +93,6 @@ export function writeCache(cacheDir: string, cache: UpdateCache): void {
   writeFileSync(p, JSON.stringify(cache, null, 2), { mode: 0o600 });
 }
 
-// ── GitHub Releases API ──
-
 interface GitHubRelease {
   tag_name: string;
   prerelease: boolean;
@@ -131,9 +103,6 @@ interface GitHubRelease {
   }>;
 }
 
-/** Non-ok GitHub responses throw this so the explicit `--self-update`
- *  path can report WHY (a 404 on a private repo reads identically to
- *  "no update" otherwise). The passive startup check swallows it. */
 export class UpdateCheckError extends Error {
   constructor(
     message: string,
@@ -184,7 +153,6 @@ async function fetchLatestRelease(
         );
       return (await res.json()) as GitHubRelease;
     }
-    // Beta: find the first release (including pre-releases)
     const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=1`, {
       signal: controller.signal,
       headers,
@@ -197,8 +165,6 @@ async function fetchLatestRelease(
     clearTimeout(timeout);
   }
 }
-
-// ── Check for update ──
 
 export async function checkForUpdate(
   config: UpdaterConfig,
@@ -224,9 +190,6 @@ export async function checkForUpdate(
       config.authToken,
     );
   } catch (err) {
-    // Explicit `--self-update` (force) surfaces WHY it could not check —
-    // a private-repo 404 otherwise reads as "already at latest". The
-    // passive startup check stays quiet so a network blip never nags.
     if (force) throw err;
     return null;
   }
@@ -251,15 +214,6 @@ export async function checkForUpdate(
   };
 }
 
-// ── Signature verification ──
-
-/**
- * Verify an Ed25519 signature over `message` using `publicKeyPem` (PEM
- * SPKI). Returns `true` only on a valid signature. The cli-core layer
- * only needs to answer "did this `SHA256SUMS` come from the project
- * key?" — no signing or key generation here, so the surface stays
- * tiny.
- */
 export function verifySignature(
   message: string | Buffer,
   signature: Buffer,
@@ -273,8 +227,6 @@ export function verifySignature(
     return false;
   }
 }
-
-// ── Retained-versions store (rollback) ──
 
 function versionsRoot(cacheDir: string): string {
   return join(cacheDir, "versions");
@@ -290,11 +242,8 @@ function sidecarPath(versionDirPath: string): string {
 
 export interface RetainedVersion {
   version: string;
-  /** Path to the binary on disk. */
   path: string;
-  /** Epoch ms when this version was retained. */
   installed_at: number;
-  /** SHA256 of the retained binary, captured at retention time. */
   sha256: string;
 }
 
@@ -323,7 +272,6 @@ export function listRetainedVersions(config: UpdaterConfig): RetainedVersion[] {
       sha256: manifest.sha256,
     });
   }
-  // Most-recent first.
   out.sort((a, b) => b.installed_at - a.installed_at);
   return out;
 }
@@ -335,9 +283,7 @@ export function pruneRetainedVersions(config: UpdaterConfig, keep = RETAINED_VER
     const dir = join(versionsRoot(config.cacheDir), v.version);
     try {
       rmSync(dir, { recursive: true, force: true });
-    } catch {
-      /* non-fatal — a stale dir on next prune cycle is acceptable */
-    }
+    } catch {}
   }
 }
 
@@ -379,16 +325,6 @@ export interface RollbackResult {
   sha256: string;
 }
 
-/**
- * Restore a retained binary in place of `process.execPath`. Verifies
- * the retained binary's hash against its sidecar manifest before the
- * swap; if the hash drifts, the swap is refused. The binary that was
- * just displaced is itself moved into the retention dir under its own
- * version so a re-rollback (rollback the rollback) works.
- *
- * `target` is either an explicit version string or the literal
- * `"previous"` to pick the most recently retained version.
- */
 export function rollbackTo(config: UpdaterConfig, target: string | "previous"): RollbackResult {
   const versions = listRetainedVersions(config);
   if (versions.length === 0) {
@@ -401,8 +337,6 @@ export function rollbackTo(config: UpdaterConfig, target: string | "previous"): 
     );
   }
 
-  // Re-hash the retained binary and refuse to swap if the bytes drift
-  // from what we recorded at retention time.
   const onDisk = hashFile(picked.path);
   if (onDisk !== picked.sha256) {
     throw new Error(
@@ -413,20 +347,14 @@ export function rollbackTo(config: UpdaterConfig, target: string | "previous"): 
   const fromVersion = config.currentVersion;
   const execPath = process.execPath;
 
-  // Park the just-displaced binary so re-rollback can step back to it.
   retainCurrentBinary(config, fromVersion, execPath);
 
-  // Atomic-ish swap. On Unix `rename` over an open file works; on
-  // Windows we use a `.old` shuffle (the same dance `performUpdate`
-  // does — see the platform branch below).
   const isWindows = process.platform === "win32";
   if (isWindows) {
     const oldPath = `${execPath}.old`;
     try {
       unlinkSync(oldPath);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     renameSync(execPath, oldPath);
     copyFileSync(picked.path, execPath);
   } else {
@@ -442,8 +370,6 @@ export function rollbackTo(config: UpdaterConfig, target: string | "previous"): 
     sha256: picked.sha256,
   };
 }
-
-// ── Perform update ──
 
 export async function performUpdate(
   config: UpdaterConfig,
@@ -493,7 +419,6 @@ export async function performUpdate(
     throw new Error(`no checksum found for '${assetName}' in SHA256SUMS`);
   }
 
-  // Download binary to temp file
   const tmpDir = join(config.cacheDir, "tmp");
   mkdirSync(tmpDir, { recursive: true });
   const tmpPath = join(tmpDir, `${config.binaryName}.download.${process.pid}`);
@@ -504,7 +429,6 @@ export async function performUpdate(
     if (!binRes.ok) throw new Error(`failed to download ${assetName}: ${binRes.status}`);
     if (!binRes.body) throw new Error("empty response body");
 
-    // Stream download + hash + progress
     const contentLength = Number(binRes.headers.get("content-length") || 0);
     const hash = createHash("sha256");
     const ws = createWriteStream(tmpPath);
@@ -546,9 +470,6 @@ export async function performUpdate(
       chmodSync(tmpPath, 0o755);
     }
 
-    // macOS ad-hoc codesign. Failures are surfaced — a swallowed
-    // try/catch would mask permission / spctl issues the operator
-    // needs to know about.
     if (process.platform === "darwin") {
       const { execSync } = await import("node:child_process");
       try {
@@ -557,11 +478,6 @@ export async function performUpdate(
         });
         execSync(`codesign --sign - --force "${tmpPath}"`, { stdio: "ignore" });
       } catch (err) {
-        // Wrap the bare `execSync` exit-status error in something a
-        // shell user can act on. The most common cause is missing
-        // command-line tools (`xcode-select --install`); next is
-        // SIP / spctl rejecting the ad-hoc identity. Both surface the
-        // tool's stderr below the wrapper message.
         const cause = err instanceof Error ? err.message : String(err);
         throw new Error(
           `macOS codesign failed for ${tmpPath} — install Xcode command-line tools (xcode-select --install) or check spctl: ${cause}`,
@@ -569,27 +485,19 @@ export async function performUpdate(
       }
     }
 
-    // Park the running binary in the retention dir BEFORE the swap so
-    // a crash mid-rename leaves us with either the new binary in
-    // place or a recoverable copy of the old one.
     retainCurrentBinary(config, fromVersion, execPath);
 
-    // Atomic-ish replace. The retention dir is the canonical source of
-    // truth — no `.bak` next to the running exe.
     if (isWindows) {
       const oldPath = `${execPath}.old`;
       try {
         unlinkSync(oldPath);
-      } catch {
-        /* may not exist */
-      }
+      } catch {}
       renameSync(execPath, oldPath);
       renameSync(tmpPath, execPath);
     } else {
       renameSync(tmpPath, execPath);
     }
 
-    // Update cache + prune retention to the configured cap.
     writeCache(config.cacheDir, {
       last_check: Date.now(),
       latest_version: info.version,
@@ -600,9 +508,7 @@ export async function performUpdate(
   } catch (err) {
     try {
       unlinkSync(tmpPath);
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     throw err;
   }
 
@@ -613,13 +519,10 @@ export async function performUpdate(
   };
 }
 
-// ── Helpers ──
-
 export function parseChecksum(sumsText: string, assetName: string): string | null {
   for (const line of sumsText.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    // Format: "<hash>  <filename>" or "<hash> <filename>"
     const match = trimmed.match(/^([a-f0-9]{64})\s+(.+)$/);
     if (match && match[2] === assetName) {
       return match[1]!;
@@ -628,16 +531,12 @@ export function parseChecksum(sumsText: string, assetName: string): string | nul
   return null;
 }
 
-// ── Update banner ──
-
 export function formatUpdateBanner(info: UpdateInfo, binaryName: string): string {
   return (
     `\n  Update available: ${info.version}\n` +
     `  Run \`${binaryName} update\` to install the latest version.\n\n`
   );
 }
-
-// ── Default config factories ──
 
 export function defaultUpdaterConfig(
   binaryName: string,
@@ -648,28 +547,22 @@ export function defaultUpdaterConfig(
   const cacheDir = isWindows
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), binaryName)
     : join(homedir(), `.${binaryName}`);
-  // Private-repo releases need auth (GitHub 404s unauthenticated reads).
-  // Opt-in via env so the manual-scp deploy still works without a token.
   const authToken = process.env.GITHUB_TOKEN || process.env.SUBKIT_UPDATE_TOKEN;
   return {
     binaryName,
     currentVersion,
     cacheDir,
     githubRepo: GITHUB_REPO,
-    checkIntervalMs: 86_400_000, // 24 hours
+    checkIntervalMs: 86_400_000,
     channel,
     ...(authToken ? { authToken } : {}),
   };
 }
-
-// ── Cleanup stale .old files on Windows ──
 
 export function cleanupOldBinary(): void {
   if (process.platform !== "win32") return;
   const oldPath = `${process.execPath}.old`;
   try {
     if (existsSync(oldPath)) unlinkSync(oldPath);
-  } catch {
-    /* still locked — will be cleaned next time */
-  }
+  } catch {}
 }

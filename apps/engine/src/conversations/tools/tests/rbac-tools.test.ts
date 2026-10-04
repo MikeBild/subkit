@@ -1,7 +1,3 @@
-// find_role / find_user / inspect_role / edit_role — integration
-// tests against a real test database. Pins the contract for the
-// RBAC conversation surface.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { roles, tenants, users } from "../../../db/schema/index.ts";
@@ -45,14 +41,12 @@ beforeAll(async () => {
     .values({ slug: "t-rbac", display_name: "T-RBAC" })
     .returning();
   tenant_id = t!.id;
-  // seed two custom roles
   const r1 = await createRole(ctx.db, tenant_id, "patch_approver", "Approves patches");
   const r2 = await createRole(ctx.db, tenant_id, "compliance_auditor", "Read-only auditor");
   approverRoleId = r1.id;
   auditorRoleId = r2.id;
   await grantPermissionToRole(ctx.db, tenant_id, approverRoleId, "conversation:approve");
   await grantPermissionToRole(ctx.db, tenant_id, approverRoleId, "workflow:read");
-  // seed a user
   const [u] = await ctx.db
     .insert(users)
     .values({
@@ -175,9 +169,8 @@ describe("edit_role", () => {
   });
 
   test("rejects edits to a built-in role", async () => {
-    // The seed inserts built-in `admin` / `member` / `enduser`. Find one.
     const builtin = await ctx.db.select().from(roles).where(eq(roles.is_builtin, true)).limit(1);
-    if (!builtin[0]) return; // skip if no built-in present
+    if (!builtin[0]) return;
     const result = await editRoleTool.execute(makeToolCtx(), {
       role_id: builtin[0].id,
       description: "should fail",

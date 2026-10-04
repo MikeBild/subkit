@@ -1,22 +1,3 @@
-// One-off helper: mint a fresh admin API key against an existing
-// tenant without re-seeding. Prints the plaintext key once, on
-// stdout, for the operator to store in `~/.sk/config.json` or
-// feed to `sk login --api-key <key>`.
-//
-// Two entry points share the same logic:
-//
-//   1. The compiled engine binary on the host (systemd-deployed):
-//        sudo -u subkit /usr/local/bin/engine --issue-admin-key
-//        sudo -u subkit /usr/local/bin/engine --issue-admin-key --tenant my-slug
-//      (see apps/engine/src/index.ts for the flag wiring)
-//
-//   2. From a checkout, the same script standalone (uses `bun run`):
-//        bun run apps/engine/src/db/issue-admin-key.ts
-//        bun run apps/engine/src/db/issue-admin-key.ts --tenant my-slug
-//
-// Both paths read DATABASE_URL from env. Neither runs migrations,
-// re-seeds, or touches any other row — safe on a live database.
-
 import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
@@ -59,15 +40,6 @@ export function parseIssueAdminKeyArgs(argv: string[]): { tenantSlug: string } {
   return { tenantSlug };
 }
 
-/**
- * Mint a new admin API key for the given tenant. Connects with
- * DATABASE_URL, finds an admin user in the tenant, inserts a key row
- * with `scopes: ["*"]`, and returns the plaintext + identifying
- * metadata. Closes the pool before returning.
- *
- * Throws if DATABASE_URL is unset, the tenant doesn't exist, or the
- * tenant has no admin user.
- */
 export async function issueAdminKey(opts: { tenantSlug: string }): Promise<IssuedAdminKey> {
   const { pool, db } = createDbFromUrl(bootstrapDatabaseUrl());
   try {
@@ -117,14 +89,10 @@ export async function issueAdminKey(opts: { tenantSlug: string }): Promise<Issue
 }
 
 export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
-  // Emit a fully copy-paste `sk login` line so logging in from the host is one
-  // step. Prefer the configured public base URL; fall back to the local default.
   let engineUrl = "http://localhost:3000";
   try {
     engineUrl = getConfig().server.public_base_url?.trim() || engineUrl;
-  } catch {
-    // Standalone bootstrap script before config initialization.
-  }
+  } catch {}
   return [
     "",
     "----------------------------------------------------------------",
@@ -140,8 +108,6 @@ export function formatIssuedKeyBanner(issued: IssuedAdminKey): string {
   ].join("\n");
 }
 
-// Standalone-script entry. Skipped when this module is imported (e.g.
-// from index.ts wiring `--issue-admin-key`).
 if (import.meta.main) {
   const { tenantSlug } = parseIssueAdminKeyArgs(process.argv.slice(2));
   issueAdminKey({ tenantSlug })

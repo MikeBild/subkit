@@ -1,7 +1,3 @@
-// GET /v1/stats/events — tenant-scoped, time-bucketed catch-all over the
-// rest of `audit_log`, parameterized by `?class=`. Same audit aggregator
-// as /connectors. Gated by `stats:read`.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
@@ -15,9 +11,6 @@ import { clampToRetentionHorizon, resolveWindow } from "./bucket-window.ts";
 import { EVENT_CLASS_ACTIONS, type EventClass } from "./event-classes.ts";
 import { EventsStatsQuery, EventsStatsResponse } from "./schemas.ts";
 
-// `action` is the natural group axis for the events surface; `outcome`
-// is also useful. The connector-specific dims (driver/status_class/…)
-// are meaningless here.
 const EVENT_DIMS: AuditGroupDim[] = ["action", "outcome"];
 const OUTCOMES: AuditOutcome[] = ["success", "denied", "error"];
 
@@ -46,8 +39,6 @@ export function registerStatsEventsRoute(app: OpenAPIHono<AppEnv>): void {
 
     const actions = EVENT_CLASS_ACTIONS[q.class as EventClass];
 
-    // Default group axis is `action` so each class breaks down into its
-    // member actions; callers can override with `group_by`.
     const requestedDims = (q.group_by ?? []).filter((d): d is AuditGroupDim =>
       (EVENT_DIMS as string[]).includes(d),
     );

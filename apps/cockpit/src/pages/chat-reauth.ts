@@ -8,18 +8,12 @@ export interface ChatReauth {
   expiresAt: string;
 }
 
-/**
- * The path of a one-time sign-in link: the connector's own sign-in route —
- * `/oauth/start` for a web service, `/mcp/authorize` for an MCP server —
- * opened with a single-use `?grant=`.
- */
 export const SIGN_IN_LINK_PATH =
   /^\/v1\/connectors\/([0-9a-f-]{36})\/(?:oauth\/start|mcp\/authorize)$/i;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-/** Consume the tool result directly, never a URL reconstructed by the model. */
 export function chatReauth(tool: ToolPart, origin: string): ChatReauth | null {
   if (toolNameOf(tool) !== "request_connector_reauth" || tool.state !== "output-available")
     return null;

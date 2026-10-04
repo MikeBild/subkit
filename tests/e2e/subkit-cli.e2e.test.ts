@@ -1,9 +1,3 @@
-// E2E test suite for the `sk` CLI admin commands.
-//
-// Exercises every command against a real engine with three personas.
-// Each test invokes the compiled binary as a subprocess — nothing is
-// imported from the CLI source, so we test exactly what operators run.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   boot,
@@ -24,9 +18,6 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-// ---------------------------------------------------------------------------
-// health
-// ---------------------------------------------------------------------------
 describe("sk CLI admin commands", () => {
   describe("health", () => {
     test("reports liveness and readiness", async () => {
@@ -47,9 +38,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // login (non-interactive, api-key mode)
-  // ---------------------------------------------------------------------------
   describe("login", () => {
     test("stores credentials with --api-key", async () => {
       const result = await cli(
@@ -69,9 +57,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // rbac
-  // ---------------------------------------------------------------------------
   describe("rbac", () => {
     test("permissions list returns 60+ entries", async () => {
       const perms = await runJson<Array<{ name: string }>>(["rbac", "permissions", "list"], {
@@ -106,7 +91,6 @@ describe("sk CLI admin commands", () => {
         ["rbac", "roles", "create", "e2e-custom-role"],
         { env },
       );
-      // The create command may return the created role or a list — accept both.
       const created = Array.isArray(roles) ? roles : [roles];
       const role = created.find((r) => r.name === "e2e-custom-role");
       expect(role).toBeTruthy();
@@ -118,9 +102,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // apikeys
-  // ---------------------------------------------------------------------------
   describe("apikeys", () => {
     test("list shows keys for this tenant", async () => {
       const keys = await runJson<Array<{ id: string; prefix: string }>>(["apikeys", "list"], {
@@ -131,9 +112,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // workflows
-  // ---------------------------------------------------------------------------
   describe("workflows", () => {
     let workflowId: string;
 
@@ -149,14 +127,10 @@ describe("sk CLI admin commands", () => {
         steps: [{ kind: "request", id: "step-1", method: "GET", url: "https://httpbin.org/get" }],
       });
       const filePath = writeTempFile(env.personas.admin, "e2e-ping.json", wfDef);
-      // --skip-checks bypasses the validate+preview pre-flight; the
-      // post-create `executions list starts empty` assertion below
-      // relies on no preview executions having been written yet.
       const result = await cli(["workflows", "create", "--file", filePath, "--skip-checks"], {
         env,
       });
       expectSuccess(result, "workflows create");
-      // Extract the workflow ID from the output.
       const json = await runJson<Array<{ id: string }> | { id: string }>(["workflows", "list"], {
         env,
       });
@@ -174,7 +148,6 @@ describe("sk CLI admin commands", () => {
     test("history shows at least 1 version", async () => {
       if (!workflowId) return;
       const out = await run(["workflows", "history", workflowId], { env });
-      // Should contain version number.
       expect(out).toContain("1");
     });
 
@@ -187,9 +160,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // connectors
-  // ---------------------------------------------------------------------------
   describe("connectors", () => {
     test("list starts empty", async () => {
       const out = await run(["connectors", "list"], { env });
@@ -197,9 +167,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // skills
-  // ---------------------------------------------------------------------------
   describe("skills", () => {
     test("list starts empty", async () => {
       const out = await run(["skills", "list"], { env });
@@ -207,9 +174,6 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // executions
-  // ---------------------------------------------------------------------------
   describe("executions", () => {
     test("list starts empty", async () => {
       const out = await run(["executions", "list"], { env });
@@ -217,20 +181,13 @@ describe("sk CLI admin commands", () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // audit
-  // ---------------------------------------------------------------------------
   describe("audit", () => {
     test("query returns seed entries", async () => {
       const out = await run(["audit", "query"], { env });
-      // Seed created tenant, users, system accounts, api keys.
       expect(out.length).toBeGreaterThan(0);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // extract (AI flow — uses mock provider in tests)
-  // ---------------------------------------------------------------------------
   describe("extract", () => {
     test("extracts structured data from a sample file", async () => {
       const samplePath = writeTempFile(
@@ -240,8 +197,7 @@ describe("sk CLI admin commands", () => {
       );
       const result = await cli(["extract", samplePath], { env });
       expectSuccess(result, "extract");
-      // Mock provider returns a canned schema + data object.
       expect(result.stdout).toBeTruthy();
     });
   });
-}); // end "sk CLI admin commands"
+});

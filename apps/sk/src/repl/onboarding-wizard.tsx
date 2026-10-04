@@ -1,64 +1,14 @@
-// Onboarding wizard — interactive Ink overlay launched by `/onboard`.
-//
-// Walks an operator through "Pick a template → Enter the credential →
-// Probe → Save" against a pre-fetched template catalog and a small
-// callback surface that delegates to the engine client. Owns its own
-// keyboard handler via Ink's `useInput` so the host's composer is
-// inert while the wizard is mounted.
-//
-// Step rendering uses the visual primitives from
-// apps/sk/src/domain/connectors/* — IntegrationPicker's category icons
-// surface in PickStep so each row carries a recognisable badge, and
-// the masked-secret + length-counter pattern from SecretField is
-// applied to CredentialStep's password path. The wizard keeps its
-// own state machine and input handler so the existing 6 unit tests
-// stay valid; the new components contribute renderable affordances
-// rather than competing for keystrokes.
-//
-// Step machine:
-//
-//   pick   ← initial; ↑/↓ select a template, Enter advances, Esc cancels.
-//   credential
-//          ← Enter the credential the template requires. Non-OAuth:
-//            masked password field. OAuth: print the auth URL and
-//            wait for the operator to confirm completion (Enter).
-//   probe  ← Calls onProbe; renders the pass/fail label and offers
-//            retry on failure.
-//   save   ← Calls onSave; renders the pass/fail label.
-//   done   ← Terminal; prints the success line and waits for Enter
-//            to dismiss.
-//
-// All steps support the same exit affordances: `s` to skip the
-// current step (where it makes sense — credential / probe), `Esc`
-// to cancel out of the wizard entirely. Cancel-from-`done` returns
-// without an error; cancel-from-anything-else returns with a
-// `cancelled` reason so the caller can decide whether to log a
-// notice or stay quiet.
-
 import { hyperlink } from "@chat-ui/index.ts";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";
 
-/**
- * Category → unicode-glyph map borrowed from IntegrationPicker so the
- * pick step in this wizard renders the same badges users see in the
- * standalone connector picker. Now lives in a shared module so a
- * glyph swap or category addition lands in one place.
- */
 import { categoryIconFor } from "../domain/connectors/category-icons.ts";
 
 function iconForDriver(driver: string | undefined): string {
   return categoryIconFor(driver);
 }
 
-/**
- * Template catalog entry the wizard renders for selection. Mirrors
- * the shape the engine returns from `/v1/connector-templates` — we
- * accept a loose record so the wizard isn't coupled to an exact
- * Zod-OpenAPI generated type, and pluck the fields we actually
- * render. Anything missing degrades to `—` rather than crashing.
- */
 export interface OnboardingTemplate {
   slug: string;
   name?: string;
@@ -85,26 +35,8 @@ export interface OnboardingSaveResult {
 
 export interface OnboardingWizardProps {
   templates: readonly OnboardingTemplate[];
-  /**
-   * Probe the connector draft against the chosen template + credential.
-   * The wizard wires this to a sequence of engine tools — typically
-   * `start_connector_from_template` → `validate_connector_draft` →
-   * `probe_connector_draft`. Returning `{ok: false, reason}` keeps the
-   * wizard on the probe step so the operator can retry without
-   * losing the credential they typed.
-   */
   onProbe: (template: OnboardingTemplate, credential: string) => Promise<OnboardingProbeResult>;
-  /**
-   * Atomically save the connector draft. Called only after a
-   * successful probe. Should be idempotent on `connector_id` so a
-   * retry after a transient save error does not create duplicates.
-   */
   onSave: (template: OnboardingTemplate, credential: string) => Promise<OnboardingSaveResult>;
-  /**
-   * Exit hook. The wizard calls this with the terminal reason so the
-   * caller can render the appropriate notice ("✓ Connector created",
-   * "wizard cancelled", etc).
-   */
   onDone: (result: { status: "saved" | "cancelled" | "skipped"; reason?: string }) => void;
 }
 
@@ -114,20 +46,14 @@ interface WizardState {
   step: Step;
   templateIndex: number;
   credential: string;
-  /** Latest probe error message; cleared on retry. */
   probeError: string | null;
-  /** Latest save error message; cleared on retry. */
   saveError: string | null;
-  /** Saved connector id for the success summary. */
   savedConnectorId: string | null;
-  /** Set while a network round-trip is in flight. */
   busy: boolean;
 }
 
 function isPasswordOnlyCredential(template: OnboardingTemplate | undefined): boolean {
   if (!template) return false;
-  // OAuth flows have their own URL-redirect pause; everything else
-  // collects a single secret string.
   return (template.auth_type ?? "") !== "oauth2";
 }
 
@@ -179,8 +105,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       const result = await onProbe(template, credential);
       if (result.ok) {
         setState((prev) => ({ ...prev, step: "save", busy: false, probeError: null }));
-        // Auto-advance into save so the operator doesn't have to
-        // press Enter twice — probe success is a non-decision.
         await runSave(template, credential);
         return;
       }
@@ -253,11 +177,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
 
     if (state.step === "credential") {
       if (input === "s" && key.ctrl === false && key.meta === false && state.credential === "") {
-        // Skip → cancel out of the wizard. Unlike `Esc` we mark the
-        // exit reason explicitly so the host can log a friendlier
-        // notice ("skipped" vs "cancelled"). Skip is only allowed
-        // before any keystrokes hit the credential field — otherwise
-        // it's too easy to lose a typed token to a stray `s`.
         onDone({ status: "skipped" });
         return;
       }
@@ -267,9 +186,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
           return;
         }
         if (selected && (selected.auth_type === "none" || selected.auth_type === "oauth2")) {
-          // No-credential templates and OAuth flows treat Enter as
-          // "I've completed the external flow, proceed". The probe
-          // step still runs to validate end-to-end connectivity.
           void runProbe(selected, "");
           return;
         }
@@ -280,14 +196,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
         return;
       }
       if (input && !key.ctrl && !key.meta && input.length > 0) {
-        // Append printable chars to the credential buffer. Ink may
-        // batch multiple printable characters into a single `input`
-        // when the operator pastes or types fast — accept the whole
-        // chunk and let the subsequent render mask the value. Filter
-        // out control codes (newline, tab, escape) so a stray paste
-        // doesn't introduce literal whitespace into the secret. We
-        // walk codepoints rather than reaching for a regex literal so
-        // the source file does not need to embed raw control bytes.
         let printable = "";
         for (const ch of input) {
           const code = ch.codePointAt(0) ?? 0;
@@ -323,8 +231,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       }
     }
   });
-
-  // ---- Render ----
 
   if (templates.length === 0) {
     return (

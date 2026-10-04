@@ -1,13 +1,3 @@
-// Durable fix for the 2026-06-21 Gmail send outage: driver egress must
-// NOT reuse a pooled keep-alive connection (a poisoned half-open pooled
-// HTTP/2 connection to gmail.googleapis.com hung every send for hours
-// until a manual restart). The production `getDriverFetch()` forces a
-// fresh connection per request via `keepalive: false`.
-//
-// This test proves it behaviourally: N sequential driver-egress requests
-// to a connection-counting server must open N distinct TCP connections.
-// (A plain pooled fetch would open 1.)
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import { getDriverFetch } from "./fetch-seam.ts";
@@ -46,15 +36,10 @@ describe("driver egress · no connection pooling (keepalive:false)", () => {
       const res = await fetchImpl(baseUrl);
       await res.text();
     }
-    // A poisoned pooled connection caused the outage; with keepalive:false
-    // every request gets a fresh connection, so a half-open one can never
-    // be reused. Pooled fetch would yield 1.
     expect(connections).toBe(N);
   });
 
   test("the keepalive:false policy wins even when a caller passes keepalive:true", async () => {
-    // The override is unconditional; a caller-supplied keepalive:true must NOT
-    // re-enable pooling (it only triggers the fetch.keepalive_override warn).
     const fetchImpl = getDriverFetch();
     const N = 4;
     for (let i = 0; i < N; i++) {

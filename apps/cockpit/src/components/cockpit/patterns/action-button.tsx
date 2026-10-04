@@ -1,11 +1,6 @@
 import { isValidElement, type ReactNode } from "react";
 import { Button } from "./button";
 
-/**
- * The action grammar a page may use (§5): `primary` is the one filled action
- * of a page or a state, `outline` every visible secondary one, `destructive`
- * a removal. Pages take buttons from here, never from the primitives.
- */
 export type ActionVariant = "primary" | "outline" | "ghost" | "destructive";
 
 const VARIANT = {
@@ -15,12 +10,10 @@ const VARIANT = {
   destructive: "destructive",
 } as const;
 
-/** An action stated as data, for the `action` slot of `PageHeader` and `StatusStrip`. */
 export interface ActionSpec {
   label: ReactNode;
   variant?: ActionVariant;
   onClick?(): void;
-  /** A link instead of a button: the address, router-absolute. */
   href?: string;
   pending?: boolean;
   disabled?: boolean;
@@ -28,7 +21,6 @@ export interface ActionSpec {
   data?: Readonly<Record<`data-${string}`, string>>;
 }
 
-/** One button in the action grammar, with the pending state built in. */
 export function ActionButton({
   variant = "outline",
   size = "default",
@@ -73,7 +65,6 @@ function isSpec(value: unknown): value is ActionSpec {
   return typeof value === "object" && value !== null && !isValidElement(value) && "label" in value;
 }
 
-/** A slot's action: an element as given, or a spec drawn as an `ActionButton`. */
 export function renderAction(action: ReactNode | ActionSpec): ReactNode {
   if (!isSpec(action)) return action;
   if (action.href)

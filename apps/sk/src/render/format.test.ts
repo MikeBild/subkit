@@ -1,8 +1,3 @@
-// Unit coverage for the shared telemetry-formatting helpers consumed by
-// the footer, `executions`, `stats`, and `health`. These are pure
-// functions; the goal is to pin the consolidated representations so a
-// future edit can't silently re-introduce a divergent third variant.
-
 import { describe, expect, test } from "bun:test";
 import { computeStepBottlenecks, executionDurationMs, formatTokens, humanMs } from "./format.ts";
 

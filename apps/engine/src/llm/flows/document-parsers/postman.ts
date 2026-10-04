@@ -1,5 +1,3 @@
-// Deterministic Postman Collection v2.1 parser. No LLM required.
-
 import type { EndpointSpec, HttpMethod } from "../document-analysis.ts";
 
 interface PostmanItem {
@@ -49,9 +47,7 @@ export function parsePostman(content: string): EndpointSpec[] {
             ),
           };
         }
-      } catch {
-        // non-JSON body — skip schema inference
-      }
+      } catch {}
     }
 
     const idempotentMethods = new Set(["GET", "PUT", "HEAD", "OPTIONS", "DELETE"]);

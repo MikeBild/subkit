@@ -1,5 +1,3 @@
-// Unit tests for apps/sk/src/memory.ts.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -49,15 +47,10 @@ describe("sk memory loader", () => {
     const m = loadMemory({ cwd: tmp, max_bytes: 256 });
     expect(m.truncated).toBe(true);
     expect(m.content).toContain("[sk: memory truncated");
-    // The marker adds bytes, so we assert only that we did cap near 256.
     expect((m.content ?? "").length).toBeLessThan(2048);
   });
 
   test("over-cap merge drops the FAR section and keeps the cwd-closest content", () => {
-    // Regression: the old implementation sliced the merged string's
-    // HEAD, which discarded exactly the highest-priority (closest)
-    // section first. The far ancestor must be the one reduced to a
-    // dropped-marker; the nested project content must survive intact.
     const sub = join(tmp, "nested");
     mkdirSync(sub, { recursive: true });
     writeFileSync(join(tmp, "SK.md"), `FAR-ANCESTOR ${"a".repeat(600)}`);
@@ -71,9 +64,6 @@ describe("sk memory loader", () => {
   });
 
   test("budget is measured in UTF-8 bytes, not UTF-16 code units", () => {
-    // 300 umlauts = 300 chars but 600 UTF-8 bytes; a char-counting cap
-    // of 512 would NOT truncate. Clipping must also never split a
-    // multi-byte code point (no replacement char in the output).
     writeFileSync(join(tmp, "SK.md"), "ä".repeat(300));
     const m = loadMemory({ cwd: tmp, max_bytes: 512 });
     expect(m.truncated).toBe(true);

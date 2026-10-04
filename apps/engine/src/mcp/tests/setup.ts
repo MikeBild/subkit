@@ -1,18 +1,3 @@
-// MCP test scaffolding.
-//
-// Every MCP test piggy-backs on the existing HTTP test harness so we
-// exercise the real Hono app, the real auth middleware, and the real
-// Streamable HTTP transport. `startMcpTestSuite` returns:
-//
-//   - baseUrl + apiKey for hitting /mcp
-//   - a ready-to-use MCP Client
-//   - helpers for seeding tenant-scoped workflows, connectors, skills
-//   - a disposal hook that closes the client, the http server, and the db
-//
-// Tests own per-suite labels so each test file gets its own throwaway
-// database. The Client instance is created in `connect()` to keep the
-// call-sites short.
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -59,20 +44,9 @@ export interface McpTestSuite {
     userId: string,
     scopes: string[],
   ) => Promise<{ plaintext: string }>;
-  /**
-   * Connect a client that advertises the MCP async-Tasks (SEP-1686)
-   * capability — `tasks/get|result|list|cancel` plus task-augmented
-   * `tools/call`. Required to exercise the `CreateTaskResult` path.
-   */
   connectTasks: () => Promise<Client>;
   connectTasksWithApiKey: (apiKey: string) => Promise<Client>;
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
-  /**
-   * Seed a SECOND tenant (plus an admin user in it) in the same test
-   * database. Multi-tenant isolation suites pair this with
-   * `seedConnectorForTenant` + `issueApiKeyForTenant` to prove that
-   * RBAC-passing credentials still cannot cross the tenant boundary.
-   */
   seedTenant: (label: string) => Promise<{ tenantId: string; userId: string }>;
   seedConnector: (overrides?: Partial<ConnectorSeed>) => Promise<{ id: string }>;
   seedConnectorForTenant: (
@@ -84,12 +58,6 @@ export interface McpTestSuite {
 }
 
 export interface StartMcpTestSuiteOptions {
-  /**
-   * Start pg-boss against the test DB and register the
-   * `conversation.run-turn` worker. Required for any suite that drives
-   * the conversation tool cluster — those tools enqueue a background
-   * turn and the worker runs the model loop.
-   */
   withQueue?: boolean;
 }
 
@@ -127,9 +95,6 @@ export async function startMcpTestSuite(
 ): Promise<McpTestSuite> {
   const http = await createHttpTestServer(`mcp-${label}`);
 
-  // Optional pg-boss + conversation-run-turn worker — the conversation
-  // tool cluster enqueues a background turn (MCP async Tasks, SEP-1686),
-  // so a suite exercising those tools must run the worker.
   let bossCleanup: (() => Promise<void>) | null = null;
   if (opts.withQueue) {
     const { startBoss, stopBoss } = await import("../../queue/boss.ts");
@@ -143,16 +108,8 @@ export async function startMcpTestSuite(
     };
   }
 
-  // Track clients we open so we can clean them up.
   const openClients: Client[] = [];
 
-  // Authoring over MCP is opt-in per credential, so a suite that drives the
-  // conversation cluster has to say so — the scaffold key is wildcard-scoped,
-  // and a wildcard resolves to the read-and-execute tier, not to authoring.
-  //
-  // Minted once and shared by every default connection. Suites that assert the
-  // read tier issue their own narrow key via `issueApiKey`, so this default
-  // never hides the boundary from the tests whose job is to check it.
   let authoringKey: string | null = null;
   const defaultApiKey = async (): Promise<string> => {
     if (!authoringKey) authoringKey = (await issueApiKey([MCP_AUTHORING_SCOPE])).plaintext;
@@ -403,16 +360,12 @@ export async function startMcpTestSuite(
     for (const c of openClients) {
       try {
         await c.close();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     if (bossCleanup) {
       try {
         await bossCleanup();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     await http.cleanup();
   };

@@ -10,7 +10,6 @@ const tr =
 const UUID_SHAPE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 describe("authority headline", () => {
-  // 16:00 UTC is 18:00 in Berlin; the zone is pinned so the test reads the same everywhere.
   const until = new Date(Date.UTC(2026, 8, 28, 16, 0)).toISOString();
   const now = Date.UTC(2026, 8, 20, 9, 0);
   const zone = "Europe/Berlin";

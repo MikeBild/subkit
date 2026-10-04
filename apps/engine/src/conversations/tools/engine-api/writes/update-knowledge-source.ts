@@ -1,11 +1,3 @@
-// update_knowledge_source — patch a persisted knowledge source's
-// metadata (name, description, scope, status, refresh strategy).
-// Generic patch shape; send only the fields that should change.
-//
-// Pattern parity with update_workflow / update_connector /
-// update_schedule. Audit funnels through the existing
-// `knowledge_source.updated` action — no new audit-action enum entry.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "../../index.ts";
 

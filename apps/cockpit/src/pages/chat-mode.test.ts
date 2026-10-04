@@ -1,7 +1,3 @@
-// §14: every authoring mode shows its gate matrix, and no two modes read the
-// same. "Systemstandard" and "Autonome Vorbereitung" were two entries over one
-// matrix — the engine starts a conversation without a mode as `auto`.
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -19,8 +15,6 @@ import {
 
 describe("authoring modes", () => {
   test("the default is the engine's own default, offered once", () => {
-    // Read from the engine rather than restated: a changed default there must
-    // fail here, not leave the picker naming the wrong mode as standard.
     const create = readFileSync(
       resolve(import.meta.dir, "../../../engine/src/conversations/service/create.ts"),
       "utf8",
@@ -29,8 +23,6 @@ describe("authoring modes", () => {
       `normalizePermissionMode(p.permission_mode) ?? "${DEFAULT_AUTHORING_MODE}"`,
     );
     expect(AUTHORING_MODES.filter((mode) => mode === DEFAULT_AUTHORING_MODE)).toHaveLength(1);
-    // The marker stands beside the default's name in the open list, and only
-    // there: the pill shows the short name alone.
     const suffix = modeSuffixKey(DEFAULT_AUTHORING_MODE);
     expect(suffix && translate("de", suffix)).toContain("Systemstandard");
     for (const mode of AUTHORING_MODES)
@@ -82,9 +74,6 @@ describe("authoring modes", () => {
   });
 });
 
-// The matrix is a mirror of the engine's enforcement table; this holds the
-// mirror against the table itself. One representative call per row, decided by
-// `decideToolMode` exactly as the engine decides a live call.
 type Category = "draft_write" | "tenant_read" | "tenant_write";
 const PROBES: Record<GateRow, Array<{ tool: string; category: Category; input?: unknown }>> = {
   readAndCheck: [

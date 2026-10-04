@@ -1,9 +1,3 @@
-// Canned bootstrap responses per persona.
-//
-// Lets every integration test agree on the same allow-set per
-// persona. Used by `loadBootstrap` consumers in tests where a real
-// engine round-trip would be overkill.
-
 import type { SkBootstrapSnapshot } from "../../lib/bootstrap.ts";
 
 export type PersonaFixture = "admin" | "operator" | "member" | "enduser" | "portal";
@@ -86,7 +80,6 @@ export function bootstrapFixture(persona: PersonaFixture): SkBootstrapSnapshot {
   };
 }
 
-/** Convenience: just the allow-set as an array. */
 export function permissionsFor(persona: PersonaFixture): readonly string[] {
   return TABLE[persona] ?? [];
 }

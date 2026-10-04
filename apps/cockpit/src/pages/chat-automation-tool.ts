@@ -4,9 +4,6 @@ import { toolNameOf } from "@/lib/tool-parts";
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-/** Everything that starts the workflow unattended: its schedules and, from an
- *  engine that reports them, its inbound webhooks. A webhook-only workflow
- *  used to read as "nothing here" and its card rendered empty. */
 function automationRows(data: Record<string, unknown>): unknown[] {
   return [
     ...(Array.isArray(data.schedules) ? data.schedules : []),
@@ -14,8 +11,6 @@ function automationRows(data: Record<string, unknown>): unknown[] {
   ];
 }
 
-/** A saved change that waits to be applied, with the environment a run of it
- *  would use. A workflow nothing starts automatically has only this. */
 function savedChange(
   data: Record<string, unknown>,
 ): { environment: "dev" | "prod"; review: unknown } | null {
@@ -26,12 +21,6 @@ function savedChange(
   return { environment, review: change.review };
 }
 
-/**
- * The review payload of a tool part: a `review_workflow_automation` result, or
- * the `run_workflow` refusal that carries the same review. The refusal promises
- * the dialog in which the person applies the saved change; without reading it
- * here, that promise pointed at nothing.
- */
 function reviewData(tool: ToolPart): Record<string, unknown> | null {
   if (tool.state !== "output-available" || !record(tool.output)) return null;
   const name = toolNameOf(tool);
@@ -47,14 +36,6 @@ function reviewData(tool: ToolPart): Record<string, unknown> | null {
   return null;
 }
 
-/**
- * Whether a tool part is a review card, and for which workflow.
- *
- * It answers only THAT: `environments` is non-empty when the result held
- * something to review. What the card then says and which buttons it offers is
- * not read from this snapshot — the card reads the workflow's current state
- * (`lib/automation-state.ts`), the same decision its page makes.
- */
 export function chatAutomationTool(tool: ToolPart) {
   const data = reviewData(tool);
   if (
@@ -81,15 +62,6 @@ export function chatAutomationTool(tool: ToolPart) {
   return { workflowId: data.workflow_id, environments };
 }
 
-/**
- * The review cards a transcript shows live: for each workflow, its newest
- * review — workflow id → tool call id.
- *
- * A card does not render the tool's snapshot; it reads the workflow's current
- * state. Every earlier review of the same workflow would therefore say the
- * same thing and offer the same button a second time. Those stay what they
- * are in the record: a tool call that ran.
- */
 export function liveAutomationReviews(tools: Iterable<ToolPart>): Map<string, string> {
   const live = new Map<string, string>();
   for (const tool of tools) {

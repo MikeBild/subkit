@@ -1,8 +1,3 @@
-// Shared Zod schemas + serializers for the executions REST surface.
-// Lifted out of a former monolithic executions.ts so list / run /
-// transform / cancel can each live in their own sub-resource file
-// without duplicating the Zod definitions.
-
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
@@ -17,9 +12,7 @@ import {
 export const ExecSchema = z
   .object({
     id: z.string(),
-    /** NULL for draft and step runs (no persisted workflow row). */
     workflow_id: z.string().nullable(),
-    /** Resolved workflow name so list consumers render WHAT ran, not an id. */
     workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
     execution_authority_id: z.string().uuid().nullable(),
@@ -29,7 +22,6 @@ export const ExecSchema = z
     status: z.string(),
     request_source: z.string(),
     parent_execution_id: z.string().nullable(),
-    /** The caller-supplied run input (null when the run had none). */
     input: z.unknown().nullable(),
     started_at: z.string().nullable(),
     finished_at: z.string().nullable(),
@@ -39,29 +31,19 @@ export const ExecSchema = z
 
 const CauseClassSchema = z.enum(PREVIEW_CLASSIFICATIONS);
 
-// The connector a `connector_unavailable` run was refused for, as resolved in
-// the run's environment — so a client links to it instead of guessing from the
-// definition, which names the other environment's connector.
 const RefusedConnectorSchema = z
   .object({
     connector_id: z.string().nullable(),
-    /** missing | disabled | needs_reauth | credential_unavailable | too_many_references */
     reason: z.string(),
   })
   .nullable();
 
-// What happened in a run, as structure. `status` alone cannot say it: a
-// hold-writes preview finalizes `succeeded` with nothing written (`held`), an
-// `on_error:"continue"` failure leaves the run `succeeded` (`partial`). Clients
-// compose their own wording from these fields; the engine sends no prose.
 export const ExecutionOutcomeSchema = z
   .object({
     kind: z.enum(["succeeded", "failed", "held", "partial", "running"]),
-    /** The step that stopped a failed run (or the tolerated failure of a partial one). */
     failed_step: z.object({ step_key: z.string(), kind: z.string() }).nullable(),
     cause_class: CauseClassSchema.nullable(),
     error_code: z.string().nullable(),
-    /** Which rule of the approved boundary the stopping step broke, when the refusal named one. */
     refusal_reason: ReportDeliveryRefusalSchema.nullable(),
     connector: RefusedConnectorSchema,
     steps: z.object({
@@ -71,7 +53,6 @@ export const ExecutionOutcomeSchema = z
       held: z.number().int().nonnegative(),
       skipped: z.number().int().nonnegative(),
     }),
-    /** `none`: no output_schema, or it was not evaluated (failed run, held preview, older run). */
     output_contract: z.enum(["passed", "violated", "none"]),
   })
   .openapi("ExecutionOutcome");
@@ -81,10 +62,6 @@ export const ExecDetailSchema = ExecSchema.extend({
 }).openapi("ExecutionDetail");
 
 export const ExecListItemSchema = ExecSchema.extend({
-  /**
-   * Failed runs only: the step that stopped the run (null for a
-   * workflow-level failure such as `validation_failed`) and its cause class.
-   */
   failure: z
     .object({
       step_key: z.string().nullable(),
@@ -95,15 +72,10 @@ export const ExecListItemSchema = ExecSchema.extend({
     .nullable(),
 }).openapi("ExecutionListItem");
 
-// The execution list carries the exact filtered `total` alongside the
-// page so consumers render "showing latest N of T" instead of
-// presenting a page as the universe (ground-truth cardinality).
 export const ExecListResponse = z
   .object({
     items: z.array(ExecListItemSchema),
-    /** Exact tenant-scoped count under the same filters (ignores limit and cursor). */
     total: z.number().int().nonnegative(),
-    /** Pass back as `cursor` for the next page; null when this page reached the end. */
     next_cursor: z.string().nullable(),
   })
   .openapi("ExecutionListResponse");
@@ -133,19 +105,12 @@ export const StepRowSchema = z
 
 export const StepListResponse = paginatedResponse(StepRowSchema, "ExecutionStepListResponse");
 
-/** A caller-chosen key that makes a saved-workflow trigger safe to repeat.
- *  Two POSTs with the same key in one tenant produce one run; the second
- *  answers with the first run's id and `idempotent_replay: true`. Scoped to
- *  the tenant, never expires, and is the caller's to choose — a request id,
- *  an event id, a `<workflow>:<hour>` slot. */
 export const IdempotencyKeySchema = z.string().min(1).max(200).openapi({
   description:
     "Caller-chosen key that makes this trigger safe to repeat: a second run with the same key in this tenant is not started; the response carries the first run's id and idempotent_replay: true. Choose a request id, an event id or a time slot.",
   example: "orders-sync:2026-09-03T07",
 });
 
-// Runtime-only schema (used by the handler — full StepSchema /
-// WorkflowDefSchema are too rich for the public OpenAPI catalog).
 const HoldWritesPreviewSchema = z.literal(true).optional().openapi({
   description:
     "Temporary definitions always hold writes and unknown effects, including when this flag is omitted. Reads still execute against real systems. This flag is not a live-execution authorization.",
@@ -156,12 +121,6 @@ const SavedRunModeSchema = z.boolean().optional().openapi({
     "Omit to discover an existing matching local authority or run a held preparation. True always holds writes without spending a live run. False requires live authorization and rejects a missing or changed authority.",
 });
 
-// The engine records a run's origin from who authenticated the request: a
-// verified cockpit session is "ui", MCP / webhook / chat have their own entry
-// paths, and "scheduler" is written only by the scheduler itself — it feeds
-// the production-incident count, so no client may claim it. The one thing the
-// context cannot see is which program holds an API key, so a key-bearing
-// caller may still say "cli"; under any other origin the field is ignored.
 const CLIENT_DECLARED_RUN_SOURCES = ["api", "cli"] as const;
 export type ClientDeclaredRunSource = (typeof CLIENT_DECLARED_RUN_SOURCES)[number];
 export const ClientDeclaredRunSourceSchema = z
@@ -264,8 +223,6 @@ export const RunBodySchema = z.discriminatedUnion("source", [
     .openapi("ExecutionRunStepBody"),
 ]);
 
-// Mirrors `AppliedAuthMethod` in execution/types.ts — the run result's
-// connector rollup emits every member, so the response schema must too.
 const AppliedAuthMethodEnum = z.enum([
   "none",
   "bearer",
@@ -304,7 +261,6 @@ const RunStepSummarySchema = z
     retry_count: z.number().int(),
     error: z.unknown().nullable(),
     request_meta: RequestMetaSchema.nullable().optional(),
-    /** A preview prepared this step but did not dispatch its write. */
     held: z.boolean().optional(),
   })
   .openapi("ExecutionRunStepSummary");
@@ -319,9 +275,6 @@ export const RunResponseSchema = z
     steps: z.array(RunStepSummarySchema).optional(),
     connector_resolutions: z.array(ConnectorResolutionSummarySchema).optional(),
     warnings: z.array(z.unknown()).optional(),
-    /** Present and true when the request carried an idempotency_key that an
-     *  earlier run already used: no new run was started, execution_id and
-     *  status are that run's. */
     idempotent_replay: z.boolean().optional(),
   })
   .openapi("ExecutionRunResponse");

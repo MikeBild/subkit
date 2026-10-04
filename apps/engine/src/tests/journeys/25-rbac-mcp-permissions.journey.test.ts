@@ -1,14 +1,3 @@
-// User story: As an operator, I want MCP resources + prompts to honor
-// the RBAC catalog, so a scoped principal cannot read everything.
-// Acceptance criteria:
-//   - AC1: POST /v1/rbac/can for a portal-token principal on a
-//          non-allowlisted workflow returns allow=false.
-//   - AC2: POST /v1/rbac/can for the same principal on an allowlisted
-//          workflow returns allow=true with source=portal_token_allowlist.
-//   - AC3: A member-role user is allowed connector:read.
-//   - AC4: A bare (empty) custom role is denied connector:read.
-// Spec refs: gap-pass-2 C4 / C6 / C8
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
@@ -57,7 +46,6 @@ describe("journey: rbac mcp permissions", () => {
       })
       .returning();
     portalUser = u!.id;
-    // Seed a raw portal token row to test the principal_id lookup.
     const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     const plaintext = `wf_portal_${rand}`;
     await ctx.db.insert(portalTokens).values({
@@ -83,8 +71,6 @@ describe("journey: rbac mcp permissions", () => {
   }
 
   test("AC3: member-role user is allowed connector:read", async () => {
-    // Admin journey user → allow via builtin_admin. Create a dedicated
-    // member-role user instead.
     const memberRes = await journeyFetch(ctx, "/v1/rbac/roles");
     const body = (await memberRes.json()) as {
       items: Array<{ id: string; name: string; is_builtin: boolean }>;

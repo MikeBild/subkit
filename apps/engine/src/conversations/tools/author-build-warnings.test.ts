@@ -1,7 +1,3 @@
-// Stream 4 — build-time author permission warnings. A write step that
-// targets a connector the author cannot write produces a non-blocking
-// warning; read steps, connector-less steps, and writable connectors do not.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -36,7 +32,6 @@ describe("authorConnectorWriteWarnings", () => {
     if (!u) throw new Error("seed user");
     userId = u.id;
 
-    // read-only grant on one connector, read+write on the other.
     await grantsSvc.grantResource(db, {
       tenant_id: tenantId,
       subject_type: "user",
@@ -61,7 +56,6 @@ describe("authorConnectorWriteWarnings", () => {
     if (testDb) await testDb.cleanup();
   });
 
-  // Bare principal (no role) — level reflects only the grants above.
   const author: () => ResolvedPrincipal = () => ({
     provider: "conversation_tool",
     kind: "user",

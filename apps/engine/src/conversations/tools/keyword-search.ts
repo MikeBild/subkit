@@ -1,12 +1,3 @@
-// Tiny keyword-overlap scorer for the `find_*` family: split the query
-// into keywords, count how many appear in each candidate's searchable
-// text, return matches sorted by score (descending).
-//
-// Pure data — no embeddings, no LLM. The point is to give the LLM a
-// keyword fuzzy lookup it can trust over `list_*` for catalogs of
-// 50+ entries. For semantic search, search_knowledge / search_docs
-// remain the right tools.
-
 export interface ScoredMatch<T> {
   item: T;
   score: number;

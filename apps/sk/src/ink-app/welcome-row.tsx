@@ -1,11 +1,3 @@
-// First-scrollback-row chrome for the Ink REPL.
-//
-// Bundles everything that renders once above the transcript: the
-// version-skew banner, the setup-validation banner, the welcome
-// panel, the operator-health digest, starter actions, and the resume
-// summary card. The whole row is pushed into Ink's <Static> stream as
-// the very first scrollback row by the transcript builder.
-
 import { useTheme } from "@chat-ui/index.ts";
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
@@ -24,23 +16,6 @@ import type { PermissionMode } from "../repl/status-line/render.ts";
 import { classifyVersionSkew, VersionMismatchBanner } from "../repl/version-mismatch-banner.tsx";
 import { WelcomeBanner } from "../repl/welcome-banner.tsx";
 import type { ConnectionSnapshot, PersonaInfo, ResumeSummary, TranscriptMode } from "./types.ts";
-
-// ---------- Setup-validation banner ----------
-//
-// One-line orange/red banner rendered ABOVE the welcome panel when
-// `GET /v1/diagnostics/setup` reports a non-`ok` overall status.
-// Sticky for the session — the same node is emitted every render
-// until the status flips back to `ok`. The host (`ink-repl.ts`)
-// owns the polling cadence; this component is a pure renderer.
-//
-//   warn    →  ⚠ Setup: {N} warning(s) — run /setup for details
-//   blocked →  ✗ Setup: {N} blocking issue(s) — run /setup to resolve
-//
-// Colors come from the active theme so light-on-light terminals don't
-// produce an unreadable result. The banner must NOT redraw or flash
-// on every render — wrapping in <memo> below pins the props at the
-// snapshot identity, so as long as `setupSnapshot` doesn't change
-// React reuses the existing node.
 
 function renderSetupBanner(snapshot: SetupValidationResponse): React.ReactNode {
   return (
@@ -75,7 +50,6 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
       </Box>
     );
   }
-  // blocked
   const label = `${blockers} blocking issue${blockers === 1 ? "" : "s"}`;
   return (
     <Box>
@@ -90,8 +64,6 @@ const SetupBanner: React.FC<SetupBannerProps> = memo(({ status, warnings, blocke
 });
 SetupBanner.displayName = "SetupBanner";
 
-// ---------- Welcome row ----------
-
 export interface WelcomeRowProps {
   persona: PersonaInfo;
   conversationId: string | null;
@@ -102,8 +74,6 @@ export interface WelcomeRowProps {
   statusSnapshot: StatusSummary | null | undefined;
   setupSnapshot: SetupValidationResponse | null | undefined;
   digestSnapshot: OperatorHealthDigest | null | undefined;
-  /** Proposed session-learning count; > 0 (with skill:read) injects the
-   *  review-learnings starter action. Absent = 0 = today's behavior. */
   pendingLearningsCount?: number | undefined;
   tip: string;
 }
@@ -122,14 +92,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   tip,
 }) => {
   const setupBannerShownRef = useRef(false);
-  // Setup-validation banner gating. The actual one-line banner renders
-  // in the row below so it sits above the welcome panel as the very
-  // first scrollback row. This effect only owns the "have we already
-  // announced this status" memo so a repeated `setupSnapshot` push
-  // (e.g. after a manual `/setup` refresh) does not flash the banner
-  // twice in the notice stack. The render path is sticky on its own —
-  // it emits the same node every render until the status flips back
-  // to `ok`.
   useEffect(() => {
     if (!setupSnapshot || setupSnapshot.overall_status === "ok") {
       setupBannerShownRef.current = false;
@@ -138,8 +100,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
     setupBannerShownRef.current = true;
   }, [setupSnapshot]);
 
-  // Digest = in-context chrome below the welcome box; with failures (and the
-  // permission to act) it also injects a key-"1" guided-triage starter action.
   const hasDigest = Boolean(
     digestSnapshot &&
       (digestSnapshot.failure_groups.length > 0 ||
@@ -149,22 +109,11 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
   const digestNode =
     hasDigest && digestSnapshot ? <NeedsAttentionPanel digest={digestSnapshot} /> : null;
 
-  // Render + dispatch lists derive injection (and the RBAC gate) from the same
-  // (probe, digest, pendingLearnings) inputs inside the shared helpers, so
-  // they can't drift.
   const starterActions = useMemo(
     () => buildStarterActions(persona.label, persona.probe, digestSnapshot, pendingLearningsCount),
     [persona.label, persona.probe, digestSnapshot, pendingLearningsCount],
   );
 
-  // Setup-validation banner. Rendered as a one-line orange/red row
-  // ABOVE the welcome panel so the operator sees a degraded engine
-  // before they read the first tip. Visibility gated on:
-  //   * setupSnapshot present and overall_status !== "ok"
-  //   * persona can read /v1/diagnostics (admin or member)
-  // Operators without `audit:read` / `identity:read` cannot meaningfully
-  // act on the diagnostics endpoint, so we suppress the banner for
-  // them — matches the existing `/setup` slash gating.
   const canShowSetupBanner =
     persona.probe.allows("audit:read") || persona.probe.allows("identity:read");
   const setupBannerNode =
@@ -172,10 +121,6 @@ export const WelcomeRow: React.FC<WelcomeRowProps> = ({
       ? renderSetupBanner(setupSnapshot)
       : null;
 
-  // Sticky version-skew banner: compares CLI VERSION to engine
-  // /v1/status.version. Mismatch → operator sees a one-line hint
-  // pointing at the rebuild command. Pre-fix this triage cost a
-  // 2-cycle "why isn't my fix landing" debug session.
   const versionSkewNode = statusSnapshot
     ? (() => {
         const skew = classifyVersionSkew(CLI_VERSION, statusSnapshot.version);

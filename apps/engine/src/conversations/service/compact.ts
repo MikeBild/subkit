@@ -1,6 +1,3 @@
-// Compact conversation message history into a single system summary
-// + the last `keep_last` messages, plus undo last draft mutation.
-
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -16,7 +13,6 @@ export interface CompactConversationParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
-  /** How many most-recent messages to preserve verbatim. */
   keep_last?: number;
 }
 
@@ -26,17 +22,6 @@ export interface CompactConversationResult {
   messages_collapsed: number;
 }
 
-/**
- * Collapse conversation message history into a single system summary
- * message followed by the last `keep_last` messages. The summary is
- * a deterministic stub (count of collapsed messages + first/last
- * user turns) so tests are reproducible; a richer implementation can
- * plug in an LLM-driven summarizer behind the same service call.
- *
- * NOTE: This mutates `conversation_messages` by marking the collapsed
- * rows as `role: "system"` with `content: { kind: "compacted" }`. We
- * do not DELETE rows so audit replay remains faithful.
- */
 export async function compactConversation(
   p: CompactConversationParams,
   exec: Db,
@@ -70,8 +55,6 @@ export async function compactConversation(
       (firstText ? `Opened with: ${firstText}. ` : "") +
       (lastText ? `Most recent assistant turn: ${lastText}` : "");
 
-    // Inject the summary as a new system message and tag the older
-    // rows so rendering skips them.
     await exec.insert(conversationMessages).values({
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
@@ -115,10 +98,6 @@ export async function compactConversation(
   };
 }
 
-/**
- * Undo the most recent draft mutation. Used by the CLI / UI when
- * the user wants to revert a step.
- */
 export async function undoLastDraftMutation(
   tenant_id: string,
   conversation_id: string,

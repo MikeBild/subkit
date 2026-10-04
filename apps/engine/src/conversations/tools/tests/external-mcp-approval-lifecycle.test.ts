@@ -1,19 +1,3 @@
-// One approved external MCP call, end to end, through the production pieces:
-// the gate pauses, a PERSON answers the confirm, the harness grants, the
-// model re-issues with the confirm marker, the remote tool runs once.
-//
-// Two contracts are pinned here:
-//   1. The question a person reads names the connector as it was registered
-//      and the tool as the server calls it — never the prefixed palette id —
-//      and carries the same subject as data (`external_tool`) so a client can
-//      phrase it in its own language.
-//   2. The paused row ends with the decision. It used to stay `pending`
-//      forever next to the grant row and the real result row.
-//
-// INJECTION PATTERN: a REAL mcp connector row, the pool's documented TEST
-// SEAM (`__setMcpPoolFactoriesForTests`) for the SDK client only — no bun
-// `mock.module`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -251,13 +235,9 @@ describe("external MCP tool approval", () => {
       tool: "search_items",
       server_claim: "Search saved questions and dashboards",
     });
-    // The server's own words are its claim, carried apart. What the approval
-    // says it does is the engine's sentence — a server could title a
-    // destructive tool "Read-only (safe)".
     expect((input.commit_intent as { description?: unknown }).description).toBe(
       'Lets the tool "search_items" on Metabase Reporting MCP run once.',
     );
-    // The resume projection every client reads carries the same subject.
     expect(pendingPrompt(input).prompt).toMatchObject({
       intent_kind: "grant_relayed_tool_call",
       external_tool: {
@@ -291,15 +271,11 @@ describe("external MCP tool approval", () => {
     const pausedRow = rows.find(
       (row) => (row.output as Record<string, unknown> | null)?.confirm_id === confirm_id,
     );
-    // The paused row keeps the output replay shows the model — only its
-    // verdict moved.
     expect(pausedRow?.outcome).toBe("ok");
     expect((pausedRow?.output as Record<string, unknown> | undefined)?.status).toBe(
       "awaiting_confirmation",
     );
 
-    // Three rows, two cards: the grant row the harness injects carries no
-    // anchor, so the transcript shows the paused call and the call that ran.
     expect(rows).toHaveLength(3);
     const detail = await getConversation(tenant_id, conversation_id, ctx.db as unknown as Db);
     const parts = buildMessages(detail!.messages, detail!.tool_calls).flatMap((m) => m.parts);

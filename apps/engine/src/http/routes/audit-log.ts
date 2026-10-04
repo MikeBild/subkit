@@ -1,27 +1,3 @@
-// Audit log read surface.
-//
-//   GET  /v1/audit-log               — cursor-paginated list
-//   GET  /v1/audit-log/:id            — fetch a single entry
-//   GET  /v1/audit-log/export.ndjson  — streaming ndjson export
-//
-// Everything here is gated on the `audit:read` RBAC permission. The
-// list + export endpoints share a filter schema so operators can
-// develop queries against the interactive surface and then rerun them
-// for SOC2 evidence collection against the export endpoint.
-//
-// Cursor design: pages are ordered newest first. When the response
-// fills the requested page size, `next_cursor` carries an OPAQUE keyset
-// cursor — the last row's timestamp AND its id — and the follow-up
-// request passes it back verbatim as `cursor=<cursor>`.
-//
-// This comment used to claim ties "are broken by id in the underlying
-// SELECT so the cursor never skips a row". The ORDER BY did break ties;
-// the CURSOR did not carry the id, so the next page asked for
-// `ts < <tie>` and skipped every remaining member of the group. The
-// prose was true about the sort and false about the walk, which is the
-// hardest kind of comment to catch. Measured before the fix: 6 rows of
-// 15 reached by a full walk. Do not reduce this cursor to a timestamp.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { stream as honoStream } from "hono/streaming";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
@@ -62,8 +38,6 @@ const AuditEntrySchema = z
 
 const ListResponse = paginatedResponse(AuditEntrySchema, "AuditLogListResponse");
 
-// ---------- Query shape ----------
-
 const FilterQuery = z
   .object({
     action: z.string().optional(),
@@ -80,18 +54,6 @@ const FilterQuery = z
 
 const ListQuery = FilterQuery.extend({
   limit: z.coerce.number().int().positive().max(500).optional(),
-  // OPAQUE cursor, echoed back from a previous `next_cursor`. Not a
-  // datetime: it carries the timestamp AND the tie-breaking id
-  // (`<ts>|<uuid>`). Declaring it `.datetime()` would reject every
-  // correct cursor, and a bare timestamp is exactly the shape that
-  // silently dropped rows.
-  //
-  // Opaque to this layer, but not unchecked: dropping `.datetime()` also
-  // dropped the only shape check, so `cursor=abc|def` walked through to
-  // `'abc'::timestamptz` and came back as a 500 in the operator diagnostics
-  // register (LOCAL-SK-CURSOR-MUELL-500). The pattern is the audit module's
-  // own definition of the cursor — imported, not restated here, so the
-  // validator and the parser cannot drift.
   cursor: z
     .string()
     .min(1)
@@ -99,8 +61,6 @@ const ListQuery = FilterQuery.extend({
     .regex(AUDIT_CURSOR_PATTERN, "must be a cursor returned by next_cursor (<ts>|<uuid>)")
     .optional(),
 }).openapi("AuditLogListQuery");
-
-// ---------- OpenAPI routes ----------
 
 const listRoute = createRoute({
   method: "get",
@@ -130,8 +90,6 @@ const getRouteSpec = createRoute({
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
-
-// ---------- Helpers ----------
 
 function parseActions(raw?: string): string[] | undefined {
   if (!raw) return undefined;
@@ -169,17 +127,10 @@ function filtersFromQuery(tenant_id: string, q: RawFilterQuery): AuditQueryFilte
   return f;
 }
 
-// ---------- Registration ----------
-
 export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
-  // Permission gate — list + show + export all require audit:read.
   app.use("/v1/audit-log", requirePermission("audit:read"));
   app.use("/v1/audit-log/*", requirePermission("audit:read"));
 
-  // ----- ndjson export. Registered BEFORE the openapi `/:id` spec so
-  // Hono's path matcher resolves `/v1/audit-log/export.ndjson` here
-  // instead of attempting to parse `export.ndjson` as a uuid. The
-  // filters and permission gate mirror the list endpoint exactly.
   app.get("/v1/audit-log/export.ndjson", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -212,10 +163,6 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const filters = filtersFromQuery(principal.tenant_id, q);
     const limit = q.limit ?? 50;
-    // `cursor` is passed through VERBATIM. It used to be parsed into a
-    // `Date` here, which threw away the microseconds Postgres stores and
-    // the id that breaks a timestamp tie — between them, 9 rows in 15
-    // vanished from a full walk. The cursor is opaque to this layer now.
     const opts: { limit: number; cursor?: string } = { limit };
     if (q.cursor) opts.cursor = q.cursor;
     const { items, next_cursor } = await queryAuditLog(db, filters, opts);

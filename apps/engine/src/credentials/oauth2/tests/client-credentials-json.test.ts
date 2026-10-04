@@ -1,14 +1,3 @@
-// Unit tests for the client_credentials_json grant — a generalised
-// JSON-body exchange where:
-//   - the request is a JSON POST with configurable body field mapping
-//   - the response may be a bare quoted token string ("raw") or a
-//     standard JSON envelope with an "access_token" key ("json")
-//   - when the server returns no expires_in the caller supplies a
-//     default TTL via token_response_ttl_ms
-//
-// These tests mock the endpoint through the driver-fetch seam so no
-// live server is required.
-
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { withDriverFetchForTests } from "../../../test-helpers/driver-fetch.ts";
 import { runClientCredentialsJsonGrant } from "../client.ts";
@@ -19,10 +8,6 @@ beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
 });
 
-// Driver-fetch seam: the oauth2 client reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
@@ -55,9 +40,6 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
   });
 
   seamTest("strips surrounding quotes and whitespace from raw quoted-JWT response", async () => {
-    // Xray's authenticate endpoint returns a response body that IS the JWT
-    // wrapped in double-quotes, e.g. "eyJra…sig"  (with a possible trailing
-    // newline). We must strip the quotes and whitespace.
     fetchSpy.mockResolvedValue(
       new Response('"eyJraWQiOiJ0ZXN0Ii5wYXlsb2FkLnNpZw=="\n', {
         status: 200,
@@ -94,7 +76,6 @@ describe("runClientCredentialsJsonGrant — raw response (Xray-style)", () => {
     });
 
     expect(bundle.expires_at).toBeInstanceOf(Date);
-    // expires_at should be roughly now + 24h (within a 5s tolerance).
     const expectedMs = Date.now() + 86_400_000; // allow-wall-clock: tolerance-window assertion against the production clock (oauth2/client.ts computes expiry via Date.now)
     expect(Math.abs(bundle.expires_at!.getTime() - expectedMs)).toBeLessThan(5_000);
   });
@@ -145,7 +126,6 @@ describe("runClientCredentialsJsonGrant — json response", () => {
 
     expect(bundle.access_token).toBe("json-tok-abc");
     expect(bundle.token_type).toBe("Bearer");
-    // expires_at from expires_in=3600 should be ~1h from now.
     expect(bundle.expires_at).toBeInstanceOf(Date);
     const expectedMs = Date.now() + 3600 * 1000; // allow-wall-clock: tolerance-window assertion against the production clock (oauth2/client.ts computes expiry via Date.now)
     expect(Math.abs(bundle.expires_at!.getTime() - expectedMs)).toBeLessThan(5_000);

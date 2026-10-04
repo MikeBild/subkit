@@ -1,20 +1,3 @@
-// Pure compute helpers that turn the typed `AuthoringState` +
-// connector/workflow drafts into the `AuthoringSummary` the chat loop
-// surfaces to the model and the CLI.
-//
-// Two responsibilities co-live here:
-//
-//   1. Read-only state queries (checkpoint freshness, persisted-
-//      resource lookup, missing-field computation). These are pure
-//      `(state, …) → result` functions; mutating the state lives in
-//      `authoring-state.ts`.
-//   2. Lifecycle / stage / next-action derivation that only depends on
-//      the read-only queries above plus the inputs.
-//
-// Splitting these into separate files would force a circular import
-// because every compute*() function calls a couple of the queries, so
-// they are kept together here.
-
 import { extractTemplatePlaceholders } from "../connector-template-intelligence.ts";
 import type {
   AuthoringCheckpointKey,
@@ -262,10 +245,6 @@ export function computeBlockedBy(
     ) {
       blocked.push("validate_connector_draft");
     }
-    // connector_authenticated gate: oauth2 connectors must run
-    // authenticate_oauth (post-save), other auth_types must collect a
-    // credential via ask_user_form. Surface the right next step in the
-    // blocking list before the operator can run the probe.
     const authPending =
       connector !== null &&
       connector.auth_type !== "none" &&
@@ -273,12 +252,6 @@ export function computeBlockedBy(
     if (authPending && connector) {
       blocked.push(connector.auth_type === "oauth2" ? "authenticate_oauth" : "ask_user_form");
     }
-    // Probe gate fires AFTER authentication for OAuth2 connectors —
-    // the documented lifecycle is save → authenticate_oauth → probe
-    // (docs/concepts/connectors.md). Until the OAuth dance completes there
-    // are no tokens to probe with, so suggesting `probe_connector_draft`
-    // in parallel with `authenticate_oauth` trapped the model in a
-    // loop (Gmail-OAuth2 session 37a6d350, 2026-05-12).
     const oauth2AwaitingAuth =
       connector?.auth_type === "oauth2" &&
       checkpointStatus(state, "connector_authenticated") !== "fresh";

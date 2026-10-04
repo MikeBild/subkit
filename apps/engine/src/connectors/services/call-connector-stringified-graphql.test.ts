@@ -1,19 +1,3 @@
-// connectors/services/call-connector — dispatchGraphql stringified-body tests (P3).
-//
-// The `dispatchGraphql` helper in `call-connector.ts` JSON-parses a
-// string `req.body` before the `{query}` presence check so MCP clients
-// that serialize the object to a JSON string still reach dispatch.
-//
-// This file tests the SERVICE layer (used by POST /v1/connectors/{id}/call)
-// independently of the conversation tool layer — the two layers each
-// carry their own copy of the parse-before-check guard.
-//
-// Cases:
-//   1. Object body `{query, variables}` → dispatches (graphqlQuery called).
-//   2. JSON-string body `'{"query":"{ x }","variables":{}}'` → dispatches.
-//   3. Non-JSON string → invalid_input, graphqlQuery NOT called.
-//   4. JSON string missing `query` field → invalid_input.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -65,7 +49,6 @@ function baseReq(connectorId: string): CallConnectorRequest {
   };
 }
 
-/** Minimal stub for graphqlDriver.query that returns a 200 response. */
 function mockGraphqlSuccess() {
   return spyOn(graphqlDriver, "query").mockResolvedValue({
     status: 200,
@@ -111,7 +94,6 @@ describe("callConnector service — GraphQL: JSON-string body dispatches", () =>
       body: bodyString,
     });
 
-    // Must NOT return invalid_input — the string was parsed before the check.
     expect(result.kind).toBe("ok");
     expect(spy).toHaveBeenCalledTimes(1);
     const call = spy.mock.calls[0]![0] as { query: string; variables?: Record<string, unknown> };
@@ -159,7 +141,6 @@ describe("callConnector service — GraphQL: non-JSON string fails cleanly", () 
       expect(result.error_code).toBe("invalid_input");
       expect(result.message).toMatch(/query/i);
     }
-    // graphqlQuery must not have been called.
     expect(spy).not.toHaveBeenCalled();
 
     spy.mockRestore();

@@ -1,21 +1,3 @@
-// Reconciler CAS microsecond-safety test.
-//
-// node-postgres truncates timestamptz to millisecond precision when it
-// parses a row into a JS Date. A compare-and-set that reads a stamp back
-// and then matches it with a raw `= value` therefore never matches a
-// stored value carrying sub-millisecond microseconds — the UPDATE touches
-// 0 rows and that schedule / tenant stalls forever.
-//
-// This file pins that both reconcile sweeps survive a microsecond-precision
-// stamp:
-//   - workflow schedules: the CAS truncates both sides via date_trunc, so a
-//     due schedule still fires.
-//   - proactive drift scan: the claim is a range-based atomic UPDATE, so a
-//     due tenant is still claimed (stamp advances + a scan row is written).
-//
-// Both stamps are written with an explicit `.123456` microsecond literal —
-// the exact shape the old equality-CAS could not match.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -80,7 +62,6 @@ describe("reconciler CAS is microsecond-safe", () => {
       })
       .returning({ id: workflowsSchedules.id });
     if (!row) throw new Error("schedule insert failed");
-    // Inject a microsecond-precision last_enqueued_at one hour in the past.
     await ctx.testDb.db
       .update(workflowsSchedules)
       .set({ last_enqueued_at: sql`'2026-06-05 11:00:00.123456+00'::timestamptz` })
@@ -101,8 +82,6 @@ describe("reconciler CAS is microsecond-safe", () => {
       db: ctx.testDb.db,
       intervalMs: 60_000,
     });
-    // Inject a microsecond-precision last_proactive_scan_at two hours in the
-    // past (the cadence is one hour, so the tenant is due).
     await ctx.testDb.db
       .update(tenants)
       .set({ last_proactive_scan_at: sql`'2026-06-05 10:00:00.123456+00'::timestamptz` })
@@ -116,13 +95,11 @@ describe("reconciler CAS is microsecond-safe", () => {
     const now = new Date("2026-06-05T12:00:00.000Z");
     await reconciler.reconcileProactiveDriftScans(now);
 
-    // Stamp advanced to `now` (claimed despite the microsecond stored value).
     const after = (
       await ctx.testDb.db.select().from(tenants).where(eq(tenants.id, ctx.tenantId))
     )[0];
     expect(after?.last_proactive_scan_at?.toISOString()).toBe(now.toISOString());
 
-    // A scan row was written, proving the claim ran the per-tenant scan.
     const afterScans = await ctx.testDb.db
       .select({ id: selfHealingScans.id })
       .from(selfHealingScans)

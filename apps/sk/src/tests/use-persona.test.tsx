@@ -60,7 +60,7 @@ class FakeClient {
       tenant: { id: "t-test", slug: "t-test", display_name: "T" },
       recent_sessions: [],
       flags: {},
-      server_time: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
+      server_time: "2024-11-14T22:13:20.000Z",
     });
   }
   whoami(): Promise<{
@@ -96,9 +96,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(cacheDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 function Probe({
@@ -126,8 +124,6 @@ describe("usePersona", () => {
       <Probe client={client as unknown as EngineClient} onState={(s) => states.push(s)} />,
     );
     try {
-      // Spin flush until the bootstrap microtask resolves; flush() is
-      // the determinism-helper-equivalent setImmediate yield.
       for (let i = 0; i < 50 && (states.length === 0 || states[states.length - 1]?.loading); i++) {
         await flush();
       }
@@ -140,11 +136,6 @@ describe("usePersona", () => {
     }
   });
 
-  // R6-S4 review fix: re-render with a fresh `client` reference but
-  // the same `(engine_url, tenant, fingerprint(api_key))` triple.
-  // The hook's effect must NOT fire `loadBootstrap` a second time —
-  // the `bootstrapKey` deps array (R5-W2) absorbs the identity
-  // change and the disk cache returns the cached snapshot.
   test("re-rendering with a new client reference but same fingerprint reuses the cache", async () => {
     const clientA = new FakeClient();
     const clientB = new FakeClient();
@@ -152,11 +143,7 @@ describe("usePersona", () => {
     try {
       for (let i = 0; i < 50 && clientA.bootstrapCalls === 0; i++) await flush();
       expect(clientA.bootstrapCalls).toBe(1);
-      // Swap to a new client object — same engine_url + tenant +
-      // api_key in PROFILE, so the same `bootstrapKey` resolves.
       ui.raw.rerender(<Probe client={clientB as unknown as EngineClient} onState={() => {}} />);
-      // Yield a few microtasks; if the effect were going to re-fire,
-      // it would do so synchronously after the rerender.
       for (let i = 0; i < 5; i++) await flush();
       expect(clientB.bootstrapCalls).toBe(0);
     } finally {

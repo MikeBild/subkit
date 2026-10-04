@@ -1,18 +1,3 @@
-// Skills HTTP surface.
-//
-// Routes:
-//   GET    /v1/skills                   — list (optional scope / status filters)
-//   POST   /v1/skills                   — create
-//   GET    /v1/skills/:id                — fetch
-//   PATCH  /v1/skills/:id                — update
-//   DELETE /v1/skills/:id                — hard delete (prefer /archive)
-//   POST   /v1/skills/:id/activate       — flip lifecycle → active
-//   POST   /v1/skills/:id/archive        — flip lifecycle → archived
-//   GET    /v1/skills/:id/history        — version history (audit-derived)
-//   POST   /v1/skills/:id/restore        — restore a prior audited snapshot
-//
-// Every mutation writes an audit entry via the service layer.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import {
@@ -156,8 +141,6 @@ const SkillHistoryEntrySchema = z
     lifecycle: z.string().nullable(),
     updated_at: z.string(),
     actor_id: z.string().uuid().nullable(),
-    /** False for entries written before audit snapshots carried the full
-     *  skill view — those entries are listed but not restorable. */
     has_snapshot: z.boolean(),
   })
   .openapi("SkillHistoryEntry");
@@ -204,7 +187,6 @@ const restoreRoute = createRoute({
 });
 
 export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
-  // RBAC gating for skills.
   app.use("/v1/skills", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("skill:read")(c, next);
     if (c.req.method === "POST") return requirePermission("skill:write")(c, next);

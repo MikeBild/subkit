@@ -1,13 +1,3 @@
-// Closed-loop outcome tracker for patch candidates.
-//
-// After `approvePatchCandidate` sets status=applied, we open an outcome
-// window. A background job (or the next workflow execution) increments
-// `outcome_successes_after` / `outcome_failures_after` on the row so
-// operators can see whether the patch actually prevented recurrence.
-//
-// Window close policy: max(7 days, 10 executions on the same workflow).
-// This keeps the feedback loop honest without retaining data forever.
-
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { getDb } from "../db/client.ts";
@@ -22,15 +12,9 @@ export interface OutcomeUpdate {
   outcome: "success" | "failure";
 }
 
-/**
- * Called after every execution finalises. Finds any open outcome
- * windows for patch_candidates applied to this workflow and bumps the
- * appropriate counter.
- */
 export async function recordExecutionOutcome(p: OutcomeUpdate, exec?: Executor): Promise<void> {
   const db = exec ?? getDb();
   try {
-    // Eligible rows: status=applied, window not yet closed.
     const rows = await db
       .select({ id: patchCandidates.id })
       .from(patchCandidates)
@@ -58,7 +42,6 @@ export async function recordExecutionOutcome(p: OutcomeUpdate, exec?: Executor):
         .where(eq(patchCandidates.id, row.id));
     }
   } catch (err) {
-    // Outcome tracking is advisory; never block the execution path.
     logger.debug({
       module: "self-healing",
       action: "outcome.track_failed",
@@ -68,10 +51,6 @@ export async function recordExecutionOutcome(p: OutcomeUpdate, exec?: Executor):
   }
 }
 
-/**
- * Close outcome windows older than WINDOW_MS. Called by a background
- * sweeper (or an ops cron) — safe to invoke repeatedly.
- */
 export async function closeExpiredOutcomeWindows(exec?: Executor): Promise<number> {
   const db = exec ?? getDb();
   const cutoff = new Date(Date.now() - WINDOW_MS);

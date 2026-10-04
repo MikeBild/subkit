@@ -1,7 +1,3 @@
-// DB-side loaders for the context assembler. Each helper is best-
-// effort: a DB blip never blocks prompt assembly — the caller gets an
-// empty array and the assembled prompt simply omits the section.
-
 import { and, desc, eq } from "drizzle-orm";
 import { readDiscoveryIndexForBaseUrl } from "../../../connectors/discovery/service.ts";
 import type { ConnectorSelfDescription } from "../../../connectors/types.ts";
@@ -38,14 +34,6 @@ import {
   SKILL_CANDIDATES_SECTION_CAP,
 } from "./formatters.ts";
 
-/**
- * Workflow-authoring connector-context aids: the in-scope connectors' KNOWN
- * OPERATIONS (OPT-E, from the discovery index) + RECORDED ENDPOINT SAMPLES (from
- * real calls). Gated on workflow-authoring mode with bound connectors; returns
- * both formatted blocks (or null). Logs `context.connector_authoring_aids` so a
- * benchmark run shows whether the gate fires in the real converse flow. Lives
- * here (not inline in the assembler) to keep that orchestrator under the LOC cap.
- */
 export async function loadConnectorAuthoringAids(
   p: {
     flow: string;
@@ -73,10 +61,6 @@ export async function loadConnectorAuthoringAids(
     tenant_id: p.tenant_id,
     connector_ids: p.authoring_connector_ids.length,
     schema_summaries: schemaSummaries.length,
-    // How many in-scope connectors advertised a self-description link this
-    // turn — surfaced as a compact "fetch on demand" hint in the schema
-    // block (the body is never fetched here; the LLM pulls it lazily via
-    // fetch_connector_self_description).
     self_descriptions: schemaSummaries.filter((s) => s.self_description_line).length,
     probe_shapes: shapeExamples.length,
   });
@@ -92,18 +76,11 @@ export interface InteractionLogEntry {
   tool_name: string;
   status: string;
   decision: string;
-  /**
-   * The operator's free-text feedback, projected from `output.feedback`.
-   * A previous review pass moved operator prose off `decision_reason`
-   * (which now carries only a machine code) onto the elicitation
-   * `output`. Prefer this when rendering; fall back to `decision_reason`.
-   */
   feedback: string | null;
   decision_reason: string | null;
   decided_at: Date | null;
 }
 
-/** Compact preview entry surfaced to the model. */
 export interface LatestPreviewEntry {
   step_id: string;
   kind: string;
@@ -114,15 +91,6 @@ export interface LatestPreviewEntry {
   error_code?: string;
 }
 
-/**
- * Load the last N elicitations for a conversation in reverse-chronological
- * order, then reverse to chronological for display. We only surface
- * resolved/cancelled/timeout entries — pending elicitations are still
- * waiting for the user, so reading them as "decisions" would be wrong.
- *
- * Returns at most `limit` entries; conservative because the LLM only
- * needs the recent confirmation history, not the full audit trail.
- */
 export async function loadInteractionLog(
   tenant_id: string,
   conversation_id: string,
@@ -159,10 +127,6 @@ export async function loadInteractionLog(
           : r.status === "resolved"
             ? "declined"
             : r.status;
-      // Operator free text now rides on `output.feedback` — a previous
-      // review pass moved it off `decision_reason` (which keeps only a
-      // machine code). Project it so `formatInteractionLog` can prefer
-      // the human prose over the stable token.
       const feedback =
         typeof output?.feedback === "string" && output.feedback.length > 0 ? output.feedback : null;
       return {
@@ -187,13 +151,6 @@ export async function loadInteractionLog(
   }
 }
 
-/**
- * Read the most recent dry-run / run preview off the conversation's
- * persisted draft (`conversations.draft.latest_preview.step_traces`).
- * Compacted to step_id + kind + status + scope_at_step. The
- * authoring loop will reach for this before guessing a JSONata path
- * — no need to re-issue a dry_run just to remember the shape.
- */
 export async function loadLatestPreview(
   tenant_id: string,
   conversation_id: string,
@@ -262,20 +219,6 @@ export async function loadLatestPreview(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Load the latest recorded response shapes (`schema_versions` rows,
- * written by probe_connector / call_connector / request-step
- * executions) for the connectors bound to the active conversation
- * draft. Feeds the "Recorded endpoint samples" section so observed
- * payload shapes reach the model BEFORE it writes transforms.
- *
- * Tenant isolation lives in the queries themselves: both
- * `listLatestShapes` and the slug lookup filter on `tenant_id`, so a
- * connector id belonging to another tenant yields zero rows — it can
- * never leak shapes across tenants. Non-UUID ids (recipe placeholders
- * like `${stripe}` in draft steps) are filtered out before any query.
- * Best-effort like every loader here: a DB blip returns [].
- */
 export async function loadProbeShapeExamples(
   tenant_id: string,
   connector_ids: string[],
@@ -298,8 +241,6 @@ export async function loadProbeShapeExamples(
         .from(connectors)
         .where(and(eq(connectors.tenant_id, tenant_id), eq(connectors.id, connector_id)))
         .limit(1);
-      // Shapes exist but the connector row is gone (deleted mid-turn) —
-      // skip rather than render an unattributable shape list.
       const slug = connectorRows[0]?.slug;
       if (!slug) continue;
       for (const s of shapes) {
@@ -319,31 +260,12 @@ export async function loadProbeShapeExamples(
   }
 }
 
-/** OPT-E: a connector's known operations, projected compactly from its cached
- *  discovery/introspection index. */
 export interface ConnectorSchemaSummary {
   connector_slug: string;
-  /** `op(arg: Type, …)` signatures — operation + argument names + argument
-   *  type names. Enough to stop the model guessing field/arg names; the deep
-   *  shapes (enum values, input-object fields) stay one `discover_connector_endpoints`
-   *  / `search_knowledge` drill-down away. */
   operations: string[];
-  /** Compact "this connector publishes its own docs — fetch with
-   *  fetch_connector_self_description: …" line, built from the connector's
-   *  `self_description.links`. Links only (never bodies); the LLM fetches
-   *  on demand. Omitted when the connector advertises no self-description. */
   self_description_line?: string;
 }
 
-/**
- * Build the compact self-description hint line for a connector from its
- * `self_description.links`. Links only — the LLM fetches the bodies on
- * demand via `fetch_connector_self_description`. Returns null when no
- * links are recorded so the caller omits the line entirely.
- *
- * `llms` prefers the full-content variant (`llms_full`) over the index
- * (`llms_txt`); OpenAPI + GraphQL surface their single link each.
- */
 export function buildSelfDescriptionLine(
   self_description: ConnectorSelfDescription | null | undefined,
 ): string | null {
@@ -361,21 +283,10 @@ export function buildSelfDescriptionLine(
   return `This connector publishes its own docs — fetch on demand with fetch_connector_self_description: ${parts.join(", ")}.`;
 }
 
-/** Per-connector caps — this rides EVERY authoring turn for a connector in
- *  scope, so the budget is deliberately tight to avoid context bloat. */
 const SCHEMA_MAX_CONNECTORS = 3;
 const SCHEMA_MAX_OPERATIONS = 24;
 const SCHEMA_CHARS_BUDGET = 1800;
 
-/**
- * OPT-E: for the connectors bound to the active conversation, surface their
- * KNOWN OPERATIONS (from the discovery index OPT-D warms at create / the agent
- * warms on demand) directly in the authoring context — so the model sees the
- * real operation + argument names without a discover_connector_endpoints
- * round-trip. Generic over REST + GraphQL (both store the same flattened
- * endpoint shape). Best-effort: a miss/stale index just yields []. Tenant-safe
- * (the connector + its index are both tenant-scoped).
- */
 export async function loadConnectorSchemaSummaries(
   tenant_id: string,
   connector_ids: string[],
@@ -399,10 +310,6 @@ export async function loadConnectorSchemaSummaries(
         .limit(1);
       const c = rows[0];
       if (!c) continue;
-      // Discovered/introspected operations — only when the connector has a
-      // base_url AND a cached discovery index. A connector can advertise
-      // self-description links without either, so the index lookup is
-      // guarded rather than an early `continue`.
       const operations: string[] = [];
       if (c.base_url) {
         const index = await readDiscoveryIndexForBaseUrl(exec, tenant_id, c.base_url);
@@ -418,9 +325,6 @@ export async function loadConnectorSchemaSummaries(
           }
         }
       }
-      // Self-description links (llms.txt / OpenAPI / GraphQL) the connector
-      // publishes — surfaced as a compact hint so the LLM knows it can
-      // fetch them on demand. Links only; never fetched here (lazy).
       const selfDescriptionLine = buildSelfDescriptionLine(
         c.self_description as ConnectorSelfDescription | null,
       );
@@ -514,21 +418,10 @@ export async function loadKnowledgeChunks(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Recipe bodies + Skill candidates — context for in-flight authoring
-// ---------------------------------------------------------------------------
-
-/** Normalise a token for case-folded, punctuation-stripped comparison.
- *  Used by the recipe-body ranking score to match operator-typed intent
- *  like "list customers!" against a `list-customers` keyword. If a
- *  sibling normaliser with different rules (e.g. punctuation-preserving)
- *  is ever introduced, document the divergence inline — silently
- *  unifying them would change the ranking output. */
 function normalizeToken(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-/** Tokenise free text for the score function. Filters empty tokens. */
 function tokenizeForRanking(text: string): string[] {
   return text
     .toLowerCase()
@@ -537,10 +430,6 @@ function tokenizeForRanking(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
-/** Build the ranking query string from the authoring hint + the tail of
- *  the user turns. Pure — mirrors `buildQuery` in context-assembler.ts
- *  but adds the structured hint fields so recipes are surfaced based on
- *  the explicit "next action" signal too. */
 export function buildRecipeRankingQuery(
   hint: AuthoringPromptHint | undefined,
   turns: UserTurn[],
@@ -552,16 +441,6 @@ export function buildRecipeRankingQuery(
   return parts.join(" ").slice(0, 512);
 }
 
-/**
- * Pure ranker over the snapshot's recipes list. Returns the top `max`
- * `RecipeBodyView`s, deterministically (slug asc for ties). The snapshot
- * is the connector's `template_snapshot` already fetched by the
- * assembler — no second `getConnector` round-trip.
- *
- * Defensive against missing fields. Recipes without `slug`, `title`, or
- * `workflow` are skipped — not a hard error. Returns `[]` when the
- * snapshot ships no recipes (or is malformed).
- */
 export function loadTopRecipeBodies(
   snapshot: Record<string, unknown> | null | undefined,
   authoringHint: AuthoringPromptHint | undefined,
@@ -653,20 +532,6 @@ export function loadTopRecipeBodies(
   return scored.slice(0, max).map((s) => s.view);
 }
 
-/**
- * Render-and-count trim: drop the lowest-ranked recipe bodies one at a
- * time until the formatter's section string fits the cap. `bodies` is
- * already in rank order (highest first); we pop from the tail. Bounded:
- * at most N iterations where N ≤ `max` from `loadTopRecipeBodies`.
- *
- * The trim helpers MUST call the formatter on each iteration — the cap
- * applies to the final rendered section string (heading + per-item
- * bodies + fences), not raw per-body tokens.
- *
- * Returns the surviving list and the rendered section (or null if
- * everything was dropped). When at least one body was trimmed, an
- * elision notice is appended to the section.
- */
 export function trimRecipeBodiesToBudget(
   templateSlug: string,
   bodies: RecipeBodyView[],
@@ -674,10 +539,6 @@ export function trimRecipeBodiesToBudget(
   survivors: RecipeBodyView[];
   section: string | null;
   trimmed: number;
-  /** Recipe slugs that rendered via the hybrid (workflow-JSON-elided)
-   *  path. Threaded through so `logRecipeBodyFallbacks` doesn't have to
-   *  re-render — the "exactly once per survivor" invariant becomes a
-   *  type guarantee, not just a comment. */
   fallback_recipe_slugs: string[];
 } {
   if (bodies.length === 0) {
@@ -685,10 +546,6 @@ export function trimRecipeBodiesToBudget(
   }
   const cap = RECIPE_BODIES_SECTION_CAP;
 
-  // Pre-render once per body. Renders are deterministic, so a
-  // pop-based trim loop can reuse the rendered text and the fellBack
-  // flag without re-invoking renderRecipeBody for each survivor on
-  // each iteration.
   type Rendered = { view: RecipeBodyView; text: string; fellBack: boolean };
   const rendered: Rendered[] = bodies.map((view) => ({ view, ...renderRecipeBody(view) }));
   let trimmed = 0;
@@ -718,10 +575,6 @@ export function trimRecipeBodiesToBudget(
   return { survivors: [], section: null, trimmed, fallback_recipe_slugs: [] };
 }
 
-/** Assemble the recipe-bodies section from already-rendered per-body
- *  strings. Mirrors `formatConnectorRecipeBodies` but takes the
- *  rendered text so the trim loop can avoid re-rendering each survivor
- *  on every iteration. */
 function formatConnectorRecipeBodiesFromTexts(
   templateSlug: string,
   texts: string[],
@@ -734,12 +587,6 @@ function formatConnectorRecipeBodiesFromTexts(
   ].join("\n\n");
 }
 
-/** Emit the hybrid-fallback warning log for each surviving recipe whose
- *  body rendered without its workflow JSON (per-body soft-cap exceeded).
- *  Called by the assembler exactly once per assembly, after the trim
- *  loop decided the final set. The trim loop pre-renders each body
- *  exactly once and threads the slugs of fallback survivors back, so
- *  this function reads from that list instead of re-rendering. */
 export function logRecipeBodyFallbacks(
   templateSlug: string,
   tenant_id: string,
@@ -763,47 +610,14 @@ export function logRecipeBodyFallbacks(
   }
 }
 
-/**
- * Load the top proposed Skill Candidates for the LLM context.
- * Best-effort: returns `[]` on any DB error so the assembler keeps
- * working. Scope hints from the assembler — global + maybe-connector +
- * maybe-workflow. Service-level merge / rank / cap (=8) happens inside
- * `listProposedForAuthoring`.
- *
- * Wired into the assembler alongside the recipe-bodies loader so the
- * loaders/formatters pair compiles as one slice. Importing
- * `listProposedForAuthoring` validates that the service helper is
- * exported from `skill-candidates/index.ts`.
- */
-/** Increment the section-load-failures counter when a recipe entry in
- *  the connector's `template_snapshot.recipes` is missing required fields
- *  (slug / title / workflow) or has the wrong shape. Today this should
- *  not happen — template ingestion is operator-curated — but if a
- *  future ingestion bug ever lands, the counter gives operators a
- *  signal before "no bodies rendered" turns into a silent regression. */
 function reportMalformedRecipe(): void {
   try {
     getMetrics().inc(METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL, {
       section: "recipe_bodies",
     });
-  } catch {
-    // Metrics emission is best-effort.
-  }
+  } catch {}
 }
 
-// Per-tenant tracker for the first proposed-candidate load failure in
-// this process. Subsequent failures for the same tenant still increment
-// the section_load_failures counter (so dashboards/alerts see them) but
-// stay at debug-level on the log stream so a flapping DB doesn't drown
-// it. A new tenant's first failure still surfaces at warn — operator
-// visibility per tenant is preserved.
-//
-// Bounded LRU rather than an unbounded Set: tenant-failure throttling
-// does not need full-history fidelity, and an unbounded set in a
-// long-running engine with a flapping DB and many tenants would leak.
-// Cap of 256 is comfortably above realistic tenant counts per engine host;
-// when the cap is hit, the oldest "already warned" entry is evicted
-// and the next failure for that tenant will warn again — acceptable.
 const WARNED_TENANTS_LRU_CAP = 256;
 const proposedCandidatesFailureState = {
   warnedTenants: new Set<string>(),
@@ -821,9 +635,7 @@ export async function loadProposedCandidates(
       getMetrics().inc(METRIC_NAMES.LLM_CONTEXT_SECTION_LOAD_FAILURES_TOTAL, {
         section: "skill_candidates",
       });
-    } catch {
-      // Metrics emission is best-effort.
-    }
+    } catch {}
     const errorMessage = err instanceof Error ? err.message : String(err);
     const payload = {
       module: "llm",
@@ -834,17 +646,9 @@ export async function loadProposedCandidates(
       ...(scope_hints.workflow_id ? { workflow_id: scope_hints.workflow_id } : {}),
       error: errorMessage,
     };
-    // First failure per (tenant, process): warn (operationally visible).
-    // Subsequent failures for the same tenant: debug, so flapping
-    // doesn't drown the log stream. A new tenant's first failure still
-    // warns.
     if (proposedCandidatesFailureState.warnedTenants.has(tenant_id)) {
       logger.debug(payload);
     } else {
-      // LRU eviction: when the cap is reached, drop the oldest known
-      // tenant (Sets preserve insertion order in JS) before adding the
-      // new one. A re-evicted tenant's next failure will warn again,
-      // which is the correct semantics for a bounded throttle.
       if (proposedCandidatesFailureState.warnedTenants.size >= WARNED_TENANTS_LRU_CAP) {
         const oldest = proposedCandidatesFailureState.warnedTenants.values().next().value;
         if (oldest !== undefined) {
@@ -858,13 +662,6 @@ export async function loadProposedCandidates(
   }
 }
 
-/**
- * Render-and-count trim for the skill-candidates section. Mirrors
- * `trimRecipeBodiesToBudget`. When the loop terminates with a single
- * over-cap survivor, the body is truncated to ceil(cap_tokens * 0.9)
- * re-counted tokens and the `llm.context.section_oversized_item` warning
- * is wired in commit 3 when the loader is called from the assembler.
- */
 export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
   survivors: SkillCandidateView[];
   section: string | null;
@@ -889,10 +686,6 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
     if (countTokens(candidate) <= cap) {
       return { survivors, section: candidate, trimmed, oversized_item_id: null };
     }
-    // Single survivor still over cap: truncate the body to
-    // ≤ ceil(cap * 0.9) re-counted tokens via a bounded binary search
-    // (~15 iterations max). The 0.9 leaves headroom for the section
-    // heading + meta + truncation notice.
     if (survivors.length === 1) {
       const only = survivors[0];
       if (!only) break;
@@ -921,14 +714,6 @@ export function trimCandidatesToBudget(candidates: SkillCandidateView[]): {
   return { survivors: [], section: null, trimmed, oversized_item_id: null };
 }
 
-// ---------------------------------------------------------------------------
-// Prior workflows — 5th authoring context source
-// ---------------------------------------------------------------------------
-
-/** Build the ranking query string for `loadPriorWorkflows` from the
- *  authoring hint + the tail of the user turns. Mirrors
- *  `buildRecipeRankingQuery` so similar workflows are scored against
- *  the same operator intent signal as similar recipes. */
 function buildPriorWorkflowRankingQuery(
   hint: AuthoringPromptHint | undefined,
   turns: UserTurn[],
@@ -940,18 +725,6 @@ function buildPriorWorkflowRankingQuery(
   return parts.join(" ").slice(0, 512);
 }
 
-/**
- * Load up to `PRIOR_WORKFLOWS_TOP_K` similar active workflows for the
- * authoring prompt. Best-effort: any DB failure returns `[]` so the
- * assembler keeps working without the section — same pattern as
- * `loadKnowledgeChunks` / `loadProposedCandidates`.
- *
- * Wires the structured authoring hint + the tail of the user turns
- * into the keyword vector, then delegates ranking to
- * `findSimilarActive` (workflows/service.ts). The workflow currently
- * being edited (when `p.workflow_id` is set) is excluded so a workflow
- * never appears as its own reference.
- */
 export async function loadPriorWorkflows(
   p: {
     tenant_id: string;
@@ -977,10 +750,6 @@ export async function loadPriorWorkflows(
   } catch (err) {
     logger.debug({
       module: "llm",
-      // Subsystem discriminator: the log emits from the LLM assembly
-      // path but the failure originates in `workflows/prior-workflows.ts`.
-      // Dashboards pivot on `subsystem` to isolate prior-workflow load
-      // failures from other context-assembly noise.
       subsystem: "prior_workflows",
       action: "llm.context.prior_workflows_skipped",
       msg: "prior-workflows load failed during context assembly",

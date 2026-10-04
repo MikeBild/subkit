@@ -1,13 +1,3 @@
-// Audit cardinality tests for the files subsystem.
-//
-// Asserts:
-//   - audit rows never carry raw `size_bytes`; only `size_bytes_bucket`
-//   - `size_bytes_bucket` is always one of the 5 valid values
-//   - filenames only appear on FILE_CREATED action rows
-//
-// This is an integration test because it uses a real Postgres DB to
-// round-trip the audit rows through the full audit.ts write path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { SizeBucket } from "../../audit/buckets.ts";
@@ -17,9 +7,6 @@ import { auditLog, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 
-// Deterministic uuid source: seeded so the test replays identically and
-// `no-random-uuid-in-tests` stays green. createTestDb provisions a fresh
-// DB per run, so per-call uniqueness within the test is sufficient.
 const uuid = createDeterministicUuidFactory(0xfacaad);
 
 const VALID_BUCKETS: SizeBucket[] = ["<1KB", "<1MB", "<10MB", "<100MB", ">=100MB"];
@@ -41,18 +28,8 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-// Representative sizes that span all 5 buckets
 const TEST_SIZES = [
-  512, // <1KB
-  2048, // <1MB
-  900_000, // <1MB
-  2_000_000, // <10MB
-  15_000_000, // <100MB
-  200_000_000, // >=100MB
-  50_000_000, // <100MB (boundary)
-  99_999_999, // <100MB
-  100_000_000, // >=100MB (boundary)
-  1, // <1KB (minimum)
+  512, 2048, 900_000, 2_000_000, 15_000_000, 200_000_000, 50_000_000, 99_999_999, 100_000_000, 1,
 ];
 
 async function emitFileEvent(
@@ -83,7 +60,6 @@ async function emitFileEvent(
 
 describe("files audit cardinality", () => {
   test("emitting 100 file events: size_bytes_bucket always one of 5 valid values", async () => {
-    // Emit 100 events across a range of sizes
     const sizes = Array.from({ length: 100 }, (_, i) => 512 * (i + 1));
     for (const size of sizes) {
       await emitFileEvent("FILE_CREATED", size);
@@ -96,11 +72,8 @@ describe("files audit cardinality", () => {
 
     for (const row of rows) {
       const meta = row.metadata as Record<string, unknown>;
-      // Must have size_bytes_bucket
       expect(meta.size_bytes_bucket).toBeDefined();
-      // Must be one of 5 valid values
       expect(VALID_BUCKETS).toContain(meta.size_bytes_bucket as SizeBucket);
-      // Must NOT have raw size_bytes
       expect(meta.size_bytes).toBeUndefined();
     }
   });
@@ -129,7 +102,6 @@ describe("files audit cardinality", () => {
           size_bytes_bucket: bucketSize(1024),
           range: false,
           content_type: "application/pdf",
-          // No filename here — only FILE_CREATED should carry it
         },
       },
       ctx.db,
@@ -147,7 +119,6 @@ describe("files audit cardinality", () => {
       );
     expect(createdRows.length).toBe(1);
     const createdMeta = createdRows[0]!.metadata as Record<string, unknown>;
-    // FILE_CREATED may carry filename
     expect(createdMeta.filename).toBe("report.pdf");
 
     const downloadedRows = await ctx.db
@@ -162,19 +133,13 @@ describe("files audit cardinality", () => {
       );
     expect(downloadedRows.length).toBe(1);
     const downloadedMeta = downloadedRows[0]!.metadata as Record<string, unknown>;
-    // FILE_DOWNLOADED must NOT carry filename
     expect(downloadedMeta.filename).toBeUndefined();
   });
 
   test("FileCreatedMetadataSchema rejects filenames longer than 255 chars", () => {
-    // Mirrors the cap on `InlineUploadSchema.filename` and
-    // `BatchCreateEntrySchema.filename` (api/files-schemas.ts). A
-    // future emitter that bypassed the wire-schema cap would otherwise
-    // inflate `audit_log.metadata` row size unboundedly.
     const tooLong = "x".repeat(256);
     const justRight = "x".repeat(255);
     const result = FileCreatedMetadataSchema.safeParse({
-      // Strict UUID v4 pattern — version nibble must be 4, variant nibble in 8-b.
       file_id: "11111111-1111-4111-9111-111111111111",
       size_bytes_bucket: "<1KB",
       content_type: null,
@@ -182,7 +147,6 @@ describe("files audit cardinality", () => {
     });
     expect(result.success).toBe(false);
     const ok = FileCreatedMetadataSchema.safeParse({
-      // Strict UUID v4 pattern — version nibble must be 4, variant nibble in 8-b.
       file_id: "11111111-1111-4111-9111-111111111111",
       size_bytes_bucket: "<1KB",
       content_type: null,
@@ -201,7 +165,6 @@ describe("files audit cardinality", () => {
     expect(bucketSize(10 * 1024 * 1024)).toBe("<100MB");
     expect(bucketSize(100 * 1024 * 1024 - 1)).toBe("<100MB");
     expect(bucketSize(100 * 1024 * 1024)).toBe(">=100MB");
-    // Non-finite values (including Infinity) are clamped to "<1KB" per contract
     expect(bucketSize(Number.POSITIVE_INFINITY)).toBe("<1KB");
     expect(bucketSize(Number.NaN)).toBe("<1KB");
     expect(bucketSize(-1)).toBe("<1KB");

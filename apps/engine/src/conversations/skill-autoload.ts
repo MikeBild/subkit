@@ -1,21 +1,3 @@
-// Data-driven skill autoload.
-//
-// The conversation loop, the LLM context assembler, and the conversation
-// boot path all need to decide which skills should land in the LLM's
-// `loaded_skills` set for a given turn. This file owns that decision.
-//
-// Where the legacy implementation hard-coded a `RULES` array next to the
-// matcher, the matcher here reads each skill's own `activates_when`
-// discriminated union (see `apps/engine/src/skills/types.ts`) so the
-// activation contract lives next to the skill body, not in a sibling
-// table that drifts. Adding a skill no longer requires touching this
-// file.
-//
-// Callers preload the catalog of active stable skills once per turn via
-// `loadActivationCatalog(tenant_id, db)` and pass it into the matchers.
-// `maturity:"experimental"` skills are excluded from autoload — they are
-// only reachable via explicit `load_skill(slug)`.
-
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { skills } from "../db/schema/index.ts";
@@ -28,29 +10,18 @@ import {
   skillOfferedTo,
 } from "../skills/types.ts";
 
-/** Slim per-skill record the matcher needs. Loaded from the `skills`
- *  table by `loadActivationCatalog`. */
 export interface ActivationRecord {
   slug: string;
   activates_when: SkillActivation[];
   maturity: SkillMaturity;
   side_effects: SkillSideEffects;
   tags: string[];
-  /** Where the skill is offered; absent means "both". */
   applies_to?: SkillAppliesTo;
 }
 
-/** Surfaces in scope for the current turn. Caller-supplied so the
- *  matcher stays pure. */
 export interface ScopeFacts {
-  /** Drivers of connectors currently in scope (e.g. derived from the
-   *  active draft, the workflow being built, or the chat-mentioned
-   *  connector). Lower-case. */
   connector_drivers?: readonly string[];
-  /** Template slugs of connectors currently in scope. Lower-case. */
   connector_templates?: readonly string[];
-  /** Audience of the turn (`skillAudienceForAuthoringMode`). When set, a
-   *  skill not offered to it never autoloads or re-affirms. */
   audience?: SkillAudience | undefined;
 }
 
@@ -60,51 +31,21 @@ export interface ToolCallContext extends ScopeFacts {
 }
 
 export interface UserTurnContext extends ScopeFacts {
-  /** Lower-cased user-turn text used for `intent_keyword` matching. */
   user_text: string;
-  /** True when this is the conversation's first turn — `baseline`
-   *  activations fire only on first-turn boot. */
   first_turn?: boolean;
-  /** Conversation surface. On the read-only `chat` surface,
-   *  authoring-oriented skills (see `AUTHORING_ONLY_TAG`) are suppressed
-   *  so the prompt never carries guidance the fail-closed chat palette
-   *  cannot act on. */
   surface?: string | undefined;
 }
 
-/**
- * Reserved skill tag. A skill carrying it is authoring-oriented — its
- * body references write/authoring tools (`create_skill`, `author_workflow`,
- * …). Such skills must NOT autoload on the read-only `chat` surface, whose
- * palette is fail-closed to reads + run: loading them tempts the model to
- * OFFER an action the surface cannot fulfil, which then dead-ends (the
- * `create_skill`-on-chat approval failure). The tool palette is already
- * surface-gated; this closes the matching gap in the prompt/skill layer.
- * Tenant- or seed-authored skills opt in by adding this tag.
- */
 export const AUTHORING_ONLY_TAG = "authoring-only";
 
-/** True when `rec` is not offered to the turn's audience. */
 function notOffered(rec: ActivationRecord, audience: SkillAudience | undefined): boolean {
   return audience !== undefined && !skillOfferedTo(rec.applies_to ?? "both", audience);
 }
 
-/** True when `rec` must be withheld from autoload on `surface`. */
 function suppressedOnSurface(rec: ActivationRecord, surface: string | undefined): boolean {
   return surface === "chat" && rec.tags.includes(AUTHORING_ONLY_TAG);
 }
 
-/**
- * Load the slim activation catalog for a tenant. Returns the active,
- * non-experimental skills with their `activates_when` rules and the
- * capability/safety attributes the matcher uses for ranking and gating.
- *
- * The catalog is small — typically tens to low-hundreds of rows per
- * tenant — so we re-query per turn rather than maintaining an in-memory
- * cache that would need invalidation on skill writes. If profiling
- * later shows this is hot, an LRU keyed on `(tenant_id, max_updated_at)`
- * is the right place to add it.
- */
 export async function loadActivationCatalog(
   tenant_id: string,
   db: Db,
@@ -137,13 +78,6 @@ export async function loadActivationCatalog(
   return out;
 }
 
-/**
- * Slugs to autoload before dispatching `tool` with `input`. Matches
- * `tool`, `tool_arg`, `connector_driver`, `connector_template`,
- * `connector_recipe_match`, and `step_kind` activation rules. Does
- * NOT consider `baseline` or `intent_keyword` rules — those are user-
- * turn signals, not tool-call signals.
- */
 export function autoloadForToolCall(
   ctx: ToolCallContext,
   catalog: readonly ActivationRecord[],
@@ -153,22 +87,12 @@ export function autoloadForToolCall(
   const out = new Set<string>();
   const drivers = new Set((ctx.connector_drivers ?? []).map((d) => d.toLowerCase()));
   const templates = new Set((ctx.connector_templates ?? []).map((t) => t.toLowerCase()));
-  // build_workflow has a steps array; each step's connector_id resolves
-  // to a driver elsewhere, but operators may have set
-  // step.config.driver inline. Surface those drivers too — preserves
-  // the legacy build_workflow → s3-connectors / postgres-connectors /
-  // graphql-connectors behavior even when ScopeFacts didn't include
-  // them upstream.
   for (const d of inferDriversFromToolInput(ctx.tool, ctx.input)) drivers.add(d.toLowerCase());
   const stepKinds = new Set(inferStepKindsFromToolInput(ctx.tool, ctx.input));
 
   for (const rec of catalog) {
     if (have.has(rec.slug)) continue;
     if (out.has(rec.slug)) continue;
-    // Defense in depth — `loadActivationCatalog` already drops
-    // experimental skills, but a hand-built catalog (eg. unit tests,
-    // tenant overrides) might leak one through. Experimental skills
-    // are only loadable via explicit `load_skill(slug)`.
     if (rec.maturity === "experimental") continue;
     if (notOffered(rec, ctx.audience)) continue;
     if (matchesToolCall(rec.activates_when, ctx, drivers, templates, stepKinds)) {
@@ -178,13 +102,6 @@ export function autoloadForToolCall(
   return rankAndOrder(out, catalog);
 }
 
-/**
- * Slugs to autoload at user-turn time. Matches `baseline` (only on
- * first turn) and `intent_keyword` (always). Connector scope feeds
- * `connector_driver` and `connector_template` rules — the LLM should
- * see e.g. `postgres-connectors` the moment the user asks about a
- * connector with that driver, not only after `propose_step` fires.
- */
 export function autoloadForUserTurn(
   ctx: UserTurnContext,
   catalog: readonly ActivationRecord[],
@@ -209,32 +126,6 @@ export function autoloadForUserTurn(
   return rankAndOrder(out, catalog);
 }
 
-/**
- * Re-affirm which ALREADY-LOADED slugs still match this turn's signals.
- *
- * The matchers above (`autoloadForUserTurn` / `autoloadForToolCall`)
- * are one-way ADD operations: they SKIP any slug already in
- * `currently_loaded` (`have.has(slug) => continue`), so they can never
- * refresh a loaded skill's recency. This function is their inverse: it
- * re-runs the SAME matchers over ONLY the loaded set and returns the
- * subset that still matches, so the loop can reset their `last_turn` and
- * keep their full body alive.
- *
- * `mode` selects which matcher fires:
- *   - `"user_turn"`: `intent_keyword` / `connector_driver` /
- *     `connector_template` / `connector_recipe_match` against
- *     `user_text` + ScopeFacts.
- *   - `"tool_call"`: `tool` / `tool_arg` / `connector_driver` /
- *     `connector_template` / `connector_recipe_match` / `step_kind`
- *     against the about-to-run tool + ScopeFacts.
- *
- * Experimental skills never match `activates_when`; they are returned
- * only when baseline (they are not) — i.e. they age out after K turns
- * and re-promote via explicit `load_skill`. The function returns false
- * for them without throwing. Baseline slugs always re-affirm.
- *
- * Pure — no DB, no mutation. Returns a subset of `currently_loaded`.
- */
 export function reaffirmLoadedForTurn(
   ctx: (UserTurnContext & { mode: "user_turn" }) | (ToolCallContext & { mode: "tool_call" }),
   catalog: readonly ActivationRecord[],
@@ -248,24 +139,15 @@ export function reaffirmLoadedForTurn(
   for (const rec of catalog) {
     if (!loaded.has(rec.slug)) continue;
     if (out.has(rec.slug)) continue;
-    // A skill not offered to this turn's audience is never re-affirmed —
-    // not even a baseline one — so it ages out of the full-body window.
     if (notOffered(rec, ctx.audience)) continue;
-    // Baseline skills are the core mental model — always re-affirmed.
     if (rec.activates_when.some((r) => r.kind === "baseline")) {
       out.add(rec.slug);
       continue;
     }
-    // Experimental skills cannot match `activates_when`; they re-promote
-    // only via explicit `load_skill`. Skip without throwing.
     if (rec.maturity === "experimental") continue;
-    // Never re-affirm an authoring-oriented skill on the read-only chat
-    // surface — same contract as the autoload matchers above.
     if (ctx.mode === "user_turn" && suppressedOnSurface(rec, ctx.surface)) continue;
     if (ctx.mode === "user_turn") {
       const text = (ctx.user_text ?? "").toLowerCase();
-      // first_turn is irrelevant here — re-affirm runs over the loaded
-      // set, and baseline is already handled above.
       if (matchesUserTurn(rec.activates_when, text, drivers, templates, false)) {
         out.add(rec.slug);
       }
@@ -282,12 +164,6 @@ export function reaffirmLoadedForTurn(
   return [...out];
 }
 
-/**
- * Slugs to autoload after a tool RESULT reported these diagnosis codes.
- * Matches only `diagnosis` rules, exactly. The before-dispatch matcher
- * (`autoloadForToolCall`) cannot see a result, and the refusal a result
- * names is exactly when the skill explaining it is worth its tokens.
- */
 export function autoloadForDiagnoses(
   codes: readonly string[],
   catalog: readonly ActivationRecord[],
@@ -314,13 +190,6 @@ export function autoloadForDiagnoses(
   return rankAndOrder(out, catalog);
 }
 
-/**
- * Diagnosis codes a tool result reports: every `code` and `reason` of a
- * `repair_guidance` or gate `diagnoses` list, at the top level or one object
- * down (a draft save nests guidance under `automation_readiness`).
- * Deliberately shallow — both lists are a contract of the result's own shape,
- * not something to dig out of arbitrary payload data.
- */
 export function diagnosisCodesFromToolResult(result: unknown): string[] {
   const codes = new Set<string>();
   const collect = (list: unknown): void => {
@@ -342,12 +211,6 @@ export function diagnosisCodesFromToolResult(result: unknown): string[] {
   return [...codes];
 }
 
-/**
- * Slugs to load on conversation boot. These are the skills with at
- * least one `kind:"baseline"` activation rule. Used by
- * `conversations/service.ts` when seeding `loaded_skills` on first
- * insert.
- */
 export function listBaselineSlugs(catalog: readonly ActivationRecord[]): string[] {
   const out: string[] = [];
   for (const rec of catalog) {
@@ -355,8 +218,6 @@ export function listBaselineSlugs(catalog: readonly ActivationRecord[]): string[
   }
   return out.sort((a, b) => a.localeCompare(b));
 }
-
-// ---------------------------------------------------------------------------
 
 function matchesToolCall(
   rules: readonly SkillActivation[],
@@ -385,8 +246,6 @@ function matchesToolCall(
       case "step_kind":
         if (rule.step_kinds.some((k) => stepKinds.has(k))) return true;
         break;
-      // baseline + intent_keyword are not relevant to tool-call autoload;
-      // diagnosis fires on the tool's RESULT (`autoloadForDiagnoses`).
       case "baseline":
       case "intent_keyword":
       case "diagnosis":
@@ -420,8 +279,6 @@ function matchesUserTurn(
       case "connector_recipe_match":
         if (templates.has(rule.template.toLowerCase())) return true;
         break;
-      // tool / tool_arg / step_kind are not relevant to user-turn autoload —
-      // they only fire on tool-call signals; diagnosis only on tool results.
       case "tool":
       case "tool_arg":
       case "step_kind":
@@ -432,14 +289,6 @@ function matchesUserTurn(
   return false;
 }
 
-/**
- * Walk a dot-path against an unknown shape. Supports two segment
- * meta-tokens:
- *   - `*` or `[*]`: iterate over an array (any-match semantics)
- *   - all other segments are property keys on the current object
- *
- * Returns true when at least one resolved value is `=== equals`.
- */
 function evaluatePath(input: unknown, path: string, equals: string | number | boolean): boolean {
   const segments = path
     .split(".")
@@ -465,7 +314,6 @@ function walk(
   return walk(next, segs, i + 1, equals);
 }
 
-/** Extract driver hints from a single step-shaped object. */
 function driversFromStep(raw: unknown): string[] {
   const step = pickObject(raw);
   const cfg = pickObject(step.config);
@@ -476,13 +324,6 @@ function driversFromStep(raw: unknown): string[] {
   return drivers;
 }
 
-/**
- * Inspect a tool-call input for inline driver hints. Reads the step
- * objects an `edit_workflow_patch` call carries as JSON Patch values so
- * a driver-gated skill auto-loads when the LLM patches in a step using
- * that driver. Only inspects shapes the matcher knows about — unknown
- * shapes return an empty list (they fall back to ScopeFacts).
- */
 function inferDriversFromToolInput(tool: string, input: unknown): string[] {
   if (!input || typeof input !== "object") return [];
   if (tool === "edit_workflow_patch") {
@@ -506,13 +347,6 @@ function pickObject(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-/**
- * Inspect a tool-call input for step-kind hints. Extracts `step.kind`
- * from the step objects an `edit_workflow_patch` call carries as JSON
- * Patch values (recursing through branch / loop / parallel sub-steps).
- * Skills with a `step_kind` activation rule auto-load when the LLM
- * patches in a step that uses the named primitive.
- */
 function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
   if (!input || typeof input !== "object") return [];
   const out: string[] = [];
@@ -541,12 +375,6 @@ function inferStepKindsFromToolInput(tool: string, input: unknown): string[] {
   return out;
 }
 
-/**
- * Rank matched slugs deterministically. Skills with more `tags` rank
- * first (more specific = more relevant), tied by lexicographic slug
- * order so the same matcher input always produces the same output —
- * pinned by the parity matrix in skill-autoload.test.ts.
- */
 function rankAndOrder(slugs: Set<string>, catalog: readonly ActivationRecord[]): string[] {
   const tagCount = new Map<string, number>();
   for (const rec of catalog) tagCount.set(rec.slug, rec.tags.length);

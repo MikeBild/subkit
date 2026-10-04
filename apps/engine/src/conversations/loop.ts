@@ -1,14 +1,3 @@
-// Conversation tool-use loop, SDK-driven.
-//
-// The loop hands turn execution to `streamText` with our tool palette
-// wrapped via `tool()`. Stop conditions halt the run on step-count
-// exhaustion, `request_human_approval` (pause for operator), or a
-// `save_workflow_draft` that returned a `committed_workflow_id`. Each tool's
-// side-effects (DB row inserts, event emission, logging, approval
-// creation) happen inside the `sdk-wrap` adapter — this file's job is
-// composing the call, mapping callbacks into DB writes + events, and
-// resolving the final per-turn status.
-
 import { hasToolCall, type ModelMessage, stepCountIs, streamText, type ToolSet } from "ai";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { AuditAction, auditAwait } from "../audit/index.ts";
@@ -150,104 +139,26 @@ export interface RunLoopParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
-  /**
-   * Resolved principal — threaded so synthetic `wf_<slug>` tools in the
-   * chat palette can apply the same RBAC gate + hold-writes preview
-   * approval MCP uses. Absent on the chat-adapter and MCP-worker resume
-   * paths; the synthetic tools are omitted from the palette in that case.
-   */
   principal?: ResolvedPrincipal | null;
   connector_id: string | null;
   workflow_id: string | null;
   user_message: string | null;
-  /**
-   * Objects the user @-mentioned in this turn's message. Resolved here on
-   * every turn (tenant + RBAC) and rendered as the `[REFERENCED ENTITIES]`
-   * block; never cached on the message. See `references.ts`.
-   */
   user_references?: ConversationReference[] | null;
   step_budget?: number;
-  /** Optional user-supplied memory payload to thread into context assembly. */
   user_memory?: string | null;
-  /** Optional per-turn model override resolved from conversations.model. */
   model_override?: string | null;
-  /**
-   * Surface the conversation is running on. Selects the per-surface
-   * system-prompt variant (terse for sk_headless, conversational for
-   * sk_interactive, machine-readable for mcp, etc). The `chat` surface
-   * (external chat platforms — Google Chat, Slack, Teams) additionally
-   * restricts the tool palette to the channel-scoped read-only set:
-   * authoring and direct connector calls are structurally unavailable
-   * regardless of the linked user's role.
-   */
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
-  /**
-   * Live emitter — invoked synchronously every time the loop pushes a
-   * TurnEvent. Used by the HTTP SSE route and MCP progress bridge to
-   * stream frames as they occur rather than waiting for the loop to
-   * complete. The same events are also buffered in the return value
-   * for replay / persistence.
-   */
   onEvent?: (ev: TurnEvent) => void;
-  /**
-   * Real runtime context the model must quote verbatim instead of
-   * inventing placeholders. Threaded into `assembleEnhancedPrompt` and
-   * rendered as the RUNTIME CONTEXT system-prompt block. See
-   * `llm/runtime-context.ts`.
-   */
   runtime_context?: {
     engine_url?: string;
     tenant_slug?: string;
     actor_email?: string;
     actor_role?: string;
   };
-  /**
-   * Client-supplied permission mode for this turn. Overrides the
-   * per-tool policy matrix: "auto" skips confirmations on
-   * non-dangerous tools, "ask" confirms every tenant_write, "plan"
-   * is surfaced to the client identically to "ask". See
-   * `tool-policies.ts#resolveToolMode` for the full precedence order.
-   */
   permission_mode?: "auto" | "ask" | "plan" | "yolo" | null;
-  /**
-   * Pre-registered AbortController for this turn. The route / MCP /
-   * service-layer caller registers it on the synchronous frame of
-   * request-accept (or right after row insert in the create flow)
-   * and threads it through. The loop consumes it; lifetime ownership
-   * stays with the caller (whoever registered also unregisters in
-   * their `finally`). Every caller of `runLoop` threads a controller
-   * — there is no fallback registration here, which would re-open
-   * the cancel race.
-   */
   turn_abort_ctrl: AbortController;
-  /**
-   * Set when the caller has ALREADY inserted the `conversation_messages`
-   * user row for this turn (the MCP async-Tasks path persists the
-   * message before enqueueing the `conversation.run-turn` job so the
-   * worker can read it back). The loop then skips its own insert to
-   * avoid a duplicate row, but still rewrites attachment slugs + emits
-   * the `message` event so context assembly and the event replay are
-   * unchanged. Defaults to `false` — every synchronous caller persists
-   * inside the loop as before.
-   */
   user_message_persisted?: boolean;
-  /**
-   * Per-turn opt-out for the next-message preview frame. When set,
-   * the loop still emits a `next_suggestion` event so the SSE close
-   * is deterministic, but with `suggestion: null, reason:
-   * "client-suppress"` and no model call. sk-cli flips this to true
-   * after N consecutive dismissals.
-   */
   next_suggestion_suppress?: boolean;
-  /**
-   * MCP-native elicitation bridge. Present ONLY when this turn runs
-   * inside an MCP `tools/call` whose client advertised the
-   * `elicitation` capability. Set on the `ToolContext` so input-
-   * collecting tools (`ask_user_*`, `authenticate_oauth`) can surface
-   * forms + OAuth prompts directly in the client instead of taking the
-   * DB-pause / `respondElicitation` round-trip. `undefined` on the
-   * HTTP/SSE portal surface.
-   */
   elicitationBridge?: ElicitationBridge;
 }
 
@@ -259,23 +170,10 @@ export interface RunLoopResult {
 }
 
 export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
-  // Live event streaming: callers that want real-time frames pass
-  // `onEvent`. Buffered replay stays available via `result.events`.
   const sink = new EventSink(p.onEvent);
-  // Proxy-backed view over the EventSink — existing `events.push(ev)`
-  // call-sites continue to work, but every push is also emitted live
-  // via `p.onEvent` when supplied.
   const events: TurnEvent[] = sink.asArrayProxy();
   const budget = p.step_budget ?? DEFAULT_BUDGET;
-  // Resolve the engine's own public URL ONCE for this turn. REST passes it in
-  // `runtime_context`; the origin-less surfaces (chat queue job, MCP background
-  // turn) fall back to config.server.public_base_url. Used by BOTH the RUNTIME
-  // CONTEXT prompt block AND the output guard's url.unknown_origin check — they
-  // must agree, or the model is told the URL but the guard then scrubs it.
   const resolvedEngineUrl = p.runtime_context?.engine_url ?? engineUrlFromConfig();
-  // Caller registers + unregisters on their synchronous-accept frame.
-  // The loop only consumes the signal here; re-registering inside this
-  // body would re-open the cancel race.
   const turnAbortCtrl = p.turn_abort_ctrl;
 
   log.debug({
@@ -292,39 +190,13 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   const usageBefore = await monthlyUsage(p.tenant_id, p.db).catch(() => 0);
 
-  // Honest per-turn cost accounting, accumulated step-by-step in
-  // onStepFinish (fallback attempts included). Two distinct numbers:
-  //   - promptTokensLastCall: the FINAL LLM call's prompt size
-  //     (input + cache read + cache creation) — the only figure that is
-  //     comparable to `context_cap_tokens`. Pre-fix sk divided the
-  //     turn-CUMULATIVE tokens by the per-prompt cap and showed
-  //     `ctx 464k/180k (100%)` — apples over oranges.
-  //   - turnTokensTotal: sum of every token (prompt + completion +
-  //     cache) across all LLM calls of this turn.
   let promptTokensLastCall: number | null = null;
   let turnTokensTotal = 0;
-  // Per-turn cache accounting for the `completed` envelope's cache-hit
-  // gauge. `turnInputTokens` is the running sum of FRESH (non-cached)
-  // input; `turnCacheReadTokens` is input served from the prompt cache.
-  // Hit-rate = cacheRead / (fresh + cacheRead) — the same definition the
-  // `/v1/executions/{id}/cost` card uses, so the two surfaces agree.
   let turnInputTokens = 0;
   let turnCacheReadTokens = 0;
 
-  // Rewrite `@attachment:<slug>` chat-text tokens to the canonical
-  // `[file:fid_...]` sentinel before persistence so every downstream
-  // surface (model-message replay, LLM file-context assembler, audit)
-  // sees a single normalized form. Unresolved slugs stay as the literal
-  // `@attachment:<slug>` token so the model can ask a clarifying
-  // question on the next turn. Slug → file_id lookup is scoped to this
-  // conversation's `file_links` rows by `resolveAttachmentSlugsInText`.
   let ingestedUserMessage: string | null = p.user_message;
   if (p.user_message) {
-    // When `user_message_persisted` is set the MCP handler already ran
-    // this resolution before persisting the row; re-running it here is
-    // deliberately idempotent — `resolveAttachmentSlugsInText` on
-    // already-resolved text is a no-op (no `@attachment:` tokens left),
-    // so the loop need not branch on whether the caller pre-resolved.
     const rewrite = await resolveAttachmentSlugsInText(p.user_message, {
       db: p.db,
       tenant_id: p.tenant_id,
@@ -332,10 +204,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
     ingestedUserMessage = rewrite.text;
-    // The MCP async-Tasks worker path persists the user row before
-    // enqueue (so it survives a crash between accept and turn-start);
-    // skip the insert here to avoid a duplicate. All synchronous
-    // callers leave `user_message_persisted` falsy and persist here.
     if (!p.user_message_persisted) {
       await appendMessage(p.db, p.tenant_id, p.conversation_id, "user", {
         text: ingestedUserMessage,
@@ -347,9 +215,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     events.push({ type: "message", role: "user", content: { text: ingestedUserMessage } });
   }
 
-  // Resolve the turn's @-mentions now, with the acting principal, so a
-  // deleted or withdrawn object is reported as such in THIS turn's prompt
-  // and flagged on the persisted row for the transcript.
   const referenced = await resolveReferences(p.user_references, {
     db: p.db,
     tenant_id: p.tenant_id,
@@ -365,8 +230,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     );
   }
 
-  // Whether the TENANT SNAPSHOT is complete decides if an enumeration may be
-  // answered with tools withheld; only counted when the question is one.
   const detectedIntent = detectUserIntent(
     ingestedUserMessage,
     matchesEnumerationIntent(ingestedUserMessage)
@@ -375,27 +238,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   );
   let workflowIdForTurn = p.workflow_id;
 
-  // Draft state for the turn — tools mutate via ctx.setDraft, which
-  // snapshots to conversation_drafts for audit/undo.
   let draft: DraftDocument = await loadDraft(p.tenant_id, p.conversation_id, p.db);
   const hasBoundSavedWorkflow =
     workflowIdForTurn !== null ||
     draft.summary?.active_target.kind === "workflow" ||
     draft.summary?.persisted_resources.some((resource) => resource.kind === "workflow") === true;
-  // Guard against the intent heuristic wiping a non-empty unsaved
-  // workflow draft. A "rebuild the workflow"-style message while an
-  // in-progress draft with authored steps is live must not destroy
-  // that work; only an already-persisted target may be reset here.
-  // (Predicate lives in authoring-state.ts so the gate and its unit test
-  // share one source of truth.)
   if (
     detectedIntent.startNewWorkflow === true &&
     hasBoundSavedWorkflow &&
     !hasInProgressWorkflowDraft(draft)
   ) {
-    // An explicit "create a workflow" request starts a fresh draft.
-    // Keeping the previous saved workflow target here would turn the
-    // next commit into an in-place update of the old workflow.
     draft = startNewWorkflowDraft(draft);
     workflowIdForTurn = null;
     await p.db
@@ -416,17 +268,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     connector_id: p.connector_id,
     workflow_id: workflowIdForTurn,
     permission_mode: p.permission_mode ?? null,
-    // Surface travels onto every per-call tool ctx (via the `{ ...ctx }`
-    // spread in sdk-wrap/invoke) so tools can distinguish a backgrounded
-    // MCP turn (`surface: "mcp"`, no live session) from an attended
-    // sk-cli / web turn.
     ...(p.surface ? { surface: p.surface } : {}),
     engineClient: new EngineClient({
       tenant_id: p.tenant_id,
       actor_id: p.actor_id,
-      // Single-source the attribution class from the resolved principal:
-      // a user session → "user", an API-key (system_account) → "system_account",
-      // and an absent principal (resume / chat-adapter paths) → "system".
       actor_type: actorFields(p.principal).actor_type,
       db: p.db,
     }),
@@ -437,26 +282,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     },
     abortSignal: turnAbortCtrl.signal,
     recentUserMessage: ingestedUserMessage ?? null,
-    // MCP-native elicitation bridge — undefined on the HTTP/SSE portal
-    // surface. The `perCallCtx = { ...ctx }` spread in sdk-wrap/invoke
-    // carries it onto every tool's per-call context automatically.
     ...(p.elicitationBridge ? { elicitationBridge: p.elicitationBridge } : {}),
   };
 
   const route = await resolveModelRoute(p.tenant_id, p.db);
-  // The model a turn starts on: the operator's explicit per-conversation
-  // pick, else the configured tenant default. Nothing about the user's
-  // wording enters this decision — an authoring-intent branch used to sit
-  // here and silently overrode `llm.model` with a hard-coded top-tier
-  // literal (see `loop/authoring-intent.ts` for why it existed and why it
-  // is gone). Later steps may still be routed UP by the step-router, but
-  // only on earned signals, and `activeStepModel` inside `runOnce` is what
-  // accounting bills for those.
   const seedModel = p.model_override ?? route.primary;
 
-  // Step-router signals — refreshed per turn. The router never
-  // downgrades the tenant default; it only escalates upward when one
-  // of these flips true.
   const stepRouterSignals: StepRouterSignals = {
     hadRepairThisTurn: false,
     strongRunIntent:
@@ -464,24 +295,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       detectedIntent.forceTool === "save_workflow_draft",
     multiArtifactIntent: detectMultiArtifactIntent(ingestedUserMessage),
     priorCriticFail: false,
-    // Threads the surface so the router can suppress the AUTHORING
-    // hard-stage escalation on the read-only `chat` surface (a bound
-    // workflow otherwise parks chat on `workflow_persisted` and escalates
-    // every turn). Genuine-difficulty escalations still fire on chat.
-    // Conditional spread satisfies exactOptionalPropertyTypes when unset.
     ...(p.surface ? { surface: p.surface } : {}),
   };
 
-  // Pre-check budget. Worst case: `budget` steps × ~1 K output each +
-  // the assembled prompt. Matches the envelope `callWithFallback`
-  // used before A5.
   const currentUserText = ingestedUserMessage ?? "continue";
-  // Single consolidated read of the conversation row: loaded_skills (new
-  // {slug,last_turn} recency shape), tool_policies, and the persisted
-  // target_connector_id (folds the prior separate SELECTs — the two old
-  // loaded_skills reads and the activeConnectorId lookup). The turn
-  // counter is NOT read here: it is bumped atomically below via UPDATE …
-  // RETURNING so concurrent turns cannot collapse a recency index.
   const convRow = await p.db
     .select({
       loaded_skills: conversations.loaded_skills,
@@ -502,13 +319,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       raw,
     }),
   );
-  // Increment the recency clock exactly once per turn, BEFORE any tool can
-  // run, and persist it immediately so mid-turn writers (load_skill, the
-  // tool-call autoload) stamp `last_turn` against the same turn index.
-  // Atomic increment + RETURNING in one round-trip: a read-modify-write
-  // would let two concurrent turns on the same conversation both read N and
-  // both write N+1 (webhook + chat dual delivery, double-tapped send),
-  // collapsing two turns into one recency index.
   const [turnRow] = await p.db
     .update(conversations)
     .set({ turn_count: sql`${conversations.turn_count} + 1` })
@@ -520,10 +330,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     "no_confirm" | "confirm_before_execution" | "confirm_after_execution"
   >;
 
-  // Auto-load skills based on conversation context — attachment MIME
-  // types, recent execution failures, and target workflow presence.
-  // Deterministic keyword match against `skills.trigger_keywords`.
-  // Files are linked via `file_links WHERE resource_type='conversation'`.
   const attachmentMimeRows = await p.db
     .select({ content_type: files.content_type })
     .from(fileLinks)
@@ -547,17 +353,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         and(eq(executions.tenant_id, p.tenant_id), eq(executions.workflow_id, workflowIdForTurn)),
       )
       .limit(5);
-    hasFailedExecution = failed.length > 0; // any prior execution counts as feedback context
+    hasFailedExecution = failed.length > 0;
   }
-  // Lazy-eval gate: skip the intent-skill keyword scan when this turn
-  // is a continuation rather than a new topical prompt. Elicitation
-  // responses (currentUserText empty) and short affirmations like
-  // "yes"/"approve" don't shift the conversation's topic, so the
-  // skill set already loaded on the conversation stays valid.
-  // Pre-fix the scan ran every turn including approval round-trips,
-  // burning tokens on a no-op keyword walk plus its DB lookup of
-  // skills by trigger — visible in long sessions where the same
-  // conversation paid the scan cost on every "approve" keystroke.
   const trimmedUserText = currentUserText.trim();
   const isContinuationTurn =
     trimmedUserText.length < 8 ||
@@ -578,15 +375,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           p.db,
         );
 
-  // Recency-aware full-body skill loading. A loaded skill keeps its full
-  // body when it is a baseline skill (core mental model, always refreshed)
-  // or still matches this turn's signals via `activates_when`. New
-  // autoload additions enter at `last_turn = currentTurn` so they are
-  // full-body immediately. On a continuation turn (short "approve"/"yes")
-  // the topic has not shifted — refresh baseline only and leave topical
-  // `last_turn`s untouched, so a short affirmation neither promotes nor
-  // demotes a topical skill. This is NOT the old ratchet: idle topical
-  // skills still age out after K turns and fall back to the skill index.
   const loadedSlugs = loadedEntries.map((e) => e.slug);
   const skillCatalog = await loadActivationCatalog(p.tenant_id, p.db);
   const baselineSlugSet = new Set(listBaselineSlugs(skillCatalog));
@@ -638,31 +426,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     recencyAdditions,
     baselineSlugSet,
   );
-  // Persist the recency-updated array (refreshed last_turns, additions,
-  // and prunes of entries past the K-turn window) in one tenant-scoped
-  // write. Merge-by-slug semantics are owned by `applyRecency`.
   await p.db
     .update(conversations)
     .set({ loaded_skills: recency.next })
     .where(and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)));
-  // The PROMPT body set is recency-filtered: only full-body slugs reach
-  // the assembler as `loaded_skill_slugs`. The PALETTE membership (the
-  // `loadedSlugMembership` below) is the full set so skill-gated tools
-  // stay unlocked even when a skill has aged out of the full-body window.
   const explicitSkillSlugs = recency.fullBodySet;
   const loadedSlugMembership = recency.membership;
   const loadedSkillSlugs = [...new Set([...explicitSkillSlugs, ...intentSkillSlugs])];
 
-  // Surface document-analysis registry summary for the active connector
-  // so the model sees what was extracted without needing to re-read it.
   let documentAnalysisSummary: {
     source: string;
     confidence: number;
     endpoint_count: number;
     sample_endpoints: Array<{ method: string; path: string; description?: string }>;
   } | null = null;
-  // Folded into the consolidated `convRow` read above — no separate
-  // SELECT for the persisted target_connector_id.
   const activeConnectorId = p.connector_id ?? convRow[0]?.target_connector_id ?? null;
   if (activeConnectorId) {
     const epRows = await p.db
@@ -710,12 +487,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   ]
     .filter(Boolean)
     .join("\n\n");
-  // Connectors bound to this conversation's draft — the assembler's
-  // "Recorded endpoint samples" section loads the latest recorded
-  // response shapes for exactly these ids (payload-first authoring
-  // context). Collected from the active/target connector, the persisted
-  // draft connector, and every connector a draft workflow step
-  // references; non-UUID placeholders are filtered at the loader.
   const authoringConnectorIds = [
     ...new Set(
       [
@@ -730,17 +501,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       ].filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   ];
-  // Run-verb bias: a message like "run acme-jira-test-plans" or
-  // "starte foo" tilts the prompt's authoring_hint.mode to `execution`
-  // even when no draft summary exists yet, so EXECUTION_PERSONA fires
-  // for that turn and the tenant snapshot's HARD RULE about
-  // `wf_<slug>` wins over the default authoring-leaning persona. The
-  // fast-path matcher in `fast-path.ts` usually intercepts these
-  // intents before the LLM runs at all; this bias is for the genuinely-
-  // ambiguous LLM-routed cases ("run X if Y else Z").
   const runVerbBiasFires = (() => {
     if (!currentUserText) return false;
-    // Shared with `fast-path.ts` so the two surfaces never drift.
     return RUN_VERB_RE.test(currentUserText);
   })();
   const authoringHint = draft.summary
@@ -771,10 +533,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           : null,
       }
     : undefined;
-  // When the last dry-run surfaced warnings (unresolved identifiers, rate
-  // limits, etc.), fold them into prior_failures so the next turn's prompt
-  // carries them as structured context — the LLM sees what to fix without
-  // the user having to quote the warning text back.
   const previewWarnings = draft.latest_preview?.warnings ?? [];
   const priorFailuresFromPreview =
     previewWarnings.length > 0
@@ -784,13 +542,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         }))
       : [];
 
-  // Fold `next_best_actions` from the most recent failing tool calls
-  // into prior_failures so the agent's prompt carries explicit
-  // guidance on what to do next. Without this, a tool that returned
-  // `{ ok:false, error_code: "credential_required",
-  //    next_best_actions: ["ask_user_form"] }` only reaches the LLM
-  // via the truncated tool-result message — putting the action list
-  // in prior_failures keeps it in the high-priority section.
   const recentToolCalls = await p.db
     .select({
       tool: conversationToolCalls.tool,
@@ -806,11 +557,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     )
     .orderBy(desc(conversationToolCalls.created_at))
     .limit(8);
-  // Expand recent failing tool-call rows into per-turn prior_failures
-  // entries. Critic rejections fan out into one row per repair tagged
-  // `step_id:"critic"`; every other rejection becomes one row keyed by
-  // the producing tool name. Pure function — see
-  // `authoring-critic/prior-failures.ts` for the contract and unit tests.
   const expanded = expandPriorFailuresFromToolCalls(recentToolCalls);
   if (expanded.hadCriticReject) {
     stepRouterSignals.priorCriticFail = true;
@@ -842,11 +588,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         model: seedModel,
         ...(p.user_memory ? { user_memory: p.user_memory } : {}),
         ...(loadedSkillSlugs.length > 0 ? { loaded_skill_slugs: loadedSkillSlugs } : {}),
-        // Index-safety: every loaded slug (recency-filtered or not) must
-        // stay referenceable. The assembler renders any membership slug
-        // not already full-body as a one-line "Loaded" index entry so a
-        // demoted connector/workflow-scoped-out-of-scope or experimental
-        // skill never disappears — one `load_skill` re-promotes it.
         ...(loadedSlugMembership.length > 0
           ? { loaded_skill_membership: loadedSlugMembership }
           : {}),
@@ -862,11 +603,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           ? { referenced_entities: { block: referenced.block, trim_ref: referenced.trim_ref } }
           : {}),
         conversation_id: p.conversation_id,
-        // Runtime context (engine_url / tenant / actor / surface). engine_url
-        // falls back to config.server.public_base_url when the caller didn't
-        // supply one — REST passes the request origin, but the origin-less
-        // surfaces (chat queue job, MCP background turn) rely on this fallback,
-        // so the model knows its own host on EVERY surface instead of guessing.
         ...(() => {
           const rc = {
             ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
@@ -898,18 +634,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   let estimatedPromptTokens = prompt.token_counts.total + messageTokens;
   let estimated = estimatedPromptTokens + budget * 1024;
 
-  // Pre-flight context-window check. The provider rejects oversize
-  // prompts with a 400 ("prompt is too long: N tokens > 200000 maximum")
-  // — by then the user has paid the latency and we've burned a quota
-  // decrement on a doomed call. Catch it here, raise a typed error
-  // the CLI can map to actionable guidance ("conversation too long;
-  // try /compact"). The cap is the assembler's usable window, which
-  // already accounts for completion headroom (see `contextCapFor`).
   const contextCap = contextCapFor(seedModel);
-  // The `/context` snapshot reads the last budget report. The converse loop
-  // assembles the prompt directly (not through `assembleContext`, which is
-  // what records it for the one-shot flows), so without this line a chat
-  // turn's trims were visible in logs only and the snapshot said nothing.
   recordConversationBudgetReport(p.tenant_id, p.conversation_id, {
     cap_tokens: Math.min(route.context_cap, contextCap),
     total_tokens: prompt.token_counts.total,
@@ -917,15 +642,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     assembled_at: new Date().toISOString(),
   });
   if (estimatedPromptTokens > contextCap) {
-    // Auto-compact ONCE before giving up. A full authoring conversation should
-    // degrade to a summary + recent turns, not strand mid-build behind a hard
-    // 413. Only the chat TURNS collapse; the draft workflow lives in draft
-    // snapshots, so the in-progress build survives. `compactConversation` marks
-    // the older rows compacted (it does not delete them), and `buildModelMessages`
-    // replays only from the latest marker — so a re-count reflects the smaller
-    // history. If it collapsed nothing (already minimal) or the prompt still
-    // exceeds the cap after collapsing, the turn is genuinely too large: throw
-    // the same typed error, now unrecoverable.
     const compaction = await compactConversation(
       { tenant_id: p.tenant_id, conversation_id: p.conversation_id, actor_id: p.actor_id },
       p.db,
@@ -1012,31 +728,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     throw err;
   }
 
-  // PALETTE membership: skill-gated tools must see the FULL set of loaded
-  // slugs (`loadedSlugMembership` from the consolidated read above), NOT
-  // the recency-filtered full-body subset — a skill that aged out of the
-  // full-body window still keeps its gated tools unlocked. Only the PROMPT
-  // BODY rendering is recency-filtered; the palette is not.
-  //
-  // Auto-load the canonical authoring skills so the palette exposes both
-  // the connector and workflow tool sets from turn one. The user's first
-  // message could go either way ("create a connector for foo" / "build a
-  // workflow that bars"); exposing both sets up front avoids the dead-end
-  // where the LLM has to call `load_skill` twice before it can do anything
-  // (and avoids the 00b93a52 failure where the model said "tool not in
-  // palette" and asked the user to restart). The skill BODIES are still
-  // pulled into the prompt only when needed (recency window above) — this
-  // auto-load only shapes the PALETTE, not the prompt budget.
   const AUTO_LOADED_AUTHORING_SKILLS: ReadonlyArray<string> = [
     "connector-creation-guidance",
     "workflow-authoring",
   ];
-  // The chat surface never authors: its palette is the fixed read-only
-  // allow-list (`CHAT_READONLY_TOOLS`, resolved in `wrapTools`), which
-  // ignores skill-load state entirely. Skipping the authoring auto-load
-  // here is belt-and-braces (keeps `filterBySkillGate` + prompt-side
-  // skill handling honest) and saves the authoring skill bodies from
-  // ever entering the chat prompt budget.
   const loadedSkills =
     p.surface === "chat"
       ? [...loadedSlugMembership]
@@ -1087,36 +782,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     tools_count: Object.keys(wrappedTools).length,
   });
 
-  // Pre-dispatch policy resolution (`decideToolMode` +
-  // recordToolPolicyConfirmationRequired audit) lives inline in
-  // `wrapOne`'s execute — no second wrapping layer here. See
-  // `tools/sdk-wrap/invoke.ts` for the fold rationale: the previous
-  // two-layer wrap held ~218 closures simultaneously per turn (one per
-  // tool × two wraps) and forced a duplicate `tools` map.
   const tools = wrappedTools;
 
-  // Default-deny execution-tool gate. `run_workflow` and every synthetic
-  // `wf_<slug>` peer EXECUTE an existing saved workflow; leaving them in an
-  // authoring conversation with no run target lets the model "satisfy" a build
-  // request by running the closest lookalike and stalling on its input form —
-  // the notion-essay-to-markdown / page_id hijack. Exposure is keyed on DURABLE
-  // state only — a saved workflow bound to this turn, or a slug the user named —
-  // never on free-text run/authoring phrasing, so a negated build request
-  // ("...do NOT run...") or a weak continuation ("retry from scratch") can never
-  // re-expose a lookalike execution tool. See `authoring-palette.ts` for the
-  // gate rationale. The binding check runs AFTER the build-new detach above, so
-  // a "create a new workflow" turn that detached its old target is correctly
-  // treated as having no run target.
-  //
-  // The chat surface is exempt: it is a fixed read-only palette that CANNOT
-  // author (no save_*/author_* tools), so the build-new lookalike hijack the
-  // gate guards against is structurally impossible there. Default-denying
-  // execution on chat instead dead-ends the intended run — e.g. after the user
-  // disambiguates a workflow via `ask_user_choice` (no commit_intent), the
-  // follow-up turn could not run it. On chat, always expose execution and let
-  // per-user RBAC (`gateWorkflowRunRbac`) + the confirmation card
-  // (`run_workflow`'s compute-from-input rule in `tool-policies.ts`) be the
-  // enforcement — as they already are for every actual run.
   const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
   const hasBoundSavedWorkflowTarget =
     workflowIdForTurn !== null ||
@@ -1148,12 +815,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     });
   }
 
-  // Steer toolChoice from explicit user intent. Without this, the model
-  // sees "auto" and can decide to just narrate ("the workflow already
-  // filters correctly") without actually calling the tool — exactly the
-  // hallucination reported in session f44bf9b4. We only force a tool when
-  // (a) the detector sees a strong run-intent verb in any supported
-  // language and (b) that tool actually exists in the palette this turn.
   const stateDrivenTool = inferStateDrivenFollowUpTool({
     latestUserText: ingestedUserMessage,
     permission_mode: p.permission_mode ?? null,
@@ -1188,65 +849,26 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     });
   }
 
-  /**
-   * Run `streamText` once against `modelId`. Wired-in side-effects
-   * (tool execution, DB writes, events) happen inside the tool
-   * wrapper and `onStepFinish`; the caller only sees success or
-   * error. Usage rows are written per-step with `modelId` as the
-   * `model` column so fallback attempts show up as distinct rows.
-   */
   async function runOnce(
     modelId: string,
     attemptProvider: typeof route.provider,
     prebuiltMessages?: ModelMessage[],
   ): Promise<void> {
     let lastStepEnd = now();
-    // The model this attempt's CURRENT step actually runs on. `modelId` is
-    // only the base the attempt started from — when the step-router swaps a
-    // step up a tier it hands the upgraded model to the SDK via
-    // `prepareStep`, and `modelId` deliberately stays put (the router must
-    // keep deciding relative to the base, or the ladder would compound
-    // within one turn). Accounting, however, has to name what ran: before
-    // this existed, every swapped step was billed under the base name, and
-    // production went 2+ months without a single `llm_usage` row for a
-    // model the router demonstrably selected 58 times. Reset per step —
-    // a `prepareStep` override governs exactly one step.
     let activeStepModel = modelId;
-    // Per-turn repair counter for experimental_repairToolCall. See
-    // MAX_REPAIRS_PER_TURN constant.
     let turnRepairCount = 0;
-    // The first attempt reuses the preflight build — nothing persists
-    // between the token-count preflight and attempt #1, so rebuilding was
-    // a pure duplicate of the most allocation-heavy phase of the turn. A
-    // FALLBACK attempt passes nothing and rebuilds, because the failed
-    // primary may already have persisted tool calls this attempt must
-    // replay.
     const attemptMessages =
       prebuiltMessages ??
       (await buildModelMessages(p.db, p.tenant_id, p.conversation_id, {
         conversationEnvelope: true,
         conversation_id: p.conversation_id,
       }));
-    // The SDK wraps provider-level errors thrown from `doStream` inside
-    // `AI_NoOutputGeneratedError` when no step was recorded, which hides
-    // the original error kind our fallback classifier needs. `onError`
-    // is the only place we can observe the raw error, so we capture it
-    // here and re-throw it on drain failure. See
-    // apps/engine/src/llm/errors.ts for our classification taxonomy.
     let capturedError: unknown;
     const resolvedModel = await resolveLanguageModel(attemptProvider, modelId, p.tenant_id);
     const streamAbortSignal = mergeAbortSignals([
       turnAbortCtrl.signal,
       AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
     ]);
-    // Cache-hint wiring: split the assembled prompt into a stable head
-    // (base prompt + skills + tenant snapshot) and a volatile tail
-    // (user memory + prior failures + authoring context) and attach
-    // `cacheControl: { type: "ephemeral", ttl: "1h" }` to the head so
-    // Anthropic / Vertex (Claude) can serve it from cache on
-    // subsequent turns. Providers that don't understand the hint
-    // ignore it. Enabled unconditionally for Claude models — the flag
-    // on ModelRoute gates per-tenant opt-out if needed.
     const cacheSupported =
       (attemptProvider === "anthropic" ||
         attemptProvider === "vertex" ||
@@ -1256,11 +878,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     const cacheBlocks = timePhase("converse.split_cache_blocks", () =>
       splitPromptIntoBlocks(prompt, "converse"),
     );
-    // The converse flow always opts into caching when the provider
-    // supports it — the per-tenant `enable_prompt_cache` setting still
-    // gates the one-shot flows (generate / repair / extract) via
-    // invoke.ts, but an interactive authoring loop benefits too much
-    // from cache hits to stay off by default.
     const systemMessages = toSystemMessages(cacheBlocks, {
       enabled: cacheSupported,
       ttl: "1h",
@@ -1275,42 +892,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       p.db,
     );
     if (liveAutomation) systemMessages.push({ role: "system", content: liveAutomation });
-    // Activity ticker: flip the CLI status line to "composing" before
-    // we hand off to the provider. Without this the user sees only
-    // the spinner for the LLM-generation phase (often 30–90s) with no
-    // hint that the engine is waiting on the model rather than stuck
-    // in a tool call. Model identifier intentionally NOT included —
-    // operators don't need provider/model details on the live ticker.
     events.push({
       type: "activity",
       phase: "composing",
       label: "composing reply",
     });
-    // Build a name → ConversationTool map once for the step-router's
-    // activeTools narrowing decisions. Using the registry (not the
-    // wrappedTools map) so router logic reads `category` directly.
     const toolsByName: Record<string, import("./tools/index.ts").ConversationTool> = {};
     for (const t of listTools()) toolsByName[t.name] = t;
 
-    // Parallel tool calls stay DISABLED at the provider layer for the
-    // entire turn. We previously tried to flip this ON for stages that
-    // looked read-only, but the decision is fixed at streamText
-    // construction (AI SDK 6.x prepareStep cannot override
-    // providerOptions) and a turn that starts in `idle` can transition
-    // into `propose_step` / `save_workflow_draft` mid-turn — at which point
-    // tenant_write tools could race. Keeping the disable on is the
-    // only correct setting until the SDK exposes per-step
-    // providerOptions overrides. The in-process serialisation mutex on
-    // `signals.toolChain` (sdk-wrap.ts) protects draft mutations
-    // regardless of provider batching, but the provider-side
-    // disable removes the head-of-line racing entirely.
     const turnStageReadOnly = false;
-    // Extended thinking — turn-level providerOptions. AI SDK 6.x
-    // applies providerOptions for the entire streamText invocation;
-    // there is no per-step override. We grant the budget when the
-    // turn starts on a hard stage and the model supports it; the
-    // model uses (or ignores) it per step at the provider's
-    // discretion.
     const turnEnableThinking = (() => {
       const stage = draft.summary?.stage;
       if (
@@ -1324,13 +914,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       return supportsExtendedThinking(attemptProvider, modelId);
     })();
-    // Anthropic API rejects thinking + forced tool_choice (observed as
-    // `converse.failed` ×3 in session 0498925e). The decision lives in
-    // `llm/core/thinking-policy.ts` so step-router can read the same
-    // policy when it considers escalating to `toolChoice: "required"`.
-    // `preferredTool` is `string | null` — compare against null, not
-    // undefined (a `!== undefined` check is always true here and would
-    // suppress thinking on EVERY turn, including the hard stages above).
     const turnForcesTool = preferredTool != null;
     const thinkingDecision = resolveThinking({
       enableThinking: turnEnableThinking,
@@ -1351,16 +934,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       thinking_suppressed_by_forced_tool: thinkingDecision.suppressedByForcedTool,
       cache_supported: cacheSupported,
     });
-    // Anthropic-native server-side web search. Only valid for Anthropic
-    // Claude models, and only when the tenant has the `llm.web_search`
-    // config leaf enabled (default on). Billed per search by Anthropic.
-    // Non-Anthropic attempts never add it, including cross-provider
-    // fallbacks; the mock integration suite therefore stays deterministic.
     const webSearchSetting = (() => {
       try {
         return getConfig(p.tenant_id).llm.web_search === true;
       } catch {
-        // Loader not initialised (unit tests) → omit the tool gracefully.
         return false;
       }
     })();
@@ -1372,54 +949,19 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       model: resolvedModel,
       instructions: systemMessages,
       messages: attemptMessages,
-      // The base system prompt rides in `instructions`, but per-turn features
-      // (memory injection, date prepend) can splice a `{role:"system"}` entry
-      // into `attemptMessages`. AI SDK 7 rejects system messages inside
-      // `messages` unless this is opted in — without it the whole turn throws
-      // AI_InvalidPromptError. No-op for turns that carry no system message.
       allowSystemInMessages: true,
       tools: turnTools,
       toolChoice: turnToolChoice(preferredTool, forceNoTools),
-      // Provider-agnostic reasoning control (AI SDK 7). Replaces the
-      // Anthropic-only `providerOptions.anthropic.thinking` block: the SDK
-      // maps this enum to each provider's native reasoning mechanism
-      // (Anthropic thinking budget, OpenAI/Gemini reasoning effort), so a
-      // future gate broadening to non-Anthropic providers needs no new
-      // provider-specific code here. `resolveThinking` still suppresses
-      // reasoning whenever the turn forces a tool — the Anthropic
-      // thinking-vs-tool_choice conflict is unchanged by the enum mapping
-      // (see thinking-policy.ts; session 0498925e's 3× converse.failed).
-      // Effort 'high' reflects that thinking is gated to the hard authoring
-      // stages; the enum→budget mapping is calibration-pending against
-      // nightly.yml's real-LLM job (the retired `adaptive` let the model
-      // size its own budget per turn).
       reasoning: thinkingThisTurn ? "high" : "none",
-      // Disable parallel tool calls on Anthropic for state-changing
-      // turns (the rationale at session "starte mit übermorgen" still
-      // holds). Read-heavy turns flip parallel ON so multiple
-      // tenant_read tools can run concurrently — they have no
-      // serialisation requirement.
       ...(cacheSupported
         ? {
             providerOptions: {
               anthropic: {
                 disableParallelToolUse: !turnStageReadOnly,
-                // Extended thinking moved to the top-level `reasoning`
-                // option above (AI SDK 7). This block now only carries the
-                // Anthropic-specific parallel-tool gate.
               },
             },
           }
         : {}),
-      // experimental_repairToolCall — when the model emits a tool call
-      // whose JSON args fail validation (or names a non-existent tool),
-      // the SDK calls this hook to ask for a repaired call. (v7 keeps this
-      // under the experimental_ name — there is no stable alias.) Sets a
-      // step-router signal so the next step escalates one tier up.
-      // Capped at MAX_REPAIRS_PER_TURN (2) per the plan: a model that
-      // keeps emitting malformed calls is in a degenerate state and
-      // burning more LLM budget on repair won't help — surface the
-      // failure so the next turn escalates.
       experimental_repairToolCall: ({
         toolCall,
         tools: callTools,
@@ -1446,9 +988,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           system: callSystem,
           error,
           model: resolvedModel,
-          // Without this the repair reaches the provider through
-          // `generateObject` directly and never touches the accounting that
-          // wraps `invoke()` — spent, billed, and missing from `llm_usage`.
           accounting: {
             tenant_id: p.tenant_id,
             conversation_id: p.conversation_id,
@@ -1457,12 +996,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           },
           onRepair: () => {
             stepRouterSignals.hadRepairThisTurn = true;
-            // G7: capture which tool's repair drove the upgrade so the
-            // model_swapped log line below can attribute it. Pre-fix
-            // the log said `reason: repair_in_prior_step` but did not
-            // name the failing tool — operators had to bisect adjacent
-            // log lines for the matching `repair_tool_call.started`
-            // entry to find out.
             const errKind =
               error && typeof error === "object" && "name" in (error as object)
                 ? String((error as { name?: unknown }).name)
@@ -1474,19 +1007,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           },
         });
       },
-      // prepareStep — per-step routing decisions: model escalation,
-      // activeTools narrowing, extended-thinking enablement. Returns
-      // undefined to mean "no override" so the loop's existing config
-      // wins on routine steps.
       prepareStep: async ({ stepNumber, steps, messages: stepMessages, model: stepModel }) =>
         timePhaseAsync("converse.prepare_step", async () => {
-          // A per-step override does not carry: this step runs on the base
-          // unless the swap below says otherwise.
           activeStepModel = modelId;
-          // Step-boundary memory bracket. With every loop phase exonerated
-          // by phase.slow/phase.alloc, these absolute samples localize the
-          // ~700MB/turn external churn to within-step (provider call + tool
-          // execution) vs between-step work — read the journal pairs.
           {
             const m = readMemoryUsage();
             logger.info({
@@ -1498,16 +1021,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               rss_mb: Math.round(m.rss / (1024 * 1024)),
             });
           }
-          // Within-turn output elision — bound the live turn's prompt
-          // growth at the source. Everything before `attemptMessages.length`
-          // is replayed history that persist.buildModelMessages already
-          // bounded; tool results produced by THIS turn's agentic loop
-          // are stubbed once they are bulky (>4KB serialized) and more
-          // than WITHIN_TURN_VERBATIM_ITERATIONS iterations old. The
-          // stub carries a `_raw_ref` the model can recover via
-          // `get_raw_result` — same contract as the cross-turn path.
-          // Pre-fix a 40+-iteration turn re-sent the full tool-output
-          // history on every LLM call (session 784c1b02, 3.9M tokens).
           const elision = elideWithinTurnToolOutputs(stepMessages, {
             baseline_index: attemptMessages.length,
           });
@@ -1526,12 +1039,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           const routedMessages = elision ? elision.messages : stepMessages;
           const liveStage = draft.summary?.stage;
           if (liveStage !== undefined) stepRouterSignals.stage = liveStage;
-          // Live persisted-workflow gate — recomputed every step so a
-          // mid-turn `save_workflow_draft` flips the palette over to
-          // include `requires_persisted_workflow` tools immediately on
-          // the next step. Mirrors the `hasBoundSavedWorkflow` check at
-          // turn-start (target_workflow_id || active_target persisted ||
-          // persisted_resources includes a workflow).
           stepRouterSignals.hasPersistedWorkflow =
             workflowIdForTurn !== null ||
             (draft.summary?.active_target.kind === "workflow" &&
@@ -1549,8 +1056,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             paletteToolNames: Object.keys(tools),
             signals: stepRouterSignals,
             turnThinkingEnabled: thinkingThisTurn,
-            // Keep the requested first tool visible, then release the forced
-            // choice so later steps can diagnose the result or answer.
             forcedTool: preferredTool,
           });
           if (!decision) return elision ? { messages: elision.messages } : {};
@@ -1562,8 +1067,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 decision.modelId,
                 p.tenant_id,
               );
-              // Only after the resolve succeeded — the catch below sticks
-              // with the base model, and so must the accounting.
               activeStepModel = decision.modelId;
               logger.info({
                 module: "llm",
@@ -1636,33 +1139,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         hasToolCall("ask_user_multi"),
         hasToolCall("ask_user_text"),
         hasToolCall("ask_user_form"),
-        // NOT `hasToolCall("cannot_help")` — that fires on the call and
-        // ignores the result, so a REFUSED abstention (a claim about a tool
-        // the model demonstrably holds) still ended the turn.
         abstainedStopCondition,
         pausedStopCondition,
         automationReviewStopCondition,
         committedStopCondition,
         turnLoopBudgetStopCondition,
-        // No-progress repair stop: N consecutive dry_run_workflow results
-        // with the SAME requires_repair / judge-missing fingerprint mean
-        // the build→dry_run→edit loop is stalled — stop the turn and let
-        // the assistant surface the verdict instead of re-driving it to
-        // the step budget. Belt to P3's suspenders (P3 makes the judge
-        // advisory-commit at its cap; this halts a model that keeps
-        // re-driving before that).
         noProgressRepairStopCondition,
       ],
-      // Retry transient provider errors (Anthropic `Overloaded`/529, 429,
-      // 5xx) with the SDK's exponential backoff BEFORE the catch below
-      // engages the fallback model. Pre-fix this was 0 — a single
-      // `Overloaded` blip dropped every converse turn straight onto the
-      // weaker fallback, which then authored worse JSONata.
       maxRetries: 2,
       abortSignal: streamAbortSignal,
-      // AI SDK 7 dropped TelemetryOptions.metadata; attribution now flows
-      // through a typed runtimeContext surfaced into telemetry spans via
-      // includeRuntimeContext (keys are excluded unless set to `true`).
       runtimeContext: {
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
@@ -1671,10 +1156,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       },
       telemetry: {
         isEnabled: true,
-        // Record full prompt/output span attributes ONLY when an exporter
-        // is configured: the SDK stringifies them eagerly per step even
-        // into noop spans — megabytes of serialization garbage per turn
-        // on a no-exporter deployment, for attributes nobody sees.
         recordInputs: isTracingActive(),
         recordOutputs: isTracingActive(),
         functionId: "converse",
@@ -1693,10 +1174,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           {
             const m = readMemoryUsage();
             const external_mb = Math.round(m.external / (1024 * 1024));
-            // When the step ended with >768MB external, name WHO holds it:
-            // bun:jsc heapStats counts live objects by type — the brackets
-            // located a ~1.5GB allocation inside the first step of a turn;
-            // the type counts turn "something big" into a class name.
             let heap_top: Array<[string, number]> | undefined;
             let heap_size_mb: number | undefined;
             if (external_mb > 768) {
@@ -1707,9 +1184,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 heap_top = Object.entries(h.objectTypeCounts)
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 8) as Array<[string, number]>;
-              } catch {
-                // bun:jsc unavailable (plain node tooling) — skip attribution.
-              }
+              } catch {}
             }
             logger.info({
               module: "process",
@@ -1722,8 +1197,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             });
           }
           const u = readStepUsage(step);
-          // Per-turn cost telemetry for the `completed` envelope:
-          // last-call prompt size (vs. the context cap) + running total.
           promptTokensLastCall = stepPromptTokens(u);
           turnTokensTotal += stepTotalTokens(u);
           turnInputTokens += u.inputTokens;
@@ -1754,28 +1227,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             prompt_tokens: u.inputTokens,
             completion_tokens: u.outputTokens,
           });
-          // Always insert an assistant message when the step produced text
-          // OR when the wrapper recorded children (tool calls, elicitations)
-          // that need a causal anchor in the timeline. Empty assistant
-          // rows act as the parent for tool-only steps so the read path
-          // can render those tool calls in chronological position.
           const hasText = !!step.text && step.text.length > 0;
           const hasPendingChildren =
             signals.pendingChildToolCallIds.length > 0 ||
             signals.pendingChildElicitationIds.length > 0;
           if (hasText || hasPendingChildren) {
-            // Pass every assistant text block through the grounded-output
-            // guard. In `soft` (default) mode the guard logs violations
-            // and rewrites placeholder fragments in place; in `hard`
-            // mode (CI / scenario tests) it throws LlmOutputViolation
-            // which propagates out of streamText. The persisted message
-            // carries the (possibly rewritten) text plus the violation
-            // list so replay tests + the capability-gap analytics can
-            // read them back without re-scanning.
-            // The guard's secret pre-pass uses the code-context-suppressed
-            // `findSecretSpans` — see the authoritative redaction contract
-            // above `redactGenericTokens` in
-            // `packages/shared/src/redaction.ts`.
             const guarded = hasText
               ? runOutputGuard(step.text, {
                   ...(resolvedEngineUrl ? { engine_url: resolvedEngineUrl } : {}),
@@ -1813,9 +1269,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 model: answeringModelLabel(attemptProvider, activeStepModel),
               });
             }
-            // Back-fill parent_message_id on every child row created during
-            // this step so the read path can interleave them under this
-            // assistant message in chronological order.
             await setToolCallParentMessage(
               p.db,
               signals.pendingChildToolCallIds,
@@ -1844,15 +1297,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         }),
     });
     try {
-      // Composing-phase heartbeat. The activity ticker would otherwise
-      // sit on the SAME label (`composing reply`) for the entire
-      // LLM-generation phase — operator can't tell if the engine is
-      // making progress or stuck. Refresh every 5s with just an
-      // elapsed-time suffix; the EventSink's `(phase, label)` throttle
-      // does NOT collapse these because the label string differs each
-      // tick. Cleared by the for-await drain below when text starts
-      // arriving (Layer B then carries visibility). Model identifier
-      // intentionally NOT included — operator doesn't need it.
       const composingStart = now();
       let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
         const elapsedSec = Math.round((now() - composingStart) / 1000);
@@ -1868,59 +1312,20 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           heartbeat = null;
         }
       };
-      // Drain the text stream so we can emit `text_delta` events as
-      // assistant tokens arrive. The onStepFinish callback still runs
-      // after the stream completes and appends the full assistant
-      // message — text_delta is for live rendering, `message` is the
-      // persisted record.
-      //
-      // Layer-B finalization signal: while prose is actively streaming
-      // refresh the activity ticker with a "X paragraphs so far"
-      // label every paragraph boundary. Keeps the ticker informative
-      // when text IS arriving (the operator sees the bottom-pane line
-      // tick alongside the streaming buffer above it). Paragraph
-      // boundaries are blank-line separated runs, the same shape the
-      // assistant naturally emits between tool-call narrations.
-      //
-      // text_delta secret scrub: the raw provider chunks are routed
-      // through a holdback scrubber so a secret-shaped token never
-      // reaches the event sink, even split across chunk seams. The
-      // batch guard in onStepFinish covers the PERSISTED message;
-      // this covers the live render path. Declared outside the try so
-      // the finally below can flush the held tail.
       const deltaScrubber = createStreamScrubber();
       try {
-        // Fixed-size tail-only paragraph detection. Pre-fix this used
-        // an unbounded `proseBuffer += chunk` plus
-        // `proseBuffer.split(/\n\s*\n/)` on EVERY chunk — O(N²) string
-        // and array allocations during long replies, plus a per-chunk
-        // full-buffer copy. For a 50-KB reply across ~500 chunks that
-        // was ~12 MB of transient string garbage just to find paragraph
-        // boundaries. The authoritative full-text guard still runs in
-        // `onStepFinish` over the complete `step.text`; this loop is
-        // purely an early-warning signal.
         const PROSE_TAIL_WINDOW = 4096;
         const PARA_RE = /\n\s*\n/g;
         let proseTail = "";
         let paragraphsEmitted = 0;
-        // Cursor into `proseTail` where the next paragraph-boundary
-        // scan should start. Reset when the tail-window slice trims
-        // the leading bytes off `proseTail` to keep the cursor relative
-        // to current tail contents.
         let proseScanFrom = 0;
         for await (const chunk of result.textStream) {
           if (chunk.length === 0) continue;
-          // Once tokens arrive, the heartbeat is redundant — Layer B
-          // takes over visibility. Stop the timer so we never publish
-          // a stale "still composing" tick on top of live tokens.
           stopHeartbeat();
           const safeDelta = deltaScrubber.push(chunk);
           if (safeDelta) events.push({ type: "text_delta", text: safeDelta });
           const prevLen = proseTail.length;
           proseTail = (proseTail + chunk).slice(-PROSE_TAIL_WINDOW);
-          // When the slice drops the head, rebase the scan cursor by
-          // the same amount so it stays anchored to the last detected
-          // boundary inside the current window.
           const trimmed = prevLen + chunk.length - proseTail.length;
           if (trimmed > 0) {
             proseScanFrom = Math.max(0, proseScanFrom - trimmed);
@@ -1937,10 +1342,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
                 label: `composing reply · ${paragraphsEmitted} paragraphs so far`,
               });
             }
-            // Overlapped scan: log violations on the latest completed
-            // paragraph as soon as it boundaries. Lower bound matches
-            // the prior behavior — single-paragraph steps still get a
-            // streamed scan.
             const latestParagraph = proseTail.slice(0, match.index);
             if (latestParagraph) {
               runOutputGuardStream(latestParagraph, {
@@ -1953,7 +1354,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           }
         }
       } catch {
-        // Drain errors surface via onError/capturedError below; ignore here.
       } finally {
         const tailDelta = deltaScrubber.flush();
         if (tailDelta) events.push({ type: "text_delta", text: tailDelta });
@@ -1961,8 +1361,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       await result.finishReason;
     } catch (err) {
-      // Prefer the original provider-level error captured via onError
-      // so our fallback classifier can see `rate_limit`/`overloaded`.
       if (capturedError) throw capturedError;
       throw err;
     }
@@ -1971,11 +1369,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const attempts = resolveConversationAttemptRoutes(route, seedModel);
   let cancelled = false;
   try {
-    // Attempt #1 reuses the preflight `messages` build; fallback
-    // attempts rebuild inside runOnce (see its parameter note).
     await runOnce(attempts.primary.model, attempts.primary.provider, messages);
   } catch (primaryErr) {
-    // Cancel-vs-error split — see `abort.ts` header for reason coverage.
     if (isExpectedCancellation(primaryErr, turnAbortCtrl.signal)) {
       cancelled = true;
     } else {
@@ -2061,13 +1456,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  // Empty-text fallback — when the turn finishes without the model
-  // emitting any assistant prose (e.g. after the loop-guard short-
-  // circuited every subsequent tool attempt), synthesise a short
-  // visible message from the collected tool results. Prior behaviour
-  // rendered assistant_text:"" which surfaced as silence in the CLI
-  // (observed in session 4e6696e3). A visible line is always better
-  // than silence.
   if (
     !signals.lastAssistantText &&
     !signals.pendingElicitation &&
@@ -2095,20 +1483,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         parent_message_id: fallbackMessageId,
       });
       signals.lastAssistantText = synthetic;
-      // Anchor the citations footer to the synthesized answer the operator
-      // actually reads, not the earlier tool-making message — and so the
-      // replay path (which anchors to this text-bearing message) agrees.
       signals.lastAssistantMessageId = fallbackMessageId;
-      // Distinguish three turn shapes for ops triage:
-      //   - `next_prompt_from_tool` — benign, the freshest tool returned
-      //     an actionable next-step the model would have echoed anyway.
-      //     Emitted at info level — expected behaviour.
-      //   - `tool_results_summary` — the model went silent after one
-      //     or more tools fired but no next_prompt was set. Worth
-      //     looking at — the tool surface should grow a hint.
-      //   - `loop_warnings_no_signal` — loop guard fired AND there
-      //     were no tool results to summarise. Emergency apology
-      //     line. Always worth investigating.
       const level = classified.reason === "next_prompt_from_tool" ? "info" : "warn";
       log[level]({
         module: "conversation",
@@ -2122,21 +1497,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  // Root D defence-in-depth: detect hallucinated tool-absence
-  // claims. When the LLM's assistant text denies the availability of
-  // a tool that IS in the resolved palette this turn (a regression
-  // observed in conversation fe9c4ec7 on 2026-05-16), emit a counter
-  // and a warn so the operator sees the regression. The seed skill's
-  // palette-is-fixed clause is the primary defence; this guard is
-  // the observability signal that proves whether the teaching is
-  // working in production.
-  //
-  // CONTRACT (load-bearing): the verdict here MUST only feed metrics
-  // and audit. The matcher is keyword-regex over LLM prose, which is
-  // explicitly forbidden as a behavior input by
-  // `feedback_no_hacks_only_root_cause.md`. Wiring this verdict into
-  // any retry / abort / palette-mutation path turns observability
-  // into control-flow and violates the contract — don't.
   if (signals.lastAssistantText) {
     const palette = new Set(Object.keys(tools));
     const verdict = detectToolHallucinatedAbsence({
@@ -2157,41 +1517,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  // Critic / judge pass — terminal-step rubric over whatever the
-  // turn produced (commit, propose, or chat). The critic is
-  // deterministic (structural predicates against the artifact) so
-  // there is no second LLM call here. Verdict is logged + emitted
-  // as an event; a `priorCriticFail` signal flips on so the next
-  // turn's prepareStep escalates one tier up. Re-entry on the same
-  // turn is intentionally NOT done here — it would require
-  // restructuring the runOnce / fallback flow and is left as a
-  // follow-up.
-  // Harvest the citation envelope once, up front. Two views:
-  //   - `harvestedCitations` — everything the turn cited, verified or not.
-  //     The anti-drift gate reads THIS: a turn that cited only fabricated /
-  //     since-deleted ids must still fail resolution and abstain, so filtering
-  //     before the gate would silently disarm it (the answer would stand with
-  //     no footer AND no challenge).
-  //   - `citations` — the resolvable subset, used for the footer and the audit
-  //     mirror: the prove-after half must never advertise a provenance handle
-  //     that isn't real (and non-chat turns, which skip the gate, still get a
-  //     clean footer). Fail-open: a resolve error keeps the harvested set.
   const harvestedCitations: Citation[] =
     !cancelled && signals.lastAssistantText ? harvestCitations(events) : [];
   let citations: Citation[] = harvestedCitations;
   if (harvestedCitations.length > 0) {
     try {
       citations = await keepResolvableCitations(harvestedCitations, p.tenant_id, p.db);
-    } catch {
-      // Keep the harvested set on a transient resolve error.
-    }
+    } catch {}
   }
 
-  // Prove-after made visible: emit the terminal citations frame so the
-  // client renders a "Sources: …" footer under the answer. Pushed here —
-  // after the terminal message, before the SSE `outcome` frame drops
-  // `events[]` — exactly once, only when the turn cited a resolvable source.
-  // Anchors to the last assistant message; the client falls back to the same.
   if (citations.length > 0) {
     events.push({
       type: "citations",
@@ -2204,18 +1538,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   let criticVerdict: CriticVerdict | undefined;
   if (!cancelled && (signals.committed || signals.lastAssistantText)) {
-    // Resolve resource_kind from the draft's active_target. The
-    // earlier code defaulted "none" → "workflow" which gave the
-    // critic a false positive on commits with no active target. Now
-    // we explicitly skip critic dispatch for those.
     const activeKind = draft.summary?.active_target.kind;
     const resourceKind: "connector" | "workflow" | null =
       activeKind === "connector" || activeKind === "workflow" ? activeKind : null;
 
-    // Count validated-checkpoint records that are ok=true. The
-    // checkpoints map lives on the AuthoringState alongside the draft
-    // and is updated by validate_draft / validate_connector_draft /
-    // dry_run_step etc.
     const validatedStepCount = (() => {
       const cps = draft.state?.checkpoints ?? {};
       let n = 0;
@@ -2227,14 +1553,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       return n;
     })();
 
-    // Connector-side: auth_type on the connector draft; this is the
-    // mode the persisted row will carry.
     const connectorAuthMode =
       resourceKind === "connector" ? (draft.connector?.auth_type ?? null) : null;
 
-    // Workflow-side: the first step's `kind` is the trigger semantic
-    // (subkit doesn't have a separate trigger field — the first step
-    // IS the entry point).
     const workflowTriggerKind =
       resourceKind === "workflow"
         ? (() => {
@@ -2260,23 +1581,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           }
       : { kind: "chat", payload: signals.lastAssistantText };
     if (artifact === null) {
-      // Fall through — no critic dispatch when the commit had no
-      // active target (treat as a no-op rather than mis-shape an
-      // artifact).
     } else {
       try {
         criticVerdict = await runCritic({
           artifact,
-          // Grounding corpus for `ids_grounded`: the assembled system
-          // prompt, which carries the tenant-summary block (ground-truth
-          // ids), loaded skills, recipes and ingested chunks. Previously
-          // omitted, which left `ids_grounded` dead (snapshot undefined →
-          // always true). A hallucinated UUID appears nowhere in this
-          // corpus, so it is now caught. Known residual: an id the model
-          // legitimately obtained from a tool result *this* turn is not
-          // echoed in `system`; while the chat verdict stays non-blocking
-          // this only logs, so we measure that false-positive rate before
-          // the gate is made blocking.
           snapshot: prompt.system,
           ...(resolvedEngineUrl || p.runtime_context?.tenant_slug
             ? {
@@ -2293,19 +1601,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           stepRouterSignals.priorCriticFail = true;
         }
 
-        // Source-faithful anti-drift. Runs ONLY for a chat terminal
-        // that carries a citation envelope: the deterministic checks
-        // verify every cited id resolves and every verbatim quote is in a
-        // cited excerpt; only free-text paraphrase faithfulness escalates
-        // to the format-aware judge. A failure is folded into the SAME
-        // abstention as a low-confidence commit, so drifted prose forces an
-        // operator confirm instead of standing as the final answer. The
-        // check is a no-op (passing) when there is no envelope — that case
-        // is the prove-before gate's job, not this one.
         let faithfulVerdict: Awaited<ReturnType<typeof checkSourceFaithful>> | undefined;
-        // Gate on the HARVESTED set (not the resolvable subset): a turn that
-        // cited only unresolvable ids must still reach the resolve check and
-        // fail, forcing an abstention rather than standing unchallenged.
         if (artifact.kind === "chat" && harvestedCitations.length > 0) {
           try {
             faithfulVerdict = await checkSourceFaithful({
@@ -2332,7 +1628,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               detail: faithfulVerdict.detail ?? null,
             });
           } catch (err) {
-            // A drift check must never crash the loop — log and continue.
             logger.warn({
               module: "llm",
               action: "source_faithful.threw",
@@ -2347,10 +1642,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
               .filter(([, v]) => v === false)
               .map(([k]) => k)
           : [];
-        // Unified abstention trigger: a low-confidence COMMIT (the existing
-        // Lever-15 path) OR a source_faithful FAILURE on a chat answer. Both
-        // resolve to "surface an ask_user_text the operator must answer
-        // before the conversation continues".
         const commitAbstains =
           criticVerdict.verdict === "fail" &&
           criticVerdict.confidence < 0.6 &&
@@ -2371,25 +1662,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           will_escalate_next_turn: criticVerdict.verdict === "fail" || faithfulnessAbstains,
           will_abstain: commitAbstains || faithfulnessAbstains,
         });
-        // Confidence-based abstention: a low-confidence
-        // COMMIT, or a source_faithful FAILURE on a chat answer, surfaces an
-        // `ask_user_text` elicitation the operator must answer before the
-        // conversation continues. This does NOT roll back the commit / unsend
-        // the prose (both already happened by the time the checks run); it
-        // forces the operator to explicitly confirm or revise rather than let
-        // a low-confidence commit or DRIFTED answer stand as the final word.
-        // Rate-limited to ONE abstention per turn so a flaky check cannot spam
-        // elicitations — the faithfulness case takes precedence in its prompt
-        // wording because it is the stronger honesty signal.
-        // A verdict must never cancel a question a human is already being
-        // asked. Creating an elicitation supersedes every pending one (a
-        // load-bearing rule — the model must never see two open ask_user_*
-        // forms), so an abstention raised after the turn ended on the model's
-        // own question silently replaced that question with this one. In
-        // production it cancelled a real choice, put an untranslated internal
-        // prompt in its place that no surface renders, and cost the user the
-        // whole turn. The verdict is already logged above in full; when a
-        // question is pending it stays a logged note.
         const abstention = abstentionDecision({
           commitAbstains,
           faithfulnessAbstains,
@@ -2482,7 +1754,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           }
         }
       } catch (err) {
-        // Critic must not crash the loop — log and continue.
         logger.warn({
           module: "llm",
           action: "critic.threw",
@@ -2490,14 +1761,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-    } // close `else` for artifact !== null
+    }
   }
 
-  // Prove-after: mirror this answer's grounding sources into the audit log,
-  // harvested from the turn's grounding-tool results (not the model's prose),
-  // so "this answer ← these sources" is reconstructable without trusting the
-  // text. Best-effort: a bookkeeping failure never affects the turn, and we
-  // only write when an answer actually cited a source.
   if (!cancelled && signals.lastAssistantText) {
     if (citations.length > 0) {
       try {
@@ -2526,7 +1792,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  // Resolve final status.
   let status: RunLoopResult["status"] = "active";
   let committedWorkflowId: string | undefined;
   let pendingElicitationId: string | undefined;
@@ -2552,8 +1817,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         resource.id === committedWorkflowId &&
         resource.persistence_kind === "draft",
     );
-    // Keep the legacy saved-id signal for callers, but do not finalize an
-    // authoring session as an activated workflow after an inert draft save.
     status = savedInertDraft ? "active" : "committed";
     completedStatus = status;
   } else if (signals.pendingElicitation || persistedStatus === "awaiting_input") {
@@ -2562,22 +1825,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     completedStatus = "awaiting_input";
   } else {
     completedStatus = "active";
-    // Prose-question dead end on UNATTENDED turns. A backgrounded MCP
-    // turn (or an auto-mode caller) that ends with the assistant asking
-    // a question in PROSE — no ask_user_* tool call — reads as a
-    // terminal `active`/completed to the client: nobody surfaces the
-    // question, the conversation stalls, and the client re-polls a turn
-    // that is actually waiting for a human. Park it on an ask_user_text
-    // elicitation carrying the model's own question verbatim, so the
-    // task derives `input_required` and the client asks the user.
-    // Attended surfaces are deliberately excluded: there the operator
-    // sees the question in the transcript and the next plain prompt IS
-    // the answer — forcing a dialog would add friction, not safety.
     const unattendedTurn =
       p.permission_mode === "auto" || (p.surface === "mcp" && !p.elicitationBridge);
-    // The elicitation question is the model's own closing ask — see
-    // prose-question.ts for the (deliberately conservative) detection.
-    // The full text already streamed as the message.
     const closingAsk = unattendedTurn ? closingProseQuestion(signals.lastAssistantText) : null;
     if (closingAsk) {
       try {
@@ -2608,8 +1857,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           elicitation_id: elicitation.id,
         });
       } catch (err) {
-        // Could not open the elicitation — keep the prior `active`
-        // behaviour rather than crash turn finalisation.
         logger.warn({
           module: "conversation",
           action: "loop.prose_question_park_failed",
@@ -2627,15 +1874,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         conversation_id: p.conversation_id,
         step_budget: budget,
       });
-      // Pre-fix: a step-budget cap hit returned `active` + a synthesised
-      // empty-text fallback, so an MCP client (e.g. ChatGPT) saw a vague
-      // "working"/"completed" with no next step — the "never done"
-      // ambiguity the user reported. When the cap was hit WITHOUT the
-      // model leaving a real answer, park the turn on an ask_user_text
-      // elicitation: the task then derives `input_required` and the
-      // client surfaces a clear, actionable prompt instead of silence.
-      // (When the model DID leave an answer, keep `active` — that text is
-      // emitted as usual and parking would be noise.)
       if (!signals.lastAssistantText) {
         try {
           const elicitation = await createElicitation(
@@ -2671,8 +1909,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             step_budget: budget,
           });
         } catch (err) {
-          // Could not open the elicitation — fall back to the prior
-          // `active` behaviour rather than crash turn finalisation.
           logger.warn({
             module: "conversation",
             action: "loop.budget_exhausted.elicit_failed",
@@ -2685,15 +1921,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
-  // Attach turn usage to the `completed` frame (sk status-line
-  // reads `turn_tokens` + `remaining_monthly_budget_tokens`). The
-  // optional `breakdown` carries the per-section token shape from
-  // the assembled prompt so the spinner / `/cost` view can show
-  // skills 4.2k · transcript 6.1k · docs 2.0k · total 14.5k.
-  //
-  // Compute usage BEFORE pushing the frame so live SSE emits the
-  // payload-complete event in one go. Mutating array entries after
-  // a buffered push doesn't re-fire the live emitter.
   const usageAfter = await monthlyUsage(p.tenant_id, p.db).catch(() => usageBefore);
   const turnTokens = Math.max(0, usageAfter - usageBefore);
   const remaining =
@@ -2718,15 +1945,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     status: completedStatus,
     usage: {
       turn_tokens: turnTokens,
-      // Honest cost split (see the accumulator comment near turn
-      // start): `prompt_tokens_last_call` is the only figure that is
-      // comparable to `context_cap_tokens`; `turn_tokens_total` is the
-      // cumulative spend across every LLM call of this turn.
       ...(promptTokensLastCall != null ? { prompt_tokens_last_call: promptTokensLastCall } : {}),
       turn_tokens_total: turnTokensTotal,
-      // Per-turn cache-hit: cached input read vs. total input (fresh +
-      // cached). Emitted only when at least one LLM call ran this turn so
-      // a non-LLM tool turn doesn't render a misleading `cache 0%`.
       ...(turnInputTokens + turnCacheReadTokens > 0
         ? {
             cache_read_tokens: turnCacheReadTokens,
@@ -2741,33 +1961,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     },
   });
 
-  // Next-message suggestion frame. Always emitted (suggestion may be
-  // null) so the SSE close is deterministic — sk-cli relies on the
-  // frame's presence to decide whether to clear ghost state. The
-  // emitter is wrapped in its own try/catch so a flaky model can
-  // never take down the parent turn.
-  //
-  // Abandoned turns: short-circuit with a `turn-abandoned` frame
-  // instead of running offer-parse over partial / cancelled
-  // assistant prose. The model fallback would always miss anyway and
-  // burn tokens for nothing.
-  //
-  // budget_guard: when the tenant has a monthly budget, refuse the
-  // model fallback if the post-turn usage is already within
-  // SUGGEST_BUDGET_HEADROOM_TOKENS of the cap. Offer-parse fast path
-  // is unaffected — it costs zero tokens and still fires.
-  //
-  // loaded_skills: production wiring of the skill-aware slash variant
-  // is deferred — the engine stores skill slugs only, and the
-  // offer-skill path needs per-skill verb metadata that doesn't yet
-  // exist in the data model. The text-mode offer-parse still works
-  // for skills (matched action becomes plain user input). Adding
-  // verbs to the skills schema lights up `/skill <slug> <verb>`
-  // suggestions without further loop changes.
-  // `LoadedSkillHint.verbs` is unused in production today (covered by
-  // unit tests only). When Skill records carry a `verbs: string[]`
-  // field, thread `loaded_skills: loadedSkills.map(slug => ({ slug,
-  // verbs }))` here so the offer-skill slash variant can resolve.
   let suggestionFrame: TurnEvent;
   if (completedStatus === "abandoned") {
     suggestionFrame = nextSuggestion({
@@ -2786,9 +1979,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       events,
-      // Pass `db` so the emitter loads multi-turn persisted history
-      // for the model fallback prompt instead of being limited to
-      // the per-turn events buffer.
       db: p.db,
       ...(p.next_suggestion_suppress !== undefined
         ? { client_suppress: p.next_suggestion_suppress }
@@ -2798,18 +1988,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   }
   events.push(suggestionFrame);
 
-  // P6: emit a per-turn token-usage log line so the operator can grep
-  // engine logs alone (without enabling client-side debug output) to
-  // see which validation/preview cycles burned how many tokens. The
-  // CLI already gets the same breakdown via the `completed` event;
-  // this is the symmetric server-side record.
-  //
-  // Additionally surface the top-N heaviest included skills so when
-  // a turn balloons past expectation (the dca36b29 session showed
-  // breakdown_skills=26661 — ~27k tokens of skill bodies — without
-  // a way to see WHICH skills) operators can identify the heavy
-  // contributors and trim them. Pre-fix this required reading the
-  // included_skill_ids list and looking up each skill body by hand.
   const topSkillBreakdown = (() => {
     if (!prompt) return null;
     const skills = prompt.included_skills ?? [];
@@ -2820,9 +1998,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       title: s.title ?? null,
       tokens: prompt.token_counts ? Math.round(prompt.token_counts.skills / skills.length) : 0,
     }));
-    // Recompute per-skill weights using countTokens so the report
-    // is accurate — the sum-divided-by-count above is just a fallback
-    // when a per-skill counter isn't wired up yet.
     try {
       for (const w of weighed) {
         const skill = skills.find((s) => s.id === w.id);
@@ -2830,9 +2005,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
           w.tokens = countSkillTokens(skill, p.runtime_context);
         }
       }
-    } catch {
-      // best-effort — token counter failures must not block turn end
-    }
+    } catch {}
     return weighed
       .sort((a, b) => b.tokens - a.tokens)
       .slice(0, 5)
@@ -2871,33 +2044,8 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const out: RunLoopResult = { events, status };
   if (committedWorkflowId) out.committed_workflow_id = committedWorkflowId;
   if (pendingElicitationId) out.pending_elicitation_id = pendingElicitationId;
-  // Per-turn GC hint. Production evidence: the cgroup hit MemoryHigh
-  // 1967 times in 12 h on an idle engine host (peak 6.34 GB,
-  // current never drops below 2.79 GB). Bun's JSC arenas do not
-  // proactively return memory after a multi-GB turn unless major GC
-  // fires, and major-GC heuristics don't trigger again until the next
-  // allocation pushes them. A synchronous full GC right after
-  // `dialog.turn_end` (~5-20 ms on a multi-GB heap; in the noise vs.
-  // the turn cost) lets `memory.current` fall back toward boot
-  // baseline between turns instead of staying elevated.
-  //
-  // Drop the strong refs on the largest closure-captured allocations
-  // first so the upcoming GC pass can reclaim them in one cycle.
-  // `wrappedTools` is the ~109-tool palette built per turn; the loop
-  // closure was the last live reference, but clearing it explicitly
-  // removes ambiguity for the optimizer.
   for (const key of Object.keys(wrappedTools)) {
     delete (wrappedTools as Record<string, unknown>)[key];
   }
-  // NO manual GC hint — not even the async variant. Live profiling
-  // (memory.sample) showed each turn allocates ~700MB of EXTERNAL native
-  // memory; forcing a collection over that churn every turn produced
-  // multi-second pauses that surfaced as event_loop.lag with no slow
-  // phase attributed (GC pauses appear in no phase). JSC schedules its
-  // own collections far better against an allocation-heavy workload; the
-  // explicit-ref drop above is what actually makes the palette
-  // reclaimable. The remaining work is reducing the per-turn external
-  // allocation itself (provider stream buffers / prompt copies), tracked
-  // as the open headroom item.
   return out;
 }

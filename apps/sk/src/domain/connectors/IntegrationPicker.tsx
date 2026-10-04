@@ -1,16 +1,3 @@
-// Fuzzy-search picker for connector templates.
-//
-// Replaces the linear "scroll through 89 templates" UX from the
-// onboarding wizard. Operators type a few characters; Fuse ranks the
-// matches; arrow keys navigate the list; Enter selects.
-//
-// Render layout:
-//   [icon]  name  ──────  category
-//   …
-//
-// Icon is a single Unicode glyph chosen by category (no emoji to keep
-// the line width predictable across terminals).
-
 import { useTheme } from "@chat-ui/index.ts";
 import Fuse from "fuse.js";
 import { Box, Text, useInput } from "ink";
@@ -28,15 +15,10 @@ export interface IntegrationPickerProps {
   connectors: ConnectorTemplate[];
   onPick: (template: ConnectorTemplate) => void;
   onCancel?: () => void;
-  /** Initial filter string. */
   initialQuery?: string;
-  /** Maximum visible rows. Defaults to 8. */
   maxVisible?: number;
 }
 
-// CATEGORY_ICON moved to ./category-icons.ts so both surfaces (the
-// fuzzy picker here and the onboarding wizard at
-// `apps/sk/src/repl/onboarding-wizard.tsx`) share the same map.
 import { categoryIconFor } from "./category-icons.ts";
 
 function iconFor(template: ConnectorTemplate): string {

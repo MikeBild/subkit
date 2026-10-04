@@ -186,13 +186,6 @@ type FamilyFailureStateProps = HTMLAttributes<HTMLElement> & {
   standalone?: boolean;
 };
 
-/**
- * The one family surface for a route that cannot continue.
- *
- * It deliberately renders one heading, one sentence and at most two exits.
- * Diagnostics belong in telemetry; an operator-facing failure state only says
- * what happened and what they can do next.
- */
 export function FamilyFailureState({
   kind,
   title,

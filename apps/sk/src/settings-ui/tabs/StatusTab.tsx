@@ -1,18 +1,3 @@
-// Status tab — runtime snapshot. Live MCP polling at 5s while the tab
-// is mounted; cleanup on unmount cancels the timer (tab unmounts when
-// the outer shell switches tabs, so polling stops).
-//
-// Embeds the activity heatmap below the runtime properties (former
-// Stats tab, merged into Status).
-// The heatmap captures `1`/`2`/`3` for window toggles via its own
-// useInput; StatusTab itself has no key handlers, so there is no
-// collision.
-//
-// Note: rows that depend on REPL state (session id, cwd-relative
-// permission mode, token-usage) require coupling that doesn't exist in
-// the standalone `sk settings` invocation. Those rows render "unknown"
-// here and are populated only when the modal is hosted by the REPL.
-
 import { VERSION as CLI_VERSION } from "@cli-core/version.ts";
 import { Box, Text } from "ink";
 import type React from "react";
@@ -26,7 +11,6 @@ interface Props {
   fields: FormField[];
   pendingRestartKeys: readonly string[];
   overrideKeys: readonly string[];
-  /** Optional REPL-state passthroughs. Render `—` when null/undefined. */
   sessionId?: string | null;
   sessionTitle?: string | null;
   permissionMode?: "ask" | "auto" | "plan" | "yolo" | null;
@@ -74,7 +58,6 @@ export const StatusTab: React.FC<Props> = ({
   const [mcp, setMcp] = useState<McpSnapshot>(EMPTY_MCP);
   const [bootError, setBootError] = useState<string | null>(null);
 
-  // One-shot bootstrap fetch for identity + engine base URL.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -97,7 +80,6 @@ export const StatusTab: React.FC<Props> = ({
     };
   }, [client]);
 
-  // 5s MCP catalog poll; cleanup cancels the timer.
   useEffect(() => {
     let cancelled = false;
     const fetchOnce = async (): Promise<void> => {

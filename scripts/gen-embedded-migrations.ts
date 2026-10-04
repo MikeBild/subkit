@@ -1,18 +1,4 @@
 #!/usr/bin/env bun
-//
-// Generate `apps/engine/src/db/migrations/embedded.ts` from the
-// drizzle-kit journal (`meta/_journal.json`).
-//
-// Why: every new migration needs a corresponding `import sqlNNNN ...`
-// + `SQL_BY_TAG` entry. A drizzle-kit run produces the .sql file but
-// not the manifest, so the manual update is a regression magnet.
-// This script regenerates the manifest from the journal
-// and is wired into:
-//
-//   * `bun run db:gen-embedded` — manual regenerate
-//   * `bun run check:embedded-drift` — CI gate (fails on uncommitted diff)
-//
-// Run after every `bun run db:generate`.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -36,9 +22,6 @@ interface Journal {
 }
 
 function ident(tag: string): string {
-  // e.g. `0007_webhooks_inbound_origin` → `sql0007WebhooksInboundOrigin`
-  // For numeric prefixes the result starts with a letter (`sql`) so
-  // it's a valid JS identifier.
   const parts = tag.split("_");
   const head = parts[0] ?? "";
   const rest = parts

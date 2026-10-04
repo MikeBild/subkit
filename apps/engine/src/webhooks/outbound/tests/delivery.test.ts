@@ -1,7 +1,3 @@
-// Delivery worker happy path: a valid 200 from the mock receiver
-// produces a `deliveries` row with status=success and an audit entry
-// for `webhook.outbound.delivered`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Job } from "pg-boss";
@@ -55,7 +51,6 @@ describe("outbound: delivery happy path", () => {
       data: job,
     } as unknown as Job<WebhookDeliverJob>);
 
-    // Receiver saw one hit.
     expect(receiver.hits.length).toBe(1);
     const hit = receiver.hits[0];
     expect(hit?.headers["webhook-id"]).toBe("msg_test_delivery");

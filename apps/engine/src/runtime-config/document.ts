@@ -1,7 +1,3 @@
-// Pure helpers over runtime-configuration documents: canonical digest,
-// deep get/set by path, and which restart-sensitive leaves differ between two
-// documents. No database, no process state.
-
 import { createHash } from "node:crypto";
 import { dottedPath, listConfigLeaves } from "../config/walk.ts";
 
@@ -51,8 +47,6 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
 }
 
-/** Restart-sensitive leaves whose value in `next` differs from `active`, globally
- * or in any tenant overlay, sorted by dotted path. */
 export function restartFieldsDiffering(
   active: Record<string, unknown>,
   next: Record<string, unknown>,

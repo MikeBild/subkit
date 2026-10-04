@@ -111,11 +111,6 @@ test("draft routes require authentication, write permission and valid definition
 });
 
 test("the derived limits reach every surface through one endpoint, and change nothing on their own", async () => {
-  // The dead end this closes: the approval dialog's only answer to an unbounded
-  // step was "investigate the cause in the chat" — a technical question put to
-  // the one person who cannot answer it. SubKit reads what the step really did
-  // and says it. Over HTTP, so the cockpit, a chat, an MCP client and `sk` are
-  // all callers of the same thing rather than one screen owning a repair.
   const created = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
     method: "POST",
     headers: headers(),
@@ -137,8 +132,6 @@ test("the derived limits reach every surface through one endpoint, and change no
   expect(created.status).toBe(201);
   const draft = (await created.json()) as { workflow_id: string; version_id: string };
 
-  // With nothing recorded, the honest answer is a named refusal — never a
-  // plausible rule nobody can point at.
   const empty = await fetch(`${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`, {
     headers: headers(),
   });
@@ -150,7 +143,6 @@ test("the derived limits reach every surface through one endpoint, and change no
   expect(nothing.proposals).toEqual([]);
   expect(nothing.unproposable).toEqual([{ step_id: "read_page", reason: "no_history" }]);
 
-  // Applying nothing is a refusal, not an empty success that looks like a repair.
   const refused = await fetch(
     `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals/apply`,
     {
@@ -161,7 +153,6 @@ test("the derived limits reach every surface through one endpoint, and change no
   );
   expect(refused.status).toBe(400);
 
-  // Reading requires only read permission; writing does not come with it.
   const readOnly = await fetch(
     `${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/boundary-proposals`,
     { headers: headers(readKey) },
@@ -177,7 +168,6 @@ test("the derived limits reach every surface through one endpoint, and change no
   );
   expect(denied.status).toBe(403);
 
-  // And nothing moved: reading proposals is not a change to the workflow.
   const after = await fetch(`${ctx.baseUrl}/v1/workflows/${draft.workflow_id}/draft`, {
     headers: headers(),
   });

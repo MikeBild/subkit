@@ -14,7 +14,6 @@ function makeClient() {
   });
 }
 
-/** Split a comma-separated flag into a trimmed, non-empty list. */
 function csv(value: unknown): string[] | undefined {
   if (typeof value !== "string" || value.length === 0) return undefined;
   const parts = value
@@ -24,12 +23,6 @@ function csv(value: unknown): string[] | undefined {
   return parts.length > 0 ? parts : undefined;
 }
 
-/**
- * Render the once-only invite banner for `sk users invite`. Extracted
- * (and exported) so the printed shape — the plaintext token plus the
- * ready-to-paste `sk join` line and the expiry — is unit-testable
- * without standing up the citty/disk/HTTP layers.
- */
 export function formatInviteIssued(invite: UserInviteIssuedWire): string {
   return (
     `invite issued for user ${invite.user_id}\n` +

@@ -58,12 +58,10 @@ function graphqlReview(graphql: RequestStep["graphql"]) {
     );
     return { value: { ...graphql, query: print(safe), variables }, omitted: false };
   } catch {
-    // Malformed/oversized documents must not fall back to an unredacted string.
     return { value: MASKED, omitted: true };
   }
 }
 
-/** Projection only. Never mutate the exact request used for hashing or dispatch. */
 function maskSecretFields(value: unknown, depth = 0): unknown {
   if (depth >= 12) return "[depth-exceeded]";
   if (Array.isArray(value)) return value.map((item) => maskSecretFields(item, depth + 1));
@@ -80,21 +78,17 @@ export function authorityRequestReview(step: RequestStep) {
   const graphql = graphqlReview(step.graphql);
   const urlQuery: Record<string, string[]> = Object.create(null);
   try {
-    // Only authored query parameters are projected; never expose URL userinfo.
     const url = new URL(step.path ?? step.url ?? "/", "https://review.invalid");
     for (const [key, value] of url.searchParams) {
       urlQuery[key] ??= [];
       urlQuery[key].push(value);
     }
-  } catch {
-    // Target eligibility is decided by effect resolution, not this display helper.
-  }
+  } catch {}
   const source = {
     query: step.query ?? null,
     url_query: urlQuery,
     body: step.body ?? null,
     graphql: graphql.value,
-    // Custom headers can carry opaque credentials under arbitrary names.
     header_names: Object.keys(step.headers ?? {}).sort(),
     header_values_omitted: Object.keys(step.headers ?? {}).length > 0,
     xml_payload_omitted: Boolean(step.xml),

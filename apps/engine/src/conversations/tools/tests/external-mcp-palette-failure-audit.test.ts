@@ -1,18 +1,3 @@
-// A failure assembling the external-MCP tool palette must land a queryable
-// audit row, not only a transient log line. `wrapTools` wraps
-// `buildExternalMcpTools` in a best-effort try/catch; on failure it degrades
-// to zero external tools AND emits `mcp_external_tool.palette_assembly_failed`.
-//
-// INJECTION PATTERN: the documented TEST SEAM
-// `__setExternalMcpToolsBuilderForTests` (external-mcp-tools.ts) replaces the
-// palette builder with one that throws — NO bun `mock.module` (module mocks
-// are process-global and leak into every other test file in the same worker).
-// The catch path then runs deterministically, and we assert: (1) the turn
-// still returns its in-repo tools (no abort), and (2) the audit row carries
-// the typed `pool_fault` reason plus a PRE-REDACTED metadata.detail — any
-// URL embedded in the raw error is reduced to host-only (no path, no query
-// string) before it is persisted.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
@@ -49,9 +34,6 @@ let actor_id: string;
 let conversation_id: string;
 
 beforeAll(async () => {
-  // Force the palette assembly to throw — simulates a transport fault whose
-  // raw message embeds the request URL WITH a query string (the shape a
-  // fetch error produces). The persisted audit reason must carry host-only.
   __setExternalMcpToolsBuilderForTests(async () => {
     throw new Error(
       "enumeration blew up: GET https://mcp.example.test/rpc?session=topsecret123 returned 500",
@@ -73,8 +55,6 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  // ALWAYS restore the seam (null-by-default protects production, but a
-  // leaked non-null builder would still poison sibling test files).
   __setExternalMcpToolsBuilderForTests(null);
   await ctx.cleanup();
 }, 30_000);
@@ -110,10 +90,8 @@ describe("external MCP palette-assembly failure audit", () => {
 
     const wrapped = await wrapTools(toolCtx, freshSignals(), events, db, [], {}, null, principal);
 
-    // The turn did NOT abort — in-repo tools are still present.
     expect(Object.keys(wrapped).length).toBeGreaterThan(0);
 
-    // The degradation landed a queryable audit row (resource_id = tenant_id).
     const rows = await ctx.db
       .select({
         action: auditLog.action,
@@ -126,12 +104,7 @@ describe("external MCP palette-assembly failure audit", () => {
     const failure = rows.filter((r) => r.action === "mcp_external_tool.palette_assembly_failed");
     expect(failure.length).toBe(1);
     expect(failure[0]!.result).toBe("error");
-    // `reason` is the typed failure class (pool_fault is the catch-all for
-    // a thrown palette assembly).
     expect(failure[0]!.reason).toBe("pool_fault");
-    // The detail in metadata is pre-redacted: the embedded URL is reduced to
-    // host-only — no path segment and no query string (which can carry
-    // session/token material) ever reaches the audit row.
     const meta = failure[0]!.metadata as Record<string, unknown>;
     expect(meta.detail).toBe("enumeration blew up: GET https://mcp.example.test returned 500");
     const metaStr = JSON.stringify(meta);

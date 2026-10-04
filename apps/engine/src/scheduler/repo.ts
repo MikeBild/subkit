@@ -1,8 +1,3 @@
-// CRUD helpers over `workflows_schedules`. Intentionally small — the
-// SchedulerReconciler polls the table on a 60s cadence so changes here
-// take effect within one reconcile window. Unit-testable without
-// pg-boss because the table is the source of truth.
-
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -13,12 +8,6 @@ import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import type { ScheduleTrigger } from "../workflows/types.ts";
 import { parseCronExpression } from "./cron.ts";
 
-// Postgres jsonb returns object keys in storage order (length, then
-// lex), not insertion order. JSON.stringify on the round-tripped
-// object therefore differs from JSON.stringify on the freshly-built
-// payload even when the values are equal — which would make every
-// "same trigger" rebind look like an update. Canonicalize before
-// comparing.
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -68,7 +57,6 @@ export async function createSchedule(
       reason: parsed.reason,
     });
   }
-  // Confirm workflow belongs to tenant before we insert the schedule.
   const wf = await db
     .select({ id: workflows.id, lifecycle: workflows.lifecycle })
     .from(workflows)
@@ -83,22 +71,12 @@ export async function createSchedule(
   if (wf.length === 0) {
     throw Object.assign(new Error("workflow_not_found"), { code: "workflow_not_found" });
   }
-  // The reconciler never fires an archived workflow, and archiving removes its
-  // schedule; a new one would sit there looking bound while nothing runs.
   if (wf[0]?.lifecycle === "archived") {
     throw Object.assign(
       new Error("workflow is archived; restore it to active before scheduling it"),
       { code: "workflow_archived" },
     );
   }
-  // Update-or-insert on (tenant_id, workflow_id) — a workflow carries at most
-  // one schedule, exactly as the inline-trigger path (`bindFromWorkflow`)
-  // already enforces. The reconciler fires each row independently, so an
-  // unguarded insert here let repeated create_schedule calls (e.g. an author
-  // re-scheduling "daily around 3am" and landing on a slightly different
-  // minute each time) accumulate rows that each fire — one logical schedule
-  // became N real runs. Use cron's multi-time syntax (`0 8,20 * * *`) for
-  // several fire times on one workflow.
   const existing = await db
     .select({ id: workflowsSchedules.id })
     .from(workflowsSchedules)
@@ -142,7 +120,6 @@ export async function createSchedule(
   return { status: "created", row: rows[0] as ScheduleRow };
 }
 
-/** A schedule's create/update/pause/delete is a change the live Cockpit hears. */
 async function scheduleChanged(
   db: Executor,
   row: { id: string; tenant_id: string; workflow_id: string } | undefined,
@@ -155,11 +132,6 @@ async function scheduleChanged(
   });
 }
 
-/**
- * Schedules are a bounded catalog and the query carries no limit/offset,
- * so the page IS the universe — `total` equals `rows.length` by
- * construction and stays exact under the same tenant/workflow filters.
- */
 export async function listSchedules(
   db: Db,
   tenant_id: string,
@@ -167,8 +139,6 @@ export async function listSchedules(
 ): Promise<ListResult<ScheduleRow>> {
   const tenantConds = [eq(workflowsSchedules.tenant_id, tenant_id)];
   if (workflow_id) tenantConds.push(eq(workflowsSchedules.workflow_id, workflow_id));
-  // Without an order the database returns rows in whatever order it finds
-  // them, and two reads of the same catalog can disagree.
   const rows = (await db
     .select()
     .from(workflowsSchedules)
@@ -241,20 +211,6 @@ export async function deleteSchedule(db: Db, tenant_id: string, id: string): Pro
   return rows.length > 0;
 }
 
-// ------------------ workflow trigger reverse-bind ---------------------
-//
-// Workflow lifecycle (`apps/engine/src/workflows/service.ts`) calls
-// these helpers when a workflow is saved or deleted with a
-// `trigger: { kind: "schedule" }` block. The contract mirrors the
-// webhooks bind/unbind helpers: idempotent on `(tenant_id,
-// workflow_id)`, audit-stamped via `SCHEDULE_TRIGGER_BOUND` /
-// `SCHEDULE_TRIGGER_UNBOUND`, and decoupled from the older
-// `SCHEDULE_CREATED` / `SCHEDULE_DELETED` actions which stay
-// reserved for direct CRUD via the HTTP API.
-//
-// The reconciler picks up the row on its next 60s pass — there is no
-// in-process notification path; the source of truth is the table.
-
 export interface BindScheduleFromWorkflowInput {
   tenant_id: string;
   workflow_id: string;
@@ -278,9 +234,6 @@ export async function bindFromWorkflow(
       reason: parsed.reason,
     });
   }
-  // Stash the calendar gates inside the schedule's `input` payload so
-  // they survive without a schema migration. The reconciler honours
-  // these on fire; for now they round-trip on the row.
   const inputPayload = {
     business_days_only: input.trigger.business_days_only ?? false,
     skip_dates: input.trigger.skip_dates ?? [],
@@ -381,11 +334,6 @@ export async function bindFromWorkflow(
   return { status: "created", row };
 }
 
-/**
- * Reverse-unbind helper called from the workflow delete / version
- * rotate path. Removes every schedule row for the workflow within
- * the tenant scope. Returns the number of rows removed.
- */
 export async function unbindFromWorkflow(
   db: Executor,
   tenant_id: string,

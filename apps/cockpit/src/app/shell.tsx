@@ -104,7 +104,6 @@ export function AppShell() {
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const groups = visibleNavigation(session.permissions);
-  // Router-relative, so the entry for Wissen is active on all three of its tabs.
   const active = navigationItem(pathname.replace(/^\/cockpit(?=\/|$)/, "") || "/");
 
   return (
@@ -125,27 +124,6 @@ export function AppShell() {
         >
           <SidebarHeader data-testid="cockpit-sidebar-header">
             <SidebarMenu>
-              {/*
-              The wordmark (§6): product icon plus the product name in its
-              canonical spelling, top of the sidebar.
-
-              "SubKit" is a proper name with an internal capital, so it lives in
-              exactly ONE place — `app.name` in the catalogue, identical in EN
-              and DE, because a name is not translated. No literal here, no
-              `.toUpperCase()`, no `uppercase` class and no `tracking` wide
-              enough to pull the internal capital apart.
-
-              The three `cockpit-wordmark*` ids are the family's shared anchor
-              for the convention check and the parity harness — one selector
-              across six products instead of six dialects. They are COPIED from
-              the family pattern, not imported: the convention is a document,
-              not a package (§7).
-
-              The name carries its own id rather than only the container: the
-              all-caps guard reads the COMPUTED `text-transform` on the element
-              the name is painted on, and a container does not necessarily carry
-              the same value.
-            */}
               <SidebarMenuItem data-testid="cockpit-wordmark">
                 <SidebarMenuButton asChild size="lg" tooltip={t("app.name")}>
                   <Link to="/" data-testid="cockpit-home-link">
@@ -173,8 +151,6 @@ export function AppShell() {
             <nav aria-label={t("nav.label")}>
               {groups.map((group) => (
                 <SidebarGroup key={group.id} data-testid={`nav-group-${group.id}`}>
-                  {/* No heading where the group has no name: Übersicht stands
-                    ungrouped, and a rendered label above it makes it a group. */}
                   {group.labelKey && <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>}
                   <SidebarGroupContent>
                     <SidebarMenu>
@@ -229,18 +205,6 @@ export function AppShell() {
   );
 }
 
-/**
- * The top bar and the page below it.
- *
- * The bar is drawn only where it carries something (see `shell-header.tsx`):
- * on a phone and as the chat's own header. On a wide page the page header
- * holds the toggle beside its heading, and a bar holding nothing but that
- * toggle would be a band of empty space. A record's way back is the back link
- * inside its own page header, never a crumb repeating its name.
- *
- * The run sheets live here, not on one page: a run's address is `?run=<id>`
- * on whichever view opened it.
- */
 function ShellContent() {
   const { isMobile } = useSidebar();
   const header = useShellHeaderState();
@@ -259,9 +223,6 @@ function ShellContent() {
     >
       {owner === "bar" &&
         (chat ? (
-          // The chat's header: the same column as its transcript and composer,
-          // padding outside it and the gutter reserved on both edges, so the
-          // toggle, the title and the messages begin on one line.
           <header
             className="scrollbar-thin shrink-0 overflow-hidden border-b px-4 py-2 sm:px-6 [scrollbar-gutter:stable_both-edges]"
             data-testid="cockpit-header"
@@ -288,11 +249,6 @@ function ShellContent() {
   );
 }
 
-/**
- * The number of entries on Übersicht, or nothing at all — a stale or guessed badge
- * would be worse than an absent one, and it always sits on the link it counts.
- * Red while anything is stopped.
- */
 function AttentionCounter() {
   const session = useSession();
   const { query, badge } = useAttention(session.permissions);
@@ -322,10 +278,6 @@ const LIVE_LABEL = {
   offline: "platform.live.offline",
 } as const satisfies Record<LiveStatus, TranslationKey>;
 
-/**
- * Whether the Cockpit is live: one dot on the account avatar, its state in the
- * tooltip and for a screen reader. No text in the footer.
- */
 function LiveIndicator() {
   const { status } = useLiveStatus();
   const { t } = useI18n();

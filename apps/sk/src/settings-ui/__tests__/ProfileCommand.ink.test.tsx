@@ -1,6 +1,3 @@
-// Verifies /profile opens a SinglePane (sk profile) and not the
-// SettingsModal — see ProfileCommand.tsx and ink-app.tsx wiring.
-
 import { describe, expect, mock, test } from "bun:test";
 import type { EngineClient } from "../../engine-client.ts";
 import { renderInk } from "../../tests/helpers/ink.tsx";
@@ -83,7 +80,6 @@ describe("ProfileCommand — /profile SinglePane", () => {
 
   test("two-step Esc: first Esc closes the tenant picker, pane stays mounted", async () => {
     const dismissed: true[] = [];
-    // Successful listIdentityTenants so the picker fully renders a row.
     const client = {
       skBootstrap: mock(async () => ({
         whoami: {
@@ -119,17 +115,11 @@ describe("ProfileCommand — /profile SinglePane", () => {
     try {
       await ui.waitFor((t) => t.includes("sk profile"));
       await ui.waitFor((t) => t.includes("Start a new session"));
-      // 't' opens the switcher; picker renders "Switch tenant" header
-      // bold + the "↑/↓ navigate · Enter to switch · Esc to cancel" row.
       await ui.type("t");
       await ui.waitFor((t) => /Enter to switch/.test(t));
-      // First Esc → switcher closes, pane stays. Wait for the picker
-      // marker to disappear so we know tenantPickerOpen flipped + the
-      // useEffect fired + SinglePane's innerActive resync'd to false.
       await ui.press("esc");
       await ui.waitFor((t) => !/Enter to switch/.test(t), { tries: 100, sleepMs: 10 });
       expect(dismissed.length).toBe(0);
-      // Second Esc → pane dismisses.
       await ui.press("esc");
       await ui.waitFor(() => dismissed.length > 0, { tries: 100, sleepMs: 10 });
       expect(dismissed.length).toBe(1);
@@ -151,7 +141,6 @@ describe("ProfileCommand — /profile SinglePane", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("sk profile"));
-      // ProfileTab renders Start a new session menu once bootstrap resolves.
       await ui.waitFor((t) => t.includes("Start a new session"));
       await ui.type("n");
       await ui.waitFor(() => fired.length > 0, { tries: 50, sleepMs: 10 });

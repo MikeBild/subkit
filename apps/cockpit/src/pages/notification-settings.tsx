@@ -85,7 +85,6 @@ function severityWord(t: Translate, value: string): string {
   return key ? t(key) : value;
 }
 
-/** The delivery state as a word; a phase this build has no word for stays the engine's own. */
 function deliveryBadge(t: Translate, delivery: DeliveryState, testId?: string): ReactNode {
   if (delivery.kind === "machine")
     return (
@@ -106,7 +105,6 @@ function deliveryBadge(t: Translate, delivery: DeliveryState, testId?: string): 
   );
 }
 
-/** Where a rule delivers, in a sentence. */
 function ruleTargetText(
   t: Translate,
   rule: NotificationRuleItem,
@@ -122,7 +120,6 @@ function ruleTargetText(
       : t("notifications.target.pending");
 }
 
-/** Which events a rule forwards, each named; the engine's own value is marked as such. */
 function RuleEvents({ rule }: { rule: NotificationRuleItem }) {
   const { t } = useI18n();
   return (
@@ -138,10 +135,6 @@ function RuleEvents({ rule }: { rule: NotificationRuleItem }) {
   );
 }
 
-/**
- * The tab's two acts, for the page header: "Regel anlegen" filled, "Kanal
- * hinzufügen" outline — only for someone who may change notifications.
- */
 export function useNotificationActions({
   onCreateRule,
   onCreateChannel,
@@ -170,12 +163,6 @@ export function useNotificationActions({
   };
 }
 
-/**
- * Benachrichtigungen, a tab of Einstellungen: which events leave this
- * installation (rules) and where they arrive (channels). Each is a table; a
- * row opens its facts in a sheet. Adding a rule and a channel are the page
- * header's acts; the dialogs they open live here.
- */
 export function NotificationSettings({
   createRule,
   onCreateRule,
@@ -243,8 +230,6 @@ export function NotificationSettings({
         ),
         { width: "w-[14%]" },
       ),
-      // Fourth on purpose: a phone card shows three cells, so the events live
-      // once, on the desktop row and in the rule's sheet.
       column.custom(
         "events",
         (rule) => rule.event_pattern,
@@ -503,7 +488,6 @@ function ChannelSheet({
 
 const ALL_EVENTS = "*";
 
-/** A rule: a name, which events, how urgent, and where it goes — the inbox or a channel. */
 function CreateRuleDialog({
   open,
   onOpenChange,
@@ -643,7 +627,6 @@ function CreateRuleDialog({
   );
 }
 
-/** A channel: the platform, the workspace and channel it posts to, and from which urgency. */
 function CreateChannelDialog({
   open,
   onOpenChange,

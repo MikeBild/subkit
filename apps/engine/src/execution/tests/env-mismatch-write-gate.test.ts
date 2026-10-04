@@ -1,21 +1,3 @@
-// Environment-mismatch write gate — engine integration tests (audit H2).
-//
-// When the requested execution environment resolves to a DIFFERENT
-// connector environment (the `getConnectorForEnvironment` fallback, e.g. a
-// prod run against a tenant with only a dev binding), the dispatch step
-// used to warn (`connector.environment.fallback`) and proceed for EVERY
-// step class. Observed in production: 769 silent dev→prod fallbacks —
-// including writes shipped through the wrong-environment binding.
-//
-// Contract under test:
-//   1. A write-classified step (POST) fails HARD with
-//      `connector_environment_mismatch` and never reaches the upstream.
-//   2. A read-classified step (GET) keeps the warn-only fallback and
-//      executes against the fallback binding (load-bearing for
-//      single-env tenants).
-//   3. The author override `side_effects: "read"` reclassifies a POST
-//      (semantic search etc.) back onto the warn-only path.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
@@ -45,8 +27,6 @@ beforeAll(async () => {
     });
   });
 
-  // Dev-only binding: a prod-mode run has no prod sibling to resolve to,
-  // so `getConnectorForEnvironment` falls back to this row.
   const [c] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -97,8 +77,6 @@ describe("connector environment mismatch — write gate", () => {
     const step = result.steps.find((s) => s.step_key === "post_thing");
     expect(step?.status).toBe("failed");
     expect((step?.error as { code?: string } | null)?.code).toBe("connector_environment_mismatch");
-    // The gate fires BEFORE the request plan — the upstream must not see
-    // the write.
     expect(upstreamHits).toBe(0);
   });
 
@@ -184,9 +162,6 @@ describe("connector environment mismatch — write gate", () => {
   });
 });
 
-// The refusal a reader acts on must be the one that blocks. A prod write whose
-// connector exists only as a DISABLED dev row used to be told to enable that
-// row — and, having done so, would have been refused for the environment.
 describe("connector environment mismatch — asked before the switch", () => {
   async function withDisabledDevRow(run: () => Promise<void>): Promise<void> {
     await ctx.testDb.db

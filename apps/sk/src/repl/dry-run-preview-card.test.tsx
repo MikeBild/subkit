@@ -1,10 +1,3 @@
-// Regression: the dry_run_workflow card showed only "Preview
-// complete · workflow · ok · 290ms / Ran 4 steps with no errors." —
-// no preview output was rendered, so the operator had to ask the LLM
-// "display results" to actually see what the workflow produced. The
-// card reads from `step_outputs` and `last_step.output_preview` so the
-// produced data is always visible.
-
 import { describe, expect, test } from "bun:test";
 import type { ToolCallState } from "@cli-core/index.ts";
 import { render } from "ink-testing-library";
@@ -15,10 +8,6 @@ function snapshot(s: ReturnType<typeof render>): string {
   return (s.lastFrame() ?? "").replace(/\[[0-9;]*m/g, "");
 }
 
-/** `renderAuthoringCard` returns `React.ReactNode | null`; ink-testing-library's
- *  `render` is typed for `ReactElement`. Cast to satisfy the API at the
- *  test boundary — every call site here passes a non-null call so the
- *  returned node is always a real element. */
 function renderCard(call: ToolCallState): ReturnType<typeof render> {
   return render(renderAuthoringCard(call, "chat") as ReactElement);
 }
@@ -50,7 +39,6 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     const r = renderCard(call);
     const frame = snapshot(r);
     expect(frame).toContain("Preview complete");
-    // Some signal of the preview output, not just the bare summary.
     expect(frame).toMatch(/alpha|project_name|p1/);
     r.unmount();
   });
@@ -87,10 +75,6 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     r.unmount();
   });
 
-  // The run_workflow card must show the ACTUAL warning, never the
-  // hardcoded "Loop body produced no rows" — that text was wrong for
-  // every non-loop workflow (e.g. a request + transform that filtered
-  // to empty).
   test("a partial_success run renders the real warning, not the loop-body boilerplate", () => {
     const call: ToolCallState = {
       id: "tc-run-partial",
@@ -120,11 +104,6 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     r.unmount();
   });
 
-  // A repair-required preview (an empty transform, an unresolved ref)
-  // must NOT read as a clean "Preview complete · ok". Pre-fix the card
-  // showed "ok · Ran N steps with no errors" while the workflow
-  // produced broken output, and the authoring agent kept iterating
-  // against a false green.
   test("a needs_repair preview renders 'Preview needs repair', never a clean 'ok'", () => {
     const call: ToolCallState = {
       id: "tc-needs-repair",
@@ -151,13 +130,6 @@ describe("dry_run_workflow card · output rendering (bug C / 86de186b)", () => {
     r.unmount();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Preview-judge verdict block — dry_run_workflow may carry
-// `judge: { verdict, reason, missing[] }`. A blocking verdict (partial /
-// failed) is WHY the preview did not auto-commit, so the card must say
-// so prominently; `passes` is one quiet line; `skipped` renders nothing.
-// ---------------------------------------------------------------------------
 
 describe("dry_run_workflow card · judge verdict block", () => {
   test("a partial verdict renders the verdict, reason, missing bullets, and the repair hint", () => {
@@ -189,7 +161,6 @@ describe("dry_run_workflow card · judge verdict block", () => {
     expect(frame).toContain("• project names are empty strings");
     expect(frame).toContain("edit_workflow_patch");
     expect(frame).toContain("save_workflow_draft");
-    // Judge block joins the needs_repair path — never a clean green.
     expect(frame).toContain("Preview needs repair");
     r.unmount();
   });
@@ -250,14 +221,6 @@ describe("dry_run_workflow card · judge verdict block", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Held write steps — hold-writes previews resolve a write step's request
-// (URL/headers/body materialized) but never dispatch it. The step rides
-// the trace as `held: true` + `held_request` and must NOT look like a
-// normal green step: the materialized body is the operator's review
-// artifact.
-// ---------------------------------------------------------------------------
-
 describe("dry_run_workflow card · held write steps", () => {
   const heldEnvelope = {
     ok: false,
@@ -293,9 +256,7 @@ describe("dry_run_workflow card · held write steps", () => {
     expect(frame).toContain("⏸ HELD");
     expect(frame).toContain("resolved, not dispatched");
     expect(frame).toContain("send_email");
-    // The held step must not render as a checked success line.
     expect(frame).not.toContain("✓ send_email");
-    // The non-held sibling still renders normally.
     expect(frame).toContain("✓ fetch_projects");
     r.unmount();
   });
@@ -305,7 +266,6 @@ describe("dry_run_workflow card · held write steps", () => {
     const r = renderCard(call);
     const frame = snapshot(r);
     expect(frame).toContain("POST https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
-    // The held email body is the review artifact — it must be visible.
     expect(frame).toContain("body:");
     expect(frame).toContain("Daily DO resources");
     r.unmount();

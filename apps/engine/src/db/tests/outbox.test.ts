@@ -41,7 +41,6 @@ describe("outbox writer", () => {
     expect(ids).toHaveLength(2);
     expect(ids[1]).toBeGreaterThan(ids[0]!);
 
-    // simulate LISTEN catch-up: SELECT WHERE id > last_seen_id
     const caughtUp = await ctx.db
       .select()
       .from(events)
@@ -52,7 +51,6 @@ describe("outbox writer", () => {
       "execution.succeeded",
     ]);
 
-    // another round with a non-zero watermark
     await ctx.db.transaction(async (tx) => {
       await writeEvent(tx, {
         tenant_id: tenant!.id,
@@ -87,9 +85,7 @@ describe("outbox writer", () => {
         });
         throw new Error("boom");
       });
-    } catch {
-      // expected
-    }
+    } catch {}
 
     const rows = await ctx.db.select().from(events).where(eq(events.channel, "workflow.chain"));
     expect(rows).toHaveLength(0);

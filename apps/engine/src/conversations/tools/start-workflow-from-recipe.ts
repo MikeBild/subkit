@@ -1,32 +1,3 @@
-// start_workflow_from_recipe — clone an executable per-template recipe
-// into a workflow draft.
-//
-// Recipes ship in `apps/engine/src/connectors/templates.json` under the
-// `recipes` field of each connector template. Each recipe IS a workflow
-// validated through `WorkflowDefSchema`, so a cloned draft is
-// guaranteed structurally valid (id uniqueness, JSONata parse, loop
-// bodies, etc.) and can typically be persisted on the first commit
-// without `propose_step` rework loops.
-//
-// The cloned draft inherits `derived_from_skill_id` from the recipe
-// (when set) so the workflow validator can apply the proof-before-save
-// gate against the skill's `output_schema`.
-//
-// Two binding paths cover single- and multi-connector recipes:
-//
-//   1. Single-connector path. When `recipe.required_connectors`
-//      is empty the recipe ships at most one placeholder UUID
-//      (`00000000-0000-0000-0000-000000000000`). The operator passes
-//      `connector_id` and the placeholder is rebound to that saved
-//      connector. This is the SQL/Postgres-style recipe path.
-//   2. Multi-connector path. When `recipe.required_connectors` is
-//      non-empty the operator must pass `connector_bindings` covering
-//      every declared placeholder UUID; each placeholder in the cloned
-//      workflow steps is rebound to its mapped saved connector. The
-//      single `connector_id` arg is rejected for multi-connector
-//      recipes — the per-placeholder map disambiguates which step gets
-//      which connector.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
@@ -78,12 +49,6 @@ const inputSchema = z
 
 const PLACEHOLDER_CONNECTOR_ID = "00000000-0000-0000-0000-000000000000";
 
-// Single-pass walker. `bindings` maps placeholder UUID → saved connector
-// id; every `connector_id` field whose value is a key in the map is
-// rebound. Unknown UUIDs (saved connector ids the recipe author hard-coded
-// for cross-tenant references — out of scope today) pass through
-// untouched. The recursion is iterative so a deeply nested workflow
-// (loop bodies, branch arms, parallel arms) does not blow the stack.
 function rebindConnectorIds(workflow: unknown, bindings: Record<string, string>): unknown {
   if (Array.isArray(workflow)) {
     return workflow.map((v) => rebindConnectorIds(v, bindings));
@@ -143,16 +108,6 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       };
     }
 
-    // Resolve the binding map for the cloned workflow.
-    //
-    //   - Multi-connector recipe (`required_connectors` non-empty):
-    //     `connector_bindings` is mandatory and must cover every declared
-    //     placeholder. The single-connector arg is rejected to
-    //     avoid silent partial substitution.
-    //   - Single-connector recipe (`required_connectors` empty): the
-    //     operator may still pass `connector_bindings` (no-op for
-    //     unknown UUIDs) but the typical path remains `connector_id`
-    //     against the `00000000-…` placeholder.
     const required = recipe.required_connectors ?? [];
     let bindings: Record<string, string> = {};
     if (required.length > 0) {
@@ -180,23 +135,12 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     } else if (args.connector_bindings) {
       bindings = { ...args.connector_bindings };
     }
-    // Single-connector path layered onto the binding map. Routes
-    // the well-known `00000000-…` placeholder to the supplied
-    // `connector_id`, so a single rebind walk handles both shapes
-    // without a second traversal.
     if (args.connector_id !== undefined) {
       bindings[PLACEHOLDER_CONNECTOR_ID] = args.connector_id;
     }
 
     const slug = args.slug ?? `${args.template_slug}-${args.recipe_slug}`;
     const name = args.name ?? recipe.title;
-    // Judge visibility: stash a goal derived from the recipe's intent
-    // (title/description, plus the user's name override when it adds
-    // information) as the same draft-only `goal` metadata the other
-    // authoring entry points write. Without it every recipe-cloned
-    // workflow previewed as `judge.no_goal` — the post-preview judge
-    // had nothing to grade the output against, so recipe clones were
-    // permanently exempt from the instruction-grounded verdict.
     const goal = [
       args.name && args.name !== recipe.title ? args.name : null,
       recipe.title,
@@ -205,9 +149,6 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
       .filter((part): part is string => typeof part === "string" && part.length > 0)
       .filter((part, index, all) => all.indexOf(part) === index)
       .join(" — ");
-    // Clone the recipe's workflow shape into a draft. We deep-clone via
-    // JSON to detach from the immutable builtin template; subsequent
-    // edits to the draft never touch the recipe in templates.json.
     const clonedRaw = JSON.parse(JSON.stringify(recipe.workflow));
     const cloned = (
       Object.keys(bindings).length > 0 ? rebindConnectorIds(clonedRaw, bindings) : clonedRaw
@@ -223,8 +164,6 @@ export const startWorkflowFromRecipeTool: ConversationTool = {
     const draft = ctx.getDraft();
     const nextDraft = withWorkflowDraft(draft, nextWorkflow, "workflow_seeded_from_recipe");
     await ctx.setDraft(nextDraft);
-    // Detach any prior target_workflow_id so save_workflow_draft does not
-    // overwrite an unrelated saved workflow.
     await ctx.db
       .update(conversations)
       .set({ target_workflow_id: null, updated_at: new Date() })

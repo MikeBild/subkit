@@ -1,14 +1,3 @@
-// Grounding-staleness /context advisory.
-//
-// The load-bearing regression here is provenance survival: the grounding
-// fingerprint AND the connector set it was computed over must survive the
-// draft normalize round-trip, or computeGroundingStatus has nothing to
-// recompute against and silently degrades to `unknown` forever (the bug the
-// first cut shipped — the connector list rode the workflow draft, whose
-// normalize allowlist dropped it). Plus the fail-open branches: no
-// fingerprint -> null; fingerprint but no connectors / an unreadable
-// connector -> `unknown`, never a false `stale`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversations } from "../db/schema/index.ts";
 import { createEmptyState, normalizeState } from "./authoring-state/normalize.ts";
@@ -84,8 +73,6 @@ describe("grounding-staleness · computeGroundingStatus fail-open", () => {
   });
 
   test("connector set with no discoverable schema → unknown (fail-open), not stale", async () => {
-    // The seeded connector exists but has no cached discovery index, so the
-    // current fingerprint recomputes to null → unknown, never a false stale.
     const state = createEmptyState("workflow");
     state.grounding_fingerprint = "abcdef0123456789";
     state.grounding_connector_ids = [ctx.connector_id];

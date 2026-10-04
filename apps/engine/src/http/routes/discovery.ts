@@ -1,9 +1,3 @@
-// Discovery HTTP surface (programmatic / SDK access).
-//
-// The primary UX is conversational (file attachments + start_connector_from_*/
-// propose_skill tools). These endpoints exist for SDK consumers and admin
-// tooling that prefer batch file analysis.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
@@ -32,14 +26,8 @@ import type { AppEnv } from "../openapi.ts";
 const RunIdParam = z.object({ id: z.string().uuid() });
 const ArtifactIdParam = z.object({ id: z.string().uuid() });
 
-// Per-request total upload cap for the multipart discovery routes. Guards
-// the shared engine process from buffering arbitrarily large uploads into
-// memory (OOM). Generous — far above any realistic authoring upload.
-export const MAX_DISCOVERY_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
+export const MAX_DISCOVERY_UPLOAD_BYTES = 100 * 1024 * 1024;
 
-// Cheap pre-buffer fast-reject from the advisory Content-Length header.
-// Content-Length is absent under chunked encoding, so this is NOT the sole
-// guard — the authoritative cap is enforced while buffering below.
 export function contentLengthOverCap(c: {
   req: { header: (n: string) => string | undefined };
 }): boolean {
@@ -57,12 +45,8 @@ const DiscoveryArtifactListResponse = z
   .object({ items: z.array(DiscoveryArtifactSchema) })
   .openapi("DiscoveryArtifactListResponse");
 
-// Bare `{ error }` body used by the multipart upload routes — the
-// pre-OpenAPI contract, documented as-is (deliberately not ErrorSchema).
 const DiscoveryUploadErrorSchema = z.object({ error: z.string() }).openapi("DiscoveryUploadError");
 
-// from-archive 400s additionally carry the extraction skip histogram on
-// the "no analysable files" branch.
 const DiscoveryArchiveUploadErrorSchema = z
   .object({
     error: z.string(),
@@ -80,11 +64,6 @@ const DiscoveryRunWithArchiveStatsSchema = DiscoveryRunSchema.extend({
   }),
 }).openapi("DiscoveryRunWithArchiveStats");
 
-// Multipart request bodies are documented with plain OpenAPI schema
-// objects (not Zod): @hono/zod-openapi only registers a body validator
-// for Zod schemas, so the handlers keep reading `c.req.formData()` and
-// enforcing their own limits — the wire contract is documented without
-// changing runtime behaviour.
 const createRunRoute = createRoute({
   method: "post",
   path: "/v1/discovery/runs",
@@ -394,7 +373,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ rejected: true }, 200);
   });
 
-  // Multipart upload route for creating discovery runs
   app.openapi(createRunRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -418,8 +396,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     for (const file of files) {
       if (!(file instanceof File)) continue;
       const buffer = Buffer.from(await file.arrayBuffer());
-      // Authoritative cap: stop accumulating once the running total exceeds
-      // the limit (Content-Length is advisory/absent under chunked uploads).
       totalBytes += buffer.byteLength;
       if (totalBytes > MAX_DISCOVERY_UPLOAD_BYTES) {
         return c.json({ error: "upload exceeds 100MB limit" }, 413);
@@ -444,13 +420,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json(run, 202);
   });
 
-  // Codebase-archive upload. Accepts a zip and extracts its contents
-  // into a discovery run. Filters out binaries, generated dirs, and
-  // lockfiles so the LLM only sees semantically interesting files.
-  // The raw archive bytes are additionally persisted into the canonical
-  // `files` store (binary-safe) and linked to the run — the extracted
-  // text is what the analyzer reads, the original upload stays
-  // retrievable.
   app.openapi(createRunFromArchiveRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -490,11 +459,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
-    // Persist the RAW archive bytes into the canonical `files` store —
-    // binary-safe (object store, never a TEXT column). A `scanning` /
-    // `timeout` scanner verdict does not fail run creation: the row stays
-    // `status='scanning'` and the cleanup cron owns stuck rows, mirroring
-    // the conversation-attachments inline branch.
     const {
       row: archiveFile,
       dedup,
@@ -507,8 +471,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       bytes: archiveBuffer,
     });
     if (dedup) {
-      // Keep the per-tenant `dedup_hits` stat symmetric across every
-      // entry point that lands bytes (mirrors /v1/files/inline).
       await recordFilesDedupSeen(db, principal.tenant_id);
     }
 
@@ -523,9 +485,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
     );
 
-    // Audit the create + scan + link as separate rows — same vocabulary
-    // as the canonical /v1/files/inline route; `FILE_SCAN_COMPLETED`
-    // fires only on fresh inserts (dedup hits never re-scan).
     await auditAwait(
       {
         tenant_id: principal.tenant_id,
@@ -557,8 +516,6 @@ export function registerDiscoveryRoutes(app: OpenAPIHono<AppEnv>): void {
           action: AuditAction.FILE_SCAN_COMPLETED,
           resource_type: "file",
           resource_id: archiveFile.id,
-          // `timeout` is an operational failure (scanner backend slow /
-          // wedged), not a security verdict — log it as `error`.
           result:
             scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
           metadata: FileScanCompletedMetadataSchema.parse({

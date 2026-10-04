@@ -1,10 +1,3 @@
-// Storage-binding commit gate (audit M4). A request step with an `s3`
-// block was committable against a connector that doesn't exist, isn't an
-// s3 connector, or has no `config.bucket` — every case only surfaced on
-// the first live run (`s3_error "Bucket not found"` / `missing
-// config.bucket`). createWorkflow / updateWorkflow now resolve the
-// binding at commit time and refuse with a typed per-step error.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";

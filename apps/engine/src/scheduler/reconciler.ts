@@ -1,10 +1,3 @@
-// Scheduler reconciler. Cron occurrences are admitted by the polling pass;
-// every-mode occurrences use local timers. Both reserve a matching execution
-// authority before sending an `execution.run` job to pg-boss.
-//
-// Sub-minute schedules (expressed as `every:<seconds>`) are handled
-// locally via setInterval because pg-boss' cron is minute-resolution.
-
 import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import { auditAwait } from "../audit/audit.ts";
@@ -59,151 +52,51 @@ import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
 
-/** Fixed cadence for proactive drift scans (per scope decision). One
- *  hour balances early-detection value against the cost of repeated
- *  LLM repair calls when drift signals are emitted. */
 const PROACTIVE_DRIFT_SCAN_CADENCE_MS = 60 * 60 * 1000;
 
-/** Fixed cadence for the proactive connector re-auth health scan. One
- *  hour is a reasonable early-detection window for stale credentials
- *  without hammering vendor rate limits. The CAS-stamp claim pattern
- *  ensures exactly-once firing per cadence across multi-instance
- *  deployments. */
 const CONNECTOR_REAUTH_SCAN_CADENCE_MS = 60 * 60 * 1000;
-// Endpoint-contract probes hit external vendors with real GETs — a 6h
-// cadence catches a removal/deprecation within the day while staying
-// polite (the migration windows these probes exist to exploit are weeks).
 const ENDPOINT_CONTRACT_SCAN_CADENCE_MS = 6 * 60 * 60 * 1000;
 
-/** Fixed cadence for the unified-files cleanup cron. The sweeps are
- *  idempotent and bounded by a 7-day soft-delete grace, so an hour
- *  balances reaping latency against cron cost. Multi-instance
- *  deployments may run the sweep twice per cadence on rare
- *  clock-overlaps; that's safe — DELETE / UPDATE are filtered by
- *  `now() - interval ...` so the second instance is a no-op. */
 const FILES_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
-/** Fixed cadence for the MCP OAuth retention sweep. Hour resolution
- *  matches the files-cleanup cadence — the sweeps are filtered by
- *  `now() - interval ...` so a second concurrent instance is a no-op. */
 const MCP_OAUTH_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
-/** Outbound connections renew themselves within five minutes of expiry; a
- *  one-minute cadence leaves at least four sweeps inside that window. */
 const CONNECTION_REFRESH_CADENCE_MS = 60 * 1000;
 
-/** Fixed cadence for the chat_events_seen retention sweep. Slack
- *  retries arrive within minutes, so a 24h grace is plenty; sweeping
- *  hourly keeps growth bounded and the cadence in line with the other
- *  retention sweeps. */
 const CHAT_DEDUP_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
-/** Cadence for naming dormant conversations. Five minutes, like the other
- *  backfill sweep: the work is bounded per tick and only matters to a person
- *  scrolling the list, so it may take hours to walk an old estate. Two
- *  instances doing it at once cost duplicate model calls at worst — the write
- *  is guarded by `title_locked = false` and the second one finds the row
- *  already renamed and skips it. */
 const CONVERSATION_TITLE_SWEEP_CADENCE_MS = 5 * 60 * 1000;
 
-/** Fixed cadence for the cli_notification_inbox retention sweep. Hourly,
- *  like the other retention sweeps; the sweep filters by
- *  `now() - notifications.inbox.retention_days` so a concurrent instance
- *  is a no-op. */
 const NOTIFICATION_INBOX_RETENTION_CADENCE_MS = 60 * 60 * 1000;
 
-/** Fixed cadence for the `tool_approvals` retention sweep. Hourly, like the
- *  other retention sweeps: the rows are bounded by a 24-hour TTL plus a
- *  1-day retention window, and the sweep filters by `now() - interval ...`
- *  so a concurrent instance is a no-op. */
 const TOOL_APPROVALS_CLEANUP_CADENCE_MS = 60 * 60 * 1000;
 
-/** Fixed cadence for the approval-backed elicitation expiry sweep. Five
- *  minutes — the approvals it reconciles die on a 24-hour TTL, so a
- *  stranded `awaiting_input` conversation is reactivated within roughly one
- *  TTL plus one cadence. Multi-instance overlap is a no-op: the sweep's
- *  writes ride CAS predicates (`status = 'pending'`,
- *  `status = 'awaiting_input'`), so a second instance loses every race. */
 const ELICITATION_EXPIRY_CADENCE_MS = 5 * 60 * 1000;
 
-/** Cadence for the risk-signal edge audits. One minute — the reconciler's own
- *  tick — so a critical host condition is on the record within a minute of
- *  crossing its threshold, whether or not anybody reads the digest. */
 const RISK_SIGNAL_EDGE_CADENCE_MS = 60 * 1000;
 
-/** Cadence for the embedding backfill sweep — populates chunk + conversation
- *  topic embeddings out-of-band (ingest stays fast). Five minutes so new
- *  knowledge/docs/conversations become semantically searchable soon after
- *  creation without burdening the ingest path. Each tick is bounded
- *  (maxBatches) so a large backlog drains over several ticks; the sweep is
- *  idempotent (WHERE embedding IS NULL) so multi-instance overlap is safe. */
 const EMBEDDING_BACKFILL_CADENCE_MS = 5 * 60 * 1000;
 
-/** Cadence + batch cap for the connector self-description enrichment sweep.
- *  Every HTTP/GraphQL connector with a base_url has its discovery cache +
- *  self-description LINKS refreshed at most once per cadence — connectors get
- *  richer the more they exist, which lifts authoring quality. The per-tick
- *  batch is capped so a large estate drains over several cadence cycles
- *  (oldest-first, enrichment-needed-first) instead of fanning out N bounded
- *  discovery HTTP calls at once. In-process throttle (like the cleanup
- *  sweeps) — multi-instance overlap is safe because runDiscoveryCached is
- *  idempotent: it only rewrites the discovery cache + the connector's
- *  self_description metadata, never config/auth. */
 const CONNECTOR_SELF_DESCRIPTION_CADENCE_MS = 24 * 60 * 60 * 1000;
 const CONNECTOR_SELF_DESCRIPTION_BATCH = 10;
-/** Per-connector bound for one discovery refresh. runDiscoveryCached has its
- *  own internal 30s timeout; this tighter abort caps the sweep's own wait so a
- *  single slow upstream cannot stall the whole batch. */
 const CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS = 8_000;
 
 export interface ReconcilerOptions {
   boss: PgBoss;
   db: Db;
-  /** Reconcile cadence in ms. Defaults to 60_000. */
   intervalMs?: number;
-  /** Discovery runner seam. Defaults to runDiscoveryCached; overridable in
-   *  tests so the self-description enrichment sweep's selection + non-fatal
-   *  per-connector behavior can be asserted without real outbound HTTP. */
   discoveryRunner?: typeof runDiscoveryCached;
-  /** All-surface probe seam. Defaults to probeAllSelfDescriptionLinks;
-   *  overridable in tests so multi-kind link attachment and non-fatal probe
-   *  failure can be asserted without real outbound HTTP. */
   probeRunner?: typeof probeAllSelfDescriptionLinks;
 }
 
-/** Desired sub-minute (`every:N`) schedules, keyed by schedule key.
- *  Cron-mode schedules are not part of desired state — they are fired
- *  directly by `reconcileWorkflowSchedules` on each 60s pass. */
 type EveryDesiredState = Map<
   string,
   { schedule_id: string; seconds: number; payload: ExecutionRunJob }
 >;
 
 function scheduleKeyForRow(row: { id: string }): string {
-  // Internal, process-local identifier for a schedule — the key of the
-  // every-timer map and the `schedule_key` field on fired-schedule logs.
-  // Not a queue name (the engine no longer schedules into pg-boss).
   return `wf-schedule.${row.id}`;
 }
 
-/**
- * Decide whether a cron schedule is "due" relative to `lastFiredAt`.
- *
- * Semantics: if there is no `lastFiredAt` we always say due. Otherwise
- * we ask the cron parser for the next firing time after `lastFiredAt`
- * and check whether `now` has passed it.
- *
- * The reconciler also accepts the engine's `every:N` shorthand so docs
- * auto-refresh tests can use the same expression syntax as the workflow
- * scheduler. For sub-minute cadences in production set
- * `auto_refresh_cron = "every:60"` etc.
- *
- * `tz` (optional, IANA timezone name) is forwarded to the cron parser so
- * a `0 9 * * *` schedule with `tz: "Europe/Berlin"` resolves to 09:00
- * Berlin local — i.e. 08:00 UTC in winter, 07:00 UTC in summer. Both
- * the comparison `now` (a real instant) and the cron expansion stay
- * consistent because the parser internally projects `currentDate` into
- * the requested zone before walking the cron fields.
- */
 export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?: string): boolean {
   const trimmed = cron.trim();
   if (trimmed.startsWith("every:")) {
@@ -220,7 +113,6 @@ export function isCronDue(cron: string, lastFiredAt: Date | null, now: Date, tz?
 export class SchedulerReconciler {
   private timer: NodeJS.Timeout | null = null;
   private everyTimers: Map<string, NodeJS.Timeout> = new Map();
-  /** Signatures of currently-installed desired state, keyed by schedule key. */
   private installed: Map<string, string> = new Map();
   private stopped = false;
   private inFlight = new Set<Promise<unknown>>();
@@ -233,48 +125,28 @@ export class SchedulerReconciler {
     );
     return task;
   }
-  /** Last instant the files-cleanup cron ran. Used as an in-process
-   *  throttle so the 60 s reconciler tick only fires the cleanup once
-   *  per `FILES_CLEANUP_CADENCE_MS`. Multi-instance overlap is safe —
-   *  see the comment on the cadence constant. */
   private lastFilesCleanupAt: Date | null = null;
 
-  /** Last instant the MCP OAuth cleanup cron ran. Same in-process
-   *  throttle as `lastFilesCleanupAt`. */
   private lastMcpOAuthCleanupAt: Date | null = null;
   private lastConnectionRefreshAt: Date | null = null;
 
-  /** Last instant the chat_events_seen retention sweep ran. */
   private lastChatDedupCleanupAt: Date | null = null;
   private lastConversationTitleSweepAt: Date | null = null;
 
-  /** Last instant the cli_notification_inbox retention sweep ran. */
   private lastNotificationInboxRetentionAt: Date | null = null;
 
-  /** Last instant the tool_approvals retention sweep ran. */
   private lastToolApprovalsCleanupAt: Date | null = null;
 
-  /** Last instant the approval-backed elicitation expiry sweep ran. */
   private lastElicitationExpiryAt: Date | null = null;
 
-  /** Last instant the risk-signal edge pass ran. */
   private lastRiskSignalEdgesAt: Date | null = null;
 
-  /** Last instant the embedding backfill sweep ran. In-process throttle to
-   *  EMBEDDING_BACKFILL_CADENCE_MS; the sweep is idempotent so overlap is safe. */
   private lastEmbeddingBackfillAt: Date | null = null;
 
-  /** Last instant the connector self-description enrichment sweep ran. Same
-   *  in-process throttle as the cleanup sweeps; deferred off the boot path
-   *  because the first sweep makes bounded outbound discovery HTTP calls. */
   private lastConnectorSelfDescriptionAt: Date | null = null;
 
-  /** Resolved discovery runner — the injectable seam, defaulting to the real
-   *  cached discovery pipeline. */
   private readonly discoveryRunner: typeof runDiscoveryCached;
 
-  /** Resolved all-surface probe — the injectable seam, defaulting to the
-   *  real concurrent probe implementation. */
   private readonly probeRunner: typeof probeAllSelfDescriptionLinks;
 
   constructor(private readonly opts: ReconcilerOptions) {
@@ -298,7 +170,6 @@ export class SchedulerReconciler {
         });
       });
     }, period);
-    // Allow process to exit even if our interval is the only thing alive.
     (this.timer as unknown as { unref?: () => void }).unref?.();
   }
 
@@ -313,7 +184,6 @@ export class SchedulerReconciler {
       this.everyTimers.delete(key);
     }
     await Promise.allSettled([...this.inFlight]);
-    // A reconcile already in progress may have installed another timer.
     for (const timer of this.everyTimers.values()) clearInterval(timer);
     this.everyTimers.clear();
     this.installed.clear();
@@ -321,10 +191,6 @@ export class SchedulerReconciler {
 
   async reconcileOnce(): Promise<void> {
     if (this.stopped) return;
-    // Docs auto-refresh runs on the same 60 s tick — every pass walks
-    // the connectors with a non-null `auto_refresh_cron` and enqueues a
-    // `connector.ingest-docs` job whenever the cron expression has
-    // elapsed since the connector's `last_ingested_at`.
     await retryTransient(() => this.reconcileDocsAutoRefresh(), {
       label: "docs_auto_refresh",
     }).catch((err) => {
@@ -345,11 +211,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Connector self-description enrichment runs on the same tick. Throttled
-    // in-process to one sweep per cadence; each sweep refreshes a small,
-    // oldest-first batch of HTTP/GraphQL connectors via runDiscoveryCached,
-    // which re-warms the discovery cache and records the connector's
-    // self-description LINKS. Per-connector failures are non-fatal.
     await retryTransient(() => this.reconcileConnectorSelfDescription(), {
       label: "connector_self_description",
     }).catch((err) => {
@@ -360,12 +221,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Workflow schedule fan-out is dedup'd via `last_enqueued_at`. The
-    // reconciler itself walks every cron-mode schedule, asks
-    // `isCronDue()` whether one full cron period has elapsed since the
-    // last enqueue, and only THEN fires an execution.run job. A
-    // 10-minute outage that brings a `* * * * *` schedule "10 minutes
-    // behind" therefore produces ONE catch-up enqueue, not 10.
     await retryTransient(() => this.reconcileWorkflowSchedules(), {
       label: "workflow_schedules",
     }).catch((err) => {
@@ -376,12 +231,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Proactive self-healing drift scan. Per-tenant CAS-stamp on
-    // `tenants.last_proactive_scan_at` gives multi-instance deployments
-    // exactly-once firing per cadence; the scan itself runs `scanForDrift`
-    // followed by `processDriftSignal({ allowAutoApply: false })` per
-    // signal so every Patch Candidate produced this way is parked for
-    // operator review regardless of policy/classification gates.
     await retryTransient(() => this.reconcileProactiveDriftScans(), {
       label: "drift_scan",
     }).catch((err) => {
@@ -392,11 +241,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Proactive connector re-auth scan. Per-tenant CAS-stamp on
-    // `tenants.last_connector_reauth_scan_at` gives multi-instance
-    // deployments exactly-once firing per cadence; each due tenant gets
-    // a lightweight authenticated probe per connector so stale or revoked
-    // credentials are flagged before a workflow hits them at runtime.
     await retryTransient(() => this.reconcileConnectorReauthScans(), {
       label: "connector_reauth_scan",
     }).catch((err) => {
@@ -407,12 +251,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Proactive endpoint-contract scan. Per-tenant CAS-stamp on
-    // `tenants.last_endpoint_contract_scan_at`; each due tenant gets the
-    // distinct GET operations its committed workflows reference probed
-    // through the normal authed path — a vendor's 410 or Deprecation/
-    // Sunset announcement flips connector+workflow health BEFORE an
-    // unattended run returns "0 results".
     await retryTransient(() => this.reconcileEndpointContractScans(), {
       label: "endpoint_contract_scan",
     }).catch((err) => {
@@ -423,12 +261,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Skill-candidate pattern analysis. Per-tenant CAS-stamp on
-    // `tenants.last_skill_candidate_analyze_at` gives multi-instance
-    // deployments exactly-once firing per cadence; each due tenant gets a
-    // `skill-candidate.analyze` job enqueued, whose worker runs
-    // runPatternAnalysis (repair / failure / success detectors → Skill
-    // Candidate proposals behind the operator-approval gate).
     await retryTransient(() => this.reconcileSkillCandidateAnalysis(), {
       label: "skill_candidate_analyze",
     }).catch((err) => {
@@ -439,12 +271,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Unified-files cleanup cron. Hour-throttled in-process;
-    // multi-instance overlap is safe — see the cadence
-    // constant comment. The runner walks three sweeps (pending
-    // orphans, unlinked TTL, LLM provider expiry); errors inside the
-    // sweeps are caught per-sweep so a failure does not abort the rest
-    // of the reconciler tick.
     await retryTransient(() => this.reconcileFilesCleanup(), {
       label: "files_cleanup",
     }).catch((err) => {
@@ -455,9 +281,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // MCP OAuth retention sweep. Hour-throttled in-process; errors
-    // inside the sweeps are caught per-sweep so a failure does not
-    // abort the rest of the reconciler tick.
     await retryTransient(() => this.reconcileMcpOAuthCleanup(), {
       label: "mcp_oauth_cleanup",
     }).catch((err) => {
@@ -468,8 +291,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Outbound connections: renew every grant whose token ends within the
-    // refresh buffer, so a connection nobody used today still works tomorrow.
     await retryTransient(() => this.reconcileConnectionRefresh(), {
       label: "connection_refresh",
     }).catch((err) => {
@@ -480,9 +301,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // chat_events_seen retention sweep. Same hour-throttle pattern;
-    // bounds the replay-dedup table as inbound Slack volume grows.
-    // Names the conversations nobody has touched since auto-titling shipped.
     await retryTransient(() => this.reconcileConversationTitleSweep(), {
       label: "conversation_title_sweep",
     }).catch((err) => {
@@ -503,9 +321,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // cli_notification_inbox retention sweep. Same hour-throttle pattern;
-    // `ack` marks read instead of deleting, so this is the only path that
-    // ever removes an inbox row.
     await retryTransient(() => this.reconcileNotificationInboxRetention(), {
       label: "notification_inbox_retention",
     }).catch((err) => {
@@ -516,8 +331,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // tool_approvals retention sweep. Same hour-throttle pattern; bounds how
-    // long the encrypted approved-args ciphertext survives its own TTL.
     await retryTransient(() => this.reconcileToolApprovalsCleanup(), {
       label: "tool_approvals_cleanup",
     }).catch((err) => {
@@ -528,11 +341,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Approval-backed elicitation expiry sweep. The tool_approvals sweep
-    // above only deletes approval rows; this one resolves the pending
-    // elicitations those dead approvals left behind and reactivates their
-    // stranded `awaiting_input` conversations. Per-row errors are caught
-    // inside the runner so a poisoned row never aborts the tick.
     await retryTransient(() => this.reconcileElicitationExpiry(), {
       label: "elicitation_expiry",
     }).catch((err) => {
@@ -543,8 +351,6 @@ export class SchedulerReconciler {
         ...errorFields(err),
       });
     });
-    // Risk-signal edge audits. Owned by the tick, not by a read of the health
-    // digest, so the trail keeps recording while nobody polls.
     await retryTransient(() => this.reconcileRiskSignalEdges(), {
       label: "risk_signal_edges",
     }).catch((err) => {
@@ -569,14 +375,9 @@ export class SchedulerReconciler {
       label: "compute_desired",
     });
 
-    // Install sub-minute (`every:N`) schedules as local interval timers.
-    // Cron-mode schedules are NOT installed here — they fire directly
-    // from `reconcileWorkflowSchedules` on each pass. There is no
-    // pg-boss-native cron path: a `wf-schedule.*` queue has no worker.
     for (const [key, def] of desired) {
       const sig = `every|${def.seconds}|${JSON.stringify(def.payload)}`;
       if (this.installed.get(key) === sig) continue;
-      // Clear prior timer if changed.
       const prior = this.everyTimers.get(key);
       if (prior) clearInterval(prior);
       const timer = setInterval(() => {
@@ -606,7 +407,6 @@ export class SchedulerReconciler {
       });
     }
 
-    // Detect and remove every-schedules that are no longer desired.
     const desiredKeys = new Set(desired.keys());
     for (const key of [...this.installed.keys()]) {
       if (desiredKeys.has(key)) continue;
@@ -625,13 +425,6 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Walk every connector with `auto_refresh_cron` set and enqueue a
-   * `connector.ingest-docs` job when the cron expression has elapsed
-   * since `last_ingested_at`. Connectors with `last_ingested_at IS NULL`
-   * fire immediately so the first ingest after enabling the cron
-   * happens without waiting for the cron's first natural tick.
-   */
   async reconcileDocsAutoRefresh(): Promise<void> {
     await instrument({
       module: "scheduler",
@@ -671,9 +464,6 @@ export class SchedulerReconciler {
           url: sourceUrl,
           actor_id: null,
         });
-        // Stamp `last_ingested_at` immediately so we don't double-fire
-        // before the worker handles the job. The worker will overwrite
-        // it when the ingest actually completes.
         await this.opts.db
           .update(connectors)
           .set({ last_ingested_at: new Date() })
@@ -698,19 +488,6 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Walk every active workflow schedule and enqueue an execution.run
-   * job whenever the cron expression has elapsed since the schedule's
-   * `last_enqueued_at`. This is the dedup gate that turns a multi-
-   * minute outage into ONE catch-up enqueue instead of N — the next
-   * time the reconciler runs after a 10-minute gap, `isCronDue` for a
-   * `* * * * *` schedule says "due" exactly once, `last_enqueued_at`
-   * is bumped, and the next pass 60 s later sees it as already-fired.
-   *
-   * Every-mode schedules stay on the `setInterval` path in
-   * `reconcileOnce` because their natural cadence is sub-minute and
-   * the interval timer already enforces the same dedup property.
-   */
   async reconcileWorkflowSchedules(now: Date = new Date()): Promise<void> {
     await instrument({
       module: "scheduler",
@@ -728,10 +505,6 @@ export class SchedulerReconciler {
       })
       .from(workflowsSchedules)
       .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      // Never fire schedules for soft-deleted or archived workflows. An
-      // archived workflow is retired; its schedule rows may still exist
-      // (archive does not unbind them), so gate here as well as pausing on
-      // archive, so a retired-but-scheduled workflow stops running.
       .where(
         and(
           eq(workflowsSchedules.paused, false),
@@ -741,9 +514,6 @@ export class SchedulerReconciler {
       );
 
     for (const { schedule, wf } of rows) {
-      // Tenant-isolation guard: the schedule row must claim the same tenant
-      // as its joined workflow. A mismatch indicates a handcrafted or
-      // corrupted row; skipping it prevents cross-tenant execution pollution.
       if (schedule.tenant_id !== wf.tenant_id) {
         logger.warn({
           module: "scheduler",
@@ -758,35 +528,11 @@ export class SchedulerReconciler {
       }
       const parsed = parseCronExpression(schedule.cron);
       if (!parsed.ok) continue;
-      // Every-mode is handled by the local interval timer in
-      // `reconcileOnce`; skip it here so we don't double-fire.
       if (parsed.mode === "every") continue;
-      // Time-of-day-aware dedup gate: enqueue only once the cron's next
-      // occurrence after the last enqueue has actually passed. So
-      // `0 19 * * *` fires at ~19:00 local, not "24h after boot"; and a
-      // multi-minute outage that brings a `* * * * *` schedule behind
-      // still produces exactly ONE catch-up enqueue. The CAS-stamp on
-      // `last_enqueued_at` below keeps it exactly-once across instances.
       const tz = schedule.timezone || "UTC";
-      // `last` is the actual column value — the CAS below and the failure
-      // compensation must operate on it verbatim. The DUE baseline is
-      // separate: a never-fired schedule uses its creation time, because
-      // `isCronDue(null)`'s "always due" would fire a fresh daily-07:00
-      // schedule immediately at whatever time it was created (observed
-      // live: a surprise scheduled run two minutes after authoring, then
-      // the real 07:00 fire). First fire = first occurrence AFTER creation.
       const last = schedule.last_enqueued_at ?? null;
       const dueBaseline = last ?? schedule.created_at;
       if (!isCronDue(schedule.cron, dueBaseline, now, tz)) continue;
-      // Calendar gates. The trigger's `business_days_only`
-      // and `skip_dates` round-trip through the schedule's `input`
-      // jsonb column (see `bindFromWorkflow`). We intentionally do
-      // NOT advance `last_enqueued_at` on a calendar-skip — the next
-      // cron tick re-evaluates from the same `last_enqueued_at`, so
-      // a Friday firing that gets skip_date'd still fires on Monday
-      // when the calendar reopens. Bumping `last_enqueued_at` here
-      // would shift the dedup window forward and silently drop the
-      // recovery firing.
       const gates = readCalendarGates(schedule.input);
       const skipReason = calendarGateSkipReason(now, tz, gates);
       if (skipReason !== null) {
@@ -810,22 +556,6 @@ export class SchedulerReconciler {
           request_source: "scheduler",
           execution_mode: schedule.execution_mode,
         };
-        // Stamp `last_enqueued_at = now` BEFORE the enqueue so a crash
-        // mid-fire cannot replay the schedule on next boot.
-        //
-        // Compare-and-set on `last_enqueued_at`: only update if the
-        // value is still the one we just read (or was NULL). If two
-        // reconcilers run concurrently, exactly one wins this UPDATE
-        // and the other's RETURNING comes back empty — the loser
-        // skips fireWorkflowSchedule and the schedule fires once.
-        //
-        // The equality is taken at millisecond precision via date_trunc:
-        // node-postgres truncates the read-back timestamptz to ms, so a
-        // raw `= last` against a stored value carrying sub-millisecond
-        // microseconds would never match, silently stalling the schedule.
-        // Truncating both sides keeps the CAS microsecond-safe while
-        // preserving exactly-once (the old snapshot's ms value only
-        // matches until the winner advances the column).
         const priorWhere =
           last === null
             ? isNull(workflowsSchedules.last_enqueued_at)
@@ -853,14 +583,6 @@ export class SchedulerReconciler {
           },
           "schedule.fanout_failed",
         );
-        // Compensate: we stamped last_enqueued_at = now BEFORE firing, but
-        // the fire threw (e.g. transient boss.send / DB blip). Without this,
-        // the occurrence is stamped "fired" yet never ran — silently lost
-        // until the next natural cron tick. Restore the prior watermark so
-        // the next reconcile tick retries it. Guarded on our own stamp
-        // (last_enqueued_at still == now) so a concurrent winner isn't
-        // clobbered. A process CRASH between stamp and fire runs no catch,
-        // so the deliberate at-most-once crash-safety is preserved.
         try {
           await this.opts.db
             .update(workflowsSchedules)
@@ -884,40 +606,9 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Proactive self-healing drift scan. Each live tenant whose
-   * `last_proactive_scan_at` is NULL or older than the cadence wins
-   * a CAS-stamp and is scanned exactly once per cadence.
-   *
-   * Per fired tenant:
-   *   1) Insert a `self_healing_scans` row with status='running' and
-   *      source='scheduler'. This row is the durable record of the
-   *      scan attempt; the SELF_HEALING_SCAN_TRIGGERED audit row
-   *      points at its id.
-   *   2) Run `scanForDrift({ tenant_id })` (pure DB read).
-   *   3) For each signal call `processDriftSignal(..., {
-   *      allowAutoApply: false })` so the Patch Candidate is always
-   *      proposed, never silently applied — operator review remains
-   *      the sole apply path on the proactive branch.
-   *   4) Update the scan row with counters + duration_ms + status,
-   *      and emit the SELF_HEALING_SCAN_COMPLETED audit row.
-   *
-   * Failures inside steps 2-3 are caught per-tenant: the scan row
-   * lands in status='failed' with the error text, the audit row is
-   * still emitted, and the next reconciler tick keeps sweeping the
-   * other tenants.
-   */
   async reconcileProactiveDriftScans(now: Date = new Date()): Promise<void> {
     // tenant-filter:exempt — proactive drift scan sweeps every tenant; row carries tenant_id forward
     const cadenceCutoff = new Date(now.getTime() - PROACTIVE_DRIFT_SCAN_CADENCE_MS);
-    // Atomic claim: a single UPDATE flips every due tenant's stamp to `now`
-    // and RETURNs the ids it actually changed. Range-based (`<` / NULL) so
-    // it is microsecond-safe — never an equality on a millisecond-truncated
-    // read-back Date (which silently matched 0 rows whenever the stored
-    // stamp carried sub-millisecond microseconds). Exactly-once across
-    // instances is preserved by row locks: a concurrent reconciler's UPDATE
-    // blocks, then re-evaluates the WHERE against the now-advanced stamp (no
-    // longer `< cutoff`) and skips the row.
     const claimed = await this.opts.db
       .update(tenants)
       .set({ last_proactive_scan_at: now })
@@ -933,9 +624,6 @@ export class SchedulerReconciler {
       .returning({ id: tenants.id });
 
     for (const tenant of claimed) {
-      // The runner is designed not to throw (per-tenant failures land as
-      // status='failed' on the scan row), but a defensive catch keeps one
-      // tenant's failure from skipping the rest of the already-claimed batch.
       try {
         await runProactiveDriftScanForTenant(tenant.id, now, this.opts.db);
       } catch (err) {
@@ -950,25 +638,6 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Proactive connector re-auth scan. Each live tenant whose
-   * `last_connector_reauth_scan_at` is NULL or older than the cadence
-   * wins an atomic CAS-stamp and has all of its probeable connectors
-   * checked with a lightweight authenticated request. Any connector
-   * whose response classifies as `auth_failed` is atomically flagged
-   * and an operator notification is emitted — exactly once per
-   * false→true transition (dedup guard inside markConnectorNeedsReauth).
-   *
-   * The same claim also drives the oauth2 refresh keep-alive sweep
-   * (`runOAuth2RefreshKeepAliveForTenant`): multi-day-idle credentials
-   * get a proactive `connector.refresh-oauth` job so their refresh
-   * tokens don't die of IdP idle-expiry. It runs after the probe scan
-   * so connectors flagged this hour are excluded the same hour.
-   *
-   * Same microsecond-safe range-based UPDATE claim pattern as the drift
-   * scan: the predicate uses `< cutoff` / `IS NULL` so sub-millisecond
-   * microseconds in the stored timestamp never cause a missed claim.
-   */
   async reconcileConnectorReauthScans(now: Date = new Date()): Promise<void> {
     // tenant-filter:exempt — connector re-auth scan sweeps every tenant; row carries tenant_id forward
     const cadenceCutoff = new Date(now.getTime() - CONNECTOR_REAUTH_SCAN_CADENCE_MS);
@@ -1012,25 +681,6 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Skill-candidate pattern analysis. Each live tenant whose
-   * `last_skill_candidate_analyze_at` is NULL or older than the cadence
-   * wins a CAS-stamp and gets a `skill-candidate.analyze` job enqueued
-   * exactly once per cadence. The worker runs `runPatternAnalysis`, which
-   * fans out to the repair / failure / success detectors and upserts Skill
-   * Candidate proposals (always `status='proposed'` — promotion to a Skill
-   * stays behind the operator-approval gate).
-   *
-   * Enqueue failures are caught per-tenant: the CAS-stamp has already
-   * advanced, so a transient enqueue error simply waits for the next
-   * cadence rather than hot-looping; the sweep keeps walking the other
-   * tenants.
-   */
-  /**
-   * Proactive endpoint-contract scan. Same microsecond-safe CAS-stamp
-   * claim as the re-auth scan, on `last_endpoint_contract_scan_at`. The
-   * per-tenant sweep lives in `endpoint-contract-scan-runner.ts`.
-   */
   async reconcileEndpointContractScans(now: Date = new Date()): Promise<void> {
     // tenant-filter:exempt — contract scan sweeps every tenant; row carries tenant_id forward
     const cadenceCutoff = new Date(now.getTime() - ENDPOINT_CONTRACT_SCAN_CADENCE_MS);
@@ -1067,15 +717,6 @@ export class SchedulerReconciler {
     await runSkillCandidateAnalysisSweep(now, this.opts.db, this.opts.boss);
   }
 
-  /**
-   * Throttle the files-cleanup cron to one fire per
-   * `FILES_CLEANUP_CADENCE_MS`. The reconciler ticks every 60 s; without
-   * this guard the cleanup would walk every row on every tick. The
-   * throttle is in-process — multiple engine instances may each run the
-   * sweep within the cadence window, but the sweeps are filtered by
-   * `now() - interval ...` so the second instance is a no-op rather
-   * than a correctness hazard.
-   */
   async reconcileFilesCleanup(now: Date = new Date()): Promise<void> {
     if (this.lastFilesCleanupAt !== null) {
       const elapsed = now.getTime() - this.lastFilesCleanupAt.getTime();
@@ -1085,26 +726,11 @@ export class SchedulerReconciler {
     await runFilesCleanup(now, this.opts.db);
   }
 
-  /**
-   * Throttle the MCP OAuth retention sweep to one fire per
-   * `MCP_OAUTH_CLEANUP_CADENCE_MS`. Same semantics as
-   * `reconcileFilesCleanup` — the sweeps are filtered by
-   * `now() - interval ...` so a concurrent instance is a no-op.
-   */
-  /**
-   * Record RISK_SIGNAL_RAISED / CLEARED edges. Throttled to one pass per
-   * `RISK_SIGNAL_EDGE_CADENCE_MS`; overlap between instances is safe — the
-   * shared edge table lets exactly one caller claim each transition, and a
-   * process's own gauges are its own edges (see `riskEdgeKey`).
-   */
   async reconcileRiskSignalEdges(now: Date = new Date()): Promise<void> {
     if (this.lastRiskSignalEdgesAt !== null) {
       const elapsed = now.getTime() - this.lastRiskSignalEdgesAt.getTime();
       if (elapsed < RISK_SIGNAL_EDGE_CADENCE_MS) return;
     }
-    // Stamped only once the pass committed: a failed pass (its claims rolled
-    // back with its audit rows) must be retried by the next attempt, not
-    // skipped for a cadence.
     await runRiskSignalEdges(this.opts.db);
     this.lastRiskSignalEdgesAt = now;
   }
@@ -1118,11 +744,6 @@ export class SchedulerReconciler {
     await runMcpOAuthCleanup(now, this.opts.db);
   }
 
-  /**
-   * Renew outbound connections that are about to expire. Overlap between
-   * instances is harmless: a second refresh of the same grant mints one more
-   * version and revokes the one before it.
-   */
   async reconcileConnectionRefresh(now: Date = new Date()): Promise<void> {
     if (this.lastConnectionRefreshAt !== null) {
       const elapsed = now.getTime() - this.lastConnectionRefreshAt.getTime();
@@ -1141,12 +762,6 @@ export class SchedulerReconciler {
     }
   }
 
-  /**
-   * Throttle the dormant-conversation titling sweep. Overlap between
-   * instances is safe: the sweep's write is guarded by
-   * `title_locked = false` and a conversation that has been renamed no
-   * longer matches its derived title, so the loser of the race skips it.
-   */
   async reconcileConversationTitleSweep(now: Date = new Date()): Promise<void> {
     if (this.lastConversationTitleSweepAt !== null) {
       const elapsed = now.getTime() - this.lastConversationTitleSweepAt.getTime();
@@ -1156,11 +771,6 @@ export class SchedulerReconciler {
     await runConversationTitleSweepSafely(this.opts.db);
   }
 
-  /**
-   * Throttle the chat_events_seen retention sweep. Same semantics as
-   * `reconcileMcpOAuthCleanup` — multi-instance overlap is safe
-   * because the sweep filters by `now() - interval '24h'`.
-   */
   async reconcileChatDedupCleanup(now: Date = new Date()): Promise<void> {
     if (this.lastChatDedupCleanupAt !== null) {
       const elapsed = now.getTime() - this.lastChatDedupCleanupAt.getTime();
@@ -1170,12 +780,6 @@ export class SchedulerReconciler {
     await runChatDedupCleanup(now, this.opts.db);
   }
 
-  /**
-   * Throttle the `cli_notification_inbox` retention sweep. Same semantics
-   * as `reconcileChatDedupCleanup` — the sweep filters by
-   * `now() - notifications.inbox.retention_days`, so a concurrent
-   * instance is a no-op.
-   */
   async reconcileNotificationInboxRetention(now: Date = new Date()): Promise<void> {
     if (this.lastNotificationInboxRetentionAt !== null) {
       const elapsed = now.getTime() - this.lastNotificationInboxRetentionAt.getTime();
@@ -1185,11 +789,6 @@ export class SchedulerReconciler {
     await runNotificationInboxRetention(now, this.opts.db);
   }
 
-  /**
-   * Throttle the `tool_approvals` retention sweep. Same semantics as
-   * `reconcileMcpOAuthCleanup` — the sweeps are filtered by
-   * `now() - interval '1 day'` so a concurrent instance is a no-op.
-   */
   async reconcileToolApprovalsCleanup(now: Date = new Date()): Promise<void> {
     if (this.lastToolApprovalsCleanupAt !== null) {
       const elapsed = now.getTime() - this.lastToolApprovalsCleanupAt.getTime();
@@ -1199,42 +798,18 @@ export class SchedulerReconciler {
     await runToolApprovalsCleanup(now, this.opts.db);
   }
 
-  /**
-   * Throttle the approval-backed elicitation expiry sweep. Same
-   * semantics as `reconcileToolApprovalsCleanup` — the sweep's writes
-   * ride CAS predicates (`status = 'pending'`, `status =
-   * 'awaiting_input'`) so a concurrent instance is a no-op.
-   */
   async reconcileElicitationExpiry(now: Date = new Date()): Promise<void> {
     if (this.lastElicitationExpiryAt !== null) {
       const elapsed = now.getTime() - this.lastElicitationExpiryAt.getTime();
       if (elapsed < ELICITATION_EXPIRY_CADENCE_MS) return;
     }
     this.lastElicitationExpiryAt = now;
-    // Supply the resume channel so the sweep can COMPLETE an approval a human
-    // already granted, not only expire one that lapsed. The portal route
-    // normally does this in the human's own request; this is the backstop for a
-    // decision whose resume was interrupted (`conversation.run-turn` never
-    // retries on its own).
     await runElicitationExpiry(now, this.opts.db, {
       resume: (resume) => enqueueApprovalElicitationResume(resume, this.opts.db, this.opts.boss),
     });
   }
 
-  /**
-   * Populate embeddings out-of-band on a fixed cadence — chunk + conversation
-   * topic vectors for hybrid retrieval and topic routing. Bounded per tick
-   * (maxBatches) so a backlog drains gradually rather than blocking one tick;
-   * idempotent (WHERE embedding IS NULL) so a concurrent instance is a no-op,
-   * and a no-op when the local model is unavailable (embedded: 0, fast).
-   */
   async reconcileEmbeddingBackfill(now: Date = new Date()): Promise<void> {
-    // Defer the first sweep off the boot path. The initial reconcileOnce()
-    // is awaited inside the boot sequence, before the HTTP listener binds;
-    // with the local model active a first backfill embeds the whole backlog
-    // in-process (WASM inference), which blocks /health from ever coming
-    // up and balloons RSS. Seeding lastRun on the first call moves the first
-    // real sweep to one cadence after boot, once the engine is serving.
     if (this.lastEmbeddingBackfillAt === null) {
       this.lastEmbeddingBackfillAt = now;
       return;
@@ -1242,28 +817,9 @@ export class SchedulerReconciler {
     const elapsed = now.getTime() - this.lastEmbeddingBackfillAt.getTime();
     if (elapsed < EMBEDDING_BACKFILL_CADENCE_MS) return;
     this.lastEmbeddingBackfillAt = now;
-    // Small per-tick cap: the WASM embedder's arena only grows, so a large
-    // sweep sets a high RSS water mark. Drain the backlog gradually instead.
     await backfillEmbeddings({ maxBatches: 4 }, this.opts.db);
   }
 
-  /**
-   * Connector self-description enrichment. Throttled in-process to one sweep
-   * per CONNECTOR_SELF_DESCRIPTION_CADENCE_MS so every HTTP/GraphQL connector
-   * is refreshed at most once per cadence. Each sweep re-runs cached discovery
-   * (force_refresh) for a small, oldest-first batch — re-warming the discovery
-   * cache and recording the connector's self-description LINKS — so connectors
-   * get richer the longer they exist and authoring quality improves with use.
-   *
-   * Deferred off the boot path (first call only seeds the watermark): the
-   * initial reconcileOnce() is awaited during boot before the HTTP listener
-   * binds, and this sweep makes bounded outbound discovery HTTP calls, so
-   * running it on boot would delay /health.
-   *
-   * Multi-instance overlap is safe — runDiscoveryCached is idempotent (it only
-   * rewrites the discovery cache + the connector's self_description metadata,
-   * never config/auth).
-   */
   async reconcileConnectorSelfDescription(now: Date = new Date()): Promise<void> {
     if (this.lastConnectorSelfDescriptionAt === null) {
       this.lastConnectorSelfDescriptionAt = now;
@@ -1295,10 +851,6 @@ export class SchedulerReconciler {
           isNull(connectors.deleted_at),
         ),
       )
-      // Connectors whose self_description.links is empty/missing sort first
-      // (newly needing enrichment — the boolean is `false` for them, and
-      // `false < true` in Postgres ascending order); then least-recently-
-      // updated so the sweep walks the estate oldest-first across cadences.
       .orderBy(
         asc(
           sql<boolean>`jsonb_array_length(coalesce(${connectors.self_description}->'links', '[]'::jsonb)) > 0`,
@@ -1311,11 +863,9 @@ export class SchedulerReconciler {
     let succeeded = 0;
     let failed = 0;
     for (const row of rows) {
-      // base_url is non-null by the query filter; narrow for the type checker.
       if (!row.base_url) continue;
       attempted += 1;
       try {
-        // Non-fatal per connector: one bad upstream must not abort the sweep.
         await this.discoveryRunner(
           {
             db: this.opts.db,
@@ -1337,11 +887,6 @@ export class SchedulerReconciler {
           ...errorFields(err),
         });
       }
-      // Probe ALL self-description surfaces independently. The single-winner
-      // interactive discovery above only captures the FIRST successful
-      // strategy; the probe below broadens coverage by recording every surface
-      // found (OpenAPI + llms.txt + GraphQL may all be present). Non-fatal:
-      // a probe failure must not abort the sweep for the remaining connectors.
       try {
         const probeLinks = await this.probeRunner(row.base_url, {
           signal: AbortSignal.timeout(CONNECTOR_SELF_DESCRIPTION_DISCOVERY_TIMEOUT_MS),
@@ -1384,8 +929,6 @@ export class SchedulerReconciler {
       claimed_at: Date;
     },
   ): Promise<void> {
-    // The restored cadence watermark is stable across queue failures. Using
-    // the retry's wall clock here would charge the same firing again.
     const admitted = await admitAuthorizedWorkflowExecution(
       {
         tenant_id: payload.tenant_id,
@@ -1403,7 +946,6 @@ export class SchedulerReconciler {
         (error.code === "execution_authority_required" ||
           error.code === "execution_authority_unavailable")
       ) {
-        // A schedule that becomes held asks once for a gate diagnosis.
         if (await recordScheduleAdmission(this.opts.db, audit, error.code))
           await enqueueGateDiagnosis(this.opts.boss, this.opts.db, {
             tenant_id: payload.tenant_id,
@@ -1419,14 +961,6 @@ export class SchedulerReconciler {
     if (admitted.status === "queued")
       await this.opts.boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
     await recordScheduleAdmission(this.opts.db, audit, null);
-    // Reverse-bind audit per AGENTS.md: every schedule firing gets an
-    // immutable trail row pointing at the workflow + execution it
-    // produced. The webhook variant emits the same shape via
-    // `WEBHOOK_TRIGGER_FIRED`; the symmetry matters when an operator
-    // audits "what woke up this workflow at 3am". We pass the
-    // reconciler's `db` as the executor so the audit row lands in the
-    // same database the rest of the scheduler writes to (tests use
-    // ephemeral databases that the global `getDb()` doesn't know about).
     await auditAwait(
       {
         tenant_id: audit.tenant_id,
@@ -1474,13 +1008,6 @@ export class SchedulerReconciler {
       )
       .limit(1);
     if (!schedule) return;
-    // Cross-instance dedup: claim this cadence via a CAS on the schedule's
-    // last_enqueued_at before doing anything. The every-timer is per-process,
-    // so without this every running instance would fire the same cadence —
-    // an N× duplicate on any multi-instance deployment. Only claim if a full
-    // cadence (with jitter slack) has elapsed since the last fire; the loser
-    // (or a near-simultaneous peer) gets 0 rows back and skips. Reuses the
-    // existing column — no migration. (date_trunc keeps it microsecond-safe.)
     const now = new Date();
     const minGapMs = Math.max(1000, seconds * 1000 * 0.5);
     const threshold = new Date(now.getTime() - minGapMs);
@@ -1533,10 +1060,6 @@ export class SchedulerReconciler {
       })
       .from(workflowsSchedules)
       .innerJoin(workflows, eq(workflows.id, workflowsSchedules.workflow_id))
-      // Never fire schedules for soft-deleted or archived workflows. An
-      // archived workflow is retired; its schedule rows may still exist
-      // (archive does not unbind them), so gate here as well as pausing on
-      // archive, so a retired-but-scheduled workflow stops running.
       .where(
         and(
           eq(workflowsSchedules.paused, false),
@@ -1563,16 +1086,10 @@ export class SchedulerReconciler {
       const payload: ExecutionRunJob = {
         tenant_id: wf.tenant_id,
         workflow_id: wf.id,
-        // Strip calendar-gate keys before they ride down to the
-        // execution payload — the workflow's input contract should
-        // never see `business_days_only` / `skip_dates`.
         input: stripCalendarGates(schedule.input ?? null),
         request_source: "scheduler",
         execution_mode: schedule.execution_mode,
       };
-      // Cron-mode schedules are fired directly by
-      // `reconcileWorkflowSchedules`; only `every:N` schedules need a
-      // local interval timer installed.
       if (parsed.mode === "every" && parsed.everySeconds !== undefined) {
         every.set(key, { schedule_id: schedule.id, seconds: parsed.everySeconds, payload });
       }
@@ -1580,16 +1097,6 @@ export class SchedulerReconciler {
     return every;
   }
 
-  /**
-   * Knowledge Sources auto-refresh. Walks knowledge sources with
-   * `refresh_strategy = 'scheduled'` and enqueues a re-ingest job
-   * when the cron expression fires.
-   *
-   * Only address (url) sources are refreshed: the job reads the address
-   * again. A file or pasted text only changes when someone edits it. A
-   * source whose last read failed stays on its rhythm, so it heals itself
-   * once the address answers again.
-   */
   async reconcileKnowledgeAutoRefresh(): Promise<void> {
     await instrument({
       module: "scheduler",

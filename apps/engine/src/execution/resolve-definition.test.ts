@@ -1,11 +1,3 @@
-// resolveDefinition — workflow-version binding regression.
-//
-// A saved-source run carries {workflow_id, version_id?}. RBAC gates the
-// workflow_id, but the version row must also belong to that workflow.
-// Before the fix the version query filtered only (tenant_id, id), so a
-// caller could pass workflow B's version_id under workflow A and run B's
-// DAG with A's identity/RBAC/audit lineage. This test pins the binding.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants, workflows, workflowVersions } from "../db/schema/index.ts";
@@ -127,7 +119,6 @@ describe("resolveDefinition — saved source", () => {
         .set({ current_version_id: promoted.id })
         .where(eq(workflows.id, workflowAId));
 
-      // A new run in the same process must resolve the promoted pointer again.
       const after = await resolveDefinition(testDb.db, tenantId, {
         kind: "saved",
         workflow_id: workflowAId,

@@ -1,22 +1,3 @@
-// User story: As an operator, after a fix or a transient failure I
-// want to rerun an execution faithfully — same workflow version, same
-// input — and see the lineage between the original and the rerun.
-// Acceptance criteria:
-//   - AC1: POST /v1/executions/{id}/rerun reruns with the ORIGINAL
-//          persisted input (the executions.input column) and returns a
-//          completed run.
-//   - AC2: the rerun row carries parent_execution_id = original id and
-//          source_ref.rerun_of, and GET /v1/executions?parent_execution_id=
-//          returns the lineage chain.
-//   - AC3: the rerun pins the original workflow_version_id even after
-//          the workflow gains a new version.
-//   - AC4: body.input overrides the original input.
-//   - AC5: a draft-source execution yields 409 with a remediation hint.
-//   - AC6: unknown id yields 404.
-//   - AC7: a rerun the engine refuses at admission leaves an audit row
-//          naming the reason and the run it was repeating.
-// Spec refs: docs/concepts/workflows.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
@@ -38,7 +19,6 @@ beforeAll(async () => {
   const wf = await seedWorkflow(ctx, {
     slug: "rerun-wf",
     name: "Rerun Wf",
-    // Echo the input so AC1/AC4 can assert on the output.
     steps: [
       { kind: "transform", id: "echo", language: "javascript", expression: "return input.input;" },
     ],
@@ -106,8 +86,6 @@ describe("journey 56: execution rerun with lineage", () => {
   test(
     "AC3: rerun pins the original workflow version after a new version lands",
     async () => {
-      // Rotate the workflow to a new version directly (same pattern as
-      // seedWorkflow) so current_version_id moves past the original.
       const { workflows, workflowVersions } = await import("../../db/schema/index.ts");
       const { eq } = await import("drizzle-orm");
       const [v2] = await ctx.db
@@ -142,7 +120,6 @@ describe("journey 56: execution rerun with lineage", () => {
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { execution_id: string; output: unknown };
-      // Still the v1 echo behavior, not "v2".
       expect(body.output).toMatchObject({ greeting: "original" });
 
       const detail = await journeyFetch(ctx, `/v1/executions/${body.execution_id}`);
@@ -206,7 +183,6 @@ describe("journey 56: execution rerun with lineage", () => {
         body: JSON.stringify({ idempotency_key: key, input: { greeting: "keyed" } }),
       });
       expect(first.status).toBe(200);
-      // Same key, different input — the boundary the engine refuses to move.
       const res = await journeyFetch(ctx, `/v1/executions/${originalId}/rerun`, {
         method: "POST",
         body: JSON.stringify({ idempotency_key: key, input: { greeting: "changed" } }),
@@ -227,8 +203,6 @@ describe("journey 56: execution rerun with lineage", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]?.result).toBe("denied");
       expect(rows[0]?.reason).toBe("execution_boundary_mismatch");
-      // Which run was being repeated — without it the row names a workflow and
-      // leaves the operator to guess which attempt it belongs to.
       expect((rows[0]?.metadata as Record<string, unknown> | undefined)?.rerun_of).toBe(originalId);
     },
     JOURNEY_HOOK_TIMEOUT,

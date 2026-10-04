@@ -1,15 +1,3 @@
-// Tiny Levenshtein helper. Used in two places that need a "did you
-// mean" suggestion against a small candidate list:
-//   - authoring-time: `validateStepReferences` flags a JSONata path
-//     pointing at an unknown step id.
-//   - runtime: `loop.over` / `branch.when` resolved to undefined; we
-//     match the literal step id parsed out of the expression against
-//     the actual scope keys.
-//
-// Both sites share the same suggestion contract so the LLM gets the
-// same "did_you_mean" vocabulary regardless of where the typo was
-// caught.
-
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const al = a.length;
@@ -30,12 +18,6 @@ export function levenshtein(a: string, b: string): number {
   return prev[bl]!;
 }
 
-/**
- * Return up to `limit` candidates closest to `target` (case-insensitive).
- * A candidate only qualifies when its distance is ≤ max(2, target.length / 2)
- * — keeps the list focused on real near-misses ("custumer" → "customer")
- * instead of every short id in scope.
- */
 export function suggestClosest(
   target: string,
   candidates: ReadonlyArray<string>,
@@ -52,18 +34,6 @@ export function suggestClosest(
     .map((s) => s.id);
 }
 
-/**
- * Pull step-id references out of a JSONata expression / placeholder
- * string. Recognises `$scope.<id>`, `$steps.<id>`, and `${scope.<id>`
- * placeholder forms. Returns the unique id list in source order.
- *
- * The runtime calls this when an expression resolves to undefined to
- * decide whether the failure is "no step id matched" (we surface a
- * typed `did_you_mean`) vs. "the step exists but the path under it
- * is wrong" (separate diagnosis). Bare `id.field` paths (no `$scope`
- * prefix) aren't extracted — JSONata treats those as data-context
- * lookups, not step references.
- */
 export function extractStepIdReferences(text: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

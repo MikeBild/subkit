@@ -1,13 +1,3 @@
-// Alternate-screen-buffer wrapper. Emits the DECSET 1049 sequence
-// on mount (which clears the visible area, preserves the caller's
-// scrollback, and hides the cursor until unmount) and the
-// corresponding reset on unmount. Used by the REPL to toggle a
-// transcript view that doesn't bleed into the user's shell
-// history when they `/exit`.
-//
-// Rendering is a pass-through — this component is purely a side
-// effect on mount / unmount that toggles the terminal alternate screen.
-
 import type React from "react";
 import { useEffect } from "react";
 
@@ -25,7 +15,6 @@ function resolveAltScreenEnabled(): boolean {
   const mode = (process.env.SK_ALT_SCREEN ?? "auto").toLowerCase();
   if (mode === "never") return false;
   if (mode === "always") return true;
-  // Zellij intentionally drops scrollback in alternate-screen mode.
   if (process.env.ZELLIJ) return false;
   return true;
 }

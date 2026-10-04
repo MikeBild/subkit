@@ -1,18 +1,3 @@
-// Unit tests for the hasInProgressWorkflowDraft guard logic (loop.ts ~line 279).
-//
-// The guard prevents a "start new workflow" intent from wiping an
-// in-progress (non-persisted) draft that already has steps. Only an
-// already-persisted target may be reset; an unsaved in-flight draft
-// with steps must be preserved.
-//
-// Test matrix (B.2):
-//   - in-progress draft with steps + persisted workflow present
-//     → guard fires, draft is NOT a candidate for reset.
-//   - empty in-progress draft with persisted workflow + startNewWorkflow
-//     intent → guard does NOT fire (empty drafts may reset).
-//   - in-progress draft whose slug matches a persisted_resources entry
-//     → that means it IS persisted; guard does NOT fire.
-
 import { describe, expect, it } from "bun:test";
 import {
   createEmptyDraftDocument,
@@ -64,18 +49,14 @@ describe("hasInProgressWorkflowDraft guard", () => {
   });
 
   it("returns false when the draft's slug matches a persisted_resources workflow entry", () => {
-    // A draft whose slug appears in persisted_resources IS persisted — not in-progress.
     const base = withSomeSteps(createEmptyDraftDocument(), "persisted-wf");
     const draft = withPersistedWorkflow(base, "persisted-wf");
     expect(hasInProgressWorkflowDraft(draft)).toBe(false);
   });
 
   it("returns true for an in-progress draft even when a DIFFERENT persisted workflow is present", () => {
-    // Persisted resource is for "old-wf"; the in-progress draft is "new-wf".
-    // The guard must fire (don't overwrite the new-wf draft).
     const base = withSomeSteps(createEmptyDraftDocument(), "new-wf");
     const draft = withPersistedWorkflow(base, "old-wf");
-    // Manually overwrite the workflow draft slug to simulate the pivot scenario.
     expect(hasInProgressWorkflowDraft(draft)).toBe(true);
   });
 
@@ -87,10 +68,8 @@ describe("hasInProgressWorkflowDraft guard", () => {
 describe("startNewWorkflowDraft clears persisted binding", () => {
   it("after startNewWorkflowDraft, hasInProgressWorkflowDraft returns false (empty draft)", () => {
     const withSteps = withSomeSteps(createEmptyDraftDocument(), "some-wf");
-    // Attach a persisted resource so the guard doesn't fire on the original draft.
     const persisted = withPersistedWorkflow(withSteps, "some-wf");
     const reset = startNewWorkflowDraft(persisted);
-    // Empty steps → not in-progress
     expect(reset.workflow?.steps ?? []).toHaveLength(0);
     expect(hasInProgressWorkflowDraft(reset)).toBe(false);
   });

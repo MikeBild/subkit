@@ -1,14 +1,3 @@
-// React hook that drives the status line's async refresh loop.
-//
-// The hook never blocks the render loop:
-//   - shell hooks run via runShellHook (AbortController + timeoutMs)
-//   - the abort fires on unmount, so a stuck hook can't leak children
-//   - a last-good cache means stuck hooks fall back to the previous
-//     frame instead of going blank
-//
-// `refreshMs` controls how often the hook re-runs. Defaults to 500ms,
-// matching the legacy behavior; the existing config can override it.
-
 import { useEffect, useRef, useState } from "react";
 import { buildStatusLine, type StatusLineConfig, type StatusLineInput } from "./render.ts";
 

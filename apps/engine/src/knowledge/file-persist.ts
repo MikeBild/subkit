@@ -1,15 +1,3 @@
-// Knowledge-source file persistence — bytes into the canonical `files`
-// table plus the file_links row and audit triple.
-//
-// File-backed sources persist their bytes into the canonical `files`
-// table so content can be re-resolved via knowledge_sources.file_id →
-// files.storage_uri. `source_type='url'` sources keep file_id NULL —
-// their bytes are re-fetched from source_uri. A non-clean scan
-// ('scanning' on timeout, 'failed' on detection) never fails the
-// knowledge-source write — the files row carries the status and the
-// audit trail records the verdict, mirroring the conversation
-// attachments upload path.
-
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
 import {
@@ -47,9 +35,6 @@ export async function persistKnowledgeFile(
   return persisted;
 }
 
-// Link a persisted file to its knowledge source and emit the same
-// FILE_CREATED / FILE_SCAN_COMPLETED / FILE_LINK_ADDED audit rows the
-// canonical upload routes emit, tagged `source: "knowledge_source"`.
 export async function linkKnowledgeFile(
   tx: Executor,
   p: {
@@ -105,7 +90,6 @@ export async function linkKnowledgeFile(
         action: AuditAction.FILE_SCAN_COMPLETED,
         resource_type: "file",
         resource_id: row.id,
-        // `timeout` is an operational failure, not a security verdict.
         result:
           scan.verdict === "clean" ? "success" : scan.verdict === "timeout" ? "error" : "denied",
         metadata: FileScanCompletedMetadataSchema.parse({

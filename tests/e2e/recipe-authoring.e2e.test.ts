@@ -1,15 +1,3 @@
-// Recipe-authoring e2e smoke. Boots a real engine, creates a Stripe
-// connector via REST from the builtin template, and asserts:
-//   1. The connector row's `template_snapshot.recipes` carries the
-//      shipped recipe roster (>= 12 entries for stripe).
-//   2. Each snapshotted recipe has the slug + title + workflow shape
-//      the start_workflow_from_recipe tool depends on.
-//   3. The recategorized github operator_quirks is exposed via the
-//      same surface (proves migration 0006 did the rewrite end-to-end).
-//
-// LLM is mocked at boot, so this exercises the engine + DB + REST
-// surface without any real model calls.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
@@ -67,7 +55,6 @@ describe("recipe-authoring e2e", () => {
     expect(Array.isArray(recipes)).toBe(true);
     expect(recipes.length).toBeGreaterThanOrEqual(12);
 
-    // Spot-check the recipe surface every authoring tool depends on.
     const slugs = recipes.map((r) => r.slug as string);
     expect(slugs).toContain("list-customers");
     expect(slugs).toContain("create-customer");
@@ -78,14 +65,12 @@ describe("recipe-authoring e2e", () => {
       expect(typeof r.title).toBe("string");
       expect(typeof r.description).toBe("string");
       expect(r.workflow).toBeDefined();
-      // F1 schema fields persist into the snapshot too.
       expect(typeof r.category).toBe("string");
       expect(Array.isArray(r.tags)).toBe(true);
       expect(typeof r.difficulty).toBe("string");
       expect(typeof r.version).toBe("string");
       expect(typeof r.author).toBe("string");
     }
-    // Stripe recipes derive `category: "payments"` via the F1 migration.
     expect(recipes[0]?.category).toBe("payments");
   });
 
@@ -100,11 +85,9 @@ describe("recipe-authoring e2e", () => {
       template_source: "builtin",
     });
 
-    // The connector row exposes operator_quirks directly.
     expect(conn.operator_quirks).toBeDefined();
     expect(conn.operator_quirks.error_handling ?? "").toMatch(/422/);
 
-    // The template snapshot also carries it (stable cached source).
     const snap = conn.template_snapshot;
     expect(snap).not.toBeNull();
     if (!snap) return;
@@ -130,7 +113,6 @@ describe("recipe-authoring e2e", () => {
       const wf = r.workflow as { steps?: Array<Record<string, unknown>> };
       expect(Array.isArray(wf.steps)).toBe(true);
       for (const step of wf.steps ?? []) {
-        // Postgres recipes must use sql blocks, never http urls.
         expect(step.url).toBeUndefined();
         expect(step.sql).toBeDefined();
       }

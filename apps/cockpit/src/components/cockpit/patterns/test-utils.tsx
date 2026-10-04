@@ -20,7 +20,6 @@ export function i18nValue(locale: Locale = "de"): I18nValue {
   } as I18nValue;
 }
 
-/** Server-render one element with the catalogue and tooltips it needs. */
 export function render(element: ReactElement, locale: Locale = "de"): string {
   return renderToStaticMarkup(
     <I18nContext.Provider value={i18nValue(locale)}>
@@ -29,7 +28,6 @@ export function render(element: ReactElement, locale: Locale = "de"): string {
   );
 }
 
-/** The same, inside a router — for patterns that render a router `Link`. */
 export async function renderInRouter(element: ReactElement, locale: Locale = "de") {
   const router = createRouter({
     routeTree: createRootRoute({ component: () => element }),

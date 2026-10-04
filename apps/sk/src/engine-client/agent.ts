@@ -1,6 +1,3 @@
-// External-coding-agent surfaces of the engine client: the SessionStart
-// briefing. Method group merged into `EngineClient` by `../engine-client.ts`.
-
 import type { EngineClient } from "../engine-client.ts";
 
 export interface AgentBriefing {

@@ -1,8 +1,3 @@
-// Workflow-level `validation_expression` — evaluates AFTER output_schema.
-// A falsy result trips finalStatus to "failed" and surfaces a typed
-// `validation_failed` error so the self-healing loop can produce a
-// `validation_failed` drift signal.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
@@ -49,7 +44,6 @@ describe("workflow.validation_expression", () => {
           kind: "transform",
           id: "shape",
           language: "javascript",
-          // Empty orders array — invariant requires at least one.
           expression: "return { orders: [] };",
         },
       ],
@@ -78,9 +72,6 @@ describe("workflow.validation_expression", () => {
           expression: "return { orders: [] };",
         },
       ],
-      // Reference a path that doesn't exist on the output. JSONata
-      // returns undefined, which is falsy, so the run fails. The
-      // intent is the same — invariant did not hold.
       validation_expression: "$count(somethingThatIsNotThere) > 0",
     });
     const result = await runExecution({
@@ -104,7 +95,6 @@ describe("workflow.validation_expression", () => {
           expression: "return { count: 0 };",
         },
       ],
-      // Imperative invariant: count must be > 5.
       validation_function: "return input.count > 5;",
     });
     const result = await runExecution({
@@ -233,8 +223,6 @@ describe("workflow.validation_expression", () => {
           expression: "return { a: 1 };",
         },
       ],
-      // $type is a JSONata function; invoking it with too many args
-      // throws synchronously inside evaluate.
       output_transform: "$assert(false, 'forced')",
     });
     const result = await runExecution({
@@ -248,12 +236,6 @@ describe("workflow.validation_expression", () => {
   });
 
   test("validation_expression details carry the offending value via drift detector", async () => {
-    // The repair path reads the typed error and consumes
-    // details.expression + details.actual_value through the drift
-    // detector. We can't exercise the detector here without seeding
-    // an execution_steps row, but we can confirm the engine surfaces
-    // the expression text in the error message so the operator (and
-    // the LLM repair flow's prompt assembly) sees it.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "validation-message-detail",
       steps: [

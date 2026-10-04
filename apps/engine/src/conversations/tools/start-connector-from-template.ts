@@ -23,7 +23,6 @@ const inputSchema = z
     template_slug: z.string().min(1),
     environment: z.enum(["dev", "prod"]).default("dev"),
     name: z.string().min(1).optional(),
-    /** Selects base_url_options by environment label (e.g. "eu", "sandbox"). */
     base_url_environment: z.string().optional(),
     force_new: z
       .boolean()
@@ -65,20 +64,12 @@ export const startConnectorFromTemplateTool: ConversationTool = {
       template,
       args.base_url_environment ? { environment: args.base_url_environment } : undefined,
     );
-    // enriched.base_url falls back to template.base_url (which can now be
-    // null for per-tenant templates like AppSync / GCP). When still null,
-    // omit the field so validateConnectorDraft surfaces the missing-URL
-    // gap and the operator is asked to provide it.
     const resolvedBaseUrl = enriched.base_url ?? template.base_url ?? undefined;
-    // Reuse-existing-saved-connector: same dedup as
-    // start_connector_from_description so two starts against the same
-    // upstream URL never produce two saved connectors.
     const reuseEnvelope = await findReusableConnectorByUrl({
       tenant_id: ctx.tenant_id,
       environment: args.environment,
       base_url: resolvedBaseUrl,
       driver: enriched.driver,
-      // Explicit operator request for a separate connector on this URL.
       ...(args.force_new ? { force_new: true } : {}),
       db: ctx.db,
     });
@@ -109,14 +100,6 @@ export const startConnectorFromTemplateTool: ConversationTool = {
     );
     await ctx.setDraft(nextDraft);
 
-    // Auto-discover the connector's endpoint catalog when the template
-    // points at an OpenAPI/Swagger spec. The result is cached for 24h
-    // in `knowledge_sources` (see runDiscoveryCached) so the downstream
-    // `propose_step` flow can pull `/v2/projects` etc. from the catalog
-    // instead of inventing the URL. Without this, the LLM authoring
-    // a workflow against (e.g.) DigitalOcean has no spec to ground on
-    // and ends up guessing `/projects` (404). Best-effort — discovery
-    // failures don't block connector creation.
     let discoveryStatus: { ran: boolean; endpoint_count?: number; error?: string } = {
       ran: false,
     };

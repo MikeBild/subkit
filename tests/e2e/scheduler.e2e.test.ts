@@ -1,15 +1,3 @@
-// Scheduler surface — schedule binding → deterministic fan-out → audit.
-//
-// The reconciler fires on a ~60s interval in production; this suite NEVER
-// wall-clock-waits. It seeds a workflow + a `workflows_schedules` row, then
-// drives ONE fan-out pass directly via `runReconcileOnce` (which calls the
-// reconciler's public `reconcileWorkflowSchedules(now)` with an injected
-// `now`). Asserts the fan-out created an execution tagged
-// `request_source = "scheduler"` plus the immutable `schedule.trigger.fired`
-// audit row, and that `sk schedules list` sees the binding.
-//
-// LLM: none needed — boot mock to stay hermetic.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { grantScheduleAuthorityFixture } from "../../apps/engine/src/scheduler/tests/authority-fixture.ts";
 import { seedWorkflow } from "./_helpers/factories.ts";
@@ -41,12 +29,9 @@ describe("workflow schedule fan-out", () => {
     });
     expect(schedule.id).toBeTruthy();
 
-    // No executions yet.
     const before = await findScheduledExecutions(env, workflowId);
     expect(before).toHaveLength(0);
 
-    // Drive one reconcile pass with `now` a minute in the future so the
-    // cron is unambiguously due.
     // allow-wall-clock: injecting a future `now` IS the deterministic seam.
     await runReconcileOnce(env, new Date(Date.now() + 60_000));
 
@@ -55,14 +40,11 @@ describe("workflow schedule fan-out", () => {
     expect(after[0]?.request_source).toBe("scheduler");
     expect(after[0]?.execution_authority_id).toBe(authority.id);
 
-    // A second identical pass must NOT double-fire (CAS-stamp on
-    // last_enqueued_at dedups within the same cron window).
     // allow-wall-clock: injecting a future `now` IS the deterministic seam.
     await runReconcileOnce(env, new Date(Date.now() + 60_000));
     const afterSecond = await findScheduledExecutions(env, workflowId);
     expect(afterSecond.length).toBe(after.length);
 
-    // The firing wrote the immutable schedule audit row.
     const api = apiClient(env);
     const audit = await api.get<unknown>("/v1/audit-log?limit=50");
     expect(audit.status).toBe(200);

@@ -1,9 +1,3 @@
-// Pins that workflow_versions.scope_index round-trips when supplied
-// to createWorkflow / updateWorkflow. The conversation commit path
-// reads `latest_preview.step_traces` and threads the scope map
-// through these service functions; this test ensures the column is
-// actually written end-to-end.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants, workflowVersions } from "../../db/schema/index.ts";
@@ -73,10 +67,6 @@ describe("workflow_versions.scope_index", () => {
   });
 
   test("updateWorkflow refreshes scope_index in place when the def is unchanged", async () => {
-    // scope_index is per-step authoring metadata, not workflow
-    // behaviour. When the def is unchanged, updateWorkflow must NOT
-    // rotate the version (that churns history and unbinds schedules) —
-    // it writes the fresher scope_index onto the current version row.
     const created = await createWorkflow(
       {
         tenant_id,
@@ -110,9 +100,7 @@ describe("workflow_versions.scope_index", () => {
       .from(workflowVersions)
       .where(eq(workflowVersions.workflow_id, updated.workflow.id))
       .orderBy(workflowVersions.version);
-    // Still one version — the unchanged def was not re-rotated.
     expect(rows.length).toBe(1);
-    // …but the scope_index on it was refreshed in place.
     expect(rows[0]?.scope_index).toEqual(updatedScope);
     expect(updated.workflow.current_version).toBe(1);
   });
@@ -135,7 +123,6 @@ describe("workflow_versions.scope_index", () => {
         def: {
           ...sampleDef,
           slug: "scope-index-rotate",
-          // A changed step expression is a real def change → new version.
           name: "scope-index-rotate",
           steps: [
             { id: "fetch", kind: "request", method: "GET", url: "https://example.com/items" },

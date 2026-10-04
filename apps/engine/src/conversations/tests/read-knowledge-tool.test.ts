@@ -1,14 +1,3 @@
-// Integration tests for the `read_knowledge` conversation tool.
-//
-// Coverage:
-//   - full-source read returns every chunk with raw content (frontmatter
-//     preserved verbatim)
-//   - path narrowing returns exactly one bundle file; unknown path → typed
-//     error envelope
-//   - byte-bounded pagination: a large source pages via next_offset and the
-//     pages compose to the full content
-//   - unknown source id → knowledge_source_not_found envelope
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { upsertKnowledgeBundle } from "../../knowledge/bundle-service.ts";
 import { readKnowledgeTool } from "../tools/engine-api/knowledge-sources.ts";
@@ -57,7 +46,6 @@ beforeAll(async () => {
   );
   sourceId = wiki.knowledge_source.id;
 
-  // >64k chars of position-unique content so the tool must paginate.
   const big = Array.from(
     { length: 2_000 },
     (_, i) => `unique paragraph ${i}: the quick brown fox jumps over lazy dog number ${i}.`,
@@ -139,7 +127,6 @@ describe("read_knowledge tool", () => {
   });
 
   test("path + offset pages through ONE large split file completely", async () => {
-    // ~200 KB single file → ~7 chunks, all sharing path /big/one.md.
     const big = Array.from(
       { length: 2_500 },
       (_, i) => `single-file paragraph ${i}: sphinx of black quartz judge my vow ${i}.`,
@@ -204,8 +191,6 @@ describe("read_knowledge tool", () => {
     });
     expect(first.ok).toBe(true);
     const page1 = first.data as { chunks: unknown[]; next_offset?: number };
-    // All 50 first-page rows fit the byte budget — the ROW boundary, not
-    // the byte cap, must trigger continuation.
     expect(page1.chunks).toHaveLength(50);
     expect(page1.next_offset).toBe(50);
 
@@ -226,7 +211,6 @@ describe("read_knowledge tool", () => {
           knowledgeSources: {
             chunks: async (id: string, opts: Record<string, unknown>) => {
               const { listKnowledgeChunks } = await import("../../knowledge/bundle-service.ts");
-              // Same source id, FOREIGN tenant — must resolve to null.
               return listKnowledgeChunks(
                 {
                   tenant_id: "00000000-0000-4000-8000-00000000beef",

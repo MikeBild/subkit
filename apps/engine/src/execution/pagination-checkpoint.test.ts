@@ -1,12 +1,3 @@
-// Pagination progress checkpoint + complete retry integration.
-//
-// Two scenarios:
-//   1. A 200-page run that fails at page 51 must persist
-//      `request_meta.pagination_checkpoint` after page 50 (the checkpoint
-//      window) so the row reflects the resume position.
-//   2. Re-running the same step_row_id restarts at page 1 and returns all
-//      10,000 items. Cursor-only resume would silently discard pages 1..50.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { executionSteps, executions, tenants } from "../db/schema/index.ts";
@@ -53,11 +44,9 @@ beforeAll(async () => {
       return;
     }
     if (page < 1 || page > TOTAL_PAGES) {
-      // Out-of-range: empty array, signals stop.
       jsonResponse(res, 200, { items: [] });
       return;
     }
-    // PAGE_SIZE records of monotonically increasing ids per page.
     const items = Array.from({ length: PAGE_SIZE }, (_, i) => ({
       id: (page - 1) * PAGE_SIZE + i,
     }));
@@ -103,9 +92,6 @@ function makeStepRunCtx(input: {
   step_row_id: string;
   step: RequestStep;
 }): StepRunContext {
-  // Build only the StepRunContext fields runRequestStep actually reads.
-  // The unused workflow fields fall back to safe defaults — tested against
-  // the request step here, not the whole engine.
   return {
     db: testDb.db,
     tenant_id: tenantId,
@@ -344,19 +330,15 @@ describe("pagination checkpoint", () => {
       max_retries: 0,
     };
 
-    // First run: server returns 500 on page 51 — request step fails.
     const ctx1 = makeStepRunCtx({ execution_id, step_row_id, step });
     const r1 = await runRequestStep({ ctx: ctx1, step, scope: {} });
     expect(r1.status).toBe("failed");
 
-    // After failure the row's request_meta should hold the checkpoint
-    // recorded at page 50 (the most recent multiple of the 50-page window).
     const cp = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
     expect(cp).not.toBeNull();
     expect(cp?.state).toEqual({ kind: "page", page: 50 });
     expect(cp?.page_idx).toBe(50);
     expect(cp?.accumulated_count).toBe(50 * PAGE_SIZE);
-    // Signature should match the same request shape used in run #2.
     const expectedSig = paginationSignature({
       base_url: `${new URL(`${mock.baseUrl}/items`).origin}/items`,
       path_or_url: `${mock.baseUrl}/items`,
@@ -366,9 +348,6 @@ describe("pagination checkpoint", () => {
     });
     expect(cp?.signature).toBe(expectedSig);
 
-    // Second run: same step_row_id and request shape. The checkpoint is read
-    // as progress evidence, but the fetch restarts at page 1 because the
-    // earlier page bodies were not durably stored.
     failOnPage = null;
     const hitsBeforeRetry = serverHits;
 
@@ -393,7 +372,6 @@ describe("pagination checkpoint", () => {
     failOnPage = null;
     const { execution_id, step_row_id } = await createExecutionRow();
 
-    // Pre-seed a checkpoint with a wrong signature.
     const stale: PaginationCheckpoint = {
       state: { kind: "page", page: 5 },
       page_idx: 5,
@@ -421,17 +399,11 @@ describe("pagination checkpoint", () => {
     const r = await runRequestStep({ ctx, step, scope: {} });
     expect(r.status).toBe("succeeded");
     const meta = r.request_meta as { resumed_from_page?: number };
-    // No resume keys — the stale signature was rejected and the run
-    // started from page 1.
     expect(meta.resumed_from_page).toBeUndefined();
     expect((r.output as unknown[]).length).toBe(TOTAL_PAGES * PAGE_SIZE);
   });
 
   test("cross-tenant read returns null (defense-in-depth predicate)", async () => {
-    // Seed a checkpoint under tenant A, then read it back as tenant B.
-    // Without the tenant_id predicate the prior PK-only lookup would
-    // surface tenant A's row to tenant B; with the predicate the query
-    // returns nothing.
     const { step_row_id } = await createExecutionRow();
     const cp: PaginationCheckpoint = {
       state: { kind: "page", page: 7 },
@@ -442,8 +414,6 @@ describe("pagination checkpoint", () => {
     };
     await writePaginationCheckpoint(tenantId, step_row_id, cp, testDb.db);
 
-    // Stand up a second tenant in the same DB and try to read tenant
-    // A's checkpoint with tenant B's id.
     const [otherTenant] = await testDb.db
       .insert(tenants)
       .values({ slug: "pg-checkpoint-other", display_name: "Other Tenant" })
@@ -453,17 +423,12 @@ describe("pagination checkpoint", () => {
     const cross = await readPaginationCheckpoint(otherTenant.id, step_row_id, testDb.db);
     expect(cross).toBeNull();
 
-    // Sanity: same row read with the right tenant still returns the
-    // checkpoint (proves the test query path is exercised).
     const same = await readPaginationCheckpoint(tenantId, step_row_id, testDb.db);
     expect(same).not.toBeNull();
     expect(same?.signature).toBe("sig-cross-tenant");
   });
 
   test("cross-tenant write does not clobber another tenant's request_meta", async () => {
-    // Same shape as above but for the write path. Issuing a write
-    // with tenant B's id against tenant A's step row updates zero
-    // rows; tenant A's checkpoint stays intact.
     const { step_row_id } = await createExecutionRow();
     const original: PaginationCheckpoint = {
       state: { kind: "offset", offset: 100 },

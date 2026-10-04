@@ -1,19 +1,8 @@
-// Loop integration test for the canonical tool-policies resolver.
-//
-// Locks the contract that the enforcement resolver — the ONE table the
-// confirm gate reads — returns `confirm_before_execution` whenever a tool's
-// DECLARED credential slots are filled, and does NOT gate on the shape of
-// undeclared strings. This is the policy decision the loop's structured
-// `tool_policy.resolved` log records and the `tool_policy.confirmation_required`
-// audit row reproduces before sdk-wrap pauses the dispatch.
-
 import { describe, expect, it } from "bun:test";
 import { decideToolMode, resolveToolMode } from "../tool-policies.ts";
 
 const DOP_TOKEN = "dop_v1_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF";
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig";
-// A legitimate base64 literal inside a transform. The log scrubber's
-// high-entropy pattern matches it; the enforcement resolver must not.
 const BASE64_LITERAL = "aHR0cHM6Ly9leGFtcGxlLmNvbS9hcGkvdjEvcmVzb3VyY2VzP3BhZ2U9MQ==";
 
 describe("tool-policies.ts × loop pre-dispatch hook", () => {
@@ -62,13 +51,6 @@ describe("tool-policies.ts × loop pre-dispatch hook", () => {
     ).toBe("confirm_before_execution");
   });
 
-  // The resolver is an AUTHORIZATION table, not a redaction one. Shape-matching
-  // every string against the scrubber's catalog gated tools by what their
-  // arguments LOOKED like rather than by what the call does — pausing
-  // `no_confirm` reads on every iteration of an authoring session, above the
-  // yolo short-circuit that is supposed to clear them. Secrets stay out of the
-  // transcript via the masked form, the MCP secret-in-chat guard, and the
-  // persist-time scrub.
   describe("undeclared secret-shaped input does not gate", () => {
     it("a token-shaped value in a tenant_read tool's payload stays no_confirm", () => {
       expect(

@@ -1,10 +1,3 @@
-// Drop-in test double for `EngineClient`.
-//
-// Provides only the surface the REPL + tests touch directly. Methods
-// either resolve with canned data injected at construction or throw
-// when a missing case isn't configured (so tests fail loudly rather
-// than silently returning undefined).
-
 import type { ResolvedProfile } from "../../config.ts";
 import type { ConversationDetail, ConversationSummary, EngineClient } from "../../engine-client.ts";
 
@@ -71,9 +64,6 @@ export function createFakeEngineClient(opts: FakeEngineClientOptions = {}): Engi
     whoami: 0,
     rbacCan: 0,
   };
-  // Use loose typing internally; the entire fake is cast to EngineClient
-  // at the return site, so the structural mismatch on `kind` (the real
-  // client narrows to "user" in some paths) is intentional for tests.
   const fake = {
     _calls: calls,
     skBootstrap(): Promise<unknown> {
@@ -89,7 +79,6 @@ export function createFakeEngineClient(opts: FakeEngineClientOptions = {}): Engi
         tenant: { id: whoami.tenant_id, slug: whoami.tenant_slug, display_name: null },
         recent_sessions: recent,
         flags: opts.bootstrap?.flags ?? {},
-        // Engine-resolved prefs.
         prefs: {
           permissionMode: "ask" as const,
           theme: "auto" as const,

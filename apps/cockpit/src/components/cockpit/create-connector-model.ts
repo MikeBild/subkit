@@ -3,26 +3,10 @@ import type { TranslationKey } from "@/lib/i18n";
 
 type CreateConnectorBody = components["schemas"]["CreateConnectorBody"];
 
-/**
- * A connector by hand answers two separate questions. First what it connects:
- * a service over its web interface (the `http` driver) or an MCP server.
- */
 export type ConnectorTarget = "web" | "mcp";
 
-/**
- * Then how SubKit signs in there: with the reader's own account (OAuth — the
- * service asks them to allow it), with an access key the service hands out,
- * or not at all. Both drivers take all three.
- */
 export type ConnectorSignIn = "account" | "key" | "none";
 
-/**
- * The OAuth app a web service signs in through. An MCP server names its own
- * sign-in service and registers SubKit there itself; a web service made by
- * hand has neither, so the reader enters the app they registered at the
- * service: its sign-in service (an OpenID issuer the engine discovers), the
- * client ID and secret it issued, and the scopes to ask for.
- */
 export interface OAuthClientFields {
   issuer: string;
   clientId: string;
@@ -37,12 +21,10 @@ export const EMPTY_OAUTH_CLIENT: OAuthClientFields = {
   scopes: "",
 };
 
-/** Only a key is typed into the form; an account is approved at the service. */
 export function needsSecret(signIn: ConnectorSignIn): boolean {
   return signIn === "key";
 }
 
-/** A web service signed in with an account needs its OAuth app's details. */
 export function needsOAuthClient(target: ConnectorTarget, signIn: ConnectorSignIn): boolean {
   return target === "web" && signIn === "account";
 }
@@ -55,7 +37,6 @@ const AUTH_TYPE: Record<ConnectorSignIn, CreateConnectorBody["auth_type"]> = {
 
 const HTTPS = /^https:\/\/\S+\.\S+/;
 
-/** The create request: the engine's own fields, nothing the form did not ask. */
 export function connectorCreateBody(p: {
   target: ConnectorTarget;
   signIn: ConnectorSignIn;
@@ -92,12 +73,6 @@ export function connectorCreateBody(p: {
   };
 }
 
-/**
- * What stops the form, first problem first; null when it can be sent. An
- * account sign-in that cannot start — the engine has no public address for
- * the service to send the reader back to — is said here, before a connector
- * is made that no one could sign in.
- */
 export function manualConnectorProblem(p: {
   target: ConnectorTarget;
   signIn: ConnectorSignIn;
@@ -118,12 +93,6 @@ export function manualConnectorProblem(p: {
   return null;
 }
 
-/**
- * The tab the reader lands on once the connector exists, when no sign-in
- * leaves the page: an MCP server opens on its tools, a web service on its
- * connection. Whether a sign-in starts is the connector's own answer
- * (`sign_in` on the created connector), not the form's.
- */
 export function afterCreateTab(target: ConnectorTarget): "werkzeuge" | "verbindung" {
   return target === "mcp" ? "werkzeuge" : "verbindung";
 }

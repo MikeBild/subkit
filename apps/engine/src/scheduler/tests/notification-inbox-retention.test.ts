@@ -1,13 +1,3 @@
-// Integration tests for the cli_notification_inbox retention sweep.
-//
-// `ack` marks read instead of deleting, so this sweep is the only path
-// that removes an inbox row. Asserts:
-//   - rows older than notifications.inbox.retention_days are deleted
-//   - newer rows survive
-//   - per-user read marks cascade away with their row
-//   - one summary NOTIFICATION_INBOX_PRUNED audit row per sweep
-//   - a second sweep over the same data is a no-op, not an error
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -18,8 +8,6 @@ import { runNotificationInboxRetention } from "../notification-inbox-retention-r
 let srv: HttpTestServer;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// The sweep reads `now` from its argument, so the fixed clock below is
-// the only time source the assertions depend on.
 const NOW = new Date("2026-03-01T12:00:00.000Z");
 const RETENTION_DAYS = 30;
 

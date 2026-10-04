@@ -1,9 +1,3 @@
-// Self-healing: drift detection, schema diff, bounded LLM repair,
-// fixture dry-run gate, and safe-patches-only auto-apply policy.
-// Implemented in P9 — the full loop lives in `service.ts`.
-
-// Wire shape embedded in the candidate preview response — re-exported
-// so route files can stay on the subsystem entry point (route_layering).
 export { PatchProposalSchema } from "../llm/flows/repair.ts";
 export {
   approvePatchCandidate,
@@ -43,11 +37,6 @@ export {
   diffStepPaths,
   resolvePathRewrite,
 } from "./patch-apply.ts";
-// Note: `optimization-analyzer.ts` is intentionally NOT re-exported
-// from this barrel until the matching pg-boss handler + persistence
-// schema land. Until then the analyzer is invocable only via a direct
-// import so accidental callers cannot treat its output as an
-// authoritative persisted candidate.
 export type { AutohealPolicy } from "./policy.ts";
 export {
   DEFAULT_AUTOHEAL_POLICY,

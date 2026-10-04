@@ -9,17 +9,10 @@ beforeEach(() => {
   fetchSpy = mock<typeof fetch>();
 });
 
-// Driver-fetch seam: the code under test reads getDriverFetch(), not
-// globalThis — run each body under the seam's explicit wrapper (the
-// override must scope the body itself; an enterWith-from-beforeEach
-// binding did not propagate into test bodies under bun).
 function seamTest(name: string, body: () => Promise<void>) {
   test(name, () => withDriverFetchForTests(fetchSpy as unknown as typeof fetch, body));
 }
 
-// A small GitHub-shaped introspection result: 2 query fields + 1 mutation.
-// `interfaces: []` is required on OBJECT types for `buildClientSchema` to
-// accept the introspection in the SDL-render path.
 const SAMPLE_SCHEMA = {
   data: {
     __schema: {
@@ -304,9 +297,6 @@ describe("graphqlIntrospectStrategy", () => {
 
     const result = await graphqlIntrospectStrategy.fetch("https://api.github.com/graphql", {});
 
-    // SDL is required for the LLM to author deep-nested queries — the
-    // normalised `endpoints` only describe top-level field args, not the
-    // selection set. Pre-fix this was thrown away.
     expect(typeof result.text_corpus).toBe("string");
     const sdl = result.text_corpus ?? "";
     expect(sdl).toContain("type Query");
@@ -314,7 +304,6 @@ describe("graphqlIntrospectStrategy", () => {
     expect(sdl).toContain("repository(owner: String!, name: String!): Repository");
     expect(sdl).toContain("input CreateIssueInput");
     expect(sdl).toContain("repositoryId: ID!");
-    // Endpoints still come through.
     expect(result.endpoints).toHaveLength(3);
   });
 });

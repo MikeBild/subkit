@@ -13,29 +13,20 @@ import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import type { ScheduleRow } from "./repo.ts";
 
-/**
- * A schedule on a workflow that is not active, or has no committed version,
- * cannot start a run: the one predicate behind `activation_required` here and
- * behind a schedule binding's state on the workflow representation.
- */
 export function scheduleNeedsActivation(
   workflow: { lifecycle: string; current_version_id: string | null } | null | undefined,
 ): boolean {
   return workflow?.lifecycle !== "active" || !workflow.current_version_id;
 }
 
-/** What starts runs without a person: a schedule or an inbound hook. */
 interface AutomationBinding {
   tenant_id: string;
   workflow_id: string;
   paused: boolean;
   environment: "dev" | "prod";
-  /** The input every run starts with, when the binding fixes one. A hook's
-   *  input is the delivery, unknown until it arrives — not checked. */
   input?: { value: unknown };
 }
 
-/** Observed readiness only: never reserves a run, grants authority or executes. */
 async function inspectAutomationChecked<B extends object>(
   binding: AutomationBinding,
   base: B,
@@ -130,7 +121,6 @@ async function inspectAutomation<B extends object>(
   try {
     return await inspectAutomationChecked(binding, base, db);
   } catch {
-    // An unavailable definition or connector is not evidence of readiness.
     return { ...base, state: "verification_unavailable", ready: false } as const;
   }
 }
@@ -149,8 +139,6 @@ export function inspectScheduleAutomation(schedule: ScheduleRow, db: Executor) {
   );
 }
 
-/** An inbound hook, judged by the gate its deliveries meet: unattended
- *  deliveries only ever run in production (`webhooks/inbound/service.ts`). */
 export function inspectInboundHookAutomation(
   hook: Pick<typeof webhooksInbound.$inferSelect, "id" | "tenant_id" | "workflow_id" | "active">,
   db: Executor,

@@ -1,17 +1,3 @@
-// MCP integration test for the `self_healing_scan` admin tool.
-//
-// Covers:
-//   - The tool appears in tools/list only in admin MCP mode.
-//   - tools/call dispatches to handleSelfHealingScan and returns the
-//     expected envelope on success.
-//   - A scan with no drift seeded returns signals_detected=0,
-//     candidates_created=0, and a persisted self_healing_scans row.
-//
-// We force admin MCP mode via SK_MCP_MODE so the principal does not
-// need a `mcp:admin` scope appended to the test api key. Handler-level
-// admin-role enforcement is exercised separately via direct call —
-// the api-key principal in http test setup is already admin.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { selfHealingScans } from "../../db/schema/index.ts";
@@ -46,8 +32,6 @@ describe("mcp self_healing_scan tool", () => {
       name: "self_healing_scan",
       arguments: {},
     });
-    // The dispatcher returns a content envelope. We don't expect
-    // isError because the empty-tenant scan succeeds with zero signals.
     expect(callResult.isError ?? false).toBe(false);
     const content = callResult.content as Array<{ type: string; text: string }>;
     expect(Array.isArray(content)).toBe(true);
@@ -66,7 +50,6 @@ describe("mcp self_healing_scan tool", () => {
     expect(payload.candidates).toEqual([]);
     expect(payload.unanchored).toEqual([]);
 
-    // Row persisted via the MCP-source path.
     const rows = await suite.http.db
       .select()
       .from(selfHealingScans)

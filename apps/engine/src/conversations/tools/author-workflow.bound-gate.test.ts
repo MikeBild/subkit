@@ -1,15 +1,3 @@
-// Regenerating is not editing.
-//
-// `author_workflow` rebuilds the whole definition from a goal, so anything the
-// goal does not restate is gone — and the goal-satisfaction judge cannot notice
-// what is missing. On a conversation bound to a saved retention workflow that
-// cost a real guard: the rewrite dropped the check that stops a listing from
-// escaping its partition, validated clean, previewed green and was saved.
-//
-// The gate refuses a rewrite of the workflow a conversation is bound to
-// — with no override. It runs before the pipeline, so a refusal costs no
-// generation.
-
 import { expect, test } from "bun:test";
 import { bindPersistedWorkflow, createEmptyDraftDocument } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
@@ -46,7 +34,6 @@ function boundDraft(): DraftDocument {
   );
 }
 
-/** Every database or engine touch is a generation the gate should have spared. */
 function ctxFor(draft: DraftDocument): ToolContext {
   const forbidden = new Proxy(
     {},
@@ -81,9 +68,6 @@ test("a rewrite of the bound workflow is refused and points at the patch tool", 
   expect(data.error_code).toBe("rewrite_of_bound_workflow");
   expect(data.message).toContain("reporting-retention");
   expect(data.message).toContain("edit_workflow_patch");
-  // No override is offered. The first version of this gate named a flag, and
-  // the model set it on its very next call — a hatch the caller can open is
-  // not a gate. Patches can express any redesign, so this is not a dead end.
   expect(data.message).not.toContain("replace_bound_workflow");
   expect(data.message).toContain("no override");
 });
@@ -105,8 +89,6 @@ test("an argument cannot open the gate", async () => {
 });
 
 test("a different slug or an unbound draft are not this gate's business", async () => {
-  // Each of these must get PAST the gate. They then reach the forbidden context,
-  // which is the proof: the gate itself touches nothing.
   const past = async (draft: DraftDocument, args: Record<string, unknown>) => {
     try {
       const result = await authorWorkflowTool.execute(ctxFor(draft), args);

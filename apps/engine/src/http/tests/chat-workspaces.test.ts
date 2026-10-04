@@ -1,18 +1,3 @@
-// HTTP integration tests for /v1/chat/workspaces.
-//
-// Covers:
-//   * GET is tenant-scoped (no cross-tenant leak in the list).
-//   * DELETE on a workspace that belongs to another tenant returns 404.
-//   * The installer-link-conflict path returns 409 and rolls back
-//     the whole install — no chat_workspaces row, no audit row.
-//   * Idempotent reinstall of the same operator emits an install_noop
-//     audit, not a misleading kind:install.
-//
-// Per-tenant isolation is asserted by inserting rows directly into a
-// second tenant (the seeded test server only creates one tenant), then
-// driving the route as the first tenant's admin and asserting the
-// second tenant's rows are invisible.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
@@ -42,7 +27,6 @@ function sha256Hex(v: string): string {
 
 beforeAll(async () => {
   ctx = await createHttpTestServer("chat-ws");
-  // The install route refuses if the engine has no Slack signing secret.
   await setConfigKey("platform.slack.signing_secret", SIGNING_SECRET);
 
   const [t2] = await ctx.db
@@ -62,9 +46,6 @@ beforeAll(async () => {
   if (!u2) throw new Error("seed second user");
   otherUserId = u2.id;
 
-  // Provision a non-admin (`member`) user in the SAME tenant for RBAC
-  // negative tests. requirePermission("chat_workspace:write") rejects
-  // them with 403; admins (the default ctx.apiKey) pass.
   const [member] = await ctx.db
     .insert(users)
     .values({
@@ -90,12 +71,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Wipe any chat state left by a previous test in the same file so
-  // assertions on row count and audit history are independent.
   await ctx.db.delete(chatWorkspaces);
   await ctx.db.delete(chatIdentities);
-  // Also clear chat-related audit rows so per-test assertions on
-  // audit-row counts are bounded to *this* test's actions.
   await ctx.db.delete(auditLog).where(eq(auditLog.action, "chat_workspace.installed"));
   await ctx.db.delete(auditLog).where(eq(auditLog.action, "chat_workspace.removed"));
   await ctx.db.delete(auditLog).where(eq(auditLog.action, "chat_identity.linked"));
@@ -143,15 +120,8 @@ describe("POST /v1/chat/workspaces", () => {
   });
 
   test("W-3: installer link conflict rolls back the entire install", async () => {
-    // Seed an identity that binds U_COLLISION → the OTHER tenant's user
-    // (a wholly different subkit principal). The install attempts to
-    // bind the same Slack id to ctx.userId; the transaction must roll
-    // back. No chat_workspaces row, no audit row, 409 to the operator.
     await ctx.db.insert(chatIdentities).values({
       tenant_id: ctx.tenantId,
-      // Bind under the current tenant but to a different user (the
-      // other tenant's user_id is reused as a stand-in for "some other
-      // subkit user"). The DB FK only constrains existence, not tenant.
       user_id: otherUserId,
       platform: "slack",
       workspace_id: "T_COLLIDE",
@@ -170,14 +140,12 @@ describe("POST /v1/chat/workspaces", () => {
     });
     expect(res.status).toBe(409);
 
-    // Rollback: no chat_workspaces row exists for T_COLLIDE.
     const ws = await ctx.db
       .select()
       .from(chatWorkspaces)
       .where(eq(chatWorkspaces.workspace_id, "T_COLLIDE"));
     expect(ws).toHaveLength(0);
 
-    // The pre-seeded identity is untouched (it predates the install).
     const ids = await ctx.db
       .select()
       .from(chatIdentities)
@@ -185,8 +153,6 @@ describe("POST /v1/chat/workspaces", () => {
     expect(ids).toHaveLength(1);
     expect(ids[0]?.user_id).toBe(otherUserId);
 
-    // No CHAT_WORKSPACE_INSTALLED audit was emitted (the transaction
-    // rolled back before any audit insert ran).
     const installedAudits = await ctx.db
       .select()
       .from(auditLog)
@@ -207,8 +173,6 @@ describe("POST /v1/chat/workspaces", () => {
       body,
     });
     expect(first.status).toBe(201);
-    // Remove the workspace but keep the identity so the second install
-    // hits the "platform_user_id already linked to THIS user" branch.
     const workspaces = await ctx.db.select().from(chatWorkspaces);
     expect(workspaces).toHaveLength(1);
     await ctx.db.delete(chatWorkspaces).where(eq(chatWorkspaces.id, workspaces[0]!.id));
@@ -233,7 +197,6 @@ describe("POST /v1/chat/workspaces", () => {
 
 describe("GET /v1/chat/workspaces", () => {
   test("does not list workspaces from another tenant", async () => {
-    // Install in this tenant.
     const installRes = await fetch(`${ctx.baseUrl}/v1/chat/workspaces`, {
       method: "POST",
       headers: authedHeaders(),
@@ -246,7 +209,6 @@ describe("GET /v1/chat/workspaces", () => {
     });
     expect(installRes.status).toBe(201);
 
-    // Seed a workspace row directly for the other tenant.
     await ctx.db.insert(chatWorkspaces).values({
       tenant_id: otherTenantId,
       platform: "slack",
@@ -268,10 +230,6 @@ describe("GET /v1/chat/workspaces", () => {
 
 describe("Global uniqueness — a Slack team_id is one tenant's only", () => {
   test("foreign-tenant install of the same workspace_id returns 409 and writes denied audit", async () => {
-    // Seed a row in the other tenant. The new global unique index on
-    // (platform, workspace_id) makes a second install in *this* tenant
-    // impossible; the install route catches the collision first and
-    // emits a clear 409 + denied audit before the DB throws.
     await ctx.db.insert(chatWorkspaces).values({
       tenant_id: otherTenantId,
       platform: "slack",
@@ -293,7 +251,6 @@ describe("Global uniqueness — a Slack team_id is one tenant's only", () => {
     });
     expect(res.status).toBe(409);
 
-    // No row created in our tenant for that workspace_id.
     const after = await ctx.db
       .select()
       .from(chatWorkspaces)
@@ -301,9 +258,6 @@ describe("Global uniqueness — a Slack team_id is one tenant's only", () => {
     expect(after).toHaveLength(1);
     expect(after[0]?.tenant_id).toBe(otherTenantId);
 
-    // Denied audit recorded with the workspace_already_claimed reason;
-    // metadata does NOT include the foreign tenant_id (would leak
-    // across the isolation boundary).
     const denied = await ctx.db
       .select()
       .from(auditLog)
@@ -331,7 +285,6 @@ describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
       }),
     });
     expect(res.status).toBe(403);
-    // No row was written.
     const after = await ctx.db
       .select()
       .from(chatWorkspaces)
@@ -340,7 +293,6 @@ describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
   });
 
   test("member DELETE /v1/chat/workspaces/{id} is denied with 403", async () => {
-    // Seed a workspace as admin to give member something to try deleting.
     const [seed] = await ctx.db
       .insert(chatWorkspaces)
       .values({
@@ -358,7 +310,6 @@ describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
       headers: memberHeaders(),
     });
     expect(res.status).toBe(403);
-    // Row is still there.
     const after = await ctx.db.select().from(chatWorkspaces).where(eq(chatWorkspaces.id, seed.id));
     expect(after).toHaveLength(1);
   });
@@ -366,7 +317,6 @@ describe("RBAC negative — non-admin lacks chat_workspace:write", () => {
 
 describe("DELETE /v1/chat/workspaces/{id}", () => {
   test("returns 404 for a workspace that belongs to another tenant", async () => {
-    // Seed the foreign-tenant workspace and capture its id.
     const [foreign] = await ctx.db
       .insert(chatWorkspaces)
       .values({
@@ -386,7 +336,6 @@ describe("DELETE /v1/chat/workspaces/{id}", () => {
     });
     expect(delRes.status).toBe(404);
 
-    // Confirm the foreign row is still there.
     const after = await ctx.db
       .select()
       .from(chatWorkspaces)

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { fileReference, parseFileReference, slugifyFilename } from "./slug.ts";
 
 describe("slugifyFilename", () => {
-  // The same cases the migration 0077 backfill was checked against.
   test.each([
     ["Übersicht Q3.pdf", "uebersicht-q3"],
     ["_Größe.tar.gz", "groesse-tar"],

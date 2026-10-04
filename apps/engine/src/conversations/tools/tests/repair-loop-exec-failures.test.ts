@@ -1,11 +1,3 @@
-// Coverage for `tallyRepairSignals` — the run_workflow circuit-breaker
-// tally. The original breaker only counted authoring-bug WARNING codes;
-// a runaway authoring session that kept producing the SAME runtime
-// execution failure (e.g. 14× GET /v1/pages/<a-human-name> → http 400)
-// carried no warning code, slipped past the breaker, and burned the
-// whole step budget. These tests pin the runtime-failure tally and prove
-// the warning-code path is unchanged.
-
 import { describe, expect, test } from "bun:test";
 import {
   REPAIR_LOOP_TRIP_THRESHOLD,
@@ -13,7 +5,6 @@ import {
   tallyRepairSignals,
 } from "../engine-api/writes/repair-loop-tally.ts";
 
-/** A `run_workflow` row whose execution FAILED at `step` with `code`. */
 function failedExec(step: string, code: string): RepairSignalRow {
   return {
     tool: "run_workflow",
@@ -27,7 +18,6 @@ function failedExec(step: string, code: string): RepairSignalRow {
   };
 }
 
-/** A `run_workflow` row that surfaced an authoring-bug warning code. */
 function warned(code: string): RepairSignalRow {
   return { tool: "run_workflow", output: { data: { warnings: [{ code }] } } };
 }
@@ -55,7 +45,6 @@ describe("tallyRepairSignals — runtime execution failures (Fix B)", () => {
   });
 
   test("different failing steps do NOT pile into the same bucket", () => {
-    // 2× at `page` + 1× at `blocks` — no single key reaches 3.
     const v = tallyRepairSignals([
       failedExec("page", "http_4xx"),
       failedExec("page", "http_4xx"),
@@ -101,7 +90,6 @@ describe("tallyRepairSignals — runtime execution failures (Fix B)", () => {
       ok,
       failedExec("page", "http_4xx"),
     ]);
-    // 3 real failures still trip even when interleaved with successes.
     expect(v.tripped).toBe(true);
     expect(v.tripped_codes).toEqual([{ code: "exec_failed:page:http_4xx", count: 3 }]);
   });

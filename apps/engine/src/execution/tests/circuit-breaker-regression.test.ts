@@ -1,30 +1,3 @@
-// Regression: the connector circuit breaker must actually persist state.
-//
-// Why the suite missed it: drizzle update builders are lazy — SQL dispatches
-// only on await/.then/.catch. The circuit-breaker writes in the request
-// dispatcher were `void db.update(...)` (no await, no .catch), so no circuit
-// write EVER executed: failure counts never incremented, the circuit never
-// opened, never reset. Production logs confirmed zero circuit transitions in
-// the entire journal while one workflow failed identically 10× in 4 hours —
-// exactly the repeated-failure load the breaker exists to stop. No test sent
-// a failing request through dispatch and asserted connector circuit columns.
-//
-// The failures that drive it are 503s: the breaker counts a remote that could
-// not serve, not a request the remote answered. The second block pins the
-// other half — a 401 or a 404 used to count like any failure, so a rejected
-// credential opened the breaker and the reader was told `circuit_open` about
-// a remote that had answered every call.
-//
-// Coverage:
-//   1. Failures increment circuit_failure_count (persisted, not snapshot math).
-//   2. Reaching circuit_threshold flips circuit_state to "open" + stamps
-//      circuit_opened_at.
-//   3. An open circuit short-circuits the next request (error code
-//      circuit_open) without hitting the upstream.
-//   4. A success after recovery resets the circuit (closed / count 0).
-//   5. Repeated 401s and 404s leave the breaker closed, and an answer of
-//      either kind clears a partial failure count.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors } from "../../db/schema/index.ts";
@@ -63,7 +36,6 @@ beforeAll(async () => {
     jsonResponse(res, 200, { ok: true });
   });
 
-  // Threshold 2 keeps the test fast: two failures must open the circuit.
   const [c] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -140,13 +112,10 @@ describe("connector circuit breaker — persisted state", () => {
     expect(result.status).toBe("failed");
     const stepError = result.steps[0]?.error as { code?: string } | undefined;
     expect(stepError?.code).toBe("circuit_open");
-    // The breaker must block BEFORE the request reaches the mock server.
     expect(upstreamHits).toBe(hitsBefore);
   });
 
   test("a success after recovery resets the circuit to closed / count 0", async () => {
-    // Simulate the reset window having elapsed and the upstream recovering:
-    // half-open lets one probe through (mirrors the dispatcher's transition).
     await ctx.testDb.db
       .update(connectors)
       .set({ circuit_state: "half-open" })
@@ -196,7 +165,6 @@ describe("connector circuit breaker — only unreachability counts", () => {
 
   test("repeated 401s leave the breaker closed — a rejected credential is the re-auth flag's to report", async () => {
     await resetCircuit();
-    // Three failures against a threshold of two.
     for (const name of ["circuit-401-a", "circuit-401-b", "circuit-401-c"]) {
       const result = await runFailingWorkflow(name, "/unauth");
       expect(result.status).toBe("failed");

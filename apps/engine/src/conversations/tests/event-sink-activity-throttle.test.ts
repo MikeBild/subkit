@@ -1,7 +1,3 @@
-// EventSink activity throttling — same `(phase, label)` pairs emitted
-// within 200ms collapse to a single wire emission, while non-activity
-// events pass through untouched.
-
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { EventSink } from "../event-sink.ts";
 import type { TurnEvent } from "../types.ts";
@@ -35,7 +31,7 @@ describe("EventSink activity throttling", () => {
     sink.push(burst);
 
     expect(emitter).toHaveBeenCalledTimes(1);
-    expect(sink.events.length).toBe(3); // buffer keeps every event for replay
+    expect(sink.events.length).toBe(3);
   });
 
   test("emits again after the throttle window elapses", () => {
@@ -49,7 +45,7 @@ describe("EventSink activity throttling", () => {
     };
 
     sink.push(burst);
-    now += 250; // > 200ms throttle window
+    now += 250;
     sink.push(burst);
 
     expect(emitter).toHaveBeenCalledTimes(2);

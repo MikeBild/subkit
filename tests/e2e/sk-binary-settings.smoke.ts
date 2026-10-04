@@ -1,18 +1,3 @@
-// CLI smoke for `sk settings` against the compiled binary.
-//
-// Asserts:
-//   - `sk --version` reports the package.json version
-//   - `sk settings --help` includes the new `configure` subcommand
-//   - `sk settings configure --non-interactive` works headless and
-//     emits the JSON contract instead of mounting Ink
-//   - the linux-x64 binary stays under the documented size budget
-//
-// The settings round-trip is covered by the integration test in
-// apps/engine/src/http/routes/__tests__/settings.integration.test.ts.
-// This file proves the CLI surface itself ships and that the
-// non-interactive guardrail keeps `sk settings configure` usable in
-// pipelines / containers without a TTY.
-
 import { describe, expect, test } from "bun:test";
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -59,9 +44,6 @@ describe("sk binary smoke (v3.5)", () => {
   });
 
   test("`sk settings configure --non-interactive` against an unreachable engine fails loudly with output", () => {
-    // The expected failure mode is a structured TransportError
-    // exit, NOT a TTY hang or a React render. We use TCP port 1
-    // which always rejects; the response timing is sub-second.
     const r = run([
       "settings",
       "configure",
@@ -75,26 +57,10 @@ describe("sk binary smoke (v3.5)", () => {
     expect(r.status).not.toBe(0);
     const combined = (r.stdout ?? "") + (r.stderr ?? "");
     expect(combined.length).toBeGreaterThan(0);
-    // The CLI should hand back a recognisable transport-error
-    // message on stderr, not a stack trace from the React renderer.
     expect(r.stderr).toMatch(/cannot reach engine|sk:|transport/i);
   });
 
-  // Note on the JSON-envelope assertion: the wire shape
-  // is locked down by the route integration test in
-  // apps/engine/src/http/routes/__tests__/settings.integration.test.ts
-  // (real DB, real engine) and the headless CLI passes through the
-  // engine response untransformed via printJson, which is a
-  // straight JSON.stringify (see packages/cli-core/src/format.ts).
-  // A spawnSync test against a stub HTTP server would add timing
-  // flake without strengthening the contract — the engine + CLI
-  // are tested at their respective boundaries.
-
   test("linux-x64 binary stays under the 80MB budget (when present)", () => {
-    // The local build produces only the host's binary; CI builds the
-    // matrix. We probe linux-x64 specifically — that's the engine
-    // operator's primary deploy target. Skip cleanly when the file
-    // isn't present.
     const linux = resolve(REPO_ROOT, "dist", "sk-linux-x64");
     if (!existsSync(linux)) return;
     const sizeMb = statSync(linux).size / 1024 / 1024;

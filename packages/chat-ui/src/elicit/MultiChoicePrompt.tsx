@@ -1,7 +1,3 @@
-// askUser.multi prompt — multi-select from a list. Space toggles,
-// Enter submits the current set. Respects optional `min` / `max`
-// bounds from the tool input.
-
 import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useState } from "react";

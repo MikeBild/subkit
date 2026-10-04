@@ -6,11 +6,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { fileRefusal, formatBytes } from "./file-kinds";
 
-/**
- * The one way a file comes in (P20): a drop zone that is also a button. Drag
- * a file onto it, or click (Enter, Space) to pick one. Files the rules refuse
- * are named in one toast and never handed on.
- */
 export function FileDrop({
   onFiles,
   accept,
@@ -23,16 +18,12 @@ export function FileDrop({
   testId,
 }: {
   onFiles(files: File[]): void;
-  /** As on an input: `image/*,.csv,application/pdf`. */
   accept?: string;
   maxBytes?: number;
   multiple?: boolean;
   disabled?: boolean;
-  /** The zone's one line; defaults to "Datei hierher ziehen oder auswählen". */
   label?: string;
-  /** What may come in, under the line (types, size). */
   hint?: string;
-  /** One row high, for a composer or a form field. */
   compact?: boolean;
   testId?: string;
 }) {
@@ -99,7 +90,6 @@ export function FileDrop({
         data-testid={testId ? `${testId}-input` : undefined}
         onChange={(event) => {
           take(event.currentTarget.files);
-          // The same file picked twice is a second pick.
           event.currentTarget.value = "";
         }}
       />

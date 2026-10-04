@@ -1,9 +1,3 @@
-// Unit tests for detectCountInconsistencies — the deterministic count checks
-// added to the chat critic. Regression guard for a bulk-delete summary where
-// the assistant claimed "3 Workflows / 5 total" over a 2-workflow tenant and a
-// self-contradictory "5 = 2+2" final tally, and the critic passed it with
-// confidence 1.
-
 import { describe, expect, test } from "bun:test";
 import { detectCountInconsistencies } from "../count-consistency.ts";
 
@@ -61,7 +55,6 @@ describe("B — over-enumeration (stated count > substantive bullets)", () => {
 
   test("the matching '2 Connectors' section (2 real bullets) does NOT add an issue", () => {
     const issues = detectCountInconsistencies(acmeMsg);
-    // exactly one over_enumeration (workflows), connectors are consistent
     expect(issues.filter((i) => i.kind === "over_enumeration")).toHaveLength(1);
   });
 

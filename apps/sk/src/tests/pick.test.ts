@@ -47,16 +47,11 @@ describe("pickId", () => {
     expect(id).toBe("wf-bbbbbbbb-2222");
     expect(seenMessage).toBe("Select a workflow id");
     expect(seenOptions.map((o) => o.value)).toEqual(["wf-aaaaaaaa-1111", "wf-bbbbbbbb-2222"]);
-    // Row labels join name, (detail), and the 8-char id prefix.
     expect(seenOptions[0]?.label).toBe("Daily report (daily-report) wf-aaaaa");
     expect(seenOptions[1]?.label).toBe("wf-bbbbb");
   });
 
   test("cancel symbol from select throws the required error", async () => {
-    // @clack/prompts signals Ctrl-C via a private cancel symbol. pickId
-    // guards with `isCancel(choice) || typeof choice !== "string"`, so
-    // any symbol (cancel included) resolves to the required error, not
-    // a hang or a symbol leaking out as an "id".
     const cancelled = Symbol("clack:cancel");
     await expect(
       pickId({

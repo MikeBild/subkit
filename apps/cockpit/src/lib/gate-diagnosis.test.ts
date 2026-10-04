@@ -34,7 +34,6 @@ describe("diagnosisActs", () => {
       ]),
       all,
     );
-    // One conversation for both steps, one trial run, one review sheet.
     expect(acts).toEqual({
       review: true,
       prepare: true,
@@ -48,7 +47,6 @@ describe("diagnosisActs", () => {
     const acts = diagnosisActs(diagnosis([entry]), all);
     expect(acts).toEqual({ review: false, prepare: false, author: [], authorRunId: null });
     expect(diagnosisRepairable(entry, true, all)).toBe(true);
-    // A saved change is diagnosed, never repaired.
     expect(diagnosisRepairable(entry, false, all)).toBe(false);
     expect(diagnosisRepairable(entry, true, { write: false })).toBe(false);
   });

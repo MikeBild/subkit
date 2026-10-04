@@ -1,11 +1,3 @@
-// Bug JJ regression: when a workflow output is an array of objects
-// like `[{ project: { name: "X" }, resources: [...] }, ...]`, the
-// previous renderer printed "1. item 1 / • project: <obj> / • resources:
-// <4 items>" because it only checked top-level title keys. The fixed
-// renderer walks one level deep into nested objects to find a
-// title-shaped string field, then prints the array count suffix
-// inline so the operator sees "1. Acme — 4 resources".
-
 import { describe, expect, test } from "bun:test";
 import { __testHooks } from "./authoring-cards.tsx";
 
@@ -20,8 +12,6 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     const lines = renderArrayOfObjects(arr, 20, 100);
     expect(lines[0]).toMatch(/^1\. Acme/);
     expect(lines[0]).toMatch(/2 resources$/);
-    // Find the second item — it might be at index 2 or 3 depending on
-    // how many fields render under the first.
     const secondItemLine = lines.find((l) => l.startsWith("2."));
     expect(secondItemLine).toMatch(/^2\. subkit/);
     expect(secondItemLine).toMatch(/1 resources$/);
@@ -37,7 +27,6 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     const arr = [{ name: "TopLevel", id: "x1" }];
     const lines = renderArrayOfObjects(arr, 10, 100);
     expect(lines[0]).toMatch(/^1\. TopLevel/);
-    // Top-level title is consumed, so it doesn't appear as a bullet.
     const bullets = lines.filter((l) => l.startsWith("   • "));
     expect(bullets.find((b) => b.includes("name:"))).toBeUndefined();
   });
@@ -45,8 +34,6 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
   test("does not consume nested title key — it stays visible as a bullet so the operator can see the full record", () => {
     const arr = [{ project: { id: "p1", name: "Acme" }, resources: [{ id: "r1" }] }];
     const lines = renderArrayOfObjects(arr, 10, 100);
-    // The headline shows the nested title; the project field is still
-    // listed as a bullet (so the user sees there is a `project` object).
     const bullets = lines.filter((l) => l.startsWith("   • "));
     expect(bullets.find((b) => b.includes("project:"))).toBeDefined();
     expect(bullets.find((b) => b.includes("resources:"))).toBeDefined();
@@ -65,9 +52,6 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
   });
 
   test("previewLines integration end-to-end on a nested array shape", () => {
-    // The exact shape that produced "1. item 1 / 2. item 2 ..." in
-    // session 16d6e46a's transcript. Post-fix it reads as a list of
-    // project names with their resource counts inline.
     const arr = [
       {
         project: { id: "p1", name: "Acme", environment: "Production" },
@@ -85,8 +69,6 @@ describe("renderArrayOfObjects · nested title fallback (Bug JJ)", () => {
     expect(secondItemLine).toMatch(/^2\. subkit — 2 resources/);
     expect(thirdItemLine).toMatch(/^3\. delete-me/);
     expect(fourthItemLine).toMatch(/^4\. acme/);
-    // No "item N" placeholder anywhere — the regression we are guarding
-    // against.
     expect(lines.find((l) => /^\d+\. item /.test(l))).toBeUndefined();
   });
 });

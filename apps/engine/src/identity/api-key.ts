@@ -1,10 +1,3 @@
-// API key utilities — generation, hashing, parsing.
-//
-// Format: `wf_live_<32 url-safe chars>`. The first 12 chars (including the
-// `wf_live_` prefix) are stored unhashed in the `prefix` column so we can
-// look the row up without scanning the whole table. The full token is
-// stored only as a sha256 hex digest in `token_sha256`.
-
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const KEY_PREFIX_LITERAL = "wf_live_";
@@ -44,10 +37,6 @@ export function parseKey(plaintext: string): { prefix: string; hash: string } | 
   };
 }
 
-/**
- * Constant-time hex string comparison. Throws if lengths differ — callers
- * should pre-check the prefix to avoid leaking that the row exists.
- */
 export function constantTimeHexEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   const ba = Buffer.from(a, "hex");

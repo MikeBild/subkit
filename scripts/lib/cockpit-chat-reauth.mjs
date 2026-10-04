@@ -1,4 +1,3 @@
-/** The production regression: UUID naming corrupted the OAuth href in chat. */
 export async function verifyChatReauth(page, stand, conversation) {
   await stand.visit(page, `chat/${conversation.id}`);
   const original = await page.evaluate(

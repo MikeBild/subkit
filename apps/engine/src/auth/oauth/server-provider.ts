@@ -1,18 +1,3 @@
-// MCP OAuth 2.1 server provider — pure domain state machine (no HTTP).
-//
-// Implements the full authorization server lifecycle:
-//   - Dynamic client registration (RFC 7591) — public clients only (none)
-//   - Authorization code issuance with PKCE S256
-//   - Code exchange (atomic single-use claim + redirect_uri match + PKCE verify)
-//   - Refresh token rotation inside a transaction (revoke-chain on replay),
-//     gated by the same liveness rule the access path applies
-//   - Token revocation (RFC 7009)
-//
-// Every mint / rotate / revoke writes an audit_log entry.
-// Only SHA-256 hashes are persisted — plaintext never touches the DB.
-
-// ── SDK type shapes ───────────────────────────────────────────────────────────
-// Import only type shapes from the MCP SDK — never runtime handlers.
 import { randomBytes } from "node:crypto";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
@@ -108,7 +93,6 @@ export async function revokeOAuthRefreshTokenFamily(
   refreshId: string,
   revokedAt: Date,
 ): Promise<void> {
-  // UNION prevents the bidirectional rotation walk from cycling indefinitely.
   await db.execute(sql`
     WITH RECURSIVE chain AS (
       SELECT id, rotated_to_id
@@ -147,9 +131,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
   const cfg = config.auth.mcp_oauth;
   const baseUrl = config.server.public_base_url;
 
-  // ── registerClient ──────────────────────────────────────────────────────────
   async function registerClient(input: RegisterClientInput): Promise<RegisterClientResult> {
-    // Only public clients (none) are supported — confidential clients dropped.
     const authMethod = input.token_endpoint_auth_method ?? "none";
     if (authMethod !== "none") {
       throw Object.assign(
@@ -160,11 +142,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     const clientId = randomBytes(16).toString("hex");
     const grantTypes = input.grant_types ?? ["authorization_code", "refresh_token"];
-    // Deduplicate scope tokens: split on whitespace, drop empties, unique, rejoin.
-    // DCR without a scope field registers the FULL supported set — the client
-    // row is the RFC 6749 §3.3 fallback at authorize time, so a hard mcp:read
-    // here would pin scope-less clients (ChatGPT) to read-only forever. Role
-    // intersection and consent checkboxes still clamp every issued token.
     const rawScope = input.scope ?? (cfg.scopes_supported.join(" ") || "mcp:read");
     const scope = [...new Set(rawScope.split(/\s+/).filter(Boolean))].join(" ");
     const requestSource = input.requestSource ?? "api";
@@ -217,13 +194,7 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     };
   }
 
-  // ── getClient ───────────────────────────────────────────────────────────────
   async function getClient(clientId: string): Promise<OAuthClientInformationFull | null> {
-    // A retired registration is still a client: the housekeeping sweep hid it
-    // because nobody used it, and the person who comes back with it must be
-    // able to authorize again (issueAuthorizationCode reactivates it). Only an
-    // administrator's revocation — `disabled_at` without `retired_at` — makes
-    // it unknown here.
     // tenant-filter:exempt — client_id global lookup pre-tenant
     const rows = await db
       .select()
@@ -241,8 +212,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       client_id: row.client_id,
       redirect_uris: row.redirect_uris,
       grant_types: row.grant_types,
-      // The DB CHECK constraint admits only "none" — public clients are
-      // the only kind subkit registers.
       token_endpoint_auth_method: row.token_endpoint_auth_method as "none",
       scope: row.scope,
       ...(row.client_name ? { client_name: row.client_name } : {}),
@@ -250,17 +219,12 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     } satisfies OAuthClientInformationFull;
   }
 
-  // ── issueAuthorizationCode ──────────────────────────────────────────────────
   async function issueAuthorizationCode(input: IssueAuthCodeInput): Promise<string> {
     const { plaintext, hash } = generateAuthorizationCode();
     const expiresAt = new Date(Date.now() + cfg.authorization_code_ttl_seconds * 1000);
     const requestSource = input.requestSource ?? "api";
 
     await db.transaction(async (tx) => {
-      // A person just approved this client: a registration the housekeeping
-      // sweep retired for disuse is in use again. Only a retirement is undone
-      // here — an administrator's revocation never reaches this point, because
-      // getClient does not know a revoked client.
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const reactivated = await tx
         .update(mcpOauthClients)
@@ -321,15 +285,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     return plaintext;
   }
 
-  // ── exchangeAuthorizationCode ───────────────────────────────────────────────
   async function exchangeAuthorizationCode(input: ExchangeAuthCodeInput): Promise<TokenPair> {
     const requestSource = input.requestSource ?? "api";
     const codeHash = sha256Hex(input.code);
 
-    // Atomic single-use claim: UPDATE ... WHERE consumed_at IS NULL RETURNING *
-    // This prevents TOCTOU races where two concurrent requests both read an
-    // unconsumed code before either marks it consumed. Zero rows → already
-    // consumed or never existed → invalid_grant.
     const claimedRows = await db
       .update(mcpOauthAuthorizationCodes)
       .set({ consumed_at: sql`now()` })
@@ -395,7 +354,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       });
     }
 
-    // Exact redirect_uri match — critical open-redirect guard
     if (codeRow.redirect_uri !== input.redirectUri) {
       await auditAwait(
         {
@@ -414,7 +372,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       });
     }
 
-    // PKCE S256 verification
     if (!verifyS256(input.codeVerifier, codeRow.code_challenge)) {
       await auditAwait(
         {
@@ -438,14 +395,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const accessExpiresAt = new Date(now.getTime() + cfg.access_token_ttl_seconds * 1000);
     const refreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
 
-    // The registration, read under a row lock in the same transaction that
-    // mints the pair. The hourly cleanup can retire a registration between the
-    // consent (issueAuthorizationCode) and this exchange: its NOT EXISTS over
-    // authorization codes does not see a code that is not yet committed. A
-    // person just completed an authorization for it, so a RETIRED registration
-    // is reactivated here — never one an administrator revoked, whose exchange
-    // is refused. Without this, the exchange minted tokens the resource server
-    // then refused as `client_retired` until the person approved again.
     const minted = await db.transaction(async (tx) => {
       // tenant-filter:exempt — mcp_oauth_clients has no tenant_id
       const [client] = await tx
@@ -482,10 +431,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         );
       }
 
-      // Insert refresh token first (access token FK). The audience rides on the
-      // refresh token too so every rotation down the chain can copy it forward
-      // onto the new access token — otherwise the resource server rejects the
-      // rotated token as `audience_missing`.
       const [refreshRow] = await tx
         .insert(mcpOauthRefreshTokens)
         .values({
@@ -564,7 +509,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     };
   }
 
-  // ── exchangeRefreshToken ────────────────────────────────────────────────────
   async function exchangeRefreshToken(input: ExchangeRefreshInput): Promise<TokenPair> {
     const { refreshToken: refreshPlaintext, clientId, scope: requestedScope } = input;
     const requestSource = input.requestSource ?? "api";
@@ -614,12 +558,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
 
     const now = new Date();
 
-    // ── Liveness, exactly as the access path checks it ────────────────────
-    // Rotation used to read no user row at all: a withdrawn person's client
-    // could keep minting fresh pairs the resource server would then refuse.
-    // A refresh must never answer 200 with a credential the access path
-    // rejects, so the same two rows are read here — the person, on the
-    // token's own tenant binding, and the client registration.
     // tenant-filter:exempt — the refresh row's tenant_id IS the filter
     const userRows = await db
       .select({ status: users.status, deleted_at: users.deleted_at })
@@ -635,8 +573,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     const livenessRefusal: LivenessRefusal | null =
       userLivenessRefusal(userRows[0]) ?? clientLivenessRefusal(clientRows[0]);
     if (livenessRefusal) {
-      // The grant is dead, not merely unusable this once: end the whole
-      // family so a second attempt cannot race a restore.
       await revokeOAuthRefreshTokenFamily(db, refreshRow.id, now);
       await auditAwait(
         {
@@ -663,7 +599,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     }
 
     if (refreshRow.revoked_at && refreshRow.revoked_at <= now) {
-      // A rotated/revoked token was replayed — revoke the whole chain.
       await revokeChain(refreshRow.id, refreshRow.tenant_id, refreshRow.user_id, now);
       await auditAwait(
         {
@@ -683,7 +618,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     }
 
     if (refreshRow.rotated_to_id) {
-      // Already rotated — replay attack; revoke the chain.
       await revokeChain(refreshRow.id, refreshRow.tenant_id, refreshRow.user_id, now);
       await auditAwait(
         {
@@ -720,10 +654,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       });
     }
 
-    // Scope downgrade only — cannot expand beyond original grant. A scope is a
-    // SET: dedup both the stored grant and the client-requested narrowing so a
-    // client that echoes back the scope it received cannot accumulate duplicate
-    // entries across rotations (the multiset would otherwise grow unbounded).
     const originalScopes = [...new Set(refreshRow.scope.split(" ").filter(Boolean))];
     const grantedScopes = requestedScope
       ? [
@@ -737,18 +667,11 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       : originalScopes;
     const grantedScope = grantedScopes.join(" ") || originalScopes.join(" ");
 
-    // Rotate inside a transaction to prevent duplicate-use races.
-    // Insert new refresh token first, then atomically claim the old one
-    // (rotated_to_id IS NULL guard). Zero rows on the update → concurrent
-    // rotation won the race → rollback → invalid_grant.
     const newRefresh = generateRefreshToken();
     const newAccess = generateAccessToken();
     const newRefreshExpiresAt = new Date(now.getTime() + cfg.refresh_token_ttl_seconds * 1000);
     const newAccessExpiresAt = new Date(now.getTime() + cfg.access_token_ttl_seconds * 1000);
 
-    // The rotation race branch throws invalid_grant from inside the transaction.
-    // Catching it here (outside the tx) lets us emit the audit row on the outer
-    // db connection — emitting inside the tx would roll the audit back with it.
     let txResult: { newRefreshId: string; newAccessPrefix: string };
     try {
       txResult = await db.transaction(async (tx) => {
@@ -761,7 +684,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
             prefix: newRefresh.prefix,
             token_sha256: newRefresh.hash,
             scope: grantedScope,
-            // Carry the audience forward so the NEXT rotation can too.
             resource: refreshRow.resource ?? null,
             expires_at: newRefreshExpiresAt,
           })
@@ -771,7 +693,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           throw new Error("server_error: failed to insert refresh token");
         }
 
-        // Atomic claim: only succeeds if old token hasn't been rotated yet
         const claimed = await tx
           .update(mcpOauthRefreshTokens)
           .set({ rotated_to_id: newRefreshRow.id })
@@ -797,9 +718,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
           prefix: newAccess.prefix,
           token_sha256: newAccess.hash,
           scope: grantedScope,
-          // THE fix: a rotated access token must carry the same audience the
-          // code-exchange token had, or the resource server rejects it as
-          // `audience_missing` and the client is forced to re-authenticate.
           resource: refreshRow.resource ?? null,
           refresh_token_id: newRefreshRow.id,
           expires_at: newAccessExpiresAt,
@@ -855,12 +773,10 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     };
   }
 
-  // ── revokeToken ─────────────────────────────────────────────────────────────
   async function revokeToken(token: string, requestSource = "api"): Promise<void> {
     const tokenHash = sha256Hex(token);
     const now = new Date();
 
-    // Try access token first.
     // tenant-filter:exempt — revocation lookup by opaque token sha256, pre-tenant
     const accessRows = await db
       .select({
@@ -898,7 +814,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
       return;
     }
 
-    // Try refresh token.
     // tenant-filter:exempt — revocation lookup by opaque token sha256, pre-tenant
     const refreshRows = await db
       .select({
@@ -931,12 +846,8 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
         db,
       );
     }
-    // RFC 7009: silently succeed if token not found
   }
 
-  // ── revokeChain (internal) ──────────────────────────────────────────────────
-  // Revokes the entire refresh-token chain when a replayed/rotated token is detected.
-  // actor_type is "system" — replay-triggered revocation is system-initiated (S10b).
   async function revokeChain(
     refreshId: string,
     tenantId: string,
@@ -948,9 +859,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     await auditAwait(
       {
         tenant_id: tenantId,
-        // System-initiated, replay-triggered revocation — no human actor.
-        // Per audit/actor.ts, actor_type "system" carries actor_id: null;
-        // the affected user is recorded in metadata instead.
         actor_type: "system",
         actor_id: null,
         action: AuditAction.MCP_OAUTH_TOKEN_REVOKED,
@@ -976,7 +884,6 @@ export function createMcpOAuthProvider({ db, config }: McpOAuthServerOptions) {
     });
   }
 
-  // Expose the public_base_url for route use
   function getBaseUrl(): string {
     return baseUrl;
   }

@@ -1,9 +1,3 @@
-// Hybrid fusion logic — deterministic, no model load.
-//
-// The real model's retrieval quality is proven offline in
-// benchmarks/retrieval; here we pin the fusion + scoring rules with a stub
-// embedder so they cannot silently regress.
-
 import { describe, expect, test } from "bun:test";
 import { fuseVectorFirst, type QueryEmbedder, vectorScoreCandidates } from "../vector-rerank.ts";
 
@@ -20,7 +14,6 @@ describe("fuseVectorFirst", () => {
       { item: { id: "d" }, cosine: 0.8 },
     ];
     const out = fuseVectorFirst({ fts, vector, idOf: (h) => h.id, limit: 4 });
-    // c, d from vector first; then a, b from FTS (c deduped).
     expect(out.map((h) => h.id)).toEqual(["c", "d", "a", "b"]);
   });
 
@@ -46,7 +39,6 @@ describe("vectorScoreCandidates", () => {
   ];
 
   test("ranks by cosine and drops below-floor + null-embedding candidates", async () => {
-    // query == [1,0,0]: near cosine 1.0, far cosine 0.0 (< floor), noemb skipped.
     const scored = await vectorScoreCandidates("payment", candidates, {
       embedder: stub([1, 0, 0]),
       minCosine: 0.3,

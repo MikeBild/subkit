@@ -1,8 +1,3 @@
-// Unit test for `markChatEventSeen`. Mirrors the
-// `webhook_replay_seen` dedup test for inbound webhooks — INSERT ...
-// ON CONFLICT DO NOTHING returns true on first insert, false on
-// every subsequent attempt with the same key.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   type ConversationTestCtx,
@@ -13,9 +8,6 @@ import { createDeterministicHexFactory } from "../../test-helpers/determinism/id
 import { markChatEventSeen } from "../dedup.ts";
 
 const nextHex = createDeterministicHexFactory(0xdedea7);
-/** Deterministic stand-in for `randomBytes(n)` — bytea columns just
- *  need *some* bytes; the deterministic-tests gate forbids
- *  Math.random / crypto.randomBytes. */
 const detBytes = (n: number): Buffer => Buffer.from(nextHex(n), "hex");
 
 let ctx: ConversationTestCtx;
@@ -42,10 +34,6 @@ afterAll(async () => {
 
 describe("markChatEventSeen", () => {
   test("first insert returns true; replay returns false", async () => {
-    // Naming note: this is a Slack platform_event_id, NOT an API
-    // credential. A `*_key` suffix on the local would have tripped
-    // gitleaks' `generic-api-key` rule and false-failed the secret
-    // scan on every push.
     const platformEventId = "Ev1234567890";
     const first = await markChatEventSeen(ctx.testDb.db, {
       tenant_id: ctx.tenant_id,
@@ -54,8 +42,6 @@ describe("markChatEventSeen", () => {
     });
     expect(first).toBe(true);
 
-    // Two concurrent retries (Slack ships up to 3× per event) — both
-    // see the same key and must drop.
     const [replay1, replay2] = await Promise.all([
       markChatEventSeen(ctx.testDb.db, {
         tenant_id: ctx.tenant_id,

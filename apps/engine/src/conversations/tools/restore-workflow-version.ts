@@ -1,30 +1,3 @@
-// `restore_workflow_version` — make a previous PERSISTED version of a workflow
-// the active one again.
-//
-// Not to be confused with `restore_draft_snapshot`, which rolls back the
-// conversation's in-flight draft. This one touches the saved workflow: the
-// recovery move for "the last save was wrong".
-//
-// Why it exists: the capability lived in the HTTP API
-// (`POST /v1/workflows/{id}/restore/{version}`) and nowhere in the tool
-// palette. When a bad version landed in production, the operating session
-// could SEE the damage and not undo it — so it reached for an HTTP connector
-// pointed at the engine's own API instead, leaving the governed surface
-// (per-tool RBAC, the confirm gate, `commit_intent_kind` audit tagging) to do
-// something entirely legitimate. A capability an agent needs and cannot reach
-// does not stay unreached; it gets reached around.
-//
-// Two independent gates, and it needs both:
-//   - `workflow:restore` (the `permission` descriptor below), matching what the
-//     HTTP route requires. Without it the tool was a HUMAN gate standing where a
-//     PERMISSION gate was documented: the header above claims "per-tool RBAC",
-//     but the dispatcher only calls `can()` when `rbac` is set, so a principal
-//     with no restore right reached the service as long as someone confirmed.
-//     Confirming is not the same as being allowed.
-//   - `confirm_before_execution` AND dangerous (see `tool-policies.ts`), so
-//     `permission_mode: auto` cannot short-circuit it.
-// Restoring is as consequential as overwriting — it replaces what is live.
-
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { workflows } from "../../db/schema/index.ts";
@@ -51,10 +24,6 @@ const inputSchema = z
   })
   .openapi("RestoreWorkflowVersionToolInput");
 
-/** Resolve a workflow slug to its id within the caller's tenant, or null when
- *  no such slug exists. Shared by the permission gate and `execute()` so the
- *  gate authorizes exactly the row the tool goes on to touch — a second,
- *  independent lookup could drift and gate the wrong resource. */
 async function resolveWorkflowIdBySlug(ctx: ToolContext, slug: string): Promise<string | null> {
   const rows = await ctx.db
     .select({ id: workflows.id })
@@ -79,10 +48,6 @@ export const restoreWorkflowVersionTool: ConversationTool = {
     "Requires `workflow:restore` on the workflow, the same permission the HTTP route enforces. A confirmation does not substitute for it.",
   ],
   example_input: { slug: "invoice-sync", version: 1 },
-  // Resource id must be the resolved UUID, never the slug: `can()` matches
-  // resource grants by exact id. Returning null DEFERS to execute(), so an
-  // unknown slug still gets the tool's own `workflow_not_found` rather than a
-  // misleading `permission_denied`.
   permission: {
     action: "workflow:restore",
     resourceType: "workflow",
@@ -120,13 +85,6 @@ export const restoreWorkflowVersionTool: ConversationTool = {
       }
     }
 
-    // `restoreWorkflowVersion` returns null when the (workflow, version) pair
-    // does not exist. Surface that as a typed envelope rather than letting a
-    // null flow onward — a wrong version number is an ordinary mistake the
-    // model should correct from the history, not a crash. The same holds for
-    // a version that exists but no longer validates against the current
-    // definition schema: the refusal names the step and field, so the next
-    // move is another version or a fresh save, not a retry.
     let restored: Awaited<ReturnType<typeof restoreWorkflowVersion>>;
     try {
       restored = await restoreWorkflowVersion(

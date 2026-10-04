@@ -1,13 +1,3 @@
-// Ink form tests via ink-testing-library.
-//
-// ink-testing-library exposes the rendered frame string but its
-// `stdin.write` interaction with Ink's input parser is harness-
-// specific (escape sequences for arrow keys, raw-mode handling). We
-// cover the rendering invariants here and verify the commit-path call
-// chain via direct method calls below; the keyboard model itself is
-// covered by the keybindings unit tests + the manual smoke flow
-// documented in the runbook.
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import type {
@@ -85,7 +75,6 @@ function buildStubClient(state: StubState): EngineClient {
       diagnostics: { pending_restart_keys: [], override_keys: [] },
     }),
     getSetting: async (): Promise<SettingLeafEntry> => FIXTURE_LEAVES[0]!,
-    // The Status tab (default landing) polls these on mount.
     skBootstrap: async () => ({
       whoami: {
         id: "u1",
@@ -127,11 +116,9 @@ describe("SettingsModal — render shape", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("sk settings");
     expect(frame).toMatch(/cycles? tabs/);
-    // 5 canonical tabs in order
     for (const tab of ["Status", "Config", "Usage", "Skills", "Knowledge"]) {
       expect(frame, `tab "${tab}" missing from header`).toContain(tab);
     }
-    // Status is the default landing — header for that tab body
     expect(frame).toContain("Runtime status");
     unmount();
   });
@@ -164,9 +151,6 @@ describe("SettingsModal — render shape", () => {
         onExit={() => undefined}
       />,
     );
-    // Config tab body renders the filter hint + every leaf label.
-    // Row bodies use the curated label from lib/config-labels.ts;
-    // llm.api_key's label is "Primary API key".
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Type to filter");
     expect(frame).toContain("Primary API key");
@@ -185,7 +169,6 @@ describe("SettingsModal — render shape", () => {
         onExit={() => undefined}
       />,
     );
-    // `llm` is no longer a tab — pickInitialOuter returns 0 (Status).
     expect(lastFrame() ?? "").toContain("Runtime status");
     unmount();
   });

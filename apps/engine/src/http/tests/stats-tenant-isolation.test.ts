@@ -1,23 +1,3 @@
-// Integration tests: tenant isolation for /v1/stats/*.
-//
-// THE CRITICAL INVARIANT: `tenant_id = principal.tenant_id` is the
-// FIRST predicate in every WHERE clause and is bound from the
-// authenticated principal — NEVER from a user-supplied filter.
-//
-// Test strategy:
-//   1. Seed tenant A (the suite server tenant) with executions,
-//      connector audit rows, and LLM usage rows.
-//   2. Create tenant B with its own admin key.
-//   3. Tenant B queries with crafted tenant-A IDs (workflow_id,
-//      connector_id) → response must come back 200 with empty groups
-//      (the rows belong to A, not B).
-//   4. Tenant B queries /v1/stats/events → empty groups (A's audit rows
-//      are not leaked).
-//   5. Prove that the tenant_id filter reads from the dedicated column,
-//      not JSONB — we insert a row whose `metadata->>'tenant_id'` is
-//      tenant A's id but whose `tenant_id` column is tenant B's id, then
-//      verify that tenant A's query does NOT see it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -38,7 +18,7 @@ import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 const uuid = createDeterministicUuidFactory(0x04);
 
-let srvA: HttpTestServer; // tenant A (the primary test server)
+let srvA: HttpTestServer;
 let tenantBId = "";
 let adminBKey = "";
 
@@ -52,28 +32,19 @@ function genApiKey(): { plaintext: string; prefix: string; hash: string } {
   return { plaintext, prefix: plaintext.slice(0, 12), hash: sha256Hex(plaintext) };
 }
 
-// Window relative to the actual test run time so it is always:
-//   - after the oldest audit row written by seedBuiltinRolesAndPermissions
-//     (avoiding from_before_retention_horizon on connectors/events routes)
-//   - inside the hour bucket cap (≤ 31d; our 2h window is well inside).
-// Computed once so all tests in the suite use the same timestamps.
 const NOW_MS = getTestNow();
-const FROM = new Date(NOW_MS - 2 * 3_600_000).toISOString(); // 2h ago
-const TO = new Date(NOW_MS + 3_600_000).toISOString(); // 1h from now
+const FROM = new Date(NOW_MS - 2 * 3_600_000).toISOString();
+const TO = new Date(NOW_MS + 3_600_000).toISOString();
 const WIN = `bucket=hour&from=${encodeURIComponent(FROM)}&to=${encodeURIComponent(TO)}`;
-// Seed data at 30 minutes ago so it falls inside the window.
 const SEED_TS = new Date(NOW_MS - 1_800_000);
 
-let workflowAId = ""; // a workflow belonging to tenant A
-let connectorAId = ""; // a fake connector id used in audit metadata for tenant A
+let workflowAId = "";
+let connectorAId = "";
 
 beforeAll(async () => {
   srvA = await createHttpTestServer("stats-iso-a");
   const db = srvA.db;
 
-  // ---- seed tenant A data --------------------------------------------------
-
-  // We need a real workflow row for the executions FK.
   const [wf] = await db
     .insert(workflows)
     .values({
@@ -94,7 +65,6 @@ beforeAll(async () => {
     })
     .returning();
 
-  // Seed 3 executions for tenant A inside the window.
   await db.insert(executions).values([
     {
       tenant_id: srvA.tenantId,
@@ -128,7 +98,6 @@ beforeAll(async () => {
     },
   ]);
 
-  // Seed connector audit rows for tenant A.
   connectorAId = uuid();
   await db.insert(auditLog).values([
     {
@@ -151,7 +120,6 @@ beforeAll(async () => {
     },
   ]);
 
-  // Seed LLM usage for tenant A.
   await db.insert(llmUsage).values({
     tenant_id: srvA.tenantId,
     flow: "converse",
@@ -167,7 +135,6 @@ beforeAll(async () => {
     created_at: SEED_TS,
   });
 
-  // ---- create tenant B with an admin key -----------------------------------
   const [tenantB] = await db
     .insert(tenants)
     .values({ slug: "tenant-b-iso", display_name: "Tenant B Isolation" })
@@ -200,7 +167,6 @@ afterAll(async () => {
   await srvA.cleanup();
 });
 
-// Tenant B's admin fetch helper.
 async function bFetch(path: string): Promise<Response> {
   return fetch(`${srvA.baseUrl}${path}`, {
     headers: { authorization: `Bearer ${adminBKey}` },
@@ -216,7 +182,6 @@ describe("tenant isolation — executions", () => {
       totals: { executions: { count: number } };
     };
     expect(body.totals.executions.count).toBe(0);
-    // The synthetic group may exist with zero count buckets.
     const allEmpty = body.groups.every((g) => g.buckets.length === 0 || true);
     expect(allEmpty).toBe(true);
   });
@@ -294,22 +259,18 @@ describe("tenant isolation — llm", () => {
 });
 
 describe("tenant isolation — audit column vs JSONB (tenant_id is a real column, not JSONB)", () => {
-  // Seed a poisoned audit row: tenant_id column = tenant B's id, but
-  // metadata->>'tenant_id' = tenant A's id. A query that incorrectly
-  // reads tenant from JSONB would return this row to tenant A.
   test("tenant A does not see a row whose metadata.tenant_id = tenantA but column = tenantB", async () => {
     const db = srvA.db;
     await db.insert(auditLog).values({
       id: uuid(),
-      ts: new Date(SEED_TS.getTime() + 30_000), // inside the test window
-      tenant_id: tenantBId, // <-- column belongs to B
+      ts: new Date(SEED_TS.getTime() + 30_000),
+      tenant_id: tenantBId,
       actor_type: "system",
       action: "connector.invoked",
       resource_type: "connector",
       resource_id: connectorAId,
       result: "success",
       metadata: {
-        // Malicious: pretends to belong to A in JSONB
         tenant_id: srvA.tenantId,
         connector_id: connectorAId,
         connector_slug: "poisoned",
@@ -320,12 +281,11 @@ describe("tenant isolation — audit column vs JSONB (tenant_id is a real column
       },
     });
 
-    // Tenant A's query still sees only its own row (count=1 from beforeAll).
     const res = await fetch(`${srvA.baseUrl}/v1/stats/connectors?${WIN}`, {
       headers: { authorization: `Bearer ${srvA.apiKey}` },
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { totals: { calls: { total: number } } };
-    expect(body.totals.calls.total).toBe(1); // not 2
+    expect(body.totals.calls.total).toBe(1);
   });
 });

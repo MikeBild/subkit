@@ -1,8 +1,3 @@
-// Trigger schema parsing — discriminated union over how a workflow
-// run is initiated. Verifies the implicit `request` default, the
-// shape of the `webhook` and `schedule` variants, and that bad
-// trigger blocks reject at parse time.
-
 import { describe, expect, test } from "bun:test";
 import {
   ScheduleTriggerSchema,

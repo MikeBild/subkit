@@ -1,23 +1,3 @@
-// Integration tests for the approval-backed elicitation expiry sweep.
-//
-// The chat confirm gate mints a `tool_approvals` row (24-hour TTL), an
-// `ask_user_confirm` elicitation carrying the approval handle, and parks the
-// conversation in `awaiting_input`. When the operator never answers, the
-// approval dies on its TTL but the elicitation + conversation strand forever.
-// `runElicitationExpiry` reconciles those zombies:
-//   - dead approval (expired or already deleted) → elicitation `timeout`,
-//     conversation reactivated, tool-call output back-filled, one
-//     `elicitation.expired` audit row under the row's tenant
-//   - live approval, handle-less prompt, or non-awaiting conversation →
-//     untouched / guarded
-//
-// NOTE on MCP Tasks: an `mcp_tasks` row derives `input_required` from
-// exactly two facts — the conversation reads `awaiting_input` AND a pending
-// elicitation exists (`mcp/tasks/task-store.ts#derivesInputRequired`). The
-// sweep flips both, so `input_required` after the sweep is impossible by
-// construction; the conversation-status and elicitation-status assertions
-// below cover it without the task-store's turn_seq/task-row scaffolding.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -38,13 +18,9 @@ let srv: HttpTestServer;
 
 const nextUuid = createDeterministicUuidFactory(0xe11c17);
 
-// Approval expiry instants. The sweep compares against Postgres' now(), so
-// these only need to be firmly on either side of it.
 const expiredAt = new Date(Date.now() - 60_000); // 1 minute ago allow-wall-clock
 const liveUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now allow-wall-clock
 
-/** The sweep's `started` instant. A helper so the multi-line call sites below
- *  keep the wall-clock read on one annotated line. */
 const nowForSweep = (): Date => new Date(); // allow-wall-clock
 
 type ConversationStatus = "active" | "awaiting_input" | "committed" | "abandoned";
@@ -72,8 +48,6 @@ async function seedToolCall(conversationId: string, tool = "wf_send_report"): Pr
   return row.id;
 }
 
-/** Minimal `tool_approvals` row — dummy ciphertext; the sweep only reads
- *  `expires_at`, never decrypts. */
 async function seedApproval(
   id: string,
   expiresAt: Date,
@@ -96,14 +70,10 @@ async function seedApproval(
   });
 }
 
-/** Pending `ask_user_confirm` row, back-dated past the approval TTL so the
- *  sweep's age prefilter picks it up. Postgres now() arithmetic — one clock. */
 async function seedElicitation(p: {
   conversationId: string;
   toolCallId: string | null;
   approvalId: string | null;
-  /** Leave unset for an already-expired row (the common case here). Set a future
-   *  instant to seed a prompt the sweep must NOT select. */
   expiresAt?: Date;
 }): Promise<string> {
   const input = p.approvalId
@@ -126,8 +96,6 @@ async function seedElicitation(p: {
       summary: "Send the weekly report",
       input,
       status: "pending",
-      // The sweep selects on the row's OWN expiry, so seed it explicitly rather
-      // than backdating `created_at` and relying on a per-kind re-derivation.
       expires_at: p.expiresAt ?? new Date(Date.now() - 5 * 60_000), // allow-wall-clock
     })
     .returning();
@@ -159,8 +127,6 @@ async function seedDraftCredentialElicitation(p: {
         expires_at: p.expiresAt.toISOString(),
       },
       status: "pending",
-      // Mirrors `elicitationExpiry`, which lifts a draft grant's embedded expiry
-      // onto the column the sweep selects on.
       expires_at: p.expiresAt,
     })
     .returning();
@@ -279,8 +245,6 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(output.abandoned).toBe(true);
     expect(output.reason).toBe("approval_expired");
     expect(String(output.note)).toContain("nothing ran");
-    // The verdict is stated on the row. Without it a transcript rendered
-    // the call as completed with a green tick — for work that never ran.
     expect(toolCall?.outcome).toBe("denied");
     expect(toolCall?.confirmation_state).toBe("expired");
 
@@ -292,8 +256,6 @@ describe("runElicitationExpiry — dead approval cascade", () => {
   test("absent approval row (already pruned): same cascade", async () => {
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
-    // Handle references an approval that was never inserted — the retention
-    // sweep deleted it before this sweep saw the elicitation.
     const elicitationId = await seedElicitation({
       conversationId,
       toolCallId,
@@ -428,8 +390,6 @@ describe("runElicitationExpiry — rows the sweep must not touch", () => {
   });
 
   test("plain prompt still inside its window: untouched", async () => {
-    // An ordinary ask_user_confirm a human may legitimately still be answering.
-    // Bounded, but nowhere near its bound — the sweep must leave it alone.
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
     const elicitationId = await seedElicitation({
@@ -449,15 +409,9 @@ describe("runElicitationExpiry — rows the sweep must not touch", () => {
 
 describe("runElicitationExpiry — a granted approval is completed, not expired", () => {
   test("granted but unclaimed: the sweep resumes the turn instead of timing it out", async () => {
-    // The backstop for a decision whose primary completion was interrupted — an
-    // engine restart between the grant and the enqueue, or a lost job
-    // (`conversation.run-turn` has retryLimit 0, so nothing else retries it).
-    // Before this edge existed the sweep only ever EXPIRED: a person's yes could
-    // reach a dead end and then be reported as "the operator did not answer".
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
     const approvalId = nextUuid();
-    // Granted, unclaimed, and still inside its claim window.
     await seedApproval(approvalId, liveUntil, { granted_at: new Date(Date.now() - 60_000) }); // allow-wall-clock
     const elicitationId = await seedElicitation({ conversationId, toolCallId, approvalId });
 
@@ -471,14 +425,10 @@ describe("runElicitationExpiry — a granted approval is completed, not expired"
 
     expect(resumed).toEqual([{ elicitation_id: elicitationId }]);
     const elicitation = await readElicitation(elicitationId);
-    // Staged for the resumed turn to resolve — emphatically NOT timed out.
     expect(elicitation.status).toBe("pending");
     expect(elicitation.output).toEqual({ confirmed: true });
     expect(await expiredAuditRowsFor(elicitationId)).toHaveLength(0);
 
-    // The row is still pending while the worker runs, so a second tick must not
-    // enqueue a second resume for the same decision. Its expiry now rides the
-    // approval's claim window.
     await runElicitationExpiry(nowForSweep(), srv.db, {
       resume: async (p) => {
         resumed.push({ elicitation_id: p.elicitation_id });
@@ -489,10 +439,6 @@ describe("runElicitationExpiry — a granted approval is completed, not expired"
   });
 
   test("granted but past its claim window: expired, and the loss is audited", async () => {
-    // The decision can no longer be acted on. Expiring is correct — staying
-    // silent is not: a claim miss reports `confirmation_expired` whether or not a
-    // human ever granted, and it writes no audit row, which is why production
-    // lost five approvals without a trace.
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
     const approvalId = nextUuid();
@@ -541,11 +487,6 @@ describe("runElicitationExpiry — a granted approval is completed, not expired"
 
 describe("runElicitationExpiry — plain prompts are bounded too", () => {
   test("an ordinary ask_user_confirm past its expiry is swept and its conversation reactivated", async () => {
-    // Regression for the 60 conversations found wedged in `awaiting_input` in
-    // production — the oldest for two and a half months. None carried an approval
-    // handle or a draft-credential kind, so the old kind-derived selection could
-    // never see them, and each kept deriving `input_required` on every MCP Tasks
-    // poll. A prompt nobody will ever answer must not hold a session hostage.
     const conversationId = await seedConversation("awaiting_input");
     const toolCallId = await seedToolCall(conversationId);
     const elicitationId = await seedElicitation({
@@ -566,9 +507,6 @@ describe("runElicitationExpiry — plain prompts are bounded too", () => {
 
 describe("runElicitationExpiry — guarded conversation flip", () => {
   test("conversation no longer awaiting_input: elicitation resolves, conversation status unchanged", async () => {
-    // A conversation that moved on (committed) after the elicitation was
-    // opened. The sweep must still time out the zombie elicitation but the
-    // guarded flip must NOT resurrect the conversation to active.
     const conversationId = await seedConversation("committed");
     const toolCallId = await seedToolCall(conversationId);
     const approvalId = nextUuid();

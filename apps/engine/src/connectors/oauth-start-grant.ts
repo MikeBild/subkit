@@ -1,24 +1,3 @@
-// Single-use OAuth2 start grant — browser-openable short-lived tokens.
-//
-// The link opens the connector's OWN sign-in route — whichever
-// `connectorSignIn` names: `/oauth/start` for a web service,
-// `/mcp/authorize` for an MCP server. Both GET doors consume the grant the
-// same way (`consumeStartGrant`).
-//
-// Discipline mirrors apps/engine/src/identity/portal-token.ts:
-//   - 24 random bytes → url-safe base64, `skog_` prefix for redaction
-//     recognizability. ("skog" = sk OAuth Grant)
-//   - SHA-256 hex stored at rest; plaintext returned once at mint time.
-//   - Atomic claim: DELETE … WHERE token_sha256 = sha256(token)
-//     AND connector_id = :pathId AND expires_at > now() RETURNING *
-//     — a wrong connector_id does NOT burn the grant.
-//
-// Typed errors (never thrown — returned as discriminated union):
-//   - "engine_public_url_missing": buildOAuthRedirectUri() returned null.
-//   - "no_browser_flow": the connector has no browser sign-in
-//     (`connectorSignIn` is null), or its grant is client_credentials_json,
-//     which completes without a browser — use beginConnectorOAuthDance directly.
-
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
@@ -38,9 +17,7 @@ export interface IssuedStartGrant {
   hash: string;
 }
 
-/** Generate a fresh opaque start grant token. Hash is SHA-256 hex. */
 export function generateStartGrant(): IssuedStartGrant {
-  // 24 random bytes → 32 url-safe chars + skog_ prefix.
   const rand = randomBytes(24).toString("base64url");
   const plaintext = `${GRANT_PREFIX}${rand}`;
   return { plaintext, hash: sha256Hex(plaintext) };
@@ -60,14 +37,6 @@ export interface MintedGrant {
   expires_at: Date;
 }
 
-/**
- * Mint a single-use grant URL that opens the connector's own sign-in route.
- *
- * Returns a typed error rather than throwing for the two expected failure
- * modes (missing origin, wrong grant_type). Unexpected errors propagate.
- *
- * Audits CONNECTOR_OAUTH_GRANT_ISSUED on success.
- */
 export async function mintOAuthStartGrantUrl(
   db: Db,
   opts: {
@@ -77,8 +46,6 @@ export async function mintOAuthStartGrantUrl(
       "id" | "slug" | "driver" | "auth_type" | "config" | "template_snapshot"
     >;
     actor_id: string | null;
-    /** Audit attribution for the minting principal. A system_account
-     *  driving a conversation must not be recorded as "user". */
     actor_type?: AuditActorType;
     ttl_ms?: number;
   },
@@ -86,8 +53,6 @@ export async function mintOAuthStartGrantUrl(
   const { tenant_id, connector, actor_id, ttl_ms = 600_000 } = opts;
   const actor_type = opts.actor_type ?? (actor_id ? "user" : "system");
 
-  // The link goes where the connector's `sign_in` says. None, or a grant
-  // that completes machine to machine, leaves nothing for a browser to open.
   const signIn = connectorSignIn(connector);
   if (!signIn || connectorOAuthGrantType(connector) === "client_credentials_json") {
     return { ok: false, error: "no_browser_flow" };
@@ -135,17 +100,6 @@ export interface ConsumedGrant {
   created_by_actor_id: string | null;
 }
 
-/**
- * Atomically consume a start grant.
- *
- * Uses DELETE … RETURNING so the claim is TOCTOU-safe. The path-id guard
- * (`connector_id = :pathId`) means a leaked token can only be consumed
- * via the correct connector URL — it does NOT burn the grant on a wrong-id
- * attempt.
- *
- * Returns the consumed row on success, or `null` when the token is
- * invalid, expired, or the connector_id doesn't match the URL path.
- */
 export async function consumeStartGrant(
   db: Db,
   opts: { token: string; connector_id: string },

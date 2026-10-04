@@ -1,24 +1,3 @@
-// probe_connector_draft × client_credentials_json (M2M OAuth2).
-//
-// Live failure (session 35a3b9ba, sk 6.17.0): the user filled the
-// credential form for the xray-cloud draft (client_id + client_secret,
-// cached as a mode:"oauth2" draft credential) and the probe refused
-// with `authenticate_oauth_required` — "save, then run
-// authenticate_oauth and complete the browser exchange". For a
-// client-credentials grant there IS no browser: the engine can mint
-// the bearer inline (the cognito_user_password branch is the
-// precedent) and probe with it.
-//
-// Pins:
-//   - an M2M draft + cached client creds → the probe POSTs the JSON
-//     exchange to config.oauth.token_endpoint, strips the raw quoted
-//     JWT, and probes WITH the minted bearer (upstream sees it).
-//   - a failed exchange (401 from the token endpoint) → structured
-//     `token_exchange_failed` envelope naming the endpoint — a real
-//     verdict on bad credentials, not a browser-dance dead end.
-//   - a NON-M2M oauth2 draft keeps the existing browser-flow gate
-//     (`authenticate_oauth_required`).
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { createServer } from "node:http";
 import { eq } from "drizzle-orm";
@@ -35,33 +14,20 @@ import { inspectConnectorDraftTool } from "../inspect-connector-draft.ts";
 import { probeConnectorDraftTool } from "../probe-connector-draft.ts";
 import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
 
-/** Run the inspect → validate checkpoints the authoring state machine
- *  requires before a probe (mirrors the real guided flow). */
 async function freshenCheckpoints(base: Parameters<typeof probeConnectorDraftTool.execute>[0]) {
   await inspectConnectorDraftTool.execute(base, {});
   await validateConnectorDraftTool.execute(base, {});
 }
 
-// All engine egress this suite exercises (token mint, secured-upstream
-// probe via the http driver) reads the driver-fetch seam, which falls
-// back to the fetch captured at module load — sibling suites stubbing
-// `globalThis.fetch` cannot reroute it, so no defensive global-fetch
-// pinning is needed here.
-
 let ctx: ConversationTestCtx;
 let server: ReturnType<typeof createServer>;
 let baseUrl: string;
 
-/** Authorization header values the secured upstream observed. */
 const seenAuthHeaders: string[] = [];
-/** Token-endpoint behavior toggle for the failure test. */
 let tokenEndpointMode: "ok" | "unauthorized" = "ok";
 
 beforeAll(async () => {
   ctx = await createConversationTestCtx("probe_m2m_oauth");
-  // node:http (not Bun.serve) on purpose — the engine HTTP test harness
-  // interferes with in-process Bun.serve instances; http/tests/setup.ts
-  // made the same choice for the same reason.
   server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c: Buffer) => chunks.push(c));
@@ -76,21 +42,16 @@ beforeAll(async () => {
         let body: Record<string, unknown> = {};
         try {
           body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-        } catch {
-          /* fall through to bad-pair */
-        }
+        } catch {}
         if (body.client_id !== "cid-1" || body.client_secret !== "sec-1") {
           res.writeHead(401, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad pair" }));
           return;
         }
-        // Xray-style: the body is a bare QUOTED JWT string.
         res.writeHead(200, { "content-type": "text/plain" });
         res.end('"jwt-minted-token"');
         return;
       }
-      // Everything except /token is the secured upstream (the probe
-      // GETs the connector's base path).
       const auth = req.headers.authorization ?? "";
       seenAuthHeaders.push(auth);
       if (auth === "Bearer jwt-minted-token") {
@@ -181,8 +142,6 @@ describe("probe_connector_draft × client_credentials_json", () => {
       error_code?: string;
       latest_probe?: { ok?: boolean; status_code?: number } | null;
     };
-    // The probe must have reached the secured upstream WITH the minted
-    // bearer — not been blocked by the browser-flow gate.
     expect(data.error_code).not.toBe("authenticate_oauth_required");
     expect(seenAuthHeaders).toContain("Bearer jwt-minted-token");
     expect(data.latest_probe?.ok).toBe(true);
@@ -203,7 +162,6 @@ describe("probe_connector_draft × client_credentials_json", () => {
     const data = result.data as { error_code?: string; error?: string };
     expect(data.error_code).toBe("token_exchange_failed");
     expect(String(data.error)).toContain("/token");
-    // The upstream must never have been hit without a token.
     expect(seenAuthHeaders.length).toBe(0);
   });
 

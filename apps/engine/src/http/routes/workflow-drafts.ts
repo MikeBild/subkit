@@ -67,11 +67,6 @@ const get = createRoute({
   responses: { 200: draftResponse, ...failures },
 });
 
-// What SubKit can say for itself about steps that declare no boundary, and the
-// one action that turns that into a draft. Both live on the HTTP surface rather
-// than inside one screen: the cockpit, the chat, an MCP client and `sk` are all
-// callers of the same thing, and a repair that exists in only one of them is
-// not a capability of the product.
 const ProposalSchema = z
   .object({
     proposals: z.array(
@@ -125,9 +120,7 @@ const applyProposals = createRoute({
         "application/json": {
           schema: z
             .object({
-              /** The draft this is built on, so a concurrent edit is not overwritten. */
               expected_draft_version_id: z.string().uuid().nullable(),
-              /** Only these steps, when the caller reviewed a subset. */
               step_ids: z.array(z.string().min(1)).max(200).optional(),
             })
             .openapi("ApplyBoundaryProposalsBody"),

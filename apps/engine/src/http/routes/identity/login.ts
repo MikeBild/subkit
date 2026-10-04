@@ -1,5 +1,3 @@
-// Provider-neutral MCP browser login funnel.
-
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { z } from "zod";
@@ -50,8 +48,6 @@ function providers() {
   );
 }
 
-/** Where a sign-in with no destination of its own returns to. A constant, so no
- *  caller can steer it. */
 const DEFAULT_LOGIN_REDIRECT = "/cockpit";
 
 function oidcProviders(): OidcConfig[] {
@@ -66,8 +62,6 @@ function wantsJson(c: Context<AppEnv>): boolean {
   return (c.req.header("accept") ?? "").includes("application/json");
 }
 
-// Browser GET errors render the shared HTML template; JSON stays reserved
-// for clients that explicitly Accept: application/json.
 function browserStateError(
   c: Context<AppEnv>,
   status: 400 | 404,
@@ -99,18 +93,6 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     const existingState = c.req.query("login_state");
 
     if (!selectedId) {
-      // A login state carries ONE thing: where to return to afterwards. When it
-      // is missing or has expired, that is not a broken request — it is
-      // somebody who wants to sign in and has nowhere in particular to go back
-      // to. Refusing here made the recovery link a closed loop: the error page
-      // it rendered offered "Sign in again", that link carries no state, and
-      // following it arrived in this same branch. The one button whose job is
-      // to lead out of the dead end led straight back into it.
-      //
-      // So a start without a usable state mints a fresh one for the cockpit
-      // root. The destination is a constant, never anything from the URL —
-      // `redirect_to` stays restricted to safe internal targets, and nothing a
-      // caller supplies is trusted here.
       const verified = await verifyLoginState(existingState ?? "");
       const carried = safeRedirect(String(verified?.redirect_to ?? ""));
       const state = carried
@@ -134,9 +116,6 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const state = existingState ?? "";
     const loginState = await verifyLoginState(state);
-    // Same dead end one step further in: the state expired between choosing a
-    // provider and arriving here. Send them back to the choice with a state
-    // that works, rather than to a page whose only link returns here.
     if (!loginState) return c.redirect("/v1/identity/login/start", 302);
     const selected = providers().find((provider) => provider.id === selectedId);
     if (!selected) {
@@ -209,8 +188,6 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
     const state = c.req.query("state") ?? "";
     const providerId = state.includes(".") ? state.slice(0, state.indexOf(".")) : "";
     if (!providerId) return browserStateError(c, 400, "invalid_state");
-    // An unknown provider prefix means the state cannot be ours — same
-    // 400 invalid-state contract as every other malformed callback state.
     const selected = oidcProviders().find((provider) => provider.id === providerId);
     if (!selected) return browserStateError(c, 400, "provider_not_found");
     const handler = oidcProvider(selected, c.get("db"));
@@ -228,10 +205,6 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 }
 
-/**
- * Why an API key did not sign in, in the page's language. The German login
- * page showed this one sentence in English.
- */
 export function apiKeyLoginRefusal(locale: "de" | "en"): string {
   return locale === "de"
     ? "Dieser API-Schlüssel ist ungültig, abgelaufen oder gehört keiner Person. Mit dem Schlüssel eines Systemkontos meldet man sich nicht im Cockpit an."

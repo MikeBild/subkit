@@ -1,24 +1,8 @@
-// Negative-path `--json` contract: when the engine call throws, each
-// create command MUST keep stderr silent and emit a parseable
-// `{ "error": <msg> }` object on stdout. The downstream pipe (`sk … |
-// jq`) therefore always sees one valid JSON document per invocation,
-// success or failure.
-//
-// We mock the EngineClient with stubs that throw so the outer catch
-// fires; the test then asserts the stdout/stderr buffers and that the
-// handler re-throws (the top-level `sk` dispatcher is responsible for
-// setting `process.exitCode` — handlers MUST NOT call process.exit
-// directly, see knowledge-sources-error-discipline.test.ts).
-
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Capture real module shapes BEFORE we override them so we can restore
-// them in afterAll. `mock.restore()` does NOT undo `mock.module()`
-// (see Bun docs); without an explicit re-mock these stubs would leak
-// into every other sk test file run in the same worker process.
 const realEngineClient = await import("../engine-client.ts");
 const realConfig = await import("../config.ts");
 const realRenderIndex = await import("../render/index.ts");
@@ -39,9 +23,6 @@ mock.module("../render/index.ts", () => ({
   renderTaskList: renderTaskListMock,
 }));
 
-// Each method throws so the outer catch in every create command fires.
-// The thrown Error is what the JSON-error path should surface to stdout
-// as `{ "error": <message> }`.
 class ThrowingEngineClient {
   async validateWorkflowDraft() {
     throw new Error("engine unreachable: validateWorkflowDraft");
@@ -80,9 +61,6 @@ mock.module("../config.ts", () => ({
   }),
 }));
 
-// uploadPath stays happy — knowledge-sources fails at createKnowledgeSource
-// (after upload). This lets the failure mode mirror the runtime path the
-// reviewer flagged (engine throw on write).
 mock.module("./files.ts", () => ({
   ...ORIGINAL_FILES,
   uploadPath: async () => ({ id: "fid-test" }),
@@ -103,13 +81,6 @@ function getCreate(parent: unknown): CittySub {
   }
   return sub.create;
 }
-
-// --- stdout/stderr capture ---
-//
-// We no longer stub process.exit. The create handlers now re-throw
-// the original engine error from their outer catch (after writing the
-// JSON envelope to stdout); the test asserts on the rejection itself
-// plus the stdout/stderr buffers.
 
 let stderrBuf = "";
 let stdoutBuf = "";
@@ -137,12 +108,6 @@ afterEach(() => {
   process.stdout.write = origStdoutWrite;
 });
 
-// Bun runs multiple test files per worker under --max-concurrency. The
-// top-level `mock.module(...)` calls in this file install module mocks
-// that would otherwise leak into other files (ThrowingEngineClient
-// would poison every test that imports EngineClient). Re-mock with the
-// originals captured at the top of the file — `mock.restore()` alone
-// does NOT undo `mock.module()`.
 afterAll(() => {
   mock.module("../engine-client.ts", () => ORIGINAL_ENGINE_CLIENT);
   mock.module("../config.ts", () => ORIGINAL_CONFIG);
@@ -158,9 +123,6 @@ function tmpFile(name: string, content: string): string {
   return path;
 }
 
-// The create handlers re-throw after writing the JSON envelope. We
-// catch the rejection here so the assertions on stdout/stderr can
-// run without bubbling the engine error up to the test runner.
 async function expectThrows(p: Promise<unknown>): Promise<Error> {
   try {
     await p;

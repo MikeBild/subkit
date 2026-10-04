@@ -1,10 +1,3 @@
-// The attention list's readers — where each item comes from.
-//
-// Split from attention.ts, which keeps the contract, the cache, the
-// per-reader permission filter and the ordering. Every function here reads;
-// none writes. The tenant readers are isolated by `buildTenantFacts`: one that
-// throws marks its source `failed` and never takes the build down.
-
 import { and, asc, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { connectorCountsAgainstHealth } from "../connectors/health-ratio.ts";
@@ -44,17 +37,8 @@ import {
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
-// --------------------------------------------------------------------------
-// Addresses — the cockpit's router paths. One place, so a renamed page is one
-// edit and a test.
-
 export const attentionHref = {
-  // Item ids are `<kind>:<uuid>` or a bare word — query-safe as they stand, and
-  // left readable (`?review=workflow:<id>`) rather than percent-encoded.
   review: (id: string) => `/cockpit?review=${id}`,
-  // The workflow page at its "automatic operation" panel — where an approval is
-  // given or extended. The fragment is the panel's element id in the cockpit
-  // (`WORKFLOW_AUTOMATION_ANCHOR`); its link test pins the two together.
   automation: (workflowId: string) =>
     `/cockpit/workflows/${encodeURIComponent(workflowId)}#workflow-automation`,
   conversation: (id: string) => `/cockpit/chat/${encodeURIComponent(id)}`,
@@ -63,26 +47,20 @@ export const attentionHref = {
       executionId ? `&execution_id=${encodeURIComponent(executionId)}` : ""
     }`,
   connector: (id: string) => `/cockpit/connectors/${encodeURIComponent(id)}`,
-  // An account connection is renewed on the connector that uses it; with
-  // several users (or none known) the connector list is the honest target.
   connection: (connectorIds: readonly string[]) =>
     connectorIds.length === 1 && connectorIds[0]
       ? `/cockpit/connectors/${encodeURIComponent(connectorIds[0])}`
       : "/cockpit/connectors",
-  // The run list is an overlay on Übersicht, narrowed by the query it carries.
   failedRuns: (workflowId: string) =>
     `/cockpit?runs=all&workflow_id=${encodeURIComponent(workflowId)}&status=failed`,
   operations: "/cockpit/audit?scope=operations",
-  // Prepared secret versions are decided on the settings page today.
   settings: "/cockpit/settings",
   usage: "/cockpit/usage",
 } as const;
 
-/** One item as a tenant reader produced it, with the gate its reader must pass. */
 export interface Candidate {
   item: AttentionItem;
   source: AttentionSource;
-  /** The resource the per-item check targets; absent for a tenant-level item. */
   resource?: { type: string; id: string };
 }
 
@@ -93,9 +71,6 @@ export interface TenantFacts {
 }
 
 export type TenantReader = (db: Db, tenantId: string, now: Date) => Promise<Candidate[]>;
-// --------------------------------------------------------------------------
-// Tenant readers. Each is isolated: a throw marks its source `failed` and never
-// takes the build down.
 
 interface HeldRow {
   workflow_id: string;
@@ -107,22 +82,13 @@ interface WorkflowFacts {
   id: string;
   name: string | null;
   held: HeldRow["hold"] | null;
-  /** Set together with `held`: whose refused starts the hold is about. */
   trigger: AttentionItem["trigger"];
   groups: DigestFailureGroup[];
   patches: { count: number; oldest: Date } | null;
-  /** Nothing refused yet: the running version is unapproved, or its approval is ending. */
   approval: ApprovalFact | null;
-  /** Set beside an awaiting approval the gate would refuse to grant: what blocks it. */
   repair: NonNullable<AttentionItem["repair"]> | null;
 }
 
-/**
- * Which block speaks for a version no approval may cover. A step only a
- * change to the workflow unblocks comes first — a trial run or a computed
- * repair elsewhere still leaves it blocked — then a reconnect, then a
- * computed repair, then the trial run.
- */
 const REMEDY_ORDER: Record<GateDiagnosis["remedy_kind"], number> = {
   author: 0,
   declare: 1,
@@ -131,14 +97,6 @@ const REMEDY_ORDER: Record<GateDiagnosis["remedy_kind"], number> = {
   prepare: 4,
 };
 
-/**
- * An unapproved running version is only "awaiting approval" when an approval
- * could be given. The gate refuses to grant one whose effects are not bounded
- * (`eligible_for_repeated_runs`) — the automation panel's `repair_required` —
- * and the list said "approve" for weeks on versions nobody could approve.
- * Reads the same predicate the panel and the gate read, and the diagnosis of
- * the RUNNING version (never the draft) for what blocks it.
- */
 async function readRepairFacts(
   db: Db,
   tenantId: string,
@@ -170,11 +128,8 @@ async function readRepairFacts(
         workflow_version_id: version_id,
         execution_environment: fact.environment,
       };
-      // A definition that cannot be resolved is no evidence either way; the
-      // panel says so itself (`verification_unavailable`).
       const preview = await previewWorkflowAuthority(input, db).catch(() => null);
       if (!preview || preview.eligible_for_repeated_runs) return;
-      // Without the diagnosis the manifest still names the blocked step.
       const diagnosis = await diagnoseWorkflow(db, tenantId, fact.workflow_id, fact.environment, {
         version_id,
         preview,
@@ -197,12 +152,6 @@ async function readRepairFacts(
   return repairs;
 }
 
-/**
- * Held schedules, failing scheduled workflows, open patch decisions and the
- * approval that is missing or ending, merged into one item per workflow. They
- * are facts about one subject; an item each would give one workflow several
- * ids and several places to act on it.
- */
 async function readWorkflowFacts(
   db: Db,
   tenantId: string,
@@ -234,8 +183,6 @@ async function readWorkflowFacts(
   };
 
   const [held, heldHooks, groups, patches, approvals] = await Promise.allSettled([
-    // The overview's `blocked` predicate, row for row: held schedules, then
-    // hooks whose deliveries the authority gate refuses.
     db
       .select({
         workflow_id: workflows.id,
@@ -290,8 +237,6 @@ async function readWorkflowFacts(
     readApprovalFacts(db, tenantId, now),
   ]);
 
-  // The same source as the holds: both say whether automatic starts are
-  // admitted, and a list missing either half must not read as complete.
   if (
     held.status === "fulfilled" &&
     heldHooks.status === "fulfilled" &&
@@ -312,9 +257,6 @@ async function readWorkflowFacts(
     for (const row of holds) {
       if (!row.hold) continue;
       const fact = factFor(row.workflow_id, row.name);
-      // One item per workflow: the first hold speaks for it, and names its
-      // trigger — "its schedule waits" about a webhook sent people looking
-      // for a schedule that does not exist.
       if (!fact.held) {
         fact.held = row.hold;
         fact.trigger = row.trigger;
@@ -324,8 +266,6 @@ async function readWorkflowFacts(
 
   if (groups.status === "fulfilled") {
     sources.failures = "answered";
-    // A group of an unsaved run has no workflow to act on — it is authoring
-    // feedback, and failingScheduledGroups already keeps only scheduled runs.
     for (const group of groups.value) {
       if (!group.workflow_id) continue;
       factFor(group.workflow_id, group.workflow_name).groups.push(group);
@@ -361,16 +301,11 @@ function minIso(values: ReadonlyArray<string | null | undefined>): string | null
   return present.length === 0 ? null : present.reduce((a, b) => (b < a ? b : a));
 }
 
-/** The item for one workflow, most severe fact first. */
 function workflowItem(fact: WorkflowFacts): Candidate {
   const failures = fact.groups.reduce((sum, group) => sum + group.count, 0);
   const patches = fact.patches?.count ?? 0;
-  // Groups arrive most frequent first; the dominant cause speaks for the item.
   const lead = fact.groups[0] ?? null;
   const klass: AttentionClass = fact.held ? "stopped" : failures > 0 ? "failing" : "decide";
-  // The approval fact speaks only when nothing stronger does: a hold is the
-  // same thing already refused, a failure or an open fix is acted on first —
-  // and applying a fix makes a new version, which then waits here itself.
   const approval = !fact.held && failures === 0 && patches === 0 ? fact.approval : null;
   const repair = approval?.kind === "awaiting" ? fact.repair : null;
   const reason: AttentionReason = fact.held
@@ -388,9 +323,6 @@ function workflowItem(fact: WorkflowFacts): Candidate {
         : "patch_proposed";
   const id = `workflow:${fact.id}`;
 
-  // Remedy order: a held schedule and a proposed fix are decided in the review
-  // sheet; an authentication failure is remedied at its connector; anything
-  // else is a conversation about the newest failed run.
   const actions: AttentionAction[] = [];
   if (fact.held || patches > 0) {
     actions.push({
@@ -414,9 +346,6 @@ function workflowItem(fact: WorkflowFacts): Candidate {
       permission: "conversation:write",
     });
   } else if (repair) {
-    // Never "approve": the gate would refuse it. The act the diagnosis offers —
-    // a filed repair is reviewed, a step only an author can change is talked
-    // through, and a computed repair or a trial run start in the panel.
     if (repair.remedy_kind === "patch" && repair.candidate_id)
       actions.push({
         verb: "review",
@@ -439,8 +368,6 @@ function workflowItem(fact: WorkflowFacts): Candidate {
         permission: repair.remedy_kind === "prepare" ? "workflow:run" : "workflow:write",
       });
   } else if (approval) {
-    // Approving happens on the workflow's page, in its automation panel: the
-    // panel says whether the next step is the approval itself or a repair.
     actions.push({
       verb: "open",
       href: attentionHref.automation(fact.id),
@@ -466,7 +393,6 @@ function workflowItem(fact: WorkflowFacts): Candidate {
     item: {
       id,
       class: klass,
-      // An approval that is ending is the one thing here nothing waits on yet.
       severity:
         klass === "stopped" ? "critical" : approval?.kind === "expiring" ? "notice" : "urgent",
       kind: "workflow",
@@ -492,7 +418,6 @@ function workflowItem(fact: WorkflowFacts): Candidate {
             ...fact.groups.map((group) => group.first_seen),
             fact.patches?.oldest.toISOString(),
           ]),
-      // The next automatic start, or the end of the last approval.
       deadline: approval?.deadline ?? null,
       detail: lead?.cause ?? null,
       actions,
@@ -538,7 +463,6 @@ const readConnectors: TenantReader = async (db, tenantId) => {
         counts: {},
         since: (row.health_changed_at ?? row.updated_at).toISOString(),
         deadline: row.sunset_at?.toISOString() ?? null,
-        // A state this build does not name is still said — as the engine's word.
         detail: row.health_reason ?? (reason === "unhealthy" ? row.health_state : null),
         actions: [
           {
@@ -553,12 +477,6 @@ const readConnectors: TenantReader = async (db, tenantId) => {
   });
 };
 
-/**
- * A connection is urgent only when something depends on it. One that no
- * connector's credential points at breaks nothing when it ends — its card
- * says "Von keinem Konnektor genutzt" beside the state, and that is where it
- * is seen; the attention list stays for what is actually failing.
- */
 const readConnections: TenantReader = async (db, tenantId) => {
   const views = await listConnections(db, tenantId);
   return views.flatMap((view): Candidate[] => {
@@ -597,7 +515,6 @@ const readConnections: TenantReader = async (db, tenantId) => {
 };
 
 const readSecretApprovals: TenantReader = async (db) => {
-  // Installation-wide operator state: the registry has no tenant column.
   const pending = await listPendingSecretVersions(db);
   return pending.map((secret) => {
     const ref = `${secret.name}@${secret.version}`;
@@ -630,8 +547,6 @@ const readSecretApprovals: TenantReader = async (db) => {
 };
 
 const readSkills: TenantReader = async (db, tenantId) => {
-  // The overview's decision predicate for skills: proposed, and not one of the
-  // two pattern kinds that are feedback rather than a decision.
   const [row] = await db
     .select({
       count: sql<number>`count(*)::int`,
@@ -706,7 +621,6 @@ function signalItem(signal: RiskSignal, source: "budget" | "risk"): Candidate {
   };
 }
 
-/** Critical month allowance — the same 90 % line the usage page calls critical. */
 const readBudget: TenantReader = async (db, tenantId) => {
   const signals = computeRiskSignals({
     monthTokens: await monthlyUsage(tenantId, db),
@@ -717,18 +631,11 @@ const readBudget: TenantReader = async (db, tenantId) => {
     .map((signal) => signalItem(signal, "budget"));
 };
 
-/** Critical host signals. Warnings are trends, not something to act on now. */
 const readRisk: TenantReader = async () =>
   computeRiskSignals()
     .filter((signal) => signal.severity === "critical")
     .map((signal) => signalItem(signal, "risk"));
 
-/**
- * Stale scheduler heartbeats, and the health state the empty list's status line
- * names — both read from the operational overview, so the list and the
- * overview can never disagree about either. A heartbeat that never beat
- * (`missing`, a fresh installation) is not a stopped scheduler.
- */
 async function readFreshnessAndStatus(
   db: Db,
   tenantId: string,
@@ -766,7 +673,6 @@ async function readFreshnessAndStatus(
   return { candidates, health_state: overview.core.health.state };
 }
 
-/** The next moment a schedule of this tenant really fires, or null. */
 async function readNextRun(db: Db, tenantId: string, now: Date): Promise<string | null> {
   const rows = await db
     .select({
@@ -794,7 +700,6 @@ async function readNextRun(db: Db, tenantId: string, now: Date): Promise<string 
   );
 }
 
-/** Test seam: replace one tenant reader to make its source fail. Bypasses the cache. */
 export type AttentionReaderOverrides = Partial<
   Record<
     "connectors" | "connections" | "secret_approvals" | "skills" | "budget" | "risk",
@@ -859,10 +764,6 @@ export async function buildTenantFacts(
   return { sources, candidates, status };
 }
 
-// --------------------------------------------------------------------------
-// Per reader.
-
-/** The reader's own conversations that wait for its answer — never anyone else's. */
 export async function readOwnConversations(
   db: Db,
   principal: ResolvedPrincipal,

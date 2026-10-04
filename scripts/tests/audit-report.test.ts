@@ -1,11 +1,3 @@
-// The advisory reader, against an answer the tool actually gave.
-//
-// The fixture is a slice of a real `bun audit --json` run in this repository,
-// not a reconstruction — the whole reason this file exists is that the previous
-// reader was written against a shape stated in a comment and never observed.
-// Reconstructing the fixture from the same belief would reproduce the bug and
-// call it covered.
-
 import { describe, expect, test } from "bun:test";
 import { readAuditReport } from "../lib/audit-report.ts";
 import fixture from "./fixtures/bun-audit.json" with { type: "json" };
@@ -69,8 +61,6 @@ describe("readAuditReport — not understanding is not good news", () => {
   test("a shape with nothing advisory-like in it is NOT reported as clean", () => {
     const reading = readAuditReport({ something: { entirely: "different" }, count: 3 });
     expect(reading.findings).toHaveLength(0);
-    // The bug this pins: zero findings used to print "no high or critical
-    // advisories" over an answer the reader could not read at all.
     expect(reading.recognised).toBe(false);
   });
 

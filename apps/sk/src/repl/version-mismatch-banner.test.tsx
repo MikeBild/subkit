@@ -1,9 +1,3 @@
-// CLI ↔ engine version-skew classifier. Without it the operator has to
-// know that the engine container is running stale code by guessing
-// from missing fixes (source has the fix, container does not). The CLI
-// surfaces a one-line banner when versions diverge so the rebuild hint
-// is visible from the welcome row.
-
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import { classifyVersionSkew, VersionMismatchBanner } from "./version-mismatch-banner.tsx";

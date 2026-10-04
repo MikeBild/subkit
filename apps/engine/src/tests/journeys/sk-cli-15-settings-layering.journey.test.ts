@@ -1,25 +1,3 @@
-// User story: As a repo contributor, my `~/.sk/settings.json`
-// sets sensible defaults, my `<project>/.sk/settings.json` adds
-// project-specific context, and my `.sk/settings.local.json`
-// carries machine-local overrides (API keys, paths). The three
-// files merge user → project → local, with later files winning.
-//
-// Acceptance criteria:
-//
-//   AC1. Project settings override user defaults for string keys
-//        (e.g. `model`, `defaultTenant`).
-//   AC2. Local settings override project settings for the same keys.
-//   AC3. `additionalDirectories` is deep-merged (project contributes,
-//        local contributes, user contributes — latest wins for
-//        non-array keys, but the array itself is replaced by the
-//        deepest layer that defines it — confirms our deep-merge
-//        semantics).
-//   AC4. `includeMemoryFile: false` at any layer suppresses SUBKIT.md
-//        injection when running headless.
-//   AC5. Settings-driven `model` is attached to new conversations
-//        (the `conversations.model` column gets the right value).
-//   AC6. Missing files are tolerated — loader falls back to defaults.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,9 +15,7 @@ let prevSkHome: string | undefined;
 let userHome: string;
 
 const makeBuf = () => ({
-  write: (_s: string) => {
-    /* drop */
-  },
+  write: (_s: string) => {},
 });
 
 function profile(): ResolvedProfile {
@@ -77,11 +53,6 @@ describe("journey: sk-cli settings layering", () => {
     await ctx.cleanup();
   }, JOURNEY_HOOK_TIMEOUT);
 
-  // Note: we deliberately only exercise project + local layers here
-  // because loadSettings walks `homedir()` for the user layer, which
-  // bun.test's SK_HOME override doesn't reroute (it reads HOME).
-  // User-layer coverage is in the settings unit test.
-
   function writeProject(obj: unknown): void {
     mkdirSync(join(tmpWorkspace, ".sk"), { recursive: true });
     writeFileSync(join(tmpWorkspace, ".sk", "settings.json"), JSON.stringify(obj), "utf8");
@@ -93,13 +64,9 @@ describe("journey: sk-cli settings layering", () => {
   }
 
   function clearLayers(): void {
-    // Remove everything written by previous tests so each test
-    // starts from a known-clean state.
     try {
       rmSync(join(tmpWorkspace, ".sk"), { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
 
   test("AC1: project settings override defaults — loader observes it", () => {
@@ -140,7 +107,6 @@ describe("journey: sk-cli settings layering", () => {
       stderr: makeBuf(),
     });
     const id = result.conversation_id as string;
-    // No memory on the conversation row.
     const [row] = await ctx.db
       .select({ memory: conversations.memory })
       .from(conversations)
@@ -168,7 +134,6 @@ describe("journey: sk-cli settings layering", () => {
   test("AC6: missing files are tolerated", () => {
     clearLayers();
     const r = loadSettings(tmpWorkspace);
-    // includeMemoryFile defaults to true; statusLine.showTokens true.
     expect(r.merged.includeMemoryFile).toBe(true);
     expect(r.merged.statusLine?.showTokens).toBe(true);
   });

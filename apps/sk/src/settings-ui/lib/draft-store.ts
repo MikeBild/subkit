@@ -1,17 +1,6 @@
-// Module-level draft store so the settings UI survives close+reopen
-// without losing partial edits, scroll position, or expanded section
-// state. The store is intentionally simple — it's a singleton keyed
-// by tenant + profile so different sessions don't bleed.
-//
-// The component layer (SettingsApp.tsx) reads + writes via these
-// functions; tests can call `_resetDraftStoreForTests` between cases.
-
 export interface SettingsDraftSnapshot {
-  /** Current partial edits, keyed by setting path. */
   partialFieldEdits: Record<string, unknown>;
-  /** Visible scroll position when the modal was last closed. */
   scrollTop: number;
-  /** Sections expanded in the form. */
   expandedKeys: string[];
 }
 

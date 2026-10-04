@@ -1,12 +1,3 @@
-// Subscription CRUD.
-//
-// Secrets are encrypted at rest with AES-256-GCM using the same
-// master key as credentials. AAD binds the ciphertext to
-// `subscription:{tenant}:{id}` so a blob can't be lifted to another
-// row. Rotation is supported by keeping a secondary `rotating_*`
-// triple; the delivery worker emits both signatures while both are
-// present.
-
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -66,7 +57,6 @@ export async function createSubscription(
   const runner = db ?? undefined;
   const target = runner ?? (await import("../../db/client.ts")).getDb();
   return await target.transaction(async (tx) => {
-    // Two-step insert so AAD can bind to the row id.
     const placeholder = encryptSecret("__placeholder__");
     const inserted = await tx
       .insert(subscriptions)

@@ -1,45 +1,3 @@
-// Self-healing orchestration.
-//
-// Two entry points:
-//
-//   * `runSelfHealingLoop` — reactive wrapper used by the pg-boss
-//     `workflow.repair` queue handler. Loads a failing step snapshot,
-//     runs the drift detector, and (if a signal is recognised) hands
-//     off to `processDriftSignal` with `allowAutoApply: true`.
-//
-//   * `processDriftSignal` — the signal-to-candidate pipeline,
-//     reusable by reactive AND proactive callers (scheduler tick,
-//     admin POST /v1/self-healing/scans, the MCP `self_healing.scan`
-//     tool). The unattended scheduler tick passes `allowAutoApply: true`
-//     so a `safe` rename/widening drift heals itself instead of parking
-//     forever; the operator-invoked admin/MCP scans pass
-//     `allowAutoApply: false` so an explicit scan parks for review. All
-//     proactive sources share the endpoint dedup guard at the top of
-//     this function — an already-active candidate for the same endpoint
-//     is refreshed or skipped, never duplicated, so scans no longer pile
-//     up identical proposals on every cadence tick.
-//
-// The downstream sequence inside `processDriftSignal`:
-//
-//   1. Render the drift diff for the LLM.
-//   2. Load the most recent `execution_fixtures` row for the
-//      connector/endpoint (if any).
-//   3. Bounded repair loop — up to MAX_REPAIR_ATTEMPTS turns of
-//      LLM repair -> classifier -> fixture dry-run; rejections fold
-//      back into `previous_attempts` so the model revises rather
-//      than re-emits.
-//   4. Resolve the tenant/workflow policy.
-//   5. Decide auto-apply (gated by `options.allowAutoApply`).
-//   6. Persist `patch_candidates` row (status='proposed') + audit
-//      `PATCH_CANDIDATE_PROPOSED` + outbox event `patch.proposed`.
-//   7. Optionally auto-apply (writes a new `workflow_versions` row
-//      and an `auto_applied` audit row) when allowed AND all gates
-//      pass.
-//
-// Every decision fires a log line so operators can replay the path
-// from pg-boss telemetry alone. Audit rows are written for the four
-// enumerated lifecycle events in docs/19.
-
 import { and, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -89,75 +47,31 @@ export interface SelfHealingResult {
 }
 
 export interface RunSelfHealingParams extends WorkflowRepairJob {
-  /**
-   * Tests supply a synthetic step snapshot so they don't have to
-   * write a full `execution_steps` row. Production callers leave
-   * this undefined — the service pulls the row by id.
-   */
   step_snapshot?: FailingStepSnapshot;
 }
 
-/**
- * Which subsystem produced the signal. Recorded on the persisted
- * Patch Candidate (inside the `diff` JSONB) so audit consumers can
- * filter "patches born from reactive failures" vs "patches born from
- * a proactive scan" without joining back through pg-boss logs.
- */
 export type SignalSource = "reactive" | "proactive_scheduler" | "proactive_admin" | "proactive_mcp";
 
-/**
- * The full context required to turn a `DriftSignal` into a Patch
- * Candidate. Reactive callers populate every field from a failing-step
- * snapshot. Proactive callers (which have no real failing step)
- * synthesise `repair_input.failing_step_id` from the signal's anchor
- * resource and leave `dry_run_step` undefined so the fixture dry-run
- * gate is skipped — there is no concrete persisted step to patch.
- */
 export interface SignalContext {
   tenant_id: string;
   workflow_id: string;
   execution_id: string | null;
   step_id: string | null;
-  /** The DAG step the patch rewrites (`WorkflowDef.steps[].id`) — distinct
-   *  from `step_id`, which anchors the failing *execution* row. Proactive
-   *  callers have no execution row but do know the definition step, so
-   *  carrying it explicitly is what lets their patch apply instead of park. */
   workflow_step_id?: string | null;
   connector_id?: string | null;
   endpoint_key?: string | null;
   actor_id: string | null;
   source: SignalSource;
-  /** Set on proactive call paths so candidate rows can be traced
-   *  back to the originating `self_healing_scans` row. */
   scan_id?: string;
-  /** Input to the LLM repair flow. The `failing_step_id` slot must
-   *  carry a stable identifier — the persisted step id for reactive
-   *  callers, a `proactive:<kind>:<resource>` token for proactive
-   *  callers. The id is only used for prompt grounding + telemetry
-   *  metadata; the patch_candidates row is keyed on workflow_id. */
   repair_input: {
     failing_step_id: string;
     request?: unknown;
     response?: unknown;
   };
-  /** When present AND a fixture exists for the connector/endpoint,
-   *  the dry-run gate runs. Reactive callers always pass this from
-   *  the snapshot. Proactive callers leave it undefined: there is no
-   *  persisted step config to apply the patch to in-memory, so the
-   *  gate is skipped. */
   dry_run_step?: DryRunStep;
 }
 
 export interface ProcessSignalOptions {
-  /**
-   * When false, the function NEVER auto-applies the patch — the
-   * candidate is always persisted in `status='proposed'` regardless
-   * of classification, fixture dry-run, or policy. The operator-invoked
-   * admin HTTP + MCP scans pass false (an explicit scan parks for
-   * review). The reactive queue handler and the unattended scheduler
-   * tick pass true; the policy/classification/fixture gates then decide
-   * whether `autoApplyPatch` runs.
-   */
   allowAutoApply: boolean;
 }
 
@@ -168,20 +82,7 @@ export interface ProcessSignalResult {
   auto_applied: boolean;
   dry_run_passed: boolean | null;
   proposal: PatchProposal;
-  /**
-   * True only when this call INSERTED a fresh patch_candidates row.
-   * Dedup refreshes and terminal skips return false — callers that
-   * count "candidates created" must branch on this, not on the mere
-   * presence of a result (the scan runner's hourly "3 created" lines
-   * were dedup refreshes of one stuck candidate, masking a real outage).
-   */
   created: boolean;
-  /**
-   * Resolved tenant/workflow autoheal policy at the time the
-   * candidate was persisted. Surfaced on the return so callers
-   * (e.g. the reactive wrapper, queue handler log line) can include
-   * it in observability output without re-resolving.
-   */
   policy: import("./policy.ts").AutohealPolicy;
 }
 
@@ -210,21 +111,6 @@ async function loadFixture(
   return { id: row.id, request: row.request, response: row.response };
 }
 
-/**
- * Handle a proactive signal whose endpoint already has an active patch
- * candidate. Returns a `ProcessSignalResult` that the caller short-
- * circuits on, or `null` to fall through to the full repair pipeline
- * (only when the existing row is unusable — no stored proposal).
- *
- *   - `applied`  → the fix is already in place; skip silently (no LLM,
- *                  no version churn). Re-applying every hour would
- *                  rotate the workflow version endlessly.
- *   - `proposed` → refresh `updated_at` so the candidate reflects the
- *                  still-live drift, then re-evaluate auto-apply against
- *                  the current policy. A `safe` candidate that was
- *                  parked under the old never-auto-without-fixture rule
- *                  now auto-applies here.
- */
 async function refreshOrSkipExistingCandidate(
   db: Db,
   existing: typeof patchCandidates.$inferSelect,
@@ -235,19 +121,9 @@ async function refreshOrSkipExistingCandidate(
   const proposal = diff.proposal as PatchProposal | undefined;
   if (!proposal) return null;
 
-  // `existing` is already guaranteed (by findActiveEndpointCandidate) to be
-  // the candidate that heals THIS drift's fingerprint — a genuinely new drift
-  // shape on the same endpoint never reaches here, so this dedup can
-  // never mask new breakage.
   const policy = await resolvePolicy(ctx.tenant_id, ctx.workflow_id, db);
 
   if (existing.status === "applied") {
-    // Reactive recurrence of a drift an applied patch was supposed to
-    // heal is EVIDENCE THE PATCH DIDN'T WORK — the workflow just failed
-    // again with the same fingerprint. Fall through to a fresh proposal
-    // instead of skipping, or the failed fix silently suppresses all
-    // future repair. (Proactive scans keep the skip: they re-diff
-    // unchanged recorded state, which proves nothing about the fix.)
     if (ctx.source === "reactive") {
       logger.warn({
         module: "self-healing",
@@ -261,14 +137,6 @@ async function refreshOrSkipExistingCandidate(
       });
       return null;
     }
-    // an already-healed endpoint re-diffs the same two schema_versions
-    // rows on EVERY proactive scan (the applied patch heals the workflow but
-    // does not rewrite the observed schema), so this short-circuit fires
-    // hourly per healed endpoint while the drift is UNCHANGED (the fingerprint
-    // guard above already let genuinely new drift through). That is the dedup
-    // working as designed — an expected, idempotent, non-actionable outcome —
-    // so it logs at DEBUG, not INFO: at INFO it flooded the operator log
-    // (24×/day) and buried signals that actually need attention.
     logger.debug({
       module: "self-healing",
       action: "patch.already_applied",
@@ -292,8 +160,6 @@ async function refreshOrSkipExistingCandidate(
     };
   }
 
-  // status === 'proposed' — proactive scans never have a fixture, so
-  // the auto-apply decision rests solely on classification + policy.
   const wouldAutoApply = shouldAutoApply({
     policy,
     classification: existing.classification,
@@ -302,8 +168,6 @@ async function refreshOrSkipExistingCandidate(
   });
   const autoApply = options.allowAutoApply && wouldAutoApply;
 
-  // No `updated_at` bump (it kept undecidable rows looking active forever):
-  // a candidate the current version cannot take is closed, never parked.
   let closed = false;
   const appliedVersionId = await db.transaction(async (tx) => {
     const outcome = autoApply
@@ -386,23 +250,6 @@ async function refreshOrSkipExistingCandidate(
   };
 }
 
-/**
- * Turn a recognised drift signal into a persisted Patch Candidate.
- *
- * Reactive callers (the pg-boss `workflow.repair` handler) pass
- * `allowAutoApply: true` and the existing classification + fixture +
- * policy gates decide whether the patch auto-applies.
- *
- * Proactive callers (scheduler tick, admin POST, MCP) pass
- * `allowAutoApply: true` as well now — the relaxed policy auto-applies
- * `safe` rename/widening patches even without a fixture, so a clean
- * proactive drift heals itself instead of parking forever. Before any
- * LLM work, a proactive signal that already has an active candidate for
- * the same endpoint is short-circuited: an `applied` candidate means
- * the fix is already in place (skip), a `proposed` one is refreshed in
- * place and re-evaluated for auto-apply (no duplicate row, no repeat
- * LLM spend). This is what stops the hourly patch_candidates flood.
- */
 export async function processDriftSignal(
   signal: DriftSignal,
   ctx: SignalContext,
@@ -429,12 +276,6 @@ async function processDriftSignalLocked(
   db: Db,
   baseVersionId: string | null,
 ): Promise<ProcessSignalResult> {
-  // Endpoint idempotency guard — for EVERY source. Proactive scans
-  // re-fire on a cadence against unchanged recorded state; reactive
-  // failures re-fire on every scheduled run of a still-broken workflow
-  // (a sustained outage is one drift, not one drift per failure). The
-  // fingerprint match inside both lookups lets a genuinely NEW drift
-  // shape on the same endpoint fall through to a fresh proposal.
   const existing = await findActiveEndpointCandidate(db, {
     tenant_id: ctx.tenant_id,
     workflow_id: ctx.workflow_id,
@@ -491,9 +332,6 @@ async function processDriftSignalLocked(
     db,
   );
 
-  // Bounded repair loop. The LLM may need to revise — fold each
-  // rejection back into prior_failures so the next attempt is not a
-  // near-duplicate.
   const rejectionChain: Array<{
     attempt: number;
     classification: "safe" | "unsafe";
@@ -559,9 +397,6 @@ async function processDriftSignalLocked(
       source: ctx.source,
     });
 
-    // Fixture dry-run gate. Skipped entirely when the caller has no
-    // concrete DryRunStep (proactive scans) or when no fixture row
-    // exists for the connector/endpoint.
     dryRunOk = false;
     dryRunError = undefined;
     if (fixture && ctx.dry_run_step) {
@@ -657,17 +492,10 @@ async function processDriftSignalLocked(
 
   let closed = false;
   const txOut = await db.transaction(async (tx) => {
-    // Only stamp `fixture_id` when the dry-run gate actually ran against this
-    // fixture. Proactive scans load the fixture (so connector+endpoint match a
-    // recorded one) but skip the gate because they have no concrete persisted
-    // step to apply the patch to in-memory — stamping the id would mislead
-    // operators into thinking the patch was dry-run-validated.
     const gatedFixtureId = fixture && ctx.dry_run_step ? fixture.id : null;
     const persisted = await persistPatchCandidate(tx, {
       tenant_id: ctx.tenant_id,
       workflow_id: ctx.workflow_id,
-      // Endpoint anchor for the refresh-or-skip dedup on the next proactive
-      // scan. Null for workflow-scoped signals.
       connector_id: ctx.connector_id ?? null,
       endpoint_key: ctx.endpoint_key ?? null,
       classification: decision.classification,
@@ -682,14 +510,10 @@ async function processDriftSignalLocked(
           ok: dryRunOk,
           error: dryRunError ?? null,
           fixture_id: fixture?.id ?? null,
-          // Records that we never even ran the gate — useful when operators
-          // read the candidate diff and wonder why dry_run.ok is false.
           skipped: !ctx.dry_run_step || !fixture,
         },
         policy,
         step_id: ctx.step_id,
-        // The definition anchor the apply path rewrites. Persisted next to
-        // the execution anchor so approving never has to guess the step.
         workflow_step_id: ctx.workflow_step_id ?? null,
         execution_id: ctx.execution_id,
         source: ctx.source,
@@ -774,9 +598,6 @@ async function processDriftSignalLocked(
       classification: decision.classification,
       decision: auto_applied ? "auto_applied" : "parked",
     });
-  // Opening edge of the Run → Drift → Patch → Skill loop (docs/concepts/workflows.md):
-  // a drift signal just became a Patch Candidate. Tenant-scoped sibling of the
-  // tenant-less patch_candidates_total above.
   recordLoopDriftToPatchCandidate({
     tenant_id: ctx.tenant_id,
     classifier: decision.classification,
@@ -815,8 +636,6 @@ export async function runSelfHealingLoop(
 ): Promise<SelfHealingResult> {
   const db = exec ?? getDb();
 
-  // 1. Pull the failing step snapshot (or use the one the caller
-  // handed us directly — tests do this to avoid seeding noise).
   let snapshot: FailingStepSnapshot | null = params.step_snapshot ?? null;
   if (!snapshot && params.step_id) {
     snapshot = await loadStepSnapshot(params.tenant_id, params.step_id, db);
@@ -833,7 +652,6 @@ export async function runSelfHealingLoop(
     return emptyResult("no step snapshot available");
   }
 
-  // 2. Pull the last known shape for the connector/endpoint, if any.
   let lastShape = null;
   if (params.connector_id && params.endpoint_key) {
     const requestConnector =
@@ -852,7 +670,6 @@ export async function runSelfHealingLoop(
     );
   }
 
-  // 3. Drift detection.
   const signal = analyzeStepFailure(snapshot, lastShape);
   if (!signal) {
     logger.info({
@@ -874,14 +691,6 @@ export async function runSelfHealingLoop(
     drift_kind: signal.kind,
   });
 
-  // Unpatchable semantic failure: the failing step produced NO output
-  // (`output_preview === null`) — a broken scrape, a dead upstream, an
-  // auth wall. No workflow-DEFINITION patch can fix a null runtime output,
-  // and the repair LLM correctly refuses every attempt. Short-circuit here
-  // so the job does not throw-and-retry (which spammed 4 error-level logs
-  // per broken run) and burns no repair tokens; surface it as a review
-  // item and exit gracefully. The failed execution itself stays visible in
-  // `sk review` / executions for the operator to fix at the source.
   if (snapshot.output_preview === null) {
     logger.warn({
       module: "self-healing",

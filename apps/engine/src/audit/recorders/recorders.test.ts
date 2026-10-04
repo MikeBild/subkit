@@ -1,17 +1,3 @@
-// Recorder catalog test.
-//
-// Walks every typed recorder, calls it against a real test database,
-// and asserts the persisted `audit_log` row carries:
-//   - the expected `action` enum value,
-//   - a non-null `reason`,
-//   - the expected resource type / id,
-//   - secrets scrubbed from metadata (cross-check with the audit
-//     writer's `scrubSecrets` integration).
-//
-// This is the compile-time-typed contract the call sites depend on:
-// if a recorder ever drops a field, the test catches it long before
-// an operator runs a forensic SELECT and finds half the rows blank.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -182,30 +168,6 @@ describe("recorder catalog — connector", () => {
       conversation_id: "conv-credreject",
       matched_key_path: "config.headers.Authorization",
     });
-    // This is the one recorder in the catalog that goes through `audit()`
-    // rather than `auditAwait()`, so it returns synchronously while the row is
-    // still being written. Every other test in this file simply awaits its
-    // recorder.
-    //
-    // It used to poll: up to twenty re-reads, each preceded by a microtask
-    // yield. That does wait — every re-read is a real round trip — but it waits
-    // for a BOUNDED number of them, and the bound is not tied to anything the
-    // write does. On CI the fire-and-forget insert had not landed inside that
-    // budget, `row` stayed undefined, and the assertion reported the action as
-    // missing. Observed 2026-08-06 on a commit touching only CHANGELOG.md,
-    // package.json and a regenerated client — nothing within reach of this
-    // subsystem.
-    //
-    // Stated honestly: the failure did not reproduce locally, under CPU load or
-    // otherwise, so exactly which part of that budget CI exhausted is an
-    // inference. It does not need to be settled, because the fix removes the
-    // budget rather than enlarging it.
-    //
-    // `_drainAuditWritesForTests` exists for this and six other suites use it.
-    // It awaits the write promise itself — `audit()` registers that promise
-    // synchronously before returning, so a drain always covers the call above.
-    // Deterministic rather than usually-long-enough, and with no setTimeout for
-    // the determinism gate to reject.
     await _drainAuditWritesForTests(testDb.db);
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.CONNECTOR_DRAFT_CREDENTIAL_REJECTED);
@@ -214,7 +176,6 @@ describe("recorder catalog — connector", () => {
     expect((row!.metadata as Record<string, unknown>).matched_key_path).toBe(
       "config.headers.Authorization",
     );
-    // Verify the matched value is NOT recorded — only the path is safe.
     const meta = JSON.stringify(row?.metadata);
     expect(meta).not.toMatch(/dop_v1_|Bearer /);
   });
@@ -431,9 +392,6 @@ describe("recorder catalog — policy", () => {
 });
 
 describe("recorder catalog — engine_update", () => {
-  // Engine-update rows always land under SYSTEM_TENANT_ID; the recorder
-  // hard-codes tenant + actor so the param shape can't drift into a
-  // remote-mutation surface. Tests assert exactly that contract.
   const FIXED_HEX = "a".repeat(64);
 
   test("recordEngineUpdateInitiated lands under SYSTEM_TENANT_ID with the system actor", async () => {
@@ -447,9 +405,6 @@ describe("recorder catalog — engine_update", () => {
     const row = await fetchRow(entry.id);
     expect(row?.action).toBe(AuditAction.ENGINE_UPDATE_INITIATED);
     expect(row?.tenant_id).toBe(SYSTEM_TENANT_ID);
-    // Actor is `system` (process-level mutation, no system_accounts row
-    // backing it); `request_source` in metadata is the canonical way
-    // an operator separates self-update vs rollback.
     expect(row?.actor_type).toBe("system");
     expect(row?.actor_id).toBeNull();
     expect(row?.result).toBe("success");
@@ -460,8 +415,6 @@ describe("recorder catalog — engine_update", () => {
     expect(meta.channel).toBe("stable");
     expect(meta.request_source).toBe("self-update");
     expect(meta.sha256).toBe("");
-    // The retired `actor: "cli"` literal must not have leaked back in
-    // (it would invite drift into a remote-mutation surface).
     expect(meta.actor).toBeUndefined();
   });
 
@@ -495,15 +448,10 @@ describe("recorder catalog — engine_update", () => {
     expect(row?.result).toBe("error");
     expect(row?.reason).toBe("checksum mismatch for engine_linux_x64");
     const meta = row?.metadata as Record<string, unknown>;
-    // Pre-download FAILED → empty sha256 default
     expect(meta.sha256).toBe("");
   });
 
   test("recordEngineUpdateRolledBack hard-codes request_source=rollback", async () => {
-    // The param shape Omit<EngineUpdateBase, "request_source">; passing
-    // request_source here is a compile error. The metadata always lands
-    // with `request_source: "rollback"` because that's what the action
-    // name (ENGINE_UPDATE_ROLLED_BACK) means.
     const entry = await recordEngineUpdateRolledBack({
       executor: testDb.db,
       from_version: "4.3.0",
@@ -533,15 +481,6 @@ describe("recorder catalog — engine_update", () => {
 });
 
 describe("recorder catalog — oauth_client (RFC 7591)", () => {
-  // The dynamic-registration audit row is the only paper trail for a
-  // client_id+client_secret that the engine minted on behalf of an
-  // operator. The metadata shape is cardinality-bound:
-  //   - `issuer_url_host` is host-only (never full URL, never path)
-  //   - `registration_endpoint_host` is host-only or null when the
-  //     failure happened before discovery resolved an endpoint
-  //   - `error_code` is REQUIRED on failure rows so a forensic SELECT
-  //     can pivot on it without re-parsing free-form reasons.
-
   test("recordOAuthClientRegistered persists host-only metadata under the tenant", async () => {
     const entry = await recordOAuthClientRegistered({
       tenant_id: tenantId,
@@ -560,8 +499,6 @@ describe("recorder catalog — oauth_client (RFC 7591)", () => {
     const meta = row?.metadata as Record<string, unknown>;
     expect(meta.issuer_url_host).toBe("auth.example.com");
     expect(meta.registration_endpoint_host).toBe("auth.example.com");
-    // No path / scheme / query smuggled in. Anything that smells like
-    // a full URL leaked through the validator and we want to know.
     expect(String(meta.issuer_url_host)).not.toContain("/");
     expect(String(meta.issuer_url_host)).not.toContain("://");
   });
@@ -583,22 +520,12 @@ describe("recorder catalog — oauth_client (RFC 7591)", () => {
     const meta = row?.metadata as Record<string, unknown>;
     expect(meta.error_code).toBe("registration_http_401");
     expect(meta.issuer_url_host).toBe("auth.example.com");
-    // Null endpoint means discovery never resolved one — the row must
-    // still land, with the field explicitly null (not absent / empty).
     expect(meta.registration_endpoint_host).toBeNull();
   });
 });
 
 describe("recorder catalog — coverage matrix", () => {
   test("every recorder write lands a row with non-null reason and the canonical action", async () => {
-    // Aggregate sanity: enumerate every action this PR's recorders
-    // emit, fetch the rows we just inserted, and assert the row count
-    // for each (kind, reason) pair is at least 1. The query unions
-    // both tenant scopes (the per-suite `tenantId` for tenant-scoped
-    // recorders and `SYSTEM_TENANT_ID` for the engine_update family,
-    // which is process-level not tenant-scoped) so a regression that
-    // drops e.g. `recordEngineUpdateInitiated` is caught here, not in
-    // production.
     const rows = await testDb.db.execute(
       sql`SELECT action, reason, metadata FROM audit_log
           WHERE tenant_id = ${tenantId}::uuid
@@ -631,21 +558,11 @@ describe("recorder catalog — coverage matrix", () => {
       AuditAction.ENGINE_UPDATE_COMPLETED,
       AuditAction.ENGINE_UPDATE_FAILED,
       AuditAction.ENGINE_UPDATE_ROLLED_BACK,
-      // OAuth client registration (RFC 7591) recorders deliberately
-      // emit rows with `reason: null` — the structured `error_code`
-      // field in metadata is the canonical pivot for forensic SELECTs.
-      // The coverage matrix below requires non-null reasons, so these
-      // actions are intentionally absent from this set and are
-      // exercised by their own describe block above.
     ]);
     const seen = new Set(list.map((r) => r.action));
     for (const expected of expectedActions) {
       expect(seen.has(expected)).toBe(true);
     }
-    // Every row must carry a non-null reason — that is the contract.
-    // RFC 7591 oauth_client.* rows are intentional exceptions: they
-    // pivot on the structured `error_code` field in metadata rather
-    // than a free-form reason, so they are filtered out here.
     const blankReason = list.filter(
       (r) =>
         (r.reason === null || r.reason === "") &&

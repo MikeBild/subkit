@@ -2,13 +2,8 @@ import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-/** The section label style (§4): small and muted, never an h2 look. */
 export const SECTION_LABEL = "text-xs font-medium text-muted-foreground";
 
-/**
- * A block of a tab (P10). The label is optional: a tab with a single section
- * shows none, and a label never repeats the tab's name or the h1.
- */
 export function Section({
   label,
   aside,
@@ -37,7 +32,6 @@ export function Section({
   );
 }
 
-/** The "rest, collapsed" block of a tab (P10). */
 export function CollapsibleSection({
   label,
   count,

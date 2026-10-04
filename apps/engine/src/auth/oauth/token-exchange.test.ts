@@ -1,6 +1,3 @@
-// Unit tests for the RFC 8693 token-exchange helpers: scope narrowing, TTL
-// cap, refusal codes, token shape and the CLI argument parser. No database.
-
 import { describe, expect, test } from "bun:test";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -135,11 +132,6 @@ describe("applyTokenGrants", () => {
 
 describe("token shape", () => {
   test("verify accepts only our typ + issuer, signed with the MASTER_KEY-derived secret", async () => {
-    // Sign with the secret THIS process resolves. The env facade parses
-    // MASTER_KEY once per process and caches it, so a test must never set
-    // process.env.MASTER_KEY — it would silently re-key every later suite in
-    // the same run (the CLI end-to-end test spawns a child that inherits the
-    // restored value and then fails to verify against the cached one).
     const secret = deriveTokenExchangeSecret();
     const claims = { tenant_id: "t1", api_key_id: "k1", key_version: "abc", scope: "a" };
     const good = await new jose.SignJWT(claims)

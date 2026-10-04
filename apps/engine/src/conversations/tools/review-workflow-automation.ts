@@ -7,24 +7,11 @@ import { resolvePublicBaseUrl } from "./usage-guidance.ts";
 
 const Input = z.object({ workflow_id: z.string().uuid() });
 
-/**
- * Whether this surface renders the review card. The cockpit chat does; an MCP
- * client, the CLI and external chat platforms have no such card, so the person
- * reaches the same review out of band, on the workflow's cockpit page.
- */
 function rendersReviewCard(surface: ToolContext["surface"]): boolean {
   return surface === undefined || surface === "web";
 }
 
-/**
- * The review a person acts on: the workflow's automatic starts and the saved
- * change waiting to be applied. One builder for the review tool and for the
- * run refusal that promises this review, so the two cannot disagree.
- */
 export async function buildAutomationReview(ctx: ToolContext, workflow_id: string) {
-  // Hooks carry their own read permission, and a refusal's reason is
-  // audit-log content — the same two probes the automation-status route
-  // makes. No principal means nobody to grant the audit read to.
   const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
   const allowed = async (permission: "schedule:read" | "inbound_hook:read" | "audit:read") =>
     principal
@@ -36,13 +23,7 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
       : {}),
   });
   if (!inspected) return null;
-  // The run refusal reaches here on `workflow:run` alone; schedules stay behind
-  // their own read permission, as on the tool's own gate.
   const review = (await allowed("schedule:read")) ? inspected : { ...inspected, schedules: [] };
-  // A card with no rows renders as nothing. Ending the turn on it left the
-  // side chat empty; with nothing to show, the model answers instead. A saved
-  // change waiting to be applied IS something to show — with or without a
-  // schedule — and the card is the only place a person applies it.
   const hasContent =
     review.schedules.length + (review.inbound_hooks?.length ?? 0) > 0 ||
     review.saved_change !== null;
@@ -62,7 +43,6 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
   };
 }
 
-/** Read-only handoff to the existing exact-version browser review. */
 export const reviewWorkflowAutomationTool: ConversationTool = {
   name: "review_workflow_automation",
   description:

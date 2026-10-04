@@ -1,7 +1,3 @@
-// An external MCP tool approval as the reader sees it: the question is ours,
-// and what the remote server says about its own tool reads as the server's
-// claim — a server may title a destructive tool "Read-only (safe)".
-
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type Locale, translate } from "@/lib/i18n";

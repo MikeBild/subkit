@@ -1,13 +1,3 @@
-// Pure-function tests for template-binding.ts.
-//
-// Locks the precedence rules every connector resolves through:
-//
-//   probe_endpoint   →  config.probe_endpoint  ?? snapshot.probe_endpoint  ?? null
-//   capabilities     →  config.capabilities    ?? snapshot.capabilities    ?? null
-//   snapshot parse   →  ConnectorTemplateSchema  (returns null on failure,
-//                       not throws — the connector boots even with a
-//                       garbled snapshot)
-
 import { describe, expect, test } from "bun:test";
 import {
   getConnectorCapabilities,

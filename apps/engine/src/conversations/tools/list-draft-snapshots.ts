@@ -1,7 +1,3 @@
-// `list_draft_snapshots` — show the operator the snapshot history for
-// the active conversation. Read-only; pairs with
-// `restore_draft_snapshot` for the rollback flow.
-
 import { z } from "@hono/zod-openapi";
 import { listDraftSnapshots } from "../draft-checkpoints.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";

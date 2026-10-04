@@ -1,23 +1,6 @@
-// Matrix coverage for the sk CLI overhaul.
-//
-// Each test is one row in the e2e matrix. Tests skip cleanly when
-// `dist/sk` or `expect(1)` are missing; the live engine is booted via
-// `boot()` and shared across the suite.
-//
-// Some scenarios are bounded checks (binary smoke + drive a single
-// expect step); others script multi-step flows. All run against the
-// real engine + Postgres + RBAC + audit so we catch regressions the
-// unit-only paths miss.
-//
-// The two PTY templates in `sk-overhaul-cold-start.e2e.test.ts` cover
-// boot and Ctrl+C; this file fills the rest.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { HAS_SK_BIN, runPtyScenario, SKIP_PTY } from "./_helpers/pty.ts";
 import { boot, cli, type E2EEnv, expectSuccess, shutdown } from "./setup.ts";
-
-// `HAS_SK_BIN` + `SKIP_PTY` come from _helpers/pty.ts — the single source of
-// truth so `expect`-missing fails loudly in CI instead of silently skipping.
 
 let env: E2EEnv | null = null;
 
@@ -36,9 +19,6 @@ const E = (): E2EEnv => {
 };
 
 describe("e2e matrix: sk CLI overhaul (live engine)", () => {
-  // ----- login flows -----
-  // Only rows needing a dedicated auth provider/token harness remain
-  // todos. Rows with enough local fixtures are asserted directly here.
   test.todo("device login renders the auth flow chrome — needs device-flow mock harness");
 
   test.skipIf(!HAS_SK_BIN)("api-key login stores a usable profile", async () => {
@@ -97,7 +77,6 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     expect(body.status).toBe("completed");
   });
 
-  // ----- slash matrix -----
   test.skipIf(SKIP_PTY)(
     "admin persona sees /audit suggestion",
     async () => {
@@ -106,7 +85,7 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
           { kind: "send", text: "/au" },
           { kind: "sleep", ms: 100 },
-          { kind: "send", text: "\x03" }, // Ctrl+C cancel
+          { kind: "send", text: "\x03" },
           { kind: "send", text: "\x03" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
@@ -136,7 +115,6 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
 
   test.todo("enduser persona renders welcome hint — needs frame-text capture in PTY harness");
 
-  // ----- onboarding -----
   test.skipIf(SKIP_PTY)(
     "onboarding template entry point boots",
     async () => {
@@ -167,7 +145,6 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  // ----- workflow run + settings -----
   test.skipIf(SKIP_PTY)(
     "workflow run inspect step boots",
     async () => {
@@ -198,13 +175,9 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  // ----- error paths -----
   test.skipIf(SKIP_PTY)(
     "provider-quota error renders ErrorPanel",
     async () => {
-      // Error rendering is asserted in apps/sk/src/tests/error-panel.
-      // Here we just smoke-test that the binary boots against the
-      // configured engine + persona.
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
@@ -220,7 +193,6 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
   test.skipIf(SKIP_PTY)(
     "network drop surfaces a friendly error",
     async () => {
-      // Hit a closed port to provoke a transport error.
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
@@ -251,16 +223,12 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
     20_000,
   );
 
-  // ----- terminal control -----
   test.skipIf(SKIP_PTY)(
     "resize during boot doesn't corrupt the frame",
     async () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
-          // Send a SIGWINCH-equivalent character pattern; harness can't
-          // emit SIGWINCH directly, so we just assert the binary tolerates
-          // a quick sequence of input + EOF.
           { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },

@@ -115,7 +115,6 @@ async function fixture(
           scope: "write",
         },
         oauth2_refresh_token: "refresh-fixture",
-        // Fresh enough for admission, but inside the inline refresh lead window.
         oauth2_expires_at: new Date(Date.now() + 30_000), // allow-wall-clock: actual OAuth refresh deadline
       },
       db,
@@ -159,8 +158,6 @@ async function fixture(
   );
   expect(preview.eligible_for_repeated_runs).toBe(true);
   const now = await databaseNow(db);
-  // Human consent is covered by the grant service and HTTP tests. Install
-  // its exact server-resolved result here to exercise real outbound dispatch.
   const [authority] = await db
     .insert(workflowExecutionAuthorities)
     .values({
@@ -249,9 +246,6 @@ test("revocation after the first write prevents the next step from reaching the 
   const result = await f.run();
   expect(result.status).toBe("failed");
   expect(result.steps[0]?.status).toBe("succeeded");
-  // The code the runtime actually used, not the blanket one it used to be
-  // rewritten to. A step row that says `authority_invalid` writes no governance
-  // audit row, because that code is not one the refusal set knows.
   expect(result.steps[1]?.error).toMatchObject({ code: "execution_authority_unavailable" });
   expect(requests).toBe(1);
 });
@@ -338,7 +332,6 @@ test("an http boundary refuses an unreviewed target or an oversize body before a
   });
   const target = await fixture("http", 1, false, bounded);
   expect((await target.run({ site: "alpha", ids: ["a"] })).status).toBe("succeeded");
-  // The connector's base path survives: review and dispatch resolve alike.
   expect(reached).toEqual(["POST /endpoint/sites/alpha/releases"]);
   const elsewhere = await target.run({ site: "beta", ids: ["a"] });
   expect(elsewhere.status).toBe("failed");
@@ -350,16 +343,11 @@ test("an http boundary refuses an unreviewed target or an oversize body before a
   expect(oversize.status).toBe("failed");
   expect(oversize.steps[0]?.error).toMatchObject({ code: "request_outside_declared_boundary" });
   expect(reached).toHaveLength(1);
-  // The same grant still admits what was reviewed.
   expect((await size.run({ site: "alpha", ids: ["b"] })).status).toBe("succeeded");
   expect(reached).toHaveLength(2);
 });
 
 test("the granted boundary is checked again at dispatch, independently of the step's own check", async () => {
-  // A step is already held to the boundary it declares before anything is
-  // sent. The granted manifest is the binding statement, though, so the
-  // authority hook judges the materialized request a second time — reachable
-  // here only by handing it the request directly.
   const f = await fixture("http", 1, false, {
     method: "POST",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: runtime target boundary fixture

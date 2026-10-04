@@ -1,16 +1,3 @@
-// Template matching by URL.
-//
-// Complements the text-scoring match in `connector-template-intelligence.ts`.
-// When the operator pastes a concrete API URL (e.g.
-// `https://api.stripe.com/v1/charges`), we compile every template's
-// `url_pattern` into a RegExp and return the best match. "Best" means:
-// 1) the pattern matched,
-// 2) highest specificity + matched-segment-length score,
-// 3) deterministic slug-alphabetical tie-break.
-//
-// The compiled cache lives in `templates.ts` (`loadCompiledTemplates`); this
-// module only ranks and filters.
-
 import type { ConnectorTemplate } from "./templates.ts";
 import { loadCompiledTemplates } from "./templates.ts";
 
@@ -18,10 +5,6 @@ export interface TemplateUrlMatch {
   template: ConnectorTemplate;
   score: number;
   matched_segment: string;
-  /** Slim recipe summary surfaced into the LLM context when this match
-   *  wins. Just the slug + title + intent_keywords — never the full
-   *  workflow, which is fetched on demand by `start_workflow_from_recipe`.
-   *  Empty when the template ships no recipes. */
   recipes: ReadonlyArray<{
     slug: string;
     title: string;
@@ -56,7 +39,6 @@ function rank(rawUrl: string, templates?: ConnectorTemplate[]): TemplateUrlMatch
   const compiled = templates ? compileTemplates(templates) : loadCompiledTemplates();
   const out: TemplateUrlMatch[] = [];
   for (const { template, urlRe, specificity } of compiled) {
-    // Templates without a url_pattern are unreachable via URL match.
     if (!urlRe) continue;
     const m = urlRe.exec(rawUrl);
     if (!m) continue;
@@ -90,26 +72,17 @@ function looksLikeUrl(s: string): boolean {
   }
 }
 
-/**
- * Return the single best template for a raw URL, or null when no template
- * matches. Invalid URLs return null.
- */
 export function matchTemplateByUrl(
   rawUrl: string,
   templates?: ConnectorTemplate[],
 ): TemplateUrlMatch | null {
   if (!looksLikeUrl(rawUrl)) {
-    // Allow postgres DSNs too — they are not URL objects, but
-    // templates may have url_pattern starting with `^postgres:`.
     if (!/^[a-z][a-z0-9+\-.]*:\/\//.test(rawUrl)) return null;
   }
   const matches = rank(rawUrl, templates);
   return matches[0] ?? null;
 }
 
-/**
- * Return up to `limit` best matches for a raw URL, sorted by score desc.
- */
 export function matchTemplatesByUrl(
   rawUrl: string,
   limit = 5,

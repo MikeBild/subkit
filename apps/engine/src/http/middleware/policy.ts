@@ -1,7 +1,3 @@
-// Policy middleware — thin wrapper around auth/policy.checkRoute that
-// throws a typed HTTP error and writes a denied audit row. Routes call
-// `enforcePolicy(c, principal, decision, {resource_type, resource_id})`.
-
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { PolicyDecision, ResolvedPrincipal } from "../../auth/types.ts";

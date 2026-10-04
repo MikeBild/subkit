@@ -1,28 +1,3 @@
-// `@` mention resolver.
-//
-// The REPL composer and the headless driver both call `resolveMentions`
-// on a raw user prompt. Supported mention kinds:
-//
-//   @path/to/file                  — inline file contents (cwd-scoped)
-//   @workflow:<slug|uuid>          — fetch workflow JSON from the engine
-//   @execution:<id>                — fetch execution detail
-//   @connector:<slug|uuid>         — fetch connector detail
-//   @skill:<id>                    — fetch skill body
-//   @skill-candidate:<id>          — fetch skill-candidate record
-//   @patch-candidate:<id>          — fetch patch-candidate record
-//   @api-key:<id>                  — fetch API-key metadata
-//   @user:<id>                     — fetch user record
-//   @audit:<id>                    — fetch audit-log entry
-//
-// All entity mentions auto-invoke the matching generated read tool on
-// the engine side (via HTTP GET paths); the LLM sees the resolved
-// payload pinned in the prompt as an appendix before the turn begins.
-//
-// File reads are confined to cwd and any `additionalDirectories` the
-// user declares in settings. Path-traversal attempts (`..`) are
-// rejected. Files larger than `maxInlineMentionBytes` are truncated
-// with a visible marker.
-
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { EngineClient } from "./engine-client.ts";
@@ -34,7 +9,6 @@ export interface MentionResolveOptions {
   client?: EngineClient;
 }
 
-/** A reference the engine resolves itself, once per turn. */
 export interface ConversationReference {
   type: "workflow" | "connector";
   id: string;
@@ -42,33 +16,17 @@ export interface ConversationReference {
 }
 
 export interface ResolvedMentions {
-  /** The prompt with mention markers replaced by human-readable references. */
   prompt: string;
-  /** Inlined artifacts keyed by the original mention string. */
   artifacts: Array<{ mention: string; title: string; body: string }>;
-  /**
-   * Structured references travelling beside the text.
-   *
-   * A workflow or a connector is named rather than pasted: the engine resolves
-   * it fresh on every turn, projects it, and budgets it. The alternative —
-   * inlining the whole GET payload into the message, which is what this did —
-   * is stored on the user row and replayed in full on every later turn, so one
-   * mention of a large object becomes permanent context for the rest of the
-   * conversation, and a deleted object stays in the transcript as though it
-   * still existed.
-   */
   references: ConversationReference[];
-  /** Warnings surfaced during resolution (oversized, not-found, denied). */
   warnings: string[];
 }
 
-/** Mention kinds the engine can resolve for itself. */
 const REFERENCE_KINDS: Record<string, ConversationReference["type"]> = {
   workflow: "workflow",
   connector: "connector",
 };
 
-/** The engine's label charset; anything else falls back to the written token. */
 const LABEL_OK = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 function referenceLabel(payload: Record<string, unknown>, written: string): string {
@@ -110,18 +68,9 @@ export async function resolveMentions(
     if (!ref || handled.has(full)) continue;
     handled.add(full);
 
-    // @workflow:slug | @execution:id — route to the engine.
     const [kind, rest] = ref.includes(":")
       ? [ref.slice(0, ref.indexOf(":")), ref.slice(ref.indexOf(":") + 1)]
       : [null, null];
-    // Entity mentions — each maps 1:1 onto a real engine GET path. The
-    // generated read-tool family on the engine shares the same Zod
-    // schemas and tenant scoping, so the payload surfaced here is
-    // equivalent to what the conversation tool would return.
-    //
-    // Paths verified against apps/engine/src/http/routes/*. identity/*
-    // endpoints live under `/v1/identity/...`; audit-log is a query
-    // endpoint (list with `?id=`), not a by-id path.
     const ENTITY_PATHS: Record<string, (id: string) => string> = {
       workflow: (id) => `/v1/workflows/${encodeURIComponent(id)}`,
       execution: (id) => `/v1/executions/${encodeURIComponent(id)}`,
@@ -143,8 +92,6 @@ export async function resolveMentions(
         const referenceType = REFERENCE_KINDS[kind];
         const id = payload.id;
         if (referenceType && typeof id === "string") {
-          // Name it and let the engine fetch it. The token stays in the text so
-          // the person still reads what they wrote.
           references.push({
             type: referenceType,
             id,
@@ -152,8 +99,6 @@ export async function resolveMentions(
           });
           continue;
         }
-        // Kinds the engine has no reference type for keep the inline copy;
-        // there is nothing on the other side to resolve them against yet.
         artifacts.push({
           mention: full,
           title: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} ${rest}`,
@@ -165,7 +110,6 @@ export async function resolveMentions(
       continue;
     }
 
-    // Otherwise treat as a file path.
     if (ref.includes("..")) {
       warnings.push(`${full}: path traversal rejected`);
       continue;
@@ -195,7 +139,6 @@ export async function resolveMentions(
     }
   }
 
-  // Append resolved artifacts to the prompt so the LLM can see them.
   let out = prompt;
   if (artifacts.length > 0) {
     const appendix = artifacts

@@ -1,6 +1,3 @@
-// Parser tests. Pure, no DB. Each case asserts concrete token shape or
-// an actual error code — no `toBeDefined` placeholder assertions.
-
 import { describe, expect, test } from "bun:test";
 import {
   collectTokenNames,
@@ -21,7 +18,6 @@ describe("parsePlaceholders — happy-path token shapes", () => {
     expect(t.path).toEqual(["secret_key"]);
     expect(t.raw).toBe(`\${cred.stripe.secret_key}`);
     expect(t.span.start).toBe(7);
-    // span.end is exclusive; token + opening prefix "Bearer " lands at index 32.
     expect(t.span.end).toBe(32);
     expect(`Bearer \${cred.stripe.secret_key}`.slice(t.span.start, t.span.end)).toBe(
       `\${cred.stripe.secret_key}`,
@@ -174,7 +170,6 @@ describe("parsePlaceholders — errors surface with spans", () => {
 
   test("nested braces produce an unclosed_placeholder error", () => {
     const r = parsePlaceholders(`\${cred.{nested}.x}`);
-    // still surfaces an error; we don't try to be clever about nesting.
     expect(r.errors.length).toBeGreaterThan(0);
   });
 });
@@ -183,7 +178,6 @@ describe("hasPlaceholders", () => {
   test(`returns true only for unescaped \${`, () => {
     expect(hasPlaceholders("plain text")).toBe(false);
     expect(hasPlaceholders(`x \${cred.a.b} y`)).toBe(true);
-    // An escaped placeholder alone should not count:
     expect(hasPlaceholders(`$\${cred.a.b}`)).toBe(false);
   });
 

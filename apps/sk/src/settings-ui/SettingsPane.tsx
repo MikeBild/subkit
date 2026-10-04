@@ -1,8 +1,3 @@
-// Embeddable variant of SettingsApp — runs inside an existing Ink
-// instance instead of mounting its own. Used by the REPL's /settings
-// slash so the modal renders alongside the transcript and inherits
-// REPL state (sessionId, permissionMode, token counters).
-
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -28,7 +23,6 @@ interface State {
   items: SettingLeafEntry[];
   pendingRestartKeys: string[];
   overrideKeys: string[];
-  /** Fetched lazily once sessionId is known. */
   fetchedSessionTitle?: string | null;
 }
 
@@ -118,9 +112,6 @@ export const SettingsPane: React.FC<SettingsPaneProps> = ({
   if (tenant !== undefined) props.tenant = tenant;
   if (initialTab !== undefined) props.initialTab = initialTab;
   if (sessionId !== undefined) props.sessionId = sessionId;
-  // The engine-fetched title beats the host-supplied placeholder when
-  // both exist; the host's value is only used during the brief
-  // pre-fetch interval.
   const resolvedTitle = state.fetchedSessionTitle ?? sessionTitle;
   if (resolvedTitle !== undefined) props.sessionTitle = resolvedTitle;
   if (permissionMode !== undefined) props.permissionMode = permissionMode;

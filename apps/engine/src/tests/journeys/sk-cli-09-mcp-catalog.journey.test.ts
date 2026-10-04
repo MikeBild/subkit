@@ -1,25 +1,3 @@
-// User story: As a client integration, I need the REST MCP catalog
-// endpoints (`/v1/mcp/prompts`, `/v1/mcp/resources`, `/v1/mcp/tools`)
-// to honor the `mcp:read` permission — admins and members get
-// them, endusers and portal-token principals are denied — and to
-// return shape-stable JSON envelopes that the `sk` CLI slash
-// picker consumes verbatim.
-//
-// Acceptance criteria:
-//
-//   AC1. Admin can GET all three endpoints and receive 200 +
-//        `items: []` (empty on a fresh tenant).
-//   AC2. Seeding a skill + connector causes /v1/mcp/prompts and
-//        /v1/mcp/resources to surface them, in catalog shape.
-//   AC3. /v1/mcp/tools returns the same MCP tool catalog `tools/list`
-//        serves — not the conversation loop's draft-only palette.
-//   AC4. A member user is allowed (has `mcp:read` via the built-in
-//        role), returns 200.
-//   AC5. An enduser user is denied (403) — endusers cannot
-//        introspect MCP in v1 of the sk rollout.
-//   AC6. A portal-token principal is also denied (403) — the
-//        evaluator's allowlist branch does not grant `mcp:read`.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { apiKeys, connectors, portalTokens, skills, users } from "../../db/schema/index.ts";
@@ -47,7 +25,6 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-09-mcp-catalog");
 
-    // Seed a member user with their own API key.
     const [member] = await ctx.db
       .insert(users)
       .values({
@@ -67,7 +44,6 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       scopes: ["*"],
     });
 
-    // Seed an enduser user + API key.
     const [enduser] = await ctx.db
       .insert(users)
       .values({
@@ -87,7 +63,6 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
       scopes: ["*"],
     });
 
-    // Seed a portal-token principal.
     const portalRand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     portalToken = `wf_portal_${portalRand}`;
     await ctx.db.insert(portalTokens).values({
@@ -158,22 +133,14 @@ describe("journey: sk-cli MCP catalog endpoints", () => {
   });
 
   test("AC3: /v1/mcp/tools returns the MCP tool catalog, not the authoring palette", async () => {
-    // This assertion was inverted: it required `author_workflow`,
-    // `save_workflow_draft` and `request_human_approval` — the authoring loop's
-    // draft-only intents, which the MCP surface omits on purpose. The route
-    // served them from a constant, so against production it and `tools/list`
-    // for the same principal shared not one name, 7 against 107.
     const res = await journeyFetch(ctx, "/v1/mcp/tools");
     expect(res.status).toBe(200);
     const body = (await res.json()) as { items: Array<{ name: string; input_shape: unknown }> };
     const names = new Set(body.items.map((i) => i.name));
 
-    // The retired constant must not come back.
     for (const retired of ["author_workflow", "save_workflow_draft", "request_human_approval"]) {
       expect(names.has(retired)).toBe(false);
     }
-    // And the catalog is really there: a tool every mode publishes, plus a
-    // populated `input_shape` — the field that was `null` on every entry.
     expect(names.has("list_recipes")).toBe(true);
     expect(body.items.some((i) => i.input_shape !== null)).toBe(true);
   });

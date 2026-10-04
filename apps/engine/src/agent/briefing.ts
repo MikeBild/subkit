@@ -1,14 +1,3 @@
-// Session briefing for external coding agents (Claude Code, Codex, …).
-//
-// A SessionStart hook calls `GET /v1/agent/briefing?domains=…` and injects the
-// returned markdown into the fresh session. The briefing carries the domain's
-// prescriptive conventions (skill bodies) plus a knowledge INDEX — full
-// documents stay behind `search_knowledge` so the session grounds by
-// lookup instead of preloading everything (context economy).
-//
-// Domain = tag convention `domain:<slug>` on skills and knowledge sources.
-// No new table: both rows already carry `tags text[]`.
-
 import type { Db } from "../db/client.ts";
 import { listKnowledgeSources } from "../knowledge/service.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
@@ -26,10 +15,8 @@ export const MAX_BRIEFING_BUDGET_TOKENS = 16000;
 
 export interface BriefingParams {
   tenant_id: string;
-  /** Domain slugs (without the `domain:` prefix). */
   domains: string[];
   budget_tokens: number;
-  /** Principal holds `knowledge:read`; without it the index section is omitted. */
   include_knowledge_index: boolean;
   db: Db;
 }
@@ -39,13 +26,9 @@ export interface BriefingResult {
   domains: string[];
   budget_tokens: number;
   used_tokens: number;
-  /** Skills whose full body made it into the markdown. */
   skills_full: string[];
-  /** Skills trimmed to a title-only pointer line to fit the budget. */
   skills_title_only: string[];
-  /** Knowledge sources listed in the index section. */
   knowledge_sources: string[];
-  /** Index entries dropped to fit the budget. */
   knowledge_sources_omitted: number;
   proposed_candidates: number;
 }
@@ -85,9 +68,7 @@ export interface AssembleInput {
 }
 
 export interface AssembleState {
-  /** Skills rendered with full body; the rest render as pointer lines. */
   fullBodyCount: number;
-  /** Knowledge index entries kept; the rest collapse into a "+N more" line. */
   knowledgeCount: number;
 }
 
@@ -131,12 +112,6 @@ function assemble(input: AssembleInput, state: AssembleState): string {
   return lines.join("\n");
 }
 
-/**
- * Deterministic budget trim, cheapest information loss first:
- * 1. drop knowledge-index entries from the end (a pointer line keeps them reachable),
- * 2. then collapse skill bodies to pointer lines, last skill first.
- * The header + grounding rule are never trimmed.
- */
 export function trimToBudget(
   input: AssembleInput,
   budget_tokens: number,

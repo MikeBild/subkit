@@ -1,19 +1,3 @@
-// `$scope` / `$input` bindings must work uniformly across every
-// author-written JSONata site that survives the transform-language
-// removal:
-//
-//   loop.over             (was broken; session ebd66982: 105 307
-//                          turn-tokens spent guessing $scope.X.data
-//                          → undefined → step budget exhausted)
-//   branch.when           (was broken for the same reason; less
-//                          visible because branches usually use the
-//                          bare path form)
-//
-// Transforms themselves are now JavaScript-only, so the upstream/body
-// steps here are JS — but the loop `over` and branch `when` slots stay
-// JSONata, and those are what this file pins. The data-handling skill
-// promises uniform `$scope.<id>.data` access from those slots.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
@@ -30,11 +14,6 @@ afterAll(async () => {
 
 describe("loop.over · honors $scope / $input bindings", () => {
   test("$scope.<id>.data resolves the same way it does inside a JS transform body", async () => {
-    // Repro of session ebd66982: a transform produces an array,
-    // the loop's `over` is `$scope.<id>.data`. Pre-fix the loop
-    // saw `undefined` because `$scope` was unbound; the LLM
-    // spiraled trying alternative paths. Post-fix the loop walks
-    // the array and the body runs once per element.
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-scope-binding",
       steps: [
@@ -65,7 +44,6 @@ describe("loop.over · honors $scope / $input bindings", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    // No `loop_over_unresolved` warning — the loop walked the array.
     const loopWarning = (result.warnings ?? []).find((w) => w.code === "loop_over_unresolved");
     expect(loopWarning).toBeUndefined();
   });
@@ -178,8 +156,6 @@ describe("branch.when · honors $scope / $input bindings", () => {
       input: null,
     });
     expect(result.status).toBe("succeeded");
-    // The enterprise arm took precedence — output is the enterprise
-    // transform's value.
     expect(result.output).toBe("ENTERPRISE");
   });
 

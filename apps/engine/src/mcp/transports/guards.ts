@@ -31,10 +31,7 @@ function allowedOriginsForRequest(req: Request): Set<string> {
   try {
     const publicOrigin = originOf(getConfig().server.public_base_url);
     if (publicOrigin) origins.add(publicOrigin);
-  } catch {
-    // If config is unavailable, the request URL still gives us a conservative
-    // same-origin allow-list for local/test deployments.
-  }
+  } catch {}
   return origins;
 }
 

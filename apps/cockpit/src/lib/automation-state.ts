@@ -1,36 +1,3 @@
-// Whether a workflow may run on its own — ONE state and ONE next step.
-//
-// The workflow page used to answer this in four places that did not agree: a
-// title link that only scrolled, a section button that stayed after a grant, a
-// "review needed" badge, and the diagnosis block. A reader could not tell
-// whether the workflow was approved, nor where approving happened.
-//
-// This module is the single decision. It is pure: it takes what the engine
-// already reports — the workflow record, its schedules, the verified
-// automation status, the approvals and the gate diagnosis — and returns the
-// state, the facts that head it and the one action that moves it forward. The
-// page's panel and the chat's review card both read it, so they cannot
-// disagree. The action is offered where the state is shown — once per view.
-//
-// Precedence — the first that applies wins:
-//
-//   0. invalid   the running version is stored in an earlier format: the
-//                engine refuses to run, admit or approve it. Only a saved
-//                change — the way out — is judged before it.
-//   1. paused    every schedule and hook is stopped; nothing else matters.
-//   2. apply     a saved change differs from the running version. Judging the
-//                running version would describe problems the change may
-//                already have solved.
-//   3. repair    the gate refuses a step. This holds even while an approval
-//                exists: the diagnosis includes the refused step of the newest
-//                approved run ("the approval no longer fits").
-//   4. unknown   the engine could not verify readiness, or a read the verdict
-//                rests on did not answer. Never read as approved.
-//   5. grant     something starts it automatically and no approval covers it.
-//   6. approved  a current approval covers the running version.
-//   7. manual    nothing starts it automatically and nothing is approved — a
-//                calm state, not a task.
-
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 import { type ReviewEnvironment, reviewEnvironment } from "@/lib/review-environment";
@@ -49,7 +16,6 @@ export type AutomationStateKind =
   | "approved"
   | "manual";
 
-/** The engine's verdict on one schedule or hook (`GET …/automation-status`). */
 export type AutomationRowState =
   | "paused"
   | "activation_required"
@@ -90,38 +56,23 @@ export interface AutomationWorkflow {
   current_version_id?: string | null;
   draft_version_id?: string | null;
   current_version?: number | null;
-  /** Active inbound hooks, from the record — readable without `inbound_hook:read`. */
   webhooks_active?: number | null;
-  /** The running version is stored in an earlier format and cannot run. */
   invalid?: boolean | null;
 }
 
 export interface AutomationInputs {
   workflow: AutomationWorkflow;
-  /** The saved draft's number, when the page read it. Only improves a label. */
   draft?: { version_id: string; version: number } | null;
-  /** `GET /v1/schedules?workflow_id=` — null when it could not be read. */
   schedules: readonly ScheduleLike[] | null;
-  /** `GET …/automation-status` — null when the reader may not ask, or it failed. */
   status: AutomationStatusLike | null;
-  /** `GET …/execution-authorities`, newest first — null when it could not be read. */
   authorities: readonly WorkflowAuthority[] | null;
-  /** `GET …/diagnosis` for `automationEnvironment(...)` — null until it answered. */
   diagnosis: { is_current: boolean; diagnoses: readonly GateDiagnosis[] } | null;
-  /**
-   * Reads that were made and did not answer. A failed read and a read the
-   * reader may not make both leave `null` behind, and they are not the same:
-   * without permission the state is decided from what remains; after a failure
-   * "no block" and "no refusal" are guesses, and the state is `unknown`.
-   */
   unanswered: { status: boolean; diagnosis: boolean };
   now: number;
 }
 
-/** One thing that starts the workflow without a person. */
 export interface AutomationTrigger {
   kind: "schedule" | "hook";
-  /** The schedule's id, to resume it. Null for a hook. */
   id: string | null;
   cron: string | null;
   timezone: string | null;
@@ -132,21 +83,11 @@ export interface AutomationTrigger {
 }
 
 export type AutomationAction =
-  /** Resume the paused schedules. */
   | { kind: "resume"; scheduleIds: string[] }
-  /** Review the saved change — the approval dialog for the prepared version. */
   | { kind: "apply" }
-  /** Open the approval dialog for the running version. */
   | { kind: "grant" }
-  /** Extend or re-bound a current approval — the same dialog. */
   | { kind: "extend" }
-  /** Scroll to and open the current approval. */
   | { kind: "view" }
-  /**
-   * Remove the first block the gate names. `review`: a repair is already
-   * proposed; `auto`: the engine can compute one; `prepare`: a trial run
-   * supplies the missing evidence; `chat`: an author has to change the step.
-   */
   | {
       kind: "repair";
       via: "review" | "auto" | "prepare" | "chat";
@@ -155,65 +96,33 @@ export type AutomationAction =
 
 export interface AutomationState {
   state: AutomationStateKind;
-  /** Where automatic runs happen, and so where the approval is judged. */
   environment: ReviewEnvironment;
-  /** Which version an approval would judge; null before anything was saved. */
   target: ReviewTarget | null;
   facts: {
-    /** The running version's number. */
     version: number | null;
-    /** The saved change's number, in state `apply`. */
     preparedVersion: number | null;
-    /** Null on an approval without an end date (see `untilRevoked`). */
     validUntil: string | null;
-    /** Null on an approval without a run limit. */
     runsLeft: number | null;
     runsMax: number | null;
-    /** Runs started under the approval so far. */
     runsSoFar: number | null;
-    /** The approval has no end date: it stands until it is revoked. */
     untilRevoked: boolean;
-    /** The step the gate refuses first, in state `repair`. */
     blockedStep: string | null;
-    /** In state `manual`: the workflow has no running version at all. */
     inactive: boolean;
   };
-  /** The approval that currently covers the running version (state `approved`). */
   grant: WorkflowAuthority | null;
-  /** Further approvals a run could still use — another environment or window. */
   alsoValid: WorkflowAuthority[];
-  /** Every other approval — expired, revoked, used up, or for another version. */
   history: WorkflowAuthority[];
   triggers: AutomationTrigger[];
-  /**
-   * The environments a decision is pending in, production first. One entry is
-   * the ordinary case; two means starts in both halves of the installation
-   * wait at once. Empty while nothing is pending.
-   */
   pendingEnvironments: ReviewEnvironment[];
-  /** The one action that moves the state forward. Null when there is none. */
   primaryAction: AutomationAction | null;
-  /**
-   * At most one further action: extending an approval that is running out, or
-   * looking at an approval that is still valid while another step is pending.
-   */
   secondaryAction: AutomationAction | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// The same thresholds the engine raises its attention item on
-// (`apps/engine/src/workflows/authority-extension.ts`); the test pins them.
-/** An approval is offered for extension this many days before it ends … */
 export const EXTEND_WITHIN_DAYS = 3;
 export const EXTEND_WITHIN_MS = EXTEND_WITHIN_DAYS * DAY_MS;
-/** … or once fewer than this share of its runs is left. */
 export const EXTEND_BELOW_RUN_SHARE = 0.1;
 
-/**
- * Whether an approval admits a run of the running version right now. The
- * server's state already folds in a changed effect manifest; the local clock
- * may only narrow it.
- */
 export function authorityIsLive(authority: WorkflowAuthority, now: number): boolean {
   return (
     authority.active_version &&
@@ -222,13 +131,10 @@ export function authorityIsLive(authority: WorkflowAuthority, now: number): bool
   );
 }
 
-/** Whether a current approval is close enough to its end to offer extending it. */
 export function grantNeedsExtension(
   grant: Pick<WorkflowAuthority, "valid_until" | "remaining_runs" | "max_runs">,
   now: number,
 ): boolean {
-  // No end date is no date pressure, no run limit no run pressure: an approval
-  // that stands until revoked is never offered for extension.
   const until = grant.valid_until === null ? Number.NaN : Date.parse(grant.valid_until);
   if (Number.isFinite(until) && until - now < EXTEND_WITHIN_MS) return true;
   return (
@@ -239,7 +145,6 @@ export function grantNeedsExtension(
   );
 }
 
-/** What starts the workflow on its own, from the best source the page has. */
 export function automationTriggers(
   status: AutomationStatusLike | null,
   schedules: readonly ScheduleLike[] | null,
@@ -258,8 +163,6 @@ export function automationTriggers(
     }),
   );
   if (!status) return listed;
-  // The verified row leads; a schedule only the list knows is still one — two
-  // reads of the same table taken a moment apart must not lose a trigger.
   const verified = new Set(status.schedules.map((row) => row.schedule_id));
   return [
     ...status.schedules.map(
@@ -290,13 +193,11 @@ export function automationTriggers(
   ];
 }
 
-/** Production first: it is where an unattended run has real effects. */
 function productionFirst(environments: Iterable<ReviewEnvironment>): ReviewEnvironment[] {
   const set = new Set(environments);
   return (["prod", "dev"] as const).filter((environment) => set.has(environment));
 }
 
-/** The environments of the verified rows that still wait for a decision. */
 function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvironment[] {
   if (!status) return [];
   return productionFirst(
@@ -306,12 +207,6 @@ function pendingRowEnvironments(status: AutomationStatusLike | null): ReviewEnvi
   );
 }
 
-/**
- * Without verified rows: the environments something starts the workflow in
- * that no current approval covers. The approvals list is then the only
- * evidence, and it has to cover every environment — an approval for
- * production says nothing about a schedule in development.
- */
 function uncoveredEnvironments(
   input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
 ): ReviewEnvironment[] {
@@ -331,22 +226,9 @@ function uncoveredEnvironments(
   );
 }
 
-/**
- * The environment automatic runs use, and so the one the approval and the
- * diagnosis are judged in: a hook's deliveries always run in production; a
- * schedule names its own; without either, the workflow's approvals say where
- * it belongs (`reviewEnvironment`). While a verified row still waits for a
- * decision, that row's environment leads.
- *
- * Needs only what the page reads before the diagnosis, so the diagnosis can be
- * asked for the right half of the installation.
- */
 export function automationEnvironment(
   input: Pick<AutomationInputs, "workflow" | "schedules" | "status" | "authorities" | "now">,
 ): ReviewEnvironment {
-  // Where something is still pending decides. With a schedule approved in
-  // production and one waiting in development, naming production would say
-  // "production is not approved" and open an approval that changes nothing.
   const [pending] = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
   if (pending) return pending;
   const triggers = automationTriggers(input.status, input.schedules);
@@ -358,11 +240,6 @@ export function automationEnvironment(
   return reviewEnvironment(input.authorities ?? [], undefined, new Date(input.now));
 }
 
-/**
- * The act that removes one block of the gate diagnosis. A repair the engine
- * can compute is offered only for the running version: a saved change gets its
- * fix described, never proposed.
- */
 export function automationRepairAction(
   entry: GateDiagnosis | undefined,
   isCurrent: boolean,
@@ -381,15 +258,11 @@ export function automationState(input: AutomationInputs): AutomationState {
   const target = reviewTarget(workflow, input.draft);
   const triggers = automationTriggers(input.status, input.schedules);
   const authorities = input.authorities ?? [];
-  // The approval that covers the running version here and now.
   const live = (authority: WorkflowAuthority) => authorityIsLive(authority, now);
   const grant =
     authorities.find(
       (authority) => authority.execution_environment === environment && live(authority),
     ) ?? null;
-  // Every approval is listed exactly once: the one the state rests on, the
-  // others a run could still use (another environment, a second window), and
-  // the rest as history.
   const shown = (current: WorkflowAuthority | null) => {
     const others = authorities.filter((authority) => authority !== current);
     return {
@@ -399,7 +272,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     };
   };
 
-  // Hooks the reader may not list still count: the record carries their number.
   const hiddenHooks =
     (workflow.webhooks_active ?? 0) > 0 && !triggers.some((trigger) => trigger.kind === "hook");
   const hasAutomation = triggers.length > 0 || hiddenHooks;
@@ -411,8 +283,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     : [];
   const blocks = input.diagnosis?.diagnoses ?? [];
 
-  // Where the pending step is decided: the verified rows that still wait, else
-  // every environment something starts it in, else the one the state names.
   const pendingRows = [...pendingRowEnvironments(input.status), ...uncoveredEnvironments(input)];
   const startedIn = productionFirst([
     ...running.map((trigger) => trigger.environment),
@@ -425,9 +295,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     secondaryAction: null,
     pendingEnvironments: pendingRows.length > 0 ? pendingRows : [environment],
   } satisfies Partial<AutomationState>;
-  // While something else is pending, an approval that is still valid stays one
-  // press away — for this environment or another: it is the evidence a reader
-  // checks the pending step against, and the only place it can be revoked.
   const viewGrant: AutomationAction | null = authorities.some(live) ? { kind: "view" } : null;
   const facts = {
     version: workflow.current_version ?? null,
@@ -441,9 +308,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     inactive: false,
   } satisfies AutomationState["facts"];
 
-  // 0. The running version cannot run at all, whatever would start it and
-  //    whatever was approved: it has to be saved again, and that is an
-  //    author's act. A saved change that waits IS that act, and leads.
   if (workflow.invalid === true && target?.kind !== "prepared") {
     return {
       ...base,
@@ -456,7 +320,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     };
   }
 
-  // 1. Everything that would start it is stopped.
   if (triggers.length > 0 && running.length === 0 && !hiddenHooks) {
     const scheduleIds = triggers.flatMap((trigger) =>
       trigger.kind === "schedule" && trigger.id ? [trigger.id] : [],
@@ -467,29 +330,23 @@ export function automationState(input: AutomationInputs): AutomationState {
       facts,
       ...shown(grant),
       pendingEnvironments: [],
-      // A stopped hook cannot be switched back on from here — the engine has
-      // no such act — so a hook-only workflow gets a hint and no button.
       primaryAction: scheduleIds.length > 0 ? { kind: "resume", scheduleIds } : null,
       secondaryAction: viewGrant,
     };
   }
 
-  // 2. A saved change waits. The approval judges that change, not the running
-  //    version, and applying it is part of the same decision.
   if (target?.kind === "prepared") {
     return {
       ...base,
       state: "apply",
       facts: { ...facts, preparedVersion: target.version },
       ...shown(grant),
-      // The change is new everywhere it will run.
       pendingEnvironments: startedIn.length > 0 ? startedIn : [environment],
       primaryAction: { kind: "apply" },
       secondaryAction: viewGrant,
     };
   }
 
-  // 3. The gate refuses a step — whatever an existing approval says.
   const needsRepair =
     blocks.length > 0 || rows.some((row) => row === "repair_required" || row === "input_required");
   if (needsRepair) {
@@ -504,10 +361,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     };
   }
 
-  // 4. Not verifiable is not approved — and not calm either: when neither
-  //    read of the schedules answered, "nothing starts it" is a guess. The
-  //    same holds for a read that failed: an unread diagnosis is not "no
-  //    block", and an unread status is not "nothing refused".
   const unknown = (): AutomationState => ({
     ...base,
     state: "unknown",
@@ -548,8 +401,6 @@ export function automationState(input: AutomationInputs): AutomationState {
     secondaryAction: grant && grantNeedsExtension(grant, now) ? { kind: "extend" } : null,
   });
 
-  // A workflow without a running version cannot run on its own, and cannot be
-  // approved either: there is nothing to judge.
   if (inactive) {
     return {
       ...base,
@@ -572,27 +423,19 @@ export function automationState(input: AutomationInputs): AutomationState {
   });
 
   if (hasAutomation) {
-    // The engine's verified answer decides where it is available: an approval
-    // in the list that the status does not confirm is not one a run would use.
     const verified = rows.length > 0;
     const allAuthorized = verified && rows.every((row) => row === "authorized");
-    // A hook the reader may not list is judged by no row. Its deliveries run
-    // in production: an authorized production row answers for it (the same
-    // version, the same approval); authorized development rows do not.
     const hookUnverified =
       hiddenHooks &&
       allAuthorized &&
       !(input.status?.schedules ?? []).some(
         (row) => row.environment === "prod" && row.state === "authorized",
       );
-    // No approval for production in the list: the hook has none. One in the
-    // list that no row confirms is neither — say so rather than guess.
     if (hookUnverified) return grant ? unknown() : needsGrant();
     if (verified ? allAuthorized : grant !== null) return approved();
     return needsGrant();
   }
 
-  // 6./7. Nothing starts it automatically.
   if (grant) return approved();
   return {
     ...base,
@@ -604,13 +447,6 @@ export function automationState(input: AutomationInputs): AutomationState {
   };
 }
 
-/**
- * Whether the approval the state rests on is still out of sight: the engine
- * confirms every start is approved, but the approval is not among the ones
- * read so far. The list arrives newest first, a page at a time — an approval
- * older than a page of later ones is still the one in force, and "approved"
- * without its end and its runs would be a claim with nothing behind it.
- */
 export function automationNeedsMoreApprovals(
   state: Pick<AutomationState, "state" | "grant">,
   hasMore: boolean,
@@ -618,20 +454,12 @@ export function automationNeedsMoreApprovals(
   return hasMore && state.state === "approved" && state.grant === null;
 }
 
-/** What the reader may do — the rights the actions are gated by. */
 export interface AutomationRights {
-  /** `workflow:write`: approve, apply a saved change, resume, propose a repair. */
   write: boolean;
-  /** `workflow:run`: run the trial that supplies missing evidence. */
   run: boolean;
-  /** `conversation:write`: hand a block to an author in the chat. */
   chat: boolean;
 }
 
-/**
- * Whether the reader may perform an action. An action they may not perform is
- * not offered: a button that answers with a refusal is worse than none.
- */
 export function automationActionPermitted(
   action: AutomationAction,
   rights: AutomationRights,
@@ -651,7 +479,6 @@ export function automationActionPermitted(
   }
 }
 
-/** The word for each state. */
 export const AUTOMATION_STATE_KEYS = {
   invalid: "automation.state.invalid",
   paused: "automation.state.paused",
@@ -663,7 +490,6 @@ export const AUTOMATION_STATE_KEYS = {
   manual: "automation.state.manual",
 } satisfies Record<AutomationStateKind, TranslationKey>;
 
-/** The label of an action — the same words wherever it is offered. */
 export function automationActionKey(action: AutomationAction): TranslationKey {
   switch (action.kind) {
     case "resume":
@@ -687,32 +513,14 @@ export function automationActionKey(action: AutomationAction): TranslationKey {
   }
 }
 
-/**
- * What the chat's review card says and offers — the page's own next step.
- *
- *   review   open the approval dialog, once per pending environment
- *   resume   resume the paused schedules — the panel's own act
- *   recheck  read the state again: it could not be verified
- *   none     nothing to press: approved, on request, or a stopped hook
- */
 export interface AutomationCard {
   titleKey: TranslationKey;
   hintKey: TranslationKey;
   act: "review" | "resume" | "recheck" | "none";
-  /** The label of the one button, while a single environment is pending. */
   actionKey: TranslationKey;
-  /** The environments to decide in, production first. Empty unless `review`. */
   environments: ReviewEnvironment[];
 }
 
-/**
- * The review card for a state. A pending decision gives one button named for
- * the step (two only when both environments wait); every other state says
- * what the page says and offers what the page offers — never the approval
- * dialog for a workflow that is paused, on request or simply not verified.
- * What an approval would allow is said for what really starts the workflow: a
- * schedule, a webhook, or both.
- */
 export function automationCard(
   state: AutomationState,
   webhooksActive: number | null | undefined,
@@ -742,7 +550,6 @@ export function automationCard(
         hintKey: "chat.automationCard.authorized.hint",
       };
     case "invalid":
-      // Changing the workflow happens in a conversation — this one.
       return {
         ...calm,
         titleKey: AUTOMATION_STATE_KEYS.invalid,
@@ -761,7 +568,6 @@ export function automationCard(
       return {
         ...calm,
         titleKey: AUTOMATION_STATE_KEYS.paused,
-        // Only a hook is stopped: said, with nothing to press.
         hintKey: resumable ? "automation.headline.paused" : "automation.hookOff",
         act: resumable ? "resume" : "none",
         actionKey: "automation.action.resume",

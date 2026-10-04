@@ -1,26 +1,7 @@
-// Tests for the deterministic keyword-extraction logic inside detectIntentSkills.
-//
-// Strategy: the function builds a keyword list from MIME types / message text /
-// flags and then calls listAutoLoadSkills(tenant, keywords, exec).  We supply a
-// no-op executor stub (an object that satisfies the minimal Drizzle Executor
-// interface used by listAutoLoadSkills) so no real Postgres connection is needed.
-//
-// When the keyword list is non-empty the stub returns [] — tests verify the
-// caller returns an array.  The keyword-to-MIME / keyword-to-flag mapping is
-// validated indirectly through these contract assertions; integration tests
-// cover the DB path.
-
 import { describe, expect, it } from "bun:test";
 import { detectIntentSkills } from "../context-assembler.ts";
 
-// A minimal executor stub.  listAutoLoadSkills calls exec.select()…
-// We intercept at the top level by providing an object that Drizzle's
-// "exec ?? getDb()" branch will use.  The select chain is mocked to resolve
-// to an empty rows array so detectIntentSkills returns [] without touching Postgres.
 function makeStubExec() {
-  // Build a chainable query builder that always resolves to [].
-  // listAutoLoadSkills calls: db.select().from(...).where(...).orderBy(...)
-  // The result of orderBy() is what gets awaited, so orderBy must return a Promise.
   const chain: Record<string, () => unknown> = {};
   const noop = () => chain;
   chain.select = noop;

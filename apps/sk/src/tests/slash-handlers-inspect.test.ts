@@ -3,10 +3,6 @@ import type { SlashHandlerContext } from "../repl/slash/handler.ts";
 import { dispatchInspectSlash } from "../repl/slash/handlers/inspect.ts";
 
 function buildCtx(overrides: Partial<SlashHandlerContext> = {}): SlashHandlerContext {
-  // Minimal stub. `dispatchInspectSlash` only needs `client` for
-  // /skills /mcp /audit /knowledge and `allowedPermissions` for
-  // /permissions. `panify` falls back to a banner string when
-  // `openPane` is absent.
   return {
     client: {} as SlashHandlerContext["client"],
     profile: {} as SlashHandlerContext["profile"],
@@ -28,7 +24,6 @@ describe("dispatchInspectSlash", () => {
       "permissions",
       buildCtx({ allowedPermissions: ["audit:read", "conversation:read"] }),
     );
-    // Banner shape: title \n \n indented rows.
     expect(result).toContain("permissions");
     expect(result).toContain("audit:read");
     expect(result).toContain("conversation:read");

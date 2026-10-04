@@ -1,29 +1,3 @@
-// Engine fast-path matcher. Skips the LLM turn entirely for a
-// whitelisted set of deterministic intents that the LLM would
-// otherwise round-trip through 3–5 tool calls just to answer.
-//
-// Whitelist v1:
-//   - `list workflows | connectors | executions | schedules |
-//      knowledge sources` (en + de) → render from tenant rows
-//   - one catalog block (`zeig mir die <kat>-Workflows`, `workflows in
-//     @kategorie/<kat>`, en + de) → every member with what it does,
-//     only when `<kat>` is a live derived category
-//   - `run <slug>` / `starte <slug>` / `führe <slug> aus` /
-//     `execute <slug>` → resolve slug → confirmation gate → execute
-//   - `inspect execution <uuid>` → fetch row + steps
-//
-// Discipline:
-//   - Bilingual regex only. No fuzzy matching, no Levenshtein,
-//     no keyword regex translations. A miss falls through to the
-//     existing LLM-mediated turn.
-//   - Same audit + RBAC + confirmation gate the LLM tools use. The
-//     `run <slug>` branch routes through `gateWorkflowRunRbac`
-//     (the canonical helper extracted from `mcp/capabilities/tools.ts`)
-//     and the ONE confirm gate (`tools/policy.ts` + `tools/approval.ts`),
-//     so the RBAC decision + APPROVAL_* audit rows match MCP exactly —
-//     no "known slug" exemption. The list-side renderers gate on the same
-//     `*:read` permissions the HTTP routes enforce.
-
 import { and, asc, desc, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -70,15 +44,10 @@ import type { ConversationStatus, TurnEvent } from "./types.ts";
 export type FastPathStatus = "active" | "awaiting_input";
 
 export interface FastPathHit {
-  /** True when the matcher consumed the turn; LLM loop should NOT run. */
   status: ConversationStatus;
-  /** Buffered events the caller appends to the SSE / persisted stream. */
   events: TurnEvent[];
-  /** Pending elicitation id when a confirmation gate fired. */
   pending_elicitation_id?: string;
-  /** Tool name we treated this turn as. Drives observability. */
   fast_path_tool: string;
-  /** Optional human-facing reply text the assistant message will carry. */
   assistant_text: string | null;
 }
 
@@ -87,43 +56,14 @@ export interface FastPathParams {
   tenant_id: string;
   conversation_id: string;
   actor_id: string | null;
-  /**
-   * Resolved principal. Required (non-nullable) so the RBAC gates
-   * inside this function can run unconditionally — the production
-   * caller in `service/run-turn.ts` already drops `principal === null`
-   * before reaching here. Making the contract self-documenting
-   * removes the "what if principal is null" branch from every
-   * RBAC site below.
-   */
   principal: ResolvedPrincipal;
   user_message: string;
-  /**
-   * WHO wrote `user_message`. Only a `human` affirmation grants the approval the
-   * confirm gate opened; a `relay` one (the model, over MCP `conversation_append`)
-   * merely triggers a claim of what a person already approved out of band.
-   * `principal` cannot answer this — both channels authenticate identically.
-   */
   answer_actor: AnswerActor;
-  /**
-   * Surface the turn runs on — mirrors `RunConversationTurnParams.surface`.
-   * Scopes local confirmation handles, never creates permission through the
-   * transport. All starts additionally use durable workflow-run admission.
-   * Defaults to `chat` when absent.
-   */
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
 }
 
-/**
- * Confirmation-resume window: a fast-path "run <slug>" pending envelope
- * is only re-issued via the affirmation branch ("yes" / "ja" / etc.)
- * within this many milliseconds of the prior `tool_calls` row. Older
- * pendings fall through to the LLM so a stale affirmation never
- * resurrects a workflow run from a different topic.
- */
 const AFFIRM_RESUME_WINDOW_MS = 5 * 60 * 1000;
 
-// Intent-detection regexes live in `./intent-patterns.ts` — shared with
-// `loop.ts` so the two surfaces never drift.
 import { AFFIRM_RE, INSPECT_EXEC_RE, RUN_VERB_RE } from "./intent-patterns.ts";
 
 export { RUN_VERB_RE };
@@ -153,14 +93,6 @@ export function matchListIntent(text: string): keyof typeof LIST_RES | null {
   return null;
 }
 
-// Multi-catalog enumeration: "list my connectors and workflows and
-// knowledge sources". The single-catalog regexes above are strictly
-// anchored, so a combined ask misses them and would otherwise fall to
-// the LLM — which, with tools withheld for enumeration, has leaked
-// tool-call markup as text. The matcher stays inside the fast-path
-// discipline: a list verb followed by ONLY catalog nouns, articles, and
-// connectors (and / , / und / & / +). Any other token fails `^…$` and
-// falls through to the LLM.
 const CATALOG_NOUN_RES: Array<[keyof typeof LIST_RES, RegExp]> = [
   ["workflows", /\bworkflows?\b/i],
   ["connectors", /\bconnectors?\b/i],
@@ -172,11 +104,6 @@ const CATALOG_NOUN_RES: Array<[keyof typeof LIST_RES, RegExp]> = [
 const MULTI_CATALOG_RE =
   /^(?:list|show|display|view|get|zeige|liste|welche)\s+(?:my|all|the|our|meine|alle|unsere|and|und|sowie|plus|also|,|&|\+|\s|workflows?|connectors?|executions?|runs?|schedules?|knowledge[\s-]?sources?|knowledges?|wissensquellen)+\s*\??$/i;
 
-/**
- * Returns the ordered, de-duplicated set of catalogs named in a pure
- * multi-catalog enumeration (≥2 distinct), or null when the message is
- * not one. Single-catalog asks are left to `matchListIntent`.
- */
 function matchMultiCatalog(text: string): Array<keyof typeof LIST_RES> | null {
   if (!MULTI_CATALOG_RE.test(text)) return null;
   const kinds: Array<keyof typeof LIST_RES> = [];
@@ -186,8 +113,6 @@ function matchMultiCatalog(text: string): Array<keyof typeof LIST_RES> | null {
   return kinds.length >= 2 ? kinds : null;
 }
 
-/** Map a catalog kind to its deterministic renderer. Shared by the
- *  single- and multi-catalog branches so they never drift. */
 function rendererFor(kind: keyof typeof LIST_RES): (p: FastPathParams) => Promise<RenderPayload> {
   switch (kind) {
     case "workflows":
@@ -203,11 +128,6 @@ function rendererFor(kind: keyof typeof LIST_RES): (p: FastPathParams) => Promis
   }
 }
 
-// One catalog block: "zeig mir die notion-Workflows (und was sie tun)",
-// "Workflows in @kategorie/notion", "show me the notion workflows",
-// "workflows in @category/notion". Anchored like every fast-path matcher; the
-// captured word is only a CANDIDATE — `renderWorkflowCategoryList` checks it
-// against the live category index and a miss falls through to the model.
 const CATEGORY_TOKEN = String.raw`(?:@(?:kategorie|category)\/)?([a-z0-9][a-z0-9_-]*?)`;
 const WHAT_THEY_DO = String.raw`(?:\s*,?\s+(?:und\s+was\s+sie\s+tun|and\s+what\s+they\s+do))?`;
 const END = String.raw`\s*[?.!]?$`;
@@ -222,17 +142,13 @@ const CATEGORY_LIST_RES = [
   ),
 ];
 
-// No locale travels with a turn, so the reply follows the request's own words,
-// as the held-preview reply does: a German phrasing gets a German answer.
 const GERMAN_CATEGORY_LIST_RE =
   /(?:^|\s)(?:zeige?|mir|die|alle|aus|der\s+kategorie|und\s+was\s+sie\s+tun)(?=\s|$)|@kategorie\//i;
 
-/** The language a category listing answers in. */
 export function categoryListLanguage(text: string): ReplyLanguage {
   return GERMAN_CATEGORY_LIST_RE.test(text) ? "de" : "en";
 }
 
-/** The candidate category word of a single-block listing, lower-cased. */
 export function matchCategoryListIntent(text: string): string | null {
   for (const re of CATEGORY_LIST_RES) {
     const m = text.match(re);
@@ -241,20 +157,10 @@ export function matchCategoryListIntent(text: string): string | null {
   return null;
 }
 
-/** Canonical conversation-tool slug for a catalog kind (observability). */
 function listToolFor(kind: keyof typeof LIST_RES): string {
   return kind === "knowledge_sources" ? "list_knowledge_sources" : `list_${kind}`;
 }
 
-// HTTP routes gate the matching list endpoints on these permissions
-// (see `apps/engine/src/http/routes/workflows.ts:267`,
-// `connectors/index.ts:36`, `executions/list.ts`,
-// `knowledge-sources.ts:173`; the schedule:read permission is declared
-// in `apps/engine/src/rbac/permissions.json` and enforced via the
-// same `can()` evaluator on every surface that touches schedules).
-// The fast-path renderers must enforce the same contract so a principal
-// who can talk to the chat surface but lacks `*:read` does not see rows
-// the HTTP layer would deny.
 const READ_PERMISSION_BY_LIST: Record<keyof typeof LIST_RES, string> = {
   workflows: "workflow:read",
   connectors: "connector:read",
@@ -313,32 +219,15 @@ async function renderInspectExecution(
   };
 }
 
-/**
- * Persist the fast-path tool call (input + output) and the assistant
- * message anchor so the audit trail mirrors a normal LLM turn. The
- * `tool` name here is the canonical conversation-tool slug (e.g.
- * `list_workflows`, `run_workflow`, `inspect_execution`) — the LLM
- * never ran, but downstream observability dashboards key on the same
- * tool name.
- */
 async function persistFastPathTurn(
   p: FastPathParams,
   tool: string,
   input: Record<string, unknown>,
   output: Record<string, unknown>,
   reply: string,
-  /** How this fast-path call ended. The fast path builds its output envelope
-   *  by hand rather than from a `ToolResult`, so there is nothing to classify
-   *  and the caller states it. Keep it identical to the `outcome` the
-   *  adjacent `recordConversationToolCall` reports. */
   outcome: ToolCallOutcome,
-  /** Engine-only bookkeeping — never replayed into LLM context, never projected
-   *  to a client. The confirm gate parks its approval id here. */
   confirmation_data?: Record<string, unknown>,
 ): Promise<{ events: TurnEvent[]; assistant_message_id: string; tool_call_id: string }> {
-  // The tool row goes before the answer, as in the loop: a turn is finished
-  // when its last row is the answer. Written after it, every fast-path
-  // conversation read as still running for as long as anyone looked.
   await appendMessage(p.db, p.tenant_id, p.conversation_id, "tool", { tool, output });
   const assistantMessageId = await appendMessage(
     p.db,
@@ -388,17 +277,6 @@ async function persistFastPathTurn(
   return { events, assistant_message_id: assistantMessageId, tool_call_id: toolCallId };
 }
 
-/**
- * Write a POLICY_DENIED audit row for a fast-path read deny. Mirrors
- * what the HTTP middleware does — without this, an operator scanning
- * the audit log cannot distinguish a chat deny from a no-op fall-through.
- *
- * Per-resource denials (`inspect_execution`, future per-row reads) pass
- * the matching resource_type + resource_id so audit aggregations stay
- * comparable with the HTTP layer's row shape. List-level denials default
- * to the conversation as the resource because there's no single resource
- * id at fault.
- */
 async function auditPolicyDenied(
   p: FastPathParams,
   permission: string,
@@ -406,8 +284,6 @@ async function auditPolicyDenied(
   reason: string,
   resource?: { type: string; id: string },
 ): Promise<void> {
-  // `FastPathParams.principal` is non-nullable; collapse to direct
-  // access so the audit row's actor matches the type contract.
   await auditAwait(
     {
       tenant_id: p.tenant_id,
@@ -438,14 +314,6 @@ async function executeRunWorkflow(
   resolution: RunFastPathResolution,
   input: unknown,
 ): Promise<RenderPayload & { outcome: ToolCallOutcome }> {
-  // Authenticated production calls always carry both principal AND
-  // actor_id together (both come from the same auth resolution). If a
-  // principal made it this far but actor_id is null, an upstream caller
-  // dropped the actor — surface it loudly instead of silently writing
-  // `system` to the audit trail. We log a warning rather than throw so
-  // the operator gets actionable diagnostics; the throw was too strict
-  // for test fixtures that legitimately seed principal without seeding
-  // a users-table row for the FK.
   if (p.actor_id === null) {
     logger.warn({
       module: "conversation",
@@ -457,10 +325,6 @@ async function executeRunWorkflow(
   }
   const wf = resolution.workflow;
   try {
-    // A known slug or an affirmation is not a live execution authority. Use
-    // the same admission boundary as REST: reserve a matching local grant,
-    // otherwise persist a held preparation. Bind the version resolved above
-    // so concurrent activation cannot substitute a different DAG.
     const admitted = await admitWorkflowRun(
       {
         tenant_id: p.tenant_id,
@@ -511,16 +375,10 @@ async function executeRunWorkflow(
         ? `Vorschau für ${wf.slug}: Es wurde nichts geschrieben. Prüfe vor einem Live-Lauf die Ausführungsfreigabe des Workflows.`
         : `Preview of ${wf.slug}: Nothing was written. Review the workflow's execution authority before a live run.`;
     } else if (ok) {
-      // Lead with the actual result, not a step-by-step execution trace —
-      // a chat user asked for the outcome, not a CI-style log. The full
-      // step list still rides in the `data` payload for anyone who wants
-      // to inspect it, and a failed run (below) keeps the trace inline
-      // for diagnosis.
       const rendered = renderRunOutput(result.output);
       reply = rendered ?? `Ran ${wf.slug}: succeeded`;
       if (warningLine) reply += `\n\n${warningLine}`;
     } else {
-      // A non-succeeded run wants its step breakdown inline for diagnosis.
       const stepLines = result.steps.map(
         (s) =>
           `- ${s.step_key} (${s.kind}) ${s.status}${s.duration_ms != null ? ` · ${s.duration_ms}ms` : ""}`,
@@ -531,8 +389,6 @@ async function executeRunWorkflow(
     }
     return {
       ok,
-      // A completed preparation is normal activity, not a failed call or a
-      // newly opened approval. The output still says no external action ran.
       outcome: result.status === "succeeded" ? "ok" : "error",
       reply,
       data: {
@@ -564,24 +420,6 @@ async function executeRunWorkflow(
   }
 }
 
-/**
- * Try to handle the user message without invoking the LLM. Returns
- * `null` when no rule matches — the caller then runs the normal model
- * loop. Returns a `FastPathHit` when the matcher consumed the turn;
- * the caller appends `events` to its event stream and short-circuits.
- *
- * The `run <slug>` branch follows the same two-turn confirmation gate MCP
- * enforces: the first turn mints an UNGRANTED approval and ends the turn; a
- * PERSON's affirmation grants it, claims it, and replays the args it was granted
- * for. Neither the `confirm_id` nor the approval's portal token ever leaves the
- * engine on this surface: the affirmation is prose, and the handle is read back
- * off the tool-call row's `confirmation_data`.
- */
-/**
- * Mirror the HTTP route's `*:read` gate for a catalog read. A principal who
- * lacks it gets a deterministic deny (audited, no fall-through to the LLM), so
- * chat never enumerates what the HTTP layer would refuse. Null = allowed.
- */
 async function denyCatalogRead(
   p: FastPathParams,
   permission: string,
@@ -610,7 +448,6 @@ async function denyCatalogRead(
   };
 }
 
-/** Persist + report a rendered catalog read as the turn's answer. */
 async function answerCatalogRead(
   p: FastPathParams,
   tool: string,
@@ -647,28 +484,16 @@ async function answerCatalogRead(
 export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null> {
   const text = p.user_message.trim();
   if (text.length === 0) return null;
-  // The confirm-gate surface for this turn. `policyDecide`, `requestApproval`,
-  // and `consumeApproval` speak `ToolSurface` ("chat" | "mcp"). This scopes
-  // local approval handles; neither surface bypasses durable run admission.
   const gateSurface: ToolSurface = p.surface === "mcp" ? "mcp" : "chat";
 
-  // List intents — always emit a deterministic answer.
   const listKind = matchListIntent(text);
   if (listKind) {
     const tool = listToolFor(listKind);
-    // Mirror the HTTP route's `*:read` gate so a principal who lacks
-    // the corresponding permission cannot enumerate via chat what the
-    // HTTP layer would deny. The deny is deterministic (no fall-through
-    // to the LLM) so the contract is closed at the fast-path boundary.
     const denied = await denyCatalogRead(p, READ_PERMISSION_BY_LIST[listKind], tool, {});
     if (denied) return denied;
     return answerCatalogRead(p, tool, {}, await rendererFor(listKind)(p));
   }
 
-  // One catalog block ("zeig mir die notion-Workflows"). A word that is not a
-  // live category ("failed", "my", "aktiven") falls through BEFORE the gate:
-  // it is not a catalog read, so it earns no permission denial and no audit
-  // row. A live one takes the same `workflow:read` gate as the full list.
   const categoryCandidate = matchCategoryListIntent(text);
   if (categoryCandidate) {
     const index = await loadCategoryIndex(p.tenant_id, p.db);
@@ -686,12 +511,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     }
   }
 
-  // Multi-catalog enumeration ("connectors and workflows and knowledge
-  // sources") — render every named catalog deterministically. Each is
-  // gated on its own `*:read` permission (mirroring the single-catalog
-  // branch); a denied catalog renders its deny line + audit row while
-  // the rest still render. This keeps the whole enumeration off the LLM,
-  // so it cannot leak tool-call markup for a catalog the snapshot lacked.
   const multiKinds = matchMultiCatalog(text);
   if (multiKinds) {
     const sections: string[] = [];
@@ -751,10 +570,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   if (inspectMatch) {
     const execId = inspectMatch[2];
     if (execId) {
-      // Mirror the HTTP route's `execution:read` gate the same way the
-      // list-intent branch does for `*:read`. The HTTP equivalents at
-      // `apps/engine/src/http/routes/executions/list.ts` enforce this
-      // per-resource; the fast-path must agree.
       {
         const decision = await can(p.db, {
           tenant_id: p.tenant_id,
@@ -825,23 +640,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
   if (runMatch) {
     const slugOrId = runMatch[2];
     if (slugOrId) {
-      // `require_published: true` mirrors MCP's catalog filter — a slug
-      // that resolves only to a draft is treated as "not found" and
-      // falls through to the LLM, instead of bypassing the contract.
       const resolved = await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slugOrId, {
         require_published: true,
       });
       if (!resolved?.current_version_id) {
-        // Unknown slug — fall through to LLM (the model can suggest
-        // alternatives or surface the right slug). Same shape as the
-        // run_workflow tool's "workflow_not_found" branch handles it.
         return null;
       }
-      // The fast path always runs with `input: null` — a workflow whose
-      // input contract (see resolveWorkflowInputContract) requires keys
-      // cannot complete here. Defer to the LLM loop, where run_workflow
-      // pauses with the auto-generated input form. Pre-fix this branch
-      // ran anyway and failed with "$input: required field missing".
       const wfView = await getWorkflow(p.tenant_id, resolved.id, p.db);
       if (wfView && resolveWorkflowInputContract(wfView.definition) !== null) {
         logger.info({
@@ -853,10 +657,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         });
         return null;
       }
-      // Canonical RBAC gate — identical contract to MCP's `wf_<slug>`
-      // dispatch. See `workflows/rbac.ts`. A POLICY_DENIED audit row
-      // is committed before this returns; the persisted tool-call row
-      // tells the operator + transcript reader why the run did not fire.
       const rbac = await gateWorkflowRunRbac({
         db: p.db,
         principal: p.principal,
@@ -895,8 +695,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      // The ONE confirm gate. `not_available_on_surface` is unreachable for
-      // (tenant_write, chat) — the gate only withholds `draft_write` on MCP.
       const runArgs = { workflow: resolved.slug, environment: "dev" };
       const gate = policyDecide({
         tool: "run_workflow",
@@ -905,10 +703,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         args: runArgs,
       });
       if (gate.kind === "needs_confirm") {
-        // The approval persists these args (encrypted) under `confirm_id` and
-        // stamps APPROVAL_REQUESTED, UNGRANTED. The affirmation branch below
-        // claims it and REPLAYS them — nothing the operator's "yes" carries
-        // participates in what runs.
         const confirm_id = gate.envelope.tool_call_id;
         await requestApproval({
           db: p.db,
@@ -918,7 +712,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           surface: gateSurface,
           via: "fast_path",
           reason: gate.envelope.reason,
-          // `executeRunWorkflow` runs the fast path in dev, always.
           execution_mode: "dev",
           args: runArgs,
         });
@@ -933,14 +726,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             policy_mode: "confirm_before_execution",
             confirm_required: true,
             pending_output: gate.envelope.pending_output,
-            // Neither `confirm_id` NOR `approval_url`. This envelope is persisted
-            // on `conversation_tool_calls.output` and on a `tool`-role message,
-            // both of which `buildModelMessages` replays into LLM context — and
-            // the chat palette can make outbound HTTP calls, so a grant token in
-            // that context would be a live capability. The affirmation branch
-            // reads the handle off `confirmation_data` instead, the engine's own
-            // record of what it is holding, and the person's "yes" in this
-            // channel is the grant.
             resume: `A person must approve this by replying "yes" here — the engine replays the arguments it already holds. Nothing runs until they do; you cannot approve on their behalf.`,
             skipped_llm: true,
             suggested_command: `/workflows run ${resolved.slug}`,
@@ -949,19 +734,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           "pending",
           { approval_id: confirm_id },
         );
-        // The pending envelope is NOT a denial — the operator may yet
-        // approve. Reporting `denied` would skew the run-vs-deny ratio
-        // on the conversation_tool_calls_total counter.
         recordConversationToolCall({
           category: "tenant_write",
           tool: "run_workflow",
           outcome: "pending",
           duration_ms: 0,
         });
-        // No `pending_elicitation_id`: this gate opened an approval, not a
-        // `conversation_elicitations` row, so there is nothing for a client to
-        // POST an answer to — and the approval id is not a value the model may
-        // hold. The turn ends `awaiting_input`; the operator answers in chat.
         return {
           status: "awaiting_input",
           events: persisted.events,
@@ -978,11 +756,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         payload.reply,
         payload.outcome,
       );
-      // `runExecution` already emits its own execution audit row.
-      // We previously stamped a CONVERSATION_COMMITTED row here, but
-      // that action is reserved for workflow-commit moments (draft →
-      // persisted) — see `service/run-turn.ts:145-158`. Dropping the
-      // extra row keeps audit semantics aligned across surfaces.
       recordConversationToolCall({
         category: "tenant_write",
         tool: "run_workflow",
@@ -1007,20 +780,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
     }
   }
 
-  // Confirmation-resume branch: when the just-stored user message is a
-  // plain affirmation ("yes", "ja", "approve") and the previous turn
-  // emitted a fast-path `run_workflow` pending envelope, grant-if-human and then
-  // claim the approval that envelope minted, and run what it was granted for.
-  // The affirmation carries no payload — the args come out of the approval,
-  // which is single-use, tenant-, principal- and tool-bound.
   if (AFFIRM_RE.test(text)) {
     const recent = await p.db
       .select({
         id: conversationToolCalls.id,
         tool: conversationToolCalls.tool,
         output: conversationToolCalls.output,
-        // The approval handle lives HERE, not on `output`: `output` is replayed
-        // into LLM context by `buildModelMessages`, `confirmation_data` is not.
         confirmation_data: conversationToolCalls.confirmation_data,
         created_at: conversationToolCalls.created_at,
       })
@@ -1045,11 +810,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       approvalId !== null &&
       Date.now() - (head.created_at?.getTime() ?? 0) < AFFIRM_RESUME_WINDOW_MS
     ) {
-      // The person who typed "yes" IS the approver, and chat is their channel.
-      // A relay affirmation (the MODEL wrote this "user message" through
-      // `conversation_append` on MCP) grants nothing: the claim below then
-      // refuses with `approval_not_granted` unless a person already granted this
-      // approval in the portal. Affirming is a trigger, never a decision.
       if (p.answer_actor.kind === "human") {
         const granted = await grantApproval({
           db: p.db,
@@ -1081,12 +841,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           relay_reason: p.answer_actor.reason,
         });
       }
-      // Claim before anything else, exactly as the dispatcher does: the
-      // approval is what authorizes this run, and it is single-use. A later
-      // RBAC denial therefore burns it — the operator re-issues "run <slug>"
-      // and confirms again, which is the honest outcome for a revoked grant.
-      // The claim is not the approval: APPROVAL_APPROVED lands below, once the
-      // RBAC gate has passed.
       const claim = await consumeApproval({
         db: p.db,
         principal: p.principal,
@@ -1118,19 +872,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: claim.message,
         };
       }
-      // The replay payload. The approval was granted over these args and
-      // nothing else; the affirmation contributed no data.
       const replayArgs = claim.args;
       const slug = typeof replayArgs.workflow === "string" ? replayArgs.workflow : null;
       const resolved = slug
         ? await resolveWorkflowByIdOrSlug(p.db, p.tenant_id, slug, { require_published: true })
         : null;
       if (!resolved?.current_version_id) {
-        // The workflow was unpublished or deleted between the pending
-        // envelope and the approval. The approval is spent; say so rather
-        // than falling through to a model turn that cannot see it — and close
-        // its lifecycle on the approval id, so a spent handle never reads as an
-        // approval that simply stopped being written about.
         await recordApprovalUnfulfilled({
           db: p.db,
           principal: p.principal,
@@ -1161,10 +908,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      // Canonical RBAC gate — the resume branch must check the same
-      // permission MCP enforces. Without this, an operator whose role
-      // changed between the pending request and the approval could bypass
-      // `workflow:run` denial.
       const rbac = await gateWorkflowRunRbac({
         db: p.db,
         principal: p.principal,
@@ -1204,9 +947,6 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      // Authorized — now the approval is real. Refuse to run when its audit row
-      // cannot be persisted; an unrecorded approved run is the governance gap
-      // the log exists to close.
       const approvalRecorded = await recordApprovalApproved({
         db: p.db,
         principal: p.principal,

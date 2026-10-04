@@ -1,15 +1,3 @@
-// A primary provider that refuses on its usage limit must not take the
-// secondary LLM callers down with it, and must not be billed for the answer
-// the fallback gave.
-//
-// Two local HTTP stubs stand in for two real providers: the Anthropic stub
-// answers every request with the usage-limit refusal the provider sends, the
-// OpenAI-compatible stub answers the chat completion. The in-process mock
-// provider cannot carry this case — it runs a separate dispatch path, and a
-// mock/mock route is one provider, where a quota refusal correctly does NOT
-// fall back. Two stubs make the route cross-provider and put the real SDK
-// error parsing and the real fallback in the loop.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
@@ -135,9 +123,6 @@ async function usageRows() {
 
 describe("a quota-refused primary falls back like the chat turn does", () => {
   test("next-message suggestion is answered by the fallback model", async () => {
-    // Persisted the way the turn loop leaves it, and read back through `db`
-    // exactly as the loop passes it. No trailing question and no offer: the
-    // suggestion needs the model.
     const [conversation] = await ctx.testDb.db
       .insert(conversations)
       .values({ tenant_id: ctx.tenant_id, status: "active" })
@@ -195,7 +180,6 @@ describe("a quota-refused primary falls back like the chat turn does", () => {
     expect(answered[0]?.prompt_tokens).toBe(FALLBACK_PROMPT_TOKENS);
     expect(answered[0]?.completion_tokens).toBe(FALLBACK_COMPLETION_TOKENS);
 
-    // The refusal is on the ledger — as an error, carrying no tokens.
     const refused = rows.filter((r) => r.model === PRIMARY);
     expect(refused).toHaveLength(1);
     expect(refused[0]?.result).toBe("error");

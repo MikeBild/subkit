@@ -55,8 +55,6 @@ function item(
   };
 }
 
-/** A patch candidate carrying nothing — the shape a fixture needs so the model
- *  under test is exercised, not the fixture's own optional fields. */
 const PATCH_EVIDENCE = {
   workflowId: null,
   workflowName: null,
@@ -146,7 +144,6 @@ describe("decision adapters", () => {
       "Korrektur für Daily report: Folgt einem verschobenen Feld",
     );
     expect(decision.title).toBe("Korrektur für Daily report: Folgt einem verschobenen Feld");
-    // The English change note is the DETAIL, and it is still carried.
     expect(decision.summary).toBe("Follow the renamed field");
     expect(decision.target).toBe("Daily report");
     expect(decision.classification).toBe("safe");
@@ -282,9 +279,6 @@ describe("decision adapters", () => {
   });
 
   test("the collapsed line clips the question, the panel keeps it whole", () => {
-    // The reason the engine stopped clipping: if both came from one excerpt,
-    // expanding a card showed exactly what the collapsed line already showed.
-    // Squashed and trimmed, the way the engine sends it.
     const question =
       `Should I overwrite the existing schedule? ${"Here is the reasoning. ".repeat(20)}`.trim();
     const decision = conversationDecision(
@@ -299,8 +293,6 @@ describe("decision adapters", () => {
     const summary = decision.summary as string;
     expect(summary.length).toBeLessThanOrEqual(QUESTION_LINE_MAX);
     expect(summary.endsWith("…")).toBe(true);
-    // Cut at a word boundary: what survives is a prefix of the question that
-    // the original continues with a space, not half of a word.
     const kept = summary.slice(0, -1);
     expect(question.startsWith(`${kept} `)).toBe(true);
     if (decision.detail.kind !== "conversation") throw new Error("expected a conversation detail");
@@ -325,8 +317,6 @@ describe("decision adapters", () => {
   });
 
   test("an identifier in the question is hidden in the line AND in the panel", () => {
-    // The clip runs after the redaction, so a long question cannot smuggle an
-    // id past it by sitting beyond the cut.
     const question = `Load the v6 workflow c1d9b3db-882e-4f2c-8fd0-5f0017c4aef1 as the draft target? ${"Context follows. ".repeat(20)}`;
     const decision = conversationDecision(
       {
@@ -370,9 +360,6 @@ describe("decision adapters", () => {
       updated_at: daysAgo(4),
     });
     expect(decision.title).toBe("Retry on 429");
-    // The scope word used to be rendered as the target, so a card scoped to a
-    // workflow said the literal string "workflow" where a person expected the
-    // name of one. Nothing beats a wrong name.
     expect(decision.target).toBeNull();
     expect(decision.origin).toBe("repairPattern");
     expect(decision.confidence).toBe("medium");
@@ -414,8 +401,6 @@ describe("decision adapters", () => {
 
 describe("urgency", () => {
   test("a stopped conversation outranks an older proposal nothing waits on", () => {
-    // Age alone put the thing nobody is waiting on above the thing that is
-    // stopped dead — this is the split that fixes that.
     const rubrics = partitionByUrgency(
       [item("patch", 9, "old-patch"), item("conversation", 0, "fresh-talk")],
       NOW,
@@ -462,8 +447,6 @@ describe("countOpenDecisions", () => {
   const totals = { patch: 3, skill: 1, conversation: 2 };
 
   test("the total is the sum of the engine's own counts, not the rows in hand", () => {
-    // Every source is fetched with a page cap. Counting the rows would
-    // under-report a backlog by exactly the amount that matters.
     const open = countOpenDecisions({
       items: [item("patch", 1)],
       totals: { patch: 118, skill: 0, conversation: 1 },
@@ -540,10 +523,6 @@ describe("bannerSubset", () => {
     return {
       total: overrides.total,
       decidable: 0,
-      // The banner's base is the CONVERSATIONS, not the whole page: both states
-      // it may claim — stopped right now, deadline lapsed — belong to a waiting
-      // conversation and to nothing else. `total` here is therefore the
-      // conversation count, which is what the banner states its shares of.
       byKind: { patch: 0, skill: 0, conversation: overrides.total },
       subsets: {
         blocking: overrides.blocking ?? 0,
@@ -567,9 +546,6 @@ describe("bannerSubset", () => {
   });
 
   test("never claims a position the queue files as blocking nothing", () => {
-    // The aged rubric sits under a heading that says it blocks nothing. A red
-    // banner counting it as something that does is the product contradicting
-    // itself one click away, which is exactly what this used to do.
     const banner = bannerSubset(open({ total: 8, blocking: 1, overdue: 1, aging: 3 }));
     expect(banner.count).toBe(2);
     expect(banner.blocking + banner.overdue).toBe(banner.count);
@@ -608,8 +584,6 @@ describe("queueDisplayState", () => {
   const base = { shown: 0, held: 0, failing: 0, total: 0, narrowed: false };
 
   test("anything on screen means rows — whichever section it is in", () => {
-    // The bug the product owner saw: a failing workflow rendered beside "all
-    // done". Each section alone has to count as content.
     expect(queueDisplayState({ ...base, failing: 1, total: 1 })).toBe("rows");
     expect(queueDisplayState({ ...base, held: 1, total: 1 })).toBe("rows");
     expect(queueDisplayState({ ...base, shown: 1, total: 1 })).toBe("rows");
@@ -620,17 +594,12 @@ describe("queueDisplayState", () => {
   });
 
   test("narrowed away is not the same as nothing waiting", () => {
-    // Telling somebody "nothing is waiting" when their own filter hid it is
-    // the same lie as the one above, from the other direction.
     expect(queueDisplayState({ ...base, narrowed: true, total: 4 })).toBe("filtered-empty");
-    // Narrowed, but there was never anything: then it really is empty.
     expect(queueDisplayState({ ...base, narrowed: true, total: 0 })).toBe("empty");
   });
 });
 
 describe("the badge counts what the chips count", () => {
-  // A queue with every kind in it, including what the badge must NOT count:
-  // two waiting conversations and one proposal nobody can decide.
   const items = [
     item("patch", 1, "p1", { reviewable: true }),
     item("patch", 5, "p2", { reviewable: true }),
@@ -666,7 +635,6 @@ describe("the badge counts what the chips count", () => {
   });
 
   test("a source this person cannot read has no chip, never a chip at 0", () => {
-    // Without skill:read the skill chip read "· 0" — a number nobody measured.
     const open = openDecisionQueue({
       items: items.filter((entry) => entry.kind !== "skill"),
       totals: { patch: 2, skill: 0, conversation: 2 },
@@ -681,10 +649,8 @@ describe("the badge counts what the chips count", () => {
       failing: { state: "not_permitted", count: 0 },
     });
     expect(chips?.map((chip) => chip.kind)).toEqual(["patch", "schedule"]);
-    // The index stays the position in the full list, so ids do not shift.
     expect(chips?.map((chip) => chip.index)).toEqual([0, 2]);
     expect(badgeCount(chips)).toBe(sum(chips));
-    // Without workflow:read neither the patch chip nor the held half is there.
     const noWorkflows = queueChips({
       open,
       readable: { patches: false, skills: true, failing: true },
@@ -695,7 +661,6 @@ describe("the badge counts what the chips count", () => {
   });
 
   test("a source that failed is never counted as 0", () => {
-    // The digest failed and used to be caught as an empty list: "none failing".
     const open = openDecisionQueue({ items, totals, held: 1, failing: 0, nowMs: NOW });
     const partial = queueChips({
       open,
@@ -704,11 +669,9 @@ describe("the badge counts what the chips count", () => {
       failing: { state: "failed", count: 0 },
     });
     const schedule = partial?.find((chip) => chip.kind === "schedule");
-    // What answered is shown, as a lower bound, and the badge counts only it.
     expect(schedule).toMatchObject({ count: 1, partial: true });
     expect(badgeCount(partial)).toBe(sum(partial));
 
-    // With no other source behind the chip, it has no number at all.
     const alone = queueChips({
       open: openDecisionQueue({ items: [], totals: null, held: 0, failing: 0, nowMs: NOW }),
       readable: { patches: false, skills: false, failing: true },
@@ -716,7 +679,6 @@ describe("the badge counts what the chips count", () => {
       failing: { state: "failed", count: 0 },
     });
     expect(shown(alone)).toEqual([["schedule", null, false]]);
-    // And the badge does not claim 0 over it.
     expect(badgeCount(alone)).toBeNull();
   });
 
@@ -744,8 +706,6 @@ describe("one way back to the whole queue", () => {
   });
 
   test("after a reset, a queue with anything in it is never 'nothing matches'", () => {
-    // The dead end: from the Blocked tile with no blocked workflow, "Alle
-    // anzeigen" cleared only the chips, and the list stayed narrowed and empty.
     const view = resetView();
     const narrowed = view.focus !== null || view.kinds.length > 0;
     expect(queueDisplayState({ shown: 3, held: 0, failing: 0, total: 3, narrowed })).toBe("rows");

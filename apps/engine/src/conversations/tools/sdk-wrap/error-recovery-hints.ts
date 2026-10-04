@@ -1,15 +1,3 @@
-// Concrete-alternative messaging for the consecutive-failures cap
-// (`MAX_CONSECUTIVE_FAILURES`). The existing cap fires when the model
-// makes too many failing tool calls in a row — but its message only
-// said "ask the user." Reading `signals.toolLastErrorHash` lets us
-// name the actual recovery tool for each error code the model has
-// seen this turn, so the surfaced `ask_user_choice` offers realistic
-// options.
-//
-// Lives in its own module so adding the next code doesn't churn
-// `invoke.ts`, and so the unit test can assert the catalogue is
-// complete by importing from one canonical location.
-
 import {
   ELICITATION_ALREADY_RESOLVED,
   INVALID_ELICIT_RESPONSE,
@@ -19,16 +7,6 @@ import {
   OAUTH_TIMEOUT,
 } from "../error-codes.ts";
 
-/**
- * Maps known error codes to concrete next-action suggestions for the
- * model. Add a new entry whenever a new structured `error_code` ships
- * from a tool's `ok: false` branch — the cap message will then name
- * the recovery path for that code automatically.
- *
- * Update sites: every conversation tool that returns
- * `{ ok: false, data: { error_code: "..." } }` should appear here or
- * the cap surfaces only the generic "ask the user" hint.
- */
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
@@ -44,23 +22,12 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the preview could not take its input from a saved schedule: the workflow has none enabled in this environment, or more than one, so the engine will not pick for you. Nothing ran. Read them with list_schedules and pass that schedule's saved input explicitly; if there is genuinely none, ask the user for the real values with ask_user_form. Never invent sample values to make a preview pass.",
   draft_conflict:
     "another author changed the saved draft. Preserve local edits, inspect the current saved version, and reconcile the differences before saving. Do not retry blindly or replace the expected version with an unreviewed value.",
-  // restore_workflow_version — the recovery tool. Its own failures must not
-  // dead-end the recovery: each one names the read that resolves it.
   workflow_not_identified:
     "name the workflow you mean — pass `workflow_id` or `slug`. Use find_workflow / list_workflows to get it; do not guess an id.",
-  // `workflow_not_found` is deliberately NOT re-declared here — the existing
-  // entry further down already says the right thing, and a second key with the
-  // same name would have been silently overwritten by it.
   workflow_version_not_found:
     "that workflow has no such version. Read its history with get_workflow and name a version that exists — never probe version numbers until one works.",
-  // The abstention named a tool that IS in this turn's palette. The recovery
-  // is never "abstain harder" — it is to use the tool, or to report what it
-  // actually returned when it was called.
   capability_claim_false:
     "you claimed a tool is unavailable that you DO have in this conversation — the abstention was refused. Call the tool. If you already called it and it failed, report what it returned (its error_code and message) instead of describing it as missing.",
-  // Approval-gate signals — a write paused for HUMAN approval. The model is
-  // never the approver: a person grants out of band (chat confirm card or the
-  // approval portal link), then the write can be re-issued. Do NOT loop.
   policy_confirm_required:
     "this write paused for approval — nothing ran. A PERSON must approve it (they will see a confirmation in chat, or open the approval link). You cannot approve on their behalf and re-issuing without a human grant only reproduces this pause. Wait for the operator to answer, then continue.",
   approval_not_granted:
@@ -75,33 +42,20 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "another approval is already pending in this turn — one confirmation at a time. Wait for the operator to answer the outstanding prompt before issuing another write.",
   invalid_arguments:
     "the arguments could not be turned into a call, so nothing was sent and no approval was requested — read the message for the field at fault, correct it, and re-issue. Retrying the same arguments reproduces this.",
-  // Connector self-description / lazy-fetch signals (fetch_connector_self_description).
   no_connector_in_scope:
     "no connector is in scope — pass an explicit connector_id (find it via find_connector / list_connectors), or run the call from a conversation already bound to a connector",
   no_self_description_link:
     "this connector has no recorded self-description link of that kind yet — run discover_connector_endpoints (with the connector_id) first to detect and record the connector's llms.txt / OpenAPI / GraphQL link, then retry; or search its ingested docs with fetch_connector_docs",
   self_description_fetch_failed:
     "the connector's self-description URL could not be fetched (unreachable, timeout, or non-2xx) — verify the connector's base_url is live and the docs path still exists, then re-run discover_connector_endpoints to refresh the recorded link",
-  // Secret hygiene: the model tried to collect a secret-shaped value (api key,
-  // token, password) as free chat text over MCP. Route to the secure flow.
   secret_elicitation_blocked:
     "a secret-shaped value must never be collected as plain chat text over MCP — do NOT re-ask for it with ask_user_text/ask_user_form. Route the operator to the secure credential flow instead: authenticate_oauth or request_connector_reauth starts native URL-mode elicitation so the URL is delivered to the client rather than returned as model text",
-  // Surface-restriction signals from the unified tool dispatcher.
   not_available_on_surface:
     "this tool exists in the catalog but cannot be invoked from the current surface — for draft_write tools (save_workflow_draft, dry_run_workflow), the operator must drive the call from a chat conversation, not a headless MCP session",
-  // Caller bypassed auth: ToolContext arrived without a principal. Production
-  // callers always thread it from the auth resolution; a refusal here means
-  // an upstream caller dropped the principal. Re-issue via an authenticated
-  // surface (HTTP/MCP route, not a raw in-process invocation).
   principal_required:
     "this tool requires an authenticated principal on the ToolContext — re-issue the call from the HTTP / MCP / sk-cli surface so the auth resolution threads through, instead of invoking the tool directly in-process",
-  // authenticate_oauth was used on a non-browser grant (Cognito
-  // USER_PASSWORD_AUTH or client_credentials_json). Those rotate in chat.
   wrong_reauth_flow:
     "this connector does NOT use a browser authorization-code flow — it is Cognito USER_PASSWORD_AUTH or a client-credentials (M2M) grant, which have no sign-in page. Do not call authenticate_oauth. Call request_connector_reauth instead: it re-collects the credential (email + password, or the M2M secret) in chat and rotates it in place",
-  // Authoring guardrails — evidence is fingerprint-keyed: edits to
-  // OTHER steps keep their recorded previews; only the referenced
-  // step's own definition change invalidates it.
   transform_authoring_requires_inspect:
     "the transform references a step with no fingerprint-valid recorded preview (its definition changed since the last preview, or it was never previewed) — call dry_run_workflow ONCE to refresh the evidence, then retry the same edit; unchanged steps keep their evidence, so one dry-run suffices. Read the recorded shape via inspect_workflow_draft or inspect_execution_step(execution_id, step_key, include_full_payload: true) before re-authoring",
   transform_hand_rolled_codec:
@@ -132,7 +86,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the workflow schema is invalid — call validate_draft for the field-level errors, then edit_workflow_patch to fix",
   patch_invalid:
     "the patch failed validation — call validate_draft to see the per-field errors, then re-issue edit_workflow_patch with the corrections",
-  // Lookup / discovery — recover by calling the matching find_* tool.
   http_4xx:
     "the request returned 4xx — call probe_connector to verify the endpoint shape, headers, and auth before retrying",
   execution_not_found:
@@ -187,25 +140,20 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the snapshot id is stale or wrong — call list_draft_snapshots to discover the correct id",
   no_snapshot_available:
     "no draft snapshot exists yet — call list_draft_snapshots after the next draft mutation, or author_workflow / edit_workflow_patch to seed one",
-  // Preview / pre-run state.
   step_not_in_preview:
     "the step did not run in the last preview — call dry_run_workflow or run_workflow first to populate the preview",
   no_preview_recorded:
     "the workflow has no recorded preview — call dry_run_workflow to produce one before reading step results",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
-  // Connector authoring gates — auth_type must be set before credentials are collected.
   connector_auth_unset:
     "the connector draft has no auth_type — call update_connector_draft with the correct auth_type (bearer, basic, api_key, oauth2, or none) before asking for credentials",
-  // Endpoint grounding — request steps must target a discovered route.
   endpoint_not_in_discovered_spec:
     "a request step targets a path the connector's discovered spec does not document — do NOT invent or REST-ify routes; call discover_connector_endpoints (or read the listed nearest routes in the error) and bind each request step to a documented method + path verbatim, encoding the body in the declared media type",
-  // Loops & repair.
   verifier_rejected:
     "the workflow verifier rejected the change — read the rejection reason and either revise the patch or call ask_user_confirm to confirm an exception",
   repair_loop_detected:
     "three consecutive runs surfaced the same authoring warning — stop, read data-handling.md / workflow-authoring.md, and propose a structurally different draft",
-  // OAuth authorization — chat-driven authenticate_oauth.
   [OAUTH_AUTHORIZATION_DECLINED]:
     "the user declined to start the OAuth authorization — do not retry silently; ask the user whether they still want to connect this integration before calling authenticate_oauth again",
   [OAUTH_ELICITATION_TRANSPORT_FAILED]:
@@ -220,18 +168,6 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the OAuth provider reported the authorization did not complete — no credential was persisted; call authenticate_oauth again for this connector to start a fresh authorization attempt",
 };
 
-/**
- * Build the "Concrete alternatives" block appended to the
- * consecutive-failures cap messages in `sdk-wrap/invoke.ts`. Reads
- * `signals.toolLastErrorHash` (shape: `${reason}|${err.slice(0,120)}`)
- * and emits one bullet per distinct error code that has a mapping in
- * `ERROR_CODE_ALTERNATIVES`. Returns the empty string when nothing is
- * recognised so the caller can just `${msg}${alternatives}` without a
- * conditional.
- *
- * @internal — exported for unit testing only. Not part of any public
- * surface; do not import from outside `sdk-wrap/`.
- */
 export function buildCapAlternatives(toolLastErrorHash: ReadonlyMap<string, string>): string {
   if (toolLastErrorHash.size === 0) return "";
   const seenCodes = new Set<string>();

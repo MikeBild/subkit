@@ -1,10 +1,3 @@
-// createSchedule is update-or-insert on (tenant_id, workflow_id): a workflow
-// carries at most one schedule row. The reconciler fires each row
-// independently, so an unguarded insert let repeated create_schedule calls
-// (each landing on a different minute) accumulate rows that each fired — one
-// logical schedule became N real runs. These tests lock the single-row
-// invariant and the unique index that backs it.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants, workflows, workflowsSchedules } from "../../db/schema/index.ts";
@@ -40,8 +33,6 @@ test("repeated create_schedule for one workflow keeps a single, updated row", as
     cron: "1 3 * * *",
     input: { note: "first" },
   });
-  // Same workflow, different minute + input — the pattern that produced 16
-  // duplicate rows in prod. It must UPDATE the existing row, not append.
   const second = await createSchedule(testDb.db, {
     tenant_id,
     workflow_id,
@@ -61,7 +52,6 @@ test("repeated create_schedule for one workflow keeps a single, updated row", as
 });
 
 test("the unique index forbids a second row for the same workflow", async () => {
-  // Direct insert bypassing createSchedule — the DB itself must reject it.
   let threw = false;
   try {
     await testDb.db.insert(workflowsSchedules).values({

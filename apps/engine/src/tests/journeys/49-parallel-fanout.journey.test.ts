@@ -1,14 +1,3 @@
-// User story: As an operator, I want parallel steps to run their branches
-// concurrently and merge results, so that independent API calls don't
-// block each other and the total latency is bounded by the slowest branch.
-//
-// Acceptance criteria:
-//   - AC1: All parallel branches execute (each branch's steps produce output).
-//   - AC2: Workflow status is "succeeded" when all branches complete.
-//   - AC3: Branch step IDs are skipped in the linear walk (not double-executed).
-//   - AC4: Output contains per-branch results as an array.
-// Spec refs: plan docs — §2d PARALLEL STEP fan-out fix
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createJourneyCtx, JOURNEY_HOOK_TIMEOUT, type JourneyCtx, journeyFetch } from "./setup.ts";
 
@@ -30,19 +19,16 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
         name: "parallel-enrich",
         slug: "parallel-enrich",
         steps: [
-          // Fan-out: two independent enrichment branches
           {
             kind: "parallel",
             id: "enrich",
             branches: [["fetch_user_score"], ["fetch_risk_flag"]],
           },
-          // Branch A: user score
           {
             kind: "transform",
             id: "fetch_user_score",
             expression: "return { score: 42 };",
           },
-          // Branch B: risk flag
           {
             kind: "transform",
             id: "fetch_risk_flag",
@@ -67,13 +53,10 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
 
     expect(body.status).toBe("succeeded");
 
-    // AC4: output is an array of per-branch result objects
     const out = body.output as Array<Record<string, unknown>>;
     expect(Array.isArray(out)).toBe(true);
     expect(out).toHaveLength(2);
-    // Branch 0 produced fetch_user_score output
     expect(out[0]).toHaveProperty("fetch_user_score");
-    // Branch 1 produced fetch_risk_flag output
     expect(out[1]).toHaveProperty("fetch_risk_flag");
   });
 
@@ -106,8 +89,6 @@ describe("49: Parallel step — concurrent branches, merged output, skipped in l
       steps: Array<{ step_key: string; status: string }>;
     };
 
-    // Both branch steps should appear as skipped in the linear walk —
-    // they were already executed inside the parallel driver.
     const stepA = runBody.steps.find((s) => s.step_key === "step_a");
     const stepB = runBody.steps.find((s) => s.step_key === "step_b");
     expect(stepA?.status).toBe("skipped");

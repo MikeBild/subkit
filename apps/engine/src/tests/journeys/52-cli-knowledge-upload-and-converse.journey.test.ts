@@ -1,26 +1,3 @@
-// User story: As an operator, I upload a vendor API doc as a Knowledge
-// Source through the `sk knowledge-sources create` CLI, then ask a
-// conversation about it. The engine must parse the file, index chunks,
-// and the conversation `search_knowledge` tool must return hits that
-// carry a `fetched_at` timestamp. The connector-docs path must accept
-// the same Markdown content so docs and knowledge stay aligned.
-//
-// Acceptance criteria:
-//   - AC1: `sk knowledge-sources create --file <md>` uploads and
-//          indexes a Markdown file. (Gap 8)
-//   - AC2: `sk knowledge-sources search` returns hits whose
-//          `fetched_at` is non-null. (Gap 7)
-//   - AC3: A repeat search hits the in-memory cache (cache.size > 0
-//          and hits identity-equal across calls). (Gap 6)
-//   - AC4: A conversation that triggers `search_knowledge` produces
-//          hits with `fetched_at` populated in the tool result. (Gap 7
-//          end-to-end)
-//   - AC5: `POST /v1/connectors/{id}/docs/ingest` with a Markdown
-//          file_upload succeeds, and a follow-up search returns
-//          per-hit `fetched_at`. (Gap 8 + Gap 7 on the docs path)
-// Spec refs: docs/authors/authoring-workflows.md, docs/concepts/connectors.md
-//            plans/discover-knowledge-and-documentation-dreamy-falcon.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,8 +34,6 @@ const MARKDOWN_FIXTURE = [
   "### GET /v1/charges/{id}",
   "Retrieve a charge by id.",
 ].join("\n");
-
-// ---------- stdout capture (lifted from journey 43) ----------
 
 interface Captured {
   stdout: string;
@@ -110,9 +85,7 @@ function extractLastJson(stdout: string): string {
       const parsed = JSON.parse(line);
       if (isLogLine(parsed)) continue;
       return line;
-    } catch {
-      // fall through to multi-line scan
-    }
+    } catch {}
   }
   let depth = 0;
   let end = -1;
@@ -128,9 +101,7 @@ function extractLastJson(stdout: string): string {
         try {
           const parsed = JSON.parse(candidate);
           if (!isLogLine(parsed)) return candidate;
-        } catch {
-          // continue walking
-        }
+        } catch {}
         end = -1;
       }
     }
@@ -176,8 +147,6 @@ async function runCli(command: import("citty").CommandDef, rawArgs: string[]): P
   return { stdout: cli.stdout, stderr: cli.stderr };
 }
 
-// ---------- setup ----------
-
 beforeAll(async () => {
   ctx = await createJourneyCtx("ks-upload-converse");
   tmpFile = path.join(tmpdir(), `ks-md-${TEST_NOW_MS}.md`);
@@ -198,7 +167,6 @@ beforeAll(async () => {
     .returning();
   connectorId = row!.id;
 
-  // Hard-reset both caches so AC3 starts from a clean slate.
   invalidateKnowledgeCache(ctx.tenantId);
   invalidateDocsCache(ctx.tenantId, connectorId);
 }, JOURNEY_HOOK_TIMEOUT);
@@ -208,8 +176,6 @@ afterAll(async () => {
 }, JOURNEY_HOOK_TIMEOUT);
 
 describe("journey 52: sk CLI knowledge upload → search → converse", () => {
-  // ---------- Gap 8: Markdown upload via CLI ----------
-
   test("AC1: knowledge-sources create indexes a Markdown file", async () => {
     const { stdout } = await runCli(knowledgeSourcesCommand, [
       "create",
@@ -227,17 +193,10 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     expect(typeof body.id).toBe("string");
     expect(body.id.length).toBeGreaterThan(0);
     expect(body.name).toBe("Acme Charges API Docs");
-    // Markdown with H1+H2+H3 headings should produce more than one chunk.
     expect(body.chunk_count).toBeGreaterThanOrEqual(2);
   });
 
-  // ---------- Gap 7: fetched_at on search hits ----------
-
   test("AC2: GET /v1/knowledge-sources/search returns hits with non-null fetched_at", async () => {
-    // Drive the engine HTTP API directly. The CLI surfaces the same data
-    // (`client.searchKnowledge` → engine route) but its `emitList` only
-    // prints a fixed column subset, so we assert the fetched_at field on
-    // the underlying contract instead.
     const res = await journeyFetch(
       ctx,
       `/v1/knowledge-sources/search?q=${encodeURIComponent("authorization bearer token")}`,
@@ -252,11 +211,7 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     expect(() => new Date(top.fetched_at as string).toISOString()).not.toThrow();
   });
 
-  // ---------- Gap 6: search cache short-circuits the second call ----------
-
   test("AC3: a repeat search hits the in-memory cache", async () => {
-    // First call — should miss; second call — should hit. We assert via the
-    // observability counter exposed for tests.
     const before = getKnowledgeSearchCacheStats();
     const res1 = await journeyFetch(
       ctx,
@@ -269,15 +224,10 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     );
     expect(res2.status).toBe(200);
     const after = getKnowledgeSearchCacheStats();
-    // At least one hit must have happened on the second identical query.
     expect(after.hits).toBeGreaterThan(before.hits);
   });
 
-  // ---------- Gap 7 end-to-end: conversation surfaces fetched_at ----------
-
   test("AC4: a conversation that triggers search_knowledge gets hits with fetched_at", async () => {
-    // Create a conversation WITHOUT initial_message so the mock plan can be
-    // installed before any turn runs (the plan is keyed by conversation_id).
     const createRes = await journeyFetch(ctx, "/v1/conversations", {
       method: "POST",
       body: JSON.stringify({}),
@@ -289,12 +239,10 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     };
     const conversationId = created.conversation.id;
 
-    // Inject a deterministic plan: one tool call, then end.
     getMockProvider().setConversePlan(conversationId, [
       { tool: "search_knowledge", args: { query: "authorization bearer", limit: 3 } },
     ]);
 
-    // Send a user message so the loop picks up the canned plan.
     const followRes = await journeyFetch(ctx, `/v1/conversations/${conversationId}/messages`, {
       method: "POST",
       body: JSON.stringify({ message: "search the docs for auth info" }),
@@ -304,14 +252,10 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
       events: Array<{ type: string; tool?: string; output?: unknown }>;
       status?: string;
     };
-    // Find the search_knowledge tool_result frame.
     const toolResult = after.events.find(
       (e) => e.type === "tool_result" && e.tool === "search_knowledge",
     );
     expect(toolResult).toBeTruthy();
-    // The tool_result event's `output` is the tool's `data` field (the
-    // ToolResult envelope is unwrapped before serialization), so hits
-    // sit at `output.hits` directly.
     const output = toolResult?.output as
       | { hits?: Array<{ fetched_at?: string | null }> }
       | undefined;
@@ -321,14 +265,7 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     expect(top.fetched_at).toBeTruthy();
   });
 
-  // ---------- Gap 8 + Gap 7: connector-docs accepts Markdown ingest with fetched_at on search ----------
-
   test("AC5: POST /v1/connectors/{id}/docs/ingest with Markdown content, search returns fetched_at", async () => {
-    // The HTTP route accepts `source_type: "markdown"` with inline content;
-    // file_upload via HTTP needs the multipart/file-bytes path which is a
-    // separate concern. The Gap-8 fix is that the docs-ingestion path now
-    // accepts Markdown / HTML / plaintext at the parser layer, not just
-    // JSON/YAML/CSV/XML — exercised here by ingesting Markdown content.
     const ingestRes = await journeyFetch(ctx, `/v1/connectors/${connectorId}/docs/ingest`, {
       method: "POST",
       body: JSON.stringify({
@@ -351,17 +288,11 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
     expect(searchBody.items.length).toBeGreaterThan(0);
     const top = searchBody.items[0]!;
     expect(top.fetched_at).toBeTruthy();
-    // The classifier returns one of the four match types; we just want to
-    // confirm the field is plumbed through the HTTP contract.
     expect(typeof top.match_type).toBe("string");
   });
 
-  // ---------- Bonus: docs cache observability ----------
-
   test("AC6: docs cache stats are observable via the test hook", () => {
     const stats = getDocsSearchCacheStats();
-    // Either we ran the search through cache or it's a fresh cache; the
-    // hook always returns numeric counters.
     expect(typeof stats.hits).toBe("number");
     expect(typeof stats.misses).toBe("number");
     expect(typeof stats.size).toBe("number");

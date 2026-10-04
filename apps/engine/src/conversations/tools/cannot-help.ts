@@ -1,18 +1,3 @@
-// cannot_help — structured abstention.
-//
-// The assistant calls this when the user's request requires a tool it
-// does not have, a manifest entry that is empty, or a piece of context
-// it cannot ground from real tenant state. Calling cannot_help ends
-// the turn (the loop stops via hasToolCall("cannot_help")) and the
-// recorded { reason, missing_capability, suggest_alternative } feeds
-// the capability-gap backlog the operator reads in observability.
-//
-// Without this tool, the LLM has only one escape valve when a
-// capability is missing: invent something. cannot_help is the structured
-// alternative — the assistant says "I can't do this, here is why" in a
-// machine-readable shape instead of producing freeform text that
-// pretends otherwise.
-
 import { z } from "@hono/zod-openapi";
 import { recordGapCandidate } from "../../discovery/service.ts";
 import { recordCannotHelp } from "../../observability/instrumentation.ts";
@@ -64,26 +49,7 @@ export const cannotHelpTool: ConversationTool = {
   },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
-    // A `tool.<name>` slug is a CHECKABLE claim, and this tool used to
-    // take it on faith. Production: after `author_workflow` failed on a
-    // timeout, the model abstained with
-    // `missing_capability: "tool.author_workflow"`, reason "not available
-    // in this MCP surface" — minutes after calling that same tool
-    // successfully in the same turn. Two costs: the user was told
-    // something false, and `recordGapCandidate` filed a durable,
-    // demand-ranked capability gap for a capability that exists. That
-    // backlog is read as evidence of what the product is missing; a
-    // fabricated entry there is worse than noise, it misdirects.
-    //
-    // Only the structured slug is checked. The free-text `reason` is
-    // deliberately left alone — `loop/tool-not-available-guard.ts` scans
-    // prose and is observability ONLY, and wiring a regex verdict into
-    // control flow is forbidden by contract. Validating a documented
-    // field against the palette is not that; it is the same input
-    // validation every other tool performs.
     const claimedTool = /^tool\.([a-z][a-z0-9_]*)$/i.exec(args.missing_capability ?? "")?.[1];
-    // No palette threaded → cannot verify → let the abstention through.
-    // An unverifiable claim must never be treated as a false one.
     if (claimedTool && ctx.availableToolNames?.has(claimedTool.toLowerCase())) {
       return {
         ok: false,
@@ -95,17 +61,9 @@ export const cannotHelpTool: ConversationTool = {
         },
       };
     }
-    // Capability-gap analytics — the operator sees what the assistant
-    // could not do, sorted by missing_capability slug, in the
-    // `cannot_help_invocations_total` time series.
     recordCannotHelp({
       ...(args.missing_capability ? { missing_capability: args.missing_capability } : {}),
     });
-    // Durable capability-gap signal — turns the abstention into a deduped,
-    // demand-ranked backlog the operator can act on, instead of only a
-    // counter tick that discards the request text. Best-effort: the helper
-    // catches its own errors and returns null, so a bookkeeping failure
-    // never breaks the abstention turn.
     await recordGapCandidate(
       {
         tenant_id: ctx.tenant_id,

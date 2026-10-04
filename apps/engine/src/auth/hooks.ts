@@ -1,19 +1,3 @@
-// Before-Request Hook evaluator.
-//
-// A before-request hook is user-supplied JavaScript that runs in QuickJS
-// with tight limits (100k opcode budget, 32 MB memory) before every
-// outbound `request` step. Hooks are keyed by role in the
-// `request_hooks` table. The evaluator:
-//
-//   1. Loads every enabled hook whose role is in the principal's role
-//      set, ordered deterministically.
-//   2. Runs each hook in sequence. The first hook that returns
-//      `{ allow: false, reason: string }` denies the request.
-//   3. Any exception, malformed return shape, or sandbox failure
-//      fails-closed with the reason `"hook_error"`.
-//   4. Emits an audit row on denial so SOC2-style reviews can surface
-//      which hook blocked which request.
-
 import { and, eq } from "drizzle-orm";
 import { writeAudit } from "../db/audit.ts";
 import type { Db } from "../db/client.ts";
@@ -26,9 +10,7 @@ export interface HookRequestCtx {
   method: string;
   url: string;
   headers: Record<string, string>;
-  // Whatever JSON body the request will send, if any.
   body?: unknown;
-  // Current workflow execution metadata for logging / policy decisions.
   execution_id: string;
   workflow_id: string;
   step_id: string;
@@ -37,7 +19,6 @@ export interface HookRequestCtx {
 export interface HookDecision {
   allowed: boolean;
   reason?: string;
-  /** Hook row id that produced the decision, if any. */
   hook_id?: string;
 }
 
@@ -61,9 +42,6 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
     return { allowed: true };
   }
 
-  // Load every enabled hook for any role the principal holds. We pull
-  // them all in one query and filter in-memory to keep the SQL simple
-  // and deterministic.
   const rows = await db
     .select()
     .from(requestHooks)
@@ -72,13 +50,11 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
   const applicable = rows
     .filter((row) => principal.roles.includes(row.role))
     .sort((a, b) => {
-      // Deterministic: by role, then version desc (latest first), then id.
       if (a.role !== b.role) return a.role < b.role ? -1 : 1;
       if (a.version !== b.version) return b.version - a.version;
       return a.id < b.id ? -1 : 1;
     });
 
-  // Collapse to latest version per role.
   const latestPerRole = new Map<string, (typeof applicable)[number]>();
   for (const row of applicable) {
     if (!latestPerRole.has(row.role)) {
@@ -106,8 +82,6 @@ export async function evaluateHook(p: EvaluateHookParams): Promise<HookDecision>
     });
 
     if (!decision.allowed) {
-      // Fail-closed audit row. Bind to the caller's db executor so the
-      // row lands in the same logical database as the execution.
       try {
         await writeAudit(
           {
@@ -161,8 +135,6 @@ async function runHook(
       code: source,
       input: hookInput,
       limits: HOOK_LIMITS,
-      // Before-request hooks are policy predicates, not execution
-      // transforms — no fixed instant to thread, intentionally constant.
       clock: null,
     });
     if (!output || typeof output !== "object") {
@@ -188,12 +160,6 @@ async function runHook(
   }
 }
 
-/**
- * Cheap syntax lint used by the admin CRUD route to reject malformed
- * source before it gets persisted. Runs the code against a dummy input
- * under very tight limits and swallows runtime errors so only syntax
- * failures surface.
- */
 export async function lintHookSource(
   source: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -202,7 +168,6 @@ export async function lintHookSource(
       code: source,
       input: { lint: true },
       limits: { tick_budget: 50_000, wall_ms: 1_000, memory_bytes: 16 * 1024 * 1024 },
-      // Syntax lint only — no execution context, intentionally constant.
       clock: null,
     });
     return { ok: true };
@@ -210,8 +175,6 @@ export async function lintHookSource(
     if (err instanceof Error && err.name === "SandboxSyntaxError") {
       return { ok: false, error: err.message };
     }
-    // Runtime failures during lint are fine — the hook will be exercised
-    // with real input at request-time.
     return { ok: true };
   }
 }

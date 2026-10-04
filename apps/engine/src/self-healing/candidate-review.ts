@@ -1,11 +1,3 @@
-// Operator-facing patch-candidate review surface.
-//
-// `previewPatchCandidate` renders the human-readable before/after view
-// the approve decision needs; `dryRunPatchCandidate` replays the patch
-// against a recorded fixture (or one synthesized from the failing
-// step's persisted material) WITHOUT mutating candidate status — the
-// propose-never-auto-apply boundary stays intact.
-
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -27,7 +19,6 @@ import type { DryRunStep } from "./types.ts";
 interface CandidateDiffEnvelope {
   proposal: PatchProposal | null;
   drift_diff: string | null;
-  /** Raw envelope, kept so the step anchor resolves exactly as the apply path does. */
   raw: Record<string, unknown>;
   step_id: string | null;
   dry_run: Record<string, unknown> | null;
@@ -48,12 +39,6 @@ function readCandidateDiff(diff: unknown): CandidateDiffEnvelope {
   };
 }
 
-/**
- * Project a persisted DAG step down to the projection slots the review surface
- * renders. The wire shape stays `{id, kind, data_selector?, expression?}` — a
- * step definition carries connector ids, headers and bodies the operator does
- * not need in a before/after diff.
- */
 function projectStep(step: Record<string, unknown>): DryRunStep | null {
   const id = typeof step.id === "string" ? step.id : null;
   const kind = step.kind === "transform" ? "transform" : step.kind === "request" ? "request" : null;
@@ -66,13 +51,6 @@ function projectStep(step: Record<string, unknown>): DryRunStep | null {
   return projected;
 }
 
-/**
- * Load the step the patch targets out of the workflow's CURRENT version —
- * the same definition the apply path rewrites. Reading the failing
- * execution-step row instead would show the operator a step that carries no
- * `data_selector` at all, so the diff would promise a change the apply path
- * never makes.
- */
 async function loadTargetStep(
   tenant_id: string,
   workflow_id: string,
@@ -101,7 +79,6 @@ export interface PatchCandidatePreview extends PatchReadiness {
   drift_summary: string | null;
   proposal: PatchProposal | null;
   fixture_available: boolean;
-  /** The dry-run verdict recorded at proposal time (may be skipped). */
   proposal_dry_run: Record<string, unknown> | null;
   before_step: DryRunStep | null;
   after_step: DryRunStep | null;
@@ -123,8 +100,6 @@ export async function previewPatchCandidate(
   if (!row) return null;
   const envelope = readCandidateDiff(row.diff);
 
-  // Before/after come from the workflow definition and the SAME pure rewrite
-  // the apply path runs, so what the operator approves is what goes live.
   let before_step: DryRunStep | null = null;
   let after_step: DryRunStep | null = null;
   let changed_paths: string[] = [];
@@ -177,9 +152,6 @@ export type CandidateDryRunOutcome =
   | { status: "no_proposal" }
   | { status: "no_step" }
   | { status: "no_fixture" }
-  /** A gate repair changes what a request materializes, not how a recorded
-   *  response is projected: its proof is a held preparation of the prepared
-   *  version, never a fixture replay. */
   | { status: "gate_fix" };
 
 export async function dryRunPatchCandidate(
@@ -208,9 +180,6 @@ export async function dryRunPatchCandidate(
   if (!snapshot) return { status: "no_step" };
   const step = buildDryRunStep(snapshot);
 
-  // Prefer the fixture recorded at proposal time; otherwise synthesize
-  // one from the failing step's persisted request/response material —
-  // exactly what the repair flow itself consumed.
   let fixture: { request: unknown; response: unknown } | null = null;
   let fixture_source: "recorded" | "synthesized" = "recorded";
   if (row.fixture_id) {
@@ -235,8 +204,6 @@ export async function dryRunPatchCandidate(
 
   const result = await runFixtureDryRun({ step, patch: envelope.proposal, fixture });
 
-  // Read-only from the candidate's perspective, but it executes a
-  // tenant-supplied projection — leave an audit trace.
   await auditAwait(
     {
       tenant_id: params.tenant_id,

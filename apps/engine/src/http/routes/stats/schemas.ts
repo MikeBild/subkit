@@ -1,19 +1,7 @@
-// Zod request/response schemas for the /v1/stats/* surface. The OpenAPI
-// document is generated from these — never hand-written.
-//
-// Every aggregation route returns three rollup levels in one response:
-//   - per-bucket: `groups[].buckets[]` — time-series for sparklines.
-//   - per-group:  `groups[].totals`    — "workflow X had 42 runs".
-//   - window:     top-level `totals`   — the whole-window summary.
-
 import { z } from "@hono/zod-openapi";
 import { PRICE_SOURCES } from "../../../llm/index.ts";
 import { BUCKET_UNITS } from "./bucket-window.ts";
 
-// A query param may arrive as a single string or a repeated array. This
-// coercion accepts both and yields a `string[]`. Used for the multi-value
-// filters (status[], request_source[], driver[], model[], …) and for
-// `group_by`.
 export const CsvOrArray = z
   .union([z.string(), z.array(z.string())])
   .optional()
@@ -28,17 +16,12 @@ const BoolParam = z
   .optional()
   .transform((v) => v === true || v === "true");
 
-/** Common bucket grammar shared by every route. Validation of caps +
- *  retention happens in `bucket-window.ts` at the handler layer; the
- *  Zod schema only constrains the bucket enum and requires `from`. */
 export const BucketWindowQuery = z.object({
   bucket: z.enum(BUCKET_UNITS),
   from: z.string().min(1),
   to: z.string().optional(),
   tz: z.string().optional(),
 });
-
-// ---- shared aggregate sub-objects -----------------------------------------
 
 const DurationAggSchema = z
   .object({
@@ -79,12 +62,8 @@ const EnvelopeBase = {
   tz: z.string(),
   from: z.string(),
   to: z.string(),
-  /** Set when `from` was clamped to the tenant's audit-retention
-   *  horizon (audit-backed routes only). */
   truncated_at: z.string().optional(),
 };
-
-// ---- executions -----------------------------------------------------------
 
 export const ExecutionsStatsQuery = BucketWindowQuery.extend({
   workflow_id: z.string().uuid().optional(),
@@ -116,8 +95,6 @@ export const ExecutionsStatsResponse = z
     }),
   })
   .openapi("StatsExecutionsResponse");
-
-// ---- connectors -----------------------------------------------------------
 
 const OutcomeMap = z.object({
   success: z.number(),
@@ -168,8 +145,6 @@ export const ConnectorsStatsResponse = z
   })
   .openapi("StatsConnectorsResponse");
 
-// ---- events ---------------------------------------------------------------
-
 export const EVENT_CLASSES = [
   "webhook_outbound",
   "webhook_inbound",
@@ -189,18 +164,12 @@ export const EventsStatsQuery = BucketWindowQuery.extend({
   group_by: CsvOrArray,
 }).openapi("StatsEventsQuery");
 
-// Events reuse the connectors response shape (same audit aggregator) but
-// with `action` as the natural group axis.
 export const EventsStatsResponse = ConnectorsStatsResponse.openapi("StatsEventsResponse");
-
-// ---- llm ------------------------------------------------------------------
 
 export const LlmStatsQuery = BucketWindowQuery.extend({
   model: CsvOrArray,
   flow: CsvOrArray,
   group_by: CsvOrArray,
-  // Narrow to one user. Reading another user (or `group_by=user`) requires
-  // the `stats:read:all` permission; own-usage reads need only `stats:read`.
   user_id: z.string().uuid().optional(),
 }).openapi("StatsLlmQuery");
 
@@ -218,9 +187,6 @@ export const LlmStatsResponse = z
     groups: z.array(
       z.object({
         key: GroupKey,
-        // The name people know the group's model by ("Claude Haiku 4.5"),
-        // from the engine's model catalog. Present when the group has a
-        // model the catalog knows; otherwise show `key.model`.
         model_name: z.string().optional(),
         buckets: z.array(LlmBucket),
         totals: z.object({
@@ -228,8 +194,6 @@ export const LlmStatsResponse = z
           tokens: TokenAggSchema,
           latency_ms: LatencyAggSchema,
         }),
-        // This group's money, priced from its own rows exactly as `cost` below
-        // prices the window's. Present when `group_by` names one dimension.
         cost: z
           .object({
             amount: z.number(),
@@ -244,18 +208,12 @@ export const LlmStatsResponse = z
       tokens: TokenAggSchema,
       latency_ms: LatencyAggSchema,
     }),
-    // Money for the window, priced per model at read time from the built-in
-    // catalog and the operator's overrides. `unpriced_*` names what the rates did not cover, so an
-    // amount is never mistaken for a complete one.
     cost: z
       .object({
         amount: z.number(),
         currency: z.string(),
         unpriced_models: z.array(z.string()),
         unpriced_calls: z.number().int(),
-        // Which rate priced each model: SubKit's built-in catalog, the
-        // catalog reached through a Bedrock/Vertex id (the platform may
-        // charge more), or the operator's `tokens.prices` entry, which wins.
         price_sources: z.array(
           z.object({ model: z.string(), price_source: z.enum(PRICE_SOURCES) }),
         ),
@@ -265,13 +223,9 @@ export const LlmStatsResponse = z
   })
   .openapi("StatsLlmResponse");
 
-// ---- quality --------------------------------------------------------------
-
 export const StatsQualityQuery = BucketWindowQuery.extend({
   workflow_id: z.string().uuid().optional(),
 }).openapi("StatsQualityQuery");
-
-// ---- product usage -------------------------------------------------------
 
 export const UsageStatsQuery = BucketWindowQuery.extend({
   traffic_class: CsvOrArray.default(["organic"]),

@@ -1,26 +1,3 @@
-// Contract tests for the skill roster's auto-load trigger discipline.
-//
-// Three invariants this test enforces:
-//
-//  1. `error-recovery.md` auto-loads on any common authoring-time error
-//     shape (HTTP 4xx/5xx, permission_denied, placeholder_unresolved, …)
-//     so the recovery routine is in context when the model needs it —
-//     not a skill the model has to remember to load_skill() explicitly.
-//
-//  2. `error-recovery` (authoring-time) and
-//     `troubleshooting-workflow-failures` (execution-time) have
-//     disambiguated titles and descriptions. Their jobs overlap in
-//     wording but NOT in scope; anyone skimming the roster must be able
-//     to tell them apart.
-//
-//  3. `connector-creation-guidance.md` fires on creation-intent phrases
-//     only. It must NOT auto-load on every mention of `api`, `http`, or
-//     `endpoint` — that broad trigger floods context in unrelated flows
-//     (MCP setup, workflow authoring against existing connectors).
-//
-// Regressions here re-introduce the exact UX issues the skill-roster
-// audit flagged. Keep the test loud.
-
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -40,11 +17,6 @@ function frontmatter(body: string): Record<string, string> {
   return out;
 }
 
-// New skill schema: `activates_when` is a JSON array of activation
-// rules — `{"kind": "baseline"}` is the auto-load equivalent;
-// `{"kind": "intent_keyword", "word": "..."}` are the trigger
-// keywords. The legacy `auto_load: true` + `trigger_keywords: [...]`
-// fields no longer exist.
 type ActivationRule = { kind: "baseline" } | { kind: "intent_keyword"; word: string };
 
 function activationRules(body: string): ActivationRule[] {
@@ -115,8 +87,6 @@ describe("error-recovery vs troubleshooting-workflow-failures — disambiguated"
     expect(kws).toContain("run failed");
     expect(kws).toContain("past run");
     expect(kws).toContain("circuit-breaker");
-    // And DOES NOT hijack the generic `error` / `failed` keywords that
-    // the authoring-time skill should own.
     expect(kws).not.toContain("error");
     expect(kws).not.toContain("failed");
   });

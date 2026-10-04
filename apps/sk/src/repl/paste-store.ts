@@ -1,27 +1,3 @@
-// Paste-as-chunk store.
-//
-// When the user pastes a block of text (or attaches an image via
-// `/paste`), we do NOT splice the raw content into the composer — it
-// would scroll past the input, break autocomplete placement, and make
-// cursor math unreliable. Instead we stash the content and splice a
-// one-line placeholder reference into the buffer:
-//
-//   [Pasted text #3 +42 lines]
-//   [Image #2]
-//   [File invoice.pdf #4]
-//
-// Placeholders are stable, deterministic references. On submit, the
-// REPL calls `expandRefs(prompt, store)` to substitute text refs
-// back inline and emit file / image refs as separate `@`-mentions so
-// the existing mention resolver can pick them up.
-//
-// File-path paste bypasses this local store and stays visible as
-// normal composer text. The submit preprocessor uploads existing local
-// paths and rewrites them through `@file:fid_...`; `expandRefs` turns
-// those mentions into canonical `{"$file":"fid_..."}` leaves.
-//
-// The paste-ref system keeps the API small and subkit-native.
-
 import { formatFileRef as formatFileLeaf, parseAllFileMentions } from "../utils/file-ref.ts";
 
 export const LARGE_PASTE_CHAR_THRESHOLD = 1000;
@@ -63,8 +39,6 @@ export interface PasteStore {
 export function createPasteStore(): PasteStore {
   return new StoreImpl();
 }
-
-// ---------- Implementation ----------
 
 const REF_RE = /\[(Pasted text|Image|File [^\]]*?) #(\d+)(?: \+\d+ lines)?\]/g;
 
@@ -127,8 +101,6 @@ class StoreImpl implements PasteStore {
   }
 }
 
-// ---------- Ref formatting ----------
-
 export function formatTextRef(id: number, lineCount: number): string {
   return lineCount === 0 ? `[Pasted text #${id}]` : `[Pasted text #${id} +${lineCount} lines]`;
 }
@@ -146,38 +118,13 @@ function countNewlines(text: string): number {
   return matches ? matches.length : 0;
 }
 
-// ---------- Expansion at submit ----------
-
 export interface ExpandedPrompt {
-  /** Prompt ready to POST to the engine. Text refs expanded inline. */
   prompt: string;
-  /** Files / images that should be attached as `@path` mentions (resolved by `resolveMentions`). */
   attachmentPaths: string[];
-  /** Pasted item ids the prompt actually consumed — caller can free these post-submit. */
   consumedIds: number[];
 }
 
-/**
- * Replace text refs inline with the original paste content; collect
- * image / file ref paths into `attachmentPaths` so the caller can
- * append them as `@path` mentions before sending the turn.
- *
- * Also recognises `@file:fid_<uuid>` mentions in the composer text
- * and rewrites each occurrence to the canonical JSON file leaf
- * `{"$file":"fid_..."}`. The leaf is spliced inline so downstream
- * prompt parsing sees the wire shape without needing a second
- * resolution pass.
- *
- * Unknown / stale refs are left verbatim — they'll look like
- * `[Pasted text #99]` in the transcript, which is a clear signal the
- * underlying content was already freed.
- */
 export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
-  // Engine-backed file mentions are a separate, regex-driven rewrite
-  // so they continue to work for resumed conversations whose paste-
-  // store has been recreated empty. We process them BEFORE the legacy
-  // `[…#N]` refs so an `@file:fid_…` token cannot collide with a
-  // stale numbered slot.
   let working = rewriteFileMentions(input);
   const matches = [...working.matchAll(REF_RE)];
   if (matches.length === 0) {
@@ -185,8 +132,6 @@ export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
   }
   const consumedIds: number[] = [];
   const attachmentPaths: string[] = [];
-  // Splice at original match offsets from right to left so earlier
-  // offsets stay valid.
   for (let i = matches.length - 1; i >= 0; i--) {
     const m = matches[i];
     if (!m || m.index === undefined) continue;
@@ -197,8 +142,6 @@ export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
       working = working.slice(0, m.index) + item.text + working.slice(m.index + m[0].length);
       consumedIds.push(id);
     } else {
-      // Image / file — leave the ref visible but collect the path so
-      // the caller can wire @-mentions.
       attachmentPaths.push(item.path);
       consumedIds.push(id);
     }
@@ -206,15 +149,10 @@ export function expandRefs(input: string, store: PasteStore): ExpandedPrompt {
   return { prompt: working, attachmentPaths, consumedIds };
 }
 
-/** Rewrite every `@file:fid_<uuid>` mention to its canonical JSON
- *  `$file` leaf. Done as a single regex pass so the original
- *  cursor-relative offsets in `expandRefs` stay correct after
- *  substitution. */
 function rewriteFileMentions(input: string): string {
   const mentions = parseAllFileMentions(input);
   if (mentions.length === 0) return input;
   let out = input;
-  // Replace from right to left so the leftover indices remain valid.
   for (let i = mentions.length - 1; i >= 0; i--) {
     const m = mentions[i];
     if (!m) continue;
@@ -226,11 +164,6 @@ function rewriteFileMentions(input: string): string {
   return out;
 }
 
-/**
- * Decide whether a raw keystroke chunk from stdin should be treated
- * as a large paste placeholder. Smaller bracketed or chunked pastes
- * stay visible in the composer, matching Codex.
- */
 export function looksLikePaste(chunk: string): boolean {
   return chunk.length > LARGE_PASTE_CHAR_THRESHOLD;
 }

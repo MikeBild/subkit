@@ -2,27 +2,12 @@ import { type QueryKey, useMutation, useQueryClient } from "@tanstack/react-quer
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n-context";
 
-// A quick action (approve, revoke, enable, rename) shows its result at once:
-// the cached read is changed before the request leaves, put back exactly as it
-// was if the engine refuses, and ends on what the engine holds — the engine's
-// own answer where it returns the record (`fromResult`), otherwise one more
-// read. A refusal says so in one toast.
-
 export interface OptimisticAction<TVars, TResult, TData> {
-  /** The read the action changes. */
   queryKey: QueryKey;
   mutationFn(vars: TVars): Promise<TResult>;
-  /** The read as it will be once the action succeeds. */
   apply(current: TData | undefined, vars: TVars): TData | undefined;
-  /**
-   * The read as the engine's answer states it, for an action whose answer is
-   * the changed record. The screen then ends on that answer without reading
-   * the record again.
-   */
   fromResult?(result: TResult, vars: TVars): TData | undefined;
-  /** Further reads the action changes, refreshed when it settles. */
   invalidate?: readonly QueryKey[];
-  /** The refusal's toast; defaults to "the change was undone". */
   errorMessage?: (error: unknown) => string;
   onSuccess?(result: TResult, vars: TVars): void;
 }

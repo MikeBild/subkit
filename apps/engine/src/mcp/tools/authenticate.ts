@@ -1,19 +1,3 @@
-// MCP `authenticate` product tool.
-//
-// Visible in every MCP mode (product / authoring / admin) so clients can
-// request a reauthentication link for a connector without discovering
-// separate endpoints. Returns an authorization URL the user can open to
-// re-authenticate.
-//
-// Scopes:
-//   • "connector"  — reauth for a specific connector (OAuth2 authorize URL)
-//   • "session"    — generic reauthentication URL (today: same as connector
-//                    when connector_id is given, otherwise returns a hint
-//                    that the caller must supply connector_id)
-//
-// The call writes the OAuth PKCE state to `connector_oauth_states` so the
-// subsequent `/v1/oauth/callback` roundtrip can complete.
-
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
@@ -66,9 +50,6 @@ export interface AuthenticateResult {
   portal_url: string;
   expires_at: string;
   state: string;
-  /** Canonical OAuth callback URL the operator must add to their OAuth
-   *  provider's allowlist. Same value for every OAuth2 connector on
-   *  this engine — `${public_base_url}/v1/oauth/callback`. */
   redirect_uri: string;
 }
 
@@ -87,9 +68,6 @@ export async function handleAuthenticate(
   const scope = args.scope ?? "connector";
 
   if (!args.connector_id) {
-    // The session-scope case currently requires a connector because subkit
-    // does not issue portal URLs outside a connector OAuth flow yet.
-    // Session-level reauth is a follow-up.
     return {
       ok: false,
       data: {
@@ -104,10 +82,6 @@ export async function handleAuthenticate(
     return { ok: false, data: { error: "connector not found", reason: "connector_missing" } };
   }
 
-  // The connector's own sign-in (`connectorSignIn` — what its `sign_in` field
-  // and both start routes answer). This tool runs the `/oauth/start` flow
-  // only: an MCP server signs in on `/mcp/authorize`, and a connector with no
-  // browser sign-in (a key, a Cognito password grant) is re-issued instead.
   const signIn = connectorSignIn(connector);
   if (signIn?.kind !== "oauth") {
     return {
@@ -168,11 +142,6 @@ export async function handleAuthenticate(
       tenant_id: principal.tenant_id,
       scope,
     });
-    // State-write closure: the PKCE state row above is durable tenant
-    // state. AGENTS non-negotiable "Audit everything that changes
-    // state" requires a row for this — the legacy code skipped it.
-    // The actual credential write happens later at /v1/oauth/callback
-    // (CREDENTIAL_CREATED / CREDENTIAL_ROTATED).
     await auditAwait(
       {
         tenant_id: principal.tenant_id,

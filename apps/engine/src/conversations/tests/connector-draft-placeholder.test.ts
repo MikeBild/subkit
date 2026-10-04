@@ -1,10 +1,3 @@
-// Refuses placeholder hostnames the model would otherwise fabricate.
-// Without this gate, a careless first turn produces base_urls like
-// `https://api.example.com` or `https://your-host.com`, the draft
-// passes basic URL parsing, the next probe fails opaquely with DNS
-// errors, and the user gets a confusing turn instead of a clear
-// "ground this from real context" instruction.
-
 import { describe, expect, test } from "bun:test";
 import { validateConnectorDraft } from "../connector-draft.ts";
 import type { ConnectorDraftDocument } from "../types.ts";
@@ -41,10 +34,6 @@ describe("validateConnectorDraft — placeholder host gate", () => {
   });
 
   test("does NOT reject loopback / localhost (legitimate dev fixtures)", () => {
-    // Models rarely fabricate loopback URLs as fake production targets,
-    // and real dev/test setups point at local stubs. The placeholder
-    // gate would be a false-positive nightmare for the tool-test
-    // harness if it flagged 127.0.0.1.
     for (const url of ["http://localhost:3000", "http://127.0.0.1:8080", "http://0.0.0.0:9000"]) {
       const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(true);
@@ -60,9 +49,6 @@ describe("validateConnectorDraft — placeholder host gate", () => {
   });
 
   test("rejects '<YOUR_HOST>' / '[YOUR_API]' bracket fabrications via the URL-validity gate", () => {
-    // These never parse as URLs, so the validity check fires first; the
-    // important property is that they are refused with SOME blocking
-    // error, not silently accepted.
     for (const url of ["https://<YOUR_HOST>", "https://[YOUR_API].com"]) {
       const result = validateConnectorDraft(draft({ base_url: url }), []);
       expect(result.ok).toBe(false);
@@ -71,9 +57,6 @@ describe("validateConnectorDraft — placeholder host gate", () => {
   });
 
   test("does not double-flag legitimate template placeholders like {{tenant}}", () => {
-    // `${field}` placeholders are already caught earlier as missing_fields,
-    // not as placeholder URLs. Confirm we don't accidentally mark them as
-    // placeholder errors too.
     const result = validateConnectorDraft(
       draft({ base_url: "https://$" + "{region}.api.real.com" }),
       [],
@@ -83,11 +66,6 @@ describe("validateConnectorDraft — placeholder host gate", () => {
 });
 
 describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
-  // For the GraphQL driver `base_url` IS the full endpoint URL. A base_url
-  // trimmed to the host root (dropping `/graphql`) parses fine but 404s
-  // every request — AppSync answers `UnknownOperationException`. The
-  // template's `url_pattern` is the canonical endpoint shape, so the
-  // draft must be refused at save time rather than at run time.
   const FULL_APPSYNC_URL = "https://abc123def456.appsync-api.eu-central-1.amazonaws.com/graphql";
   const HOST_ROOT_APPSYNC_URL = "https://abc123def456.appsync-api.eu-central-1.amazonaws.com";
 
@@ -121,9 +99,6 @@ describe("validateConnectorDraft — GraphQL endpoint url_pattern gate", () => {
   });
 
   test("does NOT enforce url_pattern on HTTP connectors (host-root base_url is valid)", () => {
-    // HTTP connectors legitimately store a host-root base_url and address
-    // many paths per step, so the url_pattern gate is GraphQL-only. A
-    // Stripe HTTP connector pointed at the host root must still validate.
     const result = validateConnectorDraft(
       draft({
         driver: "http",

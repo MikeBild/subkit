@@ -1,20 +1,3 @@
-// Regression test for the save_workflow_draft policy-gate bypass + auto-persist
-// path. Covers the bug observed in session dca36b29 (engine logs at
-// 2026-04-28T05:00:57Z) where:
-//   - The LLM called save_workflow_draft directly.
-//   - tool_policy.confirmation_required fired, but the gate skipped
-//     pause + elicit (sdk-wrap.ts:393's `category === "tenant_write"`
-//     filter excluded `save_workflow_draft`'s `draft_write` category).
-//   - The tool ran immediately and died with `no_prior_approval`.
-//
-// Two scenarios cover the fix end to end:
-//   1. policy gate now PAUSES save_workflow_draft and emits an elicit_request
-//      with kind=save_workflow_draft AND a commit_intent payload that the
-//      harness can auto-persist.
-//   2. resolving that elicitation with confirmed:true via
-//      maybeAutoPersistFromElicitation atomically writes the workflow
-//      via the auto-persist path (no LLM re-issue needed).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -96,9 +79,6 @@ function readyWorkflowDraft(slug: string): DraftDocument {
       ],
     },
   };
-  // Mirror the readiness contract commitWorkflowAtomic enforces:
-  // inspect + validate + at least one successful preview must be
-  // recorded in the draft state.
   const inspected = withWorkflowInspection(base);
   const validated = withWorkflowValidation(inspected, true, "Workflow draft validated.");
   return withLatestPreview(validated, {
@@ -150,8 +130,6 @@ describe("save_workflow_draft — policy gate", () => {
       { toolCallId: "fake-llm-call-id", messages: [] },
     );
 
-    // The wrapper paused before save_workflow_draft.execute could run — no
-    // workflow row exists yet, no `no_prior_approval` was returned.
     expect(result.ok).toBe(false);
     expect(result.pause).toBeDefined();
     expect(result.pause?.tool_name).toBe("ask_user_confirm");
@@ -161,10 +139,6 @@ describe("save_workflow_draft — policy gate", () => {
       policy_mode: "confirm_before_execution",
     });
 
-    // The synthesised elicitation carries the right top-level kind so
-    // the inner prior-approval gate (commit-workflow.ts:63) finds it
-    // on a re-issue, AND a commit_intent so the harness auto-persist
-    // can fire on confirm without an LLM round-trip.
     const elicit = events.find((e) => e.type === "elicit_request");
     if (elicit?.type !== "elicit_request") {
       throw new Error("expected elicit_request event");
@@ -225,10 +199,6 @@ describe("save_workflow_draft — policy gate", () => {
   });
 
   test("save_workflow_draft with a fresh durable prior approval skips the policy gate", async () => {
-    // The save path's ONE shortcut: a resolved ask_user_confirm carrying
-    // commit_intent.kind=save_workflow_draft is the same durable approval the
-    // commit backstop authorizes on, so the pre-confirm gate must not fire a
-    // second time. Nothing the model puts in its args participates.
     const conversation_id = await freshConversation();
     const events: TurnEvent[] = [];
     const signals = freshSignals();
@@ -238,10 +208,6 @@ describe("save_workflow_draft — policy gate", () => {
       actor_type: "system",
       db: ctx.testDb.db,
     });
-    // Pre-seed a resolved ask_user_confirm carrying
-    // commit_intent.kind:save_workflow_draft so the inner prior-approval
-    // gate (which authorizes on the commit_intent, not the cosmetic
-    // top-level kind) also passes.
     await ctx.testDb.db.insert(conversationElicitations).values({
       tenant_id: ctx.tenant_id,
       conversation_id,
@@ -283,15 +249,10 @@ describe("save_workflow_draft — policy gate", () => {
       { toolCallId: "reissue-call-id", messages: [] },
     );
 
-    // No pause this time — `findPriorSaveWorkflowApproval` matches the resolved
-    // elicit, the inner prior-approval check accepts the same row, and the
-    // workflow gets persisted.
     expect(result.pause).toBeUndefined();
     expect(result.ok).toBe(true);
     const data = result.data as Record<string, unknown>;
     expect(data.workflow_id).toBeDefined();
-    // Saving is preparation, not a live invocation handoff. The proposed
-    // capability is retained without claiming activation or run authority.
     expect(data.usage).toBeUndefined();
     expect(data.persistence_kind).toBe("draft");
     expect(data.activation_required).toBe(true);
@@ -299,7 +260,6 @@ describe("save_workflow_draft — policy gate", () => {
     expect(data.next_prompt as string).toContain(
       "no schedule, webhook or live execution was enabled",
     );
-    // A draft save proposes no skill to the person: its capability note is advisory.
     expect(data.next_prompt as string).not.toContain("Skill-Candidate");
   });
 });
@@ -310,8 +270,6 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
     const draft = readyWorkflowDraft("auto-persist-wf");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
 
-    // Simulate the carrier elicitation the policy gate (or an
-    // LLM-emitted ask_user_confirm) would have produced.
     const [carrier] = await ctx.testDb.db
       .insert(conversationElicitations)
       .values({
@@ -350,8 +308,6 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
     expect(dispatch.synthetic_result?.tool).toBe("save_workflow_draft");
     expect(dispatch.synthetic_result?.source).toBe("harness_auto_persist");
 
-    // The workflow was actually written. Pre-fix this assertion
-    // would fail because no_prior_approval blocked the write.
     const wfRows = await ctx.testDb.db
       .select()
       .from(workflows)
@@ -359,9 +315,6 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
     const persisted = wfRows.find((r) => r.slug === "auto-persist-wf");
     expect(persisted).toBeDefined();
 
-    // A synthetic tool-call row was injected with
-    // source=harness_auto_persist so the LLM's next turn sees the
-    // commit as a normal tool result and does NOT need to re-issue.
     const calls = await ctx.testDb.db
       .select()
       .from(conversationToolCalls)
@@ -376,18 +329,10 @@ describe("save_workflow_draft — auto-persist via commit_intent", () => {
 
 describe("commit gate — authorizes on commit_intent.kind, not top-level kind", () => {
   test("PRODUCTION CASE: generic-kind confirm + save_workflow_draft commit_intent authorizes the commit", async () => {
-    // The exact stuck-conversation row: top-level `kind:"generic"`,
-    // `commit_intent.kind:"save_workflow_draft"`, `confirmed:true`.
-    // Pre-fix the commit gate keyed on `input->>'kind' =
-    // 'save_workflow_draft'` and rejected it → no_prior_approval →
-    // conversation_commit dead-ended with "no committed workflow".
     const conversation_id = await freshConversation();
     const draft = readyWorkflowDraft("commit-gate-prod-case");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
 
-    // Seed the multi-turn elicitation history exactly as observed:
-    // an external_write resolved + cancelled, a review_after_execution
-    // resolved, then the decisive generic-kind save approval.
     await ctx.testDb.db.insert(conversationElicitations).values([
       {
         tenant_id: ctx.tenant_id,
@@ -454,7 +399,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       },
     };
 
-    // The prior-approval gate runs (skipPriorApprovalCheck omitted).
     const result = await commitWorkflowAtomic({ ctx: toolCtx });
     expect(result.ok).toBe(true);
     expect(result.committed_workflow_id).toBeDefined();
@@ -471,7 +415,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     const draft = readyWorkflowDraft("commit-gate-no-intent");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
 
-    // Only an external_write confirm exists — no commit_intent.
     await ctx.testDb.db.insert(conversationElicitations).values({
       tenant_id: ctx.tenant_id,
       conversation_id,
@@ -510,17 +453,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
   });
 
   test("explicitly guarded non-save calls get no elicitation dedup or model-marker bypass", async () => {
-    // The fuzzy generic 20-row elicitation scan is DELETED. A
-    // non-`save_workflow_draft` write no longer proceeds just because a
-    // prior resolved `ask_user_confirm` for the same (or a different)
-    // tool happens to exist in history — guessing operator intent from
-    // stale rows is exactly the class of heuristic the deterministic
-    // `decideConfirm` gate removes. The ONLY thing that clears a write is,
-    // for the save path alone, a fresh `findPriorSaveWorkflowApproval`.
-    // Explicitly guarded calls pause, and no model argument changes that.
-
-    // (a) A prior resolved run_workflow confirm does NOT dedup the
-    // pre-confirm anymore — an explicit one-shot write still PAUSES.
     {
       const conversation_id = await freshConversation();
       await ctx.testDb.db.insert(conversationElicitations).values({
@@ -574,7 +506,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         },
         { toolCallId: "no-generic-dedup-call", messages: [] },
       );
-      // Deterministic: no marker, not the save path → PAUSE.
       expect(result.ok).toBe(false);
       expect(result.pause).toBeDefined();
       expect(result.pause?.tool_name).toBe("ask_user_confirm");
@@ -586,10 +517,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       expect(elicit).toBeDefined();
     }
 
-    // (b) The same call WITH a model-supplied `__policy_confirmed: true`
-    // STILL pauses. The gate reads no marker off the args, and the published
-    // schema declares none — one tool call must not be able to perform a live
-    // prod run with no elicitation, no approval row, and no human.
     {
       const conversation_id = await freshConversation();
       const events: TurnEvent[] = [];
@@ -630,7 +557,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
         },
         { toolCallId: "marker-inert-call", messages: [] },
       );
-      // The marker is inert: same pause, same confirmation card.
       expect(result.ok).toBe(false);
       expect(result.pause).toBeDefined();
       expect(result.pause?.tool_name).toBe("ask_user_confirm");
@@ -640,9 +566,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
   });
 
   test("policy gate and commit gate agree — both consult the shared predicate", async () => {
-    // Regression: the two gates must never disagree. We assert the
-    // shared predicate's verdict matches the commit gate's outcome for
-    // the production-shaped approval row.
     const conversation_id = await freshConversation();
     const draft = readyWorkflowDraft("commit-gate-agreement");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
@@ -664,8 +587,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       status: "resolved",
     });
 
-    // The shared predicate (used by the loop confirm gate's
-    // `priorApproval` input to decideConfirm) sees an approval...
     const approval = await findPriorSaveWorkflowApproval(
       ctx.testDb.db,
       ctx.tenant_id,
@@ -673,8 +594,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     );
     expect(approval).not.toBeNull();
 
-    // ...and the commit gate (which consults the SAME predicate)
-    // therefore accepts the commit. Identical verdict → no divergence.
     let liveDraft = draft;
     const toolCtx: ToolContext = {
       db: ctx.testDb.db,
@@ -700,10 +619,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
   });
 
   test("permission_mode=auto bypasses the gate — and the audit row says so instead of claiming a manual re-issue", async () => {
-    // The gate is deliberately skipped in `auto`. What must not happen is the
-    // audit log calling that commit `manual_re_issue`: nobody re-issued
-    // anything manually, and an operator asking "did anyone approve this?"
-    // would read a yes where there was none.
     const conversation_id = await freshConversation();
     const draft = readyWorkflowDraft("commit-gate-auto-bypass");
     await appendSnapshot(ctx.tenant_id, conversation_id, draft, ctx.testDb.db);
@@ -729,7 +644,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
       },
     };
 
-    // No prior approval exists — under `auto` the commit still goes through.
     expect(
       await findPriorSaveWorkflowApproval(ctx.testDb.db, ctx.tenant_id, conversation_id),
     ).toBeNull();
@@ -737,8 +651,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     const result = await saveWorkflowDraftTool.execute(toolCtx, {});
     expect(result.ok).toBe(true);
 
-    // Scope to THIS workflow: the suite shares a tenant, so earlier tests have
-    // rows of their own in the log.
     const rows = (
       await ctx.testDb.db.select().from(auditLog).where(eq(auditLog.tenant_id, ctx.tenant_id))
     ).filter(
@@ -753,7 +665,6 @@ describe("commit gate — authorizes on commit_intent.kind, not top-level kind",
     expect(toolRow.reason).toBe("auto_mode_no_prior_approval");
     expect((toolRow.metadata as Record<string, unknown>).bypassed_prior_approval).toBe(true);
 
-    // …and no row about this commit claims a manual re-issue.
     expect(rows.some((r) => r.reason === "manual_re_issue")).toBe(false);
   });
 });

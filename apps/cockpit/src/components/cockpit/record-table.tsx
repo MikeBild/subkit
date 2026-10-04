@@ -3,12 +3,6 @@ import type { ReactNode } from "react";
 import { type CockpitColumn, DataTable, type InfiniteRows } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 
-/**
- * A record's own short list — its runs, steps, approvals, workflows — as the
- * one table (P6), with the labels every such list shares. An engine-paged
- * list hands its `infinite` rows from `useInfiniteList`; a short one shows
- * every row it has.
- */
 export function RecordTable<TData extends RowData>({
   columns,
   data,
@@ -30,11 +24,9 @@ export function RecordTable<TData extends RowData>({
   columns: CockpitColumn<TData>[];
   data: TData[];
   collectionId: string;
-  /** "Noch keine {Objekte}." */
   emptyLine: string;
   emptyAction?: ReactNode;
   pending?: boolean;
-  /** What did not load, and how to read it again. */
   error?: { line: string; onRetry(): void } | null;
   onOpen?(row: TData): void;
   rowHref?(row: TData): string | null;

@@ -1,6 +1,3 @@
-// Unit tests for actorFields() — derives LLM-usage attribution fields
-// from a resolved principal without touching any I/O or DB.
-
 import { describe, expect, it } from "bun:test";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { actorFields } from "./actor.ts";

@@ -36,8 +36,6 @@ describe("enrichConnectorFromTemplate — stripe (bearer, no oauth)", () => {
 
   test("base_url falls back to template base_url when not supplied", () => {
     const result = enrichConnectorFromTemplate({}, template);
-    // template.base_url is non-null in the Stripe fixture; otherwise the
-    // field is omitted from the enriched draft so the operator is asked.
     expect(result.base_url).toBe(template.base_url as string);
   });
 

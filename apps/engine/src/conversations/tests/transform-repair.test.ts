@@ -1,19 +1,3 @@
-// Bounded JSONata auto-repair (Fix 10).
-//
-//   - fixes a known-bad expression (`:=` misuse) within ≤2 attempts and
-//     marks `repaired: true` with before/after,
-//   - verifies empty-result repairs against the RECORDED scope (a
-//     candidate that compiles but still extracts nothing is rejected),
-//   - gives up cleanly after 2 attempts (`repaired: false`, last_error),
-//   - rides the dry_run_transform failure path.
-//
-// The PROPOSE-only "repair rides the tool envelope, draft unchanged"
-// contract is exercised at the pipeline layer (author_workflow runs
-// runRecordedEval with repair armed); see recorded-eval.test.ts.
-//
-// LLM provider is the in-process mock (LLM_PROVIDER=mock bootstrap +
-// `generateOverrides.repair`) — no network, deterministic.
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -38,12 +22,7 @@ async function ensureConfigLoaded(): Promise<void> {
   try {
     getConfig();
     return;
-  } catch {
-    /* fall through */
-  }
-  // Bootstrap config with `LLM_PROVIDER=mock` so the provider registry
-  // selects the in-process mock — the bootstrap env channel documented
-  // in env.ts, not a feature flag.
+  } catch {}
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-transform-repair-"));
   await loadConfig({
     env: {
@@ -103,8 +82,8 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     getMockProvider().generateOverrides.repair = () => {
       calls += 1;
       return calls === 1
-        ? { expression: "return input.scope.fetch.data.nope;" } // parses, still empty
-        : { expression: "return input.scope.fetch.data.items;" }; // non-empty against recorded scope
+        ? { expression: "return input.scope.fetch.data.nope;" }
+        : { expression: "return input.scope.fetch.data.items;" };
     };
     const outcome = await repairTransformExpression({
       expression: "return input.scope.fetch.data.wrong_field;",

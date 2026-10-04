@@ -1,27 +1,3 @@
-// User story: As a third-party customer authenticated via a
-// `wf_portal_*` token scoped to one workflow, I can start a
-// conversation against the engine but I cannot read skills, I cannot
-// switch tenants, and cross-workflow access is denied.
-//
-// Acceptance criteria:
-//
-//   AC1. A portal-token principal with `allowed_workflows = [wfA]`
-//        can POST /v1/conversations — the evaluator's portal-token
-//        allowlist branch grants conversation:write globally for any
-//        non-empty allowlist (workflow-level enforcement happens when
-//        a turn actually touches a workflow).
-//   AC2. Same principal is DENIED GET /v1/skills (skill:read not on
-//        the portal-token allowlist path).
-//   AC3. Same principal CAN hit /v1/conversations/:id/stream
-//        (conversation:read allowed).
-//   AC4. Same principal is DENIED /v1/conversations/:id/compact on
-//        a conversation created via portal-token because compact
-//        requires conversation:write and the service exists, but we
-//        pin the behaviour: compact IS allowed for portal-token
-//        principals today because conversation:write is on the
-//        allowlist. This test asserts that (and will flag the day
-//        we tighten portal-token to a read-only surface).
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { portalTokens, users } from "../../db/schema/index.ts";
@@ -51,7 +27,6 @@ describe("journey: sk-cli portal-token customer", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("sk-cli-04-portal");
 
-    // Seed a target workflow for the portal token's allowlist.
     workflowId = (
       await seedWorkflow(ctx, {
         slug: "invoices",
@@ -60,8 +35,6 @@ describe("journey: sk-cli portal-token customer", () => {
       })
     ).id;
 
-    // Seed an enduser ref (portal tokens normally point at an end-user
-    // row; this test reuses a lightweight users row).
     const [end] = await ctx.db
       .insert(users)
       .values({
@@ -74,7 +47,6 @@ describe("journey: sk-cli portal-token customer", () => {
 
     const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: legacy; review before changing
     portalToken = `wf_portal_${rand}`;
-    // Portal tokens use a 14-char prefix (10-char literal + 4-char rand).
     await ctx.db.insert(portalTokens).values({
       tenant_id: ctx.tenantId,
       enduser_ref: end.id,
@@ -104,10 +76,6 @@ describe("journey: sk-cli portal-token customer", () => {
 
   test("AC3: portal-token can read conversations (list)", async () => {
     const res = await pFetch("/v1/conversations");
-    // list requires conversation:list OR workflow:read; portal-token
-    // grants neither through the role branch. The allowlist path
-    // grants conversation:read/write/cancel but not conversation:list,
-    // so we EXPECT a 403 here — pinning the current behaviour.
     expect(res.status).toBe(403);
   });
 

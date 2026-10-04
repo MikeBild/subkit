@@ -1,19 +1,3 @@
-// Operator-facing setup validation:
-//   GET /v1/diagnostics/setup
-//
-// Surfaces the live engine configuration grouped by section (auth,
-// llm, datastore, storage, crypto, public_urls). Each section returns
-// a status (ok / warn / blocked), the relevant settings (secrets
-// masked), and a structured issue list with remediation hints. Exists
-// so operators / portal UI / `sk settings configure` can answer
-// "is the engine production-ready?" without ssh-ing in.
-//
-// 4.2.0: this file used to read 33 env vars directly via envString().
-// That made settings writes silently invisible. Everything now reads the
-// active PostgreSQL-backed snapshot through `getConfig()`. `MASTER_KEY` stays
-// in env because it is a process bootstrap value consumed before the runtime
-// revision can be decrypted.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { getConfig } from "../../../config/loader.ts";
@@ -30,24 +14,12 @@ import {
   type SetupValue,
 } from "./schemas.ts";
 
-/** Narrows a config string to undefined when it is the schema default
- *  (empty string), so the "Missing"/"Not configured" hint logic stays
- *  centralized at the call site. Trims surrounding whitespace before
- *  the presence check AND on the way out — otherwise a leading-space
- *  `OPENAI_API_KEY=" sk-..."` would surface with the leading space
- *  intact, which is harmless but inconsistent with the trimmed
- *  predicate. */
 function present(value: string | undefined | null): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-// 4.2.0: every secret-shape value in this file uses `setPresence`
-// (returns "configured" / null) instead of `maskSecret` (which leaked
-// 6 hex chars to any identity:read principal). The diagnostic
-// surface is reachable to non-admin roles; a strict presence-only
-// view is the only safe shape.
 function setPresence(value: string | undefined): string | null {
   return value ? "configured" : null;
 }
@@ -117,10 +89,6 @@ function buildAuthSection(snapshot: ReturnType<typeof getConfig>): SetupSection 
   );
 }
 
-// Whether the named provider has the credentials it needs to actually
-// answer requests. Built from globalLlmStatus() (which is itself
-// derived from getConfig()) so this stays in sync with the schema and
-// never reads process.env directly.
 function providerHasCredentials(
   provider: string,
   status: ReturnType<typeof globalLlmStatus>,
@@ -153,10 +121,6 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
 
-  // Validation lives in ConfigSchema + model-init's validateProviderSetup
-  // — boot fails on bad config so this section reports the live status from
-  // globalLlmStatus(). The blocker surface comes from `inferred_provider ===
-  // "unconfigured"` which globalLlmStatus already encodes.
   if (llmStatus.inferred_provider === "unconfigured") {
     issues.push(
       buildIssue(
@@ -171,9 +135,6 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
     );
   }
 
-  // Summarize-route blocker fires when the override picks a provider
-  // but its credentials are absent. Same shape as the primary check —
-  // both derive from the globalLlmStatus flags below.
   if (
     cfg.summarize_provider &&
     cfg.summarize_provider !== "mock" &&
@@ -252,18 +213,11 @@ function buildLlmSection(snapshot: ReturnType<typeof getConfig>): SetupSection {
       },
       {
         key: "llm.providers.bedrock.access_key_id",
-        // setPresence (not maskSecret) — the diagnostic surface is
-        // reachable to anyone with audit:read OR identity:read; even
-        // 6 hex chars of an AWS access key are too much exposure for
-        // a non-admin role.
         value: setPresence(present(bedrock.access_key_id)),
         status_hint: present(bedrock.access_key_id) ? null : "Missing",
       },
       {
         key: "llm.providers.bedrock.secret_access_key",
-        // Both halves of the AWS credential pair are surfaced so an
-        // operator who only set one sees the gap immediately, instead
-        // of debugging a 4xx from the bedrock SDK.
         value: setPresence(present(bedrock.secret_access_key)),
         status_hint: present(bedrock.secret_access_key) ? null : "Missing",
       },
@@ -306,13 +260,6 @@ function buildDatastoreSection(snapshot: ReturnType<typeof getConfig>): SetupSec
     );
     recommendations.push("Fix database.url so the engine points at a valid Postgres DSN.");
   }
-  // database.url carries `secret: true` in ConfigSchema (the password
-  // is sensitive, and the username + host identify which prod cluster
-  // the engine points at — operational metadata that non-admin
-  // identity:read principals shouldn't see). Surface presence only.
-  // formatDatabaseUrl is still consulted internally for the
-  // invalid-format check above; the operator-facing string lands in
-  // the issue detail, not in the public value.
   return buildSection(
     "Datastore",
     [
@@ -365,11 +312,6 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
       },
       {
         key: "storage.object_store.access_key_id",
-        // Standardize on setPresence across the section (matches
-        // storage.object_store.secret_access_key below). The access-key half of the
-        // pair is also a credential — the previous masked-prefix
-        // exposure leaked the AWS account-recognizable prefix to any
-        // identity:read principal.
         value: setPresence(accessKey),
         status_hint: accessKey ? null : "Missing",
       },
@@ -390,13 +332,6 @@ function buildStorageSection(snapshot: ReturnType<typeof getConfig>): SetupSecti
 }
 
 function buildCryptoSection(): SetupSection {
-  // BOOTSTRAP_ONLY_ENV_KEYS in apps/engine/src/crypto/aes-gcm.ts is
-  // the canonical list of env vars consumed BEFORE the config loader.
-  // Today it's exactly ["MASTER_KEY"] and the diagnostic only knows
-  // how to render that one key (length validation, status hint).
-  // If a second var is ever added, this section needs to grow a row
-  // per entry — the assertion below makes that visible at boot
-  // instead of silently surfacing only the first.
   if (BOOTSTRAP_ONLY_ENV_KEYS.length !== 1 || BOOTSTRAP_ONLY_ENV_KEYS[0] !== "MASTER_KEY") {
     throw new Error(
       `BOOTSTRAP_ONLY_ENV_KEYS shape changed (${JSON.stringify(BOOTSTRAP_ONLY_ENV_KEYS)}); update buildCryptoSection to render every entry.`,
@@ -405,8 +340,6 @@ function buildCryptoSection(): SetupSection {
   const masterKey = present(process.env.MASTER_KEY);
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
-  // Detect deployment shape: production paths set STATE_DIRECTORY +
-  // CONFIGURATION_DIRECTORY via the systemd unit; local dev does not.
   const envFilePath =
     typeof process.env.CONFIGURATION_DIRECTORY === "string" &&
     process.env.CONFIGURATION_DIRECTORY.length > 0
@@ -433,9 +366,6 @@ function buildCryptoSection(): SetupSection {
     [
       {
         key: "MASTER_KEY",
-        // setPresence — even 6 hex chars of MASTER_KEY in the
-        // diagnostic surface is too much exposure for a non-admin
-        // identity:read principal.
         value: setPresence(masterKey),
         status_hint: masterKey ? null : "Missing",
       },
@@ -450,12 +380,6 @@ function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSe
   const issues: SetupIssue[] = [];
   const recommendations: string[] = [];
   if (!baseUrl) {
-    // Advisory only — NOT a warning. A correct local/trial install routinely
-    // runs without a public base URL, and the code paths that genuinely need
-    // it (OAuth callbacks, MCP resource origin, webhook links) already fail
-    // with their own clear errors when it's missing. Surfacing it as a setup
-    // `warning` was the lone reason a healthy fresh install showed ⚠, so it
-    // lives in recommendations instead.
     recommendations.push(
       "For external webhooks, chat deeplinks, and OAuth callbacks, set a public base URL: `sk settings set server.public_base_url '\"https://...\"'` with the externally reachable engine URL.",
     );
@@ -475,14 +399,6 @@ function buildPublicUrlsSection(snapshot: ReturnType<typeof getConfig>): SetupSe
 }
 
 function buildSetupValidation(): SetupResponse {
-  // Read getConfig() once per request and thread the snapshot down so
-  // every section sees a coherent point-in-time view of the config.
-  // structuredClone is required: setConfigKey() mutates the live
-  // config tree in place by replacing branches; sub-objects share
-  // refs across reads. Without the deep clone a concurrent
-  // setConfigKey mid-build could still flip a leaf the next builder
-  // reads. The clone is one-shot per request, so the cost amortises
-  // against the 6-section traversal that follows.
   const snapshot = structuredClone(getConfig());
   const sections = {
     auth: buildAuthSection(snapshot),

@@ -30,8 +30,6 @@ describe("trace propagation", () => {
     expect(traceId?.length ?? 0).toBeGreaterThan(8);
     const created = (await res.json()) as { id: string };
 
-    // The audit row written inside the route handler must carry the same
-    // trace_id from the async context.
     const rows = await ctx.db.select().from(auditLog).where(eq(auditLog.resource_id, created.id));
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const found = rows.find((r) => r.trace_id === traceId);

@@ -1,13 +1,3 @@
-// Red points at its cause.
-//
-// The health score and the freshness tile both linked to the operations page,
-// which says "what it finds is on the overview" — a loop with no cause at
-// either end. `data.freshness` was a constant 0 that could never turn red.
-//
-// Pinned here: no core link leads to the operations page; each health
-// component links to what it measures; a seeded unhealthy connector is named
-// in `causes`; and freshness turns stale when its source is old.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { connectors, selfHealingScans, tenants } from "../db/schema/index.ts";
@@ -93,15 +83,11 @@ test("no core metric or health component drilldown leads to the operations page"
     expect(source.drilldown.path).not.toBe("/cockpit/operations");
 
   const byId = new Map(overview.core.health.components.map((c) => [c.id, c.drilldown.path]));
-  // Blocked work is on the attention list, not on a separate decisions page.
   expect(byId.get("decisions.blocked")).toBe("/cockpit");
   expect(byId.get("executions.success_ratio")).toBe(
     "/cockpit?runs=all&status=failed&source=scheduler",
   );
   expect(byId.get("connectors.healthy_ratio")).toBe("/cockpit/connectors?health=not_ok");
-  // The section tile of the same ratio leads to the same narrowed list: at 0 %
-  // it links (a ratio at zero is the worst state), and the plain catalogue
-  // would hand the reader every connector instead of the broken ones.
   const tile = overview.sections
     .flatMap((section) => section.metrics)
     .find((metric) => metric.id === "connectors.healthy_ratio");
@@ -123,16 +109,12 @@ test("a seeded unhealthy connector appears in causes with a link to that connect
   expect(causes.length).toBeLessThanOrEqual(MAX_HEALTH_CAUSES);
   const cause = causes.find((c) => c.kind === "connector" && c.id === brokenConnectorId);
   expect(cause?.label).toContain("broken-api");
-  // The structured half a surface words in its own language — the cockpit
-  // rendered the English label verbatim inside a German page.
   expect(cause?.subject).toEqual({ kind: "connector", id: brokenConnectorId, name: "broken-api" });
   expect(cause?.reason).toBe("needs_reauth");
   expect(cause?.detail).toBeNull();
   expect(cause?.cause_class).toBeNull();
   expect(cause?.drilldown.path).toBe(`/cockpit/connectors/${brokenConnectorId}`);
-  // Only the unhealthy one — a healthy connector is not a cause.
   expect(causes.filter((c) => c.kind === "connector")).toHaveLength(1);
-  // With connector health below 90 %, the score's own link is that component.
   expect(overview.core.health.drilldown.path).toBe("/cockpit/connectors?health=not_ok");
 });
 
@@ -157,6 +139,5 @@ test("freshness is fresh on recent heartbeats and turns stale when its source is
   const scanSource = freshness.sources.find((s) => s.id === "self_healing.drift_scan");
   expect(scanSource?.state).toBe("stale");
   expect(freshness.sources.find((s) => s.id === "connectors.reauth_scan")?.state).toBe("fresh");
-  // The tile's link names the stale source.
   expect(freshness.drilldown.path).toBe(scanSource?.drilldown.path ?? "missing source");
 });

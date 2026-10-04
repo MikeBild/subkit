@@ -24,14 +24,8 @@ export type ToolPart = ToolUIPart | DynamicToolUIPart;
 
 export type ToolHeaderProps = {
   title?: string;
-  /** The engine's word for how this call ended. Outranks the part's own state:
-   *  a declined call is "declined", not "completed". */
   outcomeKey?: TranslationKey | null;
-  /** The most recent log line while the call runs. Live stream only. */
   logTail?: string | null;
-  /** How long the call has been running, in ms. Live stream only — no duration
-   *  is persisted, so a reloaded transcript shows none rather than a made-up
-   *  one. */
   elapsedMs?: number | null;
 } & Omit<ComponentProps<typeof CollapsibleTrigger>, "children" | "type"> &
   (
@@ -96,10 +90,6 @@ export const ToolHeader = ({
   ...props
 }: ToolHeaderProps) => {
   const { t } = useI18n();
-  // The name used to be discarded here — `toolName` was destructured into an
-  // unused binding and no caller passed a `title`, so every card in every
-  // transcript read the same generic phrase and a person could not tell a
-  // catalogue lookup from a workflow that actually ran.
   const actionName = title ?? (toolName ? humaniseToolName(toolName) : t("tool.action"));
   const statusWord = t(outcomeKey ?? statusLabels[state]);
 

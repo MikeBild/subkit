@@ -1,9 +1,3 @@
-// Tests for the DevTools wrap.
-//
-// Asserts: (1) mock-sentinel models pass through unwrapped,
-// (2) production models pass through unwrapped, (3) DEV models get
-// wrapped, (4) the scrub middleware redacts Authorization headers.
-
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   __resetDevtoolsCacheForTests,
@@ -11,11 +5,6 @@ import {
   scrubAuthHeadersMiddleware,
 } from "../devtools-wrap.ts";
 
-// Minimal v4-shaped model stub. We do not import `@ai-sdk/provider` here
-// because the `no_live_llm` audit invariant forbids real-LLM SDK imports
-// in any *.test.ts file. The wrap composes around .doStream + .doGenerate;
-// we don't exercise those — only that the returned reference is (or is
-// not) the same instance.
 type StubModel = {
   specificationVersion: string;
   provider: string;
@@ -40,8 +29,6 @@ describe("maybeWrapForDevtools", () => {
   afterEach(() => {
     if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = originalNodeEnv;
-    // Reset the module-scoped middleware cache so cases that flip
-    // NODE_ENV don't see each other's load decisions (S3).
     __resetDevtoolsCacheForTests();
   });
 
@@ -70,10 +57,6 @@ describe("maybeWrapForDevtools", () => {
     expect(typeof out === "object" && out !== null && "specificationVersion" in out).toBe(true);
   });
 
-  // Regression (684 MB prod .devtools/generations.json leak): the gate is
-  // opt-IN on NODE_ENV === "development", NOT opt-out via `!== "production"`.
-  // Every non-development context must pass through unwrapped so the
-  // unbounded devtools writer never activates outside an explicit dev env.
   for (const env of ["", "staging", "test", "smoke"] as const) {
     it(`does not wrap when NODE_ENV is ${env === "" ? "unset" : `"${env}"`}`, async () => {
       if (env === "") delete process.env.NODE_ENV;
@@ -96,10 +79,6 @@ describe("maybeWrapForDevtools", () => {
   });
 });
 
-// W5: assert the scrub middleware redacts auth headers before any
-// downstream middleware (i.e. devtools) sees them. This is the
-// secret-redaction guarantee load-bearing on the design comment in
-// devtools-wrap.ts.
 describe("scrubAuthHeadersMiddleware", () => {
   it("redacts Authorization / x-api-key / api-key / x-auth-token / x-amz-security-token", async () => {
     const transform = scrubAuthHeadersMiddleware.transformParams;
@@ -114,7 +93,6 @@ describe("scrubAuthHeadersMiddleware", () => {
           "api-key": "kp_xyz",
           "X-Auth-Token": "tok_xyz",
           "x-amz-security-token": "sts_xyz",
-          // Non-auth header — must pass through unchanged.
           "x-trace-id": "trace-1234",
         },
       },
@@ -130,10 +108,6 @@ describe("scrubAuthHeadersMiddleware", () => {
     expect(headers["x-trace-id"]).toBe("trace-1234");
   });
 
-  // S4: SDK middleware-order regression. `wrapLanguageModel` reverses
-  // the array before reducing, so `[outer, inner]` means `outer` is
-  // user-facing and `inner` sees scrubbed params. If a minor SDK bump
-  // flips that contract, this test fails.
   it("scrub middleware runs before downstream middleware sees params", async () => {
     const { wrapLanguageModel } = await import("ai");
     const observed: Array<{ which: string; auth: string | undefined }> = [];
@@ -158,10 +132,6 @@ describe("scrubAuthHeadersMiddleware", () => {
         headers: Record<string, string>;
       }) => Promise<unknown>;
     };
-    // Pass a minimal-but-valid LanguageModelV3CallOptions shape so the
-    // SDK never has reason to short-circuit `transformParams` — keeps
-    // the regression signal sharp if SDK ever guards against malformed
-    // params upstream.
     await inner.doGenerate({ prompt: [], headers: { Authorization: "Bearer sk-secret" } });
     expect(observed).toHaveLength(1);
     expect(observed[0]?.which).toBe("inner");

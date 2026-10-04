@@ -30,7 +30,6 @@ import {
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type RecordValue = Record<string, unknown>;
 
-/** The fields of the stored record that belong to the definition, as the engine returns them. */
 const DEFINITION_FIELDS = [
   "name",
   "slug",
@@ -47,11 +46,6 @@ const DEFINITION_FIELDS = [
   "trigger",
 ] as const;
 
-/**
- * The definition a new version starts from: the waiting draft where there is
- * one, else the running version as the record carries it. Empty fields are
- * left out — a definition does not carry `null`s it never had.
- */
 export function definitionFromRecord(record: RecordValue, steps: readonly unknown[]): RecordValue {
   const definition: RecordValue = { steps: [...steps] };
   for (const field of DEFINITION_FIELDS) {
@@ -61,14 +55,12 @@ export function definitionFromRecord(record: RecordValue, steps: readonly unknow
   return definition;
 }
 
-/** A step's id, as the editor shows and keeps it. */
 export function stepId(step: unknown): string {
   return step && typeof step === "object" && typeof (step as RecordValue).id === "string"
     ? ((step as RecordValue).id as string)
     : "";
 }
 
-/** Moves the step at `from` one place up (-1) or down (+1); the list is not changed in place. */
 export function moveStep<T>(steps: readonly T[], from: number, by: -1 | 1): T[] {
   const to = from + by;
   if (to < 0 || to >= steps.length) return [...steps];
@@ -78,24 +70,17 @@ export function moveStep<T>(steps: readonly T[], from: number, by: -1 | 1): T[] 
   return next;
 }
 
-/**
- * The step editor's state (R16): the saved steps, or the reader's changes to
- * them until they are saved as one new version or discarded. A pending change
- * keeps the page from being left without a word (`useDirtyGuard`).
- */
 export function useStepDraft(saved: readonly unknown[]) {
   const [draft, setDraft] = useState<unknown[] | null>(null);
   const [changes, setChanges] = useState(0);
   const [marks, setMarks] = useState<Record<string, StepMark>>({});
   const key = JSON.stringify(saved);
-  // A new saved version replaces whatever was edited on top of the old one.
   useEffect(() => {
     setDraft(null);
     setChanges(0);
     setMarks({});
   }, [key]);
   const steps = draft ?? [...saved];
-  // Undoing every change by hand leaves nothing to save.
   const dirty = draft !== null && JSON.stringify(draft) !== key;
   useDirtyGuard(dirty);
   const change = (
@@ -143,17 +128,10 @@ export function useStepDraft(saved: readonly unknown[]) {
   };
 }
 
-/** What happened to a step since the saved version: shown beside its name. */
 export type StepMark = "new" | "changed" | "moved";
 
 export type StepDraft = ReturnType<typeof useStepDraft>;
 
-/**
- * "Schritt hinzufügen" / "Schritt … bearbeiten" (R16): name and kind, then
- * what the kind needs — a connector, method and path for a call; the code
- * for a transformation; the duration for a pause. A stored step of another
- * kind keeps its configuration and is edited as SubKit stores it.
- */
 export function StepDialog({
   open,
   onOpenChange,
@@ -163,9 +141,7 @@ export function StepDialog({
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
-  /** The step edited; null adds one. */
   step: unknown;
-  /** The other steps' names. */
   taken: readonly string[];
   onApply(step: unknown): void;
 }) {
@@ -184,7 +160,6 @@ export function StepDialog({
     setText(JSON.stringify(step, null, 2));
     setError(null);
   }, [open, step]);
-  // A call that names no connector yet starts with the first one, once the list is there.
   useEffect(() => {
     if (firstConnector && !form.connectorId)
       setForm((current) => ({ ...current, connectorId: firstConnector }));
@@ -313,11 +288,6 @@ const STEP_FORM_ERRORS = {
   waitInvalid: "stepEditor.waitInvalid",
 } as const satisfies Record<StepFormError, TranslationKey>;
 
-/**
- * The save bar of the step editor: the count of changes, "Verwerfen" and
- * "Speichern". Saving writes ONE new version as the waiting change; the
- * running version keeps running until that change is approved.
- */
 export function StepSaveBar({
   workflowId,
   record,
@@ -332,8 +302,6 @@ export function StepSaveBar({
   const save = useMutation({
     mutationFn: async () => {
       const expected = typeof record.draft_version_id === "string" ? record.draft_version_id : null;
-      // A change that already waits is the base: the new version builds on
-      // it, never silently on the running one beneath it.
       let base: RecordValue = definitionFromRecord(record, []);
       if (expected && expected !== record.current_version_id) {
         const waiting = await apiRequest<WorkflowDraft>(

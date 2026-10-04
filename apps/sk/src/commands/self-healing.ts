@@ -1,16 +1,3 @@
-// `sk self-healing` — admin-only proactive drift scan surface.
-//
-// Three subcommands shaped exactly like the closest analogue
-// (`patch-candidates`): list / get-style read commands plus a single
-// action verb. Mutating subcommands here is only `scan`. Approve /
-// reject of the resulting Patch Candidates lives under
-// `sk patch-candidates` already; we don't duplicate.
-//
-// The CLI passes the bearer token through as-is and surfaces the
-// engine's 403 envelope when the principal lacks the admin role —
-// per the established sk convention (auth + patch-candidates), the
-// client doesn't pre-check.
-
 import { reportCommandError } from "@cli-core/errors";
 import { emitList, printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
@@ -37,9 +24,6 @@ const scanCommand = defineCommand({
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
-      // The engine enforces principal-scoped tenant on POST scans (no
-      // cross-tenant via this surface), so the CLI exposes only the
-      // intra-tenant targeting filters.
       const body: { workflow_id?: string; connector_id?: string } = {};
       if (args.workflow) body.workflow_id = String(args.workflow);
       if (args.connector) body.connector_id = String(args.connector);

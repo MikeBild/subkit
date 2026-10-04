@@ -1,8 +1,3 @@
-// detectMime() table tests.
-//
-// Covers common extensions, multi-dot filenames, no-extension default,
-// and case-insensitive matching.
-
 import { describe, expect, test } from "bun:test";
 import { detectMime, MIME_MAP } from "./mime.ts";
 
@@ -50,8 +45,6 @@ describe("detectMime — case-insensitive extension matching", () => {
 
 describe("detectMime — multi-dot filenames", () => {
   test("archive.tar.gz uses last extension (.gz) → application/gzip", () => {
-    // Last extension wins — the engine's gzip parser recursively
-    // extracts the inner payload, so the tar wrapper is its concern.
     expect(detectMime("archive.tar.gz")).toBe("application/gzip");
   });
 

@@ -18,9 +18,7 @@ beforeEach(() => {
 afterEach(() => {
   try {
     rmSync(dir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 describe("session JSONL store", () => {
@@ -52,7 +50,6 @@ describe("session JSONL store", () => {
     expect(loadEvents("not-real", dir, "t-test")).toEqual([]);
   });
 
-  // R11-W3: tenant is required on read path.
   test("loadEvents rejects missing tenant", () => {
     expect(() => loadEvents("c-x", dir, "")).toThrow(/tenant is required/);
   });
@@ -67,7 +64,6 @@ describe("session JSONL store", () => {
       { seq: 0, kind: "user_message", data: { text: "ok" } },
       { dir, tenant: "t-test" },
     );
-    // Append a partial line manually to simulate a crash.
     const fs = require("node:fs") as typeof import("node:fs");
     fs.appendFileSync(sessionEventsPath("c-2", dir, "t-test"), '{"seq": 1, "kind":');
     const events = loadEvents("c-2", dir, "t-test");
@@ -94,7 +90,6 @@ describe("session JSONL store", () => {
     appendEvent("c-3", { seq: 0, kind: "user_message", data: {} }, { dir, tenant: "t-test" });
     const fs = require("node:fs") as typeof import("node:fs");
     const stat = fs.statSync(sessionEventsPath("c-3", dir, "t-test"));
-    // 0o600 = owner read/write only — last 9 bits should be 0o600
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
@@ -137,7 +132,6 @@ describe("session JSONL store", () => {
     expect(raw).toContain("***redacted***");
   });
 
-  // R2-W6 review fix: tenant-scoped path layout
   test("sessionEventsPath namespaces by tenant when given", () => {
     const p = sessionEventsPath("c-1", "/tmp/sk-x", "tenant-A");
     expect(p).toBe("/tmp/sk-x/tenant-A/c-1.jsonl");

@@ -1,5 +1,3 @@
-// Skill read tools (global/connector/workflow scope).
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool } from "../index.ts";
 

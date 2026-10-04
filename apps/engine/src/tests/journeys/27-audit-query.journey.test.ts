@@ -1,19 +1,3 @@
-// User story: As a compliance operator, I want to pull targeted slices
-// of the audit log through a REST API so I can answer SOC 2 + ISO 27001
-// questions without running ad-hoc SQL against production.
-//
-// Acceptance criteria:
-//   - AC1: Several distinct mutations produce distinct audit rows.
-//   - AC2: `action` filter narrows to a single kind.
-//   - AC3: `result=denied` lists at least the forced hook denial and
-//          the policy.denied row the RBAC gate wrote.
-//   - AC4: `actor_id` narrows to the admin's own rows.
-//   - AC5: `limit` pagination returns a cursor that walks the history.
-//   - AC6: `export.ndjson` streams the full set, one JSON per line.
-//   - AC7: A member-role API key is denied by `audit:read`.
-//
-// Spec refs: docs/concepts/governance-and-audit.md, docs/concepts/governance-and-audit.md, gap-pass-2 Stream D
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { auditAwait } from "../../audit/audit.ts";
@@ -40,7 +24,6 @@ describe("journey: audit query surface", () => {
   beforeAll(async () => {
     ctx = await createJourneyCtx("27-audit-query");
 
-    // --- Seed a member API key for AC7.
     const [member] = await ctx.db
       .insert(users)
       .values({
@@ -66,7 +49,6 @@ describe("journey: audit query surface", () => {
   }, JOURNEY_HOOK_TIMEOUT);
 
   test("AC1: distinct mutations produce distinct audit rows", async () => {
-    // 1. Create a workflow → workflow.created
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",
       body: JSON.stringify({
@@ -78,7 +60,6 @@ describe("journey: audit query surface", () => {
     expect(wfRes.status).toBe(201);
     workflowId = ((await wfRes.json()) as { id: string }).id;
 
-    // 2. Issue + rotate an api key → api_key.issued + api_key.rotated
     const issueRes = await journeyFetch(ctx, "/v1/identity/api-keys", {
       method: "POST",
       body: JSON.stringify({
@@ -95,7 +76,6 @@ describe("journey: audit query surface", () => {
     });
     expect(rotateRes.status).toBe(200);
 
-    // 3. Create + delete a skill → skill.created + skill.deleted
     const skillRes = await journeyFetch(ctx, "/v1/skills", {
       method: "POST",
       body: JSON.stringify({
@@ -110,25 +90,17 @@ describe("journey: audit query surface", () => {
     const delSkillRes = await journeyFetch(ctx, `/v1/skills/${skillId}`, { method: "DELETE" });
     expect(delSkillRes.status).toBe(204);
 
-    // 4. Run a workflow → execution.started
     const runRes = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       body: JSON.stringify({ source: "saved", workflow_id: workflowId, input: {} }),
     });
     expect(runRes.status).toBe(200);
 
-    // 5. Force a RBAC-denial by hitting audit-log as the member. This
-    //    mirrors the "hook denial" acceptance in the plan — we use the
-    //    rbac `requirePermission("audit:read")` middleware, which
-    //    emits a `policy.denied` audit row with result=denied.
     const memberRes = await fetch(`${ctx.baseUrl}/v1/audit-log`, {
       headers: { authorization: `Bearer ${memberApiKey}` },
     });
     expect(memberRes.status).toBe(403);
 
-    // Also seed a direct audit row with result=denied so the denied
-    // filter has a deterministic anchor unaffected by timing of the
-    // fire-and-forget write path.
     await auditAwait(
       {
         tenant_id: ctx.tenantId,
@@ -169,9 +141,6 @@ describe("journey: audit query surface", () => {
   });
 
   test("AC5: pagination — limit=10 returns 10 + next_cursor", async () => {
-    // Seed 30+ direct rows so the pagination math is deterministic
-    // regardless of how many fire-and-forget audit writes happened to
-    // land before this test runs.
     for (let i = 0; i < 32; i += 1) {
       // allow-wall-clock: 1 ms gap so ts is strictly monotonic; the
       // cursor walker otherwise skips ties between rows with identical

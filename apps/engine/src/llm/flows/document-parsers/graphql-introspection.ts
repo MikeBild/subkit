@@ -1,9 +1,3 @@
-// GraphQL introspection-response parser.
-// Accepts the JSON envelope returned by fetchGraphQLIntrospection (shape:
-// { data: IntrospectionQuery }) and uses `buildClientSchema` from the
-// `graphql` package to walk the schema — more reliable than the hand-rolled
-// parser in graphql.ts which targets SDL strings.
-
 import { buildClientSchema, type IntrospectionQuery } from "graphql";
 import type { EndpointSpec } from "../document-analysis.ts";
 

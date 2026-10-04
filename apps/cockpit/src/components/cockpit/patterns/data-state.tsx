@@ -6,14 +6,8 @@ import { cn } from "@/lib/utils";
 
 export type DataStateKind = "loading" | "empty" | "error";
 
-/** The number of placeholder rows a loading list shows, each one table row high. */
 export const LOADING_ROWS = 3;
 
-/**
- * The one empty, loading and error UI (P12): one line and one action,
- * left-aligned in the content column. No illustration, no second paragraph —
- * whatever else there is to say goes behind a (?) on the line that needs it.
- */
 export function DataState({
   state,
   line,
@@ -23,9 +17,7 @@ export function DataState({
   className,
 }: {
   state: DataStateKind;
-  /** The one line. Loading needs none; the skeleton rows say it. */
   line?: string;
-  /** The one action. An error without one offers "Erneut versuchen" when it can retry. */
   action?: ReactNode;
   onRetry?: () => void;
   testId?: string;

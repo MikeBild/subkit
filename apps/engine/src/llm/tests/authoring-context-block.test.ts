@@ -1,6 +1,3 @@
-// Authoring context block — structured text the loop pushes into the
-// volatile cache segment on every turn.
-
 import { describe, expect, test } from "bun:test";
 import {
   createEmptyDraftDocument,
@@ -60,7 +57,6 @@ describe("renderAuthoringContextBlock", () => {
           environment: "dev",
           auth_type: "bearer",
           base_url: "https://api.example.com",
-          // Credentials / DSN / config payloads must NEVER appear in the block.
           dsn: "postgres://user:pass@host/db",
           config: { secret_token: "hunter2" },
         },
@@ -89,7 +85,6 @@ describe("renderAuthoringContextBlock", () => {
     expect(block!).toContain('Workflow draft: "my-flow"');
     expect(block!).toContain("with 8 steps");
     expect(block!).toContain("s1: request");
-    // First 6 steps listed, remainder elided.
     expect(block!).toContain("and 2 more");
     expect(block!).not.toContain("s7:");
   });

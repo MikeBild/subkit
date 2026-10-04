@@ -1,19 +1,3 @@
-// Full MCP catalog identity pin, per mode. Locks the exact set of static
-// tool names `tools/list` returns for product / authoring / admin so a tool
-// silently added, removed, or renamed — or a mode-gating regression — fails
-// the suite. `wf_*` tools are excluded: they are generated per-tenant from
-// saved workflows, not part of the static catalog.
-//
-// THIS IS THE GUARD BEHIND `authoring_only`. The tiers are derived, not
-// listed: `product` publishes every read plus the run tools, minus whatever a
-// tool declares `authoring_only` at its definition site. A derived rule is only
-// as safe as its evidence, so the exact resulting names are pinned here — a new
-// authoring helper that forgets the flag shows up as a name appearing in
-// `PRODUCT_TOOLS`, which is a review conversation rather than a credential
-// quietly reaching a tool it was never granted.
-//
-// Updating these arrays is a deliberate act. Read the diff before accepting it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
@@ -313,9 +297,6 @@ const ADMIN_TOOLS = [
   "propose_workflow_repair",
   "read_knowledge",
   "rerun_execution",
-  // The recovery move for a bad save. Deliberately IN the MCP catalog: the
-  // session that needed it was an MCP client, and a recovery tool that is not
-  // reachable from the surface where the damage happens is not a recovery tool.
   "restore_workflow_version",
   "review_workflow_automation",
   "revoke_api_key",

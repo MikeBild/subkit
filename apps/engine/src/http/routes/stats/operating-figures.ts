@@ -1,9 +1,3 @@
-// GET /v1/stats/operating-figures — four of the Übersicht's operations
-// figures over one window: runs, success rate, healthy connectors (now),
-// applied repairs. Read through `operator/operating-figures.ts`, the reader
-// the MCP tool `get_operating_figures`, the cockpit's operations bar and the
-// operational overview's ratios answer from. Gated by `stats:read`.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {

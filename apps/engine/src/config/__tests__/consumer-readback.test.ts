@@ -1,11 +1,3 @@
-// Consumer read-back: every subsystem that consumes a config leaf
-// must SEE the new value after setConfigKey, without a restart
-// (except for `requiresRestart: true` leaves).
-//
-// This is the canonical "the change actually took effect" test —
-// the round-trip + on-disk file tests prove the storage path; this
-// test proves the read path.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -42,8 +34,6 @@ describe("consumer read-back per subsystem", () => {
     const { assertEgressAllowed, EgressBlockedError } = await import(
       "../../connectors/egress-guard.ts"
     );
-    // Default mode is null → falls back to NODE_ENV. NODE_ENV=test
-    // → permissive. A private host should pass.
     expect(() => assertEgressAllowed("http://10.0.0.1/x", {})).not.toThrow();
 
     await setConfigKey("egress.mode", "strict", { force: true });
@@ -55,35 +45,25 @@ describe("consumer read-back per subsystem", () => {
     const { assertEgressAllowed, EgressBlockedError } = await import(
       "../../connectors/egress-guard.ts"
     );
-    // Pre-condition: flip to strict so the private host is currently blocked.
     await setConfigKey("egress.mode", "strict", { force: true });
     expect(() => assertEgressAllowed("http://10.0.0.2/y", {})).toThrow(EgressBlockedError);
 
-    // Flip back to permissive — the same host must now pass without
-    // a re-import or any module reset. Proves the read path is live.
     await setConfigKey("egress.mode", "permissive", { force: true });
     expect(() => assertEgressAllowed("http://10.0.0.2/y", {})).not.toThrow();
   });
 
   test("count.ts isOneMillionContextActive sees llm.context_1m change", async () => {
     const { contextCapFor } = await import("../../llm/accounting/count.ts");
-    // claude-sonnet-4-5 default cap (no 1M flag) is 180k.
     expect(contextCapFor("claude-sonnet-4-5")).toBe(180_000);
     await setConfigKey("llm.context_1m", true, { force: true });
     expect(contextCapFor("claude-sonnet-4-5")).toBe(900_000);
   });
 
   test("llm/core model-init readEnv reads through getConfig", async () => {
-    // ENV_TO_CONFIG_PATH for ANTHROPIC_API_KEY → llm.providers.anthropic.api_key.
-    // With the loader uninitialised, readEnv falls back to process.env.
-    // With the loader up + a config write, readEnv must return the
-    // config value.
     await setConfigKey("llm.providers.anthropic.api_key", "ant-config-key", {
       force: true,
     });
     const { detectConfiguredProvider } = await import("../../llm/core/model-init.ts");
-    // detectConfiguredProvider reads LLM_PROVIDER (mapped to llm.provider).
-    // Default is "mock" so detection returns "mock".
     expect(detectConfiguredProvider()).toBe("mock");
 
     await setConfigKey("llm.provider", "anthropic", { force: true });
@@ -92,10 +72,6 @@ describe("consumer read-back per subsystem", () => {
 
   test("generic llm.api_key is mirrored into the active provider's leaf", async () => {
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
-    // Mirrors `sk init --llm-provider anthropic --llm-api-key …`, which writes
-    // ONLY the generic leaves. The provider-specific leaf the resolver reads
-    // (llm.providers.anthropic.api_key) must be auto-filled so the first AI
-    // call doesn't fail with ProviderMisconfiguredError.
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "generic-ant-key", { force: true });
 
@@ -163,13 +139,10 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("switching provider does not leak the previous provider's generic key", async () => {
-    // Bootstrap anthropic with a generic key → mirrored to the anthropic leaf.
     await setConfigKey("llm.provider", "anthropic", { force: true });
     await setConfigKey("llm.api_key", "ant-key", { force: true });
     expect(getConfig().llm.providers.anthropic.api_key).toBe("ant-key");
 
-    // Switch to openai WITHOUT supplying an openai key. The anthropic key must
-    // NOT bleed into the openai leaf, and anthropic must keep its own key.
     await setConfigKey("llm.provider", "openai", { force: true });
     expect(getConfig().llm.providers.openai.api_key).toBe("");
     expect(getConfig().llm.providers.anthropic.api_key).toBe("ant-key");
@@ -193,10 +166,6 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("bedrock_key_set requires region + access_key_id + secret_access_key", async () => {
-    // Multi-leaf invariant: bedrock is "configured" only when ALL three
-    // related leaves are populated. Any single missing leaf must render
-    // bedrock_key_set=false. Catches drift if the predicate ever
-    // collapses to "any of" in invoke.ts.
     const { globalLlmStatus } = await import("../../llm/core/invoke.ts");
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
 
@@ -213,8 +182,6 @@ describe("consumer read-back per subsystem", () => {
     });
     expect(globalLlmStatus().bedrock_key_set).toBe(true);
 
-    // Drop one leaf — flips back to false. Proves the predicate is
-    // sensitive to each leaf, not just first-set-wins.
     await setConfigKey("llm.providers.bedrock.region", "", { force: true });
     expect(globalLlmStatus().bedrock_key_set).toBe(false);
   });
@@ -226,11 +193,6 @@ describe("consumer read-back per subsystem", () => {
   });
 
   test("setConfigKey log.level actually flips the live logger threshold", async () => {
-    // Stronger than the previous test: prove the live `logger` object's
-    // emit threshold actually reconfigured (not just the in-memory
-    // Config). Capture stdout, force a known starting point, set
-    // log.level via setConfigKey, then verify a debug line that was
-    // suppressed before is emitted after.
     const { logger, reconfigureLogger } = await import("../../logging/logger.ts");
     reconfigureLogger({ level: "info", format: "ndjson" });
     const lines: string[] = [];
@@ -244,13 +206,11 @@ describe("consumer read-back per subsystem", () => {
       return orig(chunk);
     }) as typeof process.stdout.write;
     try {
-      // Pre-condition: at info threshold, a debug line is suppressed.
       logger.debug({ module: "test", msg: "pre-debug-suppressed" });
       expect(lines.some((l) => l.includes("pre-debug-suppressed"))).toBe(false);
 
       await setConfigKey("log.level", "debug", { force: true });
 
-      // Post-condition: after setConfigKey, debug emits flow without restart.
       logger.debug({ module: "test", msg: "post-debug-emitted" });
       expect(lines.some((l) => l.includes("post-debug-emitted"))).toBe(true);
     } finally {
@@ -297,7 +257,6 @@ describe("consumer read-back per subsystem", () => {
 
   test("offload resolver picks up storage.object_store.bucket without restart", async () => {
     const { _s3OffloadConfigForTests } = await import("../../execution/offload.ts");
-    // No bucket configured → resolver returns null (offload disabled).
     expect(_s3OffloadConfigForTests()).toBeNull();
 
     await setConfigKey("storage.object_store.bucket", "test-bucket", {
@@ -329,17 +288,13 @@ describe("consumer read-back per subsystem", () => {
   test("read sampling proves consumers actually re-read after a write", async () => {
     const counter = _enableReadSamplingForTests();
     counter.clear();
-    // Read once.
     getConfig().llm.api_key;
     expect(counter.get("global") ?? 0).toBeGreaterThanOrEqual(1);
 
-    // setConfigKey itself reads getConfig internally (for the
-    // tenant-merge path); after it, the new value flows.
     await setConfigKey("llm.api_key", "fresh", { force: true });
 
     const before = counter.get("global") ?? 0;
     expect(getConfig().llm.api_key).toBe("fresh");
-    // Reading getConfig again increments the sampler.
     expect(counter.get("global") ?? 0).toBeGreaterThan(before);
   });
 });

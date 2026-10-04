@@ -1,9 +1,3 @@
-// A green preview must say which declared boundaries it never reached.
-//
-// On a real repair the preview was green, the draft was saved and offered for
-// approval — with a storage folder guessed wrong on a step the preview had
-// skipped behind a held write. Nothing had said so.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -75,7 +69,6 @@ test("a bounded step skipped behind a held write is reported as unverified", asy
     step_trace?: Array<{ step_id: string; status: string }>;
     unverified_boundaries?: { code: string; step_ids: string[] };
   };
-  // The fixture really skips the bounded step.
   expect(data.step_trace?.find((t) => t.step_id === "announce")?.status).toBe("skipped");
   expect(data.unverified_boundaries).toMatchObject({
     code: "boundary_unverified_in_preview",

@@ -1,11 +1,3 @@
-// planProviderLimitPark — pure unit coverage.
-//
-// The plan decides whether a failed `conversation.run-turn` job is parked
-// (re-enqueued with `startAfter`) instead of terminally failed. Quota /
-// rate-limit provider errors park; semantic failures never do; parks are
-// bounded; a provider-stated reset time wins over the default backoff but
-// is capped at the horizon.
-
 import { describe, expect, test } from "bun:test";
 import { LlmProviderError } from "../../llm/errors.ts";
 import {
@@ -70,7 +62,7 @@ describe("planProviderLimitPark", () => {
     ).toBeNull();
     expect(
       planProviderLimitPark(
-        new LlmProviderError("context_length_exceeded", "context_length"), // classifier: context bucket
+        new LlmProviderError("context_length_exceeded", "context_length"),
         0,
         NOW,
       ),

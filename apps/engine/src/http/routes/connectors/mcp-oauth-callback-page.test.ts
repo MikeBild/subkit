@@ -1,11 +1,3 @@
-// The MCP authorization callback answers a browser with the same result page
-// as the connector OAuth callback — one renderer, worded for where the flow
-// was started — and, like it, builds any link to the Cockpit itself.
-//
-// These tests cover the branches that need no authorization server: a state
-// nobody holds, and a provider that declined. The exchange itself is covered
-// by mcp/client/oauth-provider.test.ts.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getConfig, setConfigKey } from "../../../config/loader.ts";
@@ -16,7 +8,6 @@ import { createHttpTestServer, type HttpTestServer } from "../../tests/setup.ts"
 
 let server: HttpTestServer;
 let connectorId = "";
-// The configured address is process-wide; hand it back as it was found.
 let publicBaseUrlBefore = "";
 
 beforeAll(async () => {
@@ -77,7 +68,6 @@ describe("GET /v1/connectors/mcp/oauth/callback — the result page", () => {
     expect(body).not.toContain("call this number");
     expect(body).toContain(`href="${server.baseUrl}/cockpit/connectors/${connectorId}"`);
     expect(body).toContain("Back to the connector");
-    // Single use: the state is gone whatever the outcome.
     const rows = await server.db
       .select()
       .from(mcpOauthStates)

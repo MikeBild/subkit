@@ -19,7 +19,6 @@ test("a failed verdict interrupts the human when nothing else is being asked", (
 });
 
 test("a verdict never cancels a question the human is already being asked", () => {
-  // Raising would supersede the pending question; the verdict stays a logged note.
   for (const verdict of [
     { commitAbstains: true, faithfulnessAbstains: false },
     { commitAbstains: false, faithfulnessAbstains: true },

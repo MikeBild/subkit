@@ -1,6 +1,3 @@
-// Unit tests for the pure resolveWindow function in bucket-window.ts.
-// No DB, no Docker. Exercises the validation path only.
-
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { HttpError } from "../../errors.ts";
@@ -11,10 +8,8 @@ function detailsReason(e: unknown): string | undefined {
   return e.details?.reason as string | undefined;
 }
 
-// A fixed reference point (2026-01-15T12:00:00Z)
 const T0 = "2026-01-15T12:00:00.000Z";
 
-// -- helper: build a "just at the cap" string --------------------------------
 function msAgo(refMs: number, deltaMs: number): string {
   return new Date(refMs - deltaMs).toISOString();
 }
@@ -34,16 +29,12 @@ describe("resolveWindow — happy path", () => {
   });
 
   test("defaults to now when `to` is omitted (uses minute bucket to avoid cap)", () => {
-    // Use a from that is within the last minute so the default `to=now`
-    // is inside the minute cap (24h). We cannot predict the exact now
-    // value so we use a from exactly 1 minute ago relative to the real
-    // clock — well inside the cap.
     const before = getTestNow();
     const from = new Date(before - 60_000).toISOString();
     const w = resolveWindow({ bucket: "minute", from });
     const after = getTestNow();
     expect(w.to.getTime()).toBeGreaterThanOrEqual(before);
-    expect(w.to.getTime()).toBeLessThanOrEqual(after + 50); // allow 50ms clock drift
+    expect(w.to.getTime()).toBeLessThanOrEqual(after + 50);
   });
 
   test("honours a custom tz", () => {
@@ -209,7 +200,6 @@ describe("resolveWindow — invalid inputs", () => {
   });
 });
 
-// Expose the helper so the msLater check is verified
 test("msLater helper sanity", () => {
   const now = new Date(T0).getTime();
   const later = new Date(msLater(now, 1000)).getTime();

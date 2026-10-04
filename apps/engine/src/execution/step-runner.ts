@@ -1,8 +1,3 @@
-// Per-step orchestration: applies the configured data_selector to the
-// raw step result, applies offload, persists the step row, and emits the
-// debug log. Drivers (request, transform, ...) own the actual work and
-// the retry loops; this file owns the surrounding ceremony.
-
 import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,16 +19,6 @@ import { runWaitStep } from "./steps/wait.ts";
 import { runWaitForEventStep } from "./steps/wait-for-event.ts";
 import type { StepResult, StepRunContext } from "./types.ts";
 
-// Persistent workflow state — `state_read` binds a
-// tenant-encrypted value into the substitution scope under the chosen
-// `into_var`; `state_write` persists a dot-path slice of the step
-// result back to the same store after the step succeeds.
-//
-// `into_var` collisions with an existing step id are not blocked at
-// schema level — the binding here uses a dedicated key on the scope
-// object, so a colliding step id would be shadowed for the duration of
-// this step. Recipes should pick a distinct `into_var` (e.g. `since`,
-// `last_seen_at`).
 function resolveDotPath(value: unknown, dotPath: string): unknown {
   if (!dotPath) return value;
   let cur: unknown = value;
@@ -48,43 +33,14 @@ function resolveDotPath(value: unknown, dotPath: string): unknown {
 
 export interface RunStepOutcome {
   result: StepResult;
-  // The value to expose to downstream steps (after data_selector projection).
   scope_value: unknown;
-  /**
-   * Pre-data_selector raw output. Set only when the step actually
-   * declared a `data_selector` (so the value differs from
-   * `scope_value`); otherwise omitted to avoid duplicating the same
-   * preview twice. The engine surfaces this on `step_trace[i].raw_preview`
-   * so the LLM can see what the selector dropped without re-running.
-   */
   raw_output?: unknown;
-  /**
-   * Durable locator of this step's offloaded result, when the step's
-   * payload exceeded `STEP_RESULT_DB_BYTES` and was spilled to S3.
-   * `s3://<bucket>/<key>` for new writes (`fixture://<uuid>` is legacy);
-   * `null` when the result was small enough to
-   * persist inline. The loop runner reuses this locator to build an
-   * `OffloadRef` without a second offload write.
-   */
   result_storage_uri?: string | null;
-  /**
-   * Inline `STEP_RESULT_PREVIEW_BYTES`-capped preview of the offloaded
-   * payload. Set together with `result_storage_uri`; the loop runner
-   * carries it onto the `OffloadRef.preview`.
-   */
   result_preview?: string | null;
-  /** Serialized byte size of the step result (offloaded or inline). */
   result_size_bytes?: number;
-  /** Application SHA-256 of the serialized result. */
   result_sha256?: string;
 }
 
-// Redact step output keys the recipe declared as
-// `outputs[k].secret = true`. The marker matches the shared
-// `isAlreadyRedacted` regex so downstream scrubber passes leave it
-// alone. Only request steps carry the `outputs` declaration today
-// (the only kind whose external response can contain credentials);
-// other step kinds bypass cleanly.
 function applyDeclaredSecrets(step: StepDef, value: unknown): unknown {
   if (step.kind !== "request") return value;
   const outputs = (step as { outputs?: Record<string, { secret?: boolean }> }).outputs;
@@ -109,9 +65,6 @@ export async function runStep(
   ctx: StepRunContext,
   scope: Record<string, unknown>,
   workflowInput: unknown,
-  // The scope travels with the sub-step so a call can interpolate
-  // `${scope.…}` in its input, exactly like a request step does for its
-  // path/headers/body. Without it a call step could only pass literals.
   callRunner: (sub: {
     ctx: StepRunContext;
     step: StepDef;
@@ -122,19 +75,11 @@ export async function runStep(
   const step = ctx.step;
   let result: StepResult;
 
-  // state_read: bind a persistent value into substitution scope
-  // BEFORE the step runs. Defaults to `state_read.default_value`
-  // (commonly `null`) when the row does not exist yet — the canonical
-  // first-run case for cursor-based reverse-ETL.
   if (step.kind === "request" && step.state_read) {
     const sr = step.state_read;
     try {
       const row = await readWorkflowState(ctx.db, ctx.tenant_id, ctx.workflow_id, sr.key);
       const bound = row !== undefined ? row.value : (sr.default_value ?? null);
-      // Bind under `scope.$state[into_var]` so the substitution resolver
-      // surfaces it via `${state.<into_var>}` / `${state.<into_var>.<path>}`
-      // (parser kind: "state"). Mirrors the `$item` convention used by
-      // the loop step.
       const existingState = (scope.$state as Record<string, unknown> | undefined) ?? {};
       scope.$state = { ...existingState, [sr.into_var]: bound };
       await auditAwait(
@@ -180,9 +125,6 @@ export async function runStep(
         duration_ms: 0,
         error: { code: "state_read_failed", message },
       };
-      // Skip the actual step and fall through to the post-run pipeline.
-      // The scope_value falls back to undefined so downstream steps
-      // see no result.
       const scope_value = undefined;
       const scrubbedScope = applyDeclaredSecrets(step, scope_value);
       const offload = await maybeOffload(ctx.db, {
@@ -216,16 +158,11 @@ export async function runStep(
     }
   }
 
-  // Resolve $file references in request step inputs before dispatch.
-  // The per-step cache ensures the same fid only hits the DB once.
-  // Tmpfiles are tracked for cleanup after the step completes.
   const spooledTmpfiles: string[] = [];
 
   switch (step.kind) {
     case "request": {
       const fileCache = new Map<string, ResolvedFile>();
-      // The step is the definition as authored, so a reference it names is
-      // one a workflow author wrote and may name a file by its slug.
       const resolverCtx = { db: ctx.db, tenant_id: ctx.tenant_id, resolve_references: true };
       let resolvedMultipart:
         | import("./steps/request/dispatch.ts").ResolvedMultipartPart[]
@@ -237,18 +174,10 @@ export async function runStep(
         for (const part of step.multipart) {
           if (part.file !== undefined) {
             const resolved = await walkAndResolve(part.file, resolverCtx, fileCache);
-            // resolved is a ResolvedFile when the $file ref was valid
             const rf = resolved as unknown as ResolvedFile;
             let effectiveRf = rf;
-            // Spool large files to tmpfile so drivers get a seekable stream.
             if (rf.size_bytes > SPOOL_THRESHOLD_BYTES) {
               const tmpPath = join(tmpdir(), `sk-spool-${rf.id}-${Date.now()}`);
-              // Use the ResolvedFile's bound `openRead` rather than calling
-              // the object store with `rf.id` directly. The row UUID is not
-              // the storage key — keys are
-              // `<tenant>/<yyyy>/<mm>/<dd>/<uuid>` per `buildObjectKey`,
-              // and `resolvedFromRow` already wires `openRead` to call
-              // `storageKey(row.storage_uri)`.
               const stream = await rf.openRead();
               const chunks: Uint8Array[] = [];
               for await (const chunk of stream) chunks.push(chunk);
@@ -266,8 +195,6 @@ export async function runStep(
                 },
               };
             }
-            // Build ResolvedMultipartPart avoiding undefined property spread
-            // (exactOptionalPropertyTypes requires omitting undefined properties).
             type RMP = import("./steps/request/dispatch.ts").ResolvedMultipartPart;
             const entry: RMP = { name: part.name, file: effectiveRf };
             if (part.value !== undefined) entry.value = part.value;
@@ -342,11 +269,6 @@ export async function runStep(
     }
   }
 
-  // state_write: persist a dot-path slice of the step result AFTER
-  // the step succeeds. Failures here propagate as a step failure so the
-  // watermark and the side-effect cannot diverge silently — better to
-  // re-run the workflow than to advance a watermark whose write was
-  // dropped on the floor.
   if (result.status === "succeeded" && step.kind === "request" && step.state_write) {
     const sw = step.state_write;
     const sliced = resolveDotPath(result.output, sw.value_path);
@@ -454,16 +376,8 @@ export async function runStep(
     }
   }
 
-  // Scrub declared-secret outputs BEFORE offload + preview
-  // so the redacted payload reaches downstream readers (offload storage,
-  // step preview, audit log, structured logs). The recipe author marks
-  // `outputs[k].secret = true` (e.g. on Cognito IdToken / OAuth2
-  // access_token); the executor replaces those keys with the standard
-  // ***REDACTED:secret_output*** marker that already passes the
-  // existing scrubber's "isAlreadyRedacted" check.
   const scrubbedScope = applyDeclaredSecrets(step, scope_value);
 
-  // Offload + preview
   const offload = await maybeOffload(ctx.db, {
     tenant_id: ctx.tenant_id,
     execution_id: ctx.execution_id,
@@ -471,9 +385,6 @@ export async function runStep(
     result: scrubbedScope ?? result.output ?? null,
   });
 
-  // When the step produced non-fatal warnings, persist them alongside
-  // the preview so downstream readers (execution_fixtures exporter,
-  // self-healing, operator UI) see them without re-running the step.
   const warnings = result.warnings && result.warnings.length > 0 ? result.warnings : null;
   const output_preview = offload.storage_uri
     ? null
@@ -500,13 +411,9 @@ export async function runStep(
     bytes_out: offload.size_bytes,
   });
 
-  // Clean up any tmpfiles that were spooled for large $file parts.
-  // Best-effort: a failure here does not change the step result.
   if (spooledTmpfiles.length > 0) {
     for (const tmpPath of spooledTmpfiles) {
-      unlink(tmpPath).catch(() => {
-        // Tolerated — the OS will GC tmpfiles on reboot.
-      });
+      unlink(tmpPath).catch(() => {});
     }
   }
 

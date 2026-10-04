@@ -1,23 +1,4 @@
 #!/usr/bin/env bun
-//
-// Verify that a deployed engine really is the release you think it is.
-//
-//   bun run verify:release -- --engine-url https://engine.example.com \
-//                             --version 5.10.0 [--api-key sk_...]
-//
-// Every surface that announces a version does so from the SAME build-time
-// constant (`@cli-core/version.ts`, injected via `--define BUILD_VERSION`),
-// which is precisely why a mismatch between them is worth catching: it means a
-// surface stopped deriving its version and started carrying its own. The MCP
-// `serverInfo.version` is the one most likely to drift unnoticed, because no
-// human reads it — a client shows it only in a version-skew banner.
-//
-// Host-agnostic by construction. The target comes from argv or SK_ENGINE_URL /
-// SK_API_KEY; no deployment address is compiled in, and this script never
-// reads .env files. Installation targets are supplied explicitly by the
-// operator and are never compiled into this repository.
-//
-// Exit codes: 0 — every check passed; 1 — at least one FAIL; 2 — usage error.
 
 interface Args {
   engineUrl: string;
@@ -80,7 +61,6 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
 const args = parseArgs(process.argv.slice(2));
 console.log(`verify:release: expecting ${args.version} at ${args.engineUrl}\n`);
 
-// ── health: the engine is up, reachable, and on the expected build ──────────
 try {
   const health = (await getJson(`${args.engineUrl}/health`)) as {
     status?: string;
@@ -118,7 +98,6 @@ try {
   record("FAIL", "health", `unreachable — ${err instanceof Error ? err.message : String(err)}`);
 }
 
-// ── OpenAPI: the served contract names the same release ─────────────────────
 try {
   const doc = (await getJson(`${args.engineUrl}/openapi.json`)) as {
     info?: { version?: string };
@@ -133,10 +112,6 @@ try {
   record("FAIL", "openapi.version", err instanceof Error ? err.message : String(err));
 }
 
-// ── MCP: serverInfo.version, the surface nobody reads by hand ───────────────
-// Asserted rather than assumed. It resolves from the same build-time constant
-// as the two checks above, so agreement here is what proves the constant is
-// stamped — and disagreement is the only way that stamping fails visibly.
 if (!args.apiKey) {
   record("SKIP", "mcp.version", "no --api-key / SK_API_KEY — MCP initialize needs a principal");
 } else {
@@ -161,8 +136,6 @@ if (!args.apiKey) {
       signal: AbortSignal.timeout(20_000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    // The MCP HTTP transport may answer as SSE; the JSON-RPC envelope is the
-    // payload of the first `data:` line either way.
     const raw = await res.text();
     const jsonText = raw.includes("data:")
       ? (raw
@@ -192,8 +165,6 @@ console.log(
     `${failed.length} failed, ${skipped.length} skipped`,
 );
 if (skipped.length > 0) {
-  // A skip is not a pass. Say so, so a green-looking run cannot be mistaken
-  // for full coverage.
   console.log("verify:release: skipped checks were NOT verified.");
 }
 process.exit(failed.length > 0 ? 1 : 0);

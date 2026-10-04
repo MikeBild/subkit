@@ -1,14 +1,3 @@
-// End-to-end loop test:
-//
-//   1. User asks to "list users from the api"
-//   2. Loop runs list_skills → fetch_connector_docs → edit_workflow_patch
-//      (assembles the whole draft in one editor call)
-//   3. inspect_workflow_draft + validate_draft confirm clean
-//   4. dry_run_step previews a transform
-//   5. ask_user_confirm pauses the loop
-//   6. User answers { confirmed: true } → loop resumes → save_workflow_draft
-//      → new workflow
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversationDrafts, workflows } from "../../db/schema/index.ts";
@@ -44,12 +33,9 @@ describe("conversations/loop", () => {
       ctx.testDb.db,
     );
 
-    // The first run stops at the ask_user_confirm pause.
     expect(outcome.result.status).toBe("awaiting_input");
     expect(outcome.result.pending_elicitation_id).toBeDefined();
 
-    // Walk through the recorded events and make sure the expected
-    // trace is there.
     const toolCallEvents = outcome.result.events.filter(
       (e) => e.type === "tool_call_start",
     ) as Array<{ tool: string }>;
@@ -57,8 +43,6 @@ describe("conversations/loop", () => {
       (e) => e.type === "tool_result",
     ) as Array<{ tool: string; output: unknown }>;
 
-    // Expected tool call sequence: the whole draft is assembled in one
-    //   edit_workflow_patch call, then inspected/validated/previewed.
     expect(toolCallEvents.map((e) => e.tool)).toEqual([
       "list_skills",
       "fetch_connector_docs",
@@ -69,18 +53,15 @@ describe("conversations/loop", () => {
       "ask_user_confirm",
     ]);
 
-    // The edit_workflow_patch call succeeded and produced a draft.
     const editResult = toolResultEvents.find((e) => e.tool === "edit_workflow_patch");
     expect(editResult).toBeDefined();
 
-    // A snapshot should exist from the successful edit_workflow_patch.
     const snapshots = await ctx.testDb.db
       .select()
       .from(conversationDrafts)
       .where(eq(conversationDrafts.conversation_id, outcome.conversation.id));
     expect(snapshots.length).toBeGreaterThanOrEqual(1);
 
-    // Now confirm and resume — the plan continues with save_workflow_draft.
     const elicitationId = outcome.result.pending_elicitation_id;
     if (!elicitationId) throw new Error("expected pending_elicitation_id");
     const resumed = await respondElicitationForTest(
@@ -97,7 +78,6 @@ describe("conversations/loop", () => {
     expect(resumed.result.status).toBe("active");
     expect(resumed.result.committed_workflow_id).toBeDefined();
 
-    // There should be a brand-new workflow row for the tenant.
     const wfRows = await ctx.testDb.db
       .select()
       .from(workflows)
@@ -107,7 +87,6 @@ describe("conversations/loop", () => {
     expect(wfRows[0]?.current_version_id).toBeNull();
     expect(wfRows[0]?.draft_version_id).toBeTruthy();
 
-    // Saving an inert draft keeps the authoring conversation active.
     const detail = await getConversation(ctx.tenant_id, outcome.conversation.id, ctx.testDb.db);
     expect(detail?.conversation.status).toBe("active");
     expect(detail?.conversation.target_workflow_id).toBe(
@@ -124,10 +103,8 @@ describe("conversations/loop", () => {
       },
       ctx.testDb.db,
     );
-    // No canned plan matched — the run should end with no tool calls.
     const toolCalls = outcome.result.events.filter((e) => e.type === "tool_call_start");
     expect(toolCalls.length).toBe(0);
-    // Appending another message still works and is a no-op.
     const cont = await appendMessageWithTurn(
       {
         tenant_id: ctx.tenant_id,

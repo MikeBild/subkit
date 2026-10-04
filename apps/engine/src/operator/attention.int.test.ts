@@ -1,11 +1,3 @@
-// The attention list: every source at once, per reader.
-//
-// A hostile fixture on purpose — every source holds something at the same time,
-// one workflow carries three facts, another person has a waiting conversation,
-// a reader sees the tenant through one resource grant. Each case below pins one
-// promise of `buildAttention` and was checked to fail on the behaviour it
-// replaces (see the counter-check notes).
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -129,7 +121,6 @@ beforeAll(async () => {
   const db = testDb.db;
   const now = getTestNow();
 
-  // A month allowance of 1000 tokens, 950 spent: critical at the usage page's 90 %.
   const dir = mkdtempSync(join(tmpdir(), "sk-cfg-attention-"));
   const configPath = join(dir, "subkit.config.json");
   writeFileSync(configPath, JSON.stringify({ tokens: { monthly_budget: 1000 } }));
@@ -156,7 +147,6 @@ beforeAll(async () => {
   owner = adminPrincipal(tenant_id, ownerId);
   otherPerson = adminPrincipal(tenant_id, otherId);
   enduser = { provider: "api_key", kind: "user", id: enduserId, tenant_id, roles: ["enduser"] };
-  // No role at all: this reader sees the tenant only through its grant.
   grantee = { provider: "api_key", kind: "user", id: granteeId, tenant_id, roles: [] };
 
   for (const key of Object.keys(wf) as Array<keyof typeof wf>) {
@@ -181,7 +171,6 @@ beforeAll(async () => {
     .returning();
   brokenConnectorId = broken!.id;
 
-  // Held: the scheduler will not admit a run until someone grants authority.
   await db.insert(workflowsSchedules).values({
     tenant_id,
     workflow_id: wf.held,
@@ -192,7 +181,6 @@ beforeAll(async () => {
     },
   });
 
-  // Failing twice with an open fix: ONE item, both counts.
   await seedScheduledFailure(wf.fail, { code: "http_5xx", message: "http 500 upstream boom" });
   await seedScheduledFailure(wf.fail, { code: "http_5xx", message: "http 500 upstream boom" });
   await db.insert(patchCandidates).values({
@@ -202,15 +190,12 @@ beforeAll(async () => {
     status: "proposed",
     diff: reviewableDiff("fix for the failing one"),
   });
-  // Failing on authentication, through a connector: remedied at the connector.
   await seedScheduledFailure(
     wf.auth,
     { code: "http_4xx", message: "http 401 unauthorized" },
     { driver: "http", connector: { connector_id: brokenConnectorId } },
   );
-  // Failing for another reason, no fix: a conversation about the newest run.
   await seedScheduledFailure(wf.chat, { code: "http_5xx", message: "http 502 bad gateway" });
-  // A fix on a workflow that is not failing — waiting five days (overdue).
   await db.insert(patchCandidates).values({
     tenant_id,
     workflow_id: wf.patch,
@@ -220,7 +205,6 @@ beforeAll(async () => {
     diff: reviewableDiff("fix nobody asked for yet"),
   });
 
-  // Skills: one decision, one feedback-only pattern that is never counted.
   const skill = {
     tenant_id,
     scope: "global" as const,
@@ -234,7 +218,6 @@ beforeAll(async () => {
     { ...skill, pattern_kind: "failure_pattern", fingerprint: "fp-failure" },
   ]);
 
-  // A connection whose stored token does not decrypt, used by a connector.
   const connectionRow = {
     tenant_id,
     base_url: "https://wiki.test",
@@ -260,8 +243,6 @@ beforeAll(async () => {
     auth_tag: Buffer.from("x"),
     connection_id: connectionId,
   });
-  // A grant that ended without a refresh token (expired_no_refresh), with a
-  // readable token — but no connector uses it: nothing depends on it.
   const spareToken = await createSecretVersion(db, {
     name: secretNames(tenant_id, "spare").access,
     value: "spare-access-token",
@@ -278,7 +259,6 @@ beforeAll(async () => {
     .returning();
   unusedConnectionId = unused!.id;
 
-  // A prepared secret version waiting for approval (installation-wide).
   await db.insert(runtimeSecretVersions).values({
     name: "settings.llm.api_key",
     version: 2,
@@ -288,7 +268,6 @@ beforeAll(async () => {
     pending_since: new Date(now - HOUR),
   });
 
-  // The drift scan last succeeded five hours ago: three cadences missed.
   await db.insert(selfHealingScans).values({
     tenant_id,
     source: "scheduler",
@@ -297,7 +276,6 @@ beforeAll(async () => {
     updated_at: new Date(now - 5 * HOUR),
   });
 
-  // 95 % of the month's allowance spent.
   await db.insert(llmUsage).values({
     tenant_id,
     flow: "chat",
@@ -307,7 +285,6 @@ beforeAll(async () => {
     month_bucket: currentMonthBucket(new Date(now)),
   });
 
-  // Two people waiting on their own conversations.
   const [own] = await db
     .insert(conversations)
     .values({ tenant_id, status: "awaiting_input", owner_id: ownerId, title: "Mine" })
@@ -370,8 +347,6 @@ describe("every source, as an admin reads it", () => {
     expect(items.get("skills")?.counts.skills).toBe(1);
     expect(items.get(`connection:${connectionId}`)?.reason).toBe("secret_unreadable");
     expect(items.get(`connection:${connectionId}`)?.severity).toBe("urgent");
-    // Counter-check: without the usage gate in `readConnections` this item is
-    // failing/urgent too — a connection nothing uses breaks nothing.
     const spare = (await listConnections(testDb.db, tenant_id)).find(
       (view) => view.id === unusedConnectionId,
     );
@@ -416,7 +391,6 @@ describe("every source, as an admin reads it", () => {
       verb: "answer",
       href: `/cockpit/chat/${ownConversationId}`,
     });
-    // A sign-in is renewed on the one connector that uses it.
     expect(primary(`connection:${connectionId}`)?.href).toBe(
       `/cockpit/connectors/${brokenConnectorId}`,
     );
@@ -427,10 +401,7 @@ describe("every source, as an admin reads it", () => {
     expect([...items].sort(compareAttentionItems)).toEqual(items);
     const classes = items.map((item) => item.class);
     expect(classes).toEqual([...classes].sort((a, b) => rank(a) - rank(b)));
-    // The only item with a deadline leads its class.
     expect(items[0]?.id).toBe(`conversation:${ownConversationId}`);
-    // Among the stopped without a deadline, the oldest first: the scan stalled
-    // five hours ago, the schedule was held two hours ago.
     expect(items[1]?.id).toBe("freshness:self_healing.drift_scan");
     expect(items[2]?.id).toBe(`workflow:${wf.held}`);
   });
@@ -474,8 +445,6 @@ describe("per reader", () => {
   });
 
   test("a key whose scopes exclude the permission reads nothing, grant or not", async () => {
-    // The grant would admit the source; the credential ceiling refuses every
-    // item in it. An answered, empty source here would be a false all-clear.
     const scoped: ResolvedPrincipal = { ...grantee, scopes: ["execution:read"] };
     const attention = await buildAttention(testDb.db, scoped);
     expect(attention.items).toEqual([]);
@@ -513,7 +482,6 @@ describe("a held webhook", () => {
       const asAdmin = await buildAttention(testDb.db, adminPrincipal(tenant_id));
       const adminItem = asAdmin.items.find((i) => i.id === `workflow:${wf.auth}`);
       expect(adminItem?.trigger).toEqual({ kind: "inbound_hook", name: "findings-intake" });
-      // The grantee reads this workflow but holds no inbound_hook:read.
       const asGrantee = await buildAttention(testDb.db, grantee);
       const granteeItem = asGrantee.items.find((i) => i.id === `workflow:${wf.auth}`);
       expect(granteeItem?.trigger).toEqual({ kind: "inbound_hook", name: null });
@@ -525,9 +493,6 @@ describe("a held webhook", () => {
 
 describe("permission cost", () => {
   test("a non-admin's filter costs the same for one granted item as for ten", async () => {
-    // Counts every query the reader's part issues. The tenant facts are warmed
-    // first: this measures the per-reader permission filter, which runs on the
-    // MCP connect path against a 400 ms budget.
     let queries = 0;
     const counted = new Set(["select", "selectDistinct", "execute", "$count"]);
     const countingDb = new Proxy(testDb.db, {
@@ -583,7 +548,7 @@ describe("permission cost", () => {
         permission: "workflow:read",
       });
 
-    await buildAttention(testDb.db, adminPrincipal(costTenant)); // warm the tenant cache
+    await buildAttention(testDb.db, adminPrincipal(costTenant));
     await grant(ids[0] as string);
     queries = 0;
     const one = await buildAttention(countingDb, reader);
@@ -596,9 +561,6 @@ describe("permission cost", () => {
     const forTen = queries;
     expect(ten.items).toHaveLength(10);
     expect(forTen).toBe(forOne);
-    // Seven distinct gates at a few catalog reads each (the reader's role
-    // included), plus the reader's own conversations — bounded, and
-    // independent of how many items there are.
     expect(forTen).toBeLessThanOrEqual(34);
   });
 });
@@ -610,8 +572,6 @@ describe("a source that fails", () => {
       .values({ slug: "t-attention-empty", display_name: "Empty" })
       .returning();
     const reader = adminPrincipal(empty!.id);
-    // Prepared secret versions are installation-wide, so the fixture's one
-    // would reach this tenant too; this case is about the empty answer.
     const noSecrets = { secret_approvals: async () => [] };
     const healthy = await buildAttention(testDb.db, reader, { readers: noSecrets });
     expect(healthy.items).toEqual([]);
@@ -666,8 +626,6 @@ describe("parity with the operational overview's decision buckets", () => {
     expect(items.some((i) => i.class === "decide" && olderThan72h(i))).toBe(true);
 
     expect(overview.core.other_decisions.value).toBeGreaterThan(0);
-    // A recent proposal: the skill proposal, or the fix on the failing workflow
-    // (which rides that workflow's `failing` item rather than its own).
     expect(
       items.some(
         (i) =>
@@ -685,7 +643,6 @@ describe("parity with the operational overview's decision buckets", () => {
     const workflowItems = items.filter((i) => i.subject?.kind === "workflow");
     const ids = (list: AttentionItem[]) => new Set(list.map((i) => i.subject?.id));
 
-    // blocked: the overview's held-schedule causes ↔ stopped workflow items.
     const held = new Set(
       overview.core.health.causes.filter((c) => c.kind === "held_schedule").map((c) => c.id),
     );
@@ -693,7 +650,6 @@ describe("parity with the operational overview's decision buckets", () => {
     expect(ids(stopped)).toEqual(held);
     expect(stopped.length).toBe(overview.core.blocked.value ?? -1);
 
-    // failing: the overview's own failing groups ↔ items carrying failures.
     const failingGroups = failingScheduledGroups(
       await collectFailureGroups(testDb.db, tenant_id, DECISION_FAILURE_WINDOW_HOURS),
     );
@@ -703,8 +659,6 @@ describe("parity with the operational overview's decision buckets", () => {
     );
     expect(failingWorkflows.size).toBe(overview.core.failing.value ?? -1);
 
-    // overdue + other: the open fixes behind both tiles ↔ items carrying fixes,
-    // and the skill proposals ↔ the one skills item.
     const open = await readOpenPatchDecisions(testDb.db, tenant_id);
     const withPatches = workflowItems.filter((i) => (i.counts.patches ?? 0) > 0);
     expect(ids(withPatches)).toEqual(new Set(open.items.map((d) => d.row.workflow_id)));

@@ -1,70 +1,4 @@
 #!/usr/bin/env bun
-// Layer-3 vendor-drift sweep — proves every connector template's vendor
-// surface is still live and stamps `verified_at` on the entry.
-//
-// Layers 1 + 2 (structural lint + cross-reference invariants) already
-// run in `apps/engine/src/connectors/templates.test.ts`. They guarantee
-// the JSON parses and the slugs/skills/recipes hang together — they do
-// NOT touch the network. Layer 3 reaches out to the vendor.
-//
-// What it probes per template:
-//
-//   1. `base_url`                                — HEAD (falls back to GET).
-//   2. `probe_endpoint` (when present)           — method + path declared in
-//                                                  the template, against
-//                                                  `base_url`. We do NOT send
-//                                                  credentials, so a 401/403
-//                                                  is recorded as "auth_required"
-//                                                  not "drift" (the URL is still
-//                                                  reachable).
-//   3. `oauth.issuer_url`/`.well-known/openid-configuration`
-//      (when `auth_type === "oauth2"` OR `oauth` block present) — GET, must
-//      return JSON with the standard discovery fields.
-//
-// Templates with `base_url === null` (per-tenant AppSync, GCP project IDs,
-// custom domains) are skipped with `status === "skipped"` and a reason.
-// Templates with placeholder segments (`{tenant}`, `{cloudId}`, etc.) are
-// also skipped because the resolved URL depends on operator state we
-// don't have here.
-//
-// Discipline:
-//   * Hard gate — `RUN_TEMPLATE_AUDIT=1` MUST be set. Without it the script
-//     refuses to run. CI never sets the flag, so the sweep can't accidentally
-//     hammer vendors during normal pipeline runs.
-//   * Concurrency capped at 3 via `p-limit` and a 1s/host backoff. Every
-//     request identifies as `subkit-template-audit/<engine version>` so
-//     vendors can correlate the traffic.
-//   * Per-vendor exponential backoff on 429/5xx (cap 30s, 4 attempts).
-//   * Output is sorted by template slug — re-runs produce a byte-stable
-//     report file when the vendor surface hasn't changed.
-//
-// Optional flags:
-//   --only=<slug>[,<slug>]   Sweep just the listed templates (smoke test).
-//   --dry-run                Print what would be probed; no requests fly.
-//   --update-templates       After the sweep, stamp `verified_at` (UTC ISO
-//                            timestamp of the run) onto every template that
-//                            ended in `status === "ok"`. Off by default — the
-//                            script is read-mostly so a manual review of the
-//                            report can intervene before stamping.
-//
-// Output:
-//   apps/engine/src/connectors/template-audit-report.json
-//   {
-//     generated_at: "2026-…Z",
-//     sweep_version: 1,
-//     concurrency: 3,
-//     user_agent: "subkit-template-audit/<version>",
-//     templates: [
-//       {
-//         slug, base_url, status, latency_ms,
-//         base_url_check:    { status, http_status, ms, error },
-//         probe_check:       { status, http_status, ms, error } | null,
-//         oauth_check:       { status, http_status, ms, error } | null,
-//         notes: string[],
-//       },
-//       …sorted by slug
-//     ]
-//   }
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -188,9 +122,6 @@ function templateIsSkippable(t: MinimalTemplate): { skip: true; reason: string }
   if (t.base_url === null) {
     return { skip: true, reason: "base_url is null (per-tenant template)" };
   }
-  // Curly-brace placeholders mean the URL is parametric (Auth0 tenant,
-  // Atlassian cloudId, GCP project). Probing the literal string would
-  // 404 against the unresolved placeholder and skew the report.
   if (/\{[^}]+\}/.test(t.base_url)) {
     return { skip: true, reason: `base_url has placeholder segments (${t.base_url})` };
   }
@@ -203,7 +134,6 @@ function isOAuthTemplate(t: MinimalTemplate): boolean {
 }
 
 function deriveOpenIdConfigUrl(issuer: string): string {
-  // Spec: <issuer>/.well-known/openid-configuration with one slash between.
   const trimmed = issuer.replace(/\/+$/, "");
   return `${trimmed}/.well-known/openid-configuration`;
 }
@@ -222,16 +152,11 @@ function classifyStatus(httpStatus: number, expectedRange?: [number, number]): C
     if (httpStatus >= min && httpStatus <= max) return "ok";
   }
   if (httpStatus >= 200 && httpStatus < 300) return "ok";
-  // We don't send credentials. A 401/403 means "the host answered, the URL
-  // is real, you just can't see the body" — that's a healthy live signal.
   if (httpStatus === 401 || httpStatus === 403) return "auth_required";
-  // 404 / 410 / 5xx that didn't recover → drift.
   return "drift";
 }
 
 class HostBackoff {
-  // Maps hostname → next-allowed wall-clock ms. Sweep is single-process so a
-  // plain Map is enough; we don't share with siblings.
   private readonly nextAllowed = new Map<string, number>();
   async wait(host: string): Promise<void> {
     const now = Date.now();
@@ -354,7 +279,6 @@ async function auditTemplate(
   const baseUrl = t.base_url as string;
   const sweepStart = Date.now();
 
-  // 1) Base URL — HEAD first, fall back to GET if HEAD looks wrong.
   let baseCheck: CheckResult;
   if (dryRun) {
     baseCheck = {
@@ -367,8 +291,6 @@ async function auditTemplate(
     notes.push(`dry-run: would HEAD ${baseUrl}`);
   } else {
     baseCheck = await probeWithBackoff({ url: baseUrl, method: "HEAD" }, userAgent, hostBackoff);
-    // HEAD support is uneven in the wild (405 / 501 / connection close).
-    // Fall back to GET so a HEAD-hostile vendor doesn't look like drift.
     const headRejected =
       baseCheck.http_status === 405 ||
       baseCheck.http_status === 501 ||
@@ -379,7 +301,6 @@ async function auditTemplate(
     }
   }
 
-  // 2) Probe endpoint — declared method + path against base URL.
   let probeCheck: CheckResult | null = null;
   if (t.probe_endpoint) {
     const probeUrl = joinUrl(baseUrl, t.probe_endpoint.path);
@@ -405,7 +326,6 @@ async function auditTemplate(
     }
   }
 
-  // 3) OAuth issuer discovery doc, when applicable.
   let oauthCheck: CheckResult | null = null;
   if (isOAuthTemplate(t) && t.oauth?.issuer_url) {
     const issuer = t.oauth.issuer_url;
@@ -428,12 +348,6 @@ async function auditTemplate(
           userAgent,
           hostBackoff,
         );
-        // OAuth2-without-OIDC providers (GitHub, Bitbucket, classic Slack
-        // app installs) legitimately 404 on the discovery doc — they speak
-        // OAuth2 but don't publish OIDC metadata. Don't classify that as
-        // vendor drift; the issuer host responded, just not with the doc.
-        // True drift on this signal is a connect-refused / 5xx / DNS error,
-        // which the existing classification already catches.
         if (oauthCheck.status === "drift" && oauthCheck.http_status === 404) {
           notes.push(
             `oauth issuer ${issuer} responded but does not publish .well-known/openid-configuration (OAuth2-without-OIDC); informational`,
@@ -444,11 +358,6 @@ async function auditTemplate(
     }
   }
 
-  // Reality check on the base URL: many APIs (Stripe, GitHub, etc.) deliberately
-  // 404 the bare `/v1` root because nothing is mounted there. When the
-  // declared probe_endpoint succeeded (or returned auth_required), a 404 on
-  // the bare base URL is informational, not drift. We downgrade it so the
-  // roll-up reflects the real signal.
   if (
     baseCheck.status === "drift" &&
     baseCheck.http_status === 404 &&
@@ -461,9 +370,6 @@ async function auditTemplate(
     baseCheck = { ...baseCheck, status: "auth_required" };
   }
 
-  // Roll-up: a template is OK only if every check that ran is OK or
-  // auth_required. A single drift/error downgrades the whole template so
-  // operators can sort the report by `status` and triage drift first.
   const checks = [baseCheck, probeCheck, oauthCheck].filter((c): c is CheckResult => c !== null);
   const driftOrError = checks.find((c) => c.status === "drift" || c.status === "error");
   let rollup: CheckStatus;
@@ -472,7 +378,6 @@ async function auditTemplate(
   } else if (checks.every((c) => c.status === "ok")) {
     rollup = "ok";
   } else {
-    // Some auth_required, some ok — still considered live.
     rollup = "auth_required";
   }
 
@@ -489,8 +394,6 @@ async function auditTemplate(
 }
 
 function writeReport(report: AuditReport): void {
-  // Two-space indent, sorted-by-slug template list, trailing newline — matches
-  // the rest of the JSON files in this directory and keeps re-runs deterministic.
   const sorted: AuditReport = {
     ...report,
     templates: [...report.templates].sort((a, b) => a.slug.localeCompare(b.slug)),
@@ -499,17 +402,9 @@ function writeReport(report: AuditReport): void {
 }
 
 function stampVerifiedAtInPlace(slugs: Set<string>, isoNow: string): number {
-  // Minimal-diff edit: each template object's last field is `aws_region`
-  // (universal across the catalog), and `verified_at` sits immediately
-  // beneath it. We rewrite that single line per slug instead of
-  // re-serializing the entire JSON, which would churn every short array
-  // back into multi-line form. Returns the number of templates updated.
   const original = readFileSync(TEMPLATES_PATH, "utf8");
   const lines = original.split("\n");
   let updated = 0;
-  // Walk the file once, tracking the most recent slug seen; when we hit a
-  // `verified_at` line that belongs to a target slug, replace it with the
-  // current timestamp.
   let currentSlug: string | null = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
@@ -521,7 +416,7 @@ function stampVerifiedAtInPlace(slugs: Set<string>, isoNow: string): number {
     if (currentSlug && slugs.has(currentSlug) && /^ {4}"verified_at":/.test(line)) {
       lines[i] = `    "verified_at": ${JSON.stringify(isoNow)}`;
       updated += 1;
-      currentSlug = null; // verified_at is the closing field; defend against re-match
+      currentSlug = null;
     }
   }
   writeFileSync(TEMPLATES_PATH, lines.join("\n"), "utf8");
@@ -572,17 +467,13 @@ async function main(): Promise<void> {
     templates: results,
   };
 
-  // Merge into the existing report on partial sweeps (`--only`) so we don't
-  // wipe the rest of the catalog. Full sweeps replace the file.
   if (cli.onlySlugs && existsSync(REPORT_PATH)) {
     try {
       const prior = JSON.parse(readFileSync(REPORT_PATH, "utf8")) as AuditReport;
       const updatedSlugs = new Set(results.map((r) => r.slug));
       const merged = [...prior.templates.filter((t) => !updatedSlugs.has(t.slug)), ...results];
       report.templates = merged;
-    } catch {
-      // Fall through with the sweep-only report; better than crashing.
-    }
+    } catch {}
   }
 
   writeReport(report);
@@ -607,10 +498,6 @@ async function main(): Promise<void> {
     console.error(`stamped verified_at on ${updated} templates → ${TEMPLATES_PATH}`);
   }
 
-  // Drift exits non-zero so CI invocations (when a future weekly cron lands)
-  // can pipe straight into `gh issue create` without inspecting JSON. Errors
-  // alone are not fatal — they may be transient network blips and the operator
-  // re-runs.
   if (tally.drift > 0) {
     console.error(`drift detected on ${tally.drift} template(s); see report for details`);
     process.exit(1);

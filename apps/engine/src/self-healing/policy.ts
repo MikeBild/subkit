@@ -1,27 +1,3 @@
-// Auto-apply policy resolution.
-//
-// Reads `workflow_autoheal_policies` for the requested (tenant,
-// workflow) pair. If the row is missing we fall back to the documented
-// default `safe-patches`.
-//
-// The three modes:
-//
-//   - safe-patches (default)
-//       auto-apply a patch when the classifier says safe. When a
-//       fixture exists the dry-run must also pass; proactive scans have
-//       no fixture, so a `safe` rename/widening patch auto-applies on
-//       classification alone (the change is narrow and reversible via
-//       the workflow_versions audit trail). Park everything else.
-//
-//   - never-auto
-//       never auto-apply. Every patch parks for review.
-//
-//   - dry-run-gate
-//       auto-apply any patch — safe or unsafe — whose fixture dry-run
-//       passes. Used only for non-critical workflows by operators who
-//       want broad automation. Requires a fixture (no dry-run, no
-//       auto-apply) since the gate IS the fixture pass.
-
 import { and, eq } from "drizzle-orm";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflowAutohealPolicies } from "../db/schema/workflows.ts";
@@ -57,24 +33,9 @@ export interface PolicyDecisionInput {
   classification: "safe" | "unsafe";
   fixture_passed: boolean;
   has_fixture: boolean;
-  /** The drift the candidate heals. A `gate_block` repair is never applied
-   *  without a person, whatever the policy says. */
   drift_kind?: string | undefined;
 }
 
-/**
- * Pure decision function. Given a resolved policy + a classifier
- * verdict + the fixture dry-run outcome, return whether the engine
- * should auto-apply the patch. The rule:
- *
- *   - `never-auto` always parks.
- *   - `safe-patches` auto-applies a `safe` patch. With a fixture the
- *     dry-run must also pass; without one (proactive scans) the `safe`
- *     classification alone suffices — otherwise a clean proactive drift
- *     could only ever park, and the candidates pile up unreviewed.
- *   - `dry-run-gate` auto-applies when the dry-run passed (even unsafe),
- *     and therefore REQUIRES a fixture.
- */
 export function shouldAutoApply(d: PolicyDecisionInput): boolean {
   let result = false;
   let reason = "unknown";
@@ -83,8 +44,6 @@ export function shouldAutoApply(d: PolicyDecisionInput): boolean {
   } else if (d.policy === "never-auto") {
     reason = "policy=never-auto";
   } else if (d.policy === "safe-patches") {
-    // Safe + fixture → require the dry-run to pass. Safe + no fixture
-    // (proactive) → classification alone. Unsafe never auto-applies.
     result = d.classification === "safe" && (!d.has_fixture || d.fixture_passed);
     reason = result
       ? d.has_fixture

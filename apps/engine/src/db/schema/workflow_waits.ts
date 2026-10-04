@@ -1,17 +1,3 @@
-// In-flight wait checkpoints. One row per in-flight wait
-// step. Written when the step starts; deleted when it completes (timer
-// fired) or is cancelled (abort signal).
-//
-// Engine boot reads this table to recover orphaned waits — runs whose
-// process died mid-`setTimeout`. The reaper compares `sleep_until_ts`
-// against `now()`: rows in the past resume immediately, rows in the
-// future re-enqueue an `execution.run` job with `sendAfter`. Restart
-// safety without a separate pg-boss queue.
-//
-// The cap is 24h (`WaitStepSchema.duration_ms.max`) — multi-day patterns
-// use the Schedule + State recipe, not durable wait. PK is
-// UUID; uniqueness on `(tenant_id, execution_id, step_id)`.
-
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { executions } from "./executions.ts";

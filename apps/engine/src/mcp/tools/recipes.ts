@@ -1,14 +1,3 @@
-// MCP `list_recipes` product tool.
-//
-// list_recipes has no conversation-tool counterpart and lives here as
-// a truly MCP-unique handler. The legacy inspect_recipe MCP duplicate
-// was removed in the unified-palette refactor — the conversation-side
-// `inspect_recipe` tool (see `apps/engine/src/conversations/tools/
-// inspect-recipe.ts`) serves both surfaces via the unified dispatcher.
-//
-// Stateless beyond a tenant-scope template lookup. No audit beyond the
-// standard `tool.dispatch.invoke` log.
-
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { resolveConnectorTemplate } from "../../connectors/template-resolver.ts";

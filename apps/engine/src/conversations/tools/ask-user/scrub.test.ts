@@ -1,14 +1,6 @@
-// Unit tests for `scrubAskUserPayload` — the single chokepoint that
-// strips secret-shaped values out of every `ask_user_*` payload before
-// it reaches the MCP bridge message, the DB-pause payload, or the
-// persisted elicitation row.
-//
-// Pure function — no DB, no network.
-
 import { describe, expect, test } from "bun:test";
 import { scrubAskUserPayload } from "./common.ts";
 
-// Obviously fake, regex-shaped fixture (Atlassian ATATT pat).
 const FAKE_TOKEN = "ATATTexampleexampleexample123Aa456";
 const MARKER = "***REDACTED:pat***";
 
@@ -52,7 +44,6 @@ describe("scrubAskUserPayload", () => {
     expect(input.fields[0].default).toBe(MARKER);
     expect(input.fields[1].default).toEqual([MARKER, "prod"]);
     expect(input.fields[1].options[0]!.label).toBe(`env with ${MARKER}`);
-    // Belt-and-braces: no raw token anywhere in the payload.
     expect(JSON.stringify(out)).not.toContain(FAKE_TOKEN);
   });
 
@@ -72,9 +63,6 @@ describe("scrubAskUserPayload", () => {
     const input = out.input as {
       commit_intent: { payload: { credential: { token: string; header: string } } };
     };
-    // Pattern-only walk: a field NAMED token/credential is structure,
-    // not a secret — the Mustache reference must survive verbatim so
-    // the commit intent can resolve it against the cached credential.
     expect(input.commit_intent.payload.credential.token).toBe("{{token}}");
     expect(input.commit_intent.payload.credential.header).toBe("Bearer {{token}}");
   });

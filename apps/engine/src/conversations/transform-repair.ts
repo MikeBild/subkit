@@ -1,33 +1,3 @@
-// Bounded transform auto-repair (Fix 10, sessions 2026-06-11/12
-// post-mortem). Covers both authored transform languages: JSONata
-// expressions and `language: "javascript"` function bodies.
-//
-// When an authored transform expression fails to compile, throws
-// against recorded evidence, or evaluates to an empty result while the
-// upstream data is non-empty, the engine runs a bounded repair: ≤2
-// focused LLM calls, each fed the engine's error (caret-pointed for
-// JSONata, the sandbox message for JS), a bounded sample of the
-// recorded scope, path candidates in the language's own addressing
-// (`$scope.<id>.data` / `input.scope.<id>.data`), and the failed
-// expression. Every candidate is verified MECHANICALLY before it is
-// accepted — compile via the engine's jsonata compiler or a parse-only
-// QuickJS check, and (for failure classes with recorded evidence) a
-// real evaluation against the recorded scope that must produce a
-// non-empty value for the empty-result class.
-//
-// PROPOSE, don't apply — the self-healing discipline. The repair
-// outcome rides the tool result (`repair: { repaired, expression,
-// before, after, attempts }`); the draft is NEVER mutated here. The
-// conversation model reads the repaired expression and applies it via
-// a normal edit (`update_param` / `edit_workflow_patch`), so every
-// applied repair is visible in the mutation history.
-//
-// Cost discipline: the call goes through `invoke()` (flow `repair`),
-// which enforces the tenant's token budget and records usage like
-// every other engine LLM call. Provider failures, quota exhaustion,
-// and contract drift all degrade to `{ repaired: false, last_error }`
-// — a repair must never make the surrounding tool call fail.
-
 import { z } from "zod";
 import type { Executor } from "../db/client.ts";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
@@ -40,12 +10,8 @@ import { logger } from "../logging/logger.ts";
 import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
 import { truncateForLlm } from "./tools/truncate.ts";
 
-/** Hard attempt bound — the whole point of "bounded" repair. */
 export const MAX_REPAIR_ATTEMPTS = 2;
-/** Char budget for the recorded-scope sample embedded in the prompt. */
 const SCOPE_SAMPLE_CAP_CHARS = 2_000;
-/** Verification evaluation wall-clock cap — same bound the
- *  recorded-eval pass applies to authored expressions. */
 const VERIFY_EVAL_TIMEOUT_MS = 500;
 
 export type TransformRepairFailureKind = "compile_error" | "eval_error" | "empty_result";
@@ -54,45 +20,20 @@ export type TransformRepairLanguage = "jsonata" | "javascript";
 
 export interface TransformRepairFinding {
   kind: TransformRepairFailureKind;
-  /** Caret-pointed engine error (JSONata compile/eval), the QuickJS
-   *  sandbox message (JS), or the empty-result hint produced by the
-   *  recorded-eval pass. */
   message: string;
   position?: number;
 }
 
 export interface RepairTransformParams {
-  /** The failed expression, verbatim. For `language: "javascript"`
-   *  this is a function body (production `runJs` contract: one global
-   *  `input`; data at `input.scope.<step_id>.data…`, workflow input at
-   *  `input.input`; explicit `return`). */
   expression: string;
-  /** Authored language of the failed expression. Transforms are
-   *  JavaScript-only; default: javascript. (The `jsonata` member of the
-   *  union remains for the one-line JSONata slots that may route here.) */
   language?: TransformRepairLanguage;
   finding: TransformRepairFinding;
-  /** Envelope-shaped recorded scope (`$scope.<id>.data` addressing)
-   *  the candidate is verified against. Required for the empty-result
-   *  failure class — without recorded evidence a non-empty result
-   *  cannot be proven, so candidates are compile-checked only. */
   scopeSample?: Record<string, unknown> | null;
-  /** Workflow input recorded with the preview — bound as `$input`. */
   input?: unknown;
-  /** Copy-paste path candidates from `enumerateScopePaths` over the
-   *  recorded evidence, in the language's own addressing —
-   *  `$scope.<id>.data.<path>` (JSONata) or
-   *  `input.scope.<id>.data.<path>` (JS). */
   pathCandidates?: ReadonlyArray<string>;
-  /** Dotted site for logging (`steps.shape.expression`, …). */
   site?: string;
   tenant_id: string;
   db?: Executor;
-  /** Optional pipeline/turn deadline signal, threaded into the repair
-   *  `invoke()` so an in-flight repair aborts the moment the enclosing
-   *  pipeline's shared deadline fires (P2). When it aborts, `invoke()`
-   *  throws a typed `LlmProviderError`, which is caught below and
-   *  degrades to `{ repaired: false }` like any other provider failure. */
   signal?: AbortSignal;
 }
 
@@ -101,8 +42,6 @@ export type TransformRepairOutcome =
   | { repaired: false; attempts: number; last_error: string };
 
 const RepairProposalSchema = z.object({
-  /** The corrected expression (JSONata) or function body (JS) —
-   *  nothing else. */
   expression: z.string().min(1).max(10_000),
   reasoning: z.string().max(600).optional(),
 });
@@ -193,12 +132,6 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
   return lines.join("\n");
 }
 
-/** Mechanical verification of a repair candidate. Compile always; for
- *  failure classes with recorded evidence, evaluate for real — an
- *  `empty_result` repair must produce a non-empty value, an
- *  `eval_error` repair must not throw. JS candidates go through the
- *  same QuickJS sandbox the execution layer uses (parse-only check
- *  when there is nothing to evaluate against). */
 async function verifyCandidate(
   candidate: string,
   language: TransformRepairLanguage,
@@ -259,11 +192,6 @@ async function verifyCandidate(
   }
 }
 
-/**
- * Run the bounded repair. Never throws; never mutates anything.
- * `attempts` counts LLM round-trips actually made (success returns the
- * attempt index that produced the accepted candidate).
- */
 export async function repairTransformExpression(
   params: RepairTransformParams,
 ): Promise<TransformRepairOutcome> {

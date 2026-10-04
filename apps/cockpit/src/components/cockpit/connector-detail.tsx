@@ -47,7 +47,6 @@ function text(record: RecordValue, key: string): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-/** One copy action per value: the same "Kopieren" beside two values is two acts. */
 function Copyable({ children }: { children: ReactNode }) {
   return (
     <div className="min-w-0" data-action-scope="copy">
@@ -56,12 +55,6 @@ function Copyable({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Where the connector points and how it talks — the address (copyable, never
- * truncated), what kind of system it is, how it signs in. Every value is a
- * word from the label maps; an engine value this build has no word for is
- * shown as "Andere (<wert>)", never as a bare machine string.
- */
 export function ConnectorConnectionFacts({
   record,
   headerNames,
@@ -79,7 +72,6 @@ export function ConnectorConnectionFacts({
   const facts: Fact[] = [
     {
       label: t("connectorDetail.connection.address"),
-      // An address with a kept secret in it cannot be handed out whole.
       value: address ? (
         address.keepsSecret ? (
           <span className="break-all font-mono text-xs">{address.shown}</span>
@@ -163,14 +155,6 @@ export function ConnectorConnectionFacts({
   );
 }
 
-/**
- * "Laufzeit · letzte 7 Tage": calls, success rate, median response time and
- * the last success, read over ONE window fixed when the page opened; each
- * count leads to the audit log narrowed to the same connector and the same
- * window. A week without a call, and figures the reader may not see, are one
- * sentence instead of figures. The last failure — shown only when there is
- * one — is its cause class in the cockpit's words, never the remote's text.
- */
 export function ConnectorRuntimeSection({
   connectorId,
   driver,
@@ -193,7 +177,6 @@ export function ConnectorRuntimeSection({
   });
   if (runtime.isPending || (canReadStats && stats.isPending))
     return <DataState state="loading" testId="connector-runtime" />;
-  // A body that is not a runtime answer is a failed read, not an empty one.
   const data = asRuntime(runtime.data);
   const figures: ConnectorFigures | null = canReadStats
     ? connectorFigures(stats.data, bounds)
@@ -286,8 +269,6 @@ export function ConnectorRuntimeSection({
         ];
   return (
     <div className="flex flex-col gap-3" data-testid="connector-runtime">
-      {/* Figures the reader may not see, or a week without a call, are one
-          sentence — not a row of figures that each say the same nothing. */}
       {!figures || figures.calls === 0 ? (
         <p
           className={muted}
@@ -303,7 +284,6 @@ export function ConnectorRuntimeSection({
       <FactList
         items={[
           ...facts,
-          // Said when there is one. "No failure recorded" is not a fact to show.
           ...(failure
             ? [
                 {
@@ -339,7 +319,6 @@ interface ToolRow {
   trusted: boolean;
 }
 
-/** One tool (O6): what it says it does, and the operator's one decision about it. */
 function ToolSheet({
   row,
   index,
@@ -380,7 +359,6 @@ function ToolSheet({
                     : "connectorDetail.tools.claimsRead",
                 )
               : MISSING,
-            // What the server claims is not what the gate decides by.
             help: t("connectorDetail.tools.claimsHelp"),
           },
         ]}
@@ -409,14 +387,6 @@ function ToolSheet({
   );
 }
 
-/**
- * "Werkzeuge" (MCP only): what the negotiated session says about the server,
- * and its tools, each with the operator's one decision — "Ohne Rückfrage".
- * The list comes from reading the server (never on page open); tools already
- * marked "Ohne Rückfrage" show before that, from the connector itself. What
- * the server CLAIMS about a tool is a word, never a switch: the gate ignores
- * it, and so does this page.
- */
 export function ConnectorMcpTools({
   connectorId,
   record,
@@ -501,7 +471,6 @@ export function ConnectorMcpTools({
       ),
     ];
   }, [t, dateTime]);
-  // What the last session negotiated — each fact only when the session has it.
   const sessionLine = session
     ? [
         session.protocol_version,
@@ -575,10 +544,6 @@ interface WorkflowItem {
   name?: string | null;
 }
 
-/**
- * The workflows whose current version uses this connector: the "Verwendung"
- * table, the strip's count and the delete consequence read the same query.
- */
 export function useConnectorWorkflows(slug: string | null) {
   return useQuery({
     queryKey: ["connector-workflows", slug],
@@ -590,7 +555,6 @@ export function useConnectorWorkflows(slug: string | null) {
   });
 }
 
-/** The workflows whose current version uses this connector (V6a). */
 export function ConnectorWorkflows({ slug }: { slug: string }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -636,11 +600,6 @@ export function ConnectorWorkflows({ slug }: { slug: string }) {
   );
 }
 
-/**
- * "Technische Angaben", folded: what someone quoting the connector to
- * operations needs — its short name, when it was made and changed, and its
- * identifier.
- */
 export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; id: string }) {
   const { t, dateTime } = useI18n();
   const slug = text(record, "slug");

@@ -26,7 +26,6 @@ type RepairResponse = components["schemas"]["ProposeWorkflowRepairResponse"];
 type PrepareResponse = { prepared: boolean; reason?: string };
 export type RepairNote = RepairStatus | "failed";
 
-/** The diagnosis read, under the key every reader of it shares. */
 export function workflowDiagnosisQuery(workflowId: string, environment: "dev" | "prod" | null) {
   return {
     queryKey: ["workflow-diagnosis", workflowId, environment],
@@ -35,8 +34,6 @@ export function workflowDiagnosisQuery(workflowId: string, environment: "dev" | 
         `/v1/workflows/${encodeURIComponent(workflowId)}/diagnosis?environment=${environment}`,
       ),
     retry: false,
-    // Like the approvals and the verified status it is read beside: a block
-    // that was removed elsewhere must not stay on the page until a reload.
     refetchInterval: AUTOMATION_REFRESH_MS,
   } as const;
 }
@@ -55,15 +52,9 @@ function preparedKey(result: PrepareResponse): TranslationKey {
   return "diagnosis.prepareNotRun";
 }
 
-/** The review sheet a workflow's filed repairs wait in. */
 export const repairReviewHref = (workflowId: string) =>
   attentionHref({ review: `workflow:${workflowId}` });
 
-/**
- * Filing the engine's deterministic repair for one step. One implementation
- * for the step's own button and for the approval dialog's remedy, so the same
- * press does the same thing in both views.
- */
 export function useStepRepair({
   entry,
   diagnosis,
@@ -73,7 +64,6 @@ export function useStepRepair({
   entry: GateDiagnosis;
   diagnosis: WorkflowDiagnosis;
   environment: "dev" | "prod";
-  /** A repair request that opened nothing new to review. */
   onNote: (note: RepairNote) => void;
 }) {
   const navigate = useNavigate();
@@ -87,9 +77,6 @@ export function useStepRepair({
       }),
     onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: ["run-open-repair", workflowId] });
-      // Only an open proposal has a card in the review sheet. A rejected one
-      // keeps holding for this version; sending the reader to an empty sheet
-      // would hide that.
       if (result.status === "proposed") {
         void navigate(routerTarget(repairReviewHref(workflowId)));
         return;
@@ -101,19 +88,6 @@ export function useStepRepair({
   });
 }
 
-/**
- * Why the approval gate holds this workflow, step by step — and the acts that
- * remove the blocks, where the cockpit can perform them.
- *
- * The same diagnosis HTTP and MCP answer with (`GET …/diagnosis`). A step the
- * engine can repair offers "Automatisch reparieren": that files the engine's
- * deterministic repair as a patch candidate and opens it in the review sheet,
- * where a person previews and approves it — nothing is applied from here.
- *
- * What does the same thing whichever step asks for it stands once, under the
- * list: reviewing the filed repairs, the trial run, the conversation with an
- * author. A button per step for one act would be the same press several times.
- */
 export function WorkflowGateDiagnosis({
   workflowId,
   environment,
@@ -123,16 +97,9 @@ export function WorkflowGateDiagnosis({
   onRepairRejected,
 }: {
   workflowId: string;
-  /** The environment the approval is judged in — the same choice the approval dialog makes. */
   environment: "dev" | "prod" | null;
-  /**
-   * Opens the approval dialog, where a sample for the trial run is given.
-   * Absent where the strip already carries the opener.
-   */
   onOpenApproval?: () => void;
-  /** False where the strip's own re-check re-reads the diagnosis. */
   ownRetry: boolean;
-  /** The steps whose computed repair was refused for this version. */
   rejectedRepairs: readonly string[];
   onRepairRejected: (stepId: string) => void;
 }) {
@@ -142,10 +109,6 @@ export function WorkflowGateDiagnosis({
   const diagnosis = useQuery({
     ...workflowDiagnosisQuery(workflowId, environment),
     enabled: canRead && environment !== null,
-    // The strip around this block already made the read and repeats it on its
-    // own interval. Retrying on mount would put a FAILED read back to
-    // "pending", which takes the strip's state away, which unmounts this
-    // block, which mounts it again when the read fails — without end.
     retryOnMount: false,
   });
   if (!canRead || environment === null) return null;
@@ -172,7 +135,6 @@ export function WorkflowGateDiagnosis({
               entry={entry}
               diagnosis={answer}
               environment={environment}
-              // One run can refuse several steps: its link stands at the first.
               showRun={
                 entries.findIndex(
                   (other) => other.evidence.execution_id === entry.evidence.execution_id,
@@ -228,7 +190,6 @@ function DiagnosisItem({
   const canRepair = diagnosisRepairable(entry, diagnosis.is_current, {
     write: session.permissions.includes("workflow:write"),
   });
-  // A repair that is already filed is reviewed under the list, with the others.
   const offersRepair = canRepair && !entry.candidate_id;
   const runId = showRun ? entry.evidence.execution_id : undefined;
   const acts: ActionMenuItem[] = [
@@ -265,15 +226,12 @@ function DiagnosisItem({
             {t("diagnosis.step", { step: entry.subject.step_id })}
           </span>
           {" · "}
-          {/* The precise rule first — the code only says that the approval
-              refuses; the reason says why, and decides the repair. */}
           {entry.reason ? (
             <RefusalReasonLine reason={entry.reason} testId={`${testId}-reason`} />
           ) : (
             <LabelText label={cause} />
           )}
         </p>
-        {/* Each act its own button, side by side — never a menu of two. */}
         {acts.map((act) => (
           <ActionMenu key={act.testId} items={[act]} />
         ))}
@@ -287,7 +245,6 @@ function DiagnosisItem({
   );
 }
 
-/** The acts that stand once for the whole diagnosis (`diagnosisActs`). */
 function DiagnosisActions({
   diagnosis,
   environment,
@@ -376,7 +333,6 @@ function DiagnosisActions({
           <p className="text-sm text-muted-foreground" data-testid="workflow-diagnosis-prepared">
             {t(prepared)}
           </p>
-          {/* The approval dialog's one opener while the strip offers none. */}
           {prepared === "diagnosis.prepareNeedsSample" && onOpenApproval ? (
             <ActionMenu
               items={[

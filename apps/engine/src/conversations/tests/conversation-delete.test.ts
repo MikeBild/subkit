@@ -1,6 +1,3 @@
-// Deleting a conversation removes it for everyone — owner or admin only,
-// never while a turn runs — and leaves an audit row that still names it.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog, conversations, fileLinks, files } from "../../db/schema/index.ts";

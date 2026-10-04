@@ -1,15 +1,3 @@
-// Session-lifecycle slashes: `/clear`, `/new`, `/copy`, `/rename`,
-// `/fork`, `/mention`, `/settings`, `/preferences`, `/session`,
-// `/export`, `/resume`, `/compact`, `/model`. Everything that reads or
-// mutates the current conversation/session (or deep-links into the
-// settings modal) lives here; handler.ts keeps the grouped case labels
-// and delegates with the canonical (post-alias) command name.
-//
-// Returns:
-//   - `string | null` if the command was handled (string = banner,
-//     null = pane was opened)
-//   - `undefined` if the name doesn't belong to this group
-
 import fs from "node:fs";
 import { join } from "node:path";
 import { type PaneSpec, panify, type SlashHandlerContext } from "../handler.ts";
@@ -26,8 +14,6 @@ export async function dispatchSessionSlash(
       return "session cleared";
     }
     case "copy": {
-      // Find the most recent assistant message in the in-memory transcript
-      // and write it to the operator's clipboard via OSC 52.
       const msgs = ctx.session.messages;
       let lastText = "";
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -37,11 +23,6 @@ export async function dispatchSessionSlash(
           break;
         }
       }
-      // When the in-memory transcript does not contain an assistant
-      // turn (resumed session, paged history scrolled past it, or
-      // REPL booted into an existing conversation), fall back to the
-      // engine's persisted messages. The happy path stays fully local
-      // when the in-memory cache already has text.
       if (lastText === "" && ctx.session.conversationId) {
         try {
           const detail = await ctx.client.getConversation(ctx.session.conversationId);
@@ -53,15 +34,9 @@ export async function dispatchSessionSlash(
               break;
             }
           }
-        } catch {
-          // Engine fetch failures fall through to the empty-transcript
-          // hint below; the slash never throws and never deadlocks.
-        }
+        } catch {}
       }
       if (lastText === "") {
-        // Distinguish "no assistant turn at all" from "assistant turn
-        // is empty"; the in-memory transcript is the authoritative
-        // signal for the latter.
         const haveAnyAssistant = msgs.some((m) => m?.role === "assistant");
         return haveAnyAssistant
           ? "/copy: last assistant message is empty"
@@ -86,18 +61,8 @@ export async function dispatchSessionSlash(
       }
     }
     case "fork": {
-      // Wired to the engine fork-from-message route. /fork creates a
-      // real fork at the most recent persisted assistant message,
-      // copying messages 0..N into a new conversation, and switches
-      // the local sessionId to the new one. The original conversation
-      // stays
-      // resumable via /resume. For the in-conversation timeline
-      // picker (`/resume → t`), see ConversationBrowser.
       const sourceId = ctx.session.conversationId;
       if (!sourceId) return "no session to fork from";
-      // Find the most recent assistant message that has a persisted
-      // engine id. Synthetic / streaming-in-progress messages have
-      // no `id` and the fork route refuses unknown anchors.
       let anchorId: string | null = null;
       for (let i = ctx.session.messages.length - 1; i >= 0; i--) {
         const m = ctx.session.messages[i];
@@ -113,10 +78,6 @@ export async function dispatchSessionSlash(
         const res = await ctx.client.forkConversationFromMessage(sourceId, anchorId);
         ctx.setConversationId(res.conversation.id);
         const short = res.conversation.id.slice(0, 8);
-        // Annotate the truncation outcome inline so the operator
-        // notices when older context was dropped at fork time. The
-        // anchor is always preserved; only earlier messages get
-        // clipped.
         const truncationNote = res.truncated
           ? " — earlier history was truncated at the per-fork copy cap"
           : "";
@@ -145,19 +106,6 @@ export async function dispatchSessionSlash(
       return null;
     }
     case "session": {
-      // Mint a portal token scoped to the workflow id provided in args
-      // and render a terminal QR + URL. TTL is operator-tunable via
-      // `repl.portalTokenTtlMin`; tenant-scoped via the engine's
-      // existing /v1/identity/portal-tokens audit invariants.
-      //
-      // The plaintext URL is a bearer-equivalent secret. Returning the
-      // URL as the slash result would persist it into the assistant
-      // transcript, so the secret is routed into a dedicated pane
-      // (`kind: "portal-token"`) — the host renders the QR + URL
-      // inline, dismisses on Esc / 'y' (copy via OSC 52), and the
-      // slash return only carries non-secret context (token id,
-      // expiry, ttl). Mirrors the AdminTab API-key flow, which
-      // surfaces the plaintext once and never re-shows it.
       const workflowId = rawArgs[0];
       if (!workflowId) {
         return "/session usage: `/session <workflow-id>` — engine requires at least one workflow scope per portal token";
@@ -190,16 +138,9 @@ export async function dispatchSessionSlash(
             expires_at: issued.expires_at,
             workflow_id: workflowId,
           });
-          // Transcript message contains only the prefix + expiry — no
-          // plaintext token bytes. Operator copies the URL from the
-          // pane via OSC 52 / 'y'.
           const prefix = issued.prefix ?? issued.id.slice(0, 8);
           return `portal token issued (token id ${prefix}, ${ttlMinutes} min, single-use) — pane opened with QR + URL; copy the URL there and dismiss on Esc.`;
         }
-        // Headless / non-Ink fallback: print a redacted summary; never
-        // emit the plaintext URL into the transcript when no pane is
-        // available. Operator-scripted environments should use the
-        // engine route directly.
         return `/session: issued portal token (id ${issued.id}, expires ${issued.expires_at}) — open an interactive REPL to view the QR + URL.`;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -207,10 +148,6 @@ export async function dispatchSessionSlash(
       }
     }
     case "export": {
-      // Render the current session transcript to a Markdown file in
-      // the current working directory. Covers user/assistant messages,
-      // call history (with truncated output), and the usage summary so
-      // operators can share a conversation without screenshots.
       if (!ctx.session.conversationId) return "no active conversation to export";
       const parts: string[] = [];
       const convId = ctx.session.conversationId;
@@ -305,7 +242,6 @@ export async function dispatchSessionSlash(
         });
         return null;
       }
-      // Readline fallback: silently attach to the most recent.
       const first = res.items[0];
       if (!first) return "no prior conversations to resume";
       ctx.setConversationId(first.id);

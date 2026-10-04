@@ -15,12 +15,6 @@ beforeAll(async () => {
     tenant_id: ctx.tenant_id,
     llm_provider: "mock",
   });
-  // Seed a tiny budget — 200 tokens is smaller than any real prompt we
-  // assemble, so the very first call should trip the budget check.
-  //
-  // Set where an operator sets it. This used to write a column that the
-  // settings surface could not reach, which is how the enforced cap and the
-  // editable one drifted apart.
   await setConfigKey("tokens.monthly_budget", 200, { tenantId: ctx.tenant_id, force: true });
 });
 
@@ -51,9 +45,6 @@ describe("llm/budget", () => {
   });
 
   test("a refused call spends nothing: the month's usage does not move, retry after retry", async () => {
-    // The refused call used to be written with the tokenizer's prompt
-    // estimate, so a workspace over its cap moved further over with every
-    // attempt it was refused — the refusal fed the very sum that refused it.
     const before = await monthlyUsage(ctx.tenant_id, ctx.testDb.db);
     for (let i = 0; i < 2; i++) {
       await expect(

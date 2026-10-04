@@ -22,10 +22,6 @@ import {
   FILLED_DESTRUCTIVE,
 } from "./dialog-frame";
 
-/**
- * "{Objekt} {verb}?" in German, "{Verb} {object}?" in English. The verb stands
- * capitalised on the button; inside a German sentence it is lower-cased.
- */
 export function confirmTitle(
   t: (key: TranslationKey, values?: Record<string, string | number>) => string,
   locale: Locale,
@@ -37,12 +33,6 @@ export function confirmTitle(
   return t("pattern.confirm.title", { object, verb: inSentence });
 }
 
-/**
- * Every irreversible or consequential act (P13): title "{Objekt} {verb}?", one
- * line of consequence, Abbrechen and the verb itself as the button — filled,
- * red where it removes. The frame is FormDialog's: one width, and a sheet
- * from the bottom edge under 640px.
- */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -57,11 +47,8 @@ export function ConfirmDialog({
   open: boolean;
   onOpenChange(open: boolean): void;
   object: string;
-  /** Capitalised, as it stands on the button: "Widerrufen". */
   verb: string;
-  /** One line. */
   consequence: string;
-  /** Only where the act cannot be undone. */
   destructive?: boolean;
   pending?: boolean;
   onConfirm(): void | Promise<void>;

@@ -58,7 +58,6 @@ describe("rerankSearchHits", () => {
     const hits = rerankSearchHits("create customer", candidates, 3);
     const top = hits[0];
     expect(top?.fetched_at).toBe(FETCHED_AT);
-    // null fetched_at on the schema candidate must round-trip as null.
     const schemaHit = hits.find((h) => h.id === "schema");
     expect(schemaHit?.fetched_at).toBeNull();
   });

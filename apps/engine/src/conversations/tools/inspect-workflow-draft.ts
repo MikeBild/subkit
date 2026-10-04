@@ -26,8 +26,6 @@ export const inspectWorkflowDraftTool: ConversationTool = {
     await ctx.setDraft(nextDraft);
     const workflow = getWorkflowDraft(nextDraft);
 
-    // Repairing configuration does not require execution payloads.
-    // Preview shapes remain available explicitly for selected steps.
     const traceById = new Map<string, WorkflowDraftStepPreview>();
     const traces = args.include_preview ? nextDraft.latest_preview?.step_traces : undefined;
     if (Array.isArray(traces)) {
@@ -55,16 +53,6 @@ export const inspectWorkflowDraftTool: ConversationTool = {
               const id = typeof step.id === "string" ? step.id : `step-${index + 1}`;
               if (args.step_ids && !args.step_ids.includes(id)) return [];
               const trace = traceById.get(id);
-              // surface each step's side-effect class so the agent
-              // knows which steps DISPATCH (sends, writes) and never
-              // live-tests them (it verifies via dry_run_workflow / a held
-              // run instead). Reuses the engine's canonical classifier — the
-              // same one hold_writes uses — so the label can't drift from
-              // what the engine actually holds. A `call` step runs a
-              // sub-workflow whose own steps may write, so it is marked
-              // "write" conservatively (the agent should not blind-live-test
-              // it). Pure-compute / control-flow steps (transform, loop,
-              // branch, parallel, wait) have no external side effect → "read".
               const sideEffect =
                 step.kind === "request"
                   ? classifyRequestStepSideEffects(step as unknown as RequestStep)

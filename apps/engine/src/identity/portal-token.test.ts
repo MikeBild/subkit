@@ -1,10 +1,3 @@
-// Portal-token utilities — generation, parsing, prefix discrimination.
-//
-// Portal tokens share the api-key sha256 hashing helper but live under
-// a distinct prefix literal (`wf_portal_`) so the auth registry can
-// route by literal before falling through to the api-key provider.
-// These tests pin both invariants.
-
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "./api-key.ts";
 import {
@@ -58,8 +51,6 @@ describe("parsePortalToken", () => {
   });
 
   test("rejects api-key prefix even though sha256 matches the format", () => {
-    // The auth registry routes by literal before hashing, so an api-key
-    // plaintext must NOT parse as a portal token.
     expect(parsePortalToken("wf_live_abcdefghijklmnopqrstuvwxyz123456")).toBeNull();
   });
 

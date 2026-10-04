@@ -1,5 +1,3 @@
-// ask_user_text — ask the user for a free-form text answer.
-
 import { z } from "@hono/zod-openapi";
 import type { ConversationTool, ToolResult } from "../index.ts";
 import { pauseForUserInput } from "./common.ts";
@@ -9,11 +7,7 @@ const inputSchema = z
     question: z.string().min(1),
     placeholder: z.string().optional(),
     multiline: z.boolean().optional(),
-    /** Optional regex validated client-side before submit AND re-validated
-     *  server-side on respond (see ask-user/validate-answer.ts). */
     validation_regex: z.string().optional(),
-    /** Optional pre-filled value rendered as the initial buffer — the
-     *  user confirms or edits instead of retyping. */
     default: z.string().optional(),
   })
   .openapi("AskUserTextInput");

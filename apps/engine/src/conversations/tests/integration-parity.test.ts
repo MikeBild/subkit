@@ -1,13 +1,3 @@
-// Integration parity tests — exercise the cross-cutting wiring we
-// added across Gaps #1–#8. Each test is self-contained via the shared
-// mock-provider shim so no postgres is required.
-//
-// Covers:
-//   - ordinary workflow starts reach bounded admission in dev and prod
-//   - interaction_log splicing into rehydrated tool-result messages
-//   - filterBySkillGate hides gated tools until their skill loads
-//   - loop's sink still appends events (non-streaming baseline)
-
 import { describe, expect, it } from "bun:test";
 import { resolveToolMode } from "../tool-policies.ts";
 import { filterBySkillGate, SKILL_GATED_TOOLS } from "../tools/gated.ts";

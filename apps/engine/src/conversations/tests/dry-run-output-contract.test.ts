@@ -1,16 +1,3 @@
-// dry_run_workflow × output_schema (Fix 11) — the preview is where the
-// output contract BLOCKS. A draft whose final output violates its
-// declared `output_schema`:
-//   - is classified `needs_repair` (preview not green),
-//   - does NOT auto-commit,
-//   - carries the field-level `$output/...` paths in the warning
-//     entries / banner.
-// Once the draft produces the contracted shape the same dry-run goes
-// green and is ready to save (a goal-less green preview returns
-// save_required rather than auto-committing). `output_transform` travels
-// with the dry-run definition so the contract validates the TRUE final
-// payload — execution parity with live runs.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
@@ -84,7 +71,6 @@ describe("dry_run_workflow · output contract", () => {
     const toolCtx = makeCtx(draftWith("contract-fails", "return { count: 1 };"));
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
 
-    // Blocking: the preview is NOT green and the draft did not commit.
     expect(result.ok).toBe(false);
     const data = result.data as {
       classification?: string;
@@ -98,7 +84,6 @@ describe("dry_run_workflow · output contract", () => {
     const warning = (data.warnings ?? []).find((w) => w.code === "output_contract_violation");
     expect(warning).toBeDefined();
     expect(warning?.step_key).toBe("$output");
-    // Field-level paths name exactly what the author must produce.
     expect(warning?.message).toContain("$output/total");
     expect(warning?.message).toContain("$output/items");
     expect(data.warnings_banner?.codes).toContain("output_contract_violation");
@@ -108,20 +93,12 @@ describe("dry_run_workflow · output contract", () => {
     const toolCtx = makeCtx(draftWith("contract-passes", "return { total: 1, items: ['a'] };"));
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(result.ok).toBe(true);
-    // this fixture stashes no goal, so the green preview is NOT
-    // auto-committed — it returns save_required. The contract distinction
-    // under test (bad output_schema → needs_repair vs good → green) is
-    // unchanged; only the persistence outcome moved behind explicit save.
-    // (The goal-present auto-commit path is covered in preview-judge.test.ts.)
     const data = result.data as { auto_committed?: boolean; save_required?: boolean };
     expect(data.auto_committed).toBe(false);
     expect(data.save_required).toBe(true);
   });
 
   test("output_transform shapes the payload the contract validates (execution parity)", async () => {
-    // The step output alone violates the contract; the workflow-level
-    // output_transform produces the contracted shape. The dry-run must
-    // validate the POST-transform payload — i.e. pass.
     const toolCtx = makeCtx(
       draftWith("contract-via-transform", "return { count: 3 };", {
         output_transform: "{ 'total': count, 'items': [] }",
@@ -129,9 +106,6 @@ describe("dry_run_workflow · output contract", () => {
     );
     const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
     expect(result.ok).toBe(true);
-    // green, no goal stashed → ready to save (not auto-committed). The
-    // execution-parity point under test is that the POST-transform payload
-    // satisfies the contract (the preview goes green), which it does.
     const data = result.data as { auto_committed?: boolean; save_required?: boolean };
     expect(data.auto_committed).toBe(false);
     expect(data.save_required).toBe(true);

@@ -1,53 +1,22 @@
-// A connector's runtime, read back from what the engine already recorded:
-// the newest successful and the newest failed call in `audit_log`, and — for
-// an mcp connector — the negotiated session row. No new persistence.
-//
-// ONE ROW PER CALL, the same rule `GET /v1/stats/connectors` counts by: an
-// mcp call is the pool's `mcp_external_tool.invoked` row (its egress row, which
-// a chat call and a workflow step both write, is not read); every other
-// driver's call is the egress row `connector.invoked`. Both rows carry the
-// connector id as `resource_id`.
-//
-// The failure is reported as a class, never as text. The audit `reason` of an
-// egress failure is the driver's error message, which can quote the remote;
-// the class is the engine's own reading of it.
-//
-// A rejected sign-in is about the credential it was made with. Once a new
-// credential is stored — a sign-in or a replaced key, `credential.created` /
-// `credential.updated`; a background token refresh is `credential.rotated` and
-// renews nothing — an older auth failure is resolved and is not the newest
-// failure any more. Any other failure stays: a new credential does not answer
-// a timeout. A sign-in is not a call, so it never counts as a success.
-
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { auditLog, connectorMcpSessions } from "../db/schema/index.ts";
 
-/** Drivers whose every call passes an audited path (`withEgressAudit` for
- *  workflow steps, `recordConnectorInvoked` for chat calls, the MCP pool's
- *  recorder). A driver missing here has calls the log does not hold, and the
- *  page says so instead of reporting "never used". */
 const RECORDED_DRIVERS: ReadonlySet<string> = new Set(["http", "graphql", "s3", "postgres", "mcp"]);
 
-/** The failure classes a connector call can be read as — a subset of the
- *  engine's `FailureCauseClass`, so the cockpit words them with the same map. */
 export type ConnectorFailureClass = "auth_failed" | "timeout" | "aborted" | "driver_error";
 
 export interface ConnectorRuntime {
   last_success_at: string | null;
   last_failure: {
     at: string;
-    /** Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …),
-     *  `network_error` for a call with no status, `remote_error` for an mcp
-     *  tool that answered with an error. */
     code: string;
     cause_class: ConnectorFailureClass;
   } | null;
   recorded: boolean;
   mcp_session: {
     protocol_version: string | null;
-    /** The capability keys the server declared during `initialize`. */
     capabilities: string[];
     last_handshake_at: string | null;
     consecutive_failures: number;
@@ -63,7 +32,6 @@ function statusOf(metadata: unknown): number | null {
   return Number.isInteger(n) ? n : null;
 }
 
-/** Same bands as the stats route's `STATUS_CLASS_CASE`. */
 function failureCode(status: number | null, mcp: boolean): string {
   if (status === null) return mcp ? "remote_error" : "network_error";
   if (status === 401 || status === 403) return "4xx_auth";
@@ -86,9 +54,6 @@ export function classifyConnectorFailure(
   return "driver_error";
 }
 
-/** When this connector's credential was last stored anew — a sign-in or a
- *  replaced key. The credential audit row names the connector in its
- *  metadata; its `resource_id` is the credential. */
 async function newestCredentialRenewal(
   db: Executor,
   tenant_id: string,

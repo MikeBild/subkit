@@ -1,27 +1,3 @@
-// Boot-time chat-adapter registry hydration.
-//
-// Without this, `ChatAdapterRegistry.findVerifier("slack")` returns null
-// at startup and every Slack POST gets 503 adapter_not_registered. The
-// chat-route ingestion path therefore reads from a registry hydrated
-// here, just before the HTTP listener accepts traffic.
-//
-// Credential model (decided): one subkit Slack app.
-//   - signing secret: app-level. ONE value, shared across every installed
-//     workspace. Stored in engine config (`platform.slack.signing_secret`)
-//     marked `secret: true`. Read once at boot.
-//   - bot token: workspace-level. One per `chat_workspaces` row, AES-256-GCM
-//     encrypted with row-bound AAD (`chat-workspace:<tenant>:<id>`),
-//     mirrors the AAD pattern used by `webhooks/inbound/service.ts`.
-//
-// Resolution at runtime:
-//   - Verify: the route calls `registry.findVerifier("slack")` BEFORE the
-//     workspace is known. Any registered Slack adapter works (they all
-//     hold the same signing secret), so we also `registerFallback("slack",
-//     adapter)` with the first one we build.
-//   - Outbound: the chat.event worker resolves the workspace-specific
-//     adapter by `(tenant, platform, workspace_id)` so the right bot
-//     token is used.
-
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { getConfig } from "../config/loader.ts";
@@ -35,24 +11,12 @@ import type { ChatAdapterRegistry } from "./registry.ts";
 import { SlackAdapter } from "./slack/adapter.ts";
 import type { ChatPlatform } from "./types.ts";
 
-// Production constants for the Google Chat platform. The inbound JWKS
-// belongs to Google's Chat system service account (the app-level
-// "Project Number" audience mode — the only mode the adapter speaks);
-// pinning them here means a hydrated adapter can never come up with
-// verification disabled (the adapter treats a missing jwksUrl as
-// "trusted transport", which is only acceptable in tests).
 const GOOGLE_CHAT_BASE_URL = "https://chat.googleapis.com";
 const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const GOOGLE_CHAT_ISSUER = "chat@system.gserviceaccount.com";
 const GOOGLE_CHAT_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/chat@system.gserviceaccount.com";
 
-/**
- * Build the app-level Google Chat adapter from engine config with the
- * pinned production constants. Shared by boot hydration and the
- * workspace-install route so a live install and a reboot can never
- * produce differently-configured adapters.
- */
 export function buildGoogleChatAdapterFromConfig(google: {
   client_email: string;
   private_key: string;
@@ -77,13 +41,6 @@ export interface HydrateOutcome {
   fallback_registered_for: ChatPlatform[];
 }
 
-/**
- * Build adapters from every `chat_workspaces` row and register them.
- * Idempotent at the registry level (`register` overwrites). Safe to call
- * after a runtime install (the workspace-install route does its own
- * `register` for the freshly-installed row, then this can be re-run on
- * the next boot).
- */
 export async function hydrateChatRegistry(
   db: Db,
   registry: ChatAdapterRegistry,
@@ -108,10 +65,6 @@ export async function hydrateChatRegistry(
 
   let slackFallbackPicked = false;
   let googleFallbackPicked = false;
-  // ONE adapter serves every Google workspace row: credentials are
-  // app-level (service account + audience), unlike Slack's
-  // per-workspace bot token. Built lazily so a deployment without
-  // Google Chat never constructs it.
   let googleAdapter: GoogleChatAdapter | null = null;
 
   for (const row of rows) {
@@ -126,14 +79,6 @@ export async function hydrateChatRegistry(
             workspace_row_id: row.id,
             workspace_id_native: row.workspace_id,
           });
-          // Per-tenant audit row so a re-deployment with a wiped
-          // signing secret is visible in each tenant's SIEM, not just
-          // in the engine's structured log stream. A silent hydration
-          // skip would otherwise disable every Slack workspace
-          // unnoticed.
-          // Dedicated action — not CHAT_WORKSPACE_INSTALLED — so an
-          // auditor filtering "installs in tenant X" doesn't see a
-          // phantom denied install on every boot.
           await auditAwait(
             {
               tenant_id: row.tenant_id,
@@ -175,10 +120,6 @@ export async function hydrateChatRegistry(
           adapter,
         );
         if (!slackFallbackPicked) {
-          // All Slack workspaces share the one app-level signing secret,
-          // so any adapter verifies any incoming Slack request. Verify
-          // runs before we know which workspace sent the event, hence
-          // the fallback.
           registry.registerFallback("slack", adapter);
           outcome.fallback_registered_for.push("slack");
           slackFallbackPicked = true;
@@ -197,12 +138,6 @@ export async function hydrateChatRegistry(
             workspace_row_id: row.id,
             workspace_id_native: row.workspace_id,
           });
-          // Same SIEM-visibility contract as the Slack signing-secret
-          // guard: a redeploy that wiped the service-account creds
-          // would otherwise silently disable every Google space. This
-          // guard is also what closes the adapter's fail-open verify
-          // path in production — a registered adapter ALWAYS carries
-          // the pinned jwksUrl below.
           await auditAwait(
             {
               tenant_id: row.tenant_id,
@@ -233,9 +168,6 @@ export async function hydrateChatRegistry(
           googleAdapter,
         );
         if (!googleFallbackPicked) {
-          // Verify runs before the workspace is known (same shape as
-          // Slack) — and all Google rows share the one app-level
-          // adapter anyway.
           registry.registerFallback("google_chat", googleAdapter);
           outcome.fallback_registered_for.push("google_chat");
           googleFallbackPicked = true;
@@ -244,12 +176,6 @@ export async function hydrateChatRegistry(
         continue;
       }
 
-      // The Teams adapter class satisfies the ChatAdapter interface but
-      // is not hydrated yet: its outbound credentials (Bot Framework
-      // client_credentials) and the per-activity serviceUrl handling
-      // aren't wired through chat_workspaces. Skipping silently keeps
-      // the registry free of half-installed adapters; activating Teams
-      // means extending this function with its credential shape.
       outcome.skipped += 1;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -262,13 +188,6 @@ export async function hydrateChatRegistry(
         platform: row.platform,
         error: message,
       });
-      // Per-tenant audit row so a silent decryption failure — typical
-      // cause: MASTER_KEY rotated without re-encrypting bot tokens —
-      // surfaces in the tenant's SIEM, not just the engine's structured
-      // log. Mirrors the signing-secret-unset audit above; same action
-      // (CHAT_WORKSPACE_HYDRATE_SKIPPED) keeps the dashboard query
-      // surface flat ("show me workspaces that didn't come up this
-      // boot") and uses `reason` to discriminate causes.
       await auditAwait(
         {
           tenant_id: row.tenant_id,
@@ -305,13 +224,6 @@ export async function hydrateChatRegistry(
   return outcome;
 }
 
-// Lazy rehydrate-on-miss. The registry is process-local and hydrated once
-// at boot; a request that arrives during the boot-race window (or, in a
-// future multi-instance deploy, against an instance that missed an install)
-// would otherwise 503 forever. On a miss the caller invokes this, which
-// re-runs the idempotent hydrate at most once per cooldown (single-flight),
-// then retries the lookup. Never removes a live adapter; a genuinely-0-
-// install tenant can't DB-storm (cooldown).
 const REHYDRATE_COOLDOWN_MS = 30_000;
 let lastRehydrateAt = 0;
 let rehydrateInFlight: Promise<void> | null = null;
@@ -340,7 +252,6 @@ export async function ensureChatRegistryHydrated(
   return rehydrateInFlight;
 }
 
-/** Test-only: reset the rehydrate cooldown/single-flight state. */
 export function _resetChatRehydrateStateForTests(): void {
   lastRehydrateAt = 0;
   rehydrateInFlight = null;

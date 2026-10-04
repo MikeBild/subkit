@@ -1,7 +1,3 @@
-// closingProseQuestion — the deterministic half of the prose-question
-// parking in loop.ts turn finalization. Only a direct trailing question
-// counts; the returned ask is the closing paragraph, capped.
-
 import { describe, expect, test } from "bun:test";
 import { closingProseQuestion } from "../prose-question.ts";
 

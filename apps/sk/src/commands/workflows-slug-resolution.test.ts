@@ -1,8 +1,3 @@
-// `sk workflows run <id|slug>` previously failed with a cryptic
-// `bad_request: request validation failed` when given a slug, because the
-// engine's saved-run route requires a UUID workflow_id. resolveWorkflowIdOrSlug
-// resolves a slug/name to the id (or throws a clear, actionable error).
-
 import { describe, expect, test } from "bun:test";
 import type { EngineClient } from "../engine-client.ts";
 import { resolveWorkflowIdOrSlug } from "./workflows.ts";
@@ -30,8 +25,6 @@ describe("resolveWorkflowIdOrSlug", () => {
   ];
 
   test("a UUID passes through untouched (no lookup)", async () => {
-    // A bogus client whose listWorkflows would throw — proving the UUID path
-    // never calls it.
     const client = {
       listWorkflows: async () => {
         throw new Error("should not be called for a UUID");

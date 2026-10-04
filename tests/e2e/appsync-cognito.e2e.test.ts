@@ -1,31 +1,3 @@
-// E2E test for the AppSync + Cognito User-Password auth flow against a
-// real AWS endpoint. Opt-in via env vars — skipped in default CI to
-// keep the suite hermetic.
-//
-// Validates two layers in turn:
-//
-//   1. Auth module in isolation: `runCognitoUserPasswordGrant` mints a
-//      real IdToken; the IdToken in the `Authorization` header (no
-//      `Bearer` prefix) lets AppSync answer a GraphQL query.
-//
-//   2. End-to-end through the engine: `executeGraphQLRequest` against
-//      a connector with a persisted oauth2 credential (token_type:
-//      "none") talks to the same AppSync URL and returns the same
-//      data. This is the path the LLM authoring flow lands on after
-//      `appsync-cognito` template + `ask_user_form` + persist.
-//
-// Required env to run (point them at any Cognito user-pool app client +
-// AppSync API you own):
-//   APPSYNC_COGNITO_E2E=1
-//   APPSYNC_E2E_EMAIL='user@example.com'
-//   APPSYNC_E2E_PASSWORD='…'
-//   APPSYNC_E2E_CLIENT_ID='<cognito-app-client-id>'
-//   APPSYNC_E2E_REGION='eu-central-1'
-//   APPSYNC_E2E_URL='https://….appsync-api.eu-central-1.amazonaws.com/graphql'
-//
-// The whole suite no-ops when APPSYNC_COGNITO_E2E is unset — `bun
-// test` reports "0 pass / 0 fail / N skip".
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { query as gqlQuery } from "../../apps/engine/src/connectors/drivers/graphql.ts";
@@ -48,9 +20,6 @@ const REGION = process.env.APPSYNC_E2E_REGION ?? "eu-central-1";
 const APPSYNC_URL = process.env.APPSYNC_E2E_URL ?? "";
 
 const liveTest = (name: string, fn: () => Promise<void>): void => {
-  // `.skipIf(!live)` so the determinism gate ("no test.skip") stays
-  // green; the env-flag named in the title still tells the operator
-  // exactly what to set when they want this run.
   test.skipIf(!live)(`${name} (set APPSYNC_COGNITO_E2E=1 to run)`, fn, 60_000);
 };
 
@@ -103,19 +72,12 @@ describe("AppSync + Cognito (live)", () => {
         password: PASSWORD,
       });
 
-      // Bundle invariants — see runCognitoUserPasswordGrant doc:
-      //   * IdToken (default) lands in `access_token`
-      //   * `token_type` is "none" so applyAuthMaterial emits the raw
-      //     JWT (AppSync rejects `Bearer …`)
-      //   * RefreshToken + ExpiresIn populate refresh_token + expires_at
       expect(bundle.access_token.startsWith("eyJ")).toBe(true);
       expect(bundle.token_type).toBe("none");
       expect(typeof bundle.refresh_token).toBe("string");
       expect(bundle.expires_at).toBeInstanceOf(Date);
       expect(bundle.expires_at!.getTime()).toBeGreaterThan(TEST_NOW_MS);
 
-      // Direct AppSync call with the raw IdToken — bypasses the engine
-      // driver to confirm the upstream contract.
       const res = await fetch(APPSYNC_URL, {
         method: "POST",
         headers: {
@@ -138,10 +100,6 @@ describe("AppSync + Cognito (live)", () => {
   liveTest(
     "engine GraphQL driver routes the persisted oauth2 credential through to AppSync",
     async () => {
-      // Persist the IdToken as a regular oauth2 credential — same shape
-      // the connector setup flow ends up with after the form submit
-      // and the bootstrap mint. token_type:"none" so the driver emits
-      // the raw JWT in `Authorization`.
       const bundle = await runCognitoUserPasswordGrant({
         region: REGION,
         client_id: CLIENT_ID,
@@ -166,7 +124,6 @@ describe("AppSync + Cognito (live)", () => {
         ctx.db,
       );
 
-      // Re-read the connector so the driver gets a fresh ConnectorView.
       const rows = await ctx.db
         .select()
         .from(connectors)
@@ -186,8 +143,6 @@ describe("AppSync + Cognito (live)", () => {
       const body = res.body as {
         data?: { __schema?: { queryType?: { fields: Array<{ name: string }> } } };
       };
-      // Introspection returning a non-empty query type proves the raw-JWT
-      // Authorization header made it through the driver to AppSync.
       const fields = body.data?.__schema?.queryType?.fields ?? [];
       expect(fields.length).toBeGreaterThan(0);
     },
@@ -212,8 +167,6 @@ describe("AppSync + Cognito (live)", () => {
     });
     expect(refreshed.access_token.startsWith("eyJ")).toBe(true);
     expect(refreshed.access_token).not.toBe(first.access_token);
-    // Cognito reuses the refresh_token on REFRESH_TOKEN_AUTH; our
-    // wrapper preserves the original one when the response omits it.
     expect(refreshed.refresh_token).toBe(first.refresh_token);
     expect(refreshed.token_type).toBe("none");
   });

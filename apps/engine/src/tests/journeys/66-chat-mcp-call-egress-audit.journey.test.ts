@@ -1,17 +1,3 @@
-// User story: As an auditor, I ask "what left the tenant, through which
-// connector, on whose behalf" and get the same answer for an MCP call the
-// chat made as for one a workflow made — and the connector's call count
-// still counts each call once.
-// Acceptance criteria:
-//   - AC1: A chat call to an MCP server's tool leaves a `connector.invoked`
-//          egress row (driver mcp, the chat user as actor, the server's
-//          host), like a workflow step's call to the same server does.
-//   - AC2: One chat call plus one workflow call count as two calls on
-//          `GET /v1/stats/connectors`, per connector, per driver and grouped.
-//   - AC3: `GET /v1/connectors/{id}/runtime` still reads the newest call and
-//          reports the driver as recorded.
-// Spec refs: docs/concepts/connectors.md, docs/concepts/governance-and-audit.md
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setMcpToolConfirmation } from "../../connectors/mcp-tool-trust.ts";
@@ -84,8 +70,6 @@ beforeAll(async () => {
     url: "https://reports.journey.example.com/mcp",
   });
   connectorId = seeded.id;
-  // The operator lets `search` run without a question, so the chat call is
-  // dispatched in the same turn.
   await setMcpToolConfirmation(ctx.db, {
     tenant_id: ctx.tenantId,
     connector_id: connectorId,

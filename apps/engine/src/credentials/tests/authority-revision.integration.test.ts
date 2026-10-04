@@ -92,7 +92,6 @@ test("ordinary refresh and omitted scopes preserve the credential authority iden
   expect(value?.value.mode).toBe("oauth2");
   if (value?.value.mode !== "oauth2") throw new Error("missing OAuth fixture");
   expect(value.value.access_token).toBe("refreshed-again");
-  // Stored in the one form: tokens in order, each once, space-separated.
   expect(value.value.scope).toBe("write read");
   expect(value.row.granted_scopes).toBe("write read");
 });
@@ -109,9 +108,6 @@ test("a comma-separated grant is stored space-separated and is the same authorit
   expect(stored.value.scope).toBe("read write");
   expect(stored.row.granted_scopes).toBe("read write");
 
-  // A row written before the stored form was one: the comma list a server
-  // answered with. Reading it as the same set keeps a refresh from looking
-  // like a new grant.
   await ctx.pool.query("UPDATE subkit.credentials SET granted_scopes=$1 WHERE id=$2", [
     "read,write",
     f.credential.id,
@@ -199,8 +195,6 @@ test("authority metadata neither exposes nor decrypts stored token material", as
   expect(before.available).toBe(true);
   expect(before.binding.primary?.revision).toBe(1);
   expect(JSON.stringify(before)).not.toContain("fixture-token");
-  // Make decryption impossible without changing identity metadata. This read
-  // must still work; actual credential use remains responsible for decryption.
   await ctx.pool.query(
     "UPDATE subkit.credentials SET ciphertext=decode('00','hex') WHERE tenant_id=$1 AND id=$2",
     [f.tenant, f.credential.id],

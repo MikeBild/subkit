@@ -1,14 +1,3 @@
-// Template → Connector enrichment.
-//
-// When a caller instantiates a connector from a template (admin route, CLI,
-// MCP tool, spec-import tool), we merge template defaults into the user-
-// supplied draft non-destructively: user input always wins, the template
-// fills empty slots. OAuth2 metadata from the template flows into the
-// connector's `config` block where the OAuth2 client later reads it.
-//
-// The enrichment is stateless and has no side effects; it does not touch
-// the database.
-
 import type { ConnectorTemplate } from "./templates.ts";
 import {
   type CreateConnectorInput,
@@ -30,11 +19,6 @@ export interface ConnectorDraftForEnrichment {
 }
 
 export interface EnrichmentOptions {
-  /**
-   * If the template declares `base_url_options`, selects the option whose
-   * `environment` matches this value. When omitted, the first option (or
-   * `template.base_url`) is used.
-   */
   environment?: string;
 }
 
@@ -42,12 +26,6 @@ function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || value === "";
 }
 
-/**
- * Extract the AWS region from a regional service hostname. Matches
- * `service.{region}.amazonaws.com` and `service.{region}.api.aws`. Returns
- * null when the URL has no recognisable region segment (per-tenant AppSync
- * IDs, custom API Gateway domains).
- */
 function extractAwsRegionFromUrl(url: string): string | null {
   try {
     const host = new URL(url).hostname.toLowerCase();
@@ -74,24 +52,9 @@ function resolveBaseUrl(
   }
   const first = options[0];
   if (first) return first.base_url;
-  // template.base_url may legitimately be null for per-tenant templates
-  // (AppSync, GCP service accounts) — caller is expected to surface a
-  // missing-URL prompt to the operator.
   return template.base_url;
 }
 
-/**
- * Credential hints describe the fields an operator must supply to wire a
- * connector's credential. A template carries hints for its *native*
- * auth_type (e.g. the Jira template defaults to OAuth2 client_id/secret).
- * When the operator picks a different `auth_options` entry (e.g. API-token
- * Basic auth), the template's default hints describe the wrong fields — the
- * operator gets asked for `client_id`/`client_secret` while the connector
- * actually needs `username`/`password`, which is how a Jira connector ended
- * up with a mismatched credential. Synthesize standard hints for the chosen
- * auth_type instead; only reuse the template's curated hints when the chosen
- * type matches the template's native type.
- */
 function credentialHintsForAuthType(
   authType: CreateConnectorInput["auth_type"] | undefined,
   template: ConnectorTemplate,
@@ -120,21 +83,10 @@ function credentialHintsForAuthType(
     case "none":
       return [];
     default:
-      // oauth2 and any future types: the template's curated hints are the
-      // best available source.
       return template.credential_hints;
   }
 }
 
-/**
- * Merge a template's defaults into a connector draft. User-provided fields
- * always win. Returns a fresh `CreateConnectorInput`; the input is not
- * mutated.
- *
- * OAuth2, probe, pagination, capabilities, and credential-hint metadata
- * from the template are placed into the `config` block so drivers and the
- * LLM context have a single, predictable place to read them.
- */
 export function enrichConnectorFromTemplate(
   draft: ConnectorDraftForEnrichment,
   template: ConnectorTemplate,
@@ -142,12 +94,6 @@ export function enrichConnectorFromTemplate(
 ): CreateConnectorInput {
   const cfg: Record<string, unknown> = { ...(draft.config ?? {}) };
 
-  // AWS SigV4 block from the template → config.aws_service / config.aws_region.
-  // Drivers/http.ts reads these to sign outgoing requests; the cognito save
-  // path also reads `config.aws_region`. Without this seed, every aws_sigv4
-  // save lands without the keys the driver needs and the strict
-  // HttpConnectorConfig schema requires the operator to set them by hand.
-  // User input wins (existing values are not overwritten).
   if (draft.auth_type === "aws_sigv4") {
     if (cfg.aws_service === undefined && template.aws_service) {
       cfg.aws_service = template.aws_service;
@@ -161,10 +107,6 @@ export function enrichConnectorFromTemplate(
     }
   }
 
-  // OAuth2 block from the template → config.oauth (non-destructive).
-  // Only seeded for oauth2 connectors; bearer/header/basic/aws_sigv4/none
-  // never carry oauth metadata, even if the matched template advertises
-  // an oauth flow as one of its auth_options.
   if (template.oauth && draft.auth_type === "oauth2") {
     const t = template.oauth;
     const existing = (cfg.oauth as Record<string, unknown> | undefined) ?? {};
@@ -188,13 +130,6 @@ export function enrichConnectorFromTemplate(
     cfg.oauth = oauth;
   }
 
-  // Runtime + authoring metadata.
-  // Only capture a probe_endpoint when the template actually declares one. A
-  // captured `null` would later read as a deliberate operator opt-out in
-  // getConnectorProbeEndpoint ("key present, value null" = do-not-probe),
-  // masking the live builtin template's probe endpoint from the proactive
-  // re-auth scan. Leaving the key absent lets the resolver fall through to the
-  // snapshot/builtin.
   if (cfg.probe_endpoint === undefined && template.probe_endpoint != null) {
     cfg.probe_endpoint = template.probe_endpoint;
   }
@@ -213,19 +148,12 @@ export function enrichConnectorFromTemplate(
     slug: draft.slug ?? template.slug,
     driver: (draft.driver as DriverName | undefined) ?? template.driver,
     environment: draft.environment ?? "dev",
-    // null → undefined so the optional field stays unset rather than
-    // serialising to a literal `"base_url": null` in the draft.
     ...(baseUrl !== null ? { base_url: baseUrl } : {}),
     auth_type:
       (draft.auth_type as CreateConnectorInput["auth_type"] | undefined) ?? template.auth_type,
     config: cfg,
   };
   if (draft.dsn !== undefined) (result as CreateConnectorInput).dsn = draft.dsn;
-  // Operator quirks: per-category merge with user input winning. Each
-  // category empty on the draft is filled from the template's
-  // categorized quirks (the categorized replacement for the legacy
-  // `operator_notes` blob — context assembler picks only the
-  // categories relevant to the current turn shape).
   const merged: OperatorQuirks = { ...(template.operator_quirks ?? {}) };
   if (draft.operator_quirks) {
     for (const cat of OPERATOR_QUIRK_CATEGORIES) {

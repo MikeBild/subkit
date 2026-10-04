@@ -1,16 +1,3 @@
-// End-to-end dispatcher test:
-//
-//   Slack mention event → createConversation + runTurn on the CHAT
-//   surface (channel-scoped read-only palette)
-//   → canned "list users" authoring plan tries its authoring tools —
-//     none are in the chat palette, so nothing drafts or commits
-//   → safe preparation produces no approval; an explicit destructive
-//     checkpoint still raises an approval card
-//   → the approve interaction resumes the turn — ALSO on the chat
-//     surface, so the resumed save_workflow_draft stays unavailable
-//   → conversation never commits: authoring from a chat channel is
-//     structurally impossible, even though the linked user has rights
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -37,10 +24,6 @@ import { deliver, handleChatEvent } from "../dispatcher.ts";
 import type { ApprovalCard, ChatDelivery, ChatEvent, VerifiedEvent } from "../types.ts";
 
 const nextHex = createDeterministicHexFactory(0xc4a7d15);
-/** Deterministic stand-in for `randomBytes(n)` in tests — bytea
- *  columns just need *some* bytes; the deterministic-tests gate forbids
- *  Math.random / crypto.randomBytes so the test suite stays
- *  bit-for-bit reproducible. */
 const detBytes = (n: number): Buffer => Buffer.from(nextHex(n), "hex");
 
 class FakeSlackAdapter implements ChatAdapter {
@@ -74,7 +57,6 @@ afterAll(async () => {
 
 describe("chat dispatcher", () => {
   test("mention → approval → approve → read-only channel never commits", async () => {
-    // Seed a chat_workspaces row pointing at our test tenant.
     const ws = await ctx.testDb.db
       .insert(chatWorkspaces)
       .values({
@@ -88,9 +70,6 @@ describe("chat dispatcher", () => {
       .returning();
     expect(ws[0]).toBeTruthy();
 
-    // The auto-link-to-admin shortcut is gone: the dispatcher rejects
-    // unknown chat users. Pre-link the test user → the seeded subkit
-    // user so the turn actually runs.
     await ctx.testDb.db.insert(chatIdentities).values({
       tenant_id: ctx.tenant_id,
       user_id: ctx.user_id,
@@ -144,7 +123,6 @@ describe("chat dispatcher", () => {
       .limit(1);
     expect(pendingConversation[0]?.status).toBe("awaiting_input");
 
-    // Simulate Slack interaction (click Approve) → dispatcher runs decideApproval.
     const interaction: ChatEvent = {
       platform: "slack",
       workspace_id: "T123",
@@ -158,9 +136,6 @@ describe("chat dispatcher", () => {
     const r2 = await handleChatEvent({ db: ctx.testDb.db, adapter }, interaction);
     expect(r2.status).toBe("approved");
 
-    // Chat is a read-only channel: the resumed turn ran WITHOUT the
-    // authoring palette, so the canned plan's save_workflow_draft never
-    // fired — no commit, no workflow, even for a fully-linked user.
     const resumedConversation = await ctx.testDb.db
       .select()
       .from(conversations)
@@ -169,9 +144,6 @@ describe("chat dispatcher", () => {
     expect(resumedConversation[0]?.status).not.toBe("committed");
     expect(resumedConversation[0]?.target_workflow_id).toBeNull();
 
-    // Defense-in-depth check on the tool-call log: no authoring tool
-    // ever executed in this conversation — the palette never carried
-    // them, so the loop's wrapper never persisted a row for one.
     const toolCalls = await ctx.testDb.db
       .select()
       .from(conversationToolCalls)
@@ -185,7 +157,6 @@ describe("chat dispatcher", () => {
   });
 
   test("/subkit run <slug> routes through the conversation run contract", async () => {
-    // Seed a chat_workspaces row for a separate Slack workspace.
     await ctx.testDb.db.insert(chatWorkspaces).values({
       tenant_id: ctx.tenant_id,
       platform: "slack",
@@ -195,7 +166,6 @@ describe("chat dispatcher", () => {
       bot_auth_tag: detBytes(1),
     });
 
-    // Seed a workflow + version so the dispatcher can resolve it.
     const [wf] = await ctx.testDb.db
       .insert(workflowsTable)
       .values({
@@ -230,7 +200,6 @@ describe("chat dispatcher", () => {
       .set({ current_version_id: ver.id })
       .where(eq(workflowsTable.id, wf.id));
 
-    // Pre-link runner — auto-link-to-admin is gone.
     await ctx.testDb.db.insert(chatIdentities).values({
       tenant_id: ctx.tenant_id,
       user_id: ctx.user_id,
@@ -241,8 +210,6 @@ describe("chat dispatcher", () => {
 
     const adapter = new FakeSlackAdapter();
 
-    // Bare usage guard stays a dispatcher concern: no workflow named →
-    // ephemeral usage text, no conversation created.
     const helpOut = await handleChatEvent(
       { db: ctx.testDb.db, adapter },
       {
@@ -259,10 +226,6 @@ describe("chat dispatcher", () => {
     expect(helpOut.status).toBe("help");
     expect(adapter.sends[adapter.sends.length - 1]?.text).toContain("Usage");
 
-    // With a slug the verb is rewritten to a "run <slug>" prompt and
-    // handed to the SAME conversation turn every other run takes —
-    // the previous inline path skipped the confirm gate + input
-    // contract (an execute_writes workflow ran unconfirmed from chat).
     const ev: ChatEvent = {
       platform: "slack",
       workspace_id: "T_RUN",
@@ -277,22 +240,15 @@ describe("chat dispatcher", () => {
     expect(out.status).toBe("ok");
     expect(out.conversation_id).toBeTruthy();
 
-    // The run went through the conversation contract (fast-path:
-    // RBAC gate → confirm policy → execute) — an executions row for
-    // the seeded workflow exists.
     const rows = await ctx.testDb.db
       .select()
       .from(executions)
       .where(eq(executions.workflow_id, wf.id));
     expect(rows.length).toBe(1);
 
-    // The dispatcher posted the turn's reply into the thread.
     const last = adapter.sends[adapter.sends.length - 1];
     expect(last?.text?.length ?? 0).toBeGreaterThan(0);
 
-    // Empty / mention-only message → friendly welcome, no turn. A bare
-    // mention (bot id, no ask) resolves to an empty prompt, so the
-    // dispatcher greets the user and returns without running a turn.
     const execsBefore = (
       await ctx.testDb.db.select().from(executions).where(eq(executions.workflow_id, wf.id))
     ).length;
@@ -310,13 +266,10 @@ describe("chat dispatcher", () => {
       },
     );
     expect(emptyOut.status).toBe("help");
-    // Welcoming, actionable — no terse "Usage:" line, no emojis.
     const welcome = adapter.sends[adapter.sends.length - 1]?.text ?? "";
     expect(welcome).not.toContain("Usage");
     expect(welcome.toLowerCase()).toContain("run a saved workflow");
     expect(welcome).toContain("sk");
-    // Help path threads no conversation and runs no turn — execution
-    // count is unchanged and no conversation_id came back.
     expect(emptyOut.conversation_id).toBeUndefined();
     const execsAfter = (
       await ctx.testDb.db.select().from(executions).where(eq(executions.workflow_id, wf.id))
@@ -324,11 +277,7 @@ describe("chat dispatcher", () => {
     expect(execsAfter).toBe(execsBefore);
   });
 
-  // -------------------------------------------------------------------
-  // Step 8 — explicit identity linking. Auto-link-to-admin is gone.
-  // -------------------------------------------------------------------
   test("rejects an unknown chat user with a polite ephemeral; runs no turn", async () => {
-    // Seed an installed workspace but DO NOT link any platform user.
     const [ws] = await ctx.testDb.db
       .insert(chatWorkspaces)
       .values({
@@ -358,16 +307,10 @@ describe("chat dispatcher", () => {
     expect(adapter.sends[0]?.kind).toBe("ephemeral");
     expect(adapter.sends[0]?.text).toContain("isn't linked");
     expect(adapter.approvals.length).toBe(0);
-    // No conversation was created.
     expect(out.conversation_id).toBeUndefined();
   });
 
-  // -------------------------------------------------------------------
-  // /new reset — drops the chat_sessions row for the thread so the
-  // next message starts a fresh `createConversation` turn.
-  // -------------------------------------------------------------------
   test("C-2: rejects an identity whose tenant_id doesn't match the workspace's tenant", async () => {
-    // Workspace is in our test tenant.
     const [ws] = await ctx.testDb.db
       .insert(chatWorkspaces)
       .values({
@@ -381,14 +324,6 @@ describe("chat dispatcher", () => {
       .returning();
     expect(ws).toBeTruthy();
 
-    // Seed an identity row whose tenant_id is some OTHER tenant, but
-    // whose global (platform, workspace_id, platform_user_id) tuple
-    // matches an event in our tenant's workspace. The
-    // chat_identities.user_id FK is satisfied by reusing ctx.user_id
-    // (any user in the foreign tenant would do — we only need a row
-    // that the dispatcher's tuple-keyed lookup finds first).
-    // To make this realistic, create a separate tenant + user and use
-    // those IDs.
     const { tenants: tenantsTbl, users: usersTbl } = await import("../../db/schema/index.ts");
     const [foreignTenant] = await ctx.testDb.db
       .insert(tenantsTbl)
@@ -406,7 +341,7 @@ describe("chat dispatcher", () => {
     if (!foreignUser) throw new Error("seed foreign user");
 
     await ctx.testDb.db.insert(chatIdentities).values({
-      tenant_id: foreignTenant.id, // mismatch — wrong tenant
+      tenant_id: foreignTenant.id,
       user_id: foreignUser.id,
       platform: "slack",
       workspace_id: "T_C2",
@@ -427,15 +362,11 @@ describe("chat dispatcher", () => {
 
     expect(out.status).toBe("ignored");
     expect(out.conversation_id).toBeUndefined();
-    // The user sees the same "not linked" message; the audit log
-    // distinguishes the reason via the metadata.
     expect(adapter.sends[0]?.kind).toBe("ephemeral");
     expect(adapter.sends[0]?.text).toContain("isn't linked");
   });
 
   test("/new clears chat_sessions for the thread and posts an ephemeral ack", async () => {
-    // Re-use the workspace seeded by the first test (T123) and its
-    // U_ALICE identity link.
     const adapter = new FakeSlackAdapter();
     const ev: ChatEvent = {
       platform: "slack",
@@ -453,14 +384,6 @@ describe("chat dispatcher", () => {
     expect(adapter.sends[adapter.sends.length - 1]?.text).toMatch(/reset/i);
   });
 });
-
-// ── Session mapping: channel = persistent conversation ──────────────────────
-//
-// Top-level messages (no thread_id) bind to the `${channel}:root`
-// session, so a space keeps ONE running conversation (topic memory);
-// real thread replies get their own conversation; `/new` resets the
-// binding; a second linked user joins the SAME channel conversation
-// while each turn runs under the sender's own principal.
 
 describe("chat session mapping", () => {
   const WS = "T_MAP";
@@ -482,8 +405,6 @@ describe("chat session mapping", () => {
       workspace_id: WS,
       platform_user_id: "U_MAP1",
     });
-    // A second real user in the same tenant, linked to a second
-    // platform identity.
     const [u2] = await ctx.testDb.db
       .insert(users)
       .values({
@@ -587,7 +508,6 @@ describe("chat session mapping", () => {
     );
     expect(sys.status).toBe("ignored");
 
-    // The binding is gone: the next message opens a fresh conversation.
     const after = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
     expect(after.conversation_id).not.toBe(live.conversation_id);
   });
@@ -613,8 +533,6 @@ describe("chat session mapping", () => {
 
   test("an ignored (non-removed) system event logs its channel_id", async () => {
     const adapter = new FakeSlackAdapter();
-    // Register the workspace first so the event reaches the dispatcher's
-    // system-event branch under a resolved tenant.
     await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("list workflows"));
 
     const { logger } = await import("../../logging/logger.ts");
@@ -644,19 +562,6 @@ describe("chat session mapping", () => {
   });
 });
 
-// ── Typed-reply salvage while an ask_user_* dialog is pending ────────────────
-//
-// A user who TYPES a plain message while an elicitation is still open
-// used to kill the chat.event job (PendingElicitationBlockedError →
-// pg-boss retry → dedup swallow → conversation hung until /new). The
-// dispatcher now salvages the typed line:
-//
-//   ask_user_text          → resolves with { text: <typed> }
-//   single-field form      → resolves with { [field.name]: <typed> }
-//   confirm / multi-field  → one guidance message, dialog stays pending
-//   wrong actor            → guidance + CHAT_MESSAGE_DENIED audit, pending
-//   validation failure     → re-prompt notify, row stays pending
-
 describe("typed reply while an elicitation is pending (salvage)", () => {
   const WS = "T_SALVAGE";
   const GUIDANCE_MARKER = "buttons or menu";
@@ -678,7 +583,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
       workspace_id: WS,
       platform_user_id: "U_SALV_A",
     });
-    // A second linked user in the same tenant for the actor-mismatch case.
     const [u2] = await ctx.testDb.db
       .insert(users)
       .values({
@@ -710,8 +614,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     };
   }
 
-  /** Open a channel conversation via a benign mention (no canned plan
-   *  matches "hello there", so the mock just acks and the turn ends). */
   async function seedConversation(channel: string): Promise<string> {
     const adapter = new FakeSlackAdapter();
     const r = await handleChatEvent(
@@ -723,9 +625,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     return r.conversation_id;
   }
 
-  /** Insert a pending elicitation row directly — same shape the loop's
-   *  ask_user_* tools persist, minus the tool_call anchor (legacy rows
-   *  lack it too; respondElicitation tolerates its absence). */
   async function seedPendingElicitation(
     conversation_id: string,
     tool_name: string,
@@ -776,8 +675,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     expect(row.output).toEqual({ text: "Berlin" });
     expect(row.decided_by).toBe(ctx.user_id);
 
-    // No guidance line — the typed answer WAS the resolution; the only
-    // outbound message is the resumed turn's normal reply.
     expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
     expect(adapter.sends.length).toBeGreaterThan(0);
   });
@@ -818,7 +715,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     const guidance = adapter.sends.filter((d) => d.text?.includes(GUIDANCE_MARKER));
     expect(guidance.length).toBe(1);
     expect(guidance[0]?.text).toContain("/new");
-    // The guidance is the ONLY outbound send — no resumed-turn reply.
     expect(adapter.sends.length).toBe(1);
 
     const row = await readElicitation(elicitationId);
@@ -850,13 +746,11 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
   });
 
   test("actor mismatch: a second linked user's typed reply is denied, audited, dialog stays pending", async () => {
-    // Conversation owned by user A (their mention created it).
     const conversationId = await seedConversation("C_SALV_ACTOR");
     const elicitationId = await seedPendingElicitation(conversationId, "ask_user_text", {
       prompt: "Which city?",
     });
 
-    // User B types into the SAME channel conversation.
     const adapter = new FakeSlackAdapter();
     const r = await handleChatEvent(
       { db: ctx.testDb.db, adapter },
@@ -864,7 +758,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     );
     expect(r.status).toBe("ok");
 
-    // Guidance names the owner rule; the typed line resolved nothing.
     const guidance = adapter.sends.filter((d) => d.text?.includes("Only the person who started"));
     expect(guidance.length).toBe(1);
     expect(guidance[0]?.text).toContain("/new");
@@ -873,7 +766,6 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     expect(row.status).toBe("pending");
     expect(row.output).toBeNull();
 
-    // The denial is audited with the shared actor_not_owner reason.
     const denials = await ctx.testDb.db
       .select()
       .from(auditLog)
@@ -913,11 +805,7 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
   });
 });
 
-// ── F2 capture mode: dispatcher computes the terminal reply but the sync
-// Google-Chat helper owns delivery, so capture mode must NOT send it. ────────
 describe("handleChatEvent replyDelivery:capture", () => {
-  // Re-uses the T123 workspace + U_ALICE identity seeded by the first test
-  // in this file (same suite, sequential).
   function mention(channel: string, text = "hello there"): ChatEvent {
     return {
       platform: "slack",
@@ -937,7 +825,6 @@ describe("handleChatEvent replyDelivery:capture", () => {
     });
     expect(out.status).toBe("ok");
     expect(out.approval_sent).toBe(false);
-    // The terminal reply is captured, not sent.
     expect(typeof out.reply_text).toBe("string");
     expect((out.reply_text ?? "").length).toBeGreaterThan(0);
     expect(adapter.sends.length).toBe(0);
@@ -947,9 +834,7 @@ describe("handleChatEvent replyDelivery:capture", () => {
     const adapter = new FakeSlackAdapter();
     const out = await handleChatEvent({ db: ctx.testDb.db, adapter }, mention("C_CAPTURE_2"));
     expect(out.status).toBe("ok");
-    // Capture field is only populated in capture mode.
     expect(out.reply_text ?? null).toBeNull();
-    // The reply went out through the adapter exactly as before F2.
     expect(adapter.sends.length).toBeGreaterThanOrEqual(1);
     expect(adapter.sends[adapter.sends.length - 1]?.kind).toBe("message");
   });

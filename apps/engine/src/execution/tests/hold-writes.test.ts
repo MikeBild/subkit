@@ -32,9 +32,7 @@ let mock: MockServer;
 let pgConnectorId: string;
 let gqlConnectorId: string;
 
-/** Every request the mock upstream actually received — the tripwire. */
 const hits: Array<{ method: string; url: string }> = [];
-/** Raw wire bodies by path — the held-vs-live parity oracle. */
 const wireBodies: Array<{ url: string; body: unknown }> = [];
 
 beforeAll(async () => {
@@ -63,9 +61,6 @@ beforeAll(async () => {
     return jsonResponse(res, 200, { ok: true });
   });
 
-  // Postgres connector against the harness's own test database — the
-  // strongest tripwire available for the SQL driver: a held INSERT must
-  // leave the table physically empty.
   const [pg] = await ctx.testDb.db
     .insert(connectors)
     .values({
@@ -189,7 +184,6 @@ describe("hold-writes · HTTP", () => {
 
     expect(result.status).toBe("succeeded");
 
-    // Egress tripwire: the read landed, the write NEVER hit the wire.
     expect(hitsFor("/data")).toHaveLength(1);
     expect(hitsFor("/send")).toHaveLength(0);
 
@@ -204,15 +198,10 @@ describe("hold-writes · HTTP", () => {
     expect(held).toBeTruthy();
     expect(held.method).toBe("POST");
     expect(held.url).toBe(`${mock.baseUrl}/send`);
-    // The artifact body is MATERIALIZED from real upstream data — the
-    // placeholder substituted against the live GET response.
     expect(held.body).toEqual({ to: "user@example.com", subject: "Welcome" });
-    // Secret-bearing headers are masked; names + safe values survive.
     expect(held.headers_redacted.Authorization).toBe("***REDACTED:auth_header***");
     expect(held.headers_redacted["X-Trace-Id"]).toBe("trace-1");
 
-    // The dependent transform is skipped explicitly and labeled — not
-    // failed with placeholder_unresolved.
     const confirmStep = result.steps.find((s) => s.step_key === "confirm");
     expect(confirmStep?.status).toBe("skipped");
     expect((confirmStep!.error as { code?: string })?.code).toBe("skipped_dependency_held");
@@ -220,8 +209,6 @@ describe("hold-writes · HTTP", () => {
       'depends on held step "send"',
     );
 
-    // DB: the held step persisted as a succeeded row; the skipped
-    // dependent never got a row (same contract as branch-arm skips).
     const stepRows = await ctx.testDb.db
       .select()
       .from(executionSteps)
@@ -268,8 +255,6 @@ describe("hold-writes · HTTP", () => {
     expect(warning).toBeTruthy();
     expect(warning?.step_key).toBe("$holds");
     expect(warning?.message).toContain("NOTHING was written");
-    // The engine states the STATE, never the remedy: `execute_writes` is a
-    // tool argument the surfaces own, not an execution-subsystem concept.
     expect(warning?.message).not.toContain("execute_writes");
     expect(warning?.details?.held_steps).toEqual(["send"]);
     expect(warning?.details?.skipped_steps).toEqual(["confirm"]);
@@ -305,10 +290,6 @@ describe("hold-writes · HTTP", () => {
   });
 
   test("output_schema contract is SKIPPED when the output-producing chain was held (interplay regression)", async () => {
-    // A send-terminated workflow with an output_schema (e.g. the Gmail
-    // {id, threadId} contract) must not go permanently red under
-    // hold-writes: the held terminal step leaves no live final output,
-    // so validating it would block every preview of this shape.
     hits.length = 0;
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "hold-output-contract",
@@ -339,8 +320,6 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/send")).toHaveLength(0);
     const sendStep = result.steps.find((s) => s.step_key === "send");
     expect(sendStep?.held).toBe(true);
-    // The interplay regression: NO output_contract_violation warning —
-    // the contract is a live-output assertion, skipped under holds.
     const codes = (result.warnings ?? []).map((w) => (w as { code?: string }).code);
     expect(codes).not.toContain("output_contract_violation");
   });
@@ -376,10 +355,8 @@ describe("hold-writes · HTTP", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // A search label is not authority to send a POST.
     expect(hitsFor("/search")).toHaveLength(0);
     expect(result.steps.find((s) => s.step_key === "search")?.held).toBe(true);
-    // GET forced write → held, never dispatched.
     expect(hitsFor("/mutating-get")).toHaveLength(0);
     const heldStep = result.steps.find((s) => s.step_key === "mutating_get");
     expect(heldStep?.held).toBe(true);
@@ -412,7 +389,6 @@ describe("hold-writes · HTTP", () => {
 
     expect(result.status).toBe("succeeded");
     expect(hitsFor("/data")).toHaveLength(1);
-    // Tripwire: TWO iterations, ZERO dispatches.
     expect(hitsFor("/notify")).toHaveLength(0);
 
     const loopStep = result.steps.find((s) => s.step_key === "each");
@@ -425,24 +401,13 @@ describe("hold-writes · HTTP", () => {
     for (const [idx, iter] of iterations.entries()) {
       expect(iter.notify.held).toBe(true);
       expect(iter.notify.held_request?.method).toBe("POST");
-      // Per-iteration materialization: each artifact carries ITS item.
-      // The whole-value `"${item.id}"` body leaf preserves the native type
-      // of the resolved value — the ids are numbers, so the materialized
-      // body carries a number (type-preserving request-body resolution,
-      // parity with GraphQL variables), not the legacy stringified "1".
       expect(iter.notify.held_request?.body).toEqual({ id: idx + 1 });
     }
-    // The hold-preview of an all-writes loop body must not trip the
-    // empty-loop heuristic — held iterations are intentional.
     const warningCodes = (result.warnings ?? []).map((w) => w.code);
     expect(warningCodes).not.toContain("loop_body_empty");
   });
 
   test("held preview fails request_body_schema_violation exactly like the live run", async () => {
-    // Preview↔live parity: body-schema validation runs BEFORE the hold
-    // return. A body the live run refuses to send must fail the preview
-    // too — previously the step held green and the divergence only
-    // surfaced when the user executed for real.
     hits.length = 0;
     const steps = [
       {
@@ -474,7 +439,6 @@ describe("hold-writes · HTTP", () => {
       input: null,
     });
 
-    // Identical failure shape in both modes; nothing ever hit the wire.
     for (const result of [held, live]) {
       expect(result.status).toBe("failed");
       const sendStep = result.steps.find((s) => s.step_key === "send");
@@ -487,10 +451,6 @@ describe("hold-writes · HTTP", () => {
   });
 
   test("a step is held to the boundary it declares, in preview exactly like live", async () => {
-    // A boundary is what a human is asked to approve. A preview that stays
-    // green while the materialized request is already outside it hands over a
-    // grant whose first scheduled run fails: the ceiling was guessed, the
-    // preview never compared, and the refusal only existed under an authority.
     hits.length = 0;
     const [site] = await ctx.testDb.db
       .insert(connectors)
@@ -539,7 +499,6 @@ describe("hold-writes · HTTP", () => {
       expect(oversize.status).toBe("failed");
       expect(step?.held).toBeUndefined();
       expect((step?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
-      // The author gets the two numbers, not just a refusal.
       const message = (step?.error as { message?: string })?.message ?? "";
       expect(message).toContain(
         `${Buffer.byteLength(JSON.stringify({ retire_item_ids: many }))} bytes`,
@@ -559,8 +518,6 @@ describe("hold-writes · HTTP", () => {
     expect(hitsFor("/api/sites/reports/releases")).toHaveLength(0);
     expect(hitsFor("/api/sites/other/releases")).toHaveLength(0);
 
-    // A static query is part of the statement, and the URL judged here already
-    // carries it: a read under a boundary runs live in a preview and must pass.
     const { workflow_id: reader } = await createWorkflowRow(ctx, {
       name: "hold-declared-boundary-read",
       steps: [
@@ -589,7 +546,6 @@ describe("hold-writes · HTTP", () => {
     expect(read.status).toBe("succeeded");
     expect(hitsFor("/api/spaces/wiki/proposals?status=pending")).toHaveLength(1);
 
-    // Inside the boundary nothing changes: the preview holds, the live run sends.
     const held = await run({ site: "reports", ids: ["a"] }, true);
     expect(held.steps.find((s) => s.step_key === "retire")?.held).toBe(true);
     expect(hitsFor("/api/sites/reports/releases")).toHaveLength(0);
@@ -643,9 +599,9 @@ describe("hold-writes · HTTP", () => {
       new URL(sent?.url ?? "", mock.baseUrl).searchParams.toString().split("&").sort(),
     ).toEqual(["since=2026-09-01", "tz=UTC"]);
     for (const input of [
-      { id: "42/../admin", since: "2026-09-01" }, // leaves its segment
-      { id: "007", since: "2026-09-01" }, // not a member of the class
-      { id: "42", since: "2026-09-01&admin=1" }, // tries to be two parameters
+      { id: "42/../admin", since: "2026-09-01" },
+      { id: "007", since: "2026-09-01" },
+      { id: "42", since: "2026-09-01&admin=1" },
       { id: "42", since: "yesterday" },
     ]) {
       const refused = await run(input);
@@ -658,9 +614,6 @@ describe("hold-writes · HTTP", () => {
   });
 
   test("a storage step is held to the folder it declares, in preview exactly like live", async () => {
-    // Same contract as the request boundary, for `s3.scope`: a folder that does
-    // not cover the key, or a size ceiling below the content, fails here and
-    // not on the first scheduled run after a human approved it.
     hits.length = 0;
     const [store] = await ctx.testDb.db
       .insert(connectors)
@@ -711,7 +664,6 @@ describe("hold-writes · HTTP", () => {
       expect(elsewhere.status).toBe("failed");
       expect((outside?.error as { code?: string })?.code).toBe("request_outside_declared_boundary");
       expect((outside?.error as { message?: string })?.message).toContain('"v1/daily/"');
-      // The offending key is named, or the author guesses folders blindly.
       expect((outside?.error as { message?: string })?.message).toContain('"v1/weekly/a.txt"');
 
       const oversize = await run({ key: "v1/daily/a.txt", content: "x".repeat(64) }, hold);
@@ -731,10 +683,6 @@ describe("hold-writes · HTTP", () => {
   });
 
   test("held_request.body deep-equals the body the live dispatch puts on the wire", async () => {
-    // The held artifact claims "this is exactly what would be sent" —
-    // pin that claim byte-for-byte against a live dispatch of the same
-    // workflow (non-secret payload: heldStepResult scrubs secret-shaped
-    // strings, so parity here is modulo scrubbing by construction).
     hits.length = 0;
     wireBodies.length = 0;
     const steps = [
@@ -784,7 +732,6 @@ describe("hold-writes · HTTP", () => {
 
     expect(liveWireBody).toBeDefined();
     expect(heldBody).toEqual(liveWireBody);
-    // And the materialization is real (not the placeholder text).
     expect(heldBody).toEqual({
       to: "user@example.com",
       payload: { items: [{ id: 1 }, { id: 2 }], note: "parity" },
@@ -861,7 +808,6 @@ describe("hold-writes · postgres", () => {
     expect(result.steps[0]?.held).toBe(true);
     const rows = await ctx.testDb.pool.query("SELECT id FROM hold_widgets WHERE id=101");
     expect(rows.rows).toHaveLength(0);
-    // Prove the fixture really writes; roll back this local control experiment.
     const client = await ctx.testDb.pool.connect();
     try {
       await client.query("BEGIN");
@@ -931,12 +877,10 @@ describe("hold-writes · postgres", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // SELECT alone is not proof that arbitrary SQL has no effects.
     const countStep = result.steps.find((s) => s.step_key === "count");
     expect(countStep?.status).toBe("succeeded");
     expect(countStep?.held).toBe(true);
     expect(countStep?.output_preview).toBeNull();
-    // …while the write was held: artifact recorded, nothing executed.
     const insStep = result.steps.find((s) => s.step_key === "ins");
     expect(insStep?.held).toBe(true);
     const held = insStep?.held_request as HeldRequest;
@@ -1012,7 +956,6 @@ describe("hold-writes · graphql", () => {
     });
 
     expect(result.status).toBe("succeeded");
-    // Exactly ONE wire call — the query; the mutation never dispatched.
     expect(hitsFor("/graphql")).toHaveLength(1);
 
     const listStep = result.steps.find((s) => s.step_key === "list");

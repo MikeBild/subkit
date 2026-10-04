@@ -1,18 +1,3 @@
-// Ink-based user-journey tests.
-//
-// Unlike the existing single-feature Ink tests in `ink-app.test.tsx`,
-// these drive the full REPL through realistic multi-turn user stories
-// so regressions in the wire-up between the event reducer and the
-// renderer surface in CI rather than during operator triage.
-//
-// Covers the post-Gap-audit feature set:
-//   • text_delta tokens accumulate into a live assistant block that
-//     clears on the final message frame (Gap #P2 Ink rendering).
-//   • tool_log entries render inline under their tool card.
-//   • elicit_request (confirm_before_execution) drives the ElicitRouter.
-//   • tool_result truncation surfaces `_truncated` / `_raw_ref` fields.
-//   • interactionLog splice shows confirmation state history in the UI.
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,8 +7,6 @@ import { cleanup, render } from "ink-testing-library";
 import { InkApp, type InkAppProps } from "../ink-app.tsx";
 import type { PersonaProbe } from "../slash.ts";
 
-// InkApp.onPrompt expects an AsyncIterable<TurnEvent>. Convert a plain
-// array into one so tests can declare fixtures inline.
 async function* iter(events: TurnEvent[]): AsyncIterable<TurnEvent> {
   for (const e of events) yield e;
 }
@@ -111,8 +94,6 @@ describe("Ink journey — text_delta streaming", () => {
       await tick(50);
       frame = inst.lastFrame() ?? "";
     }
-    // Final assistant text is present exactly once (the message frame
-    // cleared the live buffer so there's no duplicate rendering).
     const occurrences = (frame.match(/Hello, world!/g) ?? []).length;
     expect(occurrences).toBe(1);
   });
@@ -155,11 +136,6 @@ describe("Ink journey — tool call lifecycle with tool_log + truncation", () =>
     await enter(inst);
     inst.stdin.write("\x0f");
     await tick(40);
-    // CI runners are slower than macOS — poll the frame until the
-    // expected content appears or we hit a 2s cap. Locally this is a
-    // no-op (first tick already has the content); on ubuntu-latest it
-    // absorbs the extra React scheduling latency that made the frame
-    // capture race before the tool_result event drained.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 2000;
     let frame = inst.lastFrame() ?? "";
@@ -223,25 +199,14 @@ describe("Ink journey — elicit_request flow (confirm_before_execution)", () =>
       await tick(50);
       frame = inst.lastFrame() ?? "";
     }
-    // The ElicitRouter rendered the question text from the
-    // ask_user_confirm pause payload.
     expect(frame).toContain("Policy requires confirmation");
     expect(frame).toContain("run_workflow");
-    // The confirm card renders the target compactly via ConfirmPrompt's
-    // `env=<environment>` label (the same shape confirmation-summary /
-    // approval-card assert), not the raw arg key.
     expect(frame).toContain("env=prod");
   });
 });
 
 describe("Ink journey — assistant text + pending form panel (forensic 35a3b9ba)", () => {
-  // Live 6.17.0 session: ask_user_form paused the turn, the persisted
-  // assistant `message` landed BEFORE its text_delta replay, and the
-  // same assistant text rendered above the form panel (static message)
-  // AND below it (live-delta row fed by the replayed delta).
   const MSG_ID = "5d469761-4bee-41a5-9299-8c0cf980bcd8";
-  // Short enough that the frame never wraps it, so occurrence counting
-  // is exact.
   const ASSISTANT_TEXT = "Saving the Xray connector with OAuth2 next.";
 
   function formEvents(text: string, msgId: string): TurnEvent[] {
@@ -272,8 +237,6 @@ describe("Ink journey — assistant text + pending form panel (forensic 35a3b9ba
         },
         parent_message_id: msgId,
       },
-      // Persisted message arrives AFTER the elicit_request and BEFORE
-      // its own delta replay — exactly the live event order.
       {
         type: "message",
         role: "assistant",

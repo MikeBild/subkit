@@ -103,10 +103,6 @@ describe("validateWorkflowDef · redundant Authorization header", () => {
   });
 
   test("accepts an Authorization header on a request step that has NO connector_id", () => {
-    // No connector_id means the step is hitting an absolute URL and
-    // bringing its own auth — that's the legitimate use case for
-    // an explicit Authorization header. The rule only kicks in when
-    // a connector is providing auth.
     const result = validateWorkflowDef({
       name: "t",
       steps: [
@@ -152,12 +148,6 @@ describe("validateWorkflowDef · redundant Authorization header", () => {
   }
 
   test("accepts step-level Authorization on a connector_id whose auth_type is none", () => {
-    // The auth-flows.md skill documents the multi-step token-mint
-    // pattern: connector with auth_type:"none" receives a step-level
-    // Authorization filled from a prior login step's
-    // `${scope.login.data.access_token}`. Pass A3 added the carve-out;
-    // verify the validator honours it when callers thread the
-    // none-auth set.
     const noneAuthId = "a1b2c3d4-4444-4222-8333-444455556666";
     const result = validateWorkflowDef(
       {

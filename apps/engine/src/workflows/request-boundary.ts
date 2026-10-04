@@ -1,41 +1,10 @@
-// An author-declared boundary for one HTTP request step.
-//
-// The effect-manifest compiler refuses every request step that carries a runtime
-// placeholder, because a substituted value can change where a request goes or
-// what it does. The existing exemptions are each shaped around one case (a
-// report e-mail, a revision upload, a GET with a variable id). This is the
-// general one: the AUTHOR states what may vary, a human reviews exactly that
-// statement, and the runtime holds every dispatch to it before any network I/O.
-//
-// Two rules keep review and dispatch from disagreeing, which is the defect this
-// module exists to avoid:
-//
-//   ONE resolver. The reviewed target is produced by the same `resolveUrl` the
-//   driver dispatches through. Reviewing with `new URL(path, base)` instead
-//   silently drops a base path such as `/v2` — the grant is approved for a URL
-//   the run can never produce, and every dispatch is then denied.
-//
-//   ONE matcher. `matchTarget` decides both "could an approved value ever reach
-//   this target" at review and "is this concrete request inside the boundary"
-//   at dispatch.
-//
-// What may vary: whole path segments and whole query VALUES, each bound by an
-// explicit `enum` or, where values cannot be listed (an id from an earlier step,
-// a date), by a named value class; plus a runtime body bounded by size. Anything
-// it cannot hold to a reviewed statement is REFUSED with a named reason rather
-// than accepted loosely — a runtime header, a placeholder that is only part of
-// a segment or of a query value, a query KEY that varies, pagination.
-
 import { z } from "@hono/zod-openapi";
 import { resolveUrl } from "../connectors/drivers/resolve-url.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
 
-/** A placeholder expression without its `${}`: `input.site`, `item.id`, `scope.plan.data.id`. */
 const expression = z.string().regex(/^(?:item|input|scope)(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/);
-// A record reports a bad key as a bare "Invalid key in record", which sent an
-// author guessing: it keyed a rule by the query parameter's NAME.
 const VARIABLES_KEY_ERROR =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: shows the literal authored placeholder
   "a `variables` key is the placeholder expression without its `${}`, rooted at `input`, " +
@@ -44,20 +13,6 @@ const VARIABLES_KEY_ERROR =
 const variablesError = (issue: { code?: string }) =>
   issue.code === "invalid_key" ? VARIABLES_KEY_ERROR : undefined;
 
-/**
- * A value an approved variable may take, exactly as it is sent: unreserved URL
- * characters, `:` (a segment such as `team:42` or `123:runReport`), and
- * `%XX` escapes for an identifier the API wants percent-encoded inside one
- * segment. Compared byte for byte against the raw segment, never decoded for
- * the comparison, so what the reviewer reads is what may be sent.
- *
- * It can still never leave its segment: a literal `/`, `?` or `#` is not in the
- * alphabet, an escape that decodes to a control character or a backslash is
- * refused, and so is a value whose decoded form has a `.` or `..` component —
- * a server that decodes before routing must not be handed a traversal. A value
- * that routes differently than reviewed (a leading `scheme:`) fails the
- * review-time self-check below.
- */
 const enumValue = z
   .string()
   .regex(/^(?:[A-Za-z0-9._~:-]|%[0-9A-Fa-f]{2}){1,200}$/)
@@ -72,47 +27,18 @@ const enumValue = z
     if (/[\u0000-\u001f\u007f\\]/.test(decoded)) return false;
     return !decoded.split("/").some((part) => part === "." || part === "..");
   });
-/**
- * For values that cannot be listed. Pinned regex literals, deliberately not Zod
- * helpers: a library upgrade must never change what a live approval means. No
- * class admits `%`, `/`, `?`, `#` or whitespace, so a raw path segment and its
- * decoded form are the same string and no decode step exists to disagree on.
- */
 export const VALUE_CLASSES = {
   identifier: /^[A-Za-z0-9_-]{1,200}$/,
   uuid: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/,
   integer: /^(0|[1-9][0-9]{0,18})$/,
   date: /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/,
   timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$/,
-  // One file name, and only ever one path segment of it. A content repository
-  // addresses a file by name, so without this the only bounded shape was an
-  // enum of every file that would ever exist. Exactly one dot, a non-empty
-  // name before it and a short extension after: no `/`, so it cannot reach a
-  // sibling directory; no leading dot and no second dot, so `..` and
-  // `a/../../b` cannot be spelled.
   file_name: /^[A-Za-z0-9_-]{1,200}\.[A-Za-z0-9]{1,16}$/,
-  // A whole path, not a segment of one — the LAST position only, covering
-  // everything after it. A step that fetches whatever route a previous step
-  // listed varies the entire path, and every other class here describes one
-  // segment, so such a step could carry no boundary at all and its workflow
-  // could never be approved.
-  //
-  // What it admits: unreserved characters and percent-escapes, in one or more
-  // segments, optionally ending in `/`, and the empty string — `/` is a route.
-  // What it refuses is what would make the path mean something else:
-  // `:` (so no `scheme:`), backslash, control characters, and `.`/`..`
-  // segments. Two things a pattern cannot judge are checked in
-  // `pathValueAllowed` instead: a leading `//`, which names another host by
-  // position rather than by any character, and a percent-escape that DECODES to
-  // `/`, which is a hidden separator and never what the author wrote.
   path: /^(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*(?:\/(?:[A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})*)*$/,
 } as const;
-/** The longest path this will admit. Bounded so a boundary cannot be widened
- *  into an unreadable one by length alone. */
 const MAX_PATH_VALUE = 1024;
 type ValueClass = keyof typeof VALUE_CLASSES;
 const VALUE_CLASS_NAMES = Object.keys(VALUE_CLASSES) as [ValueClass, ...ValueClass[]];
-/** A worst-case member of each class, for the review-time routing self-check. */
 const CLASS_SAMPLE: Record<ValueClass, string> = {
   identifier: "a",
   uuid: "00000000-0000-4000-8000-000000000000",
@@ -123,8 +49,6 @@ const CLASS_SAMPLE: Record<ValueClass, string> = {
   path: "a",
 };
 
-// The `enum` branch stays FIRST: a boundary written before classes existed
-// must parse to the byte-identical object, or its approval's digest moves.
 const rule = z.union([
   z.object({ enum: z.array(enumValue).min(1).max(50) }).strict(),
   z.object({ class: z.enum(VALUE_CLASS_NAMES) }).strict(),
@@ -133,19 +57,9 @@ export type RequestVariableRule = z.infer<typeof rule>;
 
 export const RequestBoundaryScopeSchema = z
   .object({
-    /**
-     * One entry per `${…}` that is a whole path segment or a whole query value,
-     * keyed by the expression. `{}` when neither varies.
-     */
     variables: z.record(expression, rule, { error: variablesError }),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
-    // A reviewed ceiling shown to the human. NOT a per-run count the engine
-    // enforces yet — nothing counts dispatches across a run (see
-    // `authority-execution-shape.ts`, `run_limit_is_request_limit: false`).
     max_calls: z.number().int().min(1).max(10_000),
-    /** Required for DELETE, so a removal is never approved by omission. */
-    // The default "expected true" reads as an instruction to set it; the first
-    // author to meet it did exactly that on a request that removes nothing.
     destructive: z
       .literal(true, {
         error:
@@ -165,16 +79,11 @@ export const RequestBoundarySchema = z
     base_url: z.string().url().nullable(),
     method: z.enum(HTTP_METHODS),
     origin: z.string().url(),
-    /** Resolved path segments; a variable segment names its expression. */
     segments: z
       .array(z.union([z.string(), z.object({ var: expression }).strict()]))
       .min(2)
       .max(50),
     variables: z.record(expression, rule, { error: variablesError }),
-    // The key set is exact: `fixed` keys carry a literal value, `variable` keys
-    // a value held to its rule. The array is always present, `[]` when nothing
-    // varies, so a boundary approved before query values could vary keeps its
-    // digest.
     query: z
       .object({
         fixed: z.record(z.string(), z.string()),
@@ -183,14 +92,6 @@ export const RequestBoundarySchema = z
       .strict(),
     max_body_bytes: z.number().int().min(0).max(10_000_000),
     max_calls: z.number().int().min(1).max(10_000),
-    // A read the provider hands out one page at a time. `params` are the query
-    // keys the ENGINE fills — a cursor from the provider's own previous answer,
-    // or the page counter — so they are exempt from the exact key set and their
-    // values are not held to a rule. Everything else still is: same origin,
-    // same path, same other keys. `max_requests` is the step's own page cap,
-    // which is what makes the number of requests finite and reviewed. Derived
-    // from the step, never authored, so an author cannot widen it by writing it
-    // down; absent when the step does not paginate, so no existing digest moves.
     pagination: z
       .object({
         params: z.array(z.string().min(1)).min(1).max(4),
@@ -204,7 +105,6 @@ export const RequestBoundarySchema = z
   .refine((boundary) => boundary.method !== "DELETE" || boundary.destructive === true, {
     message: "a DELETE request boundary requires destructive: true",
   })
-  // "Delete anything that looks like an id" is not a statement to approve.
   .refine(
     (boundary) =>
       boundary.method !== "DELETE" ||
@@ -213,10 +113,6 @@ export const RequestBoundarySchema = z
   );
 export type RequestBoundary = z.infer<typeof RequestBoundarySchema>;
 
-/**
- * Why a step compiled no boundary. Structural reasons come first, so a step
- * this slice cannot cover is never told to "add a boundary".
- */
 export type RequestBoundaryRefusal =
   | "not_http_step"
   | "pagination_unsupported"
@@ -235,22 +131,11 @@ export type RequestBoundaryRefusal =
   | "target_unresolved"
   | "variable_in_base_prefix"
   | "enum_value_unroutable"
-  // A whole-path rule anywhere but the final path position. It covers
-  // everything after it, so in any other place it would silently swallow the
-  // literals the reviewer approved.
   | "path_class_misplaced"
-  // Raised by effect resolution, which has the connector in hand:
   | "connector_adds_query"
-  // A report e-mail has its own stricter review, and the three ways it can fail
-  // to produce one are three different things to do about it. One code answered
-  // all three, and its advice — "let a preparation run" — is precisely the one
-  // that cannot work for the third.
   | "report_delivery_unprepared"
   | "report_delivery_unobserved"
   | "report_delivery_unreachable"
-  // The author declared the recipient, and a preparation of this very version
-  // reached the step with a message that is outside the profile or addressed
-  // differently. The declaration would be refused at the wire on every run.
   | "report_delivery_contradicted"
   | "stricter_profile_applies";
 
@@ -261,7 +146,6 @@ function refuse(refusal: RequestBoundaryRefusal) {
   return { refusal } as const;
 }
 
-/** The authored path split into literal segments and whole-segment expressions. */
 function authoredSegments(
   path: string,
 ):
@@ -280,21 +164,6 @@ function authoredSegments(
   return { segments };
 }
 
-/**
- * The query keys the engine itself fills while following a provider's paging,
- * and the cap on how many requests that can be.
- *
- * A paginating read used to be refused outright, so a step that reads a page's
- * blocks — bounded target, bounded value, no body — could carry no boundary at
- * all and its workflow could never be approved. No amount of authoring fixes
- * that: the extra requests come from the engine, not from the definition. What
- * an approver needs to know is which keys the engine moves and how many
- * requests there can be, and both are readable from the step.
- *
- * `null` means a shape this cannot describe (paging driven through the body).
- * `"unbounded"` means the step set no page cap, so the number of requests is
- * not a reviewable number.
- */
 function paginationShape(
   pagination: NonNullable<RequestStep["pagination"]>,
 ): { params: string[]; max_requests: number } | null | "unbounded" {
@@ -324,8 +193,6 @@ export function compileRequestBoundary(
   const paging = step.pagination ? paginationShape(step.pagination) : null;
   if (step.pagination && !paging) return refuse("pagination_unsupported");
   if (step.pagination && paging === "unbounded") return refuse("pagination_unbounded");
-  // A query value may vary only as a WHOLE placeholder; text around one, or a
-  // non-scalar value, cannot be held to a rule.
   const fixedQuery: Record<string, string> = {};
   const variableQuery: Array<{ key: string; var: string }> = [];
   for (const [key, value] of Object.entries(step.query ?? {})) {
@@ -344,12 +211,6 @@ export function compileRequestBoundary(
     url: _url,
     query: _query,
     headers: _headers,
-    // `for_each` and `data_selector` carry JavaScript the sandbox evaluates;
-    // the engine never substitutes placeholders into them. A `${…}` inside one
-    // is a JS template literal, and scanning them for it refused a correct step
-    // with "make every other field a literal" — impossible for a selector.
-    // Neither can move the target: `for_each` decides how many requests and
-    // what `item.*` holds (both bounded here), `data_selector` shapes output.
     for_each: _forEach,
     data_selector: _dataSelector,
     ...fixed
@@ -364,9 +225,6 @@ export function compileRequestBoundary(
   if (!step.boundary) return refuse("no_boundary");
   const scope = RequestBoundaryScopeSchema.safeParse(step.boundary);
   if (!scope.success) return refuse("boundary_invalid");
-  // Exact coverage, both directions: a placeholder with no rule is unbounded,
-  // and a rule with no placeholder is a stale statement the reviewer would be
-  // approving for nothing. One expression, one position.
   const used = [
     ...split.segments.flatMap((part) => (typeof part === "string" ? [] : [part.var])),
     ...variableQuery.map((entry) => entry.var),
@@ -388,12 +246,6 @@ export function compileRequestBoundary(
   )
     return refuse("delete_requires_enum");
 
-  // A whole-path rule covers everything after its position, so it belongs at
-  // the end of the path and nowhere else. In the middle it would swallow the
-  // literals the reviewer approved after it; in the query it would describe a
-  // value that is not a path at all. Refused rather than narrowed: a boundary
-  // that quietly means something other than what was written is the failure
-  // this whole file exists to prevent.
   {
     const lastSegment = split.segments[split.segments.length - 1];
     const tailVar = typeof lastSegment === "string" ? null : (lastSegment?.var ?? null);
@@ -403,8 +255,6 @@ export function compileRequestBoundary(
     if (misplaced) return refuse("path_class_misplaced");
   }
 
-  // Resolve through the dispatcher's own resolver, with each variable segment
-  // replaced by a token made of unreserved characters so it survives `new URL`.
   const masked = split.segments
     .map((part, index) => (typeof part === "string" ? part : `${MASK}${index}__`))
     .join("/");
@@ -423,9 +273,6 @@ export function compileRequestBoundary(
     resolved.host.includes(MASK)
   )
     return refuse("target_unresolved");
-  // `resolveUrl` strips a base-path prefix the author repeated. That decision
-  // must depend on literals only, identically at review and dispatch — so no
-  // variable may sit inside the part of the path the dedupe looks at.
   if (base_url) {
     try {
       const baseDepth = new URL(base_url).pathname.split("/").filter(Boolean).length;
@@ -449,7 +296,6 @@ export function compileRequestBoundary(
   if (segments.some((part) => typeof part === "string" && part.includes(MASK)))
     return refuse("target_unresolved");
 
-  // A paging key that is also a reviewed key would be two rules for one value.
   if (
     paging &&
     paging !== "unbounded" &&
@@ -472,11 +318,6 @@ export function compileRequestBoundary(
   });
   if (!candidate.success) return refuse("boundary_invalid");
 
-  // Every approved value must actually route inside the boundary it produced.
-  // Uses the dispatch-time judgement on a URL assembled the way the driver
-  // assembles it, so a value that review accepts and dispatch would deny is
-  // caught here, where the author can still fix it. A class is tried with one
-  // worst-case member.
   const samples = (name: string): string[] => {
     const entry = scope.data.variables[name];
     if (!entry) return [""];
@@ -509,52 +350,25 @@ export function requestBoundary(
   return compileRequestBoundary(step, base_url).boundary ?? null;
 }
 
-/** What the reviewer is shown: the resolved target with each variable named. */
 export function requestBoundaryTarget(boundary: RequestBoundary): string {
   return `${boundary.origin}${boundary.segments
     .map((part) => (typeof part === "string" ? part : `{${part.var}}`))
     .join("/")}`;
 }
 
-/**
- * The one place a concrete value is judged against its rule: a raw path segment
- * or a decoded query value, which is in both cases exactly the string the
- * placeholder resolved to.
- */
 function valueAllowed(variableRule: RequestVariableRule | undefined, value: string): boolean {
   if (!variableRule) return false;
   if ("enum" in variableRule) return variableRule.enum.includes(value);
-  // `path` describes the whole tail, never one segment. Judged here it would
-  // accept a value containing `/` in a position the reviewer approved as a
-  // single segment — the one way this class could widen a boundary. Stated
-  // rather than left to fall through: it is in the table now, so it would
-  // otherwise match.
   if (variableRule.class === "path") return false;
   return VALUE_CLASSES[variableRule.class]?.test(value) === true;
 }
 
-/** Whether a rule describes the whole remaining path rather than one segment. */
 function isPathRule(variableRule: RequestVariableRule | undefined): boolean {
   return variableRule !== undefined && "class" in variableRule && variableRule.class === "path";
 }
 
-/**
- * The tail of a path, judged as one value.
- *
- * Separate from `valueAllowed` because the two judge different things and must
- * not be confused: that one sees a raw segment, this one sees everything after
- * the approved literals. The decode check is here because a regex cannot see
- * it — `%2F` passes the pattern and is a separator once the server reads it,
- * which inside a path value is never what the author wrote down.
- */
 export function pathValueAllowed(value: string): boolean {
   if (value.length > MAX_PATH_VALUE) return false;
-  // A leading `//` is a protocol-relative URL: resolved against the connector's
-  // base it names a different host entirely. The pattern cannot say this —
-  // every character in it is legal, and only the POSITION makes it an authority
-  // — so it is stated here. `matchTarget` would refuse the result anyway on the
-  // origin check, but a rule that admits a value only for another rule to catch
-  // it is a rule that does not mean what it says.
   if (value.startsWith("//")) return false;
   if (!VALUE_CLASSES.path.test(value)) return false;
   return value.split("/").every((segment) => {
@@ -569,19 +383,13 @@ export function pathValueAllowed(value: string): boolean {
   });
 }
 
-/** Origin and path only. Shared by the review-time self-check and dispatch. */
 function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   if (url.origin !== boundary.origin || url.username || url.password || url.hash) return false;
-  // RAW pathname segments: never decoded, so an encoded traversal is simply not
-  // equal to an approved literal.
   const actual = url.pathname.split("/");
   const last = boundary.segments[boundary.segments.length - 1];
   const tailRule =
     last !== undefined && typeof last !== "string" ? boundary.variables[last.var] : undefined;
   if (isPathRule(tailRule)) {
-    // Every literal before the tail still matches exactly, one for one. Only
-    // the final position absorbs a variable number of segments, and it must
-    // absorb at least the one it stands in.
     const fixed = boundary.segments.length - 1;
     if (actual.length < fixed + 1) return false;
     for (let index = 0; index < fixed; index += 1) {
@@ -604,26 +412,16 @@ function matchTarget(boundary: RequestBoundary, url: URL): boolean {
   });
 }
 
-/**
- * What is wrong with a query, in terms an author can act on. A VALUE is named
- * only for a declared variable — that is workflow data. An unexpected key is
- * named without its value, which a connector may have filled with a credential.
- */
 export type RequestQueryViolation =
   | { reason: "unexpected_key" | "missing_key" | "duplicate_key" | "fixed_value"; key: string }
   | { reason: "variable_value"; key: string; value: string; rule: string };
 
-/** The query part of the same judgement: an exact key set, never a superset. */
 function queryViolation(boundary: RequestBoundary, url: URL): RequestQueryViolation | null {
   const keys = [...url.searchParams.keys()];
   const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
   if (duplicate !== undefined) return { reason: "duplicate_key", key: duplicate };
   const fixedKeys = Object.keys(boundary.query.fixed);
   const reviewed = new Set([...fixedKeys, ...boundary.query.variable.map((entry) => entry.key)]);
-  // The engine's own paging keys may appear or not, with whatever value the
-  // provider's previous answer or the page counter produced. They were reviewed
-  // as a named exemption, not as values — everything else stays exact, so a
-  // second request that adds any OTHER key is still outside the boundary.
   const paging = new Set(boundary.pagination?.params ?? []);
   const unexpected = keys.find((key) => !reviewed.has(key) && !paging.has(key));
   if (unexpected !== undefined) return { reason: "unexpected_key", key: unexpected };
@@ -652,7 +450,6 @@ function matchQuery(boundary: RequestBoundary, url: URL): boolean {
   return queryViolation(boundary, url) === null;
 }
 
-/** Why a materialized request is outside a boundary. Carries sizes, never content. */
 export type RequestBoundaryViolation =
   | { kind: "boundary_invalid" | "request_missing" | "unsupported_body" | "url_invalid" }
   | { kind: "method"; actual: string; reviewed: string }
@@ -661,12 +458,6 @@ export type RequestBoundaryViolation =
   | { kind: "body_forbidden"; method: string }
   | { kind: "body_size"; bytes: number; max_body_bytes: number };
 
-/**
- * The one judgement of a request against a boundary. Dispatch under an
- * authority denies on any violation; a run of a step that merely DECLARES a
- * boundary reports the same violation by name, so a green preview means the
- * request fits the boundary its step asks a human to approve.
- */
 export function requestBoundaryViolation(
   boundary: RequestBoundary,
   request: MaterializedRequest | undefined,
@@ -674,7 +465,6 @@ export function requestBoundaryViolation(
   const parsed = RequestBoundarySchema.safeParse(boundary);
   if (!parsed.success) return { kind: "boundary_invalid" };
   if (!request) return { kind: "request_missing" };
-  // A body the assert cannot measure (multipart, a file) is denied, never skipped.
   if (request.unsupported_body) return { kind: "unsupported_body" };
   const reviewed = parsed.data;
   const method = request.method.toUpperCase();
@@ -686,7 +476,6 @@ export function requestBoundaryViolation(
   } catch {
     return { kind: "url_invalid" };
   }
-  // Origin and path only: a query could carry a credential, a path is workflow data.
   if (!matchTarget(reviewed, url))
     return {
       kind: "target",
@@ -700,8 +489,6 @@ export function requestBoundaryViolation(
       ? { kind: "body_forbidden", method: reviewed.method }
       : null;
   if (request.body === null || request.body === undefined) return null;
-  // Plain JSON.stringify, not the canonicaliser: this is the driver's own wire
-  // encoding, and key sorting would change the byte count against the wire.
   const wire = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
   if (wire === undefined) return { kind: "unsupported_body" };
   const bytes = Buffer.byteLength(wire, "utf8");
@@ -710,7 +497,6 @@ export function requestBoundaryViolation(
     : null;
 }
 
-/** One sentence an author can act on. Names sizes and the reviewed target, never content. */
 export function describeRequestBoundaryViolation(violation: RequestBoundaryViolation): string {
   switch (violation.kind) {
     case "body_size":

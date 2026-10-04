@@ -1,47 +1,19 @@
-// UX guard for the Knowledge tab's inline ingest path. Lifted out of
-// KnowledgeTab.tsx so the contract is unit-testable without driving
-// the Ink render tree, and so a future contributor cannot widen one
-// half (the deny-list) without the other half (the test) lighting
-// up.
-//
-// This is **not** a security boundary. The engine accepts whatever
-// bytes the operator forwards, scopes them to the tenant, and runs
-// them through the standard Knowledge ingest pipeline. The guard
-// catches typos and accidental log-tail / dotfile selections that
-// would either OOM the REPL or leak host-internal state into a
-// tenant Knowledge Source.
-
 import { homedir } from "node:os";
 
 export interface IngestGuardResult {
-  /** True when the guard rejected the path/size; the caller should
-   *  surface `reason` to the operator and abort the ingest. */
   rejected: boolean;
   reason?: string;
 }
 
-/** Inputs to the guard. `homedir` is injected so tests can supply
- *  fake `~` roots without monkey-patching `os`. */
 export interface IngestGuardInput {
-  /** Absolute path the operator typed (post-`isAbsolute` resolve). */
   absolutePath: string;
-  /** File size in bytes from `fs.stat`. */
   sizeBytes: number;
-  /** Override for `homedir()` — tests pass deterministic values. */
   home?: string;
-  /** Override for `process.platform` — tests cover both branches. */
   platform?: NodeJS.Platform;
 }
 
-/** 50 MB ceiling — enough for any reasonable doc, low enough that a
- *  stray `/var/log/...` selection doesn't OOM the REPL. */
 export const KNOWLEDGE_INGEST_MAX_BYTES = 50 * 1024 * 1024;
 
-/** Unix paths that are almost never a deliberate Knowledge Source.
- *  Excludes `/var/` outright because macOS resolves `tmpdir()` to
- *  `/var/folders/...`, which IS a legitimate ingest source. The
- *  log + lib + run + spool subdirs are added explicitly so a
- *  `/var/log/auth.log` selection is still rejected. */
 const UNIX_BLOCKED_PREFIXES: readonly string[] = [
   "/etc/",
   "/proc/",
@@ -54,10 +26,6 @@ const UNIX_BLOCKED_PREFIXES: readonly string[] = [
   "/root/",
 ];
 
-/** Per-home-directory dotfile prefixes that contain credentials,
- *  bookmarks, or terminal history. Resolved against the active
- *  `homedir()` so each operator's dotfiles are blocked relative
- *  to their own home, not a literal `~/`. */
 const HOME_BLOCKED_SUBPATHS: readonly string[] = [
   ".ssh/",
   ".aws/",
@@ -68,9 +36,6 @@ const HOME_BLOCKED_SUBPATHS: readonly string[] = [
   ".sk/",
 ];
 
-/** Windows root directories that the guard refuses outright. The
- *  comparison is case-insensitive because Windows file systems are
- *  case-insensitive by default. */
 const WINDOWS_BLOCKED_PREFIXES_LOWER: readonly string[] = [
   "c:\\windows\\",
   "c:\\program files\\",
@@ -78,8 +43,6 @@ const WINDOWS_BLOCKED_PREFIXES_LOWER: readonly string[] = [
   "c:\\programdata\\",
 ];
 
-/** Per-home-directory blocked subpaths on Windows (e.g. AppData,
- *  the Windows clone of `~/.ssh`). Resolved against `homedir()`. */
 const WINDOWS_HOME_BLOCKED_SUBPATHS_LOWER: readonly string[] = ["appdata\\", ".ssh\\", ".aws\\"];
 
 export function checkIngestGuard(input: IngestGuardInput): IngestGuardResult {
@@ -113,7 +76,6 @@ export function checkIngestGuard(input: IngestGuardInput): IngestGuardResult {
     return { rejected: false };
   }
 
-  // POSIX path
   for (const prefix of UNIX_BLOCKED_PREFIXES) {
     if (absolutePath.startsWith(prefix) || absolutePath === prefix.slice(0, -1)) {
       return refuseOsInternal(absolutePath);

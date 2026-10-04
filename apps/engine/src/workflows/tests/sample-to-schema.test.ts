@@ -1,5 +1,3 @@
-// sampleToSchema inference tests.
-
 import { describe, expect, test } from "bun:test";
 import { sampleToSchema } from "../sample-to-schema.ts";
 
@@ -59,7 +57,7 @@ describe("sampleToSchema — arrays", () => {
     const props = (items.properties ?? {}) as Record<string, JsonLike>;
     expect(props.id).toEqual({ type: "string" });
     expect(props.extra).toEqual({ type: "string" });
-    expect(items.required).toEqual(["id"]); // extra was not in both → not required
+    expect(items.required).toEqual(["id"]);
   });
 });
 

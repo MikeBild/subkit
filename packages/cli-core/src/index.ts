@@ -1,11 +1,3 @@
-// Shared CLI helpers reused across the `sk` CLI surfaces and any
-// packaged compatibility aliases. Extracting these out keeps
-// behavior-compatible code in one place without forcing app-local
-// modules to import from each other.
-//
-// Modules live as flat files under `packages/cli-core/src/` and are
-// imported via the `@cli-core/*` path alias (see tsconfig.json).
-
 export { osc52Copy, ringBell } from "./clipboard.ts";
 export {
   type DeviceFlowOptions,

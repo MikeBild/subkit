@@ -1,7 +1,3 @@
-// Real transport parity for the SubKit settings MCP tools. The write travels
-// through Streamable HTTP MCP, persists through the config loader, is read back
-// over the public REST API, and leaves an audit row in real PostgreSQL.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, desc, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/index.ts";

@@ -1,32 +1,3 @@
-// Embedded Knowledge-Source seeding.
-//
-// Mirrors the skill-seed machinery (`skills/seed.ts`): the seed Markdown
-// library is **embedded** at build time via `with { type: "text" }` imports
-// (see `embedded-seeds.ts`), so every compiled `engine` binary carries the
-// seed contents inline. There is no runtime fs.readdir and no fallback
-// search path; the seeds ship with the binary, period.
-//
-// Upsert strategy: `(tenant_id, slug)` is unique. We look up an existing row
-// by that pair; the row's `version` is the 32-char SHA-256 prefix of the
-// ingested content (same fingerprint `createKnowledgeSource` derives). When
-// the body's fingerprint differs we re-ingest to rotate chunks + version;
-// otherwise we skip.
-//
-// We deliberately REUSE the service functions (`createKnowledgeSource`,
-// `ingestKnowledgeSource`) verbatim — there is no third chunk-insert path.
-//
-// Front-matter contract (6 keys):
-//
-//     ---
-//     slug: sk-ref-rest-api
-//     name: sk Platform Reference — REST API
-//     description: One-liner.
-//     tags: [sk-platform-reference, rest-api]
-//     scope: global
-//     version: 1
-//     ---
-//     <markdown body>
-
 import { createHash } from "node:crypto";
 import { type Db, getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
@@ -44,10 +15,7 @@ export interface SeededKnowledge {
   description: string;
   tags: string[];
   scope: "global" | "workflow";
-  /** Informational seed-author version from frontmatter. The persisted row
-   *  version is the content fingerprint, not this number. */
   version: number;
-  /** Markdown body with the frontmatter stripped — this is what gets ingested. */
   body: string;
 }
 
@@ -60,7 +28,6 @@ export interface ParseError {
 export interface LoadResult {
   knowledge: SeededKnowledge[];
   errors: ParseError[];
-  /** Number of `*.md` files embedded in the binary at build time. */
   embedded_count: number;
 }
 
@@ -76,18 +43,10 @@ export interface SeedSource {
   content: string;
 }
 
-/**
- * Parse every Markdown Knowledge seed embedded in the binary.
- */
 export function loadEmbeddedKnowledgeSeeds(): LoadResult {
   return loadKnowledgeSeedsFromContent(EMBEDDED_KNOWLEDGE_SEEDS);
 }
 
-/**
- * Parse a caller-supplied list of seed sources. Used by tests to feed
- * synthetic Markdown without touching the filesystem; production code should
- * call `loadEmbeddedKnowledgeSeeds()` instead.
- */
 export function loadKnowledgeSeedsFromContent(files: readonly SeedSource[]): LoadResult {
   const out: SeededKnowledge[] = [];
   const errors: ParseError[] = [];
@@ -111,8 +70,6 @@ export async function applyKnowledgeSeeds(
   let updated = 0;
   let unchanged = 0;
   for (const s of seeds) {
-    // Same fingerprint `createKnowledgeSource`/`ingestKnowledgeSource` store
-    // as `version` — derived from the exact bytes we ingest.
     const version = createHash("sha256").update(s.body).digest("hex").slice(0, 32);
     const buffer = Buffer.from(s.body, "utf8");
     const existing = await getKnowledgeSourceBySlug(tenant_id, s.slug, db);
@@ -136,11 +93,6 @@ export async function applyKnowledgeSeeds(
       inserted++;
       continue;
     }
-    // A non-seed source occupying a seed slug (a user deleted the seed and
-    // imported their own bundle under the same slug — possible since the
-    // tenant+slug unique index went partial) must NEVER be overwritten by
-    // the boot sweep: re-ingesting seed content over user knowledge would
-    // silently destroy it. Same guard the bundle upsert applies (409).
     if (existing.source_type !== "seed") {
       logger.warn({
         module: "knowledge.seed",
@@ -157,7 +109,6 @@ export async function applyKnowledgeSeeds(
       unchanged++;
       continue;
     }
-    // Body changed — re-ingest to rotate chunks + version in place.
     await ingestKnowledgeSource(
       {
         tenant_id,
@@ -172,7 +123,6 @@ export async function applyKnowledgeSeeds(
   return { tenant_id, inserted, updated, unchanged };
 }
 
-/** Apply seeded Knowledge Sources to every tenant in the system. Boot path. */
 export async function applyKnowledgeSeedsForAllTenants(
   seeds: SeededKnowledge[],
   db: Db = getDb(),
@@ -186,15 +136,6 @@ export async function applyKnowledgeSeedsForAllTenants(
   return outcomes;
 }
 
-/**
- * Boot orchestrator: load the embedded Knowledge-Source library and upsert
- * every source into every tenant. Mirrors the skill seed at boot — the
- * persisted `version` is the content fingerprint, so unchanged seeds are a
- * no-op on subsequent boots (no chunk churn). Intended to be called
- * fire-and-forget (`void seedKnowledgeAtBoot(db)`): it never throws, runs in
- * the background so a large catalog never delays the first HTTP request, and
- * is always on — no env gate.
- */
 export async function seedKnowledgeAtBoot(db: Db = getDb()): Promise<void> {
   try {
     const loaded = loadEmbeddedKnowledgeSeeds();
@@ -243,8 +184,6 @@ export async function seedKnowledgeAtBoot(db: Db = getDb()): Promise<void> {
     });
   }
 }
-
-// ---------------------------------------------------------------------------
 
 type ParseOk = { knowledge: SeededKnowledge };
 type ParseFail = { error: ParseError };
@@ -306,7 +245,6 @@ function parseScalar(raw: string): unknown {
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return raw.slice(1, -1);
   }
-  // Flow array of scalars: `[a, b, c]`.
   if (raw.startsWith("[") && raw.endsWith("]")) {
     const inner = raw.slice(1, -1).trim();
     if (inner === "") return [];

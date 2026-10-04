@@ -1,9 +1,3 @@
-// Exact tenant-scoped aggregation over the privacy-safe usage ledger.
-//
-// Distinct actors/sessions in `totals` are computed over the complete
-// requested window (never summed from buckets). All filters are controlled
-// classifications; tenant_id is the first predicate in every query.
-
 import { type SQL, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import type { BucketUnit } from "../http/routes/stats/bucket-window.ts";

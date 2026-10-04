@@ -1,12 +1,3 @@
-// `restore_draft_snapshot` — roll the conversation draft back to a
-// previously-captured snapshot. Snapshots are auto-created after every
-// successful `draft_write` tool (see `sdk-wrap.ts`); this tool lets
-// the LLM walk one back when an edit went wrong.
-//
-// Pure roll-back — does NOT delete forward history. The next
-// draft-mutating tool will create a fresh snapshot, so the operator
-// can step backwards then forwards if needed.
-
 import { z } from "@hono/zod-openapi";
 import { getDraftSnapshot, listDraftSnapshots } from "../draft-checkpoints.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -35,7 +26,6 @@ export const restoreDraftSnapshotTool: ConversationTool = {
 
     let snapshotId = args.snapshot_id;
     if (!snapshotId) {
-      // Default: most-recent snapshot (newest-first ordering).
       const recent = await listDraftSnapshots(
         {
           tenant_id: ctx.tenant_id,

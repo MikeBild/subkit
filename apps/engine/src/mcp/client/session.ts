@@ -117,7 +117,6 @@ export interface OpenMcpSessionResult {
   readNegotiatedProtocolVersion: () => string | null;
 }
 
-/** Open one MCP session through the shared egress, transport and manifest path. */
 export async function openMcpSession(
   db: Db,
   tenant_id: string,

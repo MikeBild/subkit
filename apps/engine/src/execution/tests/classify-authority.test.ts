@@ -1,11 +1,3 @@
-// An approval that no longer fits is not a rejected sign-in.
-//
-// A live run refused by its execution authority failed with "Execution
-// authority could not be verified: execution_authority_changed". The message
-// contains "auth", so the generic matcher read it as `auth_failed` and the
-// cockpit told the reader the sign-in was rejected — while every connector
-// was healthy and the remedy was to review the approval again.
-
 import { describe, expect, test } from "bun:test";
 import { classifyFailure } from "../classify.ts";
 

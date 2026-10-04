@@ -1,17 +1,3 @@
-// Interaction log section — surfaces the last ~10 resolved
-// elicitations so the model can see "what was tested vs. confirmed
-// vs. declined this turn". Failure mode without this: the model
-// re-asks for already-declined actions or treats partial approvals
-// as full.
-//
-// Three layers verified:
-//   1. The section appears at all when the conversation has resolved
-//      elicitations.
-//   2. Each entry includes the tool_name + decision (`approved` /
-//      `declined` / `partial`) so the model can act on it.
-//   3. Pending elicitations are NOT surfaced — only resolved ones —
-//      because they're still waiting for the user.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { conversationElicitations, conversations } from "../../db/schema/index.ts";
 import { assembleEnhancedPrompt } from "../../llm/core/context-assembler.ts";
@@ -67,8 +53,6 @@ async function assemble(conversationId: string): Promise<string> {
       conversation_id: conversationId,
       flow: "converse",
       user_turns: [{ role: "user", content: "hello" }],
-      // Use Claude's default 180k cap so the interaction_log section
-      // (lowest priority) doesn't get evicted by the budget trimmer.
       max_tokens: 180_000,
       model: "claude-sonnet-4-6",
     },
@@ -85,17 +69,12 @@ describe("interaction log · surfacing", () => {
       status: "resolved",
       output: { confirmed: true },
     });
-    // Operator free text now rides on `output.feedback`; the
-    // interaction-log formatter must surface that prose, not the
-    // machine-code `decision_reason`.
     await seedElicitation(cid, {
       tool_name: "ask_user_confirm",
       status: "resolved",
       output: { confirmed: false, feedback: "the budget is wrong, fix the totals first" },
       decision_reason: "user_declined",
     });
-    // Fallback case: no `output.feedback` — the formatter falls back to
-    // the machine-code `decision_reason`.
     await seedElicitation(cid, {
       tool_name: "ask_user_text",
       status: "cancelled",
@@ -109,27 +88,14 @@ describe("interaction log · surfacing", () => {
     });
 
     const system = await assemble(cid);
-    // Section is identified by its rendered-body marker (the
-    // confirmation-discipline skill mentions the heading by name in
-    // backticks; we look for the actual section's prose to avoid
-    // false-positives).
     expect(system).toContain("Append-only record of the recent confirmations");
-    // Tool names render verbatim so the model can match decisions to
-    // upcoming tool calls.
     expect(system).toContain("ask_user_confirm");
     expect(system).toContain("ask_user_form");
-    // Each decision string surfaces.
     expect(system).toContain("approved");
     expect(system).toContain("declined");
     expect(system).toContain("partial");
-    // The operator's free-text `output.feedback` is surfaced verbatim —
-    // the model sees the actual prose, not the machine code.
     expect(system).toContain("the budget is wrong, fix the totals first");
-    // It is preferred OVER the machine-code `decision_reason` on that
-    // same row — `user_declined` must not leak when feedback exists.
     expect(system).not.toContain("user_declined");
-    // Fallback: a row with no `output.feedback` still surfaces its
-    // machine-code `decision_reason`.
     expect(system).toContain("user_cancelled");
   });
 
@@ -140,8 +106,6 @@ describe("interaction log · surfacing", () => {
       status: "pending",
     });
     const system = await assemble(cid);
-    // Section should NOT appear for a conversation with only pending
-    // elicitations — there's nothing decided yet.
     expect(system).not.toContain("Append-only record of the recent confirmations");
   });
 
@@ -152,8 +116,6 @@ describe("interaction log · surfacing", () => {
   });
 
   test("section is omitted when conversation_id is not threaded through", async () => {
-    // Even if elicitations exist for some other conversation, no
-    // interaction_log surfaces unless the caller threads conversation_id.
     const cid = await makeConversation();
     await seedElicitation(cid, {
       tool_name: "ask_user_confirm",

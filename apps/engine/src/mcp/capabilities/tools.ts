@@ -1,23 +1,3 @@
-// Workflows → MCP tools.
-//
-// - `tools/list` is implemented by loading the tenant's workflows and
-//   materializing a tool per workflow. The tool name is `wf.<slug>`,
-//   description is the workflow name, and inputSchema is taken straight
-//   from the workflow DAG's `input_schema` field (which users author as
-//   raw JSON schema). When no schema is declared we default to an empty
-//   object schema.
-//
-// - `tools/call` resolves the `wf.<slug>` tool name back to a workflow id,
-//   runs the execution inline via the P3 `runExecution` entry point (so
-//   tests + tool calls don't need a live pg-boss), and returns the final
-//   output. Results larger than the 20k char cap reuse the execution's
-//   canonical immutable S3 offload pointer.
-//
-// - While the execution is running, a poller watches `execution_steps`
-//   for new rows and emits `notifications/progress` frames keyed by the
-//   caller's `progressToken`. The poller ticks every ~250 ms and stops
-//   when the execution finishes.
-
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import {
@@ -72,22 +52,8 @@ import {
   startProgressBridge,
 } from "./tools-helpers.ts";
 
-// Upper bound on how long a `wf_<slug>` run blocks the tools/call response, so
-// a slow run can't blow past a client's request timeout (strict clients abort
-// tool calls around ~60s). Past this window we stop blocking and hand back a
-// polling handle (execution_id → get_execution) while the run finishes in the
-// background. Fast runs (the common case) resolve inside this and return
-// inline unchanged. Applies to every client/transport.
 const WF_INLINE_TIMEOUT_MS = 50_000;
-// Bound how long a tools/call dispatch may block the response before we hand
-// back a clear "engine busy" error instead of letting the client hang to its
-// own (much longer) request timeout. Sits above the common-case latency and
-// below strict clients' ~60s abort.
 const TOOLS_CALL_DEADLINE_MS = 30_000;
-// Coalesce `notifications/tools/list_changed` bursts: a bulk import that
-// emits many `workflow.lifecycle` events in quick succession yields a
-// single client-facing ping, not a storm. Trailing-window from the first
-// event of a burst.
 const TOOL_LIST_CHANGED_DEBOUNCE_MS = 250;
 
 export interface RegisterToolsParams {
@@ -102,28 +68,11 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
 
   server.registerCapabilities({ tools: { listChanged: true } });
 
-  // Tool-list freshness. The `wf_<slug>` catalog is DB-driven (see
-  // `listWorkflowTools` → `catalog.ts`), so any workflow
-  // create/update/delete/restore/metadata change alters the tool list
-  // mid-session. We subscribe to the same `workflow.lifecycle` pub/sub
-  // channel `resources.ts` uses and push `notifications/tools/list_changed`
-  // so spec-compliant clients re-fetch `tools/list` across the next turn
-  // without a manual `/mcp` reconnect.
-  //
-  // Tenant isolation: cross-tenant events drop before anything else
-  // (same guard as `forwardIfSubscribed`). No RBAC re-check is needed —
-  // the notification carries no payload (no workflow id), and the
-  // follow-up `tools/list` it triggers is itself principal-scoped and
-  // RBAC-filtered in `catalog.ts`. Delivery is best-effort: a failed
-  // `sendToolListChanged` logs once at `warn` and is swallowed, matching
-  // the resources-channel discipline (clients poll on critical paths).
   let listChangedTimer: ReturnType<typeof setTimeout> | undefined;
   const offWorkflowLifecycle = globalEmitter.on(
     "workflow.lifecycle",
     (event: EventEnvelope<unknown>) => {
       if (event.tenant_id !== principal.tenant_id) return;
-      // Leading-edge schedule: the first event of a burst arms a single
-      // trailing fire; later events inside the window are absorbed by it.
       if (listChangedTimer) return;
       listChangedTimer = setTimeout(() => {
         listChangedTimer = undefined;
@@ -139,9 +88,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       listChangedTimer.unref?.();
     },
   );
-  // Tear down the listener + pending timer when the session closes so we
-  // don't leak handlers across reconnects. Chain any prior `onclose`
-  // (e.g. the resources capability sets one too).
   const priorOnClose = server.onclose;
   server.onclose = (): void => {
     offWorkflowLifecycle();
@@ -152,44 +98,17 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
     if (typeof priorOnClose === "function") {
       try {
         priorOnClose();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   };
 
-  // The env var below forces a strictly read-only MCP deployment —
-  // overriding mode-based visibility.
   let readOnly = false;
   try {
     readOnly = getConfig().mcp.read_only;
-  } catch {
-    /* loader not initialised */
-  }
+  } catch {}
 
   server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    // The catalog is assembled per mcp mode and published in FULL — no
-    // server-side trim. Strict clients (claude.ai, ChatGPT) defer-load large
-    // catalogs natively, so the client's own tool-search handles size. Sources:
-    //   - listWorkflowTools     — wf_<slug> per-workflow tools (Top-N palette,
-    //                             the one remaining bound: DEFAULT_PALETTE_LIMIT).
-    //   - listToolsViaRegistry  — unified registry, per-mode set: static
-    //                             (authenticate, list_recipes, self_healing.scan
-    //                             in admin) plus the conversation tools the mode
-    //                             publishes under their bare names.
-    //   - listConversationTools — MCP-only conversation.* session tools.
     const mode = resolveMcpMode(principal);
-    // We log the client's advertised capabilities (elicitation, sampling,
-    // roots, tasks) as a signal only. They are not proof of human approval;
-    // saved workflow writes require a locally verified execution authority.
-    //
-    // The client's self-reported identity rides along. It is SELF-DECLARED and
-    // therefore never a permission input — the credential decides what a caller
-    // may do. It exists so per-client behaviour is measurable: what a client
-    // advertises and what it actually fulfils diverge (a client has advertised
-    // `elicitation` and then answered every elicitation with an error), and
-    // without this field an aggregate like "0 of 29 elicitations fulfilled"
-    // cannot be split by client.
     const clientCaps = server.getClientCapabilities();
     const clientInfo = server.getClientVersion();
     const elicitationCapable = clientCaps?.elicitation != null;
@@ -206,17 +125,12 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    // Fetch the wf_ palette (capped to DEFAULT_PALETTE_LIMIT), then assemble the
-    // full catalog for the mode.
     const fullPalette = await listWorkflowTools({
       db,
       principal,
       limit: DEFAULT_PALETTE_LIMIT,
     });
     const tools = assembleCatalog({ principal, readOnly, mode, fullPalette });
-    // Defense-in-depth: the search-first floor must always be present. The
-    // per-mode set includes it by construction (product allow-list + static),
-    // but assert it so a future regression is loud rather than silent.
     const presentNames = new Set(tools.map((t) => t.name));
     const missingCore = [...MCP_CORE_TOOL_NAMES].filter((coreName) => !presentNames.has(coreName));
     if (missingCore.length > 0) {
@@ -239,11 +153,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       principal_id: principal.id,
       tenant_id: principal.tenant_id,
     });
-    // Ship the whole catalog in ONE page when it fits (paginate clamps the
-    // page size to its own MAX). The full authoring/admin catalog is bounded
-    // (~123 authoring, ~152 admin), so a single response reaches clients that
-    // do not follow the pagination cursor; a larger-than-MAX catalog still
-    // paginates, with the conversation cluster + named tools ordered first.
     const page = paginate("tools/list", tools, request.params?.cursor, tools.length);
     return {
       tools: page.page,
@@ -258,9 +167,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       const args = request.params.arguments ?? {};
       const progressToken = request.params._meta?.progressToken;
       const envMeta = (request.params._meta as { environment?: unknown } | undefined)?.environment;
-      // The client may name the environment (`dev`/`prod`) on `_meta.environment`
-      // to pick which credentials the run resolves against; an absent value
-      // defaults to dev. Only these two are honored, everything else falls back.
       let requestedEnvironment: "dev" | "prod" | undefined;
       if (typeof envMeta === "string") {
         const normalized = envMeta.toLowerCase();
@@ -280,12 +186,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         progress_token: progressToken ?? null,
       });
 
-      // Every named MCP tool (authenticate, list_recipes,
-      // self_healing.scan + the four conversation duplicates) and every
-      // bare-name conversation tool routes through the unified dispatcher
-      // in apps/engine/src/tools/. wf.<slug> and the conversation.* prefix
-      // RPCs remain on the legacy path below because they are
-      // surface-specific operational concerns, not LLM tool palette items.
       const mcpModeForCall = resolveMcpMode(principal);
       const readOnlyForCall = !modeFlags(mcpModeForCall, readOnly).showTenantWrites;
 
@@ -295,10 +195,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
         readOnly: readOnlyForCall,
       });
       if (probeEntry) {
-        // Anti-client-spiral backstop: run_workflow over the sessionless MCP
-        // surface cannot pause for missing input (no live conversation to
-        // elicit against — the pause throws an opaque tool_execute_failed).
-        // Return ONE terminal `needs_input` naming the fields BEFORE dispatch.
         if (name === "run_workflow") {
           const needsInput = await buildRunWorkflowNeedsInput({
             db,
@@ -325,13 +221,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           args: args as Record<string, unknown>,
           ...(callMeta ? { meta: callMeta } : {}),
         };
-        // The dispatcher enforces local human approval for a material effect.
-        // Client annotations cannot replace the portal's durable decision.
-        //
-        // Bound the dispatch so a stalled call (e.g. event-loop pressure or a
-        // slow downstream) returns a clear "engine busy" error instead of
-        // hanging until the client's own (much longer) request timeout. The
-        // dispatch keeps running in the background — we just stop blocking.
         const raced = await raceInlineRun(
           callToolViaDispatcher({
             db,
@@ -343,15 +232,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           TOOLS_CALL_DEADLINE_MS,
         );
         if (raced.timedOut) {
-          // `run_workflow` kicks off a real execution that keeps running in
-          // the background past the inline deadline. Returning bare
-          // `engine_busy` orphaned that run, so a client retry RE-RAN the
-          // workflow (duplicate execution). Instead hand back the
-          // execution_id poll handle — the same async-ack the `wf_<slug>`
-          // path returns when it outlives its inline window — so the client
-          // polls `get_execution` rather than re-running. The dispatch
-          // promise is intentionally left running; we only stop blocking on
-          // it.
           if (name === "run_workflow") {
             const ack = await buildRunWorkflowAsyncAck({
               db,
@@ -376,17 +256,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (name.startsWith(CONVERSATION_TOOL_PREFIX)) {
-        // Authoring is opt-in per credential, and this branch has to enforce
-        // it rather than merely reflect it.
-        //
-        // The registry path above gates on the resolved mode; this one did not,
-        // so a credential without authoring saw no `conversation_*` tool in its
-        // catalogue but could still call one by name. That made the mode a
-        // display preference on the one branch that actually opens an authoring
-        // session — the branch where it matters most.
-        //
-        // A catalogue omission is not a boundary. Refusing here is what turns
-        // "you cannot see it" into "you cannot use it".
         if (!modeFlags(resolveMcpMode(principal), readOnly).showConversationTools) {
           logger.info({
             module: "mcp",
@@ -406,10 +275,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
             ],
           };
         }
-        // Accept `_meta.sk_permission_mode` on MCP calls so the sk REPL
-        // and external MCP clients can drive the same auto / ask / plan
-        // loop the HTTP surface exposes. Unknown values are ignored and
-        // the conversation falls back to the tenant default.
         const permissionModeMeta = (
           request.params._meta as { sk_permission_mode?: unknown } | undefined
         )?.sk_permission_mode;
@@ -420,29 +285,13 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           permissionModeMeta === "yolo"
             ? permissionModeMeta
             : undefined;
-        // Accept `_meta.sk_playground` to start a conversation as a
-        // scratch/sandbox surface. Additive + out-of-band, so the
-        // conversation_start INPUT schema stays untouched (no OpenAPI drift),
-        // exactly like `sk_permission_mode` above.
         const playground =
           (request.params._meta as { sk_playground?: unknown } | undefined)?.sk_playground === true;
-        // MCP async Tasks (SEP-1686). A conversation turn runs in the
-        // background `conversation.run-turn` worker — the handler never
-        // runs the model loop inline. `request.params.task` is set by
-        // the SDK only when the client advertised the `tasks`
-        // capability; its presence (cross-checked with the negotiated
-        // client capability) means the client can consume a
-        // `CreateTaskResult`. The conversation loop therefore takes the
-        // DB-pause elicitation path, NOT the live `ElicitationBridge` —
-        // a backgrounded turn has no live session.
         const taskParamPresent = request.params.task !== undefined;
         const clientCapabilities = server.getClientCapabilities();
         const clientTasksCapable = clientCapabilities?.tasks !== undefined;
         const taskAugmented = taskParamPresent && clientTasksCapable;
         const elicitationCapabilities = clientCapabilities?.elicitation;
-        // MCP backwards compatibility: `elicitation: {}` means form support.
-        // SDK 1.29's convenience `elicitInput()` does not normalize that form,
-        // so issue the typed request directly after this explicit capability check.
         const formElicitationCapable =
           elicitationCapabilities !== undefined &&
           (elicitationCapabilities.form !== undefined || elicitationCapabilities.url === undefined);
@@ -458,11 +307,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ...(formElicitationCapable || urlElicitationCapable
             ? {
                 nativeElicitation: {
-                  // No `signal: extra.signal` here: delivery is detached
-                  // from the originating `tools/call` (the poll returns
-                  // immediately while the form round-trip stays pending),
-                  // so tying it to the dying request's abort signal would
-                  // kill the form the moment the poll response is written.
                   ...(formElicitationCapable
                     ? {
                         elicitForm: async (params) =>
@@ -511,8 +355,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           is_error: result.isError,
           task_augmented: taskAugmented,
         });
-        // A Tasks-capable, turn-driving call returns a CreateTaskResult
-        // verbatim; everything else returns the plain CallToolResult.
         if (result.createTaskResult) {
           return result.createTaskResult;
         }
@@ -526,11 +368,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
       }
 
       if (!name.startsWith(TOOL_PREFIX)) {
-        // Terminal, actionable cannot_help (anti-client-spiral). A bare
-        // "unknown tool: X" string is an ambiguous dead-end — a strict client
-        // that reached here (a hallucinated name, or a gated tool absent from
-        // its palette, e.g. `run_workflow` withheld in a read-only mode) has
-        // no next step and can loop/spiral. Name the single recovery path.
         logger.warn({
           module: "mcp",
           action: "mcp.tool.unknown",
@@ -555,8 +392,6 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
           ],
         };
       }
-      // A `wf_<slug>` call verifies its product-local authority below; the
-      // client's annotation handling is not proof of a human decision.
       return await runWorkflowToolCall({
         db,
         principal,
@@ -571,41 +406,22 @@ export function registerToolsCapability(p: RegisterToolsParams): void {
   );
 }
 
-/** One `wf_<slug>` execution hop. RBAC gate, progress bridge, offload, and
- *  result envelope live here. */
 interface WorkflowToolCallParams {
   readonly db: Db;
   readonly principal: ResolvedPrincipal;
   readonly extra: RequestHandlerExtra<ServerRequest, ServerNotification>;
-  /** Full MCP tool name (`wf_<slug>`). */
   readonly name: string;
-  /** The workflow's own inputs — verbatim from the call. Never carries an
-   *  engine-owned key: the advertised inputSchema is the workflow's authored
-   *  `input_schema`. */
   readonly args: Record<string, unknown>;
   readonly progressToken: string | number | undefined;
-  /** Which environment's credentials the run resolves against. */
   readonly execution_mode: "dev" | "prod";
-  /** tools/call receipt timestamp, so the run logs one honest duration. */
   readonly started: number;
 }
 
-/**
- * Run a saved workflow behind its `wf_<slug>` tool.
- *
- * Writes require a locally stored, exact-version execution authority. Without
- * one, only conservative preparation runs. Client annotation dialogs grant no
- * server-side authority. RBAC applies to both paths.
- */
 async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolResult> {
   const { db, principal, extra, name, args, progressToken, execution_mode, started } = p;
   const slug = name.slice(TOOL_PREFIX.length);
   const wf = await resolveWorkflowBySlug(db, principal.tenant_id, slug);
   if (!wf) {
-    // Terminal, actionable envelope — not a bare "workflow not found"
-    // string. The slug may have been renamed/deleted (the tool list
-    // changed mid-session); tell the client to re-discover the current
-    // slug rather than guess another one and loop.
     logger.info({
       module: "mcp",
       action: "mcp.tool.workflow_not_found",
@@ -632,11 +448,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     };
   }
 
-  // Canonical RBAC gate. See `workflows/rbac.ts` —
-  // the chat fast-path, synthetic palette, and fallback
-  // `run_workflow` tool call the same helper so the four
-  // execution surfaces cannot drift on permission semantics or
-  // audit metadata.
   const rbac = await gateWorkflowRunRbac({
     db,
     principal,
@@ -651,11 +462,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     throw err;
   }
 
-  // Work out how many steps the current version has for the
-  // progress bridge's total estimate. The same DAG parse tells us
-  // whether the workflow declares an `output_schema` — when it does,
-  // tools/list advertised an `outputSchema`, so tools/call MUST return
-  // a conforming `structuredContent` (MCP 2025-11-25 tools §Output Schema).
   const wfRows = await db
     .select({ current_version_id: workflows.current_version_id })
     .from(workflows)
@@ -715,10 +521,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       input: args,
       request_source: "mcp",
     });
-    // The refusal and the run that replaced it are one event, so they are one
-    // row. Filed against the preparation's id with `downgraded_to_preparation`:
-    // pointing at nothing would read as "the call was refused and stopped",
-    // while an unrelated held run then succeeded under a different id.
     await auditAdmissionRefusal(
       {
         tenant_id: principal.tenant_id,
@@ -735,7 +537,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     );
   }
 
-  // Wire up MCP's cancellation signal into the execution abort.
   const abortController = new AbortController();
   const onSignalAbort = (): void => {
     abortController.abort("mcp_cancelled");
@@ -743,8 +544,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   if (extra.signal.aborted) onSignalAbort();
   else extra.signal.addEventListener("abort", onSignalAbort, { once: true });
 
-  // Kick off the execution. We store the returned execution id as soon
-  // as possible so the progress bridge can find the steps.
   const state: {
     bridge: { stop: () => void } | null;
     executionId: string | null;
@@ -769,8 +568,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     },
   };
 
-  // We use runExecution directly so the test harness + MCP stdio mode
-  // don't need a live pg-boss.
   const runPromise = runExecution({
     db,
     tenant_id: principal.tenant_id,
@@ -787,32 +584,17 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     },
   });
 
-  // The admission-created id belongs to this call even during parallel runs.
   if (progressToken !== undefined && progressToken !== null) {
     state.bridge = startProgressBridge(db, principal.tenant_id, executionId, totalSteps, notifier);
   }
 
   try {
-    // Bound the inline wait so a slow run doesn't blow past the client's
-    // request timeout. On timeout, detach the cancel wiring (so completing
-    // the response doesn't abort the run), let it finish in the
-    // background, and hand back a polling handle.
     const outcome = await raceInlineRun(runPromise, WF_INLINE_TIMEOUT_MS);
     if (outcome.timedOut) {
-      // Still running — stop blocking the client but keep the run alive.
       extra.signal.removeEventListener("abort", onSignalAbort);
       void runPromise.then(settleProgressBridge, settleProgressBridge);
       const execId = state.executionId;
       if (!execId) {
-        // We never captured the execution id (the id-poll had not landed
-        // before the inline window closed). Do NOT hand back a
-        // "poll get_execution with <null>" handle the client can loop on —
-        // that is the confusing non-terminal state. The run IS alive in the
-        // background. Name NO polling tool: without an id there is nothing
-        // for `get_execution` to fetch, and `list_executions` is published in
-        // neither product nor authoring mode, so pointing at it would send
-        // the caller into an `unknown_tool` rejection. The only correct
-        // instruction is "it is running; do not re-run it".
         logger.warn({
           module: "mcp",
           action: "mcp.tool.result",
@@ -866,16 +648,11 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     }
     const result = outcome.result;
     settleProgressBridge();
-    // When a run produced non-fatal warnings (e.g. jsonata
-    // `unresolved_identifier`), wrap the output so the MCP client sees
-    // them alongside the payload. See held-preview.ts.
     const hasWarnings = (result.warnings?.length ?? 0) > 0;
-    // Final progress frame @ 1.0.
     if (progressToken !== undefined && progressToken !== null) {
       await notifier.send(1, 1, "completed").catch(() => {});
     }
     const { rawBody, held } = buildResultEnvelope(result);
-    // Offload if oversize. Warnings travel with the envelope.
     const serialized = JSON.stringify(rawBody);
     if (serialized.length > MCP_OFFLOAD_CHAR_CAP) {
       const [persisted] = await db
@@ -894,14 +671,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         preview: previewOf(result.output),
         size_bytes: Buffer.byteLength(outputSerialized, "utf8"),
       };
-      // MCP `resource_link` content block. The previous
-      // text-encoded JSON envelope forced clients to parse a string
-      // field to discover the object URI; LLM agents rarely follow
-      // such pointers without explicit instruction.
-      // `resource_link` is the native protocol affordance: compliant
-      // clients can auto-fetch, surface to the user, or expose the
-      // URI as a follow-up call. Pairs with the `s3://` reader
-      // in apps/engine/src/mcp/capabilities/resources.ts.
       const summaryLines: string[] = [
         `${held ? "Preparation (external effects held)" : "Execution"} ${result.execution_id} ${result.status}; result is ${off.size_bytes} bytes (offloaded — inline cap is ${MCP_OFFLOAD_CHAR_CAP} bytes).`,
       ];
@@ -911,9 +680,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       }
       const storageUri = off.storage_uri;
       if (!storageUri) {
-        // A >20 KB result should already have crossed the execution's 10 KB
-        // offload threshold. If persistence did not materialize a pointer,
-        // return inline rather than creating an unowned/orphan object.
         return {
           isError: held || result.status !== "succeeded",
           content: [{ type: "text" as const, text: serialized }],
@@ -956,12 +722,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       execution_id: result.execution_id,
       warnings_count: result.warnings?.length ?? 0,
     });
-    // structuredContent mirrors the workflow `output` (which the declared
-    // `output_schema` describes) — only for a clean success where `output` is
-    // an object, so it always conforms to the advertised schema. The serialized
-    // text block stays for back-compat (spec SHOULD). The offloaded (>cap)
-    // branch above intentionally omits it — a resource_link, not an inlined
-    // large object.
     const structured =
       outputSchemaDeclared &&
       !held &&
@@ -972,8 +732,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         ? { structuredContent: result.output as Record<string, unknown> }
         : {};
     return {
-      // The requested live result is unavailable. MCP clients must not validate
-      // held preparation against the workflow's final outputSchema.
       isError: held || result.status !== "succeeded",
       content: [{ type: "text" as const, text }],
       ...structured,
@@ -996,16 +754,6 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   }
 }
 
-/**
- * Async-ack for a `run_workflow` dispatch that outlived the inline deadline:
- * hand back the live execution_id poll handle instead of a bare `engine_busy`
- * the client would retry into a duplicate run. Mirrors run_workflow's own
- * target precedence — explicit `workflow` arg first, else the workflow most
- * recently bound to the caller's conversation (the confirmed re-dispatch
- * carries no args at all, so it always takes the bound-target path). Returns
- * null when no in-window execution can be attributed; the caller then falls
- * back to the honest `engine_busy`.
- */
 async function buildRunWorkflowAsyncAck(p: {
   db: Db;
   principal: ResolvedPrincipal;
@@ -1058,9 +806,6 @@ async function buildRunWorkflowAsyncAck(p: {
   };
 }
 
-/** Terminal `engine_busy` for a dispatch that outlived the inline deadline
- *  with nothing pollable to hand back. The dispatch keeps running in the
- *  background; we only stop blocking on it. */
 function engineBusyResult(
   tool: string,
   ctx: { principal: ResolvedPrincipal; started: number },

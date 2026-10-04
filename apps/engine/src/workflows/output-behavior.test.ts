@@ -1,5 +1,3 @@
-// Tests for `deriveOutputBehavior` — Polish A's derivation surface.
-
 import { describe, expect, it } from "bun:test";
 import { deriveOutputBehavior } from "./output-behavior.ts";
 
@@ -17,8 +15,6 @@ describe("deriveOutputBehavior", () => {
   });
 
   it("prefers explicit_transform when both are somehow set", () => {
-    // Author error — Zod superRefine usually catches this, but the
-    // derivation must not throw.
     expect(
       deriveOutputBehavior({
         output_transform: "data",

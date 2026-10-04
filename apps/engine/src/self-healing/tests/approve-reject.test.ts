@@ -1,19 +1,3 @@
-// approvePatchCandidate / rejectPatchCandidate tests.
-//
-// The loop test covers the auto-apply happy path. The two reviewer
-// helpers (manual approve / manual reject) are routed via HTTP at
-// http/routes/patch-candidates.ts but had no direct service-level
-// coverage. This file pins:
-//
-//   - approve writes a workflow_versions row, flips the candidate to
-//     applied, and emits patch_candidate.approved audit
-//   - reject flips the candidate to rejected and emits
-//     patch_candidate.rejected audit (with the reason if supplied)
-//   - both helpers are tenant-scoped: a wrong-tenant call returns
-//     null/false without touching the row
-//   - approve refuses already-applied or already-rejected candidates
-//   - reject refuses already-applied or already-rejected candidates
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -46,19 +30,9 @@ afterAll(async () => {
 }, 30_000);
 
 async function seedProposedCandidate(): Promise<string> {
-  // The loop's default policy auto-applies safe patches. We park the
-  // proposal by switching the policy to never-auto, run the loop, and
-  // get a candidate row in `proposed` state.
-  //
-  // Clean slate first: the reactive path dedups against active AND
-  // terminal candidates by drift fingerprint, so a leftover row from a
-  // previous test would be refreshed/skipped instead of freshly
-  // proposed — every seed must start from zero candidates.
   await ctx.testDb.db
     .delete(patchCandidates)
     .where(eq(patchCandidates.workflow_id, ctx.workflow_id));
-  // …and a workflow the patch can still change: an earlier approve rewrote
-  // the step, and re-applying the same rewrite is correctly a no-op.
   await resetSeedDag(ctx);
   await ctx.testDb.db
     .insert(workflowAutohealPolicies)
@@ -199,8 +173,6 @@ describe("approvePatchCandidate", () => {
       .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
     expect(versionsAfter.length).toBe(versionsBefore.length + 1);
 
-    // The point of applying: the new version's step actually reads the new
-    // path. A version that only carries an annotation heals nothing.
     const newVersion = (
       await db.select().from(workflowVersions).where(eq(workflowVersions.id, newVersionId!))
     )[0];
@@ -208,7 +180,6 @@ describe("approvePatchCandidate", () => {
     const steps = (newVersion.dag as { steps: Record<string, unknown>[] }).steps;
     expect(steps.find((s) => s.id === SEED_STEP_ID)?.data_selector).toBe("data.result.id");
 
-    // …and the workflow points at it, so the next run uses the repaired step.
     const wf = (await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id)))[0];
     expect(wf?.current_version_id).toBe(newVersionId!);
 
@@ -228,9 +199,6 @@ describe("approvePatchCandidate", () => {
   });
 
   test("a candidate with no step anchor is never recorded as applied", async () => {
-    // The regression this guards: an approve that rotates a workflow version
-    // carrying only an annotation. The candidate looks healed, the next run
-    // behaves exactly as before, and the drift scan sees a fixed endpoint.
     const candidateId = await seedProposedCandidate();
     const db = ctx.testDb.db;
 
@@ -266,17 +234,12 @@ describe("approvePatchCandidate", () => {
       .where(eq(workflowVersions.workflow_id, ctx.workflow_id));
     expect(versionsAfter.length).toBe(versionsBefore.length);
 
-    // Never recorded as a repair that happened: no anchor is a defect of the
-    // candidate that no version can cure, so it is closed as inapplicable with
-    // that reason — never `applied`, and never left open as a decision nobody
-    // can make.
     const after = (
       await db.select().from(patchCandidates).where(eq(patchCandidates.id, candidateId))
     )[0];
     expect(after?.status).toBe("inapplicable");
     expect(after?.closed_reason).toBe("no_step_anchor");
 
-    // The refusal is on the record, with the reason.
     const auditRows = await db
       .select()
       .from(auditLog)
@@ -301,12 +264,10 @@ describe("approvePatchCandidate", () => {
 
   test("returns null when the candidate is already applied", async () => {
     const candidateId = await seedProposedCandidate();
-    // First approve goes through.
     await approvePatchCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
       ctx.testDb.db,
     );
-    // Second approve must no-op (status is no longer `proposed`).
     const second = await approvePatchCandidate(
       { tenant_id: ctx.tenant_id, candidate_id: candidateId, actor_id: null },
       ctx.testDb.db,
@@ -402,8 +363,6 @@ describe("rejectPatchCandidate", () => {
         and(eq(auditLog.resource_id, candidateId), eq(auditLog.action, "patch_candidate.rejected")),
       );
     expect(auditRows.length).toBe(1);
-    // The optional reason field is absent (or null) when the caller
-    // did not supply one.
     expect(auditRows[0]?.reason ?? null).toBeNull();
   });
 });

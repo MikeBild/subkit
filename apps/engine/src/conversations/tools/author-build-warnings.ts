@@ -1,20 +1,3 @@
-// Build-time author permission warnings (Stream 4).
-//
-// Connector READ is already enforced at resolution time (the placeholder
-// resolver calls `can(connector:read)` when a step resolves `${cred.*}` /
-// `${connector.*}`). This adds a purely-additive authoring-time signal: warn
-// the author EARLY when a write step targets a connector they cannot write,
-// instead of letting it fail at run time.
-//
-// Best-effort and statically-scoped:
-//   - only request steps that NAME a `connector_id` are checked (inline
-//     url/headers steps bind no connector — we never infer one from a URL);
-//   - mutation is one bit (read vs write), reusing `classifyRequestStepSideEffects`;
-//     there is no read/write/delete distinction here.
-//
-// These produce non-blocking warnings (`code: author_missing_permission`)
-// that ride the dry-run `warnings` array — never a hard gate error.
-
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { classifyRequestStepSideEffects } from "../../execution/steps/request/side-effects.ts";
@@ -34,7 +17,6 @@ export async function authorConnectorWriteWarnings(
   steps: ReadonlyArray<Record<string, unknown>>,
 ): Promise<BuildWarning[]> {
   const warnings: BuildWarning[] = [];
-  // One level lookup per connector, reused across steps.
   const levelCache = new Map<string, ConnectorAccessLevel>();
 
   for (const step of steps) {

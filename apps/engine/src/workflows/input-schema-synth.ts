@@ -1,27 +1,3 @@
-// Synthesize a workflow MCP `inputSchema` from its DAG when the author
-// didn't declare one explicitly.
-//
-// Two signal sources:
-//   1. `${input.<pointer>}` placeholders in request URLs / paths /
-//      headers / query values / body strings (parsed via the canonical
-//      `parsePlaceholders`).
-//   2. `input.input.<identifier>` references inside JavaScript transform
-//      bodies (the sole transform language), plus `$input.<identifier>`
-//      inside the remaining JSONata slots (`branch.when`).
-//
-// Output: `{type: "object", properties: {foo: {type: "string"}}, additionalProperties: true}`.
-// Each property's scalar `type` is inferred from how the placeholder is
-// used: a placeholder that is the WHOLE value of a JSON leaf is a typed
-// substitution (the runtime returns the native value), so a numeric or
-// boolean coercion in a JavaScript transform (`Number(...)`, `parseInt(...)`,
-// `Boolean(...)`) narrows it to `number` / `integer` / `boolean`. A
-// placeholder embedded in a larger string is always string-interpolated, so
-// it pins the property to `string`. When the two conflict, `string` wins —
-// it is the safe default for runtime substitution. Operators who want
-// stricter typing (or descriptions) declare `input_schema` on the DAG;
-// synth never fabricates descriptions. Returns `null` when nothing
-// references `input`.
-
 import { extractAst } from "../execution/jsonata-engine.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { sampleToSchema } from "./sample-to-schema.ts";
@@ -39,10 +15,6 @@ type JsonSchemaObject = {
   additionalProperties: true;
 };
 
-// Per-input-name accumulator of the type signals seen across the DAG. A
-// `string` observation is dominant (string interpolation must yield a
-// string); the scalar coercion observations only decide the type when no
-// string interpolation pins the name.
 interface TypeObservations {
   string: boolean;
   number: boolean;
@@ -62,12 +34,8 @@ function note(into: ObservationMap, name: string, kind?: keyof TypeObservations)
 }
 
 function resolveScalarType(obs: TypeObservations): ScalarType {
-  // String interpolation is dominant: an embedded `${input.x}` is always
-  // rendered as text, so the property cannot be anything narrower.
   if (obs.string) return "string";
   const hasNumeric = obs.number || obs.integer;
-  // Conflicting scalar coercions (a name used as both a number and a
-  // boolean) are not determinable — fall back to the safe default.
   if (obs.boolean && hasNumeric) return "string";
   if (obs.boolean) return "boolean";
   if (obs.number) return "number";
@@ -75,10 +43,6 @@ function resolveScalarType(obs: TypeObservations): ScalarType {
   return "string";
 }
 
-// True when the trimmed string is exactly one `${...}` token spanning the
-// whole value — the runtime substitutes the native typed value here (no
-// `String()`), so the JSON leaf carries the input's own type. Mirrors the
-// "single full placeholder" detection in substitution/resolver.ts.
 function isWholeStringPlaceholder(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed.startsWith("${") || !trimmed.endsWith("}") || trimmed.startsWith("$${")) {
@@ -94,9 +58,6 @@ function isWholeStringPlaceholder(text: string): boolean {
 }
 
 function collectFromString(text: string, into: ObservationMap): void {
-  // A placeholder embedded in surrounding characters is string-interpolated;
-  // a whole-string placeholder is a typed leaf whose scalar type may be
-  // narrowed by a coercion elsewhere, so it registers without pinning string.
   const embedded = !isWholeStringPlaceholder(text);
   const { tokens } = parsePlaceholders(text);
   for (const tok of tokens) {
@@ -123,9 +84,6 @@ function collectFromJson(value: JsonValue | undefined, into: ObservationMap): vo
   }
 }
 
-// Jsonata AST traversal. Recurses over every own property (including
-// arrays and nested arrays) so object constructors and other nested
-// shapes aren't missed.
 interface AstNode {
   type?: string;
   value?: unknown;
@@ -145,8 +103,6 @@ function collectFromJsonataAst(node: unknown, into: ObservationMap): void {
     const isInputName = head?.type === "name" && head?.value === "input";
     if (isInputVar || isInputName) {
       if (next?.type === "name" && typeof next.value === "string" && next.value.length > 0) {
-        // The reference type inside a `when` predicate isn't determinable
-        // from the AST — register the name and let it default to string.
         note(into, next.value);
       }
     }
@@ -157,19 +113,11 @@ function collectFromJsonataAst(node: unknown, into: ObservationMap): void {
   }
 }
 
-// JS counterpart of the JSONata `$input.<name>` walk: workflow-input
-// references inside a JavaScript transform body. Dot access and quoted
-// bracket access are both recognised (bracket covers names dot-syntax can't
-// express). Mirrors `extractJsScopeReferences` in conversations/js-transform-eval.ts.
 const JS_INPUT_REF_PATTERNS = [
   /\binput\??\.input\??\.([A-Za-z_$][A-Za-z0-9_$]*)/g,
   /\binput\??\.input\[\s*["']([^"'\]]+)["']\s*\]/g,
 ];
 
-// Scalar coercions wrapping a dot-access workflow-input reference. When an
-// input is only ever coerced this way (never string-interpolated), its
-// synthesized property type narrows accordingly. Bracket-access coercion is
-// left to default to string — a deliberately conservative omission.
 const JS_COERCE_PATTERNS: ReadonlyArray<[keyof TypeObservations, RegExp[]]> = [
   [
     "number",
@@ -202,26 +150,8 @@ function collectJsInputRefs(code: string, into: ObservationMap): void {
 }
 
 function collectFromStep(step: StepDef, into: ObservationMap): void {
-  // 1. Driver-agnostic scan of EVERY string leaf on the step for
-  //    `${input.*}` placeholders. This captures the request
-  //    url/path/headers/query/body the old per-field enumeration handled,
-  //    but ALSO the surfaces it silently missed: multipart part
-  //    values/filenames, the s3 `key`/`prefix`/`metadata`, graphql
-  //    `query` + `variables`, sql `query` + `params`, the xml body, and a
-  //    `call` step's sub-workflow `input`. A missed surface previously
-  //    synthesized a PARTIAL contract (an s3 upload with body
-  //    `${input.markdown}` but key `${input.filename}` yielded only
-  //    `markdown`) or NO contract at all (multipart / call / graphql),
-  //    which collapsed the run_workflow input form into a single
-  //    free-text prompt and let the run reach the driver with a required
-  //    `${input.*}` field unbound (input_schema_violation at runtime).
-  //    The embedded-vs-whole-string typing is preserved because each
-  //    string still flows through `collectFromString`.
   collectFromJson(step as unknown as JsonValue, into);
 
-  // 2. JavaScript transform bodies reference workflow input as
-  //    `input.input.<name>` / `input.input["name"]` — no `${...}` wrapper,
-  //    so the placeholder scan above cannot see them. Extract explicitly.
   if (
     step.kind === "transform" &&
     typeof step.expression === "string" &&
@@ -230,7 +160,6 @@ function collectFromStep(step: StepDef, into: ObservationMap): void {
     collectJsInputRefs(step.expression, into);
   }
 
-  // 3. JSONata `branch.when` predicates reference input as `$input.<name>`.
   if (step.kind === "branch" && step.when) {
     const ast = extractAst(step.when) as AstNode | null;
     if (ast) collectFromJsonataAst(ast, into);
@@ -250,42 +179,12 @@ export function synthesizeInputSchema(dag: WorkflowDef): JsonSchemaObject | null
 }
 
 export interface WorkflowInputContract {
-  /** Effective schema: declared `input_schema`, else the sample-derived
-   *  one, else the structural synth. */
   schema: Record<string, unknown>;
-  /** Which precedence tier produced `schema`:
-   *   - `declared` — the author's hand-tuned `input_schema`.
-   *   - `sample`   — derived from `input_schema_sample` (the payload-first idiom).
-   *   - `synth`    — scraped from `${input.*}` / `input.input.*` placeholders.
-   *  Surfaced by `inspect_workflow` so the model can tell whether the run
-   *  contract is a real declared/sampled shape or a best-effort structural guess. */
   source: "declared" | "sample" | "synth";
-  /** Declared property names. */
   properties: string[];
-  /** Keys a run must supply. From `schema.required` when the tier that
-   *  won carries a non-empty `required` (declared schemas and
-   *  sample-derived schemas do); otherwise EVERY property — the
-   *  structural synth never emits `required`, and a placeholder
-   *  substituting null/undefined at runtime is worse than one extra
-   *  confirmation. */
   required: string[];
 }
 
-/**
- * Sample-derived tier of the input contract. The draft carries an
- * `input_schema_sample` — a literal example payload the author (or a
- * dry-run) supplied. `sampleToSchema` turns that concrete value into a
- * tight JSON Schema whose `required` names every observed key, giving
- * `run_workflow` a real form instead of a single free-text prompt.
- *
- * Only a sample that describes an OBJECT WITH NAMED KEYS yields a usable
- * contract: a scalar / array / empty-object sample carries no property
- * names to require, so it returns `null` and the caller falls through to
- * the structural synth. `input_schema_sample` is a typed (optional)
- * `WorkflowDef` field persisted in the versioned definition, so it is read
- * directly — a SAVED workflow that carried a sample resolves this tier, not
- * just an in-flight draft.
- */
 function sampleDerivedSchema(dag: WorkflowDef): Record<string, unknown> | null {
   const sample = dag.input_schema_sample;
   if (sample === undefined || sample === null) return null;
@@ -298,29 +197,12 @@ function sampleDerivedSchema(dag: WorkflowDef): Record<string, unknown> | null {
   return schema;
 }
 
-/**
- * The workflow's effective input contract — the SAME source everywhere:
- * the `wf_<slug>` tool schema, the persist-envelope usage block, the
- * `run_workflow` missing-input gate, and the chat fast-path all read
- * this, so no surface can disagree about what a run needs.
- * Returns `null` when the workflow takes no input.
- *
- * Precedence, most authoritative first:
- *   1. declared `input_schema` — the author's explicit, hand-tuned contract.
- *   2. sample-derived — `sampleToSchema(input_schema_sample)` when the draft
- *      carries an object example payload (required = every sample key).
- *   3. structural synth — `${input.*}` / `input.input.*` placeholders scraped
- *      from the DAG (no `required` of its own; every property is required).
- */
 export function resolveWorkflowInputContract(dag: WorkflowDef): WorkflowInputContract | null {
   const declared =
     dag.input_schema && typeof dag.input_schema === "object"
       ? (dag.input_schema as Record<string, unknown>)
       : null;
   const declaredWins = declared !== null && Object.keys(declared).length > 0;
-  // Compute the winning tier explicitly (not just the schema) so callers can
-  // report WHICH source the run contract came from. Order mirrors the doc
-  // above: declared > sample > synth.
   const sampleSchema = declaredWins ? null : sampleDerivedSchema(dag);
   let source: WorkflowInputContract["source"];
   let schema: Record<string, unknown> | null;

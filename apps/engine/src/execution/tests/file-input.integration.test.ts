@@ -1,16 +1,3 @@
-// Integration test: workflow with a multipart step that carries a `$file`
-// reference as one of the parts.
-//
-// Setup:
-//   - Real Postgres DB via createTestDb.
-//   - File attached via attachInlineForTest (writes bytes to the test object store).
-//   - Workflow step sends the file as a multipart/form-data POST to a local
-//     mock HTTP server (node:http).
-//   - The mock server captures the raw multipart body for assertions.
-//
-// Tenant isolation: a file ID that does not exist in the executing tenant
-// resolves to FileNotFoundError, causing the step to fail.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -19,8 +6,6 @@ import { createDeterministicHexFactory } from "../../test-helpers/determinism/id
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
-// Deterministic 16-byte prefix per call: ensures sha256 uniqueness across
-// fixtures within the test while remaining replayable run-to-run.
 const nextHex = createDeterministicHexFactory(0xf11e1f);
 
 interface CapturedRequest {
@@ -28,7 +13,6 @@ interface CapturedRequest {
   body: Buffer;
 }
 
-/** Spin up a local HTTP server that captures the multipart POST body. */
 function createCapturingServer(): {
   baseUrl: string;
   last: () => CapturedRequest | null;
@@ -73,12 +57,10 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-// Helper: build a unique buffer to avoid sha256 collision across tests.
 function uniqueBytes(tag: string): Buffer {
   return Buffer.concat([Buffer.from(nextHex(16), "hex"), Buffer.from(tag)]);
 }
 
-// A fake conversation id for linking — must be a valid UUID format.
 const FAKE_CONV_ID = "00000000-0000-0000-0000-000000000001";
 
 describe("workflow file-input: multipart step with $file part", () => {
@@ -122,22 +104,17 @@ describe("workflow file-input: multipart step with $file part", () => {
     const req = srv.last();
     expect(req).not.toBeNull();
 
-    // Must be multipart/form-data.
     expect(req!.contentType).toContain("multipart/form-data");
     expect(req!.contentType).toContain("boundary=");
 
-    // The raw multipart body must contain the file bytes.
     const rawBody = req!.body.toString("binary");
-    // First 16 bytes are the randomBytes prefix — verify they appear.
     const expectedSlice = fileContent.subarray(0, 16).toString("binary");
     expect(rawBody).toContain(expectedSlice);
 
-    // Body must contain the scalar "Q1 Report" field.
     expect(rawBody).toContain("Q1 Report");
   });
 
   test("unknown $file id → step fails (file not found)", async () => {
-    // Use a syntactically valid fid that does not exist in our tenant.
     const ghostFid = "fid_00000000-dead-beef-cafe-000000000001";
 
     const { workflow_id } = await createWorkflowRow(ctx, {
@@ -160,7 +137,6 @@ describe("workflow file-input: multipart step with $file part", () => {
       input: null,
     });
 
-    // FileNotFoundError propagates as a step failure.
     expect(result.status).toBe("failed");
   });
 

@@ -31,7 +31,6 @@ interface LoaderState {
   statelessRuntime: boolean;
   pendingRestartKeys: Set<string>;
   overrideKeys: Set<string>;
-  // Effective source per dotted leaf (global view; tenant overrides are computed on demand).
   globalSourceMap: SourceMap;
 }
 
@@ -66,7 +65,6 @@ function getDeep(source: Record<string, unknown>, leafPath: string[]): unknown {
   return cursor;
 }
 
-/** Process bindings that seed revision 1 and never override later revisions. */
 function collectBootstrapEnvSeeds(
   env: Record<string, string | undefined>,
 ): Record<string, unknown> {
@@ -113,10 +111,6 @@ function collectBootstrapEnvSeeds(
   return seeds;
 }
 
-// Exported for unit tests that need to assert path resolution without
-// triggering the full loadConfig() (which would also try to write the
-// auto-generated session secret to disk — fine for tmpdirs, fatal for
-// /etc/subkit on a dev workstation).
 export function _defaultConfigPathForTests(env: Record<string, string | undefined>): string {
   return defaultConfigPath(env);
 }
@@ -124,13 +118,6 @@ export function _defaultConfigPathForTests(env: Record<string, string | undefine
 function defaultConfigPath(env: Record<string, string | undefined>): string {
   const envOverride = env.SUBKIT_CONFIG;
   if (envOverride) return path.resolve(envOverride);
-  // Systemd convention: when `ConfigurationDirectory=subkit` is set on
-  // the unit, systemd exports `CONFIGURATION_DIRECTORY=/etc/subkit` to
-  // the service. Honor that explicit operator signal before falling
-  // back to `NODE_ENV=production` heuristics — the unit (or any other
-  // launcher) is the source of truth for where canonical config lives,
-  // and CWD-relative defaults silently drift when the unit's
-  // WorkingDirectory differs from /etc/subkit.
   const cfgDir = env.CONFIGURATION_DIRECTORY;
   if (cfgDir) return path.resolve(cfgDir, "subkit.config.json");
   if (env.NODE_ENV === "production") return "/etc/subkit/subkit.config.json";
@@ -167,7 +154,6 @@ async function atomicWrite(configPath: string, content: string): Promise<void> {
     await fileHandle.close();
   }
 
-  // Best-effort fsync of parent directory so the rename is durable.
   try {
     const dirHandle = await fs.open(dir, "r");
     try {
@@ -175,10 +161,7 @@ async function atomicWrite(configPath: string, content: string): Promise<void> {
     } finally {
       await dirHandle.close();
     }
-  } catch {
-    // Some platforms (Windows) reject fsync on directory handles. The
-    // subsequent rename is still atomic on the filesystem we target.
-  }
+  } catch {}
 
   await fs.rename(tmp, configPath);
 }
@@ -207,7 +190,7 @@ function deepMergeReplaceArrays<T>(base: T, overlay: unknown): T {
   }
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [key, value] of Object.entries(overlay as Record<string, unknown>)) {
-    if (value === null) continue; // null in overlay = unset → fall through
+    if (value === null) continue;
     out[key] = deepMergeReplaceArrays(out[key], value);
   }
   return out as T;
@@ -223,8 +206,6 @@ function serialize(config: Config): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-// Mirror generic LLM leaves into the active provider leaf that the model
-// resolver reads (see llm/core/model-init.ts ENV_TO_CONFIG_PATH).
 function mirrorGenericLlmKey(
   cfg: Config,
   opts: { overwriteApiKey?: boolean; overwriteModel?: boolean } = {},
@@ -267,21 +248,11 @@ export async function loadConfig(
 
   const seeds = collectBootstrapEnvSeeds(env);
 
-  // We deliberately do NOT use
-  // c12/defu here: defu CONCATENATES arrays, and the previous code also
-  // handed c12 the same file twice — once via `configFile` (which c12
-  // reads) and again via `defaults: fileObj` — so every load DOUBLED every
-  // array-valued leaf. `auth.mcp_oauth.scopes_supported` (the one leaf with
-  // a non-empty default array) grew 3 → 3·2ⁿ, was persisted on each deploy's
-  // settings write, and reached 3·2²² ≈ 12.6M entries = a 276 MB config that
-  // hung boot (config parse + reserialize spun a core and ~3.6 GB heap).
-  // `deepMergeReplaceArrays` replaces arrays, matching `applyTenantOverlay`.
   const mergedObj = deepMergeReplaceArrays(
     deepMergeReplaceArrays({} as Record<string, unknown>, seeds),
     fileObj,
   ) as Record<string, unknown>;
 
-  // DATABASE_URL fallback: only consulted when database.url is absent.
   const databaseUrlInConfig = (mergedObj.database as Record<string, unknown> | undefined)?.url;
   const databaseUrlInEnv = env.DATABASE_URL;
   if ((databaseUrlInConfig === undefined || databaseUrlInConfig === "") && databaseUrlInEnv) {
@@ -295,7 +266,6 @@ export async function loadConfig(
     databaseUrlInEnv &&
     databaseUrlInEnv !== databaseUrlInConfig
   ) {
-    // Both present but differ — config wins, warn once.
     const { logger } = await import("../logging/logger.ts");
     logger.warn({
       module: "config",
@@ -308,8 +278,6 @@ export async function loadConfig(
     throw new ConfigLoaderError(retiredSectionMessage(configPath, retired.offenders));
   }
   if (retired.dropped.length > 0) {
-    // Not silent: the keys do disappear from disk on the next settings write,
-    // and an operator who put them there deserves to read that once.
     const { logger } = await import("../logging/logger.ts");
     logger.warn({
       module: "config",
@@ -335,11 +303,8 @@ export async function loadConfig(
     throw err;
   }
 
-  // Reconcile the generic LLM key/model into the provider-specific leaves the
-  // model resolver reads, so a key set via `sk init` / generic settings works.
   mirrorGenericLlmKey(parsed);
 
-  // Auto-generate session secret on first boot if missing.
   let needsPersist = false;
   let generatedSessionSecret = false;
   if (!parsed.auth.session.secret) {
@@ -359,11 +324,6 @@ export async function loadConfig(
     }
   }
 
-  // Per-leaf source map at boot — one structured info line that
-  // summarises which leaves were populated by canonical config (including
-  // a just-persisted legacy seed) and which are riding the schema default.
-  // Operators reading the boot log can confirm every setting is
-  // sourced from the layer they expect.
   try {
     const { logger } = await import("../logging/logger.ts");
     const sourceMap = buildSourceMap(mergedObj);
@@ -384,17 +344,13 @@ export async function loadConfig(
       tenant_overlay_count: Object.keys(parsed.tenants ?? {}).length,
       ...tally,
     });
-  } catch {
-    /* logger module not loaded yet */
-  }
+  } catch {}
 
   _state = {
     config: parsed,
     configPath,
     statelessRuntime,
     pendingRestartKeys: new Set(),
-    // Kept in the diagnostics wire shape for compatibility. Runtime env
-    // overrides no longer exist; canonical configuration always wins.
     overrideKeys: new Set(),
     globalSourceMap: buildSourceMap(mergedObj),
   };
@@ -409,16 +365,6 @@ function deepFreeze<T>(obj: T): T {
   return Object.freeze(obj);
 }
 
-// boot.complete summary: every subsystem that reads getConfig() at
-// boot can register itself via `recordBootConsumer(<name>)` so the
-// loader can emit a single `config.boot.complete` log line listing
-// every consumer that wired up successfully. Lets an operator confirm
-// from one log line that the loader → consumer chain is fully live.
-//
-// The set is keyed by subsystem name (string), populated only at boot.
-// `recordBootConsumer` is a noop after `_state` is set + the
-// `boot.complete` line was emitted (so post-boot getConfig calls don't
-// flood the set).
 const _bootConsumers = new Set<string>();
 let _bootCompleteEmitted = false;
 
@@ -427,15 +373,6 @@ export function recordBootConsumer(name: string): void {
   _bootConsumers.add(name);
 }
 
-/**
- * Emit `config.boot.complete` once after every subsystem has wired up
- * (e.g. at the end of `runServer()` in apps/engine/src/index.ts). The
- * line carries the list of subsystems that called
- * `recordBootConsumer()` at boot — operators reading the boot log get
- * a single confirmation that loader → consumer hand-off is wired.
- *
- * Idempotent: subsequent calls are noops. Safe to call from tests.
- */
 export async function emitBootComplete(): Promise<void> {
   if (_bootCompleteEmitted) return;
   _bootCompleteEmitted = true;
@@ -448,60 +385,28 @@ export async function emitBootComplete(): Promise<void> {
       consumers: [..._bootConsumers].sort(),
       consumer_count: _bootConsumers.size,
     });
-  } catch {
-    /* logger module not loaded yet */
-  }
+  } catch {}
 }
 
-/** **TEST-ONLY** — clear the boot-consumer registry between test cases. */
 export function _resetBootConsumersForTests(): void {
   _bootConsumers.clear();
   _bootCompleteEmitted = false;
 }
 
-// Read-sampling is a TEST-ONLY introspection hook. It is *not* a
-// production observability path — operator-grade read counting belongs
-// in the Prometheus metrics layer (see observability/metrics.ts). The
-// `_` prefix and `ForTests` suffix are the project convention for
-// "you must not import this from production code"; the gauge in
-// metrics.ts is the supported runtime telemetry surface for config
-// reads. Calling `_enableReadSamplingForTests` from a non-test caller
-// silently grows a Map per `getConfig()` invocation and never frees it.
 let _readCounter: Map<string, number> | null = null;
 let _readSamplingEnabled = false;
 
-/**
- * **TEST-ONLY** — turn on per-leaf read sampling. Counts every
- * getConfig() invocation by tenant scope so a test can assert that a
- * downstream consumer actually fetched the leaf after setConfigKey.
- * Disabled in production by default (zero overhead until enabled).
- *
- * Production read counters belong in
- * `apps/engine/src/observability/metrics.ts`, not here. Do not call
- * this from outside a `__tests__` directory.
- */
 export function _enableReadSamplingForTests(): Map<string, number> {
   _readCounter = new Map();
   _readSamplingEnabled = true;
   return _readCounter;
 }
 
-/** **TEST-ONLY** — counterpart to `_enableReadSamplingForTests`; clears
- *  the counter and disables sampling. Call from `afterEach` to keep
- *  test cases isolated. */
 export function _disableReadSamplingForTests(): void {
   _readCounter = null;
   _readSamplingEnabled = false;
 }
 
-/**
- * True once `loadConfig()` has run. Lets low-level code that may execute
- * before the config subsystem is bootstrapped (e.g. driver functions
- * exercised directly in unit tests) read a setting only when it is
- * actually available, falling back to a documented default otherwise. In
- * production config is always loaded before the HTTP listener accepts
- * traffic, so request-path callers always observe `true`.
- */
 export function isConfigLoaded(): boolean {
   return _state !== null;
 }
@@ -514,9 +419,6 @@ export function getConfig(tenantId?: string): Config {
     const key = tenantId ? `tenant:${tenantId}` : "global";
     _readCounter.set(key, (_readCounter.get(key) ?? 0) + 1);
   }
-  // Plan §2: getConfig returns an immutable view. setConfigKey writes
-  // a fresh object via JSON.parse(JSON.stringify(...)) and replaces
-  // _state.config wholesale, so freeze never blocks legitimate writes.
   if (!tenantId) return deepFreeze(_state.config);
   return deepFreeze(applyTenantOverlay(_state.config, tenantId));
 }
@@ -539,7 +441,6 @@ export function getDiagnostics(): Diagnostics {
   };
 }
 
-/** Install a validated DB revision without touching the filesystem. */
 export function installRuntimeConfig(document: unknown): Config {
   if (_state === null) {
     throw new ConfigLoaderError("installRuntimeConfig() called before loadConfig()");
@@ -552,15 +453,6 @@ export function installRuntimeConfig(document: unknown): Config {
   return parsed;
 }
 
-/**
- * Emit one `config.requires_restart_pending` warn per call when one or
- * more leaves are flagged `requiresRestart: true` and have been
- * written since boot. Call from a scheduler tick (e.g. every 5
- * minutes) so an operator who PUT a `requiresRestart: true` leaf and
- * forgot to restart the container surfaces in the boot/operator log
- * stream alongside the rest of their diagnostics. No-op when the set
- * is empty; never logs the value, only the leaf paths.
- */
 export async function emitRequiresRestartPendingIfAny(): Promise<void> {
   if (_state === null) return;
   if (_state.pendingRestartKeys.size === 0) return;
@@ -573,9 +465,7 @@ export async function emitRequiresRestartPendingIfAny(): Promise<void> {
       pending_restart_keys: [..._state.pendingRestartKeys].sort(),
       pending_count: _state.pendingRestartKeys.size,
     });
-  } catch {
-    /* logger module not loaded */
-  }
+  } catch {}
 }
 
 export interface SetConfigKeyOptions {
@@ -589,13 +479,6 @@ export interface SetConfigKeyResult {
   requiresRestart: boolean;
   scope: "global" | `tenant:${string}`;
   leafPath: string;
-  /** True iff the leaf was on a hot-reload path (currently only
-   *  `observability.*`) AND the in-process reconfigure threw. The
-   *  on-disk + in-memory write succeeded; the live tracer/exporter
-   *  is the part that didn't pick up the change. Callers (the
-   *  /v1/settings PUT route) must surface this so the operator
-   *  doesn't see `requiresRestart: false` while the running
-   *  process is still on the old config. */
   reconfigureFailed?: boolean;
 }
 
@@ -629,7 +512,6 @@ export async function setConfigKey(
     );
   }
 
-  // Validate value through the leaf's schema (unwrap default/optional/nullable wrappers).
   const innerSchema = (leaf.schema as { def?: unknown }).def ? leaf.schema : leaf.schema;
   const parseResult = innerSchema.safeParse(value);
   if (!parseResult.success) {
@@ -688,10 +570,6 @@ export async function setConfigKey(
       updatedConfig = next;
     }
 
-    // Switching the active LLM provider must not mirror the previous
-    // provider's generic key into the newly selected provider's empty leaf.
-    // Clear the generic key on a real provider change; the prior provider
-    // keeps its provider-specific leaf, and the new provider stays unset.
     if (
       !opts.tenantId &&
       leafPath.length === 2 &&
@@ -702,8 +580,6 @@ export async function setConfigKey(
       setDeep(updatedConfig as unknown as Record<string, unknown>, ["llm", "api_key"], "");
     }
 
-    // Re-validate the whole config after the targeted edit so cross-leaf
-    // refinements stay coherent.
     const fullParse = safeParseConfigDocument(updatedConfig);
     if (!fullParse.success) {
       const issue = fullParse.error.issues[0];
@@ -714,9 +590,6 @@ export async function setConfigKey(
       );
     }
 
-    // Keep the active provider leaf in sync when the operator edits the
-    // generic LLM leaf through settings. Otherwise a stale provider-specific
-    // key remains the one used by the SDK even though llm.api_key changed.
     mirrorGenericLlmKey(fullParse.data, {
       overwriteApiKey:
         !opts.tenantId &&
@@ -735,19 +608,6 @@ export async function setConfigKey(
     if (!opts.tenantId) state.globalSourceMap[dottedPath(leaf)] = "global";
     if (requiresRestart) state.pendingRestartKeys.add(dottedPath(leaf));
 
-    // Structured runtime log — one line per applied setting so an
-    // operator tailing the engine log can correlate every change with
-    // the responsible request. The log NEVER carries the value itself
-    // (sensitive leaves render as "***" via the route's mask layer
-    // upstream of this function); it carries only the leaf path,
-    // scope, restart flag, and whether the on-disk file was actually
-    // rewritten with a new value (vs. a no-op write).
-    //
-    // Emitted BEFORE the optional logger reconfigure below so that a
-    // log.level / log.format change cannot retroactively suppress or
-    // reformat the applied-line documenting the change itself: an
-    // operator who sets log.level=error must still see the
-    // setting.applied entry that flipped the threshold.
     try {
       const { logger } = await import("../logging/logger.ts");
       logger.info({
@@ -760,16 +620,8 @@ export async function setConfigKey(
         requires_restart: requiresRestart,
         changed: JSON.stringify(beforeValue) !== JSON.stringify(validatedValue),
       });
-    } catch {
-      /* logger module not loaded; never fail a write because of telemetry */
-    }
+    } catch {}
 
-    // Hot-reload the logger when a log.* leaf changes — operators set
-    // `sk settings set log.level "debug"` expecting the next request
-    // to log at the new level, not "after restart". The reconfigure
-    // call swaps the in-memory MODE/THRESHOLD atomically. Runs AFTER
-    // the setting.applied log above so the change-document line is
-    // not suppressed by the threshold it just installed.
     if (leaf.path[0] === "log") {
       try {
         const { reconfigureLogger } = await import("../logging/logger.ts");
@@ -777,33 +629,11 @@ export async function setConfigKey(
           level: fullParse.data.log.level,
           format: fullParse.data.log.format,
         });
-      } catch {
-        /* logger module not loaded */
-      }
+      } catch {}
     }
 
-    // Hot-reload OTel + langfuse exporters when an observability.*
-    // leaf changes. Without this, flipping
-    // `observability.langfuse.secret_key` (etc.) wrote the value to
-    // disk but the running tracer kept the old credentials in memory
-    // until the next process restart — which contradicted the
-    // `requiresRestart: false` flag this section now carries. The
-    // tracing reconfigure shuts down the SDK and re-bootstraps from
-    // the updated config; the langfuse-spans cache is reset so the
-    // next `getLangfuse()` reads the new config too. Both calls are
-    // best-effort — never fail a settings write because the tracer
-    // couldn't restart cleanly.
-    //
-    // Dynamic imports here — observability/tracing.ts lazy-imports the
-    // OTel SDK packages (~10 MB of code), and the matching log/logger
-    // hot-reload above is dynamic for the same reason. Top-of-file
-    // imports would pull the entire OTel surface into every process
-    // that touches config (CLI, tests, smoke binary) for no benefit.
     let reconfigureFailed = false;
     if (leaf.path[0] === "observability") {
-      // Hot-reload the per-field log cap when observability.* changes —
-      // operators set `sk settings set observability.field_truncation_chars`
-      // expecting the next log line to honor it without a restart.
       try {
         const { reconfigureObservability } = await import("../logging/logger.ts");
         reconfigureObservability({
@@ -811,22 +641,7 @@ export async function setConfigKey(
           service_name: fullParse.data.observability.otlp.service_name,
           deployment_environment: fullParse.data.observability.deployment_environment,
         });
-      } catch {
-        /* logger module not loaded */
-      }
-      // The reconfigure runs INSIDE withWriteLock on purpose: a second
-      // setConfigKey arriving mid-reconfigure would otherwise see the
-      // new in-memory config but the old running tracer, and could
-      // race with our shutdown→re-init sequence (the OTel SDK is not
-      // safe to start while a previous shutdown is in flight).
-      //
-      // Tail-latency bound: reconfigureTracing wraps its
-      // SDK shutdown in `awaitWithTimeout` with a 5 s ceiling
-      // (`RECONFIGURE_SHUTDOWN_TIMEOUT_MS` in
-      // observability/tracing.ts). Even a hung exporter can't pin the
-      // lock past that — the SDK's retry stays in the background and
-      // we proceed to startTracing(). Worst-case unrelated
-      // setConfigKey() waits ≤ 5 s during heavy observability churn.
+      } catch {}
       try {
         const { reconfigureTracing } = await import("../observability/tracing.ts");
         await reconfigureTracing();
@@ -841,19 +656,6 @@ export async function setConfigKey(
           error: err instanceof Error ? err.message : String(err),
         });
       }
-      // Two failure modes here, only one of which is benign:
-      //   (a) dynamic import throws because langfuse-spans is not on
-      //       this binary's import graph (smoke-mode boot, CLI entry
-      //       points that never serve requests). Benign — no client
-      //       to reset.
-      //   (b) resetLangfuseCacheForReload itself throws (a future
-      //       refactor that returns undefined or works against a
-      //       stale handle). NOT benign — the live tracer is
-      //       half-reloaded and an operator who flipped
-      //       observability.langfuse.secret_key would see spans go
-      //       to the old project. We promote this case to
-      //       reconfigureFailed so the audit row + route response
-      //       reflect the half-reload.
       try {
         const langfuseModule = await import("../observability/langfuse-spans.ts");
         try {
@@ -869,17 +671,12 @@ export async function setConfigKey(
             error: err instanceof Error ? err.message : String(err),
           });
         }
-      } catch {
-        /* langfuse-spans module not loaded — benign */
-      }
+      } catch {}
     }
 
     return {
       before: beforeValue,
       after: validatedValue,
-      // The on-disk + in-memory write succeeded. Only the live tracer
-      // didn't pick it up — operator must restart for the new config
-      // to take effect, so requiresRestart promotes to true.
       requiresRestart: requiresRestart || reconfigureFailed,
       scope: opts.tenantId ? `tenant:${opts.tenantId}` : "global",
       leafPath: dottedPath(leaf),
@@ -888,11 +685,6 @@ export async function setConfigKey(
   });
 }
 
-/**
- * **TEST-ONLY** — reset module state between cases. Production code
- * never resets the loader; loadConfig() runs exactly once at boot. Use
- * this in `beforeEach` to isolate test cases that mutate config.
- */
 export function _resetConfigForTests(): void {
   _state = null;
   _writeLock = Promise.resolve();

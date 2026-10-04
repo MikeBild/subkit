@@ -1,9 +1,3 @@
-// OPT-E end-to-end: does the "Connector operations" block actually reach the
-// assembled system prompt? The loader/formatter are unit-tested separately;
-// this is the DECISIVE integration check that the wiring fires under the same
-// workflow-authoring-mode gate the existing "Recorded endpoint samples" feature
-// uses — i.e. whether OPT-E injects at all when its conditions are met.
-
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import * as discoveryModule from "../../../connectors/discovery/index.ts";
 import { runDiscoveryCached } from "../../../connectors/discovery/service.ts";

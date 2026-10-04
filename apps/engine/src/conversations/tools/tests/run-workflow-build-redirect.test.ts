@@ -1,15 +1,3 @@
-// run_workflow → build_workflow redirect contract.
-//
-// When the model calls run_workflow with no persisted target, the error must
-// route by intent:
-//   - NO draft steps  → the user is AUTHORING; next_best_actions points at
-//     build_workflow / propose_step (NOT save_workflow_draft, which needs a
-//     draft that doesn't exist). Without this, the model retried run_workflow
-//     with variant args until the loop-detector aborted the turn (~150k
-//     tokens/turn) — observed in prod across three separate conversations.
-//   - draft WITH steps → the author just needs to commit; point at
-//     dry_run_workflow / save_workflow_draft.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { tenants, workflows, workflowVersions } from "../../../db/schema/index.ts";
@@ -64,7 +52,6 @@ describe("run_workflow — authoring-intent redirect", () => {
     };
     expect(data.error_code).toBe("workflow_not_persisted");
     expect(data.next_best_actions).toContain("author_workflow");
-    // Must NOT steer to save_workflow_draft when there is nothing to save.
     expect(data.next_best_actions).not.toContain("save_workflow_draft");
     expect(data.message.toLowerCase()).toContain("author_workflow");
   });
@@ -106,7 +93,6 @@ describe("run_workflow — a version stored in an earlier format", () => {
         tenant_id,
         workflow_id: workflow.id,
         version: 1,
-        // A transform language the schema no longer knows.
         dag: {
           name: "Invalid run",
           steps: [{ id: "old", kind: "transform", language: "jsonata", expression: "$" }],
@@ -127,7 +113,6 @@ describe("run_workflow — a version stored in an earlier format", () => {
     const data = result.data as { error_code: string; message: string; execution_id?: string };
     expect(data.error_code).toBe("workflow_version_invalid");
     expect(data.message).toContain("earlier definition format");
-    // Nothing ran: there is no execution to point at.
     expect(data.execution_id).toBeUndefined();
   });
 });

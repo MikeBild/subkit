@@ -2,7 +2,6 @@ import type { conversationElicitations } from "../db/schema/index.ts";
 
 type Elicitation = typeof conversationElicitations.$inferSelect;
 
-/** These questions have no tool call to carry their answer into the next turn. */
 export function isProseQuestionElicitation(
   row: Pick<Elicitation, "tool_call_id" | "tool_name" | "input">,
 ): boolean {
@@ -14,7 +13,6 @@ export function isProseQuestionElicitation(
   );
 }
 
-/** Text only: confirmations, forms and unanswered questions are never chat messages. */
 export function proseQuestionAnswer(row: Elicitation): string | null {
   return isProseQuestionElicitation(row) ? resolvedTextAnswer(row) : null;
 }
@@ -27,7 +25,6 @@ export function resolvedTextAnswer(
   return typeof output?.value === "string" ? output.value : null;
 }
 
-/** Show the declared label of a completed selection, never its machine value. */
 export function resolvedChoiceAnswer(
   row: Pick<Elicitation, "tool_name" | "status" | "input" | "output">,
 ): string | null {

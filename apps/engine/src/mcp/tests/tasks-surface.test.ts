@@ -1,8 +1,3 @@
-// MCP async Tasks surface.
-//
-// Store-level tests cover derivation details; this suite drives the advertised
-// MCP `tasks/*` protocol methods over Streamable HTTP with real auth sessions.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { eq } from "drizzle-orm";
@@ -125,12 +120,6 @@ describe("MCP tasks surface", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  // A4 — MCP 2025-11-25 tasks: tasks/result MUST carry
-  // _meta["io.modelcontextprotocol/related-task"].taskId.
-  // subkit bypasses the SDK task-store result path (the worker writes directly),
-  // so this is attached explicitly in ConversationTaskStore.getTaskResult.
-  // Both the success path (result set) and failure path (failure_reason set)
-  // must include the linkage.
   test("A4: tasks/result for a completed task carries _meta related-task taskId", async () => {
     const conversationId = await seedConversation();
     const taskId = await seedTask(conversationId, {
@@ -169,8 +158,6 @@ describe("MCP tasks surface", () => {
     expect(relatedTask?.taskId).toBe(taskId);
   });
 
-  // P2 — tasks status derivation: a task row with failure_reason set derives
-  // status=failed and exposes the reason as statusMessage.
   test("P2: task with failure_reason derives status=failed with the failure reason as statusMessage", async () => {
     const conversationId = await seedConversation();
     const failureMsg = "connector_timeout_simulated";

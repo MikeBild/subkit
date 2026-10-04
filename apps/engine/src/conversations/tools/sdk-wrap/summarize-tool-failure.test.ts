@@ -1,9 +1,3 @@
-// Unit tests for summarizeToolFailure — the log-enrichment that lifts a
-// structured ok:false rejection reason (top-level error_code/message) into
-// the conversation.tool.failed log line. Regression guard for the production
-// symptom where ask_user_form / probe_connector_draft credential_form_mismatch
-// failures logged a bare ok:false carrying only data_keys (no WHY).
-
 import { describe, expect, test } from "bun:test";
 import { summarizeToolFailure } from "./policy-helpers.ts";
 
@@ -48,10 +42,6 @@ describe("summarizeToolFailure", () => {
     expect(summarizeToolFailure({ ok: false })).toEqual({});
   });
 
-  // Most authoring tools pack the reason INTO `data` (run_workflow's
-  // data.error_code, dry_run_workflow's data.summary). Without a data fallback
-  // these logged `undefined` — the exact gap the keyed benchmark surfaced
-  // (tool.failed [dry_run_workflow] — undefined).
   test("ok:false with error_code in data → surfaced via fallback", () => {
     expect(
       summarizeToolFailure({

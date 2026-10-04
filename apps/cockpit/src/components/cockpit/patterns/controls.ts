@@ -1,10 +1,3 @@
-// The form controls a page puts inside the patterns: the filled page action a
-// `PageHeader` holds, the fields of a `FormDialog`, a settings form's inputs.
-// They are the shadcn primitives themselves — re-exported here so that this
-// directory stays the only one that imports `@/components/ui/*`. Containers
-// (card, alert, dialog, sheet, tabs, empty, skeleton, badge, dropdown) are not
-// here on purpose: each has its pattern.
-
 export { buttonVariants } from "@/components/ui/button";
 export { Checkbox } from "@/components/ui/checkbox";
 export {

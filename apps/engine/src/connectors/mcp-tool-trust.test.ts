@@ -1,7 +1,3 @@
-// The per-tool trust list has one writer. Every other config writer carries
-// the stored list over, and refuses a payload that names a different one —
-// the rule that keeps an authoring conversation from granting itself trust.
-
 import { describe, expect, test } from "bun:test";
 import { BadRequestError } from "../http/errors.ts";
 import { carryMcpTrustList, mcpTrustedTools, withoutMcpTrustList } from "./mcp-tool-trust.ts";

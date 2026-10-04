@@ -53,9 +53,6 @@ describe("GET /v1/identity/providers", () => {
         label: string;
       }[];
     };
-    // The label is generic, per protocol. The operator typed "Partner", and an
-    // operator's own wording can carry the name of a company — it is not
-    // published to an anonymous caller.
     expect(data.providers).toEqual([
       { protocol: "oidc", id: "partner", label: "SSO" },
       { protocol: "api_key", id: "api-key", label: "API key" },
@@ -69,8 +66,6 @@ describe("GET /v1/identity/providers", () => {
   });
 
   test("says exactly the same thing to a signed-in caller", async () => {
-    // Two different answers would turn this route into a probe for whether a
-    // credential is valid. Byte-identical, deliberately.
     await loadAuthProvidersForTest(
       [
         apiKeyProvider,

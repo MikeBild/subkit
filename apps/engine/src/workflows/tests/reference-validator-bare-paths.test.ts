@@ -19,7 +19,6 @@ describe("validateStepReferences · bare-path forms", () => {
       {
         id: "shape",
         kind: "transform",
-        // typo: fetch_projets vs. fetch_projects, no $scope prefix
         expression: "fetch_projets.data.id",
       },
     ]);
@@ -34,7 +33,6 @@ describe("validateStepReferences · bare-path forms", () => {
       {
         id: "shape",
         kind: "transform",
-        // `input` is a JSONata binding, not a step id
         expression: "input.user.email",
       },
     ]);
@@ -58,7 +56,6 @@ describe("validateStepReferences · bare-path forms", () => {
       {
         id: "shape",
         kind: "transform",
-        // unknown_step appears twice — once explicit, once bare
         expression: "$scope.unknown_step.id + unknown_step.id",
       },
     ]);
@@ -72,7 +69,6 @@ describe("validateStepReferences · bare-path forms", () => {
       {
         id: "shape",
         kind: "transform",
-        // `r` is a JSONata lambda arg; threshold is length >= 3
         expression: "$map(items, function($r){ $r.id })",
       },
     ]);

@@ -1,5 +1,3 @@
-// DemoSeed tests — DB-backed, runs against the testcontainer helper.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants, workflows, workflowVersions } from "../../db/schema/index.ts";

@@ -1,13 +1,3 @@
-// A proposal has to be justified by what the step really did, or not made.
-//
-// The approval dialog's answer to an unbounded step was "investigate the cause
-// in the chat" — a technical question put to the one person who cannot answer
-// it, in front of three production workflows that stayed blocked for weeks.
-// SubKit can read what each step has been doing and say it itself. What it must
-// never do is fill the gap with something that merely looks right: a rule
-// nobody can point at is how an authoring model ends up rewriting code that was
-// correct.
-
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
@@ -116,8 +106,6 @@ test("a value the step really sent decides its rule, and the narrowest one wins"
   expect(unproposable).toEqual([]);
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
   expect(proposals[0]?.boundary?.max_body_bytes).toBe(0);
-  // The evidence travels with the proposal: a reviewer must be able to see
-  // what it was read from, not just what it concluded.
   expect(proposals[0]?.evidence.observations).toBe(2);
   expect(proposals[0]?.evidence.sample).toContain("/v1/pages/");
 });
@@ -132,9 +120,6 @@ test("values no class covers are listed, and only while the list is readable", a
     workflow_id,
     definition: definition([read]),
   });
-  // `alpha.beta` is a file name by form; the narrowest covering class is taken
-  // over a list, because it stays right when a new value of the same form
-  // appears.
   expect(listed.proposals[0]?.boundary?.variables).toEqual({
     "input.page_id": { class: "file_name" },
   });
@@ -199,12 +184,7 @@ test("a storage step is given the deepest folder that holds everything it touche
       { id: "store", kind: "request", connector_id: CONNECTOR, method: "PUT", s3: { key: "x" } },
     ]),
   });
-  // Cut back to a folder: `v1/facts/year=2026/month=0` would admit every
-  // sibling sharing those letters, which is not a folder anyone declared.
   expect(proposals[0]?.s3_scope?.key_prefix).toBe("v1/facts/year=2026/");
-  // The ceiling covers the LARGEST write this step really made, with headroom.
-  // It used to be a constant 64 KiB that nobody measured, and it refused a
-  // 337 KB write on the first scheduled run after the approval.
   expect(proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
 });
 
@@ -229,8 +209,6 @@ test("a step that already declares a boundary is left alone", async () => {
       },
     ]),
   });
-  // A human approved that text. Replacing it from history would move a reviewed
-  // rule without anyone deciding to.
   expect(proposals).toEqual([]);
   expect(unproposable).toEqual([]);
 });
@@ -255,9 +233,6 @@ test("a path whose placeholder is not a whole segment is reported, not half-prop
 });
 
 test("a step that pages without a cap is given the number it really fetched", async () => {
-  // The dead end this closes: a paginating step is refused a boundary while it
-  // has no page cap, and the cap is not something the author can know better
-  // than the runtime — which has counted the pages of every run.
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -297,8 +272,6 @@ test("a step that pages without a cap is given the number it really fetched", as
     workflow_id,
     definition: definition([paging]),
   });
-  // Twice the largest run that really happened, so a slightly bigger week is
-  // not a refused run — and nothing at all if no run ever counted pages.
   expect(proposals[0]?.max_pages).toBe(14);
 
   const capped = await proposeBoundaries(ctx.db, {
@@ -306,15 +279,10 @@ test("a step that pages without a cap is given the number it really fetched", as
     workflow_id,
     definition: definition([{ ...paging, pagination: { ...paging.pagination, max_pages: 4 } }]),
   });
-  // A cap the author already chose is theirs; this never moves it.
   expect(capped.proposals[0]?.max_pages).toBeUndefined();
 });
 
 test("a held request is evidence too — target and size both", async () => {
-  // A preview holds every write, so a step that has only ever been previewed
-  // records no dispatch. It does record what it resolved to, content and all.
-  // Without reading that, the steps a preparation run just exercised are
-  // exactly the ones SubKit would still call unknowable.
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -365,16 +333,10 @@ test("a held request is evidence too — target and size both", async () => {
   });
   expect(unproposable).toEqual([]);
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
-  // Read from the content it would have sent, with headroom — never invented.
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(0);
 });
 
 test("the preparation run the dialog itself asks for counts as evidence", async () => {
-  // Two paths record the same fact differently: a dry-run preview leaves
-  // `held_request` in the result envelope, the preparation run leaves
-  // `prepared_request_review` in the request metadata. Reading only the first
-  // meant the run a reviewer had just been told to perform produced nothing
-  // this derivation could use — the dead end looked like the workflow's fault.
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -428,9 +390,6 @@ test("the preparation run the dialog itself asks for counts as evidence", async 
 });
 
 test("a step inside a loop is the same step, iteration suffix and all", async () => {
-  // Loop iterations record `read_page[0]`, `read_page[1]`, … Matching the bare
-  // id found nothing for exactly the steps that run most often: on production a
-  // workflow had twelve such rows and the derivation reported "never ran".
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -465,19 +424,10 @@ test("a step inside a loop is the same step, iteration suffix and all", async ()
   expect(proposals[0]?.step_id).toBe("read_page");
   expect(proposals[0]?.boundary?.variables).toEqual({ "input.page_id": { class: "uuid" } });
   expect(proposals[0]?.evidence.observations).toBe(3);
-  // Three dispatches in one run, so "at most one request" is a boundary this
-  // step breaks on its next real run. `max_calls` was hardcoded to 1 and
-  // presented as derived from evidence; it now comes from the busiest run, with
-  // headroom so a slightly larger week is not a refusal.
   expect(proposals[0]?.boundary?.max_calls).toBe(6);
 });
 
 test("a folder the step's own writes contradict is corrected, one it fits is not", async () => {
-  // Two production workflows were approved with their sibling's folder. Every
-  // scheduled run was then refused, nightly, with the real key printed on the
-  // row that refused it — the evidence to fix it was in the same table as the
-  // failure the whole time. The author's folder still wins whenever the writes
-  // actually sit inside it; only a contradiction is overwritten.
   await record([
     { step: "store", key: "v1/infrastructure/manifests/year=2026/a.json", bytes: 900 },
     { step: "store", key: "v1/infrastructure/manifests/year=2026/b.json", bytes: 1200 },
@@ -508,13 +458,6 @@ test("a folder the step's own writes contradict is corrected, one it fits is not
 });
 
 test("a query inside the path is rewritten, but only when a real request proves it", async () => {
-  // `/startups?page=${item.n}&limit=10` is the same request as a path plus a
-  // query object — and only the second form can be reviewed, because a boundary
-  // states a target and an exact key set and a `?` in the path is neither. The
-  // compiler has always refused it and the remedy has always said what to do;
-  // a person had to do it by hand. Rewriting a DEFINITION is a harder thing to
-  // offer than declaring a limit, so it is held to proof: an URL this step
-  // really sent has to come back out of the rewritten form.
   await record([
     { step: "list", url: "https://api.example.test/startups?page=1&limit=10" },
     { step: "list", url: "https://api.example.test/startups?page=2&limit=10" },
@@ -534,11 +477,8 @@ test("a query inside the path is rewritten, but only when a real request proves 
     // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
     query: { page: "${item.n}", limit: "10" },
   });
-  // The moving value is bounded from the same evidence, not guessed.
   expect(proposals[0]?.boundary?.variables).toEqual({ "item.n": { class: "integer" } });
 
-  // A rewrite the history does not reproduce is not offered: this one claims a
-  // key the real requests never carried.
   const unproven = await proposeBoundaries(ctx.db, {
     tenant_id,
     workflow_id,
@@ -550,10 +490,6 @@ test("a query inside the path is rewritten, but only when a real request proves 
 });
 
 test("a write whose size was never measured gets no ceiling at all", async () => {
-  // The rule this module exists for, applied to itself: the ceiling used to be
-  // a constant nobody had measured, so the derived boundary refused a step that
-  // really writes 337 KB — a limit that is a defect with a number in it. A
-  // measurement or nothing.
   await record([{ step: "store", key: "v1/facts/year=2026/a.json" }]);
   const { proposals, unproposable } = await proposeBoundaries(ctx.db, {
     tenant_id,
@@ -567,11 +503,6 @@ test("a write whose size was never measured gets no ceiling at all", async () =>
 });
 
 test("a ceiling the step's own writes exceed is the same contradiction as a wrong folder", async () => {
-  // Seen on production: the folder was right, the ceiling was below what the
-  // step really writes, and every scheduled run was refused in the same place
-  // with the real size printed in the same message. A scope has two halves and
-  // either of them can be refuted by the step's own history; the half that
-  // fits stays the author's.
   await record([
     { step: "store", key: "v1/radar/products/a.json", bytes: 337_858 },
     { step: "store", key: "v1/radar/products/b.json", bytes: 12_000 },
@@ -591,7 +522,6 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
     definition: definition(scoped(65_536)),
   });
   expect(tooSmall.proposals[0]?.s3_scope?.max_bytes).toBeGreaterThan(337_858);
-  // The folder was never in question, so it is not touched.
   expect(tooSmall.proposals[0]?.s3_scope?.key_prefix).toBe("v1/radar/");
 
   const roomy = await proposeBoundaries(ctx.db, {
@@ -603,11 +533,6 @@ test("a ceiling the step's own writes exceed is the same contradiction as a wron
 });
 
 test("the row that proves the contradiction is the refused one", async () => {
-  // The catch-22 this closes: the step is refused BECAUSE its ceiling is below
-  // what it writes, so the write never succeeds, so a rule that reads only
-  // successful rows never sees the size — and the step that cannot succeed
-  // until it is fixed can never be fixed. On production that repeated nightly
-  // with the real number printed in the refusal and stored nowhere.
   await record([{ step: "store", key: "v1/radar/products/a.json", bytes: 337_858, refused: true }]);
   const { proposals } = await proposeBoundaries(ctx.db, {
     tenant_id,
@@ -627,10 +552,6 @@ test("the row that proves the contradiction is the refused one", async () => {
 });
 
 test("a listing records the folder it read, and that is evidence", async () => {
-  // A LIST or HEAD addresses no single object, so the runtime records `prefix`
-  // instead of `key`. Reading only `key` made every such step look as if it had
-  // never run — and those are exactly the steps whose folder is written down
-  // most plainly. Two of them blocked a production workflow for weeks.
   await record([
     { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
     { step: "list_raw", prefix: "opportunity-radar/raw/trustmrr/" },
@@ -654,10 +575,6 @@ test("a listing records the folder it read, and that is evidence", async () => {
 });
 
 test("what a request sent is measured, and that is the ceiling", async () => {
-  // `bytes_in` is the answer's size and says nothing about the content that
-  // left, so a step that posts a document had no measured size anywhere — the
-  // same gap as the storage write, in the other driver. Without it the only
-  // ceiling anyone could put on it was invented.
   await record([
     { step: "send", url: "https://api.example.test/v1/content", bytes: 40_000 },
     { step: "send", url: "https://api.example.test/v1/content", bytes: 9_000 },
@@ -677,17 +594,10 @@ test("what a request sent is measured, and that is the ceiling", async () => {
     ]),
   });
   expect(unproposable).toEqual([]);
-  // The largest the step really sent, with headroom — never a round number
-  // someone liked the look of.
   expect(proposals[0]?.boundary?.max_body_bytes).toBeGreaterThan(40_000);
 });
 
 test("an omitted body still reports its size", async () => {
-  // A raw body is left out of the review on purpose — it can carry credentials
-  // that shape-only scrubbing cannot recognise. Its LENGTH discloses nothing,
-  // and it is the only number a ceiling can honestly come from. Without it a
-  // step that posts a markdown document could never be bounded at all, which
-  // is what kept one production workflow unapprovable.
   await record([{ step: "send", url: "https://api.example.test/v1/content" }]);
   await ctx.db
     .update(executionSteps)
@@ -738,12 +648,6 @@ const fetchRoute = {
 };
 
 test("a step that varies its whole address is described, not reported as indescribable", async () => {
-  // The production shape: a step fetches whichever route an earlier step
-  // listed. Aligned from the right against a one-placeholder template, the
-  // derivation read only the LAST segment — so `/de/datenstand/` contributed an
-  // empty string and the step came back "values not describable", while a
-  // shallower run would have contributed `robots.txt` and proposed a rule
-  // fitting one file name. Neither is what the step sends.
   await ctx.db.delete(executions).where(eq(executions.workflow_id, workflow_id));
   const [execution] = await ctx.db
     .insert(executions)
@@ -775,20 +679,10 @@ test("a step that varies its whole address is described, not reported as indescr
   expect(unproposable).toEqual([]);
   expect(proposals[0]?.boundary?.variables).toEqual({ "item.path": { class: "path" } });
   expect(proposals[0]?.evidence.observations).toBe(4);
-  // Four dispatches in that run; "at most one" would refuse the step it was
-  // derived from.
   expect(proposals[0]?.boundary?.max_calls).toBe(8);
 });
 
 test("a deeper address than the template does not get a rule fitted to its last segment", async () => {
-  // Aligning from the right is correct while the template's head is literal:
-  // the recorded URL and the template share their tail, never reliably their
-  // head. But when the FIRST thing in that tail is a variable and the URL is
-  // deeper, the variable did not take the one segment at that offset — it took
-  // all of them. Here the real value is `blog/a`, and reading `a` proposes an
-  // identifier rule the step breaks on its next run, with the refusal reading
-  // as the workflow's fault. The trailing literal still matches, so nothing
-  // else in this function catches it.
   await record([
     { step: "edit_page", url: "https://api.example.test/blog/a/edit" },
     { step: "edit_page", url: "https://api.example.test/blog/b/edit" },
@@ -812,11 +706,6 @@ test("a deeper address than the template does not get a rule fitted to its last 
 });
 
 test("a whole-path rule is not proposed under a connector whose base carries a path", async () => {
-  // The compiler refuses such a boundary outright (`variable_in_base_prefix`):
-  // the base-prefix dedupe must rest on literals only, and a whole-path
-  // placeholder IS that first part. Proposing one anyway hands the reviewer a
-  // statement the engine will not accept — the failure the derivation exists
-  // to stop making, in its own house.
   const [deep] = await ctx.db
     .insert(connectors)
     .values({

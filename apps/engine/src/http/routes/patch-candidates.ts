@@ -1,17 +1,3 @@
-// Patch Candidate HTTP surface.
-//
-// Routes:
-//   GET    /v1/patch-candidates                — list (status/workflow filters, order, exact total)
-//   GET    /v1/patch-candidates/:id            — fetch one
-//   GET    /v1/patch-candidates/:id/preview    — human-readable before/after preview
-//   POST   /v1/patch-candidates/:id/dry-run    — replay against a recorded/synthesized fixture
-//   POST   /v1/patch-candidates/:id/approve    — manual apply (writes audit + workflow_version)
-//   POST   /v1/patch-candidates/:id/reject     — reject with optional reason
-//
-// The list + get endpoints are intentionally read-only. Mutations go
-// through the self-healing service so the audit trail + classifier
-// context stays in one place.
-
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
@@ -46,21 +32,13 @@ const PatchCandidateSchema = z
     id: z.string(),
     tenant_id: z.string(),
     workflow_id: z.string(),
-    // Joined from workflows — null when the workflow row is gone.
     workflow_name: z.string().nullable(),
-    // Which connection and which of its endpoints drifted. Both are on the row
-    // and neither was ever serialized, so a reviewer could see that a workflow
-    // needs repairing without being told WHERE. Null for a workflow-scoped
-    // signal that names no endpoint at all.
     connector_id: z.string().nullable(),
     endpoint_key: z.string().nullable(),
     classification: z.enum(["safe", "unsafe"]),
     status: z.enum(["proposed", "applied", "rejected", "superseded", "inapplicable"]),
     fixture_id: z.string().nullable(),
     diff: z.unknown(),
-    // Set when the engine closed the candidate as `inapplicable`: the readiness
-    // reason that proved it undecidable and the workflow version it was proven
-    // against. Null on every other status.
     closed_reason: z.string().nullable(),
     closed_against_version_id: z.string().nullable(),
     closed_at: z.string().nullable(),
@@ -73,13 +51,7 @@ const PatchCandidateSchema = z
 const ListResponse = z
   .object({
     items: z.array(PatchCandidateSchema),
-    // True matching-row count for the applied filters (ignores limit)
-    // — clients rendering counts must not derive them from a capped page.
     total: z.number().int().min(0),
-    // Open decisions — proposed AND reviewable on the current workflow
-    // version — for the tenant (narrowed only by `workflow_id`). The same
-    // number the health digest, the MCP instructions and the operational
-    // overview report: all four read `readOpenPatchDecisions`.
     reviewable_total: z.number().int().min(0),
   })
   .openapi("PatchCandidateListResponse");
@@ -91,8 +63,6 @@ const ListQuery = z
     reviewable: z.enum(["true", "false"]).optional(),
     offset: z.coerce.number().int().min(0).default(0),
     limit: z.coerce.number().int().positive().max(200).optional(),
-    // `asc` keeps the oldest candidate inside the page — the decisions
-    // queue reviews stalest-first.
     order: z.enum(["asc", "desc"]).optional(),
   })
   .openapi("ListPatchCandidatesQuery");
@@ -303,8 +273,6 @@ const prepareRoute = createRoute({
 });
 
 export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
-  // Patch candidates are workflow-scoped so we gate on workflow:read /
-  // workflow:write — they modify a concrete workflow version.
   app.use("/v1/patch-candidates", async (c, next) => {
     if (c.req.method === "GET") return requirePermission("workflow:read")(c, next);
     return next();
@@ -341,7 +309,6 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
       throw error;
     }
   });
-  // Preview + dry-run are read-side: neither mutates the candidate.
   app.use("/v1/patch-candidates/:id/preview", async (c, next) => {
     return requirePermission("workflow:read")(c, next);
   });

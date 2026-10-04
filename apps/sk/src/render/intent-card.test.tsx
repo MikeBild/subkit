@@ -13,7 +13,6 @@ function renderIntent(intent: WorkflowIntent | ConnectorIntent | KnowledgeSource
   return render((<IntentCard intent={intent} />) as ReactElement);
 }
 
-// --- humanBytes unit tests ---
 describe("humanBytes", () => {
   test("formats bytes", () => expect(humanBytes(512)).toBe("512B"));
   test("formats kilobytes", () => expect(humanBytes(1024)).toBe("1KB"));
@@ -26,7 +25,6 @@ describe("humanBytes", () => {
   test("returns raw string for NaN", () => expect(humanBytes(NaN)).toBe("NaNB"));
 });
 
-// --- WorkflowIntent ---
 describe("IntentCard · workflow", () => {
   const base: WorkflowIntent = {
     kind: "workflow",
@@ -88,7 +86,6 @@ describe("IntentCard · workflow", () => {
     const ui = renderIntent(base);
     const out = snapshot(ui);
     expect(out).toContain("Create workflow");
-    // No step-list content expected — just no crash
     ui.unmount();
   });
 
@@ -131,7 +128,6 @@ describe("IntentCard · workflow", () => {
   });
 });
 
-// --- ConnectorIntent ---
 describe("IntentCard · connector", () => {
   const base: ConnectorIntent = { kind: "connector", template_slug: "stripe-api" };
 
@@ -143,8 +139,6 @@ describe("IntentCard · connector", () => {
     ui.unmount();
   });
 
-  // The `--file` authoring path has no template. Interpolating the absent
-  // slug rendered `Loop MCP (undefined)` plus a `Template: undefined` line.
   test("file-authored connector shows its name and no template line", () => {
     const intent: ConnectorIntent = { kind: "connector", name: "Loop MCP" };
     const ui = renderIntent(intent);
@@ -183,7 +177,6 @@ describe("IntentCard · connector", () => {
   });
 });
 
-// --- KnowledgeSourceIntent ---
 describe("IntentCard · knowledge source", () => {
   test("shows basename, human-readable size, and mime type", () => {
     const intent: KnowledgeSourceIntent = {
@@ -196,7 +189,6 @@ describe("IntentCard · knowledge source", () => {
     const ui = renderIntent(intent);
     const out = snapshot(ui);
     expect(out).toContain("Create knowledge source API Spec");
-    // basename — not the full path
     expect(out).toContain("spec.pdf");
     expect(out).not.toContain("/home/user/docs/");
     expect(out).toContain("2.5MB");

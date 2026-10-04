@@ -32,9 +32,6 @@ export const diagnoseLatestExecutionTool: ConversationTool = {
         }),
       };
     }
-    // The read + diagnosis assembly is shared with inspect_execution so
-    // the two tools never drift. This tool then layers the chat-only
-    // draft mutation on top.
     const result = await buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId);
     if (!result.found) {
       return {

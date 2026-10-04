@@ -15,13 +15,10 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env = originalEnv;
-  // Reset module-level cache between tests by re-importing.
   delete require.cache[require.resolve("../debug.ts")];
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 });
 
 describe("debug logger", () => {
@@ -122,8 +119,6 @@ describe("debug logger", () => {
     process.env.SK_DEBUG_FILE = logPath;
     const dbg = await import("../debug.ts");
 
-    // Pre-fill the log just past the 2 MB threshold so the next
-    // appendFileSync triggers rotation.
     fs.mkdirSync(tmpDir, { recursive: true });
     fs.writeFileSync(logPath, "x".repeat(2 * 1024 * 1024 + 16), "utf8");
 
@@ -131,9 +126,7 @@ describe("debug logger", () => {
 
     expect(fs.existsSync(`${logPath}.1`)).toBe(true);
     const current = fs.readFileSync(logPath, "utf8");
-    // The current file should now hold only the latest record.
     expect(current.includes("/rotated")).toBe(true);
-    // Drive a second rotation.
     fs.writeFileSync(logPath, "y".repeat(2 * 1024 * 1024 + 16), "utf8");
     dbg.debugLog("http.request", { url: "/rotated-again" });
     expect(fs.existsSync(`${logPath}.2`)).toBe(true);

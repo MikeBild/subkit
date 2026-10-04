@@ -1,17 +1,3 @@
-// Regenerate the shared CLI engine API client from the engine's live
-// OpenAPI document. Produces:
-//
-//   packages/cli-core/src/engine-api/openapi.json   — raw OpenAPI doc
-//   packages/cli-core/src/engine-api/openapi.d.ts   — openapi-typescript
-//                                                     path/method types
-//   apps/cockpit/src/api/schema.d.ts                — cockpit API types
-//
-// Both CLIs consume `openapi-fetch` against these types — see
-// `packages/cli-core/src/engine-api/client.ts`. Run this script via
-// `bun run gen:openapi-client` after changing any engine route or
-// schema. A CI step should `git diff --exit-code` this directory to
-// catch silent drift.
-
 import { mkdtempSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,10 +15,6 @@ const cockpitTypesPath = resolve(__dirname, "../apps/cockpit/src/api/schema.d.ts
 async function run(): Promise<void> {
   await mkdir(outDir, { recursive: true });
 
-  // Bootstrap a minimal config so middleware that touches getDb() /
-  // getConfig() does not 500 when generating the snapshot. The
-  // /openapi.json route does not hit Postgres; this is just to
-  // satisfy the boot contract added in v3.5.
   const cfgDir = mkdtempSync(join(tmpdir(), "sk-openapi-gen-"));
   await loadConfig({
     env: { DATABASE_URL: "postgres://placeholder/openapi-gen", NODE_ENV: "test" },
@@ -45,10 +27,6 @@ async function run(): Promise<void> {
     throw new Error(`engine /openapi.json returned ${res.status}`);
   }
   const doc = (await res.json()) as { info?: { version?: string } };
-  // The committed contract describes the repository release, while a running
-  // binary still reports its independently embedded BUILD_VERSION. Using the
-  // root package version keeps the checked-in OpenAPI artifact deterministic
-  // and makes a release bump visible to docs and downstream generators.
   const packageJson = JSON.parse(await readFile(resolve(__dirname, "../package.json"), "utf8")) as {
     version: string;
   };
@@ -57,7 +35,6 @@ async function run(): Promise<void> {
   await writeFile(jsonPath, pretty, "utf8");
   console.log(`wrote ${jsonPath}`);
 
-  // Invoke openapi-typescript's programmatic API.
   const { default: openapiTS, astToString } = await import("openapi-typescript");
   const ast = await openapiTS(doc as Parameters<typeof openapiTS>[0]);
   const types = astToString(ast);

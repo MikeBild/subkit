@@ -60,7 +60,6 @@ describe("dispatchAdminListSlash", () => {
     expect(result).toContain("c1abcd12");
     expect(result).toContain("Stripe Production");
     expect(result).toContain("stripe-prod");
-    // Ground-truth cardinality: the footer names the exact total.
     expect(result).toContain("1 total");
   });
 

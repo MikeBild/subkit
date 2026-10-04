@@ -1,14 +1,3 @@
-// Egress guard unit tests. Pin the SSRF blocklist so a future refactor
-// can't silently regress private-IP exfiltration protection.
-//
-// Coverage targets:
-//   - Every RFC 1918 + loopback + link-local + IPv6 unique-local range.
-//   - 169.254.169.254 specifically (AWS EC2 metadata is the canonical
-//     SSRF target and the post-Capital One CVE pivot point).
-//   - IPv4-mapped IPv6 in BOTH dotted (`::ffff:10.0.0.1`) and hex
-//     (`::ffff:a00:1`) forms — Node's URL parser produces hex.
-//   - Permissive mode still blocks `localhost`/`0.0.0.0`.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   assertEgressAllowed,
@@ -72,13 +61,9 @@ describe("isPrivateOrLoopback", () => {
   });
 
   test("blocks IPv4-mapped IPv6 in both decimal and hex forms", () => {
-    // ::ffff:10.0.0.1 — decimal form, the input shape.
     expect(isPrivateOrLoopback("::ffff:10.0.0.1")).toBe(true);
-    // ::ffff:a00:1 — Node's URL parser normalises ::ffff:10.0.0.1 to this.
     expect(isPrivateOrLoopback("::ffff:a00:1")).toBe(true);
-    // ::ffff:c0a8:0101 → 192.168.1.1
     expect(isPrivateOrLoopback("::ffff:c0a8:101")).toBe(true);
-    // ::ffff:7f00:1 → 127.0.0.1
     expect(isPrivateOrLoopback("::ffff:7f00:1")).toBe(true);
   });
 
@@ -259,10 +244,8 @@ describe("assertEgressAllowedResolved — DNS resolution", () => {
       called = true;
       return [];
     };
-    // Public literal → allowed, and the resolver is never consulted.
     await assertEgressAllowedResolved("https://93.184.216.34/x", strict, { lookupImpl: spy });
     expect(called).toBe(false);
-    // Private literal → still blocked by the synchronous check.
     await expect(
       assertEgressAllowedResolved("http://10.0.0.1/x", strict, { lookupImpl: spy }),
     ).rejects.toThrow(EgressBlockedError);

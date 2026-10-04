@@ -1,25 +1,3 @@
-// User story: As a REPL user, every REST-backed slash command
-// (/compact, /resume, /model, /skills, /mcp, /permissions,
-// /audit, /clear, /new, /status, /cost) actually hits the engine
-// and returns a readable banner line. This is the shared
-// `handleSlash` handler's contract test — if it breaks, both the
-// Ink and readline REPLs break at once.
-//
-// Acceptance criteria:
-//
-//   AC1. /status reports the active profile + session.
-//   AC2. /clear resets the session id via setConversationId(null).
-//   AC3. /compact on an active session calls the engine's compact
-//        endpoint and surfaces `compacted N message(s)`.
-//   AC4. /model <id> calls PATCH /v1/conversations/:id with the new
-//        model and reports `model switched to <id>`.
-//   AC5. /resume without an active session attaches to the most
-//        recent owner=me conversation.
-//   AC6. /skills returns the seeded skills list.
-//   AC7. /mcp returns populated prompts + resources + tools.
-//   AC8. /permissions lists the allowedPermissions array.
-//   AC9. /audit with admin perms returns a non-empty list of rows.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { initialSessionState, type SkSessionState } from "@cli-core/index.ts";
 import type { ResolvedProfile } from "../../../../sk/src/config.ts";
@@ -78,7 +56,6 @@ describe("journey: sk-cli slash handler", () => {
       user_agent: "sk-cli/0.0.1 (test)",
     });
 
-    // Seed one skill so /skills + /mcp prompts return non-empty.
     await ctx.db.insert(skills).values({
       tenant_id: ctx.tenantId,
       scope: "global",
@@ -98,8 +75,6 @@ describe("journey: sk-cli slash handler", () => {
   test("AC1: /status reports profile + persona + session (multi-line when no openPane host)", async () => {
     const line = await handleSlash("status", [], slashCtx());
     expect(line).not.toBeNull();
-    // The readline-fallback format is `<label>  <value>` — assert
-    // each field survives on its own line.
     expect(line).toMatch(/profile\s+journey/);
     expect(line).toMatch(/persona\s+admin/);
     expect(line).toMatch(/engine\s+http/);
@@ -107,8 +82,6 @@ describe("journey: sk-cli slash handler", () => {
   });
 
   test("AC1b: /status in an Ink host opens a StatusPane via openPane", async () => {
-    // When the host supplies `openPane`, /status delegates rendering
-    // to the modal slot and returns null (no inline banner).
     const opened: Array<Parameters<NonNullable<Parameters<typeof handleSlash>[2]["openPane"]>>[0]> =
       [];
     const line = await handleSlash("status", [], {
@@ -134,7 +107,6 @@ describe("journey: sk-cli slash handler", () => {
   });
 
   test("AC3: /compact on an active session calls the engine and reports the count", async () => {
-    // Create a conversation with a couple messages first.
     const outcome = await conversationsSvc.createConversation(
       {
         tenant_id: ctx.tenantId,
@@ -145,10 +117,6 @@ describe("journey: sk-cli slash handler", () => {
     );
     setConversationId(outcome.conversation.id);
     const line = await handleSlash("compact", [], slashCtx());
-    // Readline-fallback body: "compact" title + blank + "collapsed N
-    // message(s)" + summary. The Ink host opens it as a modal pane;
-    // the banner form is checked here since the test ctx doesn't
-    // supply `openPane`.
     expect(line).toMatch(/collapsed \d+ message/);
   });
 
@@ -179,22 +147,17 @@ describe("journey: sk-cli slash handler", () => {
     expect(line).toContain("prompts (");
     expect(line).toContain("resources (");
     expect(line).toContain("callable entries (");
-    // the seeded skill shows up as an MCP prompt entry
     expect(line).toContain("/mcp__skill_");
   });
 
   test("AC8: /permissions lists the granted permissions", async () => {
     const line = await handleSlash("permissions", [], slashCtx());
-    // Banner form: "permissions" header + blank line + "  <permission>"
-    // rows. The "granted" count arrives via the pane's subtitle when
-    // an Ink host supplies `openPane`.
     expect(line).toContain("permissions");
     for (const p of ALLOWED) expect(line).toContain(p);
   });
 
   test("AC9: /audit tails the audit log for an admin", async () => {
     const line = await handleSlash("audit", [], slashCtx());
-    // Admin has visibility; lines carry `<ts> <action> <rid>`.
     expect(line).not.toBe("no audit rows visible to this principal");
     expect(typeof line).toBe("string");
     expect((line as string).split("\n").length).toBeGreaterThan(0);

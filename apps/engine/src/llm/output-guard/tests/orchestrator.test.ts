@@ -1,7 +1,3 @@
-// Unit tests for the llmOutputGuard orchestrator — soft/hard/off
-// behaviour, scanner composition, error isolation, and the rewrite
-// produced in soft mode.
-
 import { describe, expect, it } from "bun:test";
 import { LlmOutputViolation } from "../../errors.ts";
 import { runOutputGuard } from "../index.ts";
@@ -21,9 +17,6 @@ describe("runOutputGuard — soft mode", () => {
 
   it("repairs a placeholder host in-place with the grounded engine_url", () => {
     const r = runOutputGuard("Use https://your-subkit-instance.com/mcp", ctx, { mode: "soft" });
-    // Repair replaces the placeholder host with the grounded host from
-    // engine_url so the user gets a usable config on the first turn.
-    // The violation is still recorded for observability.
     expect(r.text).toContain("subkit-api.acme.dev");
     expect(r.text).not.toContain("your-subkit-instance.com");
     expect(r.text).not.toContain("[guard:placeholder.host]");
@@ -32,10 +25,6 @@ describe("runOutputGuard — soft mode", () => {
 
   it("strips the offending span when no grounded repair is available", () => {
     const r = runOutputGuard("Use https://your-subkit-instance.com/mcp", {}, { mode: "soft" });
-    // No engine_url → no repair value. The old design left a
-    // `[guard:placeholder.host]` marker in user-visible text; the new
-    // behavior removes the span entirely and surfaces the violation
-    // on `violations` for the operator UI / model context loop.
     expect(r.text).not.toContain("[guard:");
     expect(r.text).not.toContain("your-subkit-instance.com");
     expect(r.violations.map((v) => v.kind)).toContain("placeholder.host");
@@ -48,9 +37,6 @@ describe("runOutputGuard — soft mode", () => {
       { mode: "soft" },
     );
     expect(r.violations.length).toBeGreaterThanOrEqual(3);
-    // Hosts are repaired in-place; angle placeholders have no grounded
-    // substitute and are stripped. Nothing leaks a guard marker into
-    // the user-visible transcript.
     expect(r.text).toContain("subkit-api.acme.dev");
     expect(r.text).not.toContain("[guard:");
     expect(r.text).not.toContain("your-subkit-instance.com");
@@ -118,7 +104,7 @@ describe("runOutputGuard — scanner composition", () => {
     };
     const r = runOutputGuard("hello", ctx, { mode: "soft", scanners: [fault, noop] });
     expect(r.text).toBe("hello");
-    expect(r.violations).toEqual([]); // the faulty scanner emitted no violations
+    expect(r.violations).toEqual([]);
   });
 
   it("runs scanners in declared order and aggregates all violations", () => {

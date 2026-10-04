@@ -1,7 +1,3 @@
-// Ink-component coverage for InlineHistorySearch (Ctrl-R panel).
-// The pure ranking logic is covered in inline-history-search.test.ts;
-// here we exercise the keyboard contract through ink.
-
 import { describe, expect, mock, test } from "bun:test";
 import { InlineHistorySearch } from "../repl/inline-history-search.tsx";
 import { renderInk } from "./helpers/ink.tsx";
@@ -20,7 +16,6 @@ describe("InlineHistorySearch (component)", () => {
     );
     try {
       await ui.waitFor((t) => t.includes("reverse-i-search"));
-      // most-recent-first — `daily-summary` is the top candidate.
       expect(ui.text()).toContain("daily-summary");
     } finally {
       ui.unmount();

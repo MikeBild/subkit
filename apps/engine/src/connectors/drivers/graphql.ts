@@ -1,15 +1,3 @@
-// GraphQL driver. Wraps the global `fetch` so the request step can run
-// queries and mutations against any GraphQL endpoint. Uses the same
-// auth modes as the HTTP driver (bearer / header / query / basic /
-// oauth2) — credentials are applied to the outgoing fetch headers.
-//
-// The driver speaks the same `{status, headers, body}` envelope as the
-// HTTP and S3 drivers so downstream JSONata / selectors keep working.
-//
-// Subscriptions are deliberately out of scope for this phase; calling
-// `query()` with `operation: "subscription"` returns a typed
-// `not_implemented` error envelope.
-
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -53,16 +41,8 @@ export interface GraphQLResponse<T = unknown> {
   bytes_in: number;
   duration_ms: number;
   operation_name: string;
-  /** Credential row id resolved for this call, or null when the
-   *  connector is `auth_type=none`. Surfaces through to the egress
-   *  audit (`CREDENTIAL_ACCESSED`). */
   credential_id: string | null;
-  /** What auth was actually applied — same vocabulary as the HTTP
-   *  driver. `oauth2_refreshed` means a stale token was rotated inline
-   *  before this request went out. */
   auth_method: AppliedAuthMethod;
-  /** Whether the persisted credential is what authenticated this call —
-   *  see `requestUsedStoredCredential`. */
   stored_credential_used: boolean;
 }
 
@@ -75,18 +55,9 @@ export interface GraphQLNotImplementedError {
   operation_name: string;
   credential_id: null;
   auth_method: "none";
-  /** Nothing was sent, so nothing was authenticated. */
   stored_credential_used: false;
 }
 
-/**
- * GraphQL carries logical failures as a top-level `errors` array — even
- * on HTTP 200 (the AppSync convention: `{ data: null, errors: [...] }`).
- * A non-empty `errors` array means the operation failed; callers MUST
- * treat it as a failed step, not a success. Returns the error messages,
- * or `null` when the response carries no logical errors (the `errors`
- * key is absent or an empty array).
- */
 export function graphqlErrorMessages(body: unknown): string[] | null {
   const errors = (body as { errors?: unknown } | null | undefined)?.errors;
   if (!Array.isArray(errors) || errors.length === 0) return null;
@@ -98,12 +69,6 @@ export function graphqlErrorMessages(body: unknown): string[] | null {
 
 function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
-  // A GraphQL API has exactly one endpoint, so `base_url` IS the full URL
-  // (e.g. `https://api.example.com/graphql`). There is deliberately no
-  // base_url/path split and no `probe_endpoint` join — that machinery
-  // exists for the HTTP driver, which addresses many paths under one host.
-  // Splitting a single GraphQL endpoint only invites the host-root/`/graphql`
-  // mismatch that AppSync rejects with `404 UnknownOperationException`.
   const endpoint = connector.base_url ?? "";
   if (!endpoint) {
     throw new Error(`graphql connector ${connector.id} missing base_url`);
@@ -115,14 +80,6 @@ function parseConfig(connector: ConnectorView): GraphQLConnectorConfig {
   return out;
 }
 
-/**
- * Run a GraphQL operation. Mutations and queries take the same path —
- * the only visible difference is the typed step contract. Subscriptions
- * return a structured `not_implemented` error response instead of throwing.
- */
-/** Extract the first named operation in the source. Lets request_meta
- *  report e.g. `GetViewerRepos` instead of the bare `query`/`mutation`
- *  keyword — useful when one connector test fires multiple named ops. */
 function extractOperationName(query: string, fallback: string): string {
   const match = query.match(/^\s*(?:query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/);
   return match?.[1] ?? fallback;
@@ -140,18 +97,7 @@ export async function executeGraphQLRequest(p: {
   connector: ConnectorView;
   op: GraphQLOperation;
   fetchImpl?: typeof fetch;
-  /** Draft-time override: caller already holds the credential in memory
-   *  (see draft-credential-cache.ts). Skip the DB lookup — the synthetic
-   *  draft connector_id wouldn't resolve anyway. Mirrors the HTTP
-   *  driver's `credential_override`. */
   credential_override?: DecryptedCredential | null;
-  /** Step-level headers from `request_step.headers`. Take precedence
-   *  over `cfg.default_headers` AND the connector's auth-applied
-   *  headers (so a workflow author who minted a token in step N can
-   *  forward it as `headers: { Authorization: "${scope.…}" }` to a
-   *  step N+1 graphql request). Pre-fix this slot didn't exist on the
-   *  GraphQL driver and the operator had to switch the connector
-   *  driver to `http` to work around (session 1b94070c). */
   extra_headers?: Record<string, string>;
 }): Promise<GraphQLResponse | GraphQLNotImplementedError> {
   const start = Date.now();
@@ -193,12 +139,7 @@ export async function executeGraphQLRequest(p: {
   };
   const query: Record<string, string | number | boolean> = {};
   applyAuthMaterial(p.connector, credential, headers, query);
-  // Step-level headers override the connector's auth-applied headers
-  // — same precedence as the HTTP driver's `buildRequestPlan`. The
-  // workflow author's explicit `Authorization` wins over a stale
-  // bearer token from the connector credential.
   if (p.extra_headers) {
-    // Drop case-twin Authorization first to avoid sending two.
     if ("Authorization" in p.extra_headers || "authorization" in p.extra_headers) {
       delete headers.Authorization;
       delete headers.authorization;
@@ -208,14 +149,11 @@ export async function executeGraphQLRequest(p: {
     }
   }
 
-  // Static query params on the connector apply to the URL too.
   const url = new URL(cfg.endpoint);
   for (const [k, v] of Object.entries(query)) {
     url.searchParams.set(k, String(v));
   }
 
-  // SSRF guard: block private/loopback/link-local targets, including
-  // public names whose DNS resolves into private space.
   await assertEgressAllowedResolved(url, { tenant_id: p.tenant_id });
 
   logger.debug({
@@ -232,12 +170,6 @@ export async function executeGraphQLRequest(p: {
   });
   const fetchImpl = p.fetchImpl ?? fetch;
   injectTraceContext(headers);
-  // Last-line defence on the GraphQL pipeline. Same contract guard as
-  // the HTTP driver applies to its own `fetch()` — without this a
-  // malformed header bag (e.g. a non-RFC-token name from an LLM-authored
-  // connector config or step) crashes inside `new Headers()` and the
-  // GraphQL surface returns the obtuse "Invalid header name" error.
-  // (Audit anti-pattern C1, conversation 730c568a.)
   validateOutboundHeaders(headers);
   const dispatchPolicy = await p.before_dispatch?.({
     credential_id,
@@ -287,9 +219,6 @@ export async function executeGraphQLRequest(p: {
       operation_name: operationName,
       status: res.status,
       has_graphql_errors: errorMessages !== null,
-      // Surface the actual GraphQL error text so schema drift (e.g. a removed
-      // root field → "FieldUndefined") is diagnosable from the log alone,
-      // without a database round-trip. Capped so a wall of errors can't flood.
       error_messages: errorMessages?.slice(0, 5),
     });
   }
@@ -302,7 +231,6 @@ export async function executeGraphQLRequest(p: {
     operation_name: operationName,
     credential_id,
     auth_method,
-    // An override is the caller's material, not the persisted credential.
     stored_credential_used:
       p.credential_override === undefined &&
       requestUsedStoredCredential({
@@ -314,11 +242,6 @@ export async function executeGraphQLRequest(p: {
   };
 }
 
-/**
- * Convenience wrapper used by the request step's `graphql:` branch.
- * Mirrors the call shape of a typed GraphQL client so step authors get
- * a single self-explanatory function.
- */
 export async function query(p: {
   before_dispatch?: (
     credential: Pick<
@@ -354,11 +277,6 @@ export async function query(p: {
   return await executeGraphQLRequest(args);
 }
 
-/**
- * Health probe: POST `{__typename}` against the endpoint and assert
- * `data.__typename` is a string. Treats credential / network failures
- * as "unhealthy".
- */
 export async function probeGraphQLConnector(p: {
   db: Db;
   tenant_id: string;
@@ -368,10 +286,6 @@ export async function probeGraphQLConnector(p: {
 }): Promise<DriverProbeResult> {
   const start = Date.now();
   try {
-    // Guard: auth-required connectors must have a persisted credential row
-    // (or an in-memory override supplied by the draft probe path).
-    // Without one the request would go out unauthenticated and surface a
-    // misleading error indistinguishable from a real connectivity failure.
     if (p.connector.auth_type !== "none") {
       const resolveOpts: Parameters<typeof resolveConnectorCredential>[0] = {
         db: p.db,
@@ -422,10 +336,6 @@ export async function probeGraphQLConnector(p: {
     });
     if (!ok) {
       const msgs = graphqlErrorMessages(res.body);
-      // Carry the upstream's own words — the first GraphQL error
-      // message as `detail`, plus the scrubbed body snippet and the
-      // allowlisted diagnostic headers. Pre-fix a 403 probe surfaced
-      // only "HTTP 403" while the response body named the real cause.
       return {
         ok,
         latency_ms,
@@ -437,7 +347,6 @@ export async function probeGraphQLConnector(p: {
     }
     return { ok, latency_ms, status: res.status };
   } catch (err) {
-    // Network-level error: not classifiable as a credential verdict.
     const latency_ms = Date.now() - start;
     logger.warn({
       module: "connector",
@@ -446,9 +355,6 @@ export async function probeGraphQLConnector(p: {
       latency_ms,
       ...errorFields(err),
     });
-    // Consistent with the other drivers' catch paths: a transport failure is
-    // not a credential verdict, so it must NOT flag — but stamp the neutral
-    // unknown_upstream_error so every ok:false result carries an error_code.
     return {
       ok: false,
       latency_ms,

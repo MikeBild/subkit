@@ -1,7 +1,3 @@
-// Integration test for the Postgres introspection strategy. Uses a real
-// per-test database (createTestDb) so we exercise the actual catalog
-// queries rather than mocking the driver.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { looksLikePostgresUrl, postgresIntrospectStrategy } from "./postgres-introspect.ts";
@@ -10,7 +6,6 @@ let ctx: TestDb;
 
 beforeAll(async () => {
   ctx = await createTestDb("postgres_introspect");
-  // Seed a small schema so the corpus has interesting content.
   await ctx.pool.query(`
     CREATE TABLE customers (
       id serial PRIMARY KEY,
@@ -50,19 +45,15 @@ describe("postgresIntrospectStrategy", () => {
 
     expect(result.strategy).toBe("postgres-introspect");
     expect(result.spec_version).toBeNull();
-    expect(result.endpoints).toEqual([]); // SQL doesn't have HTTP endpoints
-    expect(result.title).toBeTruthy(); // current_database() returns the test db name
+    expect(result.endpoints).toEqual([]);
+    expect(result.title).toBeTruthy();
 
     const corpus = result.text_corpus ?? "";
-    // Section per table.
     expect(corpus).toContain("## subkit.customers");
     expect(corpus).toContain("## subkit.orders");
-    // Columns + nullability.
     expect(corpus).toContain("| email | text | NO |");
     expect(corpus).toContain("| total_cents | integer | YES |");
-    // PK marker on serial-id columns.
     expect(corpus).toMatch(/\| id \| integer \| NO \|.*\| PK \|/);
-    // Foreign-key callout on orders.customer_id.
     expect(corpus).toContain("**Foreign keys:**");
     expect(corpus).toContain("`customer_id` → `subkit.customers.id`");
   });

@@ -1,21 +1,3 @@
-// Delivery worker for the `webhook.deliver` queue.
-//
-// Each job describes a single (subscription_id, event_id) pair plus
-// the outbound payload. The worker:
-//
-//   1. Short-circuits if the subscription circuit breaker is open —
-//      writes a dead-letter `deliveries` row with error=circuit_open
-//      and returns without making an HTTP request.
-//   2. Loads the subscription secret (primary + optional rotating)
-//      from the DB and decrypts them.
-//   3. Signs the payload per Standard Webhooks and POSTs it.
-//   4. On 2xx: records a success row, resets breaker, audits
-//      webhook.outbound.delivered.
-//   5. On non-2xx or transport error: records a failure row, asks the
-//      retry ladder for the next delay, optionally re-enqueues the job
-//      via boss.send(..., {startAfter}), bumps the breaker counter,
-//      audits webhook.outbound.failed.
-
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
@@ -40,36 +22,18 @@ export interface WebhookDeliverJob {
   subscription_id: string;
   event_id: string;
   event_type: string;
-  /** The normalized payload as an already-serialized JSON string. */
   body: string;
-  /** Opaque id used in the `webhook-id` header. */
   webhook_id: string;
-  /** Unix seconds. */
   timestamp: number;
-  /** 1-based attempt counter. */
   attempt_number: number;
-  /** Optional outbox event row id (bigint) if the job came from the fanout. */
   outbox_event_id?: number | null;
 }
 
 export interface RegisterDeliveryWorkerOptions {
   boss: PgBoss;
   db: Db;
-  /**
-   * Optional fetch override. Tests pass in a closure that points at a
-   * local mock HTTP server.
-   */
   fetchImpl?: typeof fetch;
-  /**
-   * Optional jitter flag, passed to the retry ladder. Tests disable
-   * jitter so delay assertions are exact.
-   */
   jitter?: boolean;
-  /**
-   * When set, the worker does NOT spawn its own pg-boss worker — it
-   * just returns the handler so tests can drive it directly. The
-   * `handle` key on the returned object is what tests call.
-   */
   noWork?: boolean;
 }
 
@@ -128,7 +92,6 @@ export async function registerDeliveryWorker(
     const data = job.data;
     const now = Date.now();
 
-    // 1) Breaker open? short-circuit.
     await breaker.hydrate(db, data.subscription_id);
     if (breaker.isOpen(data.subscription_id, now)) {
       const hash = createHash("sha256").update(data.body).digest("hex");
@@ -182,7 +145,6 @@ export async function registerDeliveryWorker(
       return;
     }
 
-    // 2) Load secrets + subscription row.
     const loaded = await loadSubscriptionSecrets(data.tenant_id, data.subscription_id, db);
     if (!loaded) {
       logger.warn({
@@ -203,7 +165,6 @@ export async function registerDeliveryWorker(
       return;
     }
 
-    // 3) Sign.
     const signature = signatureHeader({
       webhook_id: data.webhook_id,
       timestamp: data.timestamp,
@@ -222,11 +183,6 @@ export async function registerDeliveryWorker(
 
     const hash = createHash("sha256").update(data.body).digest("hex");
 
-    // SSRF guard: refuse to fan out to private/loopback/link-local
-    // targets. Subscriptions carry tenant-controlled URLs, so this is
-    // the SSRF chokepoint. Egress-blocked deliveries terminate
-    // immediately as dead_letter — retrying a private-IP target won't
-    // suddenly make it public, so the retry ladder is skipped.
     try {
       await assertEgressAllowedResolved(new URL(loaded.row.target_url), {
         tenant_id: data.tenant_id,
@@ -289,7 +245,6 @@ export async function registerDeliveryWorker(
     }
     const outcome = await sendDelivery(loaded.row.target_url, headers, data.body, fetchImpl);
 
-    // 4) Success path.
     if (outcome.ok) {
       await db.insert(deliveries).values({
         tenant_id: data.tenant_id,
@@ -331,9 +286,6 @@ export async function registerDeliveryWorker(
       return;
     }
 
-    // 5) Failure path — classify, then compute next retry delay.
-    // Permanent failures (4xx non-429 non-auth; also auth failures that
-    // won't resolve without credential rotation) skip the ladder entirely.
     const classification = classifyFailure({ status: outcome.status, error: outcome.error });
     const permanent = isPermanentFailure(classification);
 
@@ -401,8 +353,6 @@ export async function registerDeliveryWorker(
         ...data,
         attempt_number: data.attempt_number + 1,
       };
-      // Re-enqueue at `now + delay`. pg-boss accepts a Date for
-      // `startAfter` and will dequeue no earlier than that timestamp.
       const startAfter = nextRetryAt ?? new Date(Date.now() + (delay ?? 1000));
       await boss.send(WEBHOOK_DELIVER_QUEUE, nextJob, { startAfter });
     }
@@ -454,8 +404,6 @@ export async function registerDeliveryWorker(
     });
   }
 
-  // Touch the subscriptions import so biome doesn't whine about an
-  // unused import when a future refactor removes one of the reads.
   void subscriptions;
   void eq;
 

@@ -1,28 +1,8 @@
-// The connector circuit breaker's persistence: every write to
-// `connectors.circuit_state` / `circuit_failure_count` / `circuit_opened_at`
-// lives here, so the three columns cannot be written out of step.
-//
-//   closed ──failures reach the threshold──▶ open      (recordCircuitFailure)
-//   open ──reset window elapsed, probe let through──▶ half-open
-//   half-open / partial count ──the remote answered──▶ closed
-//   any ──a person re-authorised the connector──▶ closed  (resetCircuitBreaker)
-//
-// `circuit_opened_at` is a fact about an OPEN breaker — when it tripped. A
-// closed breaker has none, so closing clears it; half-open keeps it, because
-// that is still the trip the probe is testing.
-
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import { connectors } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 
-/**
- * Persist a circuit-breaker state write. Drizzle builders are lazy — a bare
- * `void db.update(...)` never dispatches SQL — so every circuit write must be
- * awaited (or `.catch()`-chained) to take effect. The returned promise never
- * rejects: the step result must not depend on circuit bookkeeping, and on the
- * failure path a DB error here must not mask the original request error.
- */
 export async function persistCircuitState(
   db: Db,
   connector: { tenant_id: string; id: string },
@@ -52,13 +32,6 @@ export async function persistCircuitState(
   }
 }
 
-/**
- * Record a request failure against the connector's circuit breaker in ONE
- * atomic statement: the increment reads the column (not a stale snapshot, so
- * concurrent failures cannot lose updates) and the same UPDATE flips the
- * circuit open when the new count reaches the threshold. Logs exactly once on
- * the open transition. Never rejects (see persistCircuitState).
- */
 export async function recordCircuitFailure(
   db: Db,
   connector: { tenant_id: string; id: string },
@@ -101,16 +74,6 @@ export async function recordCircuitFailure(
   }
 }
 
-/**
- * Close the breaker and forget its failures, tenant-scoped. Unlike the
- * request path's best-effort writes this one rejects on a DB error: its
- * caller is a person's deliberate act, and an act that did not land must not
- * read as done.
- *
- * Returns the state it replaced when there was something to reset, and null
- * when the breaker was already closed and clean — so the caller audits the
- * edge and only the edge.
- */
 export async function resetCircuitBreaker(
   db: Executor,
   tenant_id: string,

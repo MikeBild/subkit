@@ -1,6 +1,3 @@
-// GET /v1/stats/llm — tenant-scoped, time-bucketed LLM token usage +
-// cache-hit + latency stats over `llm_usage`. Gated by `stats:read`.
-
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { modelDisplayName } from "../../../llm/index.ts";
@@ -13,25 +10,8 @@ import type { AppEnv } from "../../openapi.ts";
 import { resolveWindow } from "./bucket-window.ts";
 import { LlmStatsQuery, LlmStatsResponse } from "./schemas.ts";
 
-// `workflow` reaches through `executions` to the workflow that ran the call.
-// It exists because model and flow together still cannot answer "which
-// workflow is spending the money" — the question the August 2026 cost
-// investigation actually turned on, and the one that previously forced a
-// direct SQL query over ssh because no endpoint could serve it.
 const LLM_DIMS: LlmGroupDim[] = ["model", "flow", "user", "workflow"];
 
-/**
- * Reject what cannot be served instead of serving something else.
- *
- * The aggregator groups by at most two dimensions (`groupBy.slice(0, 2)`), and
- * this route used to silently drop both the third dimension and any name it
- * did not recognise. A caller asking for three got two back with nothing in
- * the response saying so — and with a fourth dimension now on offer, asking
- * for three is the natural thing to try.
- *
- * `GET /v1/stats/usage` already draws exactly this line; the wording and the
- * `reason` codes match it deliberately, so the two endpoints fail the same way.
- */
 function validatedGroups(values: string[] | undefined): LlmGroupDim[] {
   const requested = values ?? [];
   if (requested.length > 2) {
@@ -76,11 +56,6 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
 
     const groupBy = validatedGroups(q.group_by);
 
-    // The blanket app.use already enforced `stats:read`. Reading ANOTHER
-    // user's rows, or a cross-user breakdown (`group-by=user`), is a
-    // privileged operation that additionally requires `stats:read:all`.
-    // Reading only your own usage (`user_id` absent or == your id) passes
-    // on `stats:read` alone.
     const targetsOtherUser = q.user_id != null && q.user_id !== principal.id;
     const crossUserBreakdown = groupBy.includes("user");
     if (targetsOtherUser || crossUserBreakdown) {
@@ -108,9 +83,6 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       groupBy,
     });
 
-    // Money for the window, priced per model — through the reader
-    // `get_llm_usage` prices with, so both answer with the same amount,
-    // price sources and unpriced models for the same window.
     const window = {
       tenantId: principal.tenant_id,
       bucket: win.bucket,
@@ -122,8 +94,6 @@ export function registerStatsLlmRoute(app: OpenAPIHono<AppEnv>): void {
       userId: q.user_id,
     };
     const cost = await readLlmWindowCost(db, window);
-    // With one dimension each group gets its own amount — "what did this
-    // workflow cost" is the question a breakdown by workflow is asked.
     const [only] = groupBy;
     const groupCost =
       groupBy.length === 1 && only ? await readLlmCostByGroup(db, window, only) : null;

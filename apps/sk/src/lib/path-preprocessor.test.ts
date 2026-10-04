@@ -1,15 +1,3 @@
-// Unit tests for the local-path preprocessor. Text-like local paths
-// are read into prompt context; binary paths are uploaded as files.
-//
-// - `extractCandidatePaths` — pure regex + sanitization. No I/O.
-//   Pins the regression where a `.md` directory component (e.g.
-//   `/Users/me/ocpp.md/docs/x.md`) used to break path detection, and
-//   the paste-artifact regression where trailing prose (", then …" /
-//   " in sk") would be glued onto the path token.
-//
-// - `autoUploadLocalPaths` — exercises the orchestrator with a real
-//   temp file and a fake EngineClient.
-
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,9 +17,6 @@ describe("extractCandidatePaths", () => {
   });
 
   test("preserves the .md file extension when a directory in the path also ends in .md", () => {
-    // Regression: earlier slash-path handling
-    // would mangle this path into `OCPP-2.0.1.` or `OCPP-2.0.1` after
-    // paste artifacts. The extractor must keep the file suffix intact.
     const path = "/Users/me/ocpp.md/docs/OCPP-2.0.1.md";
     const out = extractCandidatePaths(`ingest ${path} please`);
     expect(out).toHaveLength(1);
@@ -91,9 +76,6 @@ describe("extractCandidatePaths", () => {
   });
 
   test("does not glue an in-prose word onto the path", () => {
-    // The error reported from path handling showed " in sk" being
-    // treated as part of the path after a paste. The path regex stops
-    // at whitespace, so this can't happen in the preprocessor.
     const out = extractCandidatePaths("use /Users/me/foo.md in sk");
     expect(out.map((c) => c.cleaned)).toEqual(["/Users/me/foo.md"]);
   });
@@ -124,7 +106,7 @@ describe("autoUploadLocalPaths", () => {
           content_type: "text/markdown",
           size_bytes: 5,
           sha256: "x",
-          created_at: "2024-11-14T22:13:20.000Z", // FROZEN_NOW
+          created_at: "2024-11-14T22:13:20.000Z",
         };
       },
       async linkFile(file_id: string, link: { resource_id: string }) {

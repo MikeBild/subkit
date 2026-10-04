@@ -1,16 +1,3 @@
-// Probe-failure diagnostics.
-//
-// Pre-fix a failing probe collapsed the upstream response into a bare
-// "GraphQL probe failed: HTTP 403" — three consecutive 403 probes in a
-// row dropped the response body and headers that named the real
-// problem ("Basic auth with password is not allowed on this instance",
-// `X-Seraph-LoginReason: AUTHENTICATED_FAILED`), forcing the LLM and
-// the operator to guess. These helpers extract a scrubbed, truncated
-// body snippet plus an allowlisted set of diagnostic response headers
-// so every ok:false probe carries the upstream's own words.
-//
-// Pure module — no I/O, sibling style to `probe-classify.ts`.
-
 import { scrubString } from "../../logging/scrub-secrets.ts";
 
 export interface ProbeDiagnostics {
@@ -20,21 +7,10 @@ export interface ProbeDiagnostics {
 
 const BODY_SNIPPET_MAX = 500;
 
-// Headers that carry diagnostic signal without leaking secrets.
-// `www-authenticate` names the expected auth scheme/realm;
-// `content-type` distinguishes an HTML login wall from a JSON error.
 const EXACT_HEADER_ALLOWLIST = new Set(["www-authenticate", "content-type"]);
-// Vendor diagnostic headers (e.g. Atlassian `x-seraph-loginreason`,
-// `x-request-id` for support tickets). Narrow on purpose: only x-*
-// headers whose name signals auth/error/diagnostic intent pass.
 const PATTERN_HEADER_ALLOWLIST =
   /^x-[a-z0-9-]*(auth|error|reason|login|deny|request-id)[a-z0-9-]*$/i;
 
-/**
- * Build the diagnostic envelope for a failed probe from the upstream
- * response headers + body. Returns `{}` when nothing survives, so call
- * sites can spread the result unconditionally.
- */
 export function buildProbeDiagnostics(
   headers: Record<string, string> | undefined,
   body: unknown,
@@ -49,7 +25,6 @@ export function buildProbeDiagnostics(
       try {
         raw = JSON.stringify(body);
       } catch {
-        // Circular / non-serializable body — no snippet.
         raw = undefined;
       }
     }

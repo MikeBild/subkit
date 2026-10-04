@@ -32,33 +32,10 @@ const UsageInput = z
   })
   .openapi("LlmUsageInput");
 
-/** The first instant of `now`'s UTC month — the month `month_bucket` names. */
 function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-/**
- * Resolve which user this metrics call may read.
- *
- * - No `user_id` → the caller's own id (self). When the principal is
- *   absent (resume paths) and there is no actor_id, returns `tenant: true`
- *   so the existing tenant-wide behaviour is preserved for system flows.
- * - `user_id === self` → allowed (self).
- * - `user_id !== self` → requires the `stats:read:all` permission via the
- *   tool ctx principal; denied otherwise.
- */
-/**
- * Which of a caller's two ceilings refuses the next call first.
- *
- * `checkAndDecrement` treats the per-user cap as an ADDITIONAL ceiling on top
- * of the workspace's, so a caller is bounded by whichever has less room left.
- * A reader told only about the per-user one reads "nothing bounds you" on
- * every installation that never set a personal cap — while the workspace cap
- * is what actually stops them.
- *
- * `null` remaining means that ceiling is absent, not that it is exhausted.
- * Both absent means nothing binds; the caller is unbounded.
- */
 export function bindingCeiling(
   userRemaining: number | null,
   tenantRemaining: number | null,
@@ -66,8 +43,6 @@ export function bindingCeiling(
   if (userRemaining == null && tenantRemaining == null) return null;
   if (userRemaining == null) return "tenant";
   if (tenantRemaining == null) return "user";
-  // Ties go to the user cap: it is the narrower statement about this caller,
-  // and it is the one the dispatch evaluates first.
   return userRemaining <= tenantRemaining ? "user" : "tenant";
 }
 
@@ -81,7 +56,6 @@ async function resolveUsageScope(
   const selfId = ctx.principal?.id ?? ctx.actor_id ?? null;
 
   if (!requestedUserId) {
-    // Self when we know who the caller is; otherwise tenant-wide (system flow).
     return selfId
       ? { ok: true, userId: selfId, tenant: false }
       : { ok: true, userId: null, tenant: true };
@@ -91,7 +65,6 @@ async function resolveUsageScope(
     return { ok: true, userId: requestedUserId, tenant: false };
   }
 
-  // Cross-user read — require stats:read:all on the ctx principal.
   if (!ctx.principal) {
     return {
       ok: false,
@@ -136,9 +109,6 @@ export const getLlmUsageTool: ConversationTool = {
     if (window.to.getTime() <= window.from.getTime()) {
       return { ok: false, data: { error: "invalid_window", message: "to must be after from" } };
     }
-    // Money is a `stats:read` figure, as `GET /v1/stats/llm` gates it: a caller
-    // without it still reads its own tokens, and is told the cost is withheld
-    // rather than handed an empty one.
     const mayReadCost = ctx.principal
       ? (
           await can(ctx.db, {
@@ -199,12 +169,6 @@ export const getTokenBudgetTool: ConversationTool = {
     if (!scope.ok) return scope.error;
 
     if (scope.tenant || scope.userId == null) {
-      // Both halves, same shape as the per-user branch below. This used to
-      // hardcode `budget_tokens: null` and omit `remaining_tokens` entirely —
-      // so a tool called "get token budget" could not report the workspace's
-      // budget, and its two branches answered with two different objects. The
-      // value was resolvable the whole time; `/v1/status` had been returning
-      // it from the same source.
       const month = await ctx.engineClient.metrics.tenantMonthlyBudget();
       return {
         ok: true,
@@ -219,19 +183,6 @@ export const getTokenBudgetTool: ConversationTool = {
       };
     }
 
-    // A caller is bounded by TWO ceilings and the dispatch refuses at
-    // whichever it reaches first (`checkAndDecrement`: the per-user cap is an
-    // ADDITIONAL ceiling on top of the workspace's, not a replacement).
-    //
-    // This branch used to report only the per-user cap. A caller with no
-    // personal cap — which is every caller on an installation that never set
-    // one — therefore read `budget_tokens: null`, "nothing bounds you", while
-    // the workspace cap was what would actually stop the next call. Found on
-    // a live installation minutes after that cap was made settable: the tool
-    // still said `null` with a hundred and fifty million configured.
-    //
-    // So the headline is the binding ceiling, and both are carried beside it
-    // so the answer can be reconciled rather than believed.
     const [userUsed, userBudget, tenantUsed] = await Promise.all([
       ctx.engineClient.metrics.monthlyTokenUsageForUser(scope.userId),
       ctx.engineClient.metrics.userTokenBudget(scope.userId),

@@ -1,24 +1,3 @@
-// Citations footer — a grounded answer renders "Sources: <source name>"
-// under the assistant text; an ungrounded answer renders no footer at all.
-//
-// Reliable seam: rather than drive a real conversational turn through a
-// PTY and hope the mock model calls search_knowledge on its own, this
-// seeds a knowledge chunk directly (same shape as
-// apps/engine/src/embeddings/tests/backfill-scoping.test.ts) and pins the
-// mock provider's converse plan (getMockProvider().setConversePlan) to call
-// search_knowledge with a query that matches it. The engine still runs the
-// real FTS lookup, the real citation harvester
-// (apps/engine/src/conversations/citations.ts), and the real terminal
-// `citations` TurnEvent (apps/engine/src/conversations/loop.ts); only the
-// model's tool choice is canned. Driven through `sk -p ... --output text`
-// (apps/sk/src/headless.ts) — the same non-interactive seam
-// workflow-save-follow-up.e2e.test.ts uses — so the assertion covers the
-// real user-visible text-mode render (headless.ts + citations-footer.ts),
-// not the engine's internal event shape.
-//
-// LLM: mock — resetMockProvider() runs in boot(); the search_knowledge tool
-// call is canned per-conversation, the answer text is the mock's canned ack.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createEmptyDraftDocument } from "../../apps/engine/src/conversations/authoring-state.ts";
 import { conversations } from "../../apps/engine/src/db/schema/index.ts";
@@ -40,14 +19,11 @@ afterAll(async () => {
   await shutdown(env);
 }, 30_000);
 
-/** Fresh, collision-free label per seeded fixture in this suite. */
 function label(): string {
   seq += 1;
   return `citefoot-${seq.toString().padStart(4, "0")}`;
 }
 
-/** Seed an active global knowledge source with one FTS-searchable chunk.
- *  Direct DB insert (no ingestion pipeline, no polling) — deterministic. */
 async function seedKnowledgeChunk(opts: {
   sourceName: string;
   token: string;
@@ -79,10 +55,6 @@ async function seedKnowledgeChunk(opts: {
   return { sourceId: source.id };
 }
 
-/** Seed a plain, ready-to-chat conversation (no active workflow/connector
- *  draft) owned by the admin persona. Mirrors the seeding shape in
- *  workflow-save-follow-up.e2e.test.ts, minus the workflow-draft fields
- *  this suite does not need. */
 async function seedConversation(): Promise<string> {
   const draft = {
     ...createEmptyDraftDocument(),
@@ -124,8 +96,6 @@ describe("citations footer over `sk -p --output text`", () => {
   test("an ungrounded answer (no search_knowledge call) renders no Sources: footer", async () => {
     const conversationId = await seedConversation();
 
-    // No converse plan installed for this conversation id — the mock
-    // model immediately acknowledges with plain text, no tool call.
     const result = await cli(
       ["--r", conversationId, "--p", "just say hi, no lookups needed", "--output", "text"],
       { env, persona: "admin", timeout: 60_000 },

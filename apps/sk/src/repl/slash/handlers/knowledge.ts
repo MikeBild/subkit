@@ -1,14 +1,3 @@
-// `/knowledge` REPL slash — local-FS knowledge-bundle import.
-// `/knowledge import <dir> [name…]` walks the directory locally (only the
-// CLI process can see the user's disk), posts the markdown files as one
-// bundle to `POST /v1/knowledge-sources/bundle`, and reports the upsert
-// outcome as a banner. Re-running on unchanged content is a no-op
-// (`outcome: unchanged`). Non-interactive automation uses
-// `sk knowledge-sources import` — same walker, same endpoint.
-//
-// Lives in its own module so `handler.ts` stays under the file-size cap;
-// the dispatcher contract test permits a `case` that delegates here.
-
 import { collectBundleFiles, defaultBundleName } from "../../../lib/bundle-import.ts";
 import { sanitizePathInput } from "../../../lib/path-input.ts";
 import type { SlashHandlerContext } from "../handler.ts";
@@ -22,8 +11,6 @@ export async function dispatchKnowledgeSlash(
   ctx: SlashHandlerContext,
 ): Promise<string | null> {
   const action = (rawArgs[0] ?? "").trim();
-  // Bare `/knowledge` keeps the read-only inspect behavior (Settings
-  // Knowledge pane / list) owned by handlers/inspect.ts.
   if (action === "") return (await dispatchInspectSlash("knowledge", ctx)) ?? null;
   if (action !== "import") return USAGE;
   const dirArg = (rawArgs[1] ?? "").trim();

@@ -1,13 +1,3 @@
-// save_connector_draft + credential atomic-save regression tests.
-//
-// Reproduces the user-reported flow: a probe returns 401 → masked
-// `ask_user_form(type: password)` collects the secret → the value flows
-// directly into `save_connector_draft({ credential })`, which persists
-// the connector AND the credential in one call. There is no separate
-// `submit_connector_credential` step, no user-supplied credential name,
-// and no second confirmation between connector save and credential
-// save.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import {
@@ -128,7 +118,6 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
     expect(data.connector.slug).toBe("acme-bearer");
     expect(data.credential_persisted).toBe(true);
 
-    // Exactly one credential row tied to the new connector.
     const credRows = await ctx.db
       .select()
       .from(credentials)
@@ -139,7 +128,6 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
     expect(credRows[0]!.mode).toBe("bearer");
     expect(credRows[0]!.environment).toBe("dev");
 
-    // Exactly one credential.created audit row.
     const audit = await ctx.db
       .select()
       .from(auditLog)
@@ -156,9 +144,6 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
     expect(first.ok).toBe(true);
     const firstId = (first.data as { connector: { id: string } }).connector.id;
 
-    // The draft now records saved_connector_id; re-issuing the same
-    // tool_call (the `2ee4511c-...` symptom in the bug log) MUST NOT
-    // create a second connector row.
     const second = await saveConnectorDraftTool.execute(buildToolCtx(draftRef), {
       credential: { mode: "bearer", token: "secret-bearer-2" },
       environment: "dev",
@@ -170,11 +155,6 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
       already_persisted?: boolean;
     };
     expect(secondData.connector.id).toBe(firstId);
-    // The diagnostic re-issue path short-circuits with `already_persisted`
-    // when the supplied credential matches the stored one byte-for-byte;
-    // the harness auto-persist path returned `idempotent: true`, but the
-    // tool wrapper's contract is `already_persisted: true` so callers
-    // (and the audit trail) can distinguish the two cases.
     expect(secondData.already_persisted ?? secondData.idempotent).toBe(true);
 
     const connectorRows = await ctx.db
@@ -187,24 +167,14 @@ describe("saveConnectorDraftTool — atomic credential save", () => {
       .select()
       .from(credentials)
       .where(and(eq(credentials.tenant_id, tenant_id), eq(credentials.connector_id, firstId)));
-    // upsertCredential keeps a single row per (connector, environment).
     expect(credRows).toHaveLength(1);
   });
 
   test("save without credential on a bearer-auth draft returns the credential_required envelope", async () => {
-    // Contract: a connector with `auth_type !== "none"` must
-    // have a credential before it can be persisted. Calling
-    // save_connector_draft without one returns a structured
-    // `credential_required` envelope with `next_best_actions:
-    // ["ask_user_form"]` rather than silently saving a connector with
-    // no credential row.
     const draftRef = { current: readyDraft("acme-nocred") };
     const result = await saveConnectorDraftTool.execute(buildToolCtx(draftRef), {});
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      // The atomic helper populates `data.error_code` AND the top-level
-      // `error_code` so legacy and structured callers both see the
-      // signal. Check both.
       const data = result.data as { error_code?: string } | undefined;
       expect(result.error_code ?? data?.error_code).toBe("credential_required");
       expect(result.next_best_actions ?? []).toContain("ask_user_form");

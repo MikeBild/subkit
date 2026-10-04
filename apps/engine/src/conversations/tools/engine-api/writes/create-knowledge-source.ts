@@ -1,19 +1,3 @@
-// create_knowledge_source — ingest content as a tenant Knowledge Source
-// from inline text or an existing conversation attachment (fid_…).
-//
-// Closes the gap surfaced in session a6450b39 where `sk chat` said
-// "please upload the file first" then had no tool to convert the
-// attachment into a Knowledge Source. The chat agent + every external
-// MCP client now has a write tool that reuses the same
-// `svc.createKnowledgeSource` ingestion path the HTTP route and CLI
-// already share — chunking, dedup, budget, audit all inherited.
-//
-// Schema shape note: Anthropic's tool API requires `input_schema.type ===
-// "object"` with no `anyOf`/`oneOf` at the root, so the two modes are
-// expressed as a flat object + `.refine()` rather than a discriminated
-// union. Mode-specific field requirements are enforced both at the Zod
-// boundary and in `execute()`.
-
 import { z } from "@hono/zod-openapi";
 import type { FileRow } from "../../../../files/resolver.ts";
 import { requireFileForTenant, resolvedFromRow } from "../../../../files/resolver.ts";
@@ -22,10 +6,6 @@ import { log } from "../../../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "../../index.ts";
 import { buildKnowledgeSourceUsage } from "../../usage-guidance.ts";
 
-// Output shape on success — exported so downstream consumers (sk REPL
-// authoring-cards extractor) can build structural-overlap fixtures and
-// catch shape drift at compile time. The Zod definition is the single
-// source of truth; behaviour is unchanged.
 const CreateKnowledgeSourceOutputData = z.object({
   created: z.literal(true),
   knowledge_source: z.object({
@@ -38,13 +18,6 @@ const CreateKnowledgeSourceOutputData = z.object({
     status: z.string(),
     chunk_count: z.number(),
     bytes_total: z.number(),
-    // Mirror back the resolved MIME and filename so client renderers
-    // (e.g. the Ink authoring card at `apps/sk/src/repl/authoring-
-    // cards.tsx:extractKnowledgeSourceSummary`) can show the real
-    // content_type / filename without re-fetching the file row.
-    // Pre-6.2.12 the sk card hardcoded `application/octet-stream` for
-    // `mode='from_attachment'` because the response didn't carry the
-    // MIME — surfaced in the OCPP-2.0.1.md session repro.
     mime_type: z.string().optional(),
     filename: z.string().optional(),
   }),
@@ -59,14 +32,11 @@ export type CreateKnowledgeSourceOutput = {
 const CreateKnowledgeSourceInput = z
   .object({
     mode: z.enum(["inline", "from_attachment"]),
-    // mode='inline' fields
     name: z.string().min(1).max(200).optional(),
     content: z.string().min(1).optional(),
     mime_type: z.string().optional(),
     source_uri: z.string().url().optional(),
-    // mode='from_attachment' field
     file_id: z.string().regex(/^fid_/, "file_id must start with 'fid_'").optional(),
-    // shared
     description: z.string().max(2000).optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: z.enum(["global", "workflow"]).optional(),
@@ -96,30 +66,15 @@ function defaultNameFromFilename(filename: string): string {
   return base.length > 0 ? base : filename;
 }
 
-// Catch generic placeholders the LLM sometimes invents when it can't
-// see the filename (e.g. when sk's preprocessor rewrote a path token
-// to `{"$file":"fid_..."}` and the agent had no human-readable hint).
-// These leak into the KS title, slug, audit metadata and `/knowledge`
-// list — surfaced in the OCPP-2.0.1.md session as "Uploaded Knowledge
-// Source (slug: uploaded-knowledge-source)". The tool description
-// already instructs the agent to omit `name` in this case; this guard
-// is the defensive belt for when the agent ignores the instruction.
-// Case-insensitive on whole-string match so a legitimate name like
-// "Uploaded API reference for vendor X" (which starts with the same
-// word) survives.
 const GENERIC_NAME_PATTERNS = [
-  // "Uploaded …" family
   /^uploaded\s+knowledge\s+source$/i,
   /^uploaded\s+file$/i,
   /^uploaded\s+document$/i,
   /^uploaded\s+content$/i,
-  // "New …" family — LLM "starting fresh" pattern
   /^new\s+knowledge\s+source$/i,
   /^new\s+file$/i,
   /^new\s+document$/i,
-  // "Pasted …" family
   /^pasted\s+(content|text|document|file)$/i,
-  // Single-word generics
   /^attachment$/i,
   /^file$/i,
   /^document$/i,
@@ -133,7 +88,6 @@ function isGenericName(name: string): boolean {
   return GENERIC_NAME_PATTERNS.some((re) => re.test(name.trim()));
 }
 
-// EXPORTED FOR TESTS — keep in sync with the production guard below.
 export { isGenericName };
 
 export const createKnowledgeSourceTool: ConversationTool = {
@@ -166,7 +120,6 @@ export const createKnowledgeSourceTool: ConversationTool = {
     let source_uri_override: string;
 
     if (args.mode === "from_attachment") {
-      // .refine guarantees file_id is set; assert for the type narrowing.
       const file_id = args.file_id as string;
       let row: FileRow;
       try {
@@ -186,14 +139,10 @@ export const createKnowledgeSourceTool: ConversationTool = {
       buffer = await readAllBytes(stream);
       filename = resolved.filename;
       mime = resolved.content_type ?? undefined;
-      // Prefer the user-supplied name, but fall through to the
-      // filename-derived default when the agent passed a generic
-      // placeholder it invented in the absence of filename context.
       name = args.name && !isGenericName(args.name) ? args.name : defaultNameFromFilename(filename);
       source_type_override = "file_upload";
       source_uri_override = filename;
     } else {
-      // .refine guarantees name + content are set.
       const inlineName = args.name as string;
       const inlineContent = args.content as string;
       buffer = Buffer.from(inlineContent, "utf8");
@@ -218,10 +167,6 @@ export const createKnowledgeSourceTool: ConversationTool = {
         source_uri_override,
       });
 
-      // Interactive auto-enrich (best-effort): generate a description +
-      // tags when the upload landed without them. Runs after the create
-      // commits, outside its transaction. A failure (e.g. LlmQuotaExhausted)
-      // leaves the source created/un-enriched and never fails the upload.
       if (view.description === null || view.tags.length === 0) {
         try {
           const enriched = await ctx.engineClient.knowledgeSources.analyze(view.id, {});

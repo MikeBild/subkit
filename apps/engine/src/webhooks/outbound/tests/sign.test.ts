@@ -1,15 +1,3 @@
-// Signer unit tests — pure HMAC with no DB.
-//
-// Vector below is deterministic:
-//
-//   webhook_id  = "msg_test_00000000000000000000000"
-//   timestamp   = 1700000000
-//   body        = '{"type":"ping"}'
-//   secret      = "whsec_testabcdefghijklmnopqrstuv"
-//
-// base         = "msg_test_00000000000000000000000.1700000000.{\"type\":\"ping\"}"
-// expected     = base64(HMAC-SHA256(secret, base))
-
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import { sign, signatureHeader, verifySignatureHeader } from "../signer.ts";
@@ -31,7 +19,6 @@ describe("signer: single signature", () => {
     expect(env.signature).toBe(`v1,${expected}`);
     expect(env.webhook_id).toBe(ID);
     expect(env.timestamp).toBe(String(TS));
-    // Stability check — regenerate and confirm idempotency.
     expect(signatureHeader({ webhook_id: ID, timestamp: TS, body: BODY, secret: SECRET })).toBe(
       env.signature,
     );

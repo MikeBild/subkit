@@ -137,7 +137,6 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
           step_id: "fetch",
           kind: "request",
           status: "succeeded",
-          // Recorded against the OLD definition of fetch.
           fingerprint: stepFingerprint({ ...fetch, url: "https://example.com/items" }),
           output_preview: { items: [{ id: "a" }] },
           scope_at_step: {
@@ -184,7 +183,6 @@ describe("evaluateLoopAuthoringGate · probe-evidence exemption", () => {
         ],
       },
       null,
-      // No probedConnectorSlugs.
     );
     expect(result.ok).toBe(false);
   });

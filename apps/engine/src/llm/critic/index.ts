@@ -1,21 +1,3 @@
-// critic — terminal-step rubric pass.
-//
-// Runs after the converse loop hits any of its terminal stop
-// conditions (committedStopCondition, pausedStopCondition, or
-// stepCountIs with a non-paused state). Delegates to a per-kind
-// deterministic rubric that grades the artifact against structural
-// predicates and returns a verdict. The loop:
-//   - logs the verdict (info-level, audit-friendly),
-//   - flips `priorCriticFail` so the NEXT turn escalates one tier up,
-//   - on low confidence + commit, surfaces an `ask_user_text` follow-up
-//     elicitation so the operator can confirm the commit before acting.
-//
-// The rubrics are deterministic predicates by design — every question
-// they answer is structural (is the field present? does the text contain
-// a placeholder marker? is the referenced id in the snapshot?).
-// Deterministic checks are faster (no second LLM call), cheaper, and
-// more reliable than LLM-as-judge for structural criteria.
-
 import type { SubkitLlm } from "../core/base-types.ts";
 import { type CountIssue, detectCountInconsistencies } from "./count-consistency.ts";
 import { chatRubric } from "./rubrics/chat.ts";
@@ -30,23 +12,16 @@ export type CriticArtifact =
 
 export interface CriticVerdict {
   verdict: "pass" | "fail";
-  /** 0..1 — below 0.6 the loop should surface an ask_user_text follow-up. */
   confidence: number;
-  /** Why the verdict came out this way. Surfaced to the model on revise. */
   reason: string;
-  /** Concrete fix the model should apply on the revision pass. */
   hint?: string;
-  /** Per-question outcomes for telemetry / audit. */
   checks?: Record<string, boolean>;
 }
 
 export interface RunCriticParams {
   artifact: CriticArtifact;
-  /** Tenant snapshot text for grounding (id presence checks). */
   snapshot?: string;
-  /** Optional runtime context (engine_url, tenant_slug) for chat grounding. */
   runtimeContext?: { engine_url?: string; tenant_slug?: string };
-  /** Tenant default LLM, already initialised. Reserved for future LLM-grading. */
   llm?: SubkitLlm;
 }
 
@@ -110,10 +85,6 @@ function hintForSaveWorkflowDraft(failed: string[]): string {
   return parts.join("; ");
 }
 
-// Match real subkit ids — UUID v4-shaped, case-insensitive. The earlier
-// `/\b(connector|workflow)_[a-z0-9_]+\b/` pattern was a no-op against
-// production data because subkit ids are bare UUIDs, not prefixed
-// strings.
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 
 function gradeChat(
@@ -123,9 +94,6 @@ function gradeChat(
 ): CriticVerdict {
   const matches = text.match(UUID_PATTERN) ?? [];
   const ungroundedIds = snapshot ? matches.filter((m) => !snapshot.includes(m)) : [];
-  // Numeric self-consistency: the assistant's own stated counts must add up
-  // and must not over-claim against the items it actually lists. Grounds a
-  // destructive bulk-action summary against arithmetic, not LLM prose.
   const countIssues: CountIssue[] = detectCountInconsistencies(text);
   const checks = {
     ids_grounded: ungroundedIds.length === 0,
@@ -176,9 +144,6 @@ function gradeChat(
   };
 }
 
-/**
- * Run the critic for a terminal step's artifact.
- */
 export async function runCritic(params: RunCriticParams): Promise<CriticVerdict> {
   const { artifact, snapshot, runtimeContext } = params;
   switch (artifact.kind) {

@@ -1,13 +1,3 @@
-// sk.base64Encode / sk.base64UrlEncode — the encoding surface the
-// email-send (`raw`) and git-commit (`content`) workflows depend on once
-// their transforms move from jsonata to javascript. The contract is
-// byte-identical output to jsonata's `$base64encode` (low-8-bit binary
-// string semantics, not UTF-8), so a transform can switch language
-// without changing what it sends. Separate UTF-8 helpers exist for new
-// Unicode-safe payloads. These tests run the JS inside the real QuickJS
-// sandbox and compare against the engine's jsonata runtime — the same
-// two runtimes production uses.
-
 import { describe, expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash, createHmac } from "node:crypto";
@@ -20,14 +10,14 @@ const b64 = (code: string, input: unknown) =>
 describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () => {
   const cases = [
     "hello world",
-    "", // empty
-    "a", // 1 byte → 2 pad
-    "ab", // 2 bytes → 1 pad
-    "abc", // 3 bytes → 0 pad
-    "Veröffentlichung", // German umlaut (multi-byte)
-    "Projekt: Größe & Maß — 100% ✓", // mixed multi-byte + symbol + check mark
-    "Emoji: 😀", // surrogate pair must preserve jsonata's historical low-byte behavior
-    "To: user@example.com\r\nSubject: Essays published: 3\r\n\r\n<html>ä</html>", // MIME shape
+    "",
+    "a",
+    "ab",
+    "abc",
+    "Veröffentlichung",
+    "Projekt: Größe & Maß — 100% ✓",
+    "Emoji: 😀",
+    "To: user@example.com\r\nSubject: Essays published: 3\r\n\r\n<html>ä</html>",
   ];
 
   for (const s of cases) {
@@ -39,9 +29,7 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
   }
 
   test("base64UrlEncode is the +→- /→_ url-safe variant, padding kept", async () => {
-    // A payload whose base64 carries both `+` and `/` so the substitution
-    // is actually exercised.
-    const s = "ÿï¾"; // bytes that produce + and / in base64
+    const s = "ÿï¾";
     const url = await b64("return sk.base64UrlEncode(input.s);", { s });
     const std = await b64("return sk.base64Encode(input.s);", { s });
     expect(url).toBe(std.replace(/\+/g, "-").replace(/\//g, "_"));
@@ -52,7 +40,6 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
   test("base64UrlEncode matches the Gmail raw idiom these workflows use", async () => {
     const msg = "To: user@example.com\r\nSubject: Grüße\r\n\r\n<p>Maß</p>";
     const fromJs = await b64("return sk.base64UrlEncode(input.s);", { s: msg });
-    // The exact jsonata expression daily-do-resources-email / publish-ready-essays use.
     const fromJsonata = await jsonataEval<string>(
       "$replace($replace($base64encode($.s), '+', '-'), '/', '_')",
       { s: msg },
@@ -70,7 +57,7 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
   });
 
   test("base64UrlEncodeUtf8 applies url-safe substitutions while keeping padding", async () => {
-    const s = "࿿a"; // UTF-8 bytes produce +, /, and padding in base64.
+    const s = "࿿a";
     const url = await b64("return sk.base64UrlEncodeUtf8(input.s);", { s });
     const std = Buffer.from(s, "utf8").toString("base64");
 
@@ -81,11 +68,6 @@ describe("sk.base64Encode (byte-per-char, matches jsonata $base64encode)", () =>
   });
 });
 
-// Decode side + the familiar `btoa`/`atob` globals — added in stdlib
-// v1.3.0. Pre-fix the sandbox installed no `btoa`/`Buffer`, so authors
-// reached for `btoa` by reflex, failed, and hand-rolled an encoder
-// instead of finding `sk.base64EncodeUtf8` (production Gmail MIME build).
-// There was also NO decode path at all.
 describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
   const unicode = ["", "a", "ab", "abc", "Größe 😀", "Toulon → Ajaccio 185,00 €", "ä€"];
 
@@ -120,23 +102,17 @@ describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
   });
 
   test("btoa throws on code points > 255 (Web parity; use sk.base64EncodeUtf8 for Unicode)", async () => {
-    // "€" is U+20AC (8364 > 255). runJs surfaces an in-sandbox throw by rejecting.
     await expect(
       runJs<string>({ code: "return btoa(input.s);", input: { s: "€" }, clock: null }),
     ).rejects.toThrow();
   });
 
   test("btoa accepts a Latin-1 code point (<= 255) like 'ä' without throwing", async () => {
-    // charCode 0xE4 (228) fits one byte — Web btoa accepts it.
     const out = await b64("return btoa(input.s);", { s: "ä" });
     expect(out).toBe(Buffer.from("ä", "binary").toString("base64"));
   });
 
   test("stdlib installs cleanly across sequential sandbox runs (fresh context per call)", async () => {
-    // Each runJs builds a fresh QuickJS context and installs the stdlib
-    // (sk + btoa/atob) once. Two sequential runs must both succeed — i.e.
-    // the non-configurable defineProperty installs never collide across
-    // contexts (no long-lived context reused with a second install).
     const a = await b64("return btoa('a');", {});
     const c = await b64("return btoa('c');", {});
     expect(a).toBe(Buffer.from("a", "binary").toString("base64"));
@@ -144,9 +120,6 @@ describe("base64 decode + btoa/atob globals (stdlib v1.3.0)", () => {
   });
 });
 
-// Hex codec — added in stdlib v1.4.0 alongside the hash helpers. The byte
-// convention matches base64Encode (one low-8-bit byte per UTF-16 code
-// unit) so hexEncode and base64Encode agree on what "the bytes" are.
 describe("sk.hexEncode / sk.hexDecode (stdlib v1.4.0)", () => {
   const cases = ["", "a", "abc", "hello world", "ä", "\x00\x01\xfe\xff"];
 
@@ -174,9 +147,6 @@ describe("sk.hexEncode / sk.hexDecode (stdlib v1.4.0)", () => {
   });
 });
 
-// SHA-256 / HMAC-SHA-256 — pure FIPS-180-4 over UTF-8 bytes, lowercase
-// hex. Verified against published vectors AND node:crypto so the JS impl
-// can never silently diverge from the platform implementation.
 describe("sk.sha256 / sk.hmacSha256 (stdlib v1.4.0)", () => {
   test("sha256 known vectors", async () => {
     expect(await b64("return sk.sha256('');", {})).toBe(
@@ -196,13 +166,12 @@ describe("sk.sha256 / sk.hmacSha256 (stdlib v1.4.0)", () => {
   }
 
   test("hmacSha256 RFC 4231 test case 2 vector", async () => {
-    // key = "Jefe", data = "what do ya want for nothing?"
     const out = await b64("return sk.hmacSha256('Jefe', 'what do ya want for nothing?');", {});
     expect(out).toBe("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
   });
 
   test("hmacSha256 matches node:crypto including a > 64-byte key", async () => {
-    const key = "k".repeat(100); // forces the key-shortening branch
+    const key = "k".repeat(100);
     const msg = "payload to sign 😀";
     const fromJs = await b64("return sk.hmacSha256(input.key, input.msg);", { key, msg });
     expect(fromJs).toBe(createHmac("sha256", key).update(msg, "utf8").digest("hex"));
@@ -215,11 +184,6 @@ describe("sk.sha256 / sk.hmacSha256 (stdlib v1.4.0)", () => {
   });
 });
 
-// Deterministic clock / id — sk.now()/sk.nowIso()/sk.uuid() derive from
-// the host-injected `clock` context (fixed timestamp + stable seed), NOT
-// a live clock or RNG. This is what lets authors drop the banned
-// `new Date()` / `Date.now()` / `Math.random()` while keeping runs
-// reproducible under self-healing dry-runs.
 describe("sk.now / sk.nowIso / sk.uuid (deterministic, stdlib v1.4.0)", () => {
   const clock = { now_ms: 1_700_000_000_000, seed: "exec-123:step-a" };
   const run = <T>(code: string) => runJs<T>({ code, input: {}, clock }).then((r) => r.output);

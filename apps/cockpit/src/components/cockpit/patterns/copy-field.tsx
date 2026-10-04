@@ -4,7 +4,6 @@ import { IconButton } from "@/components/cockpit/icon-button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { useI18n } from "@/lib/i18n-context";
 
-/** Copy a value and say so. */
 export function useCopy(): (value: string) => Promise<void> {
   const { t } = useI18n();
   return async (value: string) => {
@@ -17,11 +16,6 @@ export function useCopy(): (value: string) => Promise<void> {
   };
 }
 
-/**
- * An address, a key or an id to take elsewhere (P15): the value in mono, and a
- * copy button. `testId` names the value itself (`${testId}-field` the frame,
- * `${testId}-copy` the button), so a check reads the value off its own id.
- */
 export function CopyField({
   value,
   label,

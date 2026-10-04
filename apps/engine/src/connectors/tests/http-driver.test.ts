@@ -93,12 +93,6 @@ describe("http driver auth application", () => {
   });
 
   test("step-level Authorization header wins over the connector's bearer credential", async () => {
-    // Reproduces the regression in session 8de01f2f. The LLM minted
-    // a Cognito IdToken in step N and tried to forward it as
-    // `headers: { Authorization: "<id_token>" }` to step N+1. Pre-fix
-    // `applyAuthMaterial` unconditionally clobbered the explicit
-    // header with the connector's bearer credential. The LLM had to
-    // work around by switching `auth_type` to `none`.
     const conn = await makeConnector({ auth_type: "bearer" });
     await upsertCredential(
       {
@@ -232,7 +226,6 @@ describe("http driver auth application", () => {
   });
 
   test("plan reports applied auth_method per credential mode", async () => {
-    // none
     const anon = await makeConnector({ auth_type: "none" });
     const anonFresh = await getConnector(ctx.tenantId, anon.id, ctx.testDb.db);
     const anonPlan = await buildRequestPlan({
@@ -243,7 +236,6 @@ describe("http driver auth application", () => {
     });
     expect(anonPlan.auth_method).toBe("none");
 
-    // bearer
     const bearer = await makeConnector({ auth_type: "bearer" });
     await upsertCredential(
       {
@@ -265,7 +257,6 @@ describe("http driver auth application", () => {
     });
     expect(bearerPlan.auth_method).toBe("bearer");
 
-    // header
     const header = await makeConnector({ auth_type: "header" });
     await upsertCredential(
       {
@@ -287,7 +278,6 @@ describe("http driver auth application", () => {
     });
     expect(headerPlan.auth_method).toBe("header");
 
-    // basic
     const basic = await makeConnector({ auth_type: "basic" });
     await upsertCredential(
       {
@@ -312,8 +302,6 @@ describe("http driver auth application", () => {
 });
 
 describe("applyAuthMaterial — oauth2 token_type handling", () => {
-  // Pure-function tests on applyAuthMaterial (no DB) — exercise every
-  // permutation of the `token_type` field that ships from real IdPs.
   function makeOauth2Connector(): ConnectorView {
     return {
       id: "00000000-0000-0000-0000-000000000099",
@@ -348,8 +336,6 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
   });
 
   test("token_type=null defaults to no prefix (raw token)", () => {
-    // Pre-fix this defaulted to "Bearer ", which broke AppSync Cognito.
-    // The new contract: missing/empty/none token_type → raw token.
     const headers: Record<string, string> = {};
     const query: Record<string, string | number | boolean> = {};
     applyAuthMaterial(
@@ -387,8 +373,6 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
   });
 
   test("token_type='none' (explicit opt-out) emits raw token", () => {
-    // AppSync Cognito User-Pool flow — operator stores credential with
-    // token_type: "none" so the driver knows to skip the scheme prefix.
     const headers: Record<string, string> = {};
     const query: Record<string, string | number | boolean> = {};
     applyAuthMaterial(
@@ -443,12 +427,6 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
   });
 
   test("token_type='bearer' (lowercase from Google) canonicalises to 'Bearer'", () => {
-    // Google's OAuth2 token endpoint returns `token_type: "bearer"`
-    // (lowercase) — and Google's resource APIs (Gmail, Drive, …)
-    // reject the lowercase form with 401 even though RFC 6749 §5.1
-    // says the comparison is case-insensitive. Canonicalise so the
-    // header is interoperable across every provider we connect to.
-    // Regression caught in Gmail-OAuth2 session 1f96ccf7 (2026-05-12).
     const headers: Record<string, string> = {};
     const query: Record<string, string | number | boolean> = {};
     applyAuthMaterial(
@@ -485,14 +463,6 @@ describe("applyAuthMaterial — oauth2 token_type handling", () => {
   });
 });
 
-// Regression: conversation 730c568a. The LLM authored a workflow step
-// where `headers` was a JSON-encoded object string. parseHeaderLines
-// happily turned `'{"Accept":"x"}'` into `{'{"Accept"': '"x"}'`. The
-// http driver's old contract trusted the type and crashed inside
-// `new Headers()` with "Invalid header name", which the retry loop
-// then misclassified as a transient connection error and retried 5×.
-// Post-fix the driver fails fast with HttpRequestInvalidError so the
-// retry loop converts to RequestError(request_invalid) and stops.
 describe("executePlannedHttpRequest header contract", () => {
   test("rejects a non-object headers value before fetch", async () => {
     await expect(
@@ -531,36 +501,23 @@ describe("executePlannedHttpRequest header contract", () => {
   });
 });
 
-// resolveUrl — pure-function tests. No DB required.
-//
-// The key invariant: a base_url with a non-root pathname must not have
-// its path segment silently discarded when the caller passes a
-// leading-slash path. The URL spec's `new URL('/foo', base)` behaviour
-// strips the base pathname — we normalise this before delegating to the
-// constructor (see W3.6 fix comment in http.ts).
 describe("resolveUrl — base-path preservation", () => {
   test("base with subpath + leading-slash path: appends to base path", () => {
-    // This is the A5 failure pattern: base "…/gmail/v1" + path "/users/me/messages"
-    // was resolving to "…/users/me/messages" (drops /gmail/v1) → 404.
     const url = resolveUrl("https://api.example.com/v1", "/users/me");
     expect(url.href).toBe("https://api.example.com/v1/users/me");
   });
 
   test("base with subpath + no-leading-slash path: appends correctly", () => {
-    // Already worked before the fix; confirm it still does.
     const url = resolveUrl("https://api.example.com/v1", "users/me");
     expect(url.href).toBe("https://api.example.com/v1/users/me");
   });
 
   test("base with subpath + trailing slash + leading-slash path: appends to base path", () => {
-    // Explicit trailing slash on base should still work.
     const url = resolveUrl("https://api.example.com/v1/", "/users/me");
     expect(url.href).toBe("https://api.example.com/v1/users/me");
   });
 
   test("base root path + leading-slash path: resolves from origin (unchanged behaviour)", () => {
-    // When base is root ("/"), the URL spec behaviour is correct:
-    // "/users/me" against "https://api.example.com/" → "https://api.example.com/users/me".
     const url = resolveUrl("https://api.example.com", "/users/me");
     expect(url.href).toBe("https://api.example.com/users/me");
   });
@@ -576,16 +533,12 @@ describe("resolveUrl — base-path preservation", () => {
   });
 
   test("path that already includes the base prefix is NOT doubled (regression: get-last-3-gmail-messages)", () => {
-    // The author wrote the full "/gmail/v1/..." prefix relying on the old
-    // leading-slash-replaces-base behavior. The dedupe must collapse it to a
-    // single prefix instead of "/gmail/v1/gmail/v1/...".
     expect(
       resolveUrl("https://gmail.googleapis.com/gmail/v1", "/gmail/v1/users/me/messages").href,
     ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
     expect(
       resolveUrl("https://gmail.googleapis.com/gmail/v1", "gmail/v1/users/me/messages").href,
     ).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages");
-    // Query string is preserved through the dedupe.
     expect(resolveUrl("https://api.example.com/v1", "/v1/users?limit=3").href).toBe(
       "https://api.example.com/v1/users?limit=3",
     );
@@ -596,10 +549,6 @@ describe("resolveUrl — base-path preservation", () => {
   });
 });
 
-// A failed HTTP probe must carry the upstream's own words — a
-// scrubbed `body_snippet` plus the allowlisted diagnostic
-// `response_headers` (www-authenticate kept, set-cookie dropped) — so
-// the operator/LLM reads the real cause instead of a bare status code.
 describe("probeHttpConnector failure diagnostics", () => {
   test("403 fallback probe carries body_snippet and allowlisted response_headers", async () => {
     const failingMock = await createMockServer((_req: IncomingMessage, res: ServerResponse) => {
@@ -634,8 +583,6 @@ describe("probeHttpConnector failure diagnostics", () => {
 
       expect(probe.ok).toBe(false);
       expect(probe.status).toBe(403);
-      // Fallback GET / 403 classifies as scope_insufficient (no
-      // body-aware upgrade for this generic JSON error body).
       expect(probe.error_code).toBe("scope_insufficient");
       expect(probe.body_snippet).toContain("Basic auth with password is not allowed");
       expect(probe.response_headers?.["www-authenticate"]).toBe('Basic realm="restricted"');

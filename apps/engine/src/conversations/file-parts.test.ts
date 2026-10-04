@@ -1,7 +1,3 @@
-// `toAiSdkParts` shape tests — file_part and text_extract are the only
-// strategies: customer file bytes go inline in the request (never to
-// provider-side storage). No I/O, no LLM calls.
-
 import { describe, expect, test } from "bun:test";
 import { toAiSdkParts } from "./persist.ts";
 

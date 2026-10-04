@@ -1,27 +1,3 @@
-// Worker for the `chat.event` queue.
-//
-// Receives a verified inbound chat event (Slack `app_mention`, `message.im`,
-// a Block Kit interaction, slash command, …) that the HTTP route enqueued
-// and runs the dispatcher out-of-band. Slack requires a <3 s ack on Events
-// API posts; the route returns 200 immediately after `boss.send`, so an
-// agentic turn (which can take minutes) lives in this worker.
-//
-// Per-job flow:
-//   1. Resolve the `chat_workspaces` row from the platform-native
-//      workspace id (pre-tenant lookup, mirrors the dispatcher).
-//   2. Dedup via `chat/dedup.ts`. Slack retries each event up to 3× with
-//      the same `event_id`; the unique index drops the duplicate before
-//      any conversation work runs.
-//   3. Resolve the workspace-specific adapter from `chatRegistry` for
-//      outbound posting.
-//   4. Hand off to `handleChatEvent`. `/subkit run …` is routed through
-//      the conversation turn inside the dispatcher (same RBAC + confirm
-//      + input contract as every other run path).
-//
-// pg-boss retries the job on throw per the `chat.event` queue config
-// (retryLimit: 3, retryBackoff: true). Terminal failures land in
-// `chat.event.dlq`.
-
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
 import { auditAwait } from "../../audit/audit.ts";
@@ -55,16 +31,6 @@ export interface RegisterChatEventOptions {
 
 async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions): Promise<void> {
   const { db, chatRegistry } = opts;
-  // Zod-validate the rehydrated job payload at the worker boundary.
-  // pg-boss persists jobs in Postgres and rehydrates after restart; a
-  // schema drift in `ChatEvent` mid-deploy would otherwise silently
-  // dispatch malformed events. A failed parse logs + ACKs the job
-  // (returning normally without throw — re-queueing a malformed
-  // payload would just retry indefinitely). We only use the parse
-  // result for the validation guard; downstream code consumes the
-  // original `job.data.event` so the established `ChatEvent` type
-  // (which uses exactOptionalPropertyTypes-friendly optionals) keeps
-  // narrowing cleanly.
   const validation = ChatEventJobSchema.safeParse(job.data);
   if (!validation.success) {
     logger.warn({
@@ -101,25 +67,9 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     )
     .limit(1);
   if (!workspace) {
-    // A 1:1 DM space from a user already linked in exactly one tenant
-    // auto-registers (fail-closed; Google-only via the global-user-id
-    // capability map). On success fall through to the normal path so
-    // the very first DM runs a governed read-only turn.
     const auto = await ensureDmAutoRegistration(db, event);
     if ("workspace" in auto) {
       workspace = auto.workspace;
-      // Register the fresh workspace key DIRECTLY. The cooldown-guarded
-      // `ensureChatRegistryHydrated` is NOT sufficient here: a rehydrate
-      // in the previous 30s (or one in flight that SELECTed before the
-      // provisioning tx committed) silently no-ops, the adapter lookup
-      // below misses, the job throws — and dedup already marked the
-      // event, so the pg-boss retry is swallowed and the user's FIRST
-      // DM would be silently lost. Direct registration has no cooldown
-      // and no read-before-commit race. Only google_chat is
-      // auto-registrable today, and its adapter is app-level (one per
-      // engine, from config) — creds are guaranteed complete-enough to
-      // try because a fallback adapter for the platform implies a
-      // successful hydrate; still guard for the empty-config edge.
       if (event.platform === "google_chat") {
         const google = getConfig().platform.googlechat;
         if (google.client_email && google.private_key && google.audience) {
@@ -144,14 +94,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
         workspace_id_native: event.workspace_id,
         duration_ms: Date.now() - started,
       });
-      // Tenant-visible audit row for the drop. Without this a flood of
-      // Slack retries against a removed workspace would be invisible to
-      // every tenant (the structured log only reaches SIEM). We don't
-      // know the owning tenant — the workspace row has been removed or
-      // was never installed — so record under the platform-system
-      // tenant; the platform `workspace_id_native` in metadata is
-      // enough for forensic correlation. DM-specific denials keep
-      // their precise reason (dm_sender_not_linked / _ambiguous).
       await auditAwait(
         {
           tenant_id: SYSTEM_TENANT_ID,
@@ -163,14 +105,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
           result: "denied",
           reason:
             auto.denied === "not_dm_autoregistrable" ? "workspace_not_installed" : auto.denied,
-          // Pinned by `ChatMessageDeniedMetadataSchema`. `sk chat`
-          // pending-space discovery reads `sender_platform_user_id` +
-          // `space_display_name` back off these SYSTEM-tenant rows.
-          // WRITE-GUARD: the sender id is recorded ONLY for platforms
-          // whose native user id is tenant-global — a workspace-scoped
-          // Slack/Teams id must never enter the tenant-blind SYSTEM pool
-          // (defense-in-depth: no downstream read can bridge tenants even
-          // if the read gate later regresses).
           metadata: ChatMessageDeniedMetadataSchema.parse({
             platform: event.platform,
             workspace_id_native: event.workspace_id,
@@ -184,14 +118,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
         },
         db,
       );
-      // Best-effort, rate-limited, generic "not connected" reply so a
-      // human who just messaged or added the app isn't left in silence.
-      // FAIL-CLOSED: no tenant is known, so the copy is generic and
-      // reveals nothing about which (or whether any) tenant exists.
-      // Only user-initiated events earn a reply — stale button clicks
-      // and membership-removal events stay silent. Dedup runs AFTER
-      // this block (it needs a tenant), so the 1/min/space bucket is
-      // what bounds a retry burst here.
       const wantsReply =
         event.channel_id.length > 0 &&
         (event.kind === "mention" ||
@@ -220,12 +146,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
                 text: "This space isn't connected to sk yet. Ask an admin to install the sk app here to start using it.",
               });
             } catch (err) {
-              // Slack bot tokens are workspace-scoped, so the fallback
-              // (another workspace's token) can't post into an
-              // uninstalled Slack workspace — expected; the deny audit
-              // above already recorded the drop. Google's app-level
-              // service account CAN post wherever the app is a member,
-              // so the reply lands there.
               logger.debug({
                 module: "chat",
                 action: "chat_event.fallback_reply_failed",
@@ -241,9 +161,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     }
   }
 
-  // Dedup BEFORE dispatch. A Slack retry that arrives while the first
-  // turn is still running would otherwise double-fire — the row must
-  // commit at the start of *this* job, not after the turn completes.
   if (event.event_key) {
     const fresh = await markChatEventSeen(db, {
       tenant_id: workspace.tenant_id,
@@ -259,9 +176,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
         event_key: event.event_key,
         duration_ms: Date.now() - started,
       });
-      // Tenant-visible audit row for the replay drop. Slack retries
-      // up to 3× per event; flooding can't go unnoticed in the audit
-      // log just because the structured log routes elsewhere.
       await auditAwait(
         {
           tenant_id: workspace.tenant_id,
@@ -285,10 +199,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
     }
   }
 
-  // Resolve the workspace-specific adapter for outbound posting. All
-  // Slack adapters share one signing secret (one subkit app), so the
-  // fallback used for verify works for any request — but `send` needs
-  // the correct workspace's bot token, hence the keyed lookup.
   const key = {
     tenant_id: workspace.tenant_id,
     platform: event.platform,
@@ -296,8 +206,6 @@ async function handleOne(job: Job<ChatEventJob>, opts: RegisterChatEventOptions)
   };
   let adapter = chatRegistry.get(key);
   if (!adapter) {
-    // Cold-registry / boot-race miss: lazily rehydrate (idempotent,
-    // cooldown-guarded) and retry once before failing the job.
     await ensureChatRegistryHydrated(db, chatRegistry);
     adapter = chatRegistry.get(key);
   }

@@ -1,25 +1,3 @@
-// Service orchestrator for the next-message suggestion. The single
-// `suggestNextMessage()` entry point is what `loop.ts` calls right
-// after `message_stop` to produce the SSE `next_suggestion` frame.
-//
-// Pipeline:
-//   1. Hard suppressors (early conversation, client opt-out)
-//   2. Offer-parse fast path (deterministic, zero-token)
-//   3. Model fallback (small model, ≤30 completion tokens, history-only)
-//   4. Filter pass (claude-voice / meta / evaluative / etc. — see
-//      suggest-next-filter.ts)
-//   5. Wrap with reason tag for the SSE frame + observability
-//
-// Errors NEVER throw to the caller — they become `{ suggestion: null,
-// reason: "error" }` so the parent turn always closes cleanly. This
-// is a load-bearing invariant: the suggestion is a UX nicety on top
-// of a real turn; it must never take the turn down.
-//
-// The model + budget surfaces are injected via the parameters
-// instead of hard-coded calls so unit tests don't need to mount the
-// LLM provider, and so commit 4 can wire the real engine `generateText`
-// without restructuring this file.
-
 import type { SubkitLlmMessage, SubkitLlmUsage } from "../llm/core/base-types.ts";
 import { assembleSuggestionPrompt, type RecentMessage } from "../llm/core/suggestion-prompt.ts";
 import { logger } from "../logging/logger.ts";
@@ -27,9 +5,6 @@ import { recordLlmTokens, recordSuggestNextOutcome } from "../observability/inst
 import { filterSuggestion } from "./suggest-next-filter.ts";
 import { type LoadedSkillHint, type ParsedOffer, parseOffer } from "./suggest-next-offer-parse.ts";
 
-// Outcome reasons carried on the SSE frame. The single source of truth
-// is @shared/suggest-next-reasons — re-exported here for the legacy
-// `import { SuggestNextReason } from "./suggest-next.ts"` pattern.
 export type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
 
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
@@ -43,13 +18,6 @@ export interface SuggestNextResult {
 export interface SuggestNextModelInvocation {
   system: string;
   messages: SubkitLlmMessage[];
-  /**
-   * Tenant the suggestion is generated for. The default invoker passes
-   * this to `initializeModel` so the suggestion model resolves the SAME
-   * tenant-scoped provider + API key the main turn used. Omitting it made
-   * the invoker fall back to global config and throw `invalid x-api-key`
-   * on every turn while the turn itself succeeded (conversation 661e7ad1).
-   */
   tenant_id: string;
 }
 
@@ -63,50 +31,24 @@ export type SuggestNextModelInvoker = (
   call: SuggestNextModelInvocation,
 ) => Promise<SuggestNextModelResult>;
 
-/**
- * The budget guard is called BEFORE the model fallback. Offer-parse
- * hits do not consume tokens and therefore bypass this gate. A `false`
- * return collapses the result to `{ suggestion: null, reason:
- * "budget-pressure" }` — never an error.
- */
 export type SuggestNextBudgetGuard = () => Promise<boolean> | boolean;
 
 export interface SuggestNextParams {
   tenant_id: string;
   conversation_id: string;
-  /** Most-recent-last conversation history, text-only. */
   recent_messages: ReadonlyArray<RecentMessage>;
-  /** The full text of the most recent assistant message (used for offer-parse). */
   last_assistant_text: string;
-  /** Skills loaded into this conversation; optional. Drives skill-aware fast path. */
   loaded_skills?: ReadonlyArray<LoadedSkillHint>;
-  /** Client-side dismiss-N-times feedback flag — when true, skip generation. */
   client_suppress?: boolean;
-  /** Budget pre-check; defaults to "always allow" when omitted (e.g. tests). */
   budget_guard?: SuggestNextBudgetGuard;
-  /**
-   * Required for the model fallback. When omitted (e.g. tests), a model
-   * fallback miss returns `{ suggestion: null, reason: "empty" }` —
-   * exercised in unit tests that only want to validate the offer-parse
-   * pipeline.
-   */
   model_invoker?: SuggestNextModelInvoker;
 }
 
 const MIN_HISTORY_FOR_MODEL_CALL = 2;
 
-// Detect a trailing CTA question — the assistant's last message already
-// invites the operator's next move ("which would you like to explore?",
-// "want me to run it?"), so an independent next_suggestion frame
-// renders as a second, competing prompt. Surfaced in the OCPP-2.0.1.md
-// review session: assistant asked "Which section would you like to
-// explore further, or would you like to search for something more
-// specific?" AND a `next_suggestion` event fired with "create a skill
-// using this knowledge source". Two CTAs for one decision point.
 function endsWithCtaQuestion(text: string): boolean {
   const trimmed = text.trimEnd();
   if (!trimmed.endsWith("?")) return false;
-  // Look back to the start of the last sentence-like span.
   const lastBoundary = Math.max(
     trimmed.lastIndexOf(". "),
     trimmed.lastIndexOf("\n"),
@@ -130,12 +72,6 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
     return { suggestion: null, reason: "early-conversation", kind: null };
   }
 
-  // 1. Offer-parse fast path — no tokens, no network.
-  // Runs BEFORE the CTA-question suppression because the offer parser
-  // is precisely the right handler for the "Want me to X?" shape: it
-  // converts the question into a structured slash suggestion. The
-  // generic-CTA suppression below only fires when the offer parser
-  // didn't match.
   const offer = parseOffer({
     assistant_text: params.last_assistant_text,
     ...(params.loaded_skills ? { loaded_skills: params.loaded_skills } : {}),
@@ -144,12 +80,6 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
     return finalizeOfferResult(params, offer);
   }
 
-  // Suppress when the assistant ended with a generic question (and
-  // the offer parser already passed). The assistant's own CTA wins;
-  // a separate suggestion would render as a second, competing prompt.
-  // Surfaced in the May 2026 OCPP review: assistant asked "Which
-  // section would you like to explore further?" AND a next_suggestion
-  // fired with "create a skill using this knowledge source".
   if (endsWithCtaQuestion(params.last_assistant_text)) {
     logger.info({
       module: "conversations",
@@ -163,7 +93,6 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
     return { suggestion: null, reason: "filtered", kind: null };
   }
 
-  // 2. Budget guard — only the model path consumes tokens.
   if (params.budget_guard) {
     let ok = true;
     try {
@@ -187,7 +116,6 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
     }
   }
 
-  // 3. Model fallback — only if a real invoker is wired.
   if (!params.model_invoker) {
     emitOutcome(params.tenant_id, "suppressed", null);
     return { suggestion: null, reason: "empty", kind: null };
@@ -266,15 +194,6 @@ export async function suggestNextMessage(params: SuggestNextParams): Promise<Sug
 }
 
 function finalizeOfferResult(params: SuggestNextParams, offer: ParsedOffer): SuggestNextResult {
-  // Belt-and-braces: the offer regex already constrains the captured
-  // span, so most filter rules cannot fire. We re-run the filter
-  // anyway because some captured spans (e.g. `let me handle the rest`
-  // from "Want me to let me handle the rest?") still trip
-  // claude_voice or evaluative — see `suggest-next.test.ts`
-  // "offer-parse output that fails the filter". Do not remove the
-  // re-filter "for performance"; the offer-parse path is already
-  // dominated by regex cost, and dropping this check would let known
-  // filter-violators leak to the operator.
   const filterReason = filterSuggestion(offer.suggestion);
   if (filterReason !== null) {
     logger.info({

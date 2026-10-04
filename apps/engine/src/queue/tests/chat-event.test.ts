@@ -1,26 +1,3 @@
-// End-to-end test for the chat.event queue handler.
-//
-// Validates the gap called out in the plan's Step 9 (Checkpoint 4) —
-// "Queue: handler test for chat-event.ts (dedup + dispatch)". The
-// handler's per-job logic is the only piece not covered elsewhere:
-//
-//   1. Resolve the chat_workspaces row from (platform, workspace_id).
-//   2. Insert into chat_events_seen (dedup) — return early on replay.
-//   3. Resolve the workspace-specific adapter from chatRegistry.
-//   4. Invoke handleChatEvent.
-//
-// We enqueue two jobs with the SAME event_key (mirroring a Slack
-// retry) and assert that exactly ONE dispatch reaches the registered
-// adapter.
-//
-// The second describe block covers the handler's unknown-workspace
-// branch: DM auto-registration denials keep their precise audit
-// reason, and user-initiated events (mention / slash / added_to_space)
-// earn ONE rate-limited generic fallback reply via
-// `chatRegistry.getFallback` — stale interactions and membership
-// removals stay silent, and a failing fallback send never fails the
-// job.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
@@ -114,9 +91,6 @@ beforeAll(async () => {
   if (!ws) throw new Error("seed chat_workspaces");
   workspaceRowId = ws.id;
 
-  // Link the platform user so the dispatcher doesn't reject as
-  // "not linked". The handler routes the event through the full
-  // dispatcher path, so the explicit-link contract still applies.
   await testDb.db.insert(chatIdentities).values({
     tenant_id: tenantId,
     user_id: user.id,
@@ -159,18 +133,14 @@ describe("queue: chat.event worker", () => {
     };
     const sendsBefore = adapter.sends.length;
 
-    // First job — should dedup-mark + dispatch.
     const job1: ChatEventJob = { event };
     const id1 = await boss.send(CHAT_EVENT_QUEUE, job1);
     expect(id1).toBeTruthy();
 
-    // Second job — same event_key, should be dropped by dedup.
     const job2: ChatEventJob = { event };
     const id2 = await boss.send(CHAT_EVENT_QUEUE, job2);
     expect(id2).toBeTruthy();
 
-    // Poll until the seen-row exists AND the dispatcher's outbound
-    // send has fired exactly once. 60s budget for parallel-test load.
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
@@ -190,25 +160,11 @@ describe("queue: chat.event worker", () => {
     expect(seenRows[0]?.tenant_id).toBe(tenantId);
     expect(seenRows[0]?.workspace_id).toBe(workspaceRowId);
 
-    // The dispatcher reaches `sendTracked` exactly once for the first
-    // job (either the assistant reply, the "Working on it…" ack, or
-    // the help text). The second job hits the dedup early-return and
-    // never reaches sendTracked.
     expect(adapter.sends.length - sendsBefore).toBeGreaterThanOrEqual(1);
-    // Wait a beat to give a (wrong) second dispatch a chance to land,
-    // then assert it didn't.
     await new Promise((r) => setTimeout(r, 500)); // allow-wall-clock: post-dedup settle
-    // Filter to sends originating from this test's channel so a parallel
-    // suite using the same boss can't pollute the assertion.
     const localSends = adapter.sends.filter((d) => d.channel_id === "C_QUEUE");
-    // Exactly one outbound regardless of how many jobs we enqueued.
     expect(localSends.length).toBe(1);
 
-    // The dedup-drop branch writes a chat.message.denied audit row
-    // with reason: "replay" so SIEM can see retries-against-a-known-
-    // workspace traffic even though the worker drops them silently.
-    // Poll because the second job's dedup-drop audit may land after
-    // the seen-row poll above breaks.
     // allow-wall-clock: real-time poll for audit insert
     const replayDeadline = Date.now() + 30_000;
     let replayRow: typeof auditLog.$inferSelect | undefined;
@@ -230,7 +186,6 @@ describe("queue: chat.event worker", () => {
   }, 90_000);
 
   test("unknown workspace: drops job + writes SYSTEM_TENANT_ID denied audit", async () => {
-    // Enqueue an event whose workspace_id has no chat_workspaces row.
     const event: ChatEvent = {
       platform: "slack",
       workspace_id: "T_NONEXISTENT",
@@ -244,7 +199,6 @@ describe("queue: chat.event worker", () => {
     const id = await boss.send(CHAT_EVENT_QUEUE, { event });
     expect(id).toBeTruthy();
 
-    // Poll until the worker writes the deny row.
     // allow-wall-clock: real-time polling for queue completion
     const deadline = Date.now() + 60_000;
     let denyRow: typeof auditLog.$inferSelect | undefined;
@@ -262,18 +216,9 @@ describe("queue: chat.event worker", () => {
       await new Promise((r) => setTimeout(r, 100)); // allow-wall-clock: poll cadence
     }
     expect(denyRow).toBeTruthy();
-    // We don't know the owning tenant — record under SYSTEM_TENANT_ID.
     expect(denyRow?.tenant_id).toBe(SYSTEM_TENANT_ID);
   }, 90_000);
 });
-
-// ---------------------------------------------------------------------------
-// Unknown-workspace branch: precise deny reasons + the rate-limited
-// generic fallback reply. Google Chat's fallback is the ONE app-level
-// adapter (service-account outbound), so a reply CAN land in an
-// uninstalled space — unlike Slack, whose workspace-scoped tokens make
-// the same send fail (also covered: the failure is swallowed).
-// ---------------------------------------------------------------------------
 
 class RecordingGoogleFallback {
   readonly platform: ChatPlatform = "google_chat";
@@ -294,7 +239,6 @@ const FALLBACK_TEXT =
 
 let googleFallback: RecordingGoogleFallback;
 
-/** Poll until `count` deny audits exist for the given native workspace id. */
 async function waitForDenyAudits(
   workspaceIdNative: string,
   count: number,
@@ -348,12 +292,8 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
     const firstDeny = await waitForDenyAudits(SPACE, 1);
     expect(firstDeny).toHaveLength(1);
     expect(firstDeny[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
-    // Non-DM google event: the auto-registration gate denies as
-    // not_dm_autoregistrable, which the handler records as the legacy
-    // workspace_not_installed reason.
     expect(firstDeny[0]?.reason).toBe("workspace_not_installed");
 
-    // The reply lands after the audit — poll the adapter directly.
     // allow-wall-clock: real-time polling for the outbound send
     const deadline = Date.now() + 30_000;
     while (Date.now() < deadline && googleFallback.sends.length === 0) {
@@ -363,13 +303,9 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
     expect(local).toHaveLength(1);
     expect(local[0]?.kind).toBe("message");
     expect(local[0]?.text).toBe(FALLBACK_TEXT);
-    // No tenant is known — the delivery carries only the system tenant
-    // and reveals nothing about any real tenant.
     expect(local[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
     expect(local[0]?.thread_id).toBe(`${SPACE}/threads/T1`);
 
-    // Second mention into the SAME space within the minute: deny audit
-    // still recorded, but the 1/min/space bucket gates the reply.
     const secondMention = googleEvent({
       workspace_id: SPACE,
       channel_id: SPACE,
@@ -442,8 +378,6 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
     });
     const denies = await waitForDenyAudits(SPACE, 1);
     expect(denies).toHaveLength(1);
-    // The throw is caught inside the handler: no rethrow means pg-boss
-    // never retries, so no second deny audit appears and no send lands.
     await new Promise((r) => setTimeout(r, 2_000)); // allow-wall-clock: settle for a (wrong) retry
     expect(await waitForDenyAudits(SPACE, 1)).toHaveLength(1);
     expect(googleFallback.sends.filter((d) => d.channel_id === SPACE)).toHaveLength(0);
@@ -465,7 +399,6 @@ describe("queue: chat.event unregistered-space fallback reply", () => {
     expect(denies).toHaveLength(1);
     expect(denies[0]?.reason).toBe("dm_sender_not_linked");
     expect(denies[0]?.tenant_id).toBe(SYSTEM_TENANT_ID);
-    // No workspace row was provisioned for the denied DM.
     const rows = await testDb.db
       .select()
       .from(chatWorkspaces)

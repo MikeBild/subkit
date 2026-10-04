@@ -17,12 +17,10 @@ describe("docs-ingestion/markdown", () => {
   test("chunkMarkdown splits on headings and returns one chunk per section", () => {
     const md = `# Top\n\nIntro paragraph.\n\n## Section A\n\nAlpha content.\n\n## Section B\n\nBravo content.`;
     const chunks = chunkMarkdown(md);
-    // A single H1 + multiple H2s → split on H2, yielding 2 section chunks.
     expect(chunks.length).toBeGreaterThanOrEqual(2);
     const titles = chunks.map((c) => c.title);
     expect(titles).toContain("Section A");
     expect(titles).toContain("Section B");
-    // Section A body keeps its content.
     const a = chunks.find((c) => c.title === "Section A");
     expect(a?.content).toContain("Alpha content");
   });

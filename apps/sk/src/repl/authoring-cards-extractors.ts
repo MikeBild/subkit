@@ -10,9 +10,6 @@ import type {
 } from "../render/types.ts";
 import { asRecord, unwrapData } from "./authoring-cards-shared.tsx";
 
-// Safe extractors — return a typed Intent/Summary built from the tool
-// payload, or null when the shape doesn't match. Callers fall back to
-// the compact cards on null.
 function extractTrigger(raw: unknown): WorkflowTrigger {
   const r = asRecord(raw);
   if (r) {
@@ -93,15 +90,6 @@ export function extractConnectorIntent(call: ToolCallState): ConnectorIntent | n
   };
 }
 
-// Dual-shape fallback: `save_workflow_draft` returns `{ workflow_id,
-// workflow: { name, version, definition } }` (the canonical wrapper),
-// but several engine paths — older save-result payloads and the
-// commit-result card lifecycle — emit `name`/`version` flat on the
-// top-level data object alongside `workflow_id`. We accept both so the
-// REPL renders a Summary card from either; the wrapper is preferred
-// when present. See `extractWorkflowIntent` for the matching read of
-// `definition.steps` vs `workflow.steps`. Until the engine narrows to
-// a single shape across all call sites, this dual read is intentional.
 export function extractWorkflowSummary(call: ToolCallState): WorkflowSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
@@ -142,13 +130,6 @@ export function extractConnectorSummary(call: ToolCallState): ConnectorSummary |
   return { kind: "connector", id, slug, template_slug: templateSlug, ...(usage ? { usage } : {}) };
 }
 
-// create_knowledge_source returns
-//   { created: true, knowledge_source: { id, name, slug, scope, status,
-//     chunk_count, bytes_total, mime_type?, filename? }, audit_log_id }
-// The tool response carries the resolved `mime_type` (nullable) and
-// `filename` so the card shows the real content_type (`text/markdown`
-// for an .md upload) instead of a hardcoded fallback.
-// `file_id` is still read from args (engine never echoes it).
 export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSourceSummary | null {
   const d = unwrapData(call);
   if (!d) return null;
@@ -161,14 +142,6 @@ export function extractKnowledgeSourceSummary(call: ToolCallState): KnowledgeSou
   const args = asRecord(call.args) ?? {};
   const argMime = typeof args.mime_type === "string" ? args.mime_type : null;
   const argFileId = typeof args.file_id === "string" ? args.file_id : null;
-  // Resolution order: engine-echoed mime_type (authoritative) →
-  // args.mime_type (set explicitly in inline mode) → mode-derived
-  // default. The from_attachment branch falls back to
-  // `application/octet-stream` only when the stored row has no MIME.
-  // Coerce empty strings to null so the `??` chain falls through to
-  // the next tier. Pre-fix `??` only treated nullish as missing, so an
-  // engine that ever returned `mime_type: ""` would surface as an
-  // empty content-type label in the card.
   const resMime = typeof ks.mime_type === "string" && ks.mime_type.length > 0 ? ks.mime_type : null;
   const argMimeNonEmpty = argMime && argMime.length > 0 ? argMime : null;
   const mime_type =

@@ -328,13 +328,6 @@ function AuthProvidersEditor({
   );
 }
 
-/**
- * The one line above the sections, and only when there is something to do: a
- * saved setting waiting for a restart (each a link to its row), a last change
- * that did not activate (a link into the audit trail). The four tiles that
- * stood here — resolved count, saved and active revision, activation — were
- * read on every visit and asked nothing of anyone.
- */
 export function SettingsAttentionLine({
   attention,
   onOpenLeaf,
@@ -342,8 +335,6 @@ export function SettingsAttentionLine({
 }: {
   attention: SettingsAttention | null;
   onOpenLeaf: (path: string) => void;
-  /** What stands after the waiting settings: the restart button, the manual
-   * way, or the request to ask an admin. */
   restartOffer?: ReactNode;
 }) {
   const { t } = useI18n();
@@ -392,11 +383,6 @@ export function SettingsAttentionLine({
   );
 }
 
-/**
- * Every section at once, grouped, stacked. It never scrolls sideways: names
- * wrap, and a long list scrolls down. Searching keeps every section in place
- * and dims those without a hit; a dot marks a section holding unsaved values.
- */
 export function SettingsSectionNav({
   nav,
   current,
@@ -406,7 +392,6 @@ export function SettingsSectionNav({
 }: {
   nav: readonly SettingNavGroup[];
   current: string | null;
-  /** Sections with a search hit, or null when nothing is searched. */
   hits: ReadonlySet<string> | null;
   drafts: ReadonlySet<string>;
   onOpen: (section: string) => void;
@@ -460,16 +445,6 @@ export function SettingsSectionNav({
   );
 }
 
-/**
- * The setting's key, for the one reader who needs it: somebody about to type
- * `sk settings set <key>`. An icon beside the name, for those who may change
- * settings — the tooltip shows the command it belongs in.
- *
- * Every row used to carry a collapsed "Technische Angaben" with the key, the
- * source, the scope and the engine's English description. The source already
- * stands on the row where it says something, the scope where it can differ,
- * and the English sentence repeated the row's own help in another language.
- */
 export function SettingCopyKey({ item, index }: { item: SettingItem; index: number }) {
   const { t } = useI18n();
   const copy = useCopy();
@@ -489,11 +464,6 @@ export function SettingCopyKey({ item, index }: { item: SettingItem; index: numb
   );
 }
 
-/**
- * What the System tab holds, in one line: how many settings and how many
- * differ from their default — how a saved one is kept behind (?), the choice
- * between all and only the changed ones on the right.
- */
 export function SettingsSummary({
   total,
   changed,
@@ -516,12 +486,6 @@ export function SettingsSummary({
   );
 }
 
-/**
- * "Geändert · Standard: X · Zurücksetzen" — only while the value on screen is
- * not the default. Zurücksetzen drafts the default like any other edit; the
- * save bar takes it from there. The provider list has no reset: its default
- * would drop every sign-in but the API key without the removal's confirm.
- */
 export function SettingDefaultLine({
   item,
   index,
@@ -568,11 +532,6 @@ export function SettingDefaultLine({
   );
 }
 
-/**
- * A secret says whether one is stored, never what it is: "Hinterlegt ·
- * Ersetzen" or "Nicht hinterlegt · Hinterlegen". The field appears only after
- * the click, and "Abbrechen" takes it away with whatever was typed.
- */
 export function SettingSecretControl({
   item,
   index,
@@ -645,7 +604,6 @@ export function SettingSecretControl({
 
 const UNSET_OPTION = "__unset__";
 
-/** An enum is a choice among the engine's values, with "Nicht gesetzt" where null is allowed. */
 export function SettingEnumSelect({
   item,
   index,
@@ -698,7 +656,6 @@ export function SettingEnumSelect({
   );
 }
 
-/** A number is a numeric field, with its unit beside it where the setting's name says one. */
 export function SettingNumberInput({
   item,
   index,
@@ -738,7 +695,6 @@ export function SettingNumberInput({
   );
 }
 
-/** Every setting, or only those not at their default. */
 export function SettingsFilterToggle({
   filter,
   onChange,
@@ -767,7 +723,6 @@ export function SettingsFilterToggle({
   );
 }
 
-/** Shown once above the list to someone without settings:write; every control is disabled. */
 export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
   const { t } = useI18n();
   if (canWrite) return null;
@@ -782,10 +737,6 @@ export function SettingsReadOnlyNotice({ canWrite }: { canWrite: boolean }) {
   );
 }
 
-/**
- * A section of settings: its name as the section label and — once, not on
- * every secret row — what belongs in a secret field here, behind (?).
- */
 export function SettingsSection({
   section,
   items,
@@ -818,12 +769,6 @@ export function SettingsSection({
   );
 }
 
-/**
- * One setting: its name, what to know before changing it, the control on the
- * right. Where the value comes from stands on the row only when it is not the
- * installation's own, what it applies to only when it can differ per
- * workspace, and the key behind a copy icon for those who may change it.
- */
 export function SettingRow({
   item,
   index,
@@ -839,7 +784,6 @@ export function SettingRow({
   highlighted: boolean;
   draft?: string;
   disabled?: boolean;
-  /** Only with `settings:write`: the key is for `sk settings set`, which needs it. */
   canCopyKey?: boolean;
   onReset?: (draft: string) => void;
   children: ReactNode;
@@ -925,11 +869,6 @@ export function SettingRow({
   );
 }
 
-/**
- * Einstellungen: the system settings and the notification rules, each a tab
- * behind its own read permission. A reader holding only one of them sees that
- * one without a tab bar — a single tab is a heading nobody needs.
- */
 export function SettingsPage() {
   const { t } = useI18n();
   const session = useSession();
@@ -968,8 +907,6 @@ export function SettingsPage() {
         ]
       : []),
   ];
-  // The header carries the open tab's acts: none on System (its save bar
-  // appears with a change), a rule and a channel on Benachrichtigungen.
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const values = tabs.map((tab) => tab.value);
   const active = tabFromSearch(searchStr, "tab", values, values[0] ?? "");
@@ -1001,21 +938,14 @@ function SystemSettings() {
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("settings:write");
-  // The view lives in the address: a reload, a shared link and the J5 link
-  // from the usage page all land on the same section, filter and field.
   const [linked] = useState(() => settingsViewFromUrl(window.location.search));
   const [leaf, setLeaf] = useState(linked.leaf);
   const [filter, setFilter] = useState<SettingsFilter>(linked.leaf ? "all" : linked.filter);
-  // Drafts belong to the page, not to a section: switching sections, searching
-  // or filtering keeps them until they are saved or discarded. Nothing saves
-  // on its own.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [restartOpen, setRestartOpen] = useState(false);
   const restartNow = useRestartOffer();
   const saveOffer = restartOfferAfterSave(restartNow.offer, drafts["server.restart_supervised"]);
   const [restartNowOpen, setRestartNowOpen] = useState(false);
-  // Somebody saved a newer revision since the page was read: the save bar says
-  // so and asks for a reload; the drafts stay.
   const [conflict, setConflict] = useState(false);
   const [activeSection, setActiveSection] = useState(
     linked.leaf ? settingSectionOf(linked.leaf) : (linked.section ?? ""),
@@ -1050,7 +980,6 @@ function SystemSettings() {
     () => (listMode ? new Set(hits.map((item) => settingSectionOf(item.path))) : null),
     [hits, listMode],
   );
-  // An opened secret field with nothing typed is not a change yet.
   const pendingDrafts = useMemo(() => {
     const secret = new Set(allItems.filter((item) => item.meta.sensitive).map((item) => item.path));
     return Object.fromEntries(
@@ -1072,7 +1001,6 @@ function SystemSettings() {
   const attention = settingsAttention(query.data);
   const restartItems = changedItems.filter((item) => item.meta.requiresRestart);
   const changedCount = useMemo(() => allItems.filter(settingIsChanged).length, [allItems]);
-  // A reload or a new version must not drop what is typed and not yet saved.
   useDirtyGuard(changedItems.length > 0);
   useEffect(() => {
     const href = absolute(
@@ -1084,14 +1012,9 @@ function SystemSettings() {
     if (`${window.location.pathname}${window.location.search}` !== href)
       window.history.replaceState(window.history.state, "", href);
   }, [leaf, activeSection, filter]);
-  // Once the list is on screen: open the linked leaf's section, scroll to its
-  // row, mark it and put the cursor in it. Once — a later refetch must not pull
-  // focus back.
   useEffect(() => {
     if (focused.current || !leaf || !query.data) return;
     focused.current = true;
-    // A group path (`llm.providers.anthropic`) opens its section at its first
-    // setting; only a path nothing lives under is "no such setting".
     const target = settingLeafTarget(
       allItems.map((item) => item.path),
       leaf,
@@ -1103,23 +1026,15 @@ function SystemSettings() {
     const index = target.index;
     setHighlighted(allItems[index]?.path ?? null);
     requestAnimationFrame(() => {
-      // The field itself where it has one; a composite editor (the auth
-      // providers) has none, so its first control takes the cursor.
       const item = document.querySelector<HTMLElement>(`[data-testid="setting-item-${index}"]`);
       const field =
         document.getElementById(`setting-${index}`) ??
         item?.querySelector<HTMLElement>("input, button, select, textarea") ??
         null;
-      // Vertically only; the page never scrolls sideways. The cursor goes in
-      // without a second, unconstrained scroll of its own.
       (item ?? field)?.scrollIntoView({ block: "center", inline: "nearest" });
       field?.focus({ preventScroll: true });
     });
   }, [leaf, query.data, allItems]);
-  // One save is one request: every draft of the page in a single PATCH
-  // against the revision the page was read at. A secret is stored as a new
-  // secret version first and travels as its reference. The saved revision is
-  // then activated; one that needs a restart stays saved and says so.
   const save = useMutation({
     mutationFn: async () => {
       if (!query.data) throw new Error("settings are not loaded");
@@ -1282,8 +1197,6 @@ function SystemSettings() {
       {settingsView === "loading" ? (
         <DataState state="loading" testId="settings-loading" />
       ) : settingsView === "error" ? (
-        // Rendering the list anyway showed an installation with nothing
-        // configured — a failed read presented as a fact about the configuration.
         <LoadFailed
           title={t("resource.loadFailed", { resource: t("resource.settings.title") })}
           onRetry={() => void query.refetch()}
@@ -1307,10 +1220,6 @@ function SystemSettings() {
               {t("settings.leafMissing", { path: leaf })}
             </p>
           ) : null}
-          {/* One column no wider than the page (`minmax(0, …)`): nothing in
-              here may make the page scroll sideways. From 720px of content the
-              list stands left of the form; below, a select of the sections
-              stands above it. */}
           <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @min-[720px]/settings:grid-cols-[200px_minmax(0,1fr)]">
             <div
               className="hidden min-w-0 self-start overflow-x-hidden @min-[720px]/settings:sticky @min-[720px]/settings:top-0 @min-[720px]/settings:block @min-[720px]/settings:max-h-[calc(100dvh-7rem)] @min-[720px]/settings:overflow-y-auto"
@@ -1439,11 +1348,6 @@ function SystemSettings() {
   );
 }
 
-/**
- * The one save bar of the page, for every section's drafts at once: "N
- * ungespeicherte Änderungen · Verwerfen · Speichern". After a conflict it says
- * somebody saved in the meantime and offers the reload; the drafts stay.
- */
 export function SettingsSaveBar({
   count,
   conflict,

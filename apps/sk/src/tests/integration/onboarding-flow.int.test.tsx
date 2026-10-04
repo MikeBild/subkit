@@ -1,11 +1,3 @@
-// Onboarding-wizard component composition test.
-//
-// The legacy onboarding-wizard.tsx still drives the live UX, but the
-// new components (IntegrationPicker, SecretField, OAuthWaitView) are
-// the future replacement and need to compose correctly. This test
-// drives them together through the same fixture data the wizard
-// would feed them.
-
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ThemeProvider } from "@chat-ui/index.ts";
 import { useEffect, useState } from "react";
@@ -99,15 +91,11 @@ describe("integration: onboarding wizard composition (picker → secret)", () =>
     );
     try {
       await flush();
-      // Pick the first item (Stripe).
       await ui.press("enter");
       await flush();
-      // Type secret characters then submit.
       await ui.type("sk_live_abc");
       await flush();
       await ui.press("enter");
-      // Wait for done callback. flush() yields to the microtask queue
-      // so onChange callbacks settle without a wall-clock delay.
       for (let i = 0; i < 100 && captured === null; i++) {
         await flush();
       }
@@ -129,9 +117,6 @@ describe("integration: onboarding wizard composition (picker → secret)", () =>
       await flush();
       await ui.type("supersecret");
       await flush();
-      // Component is uncontrolled here — onChange owns the value, so
-      // the rendered frame won't show our typed text. Just assert that
-      // plaintext absolutely doesn't appear.
       expect(ui.text()).not.toContain("supersecret");
     } finally {
       ui.unmount();

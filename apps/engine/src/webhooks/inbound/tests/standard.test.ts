@@ -1,5 +1,3 @@
-// Inbound Standard Webhooks verifier tests.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHmac, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -93,7 +91,7 @@ describe("inbound: standard webhooks", () => {
     const body = JSON.stringify({ ping: "pong" });
     const webhookId = randomUUID(); // allow-random: legacy; review before changing
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
-    const staleTs = Math.floor(Date.now() / 1000) - 10 * 60; // 10 minutes ago
+    const staleTs = Math.floor(Date.now() / 1000) - 10 * 60;
     const sig = sign(SECRET, webhookId, staleTs, body);
     const outcome = await handleInbound(
       { db: ctx.db, boss: ctx.boss },
@@ -147,18 +145,7 @@ describe("inbound: standard webhooks", () => {
   });
 
   test("an accepted delivery runs against PROD connectors", async () => {
-    // Unattended automation resolves prod connectors, exactly as the schedule
-    // reconciler already decides for the same reason.
-    //
-    // This defaulted to dev, and a dev connector is the one nobody
-    // re-authenticates: the tenant's dev Gmail connector went to needs_reauth
-    // on 2026-07-23 and every contact notification since failed with a 401
-    // visible only inside an execution nobody was reading. The delivery was
-    // accepted, the workflow ran, and no mail was sent.
     const body = JSON.stringify({ invoice: "prod-mode" });
-    // The verifier rejects a timestamp more than five minutes from now, so this
-    // one has to track the real clock — the deterministic helpers give a fixed
-    // 2023 instant that the replay window would refuse.
     const ts = Math.floor(getTestNow() / 1000);
     const webhookId = deterministicUuid();
     const result = await handleInbound(
@@ -178,14 +165,6 @@ describe("inbound: standard webhooks", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(row.execution_mode).toBe("prod");
 
-    // …and the QUEUED JOB carries it too.
-    //
-    // Asserting only the row above is what let this ship half-fixed: the
-    // engine reads `opts.execution_mode ?? "dev"` from the job, so the run
-    // still resolved dev connectors while the execution record — and every
-    // API that reports it — said `prod`. The audit trail agreed with the
-    // intent and disagreed with what actually happened, which is the one
-    // failure mode an audit trail must not have.
     const jobs = await ctx.db.execute(
       sql`SELECT data FROM pgboss.job WHERE name = ${EXECUTION_RUN_QUEUE}`,
     );

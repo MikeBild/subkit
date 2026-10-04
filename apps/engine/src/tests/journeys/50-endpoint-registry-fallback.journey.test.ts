@@ -1,15 +1,3 @@
-// User story: As an operator, after a one-time document analysis pass populates
-// `connector_endpoint_schemas`, every workflow step that targets a registered
-// endpoint should inherit the extracted expected_statuses without needing to
-// repeat them on the step.
-//
-// Acceptance criteria:
-//   - AC1: A request step with NO `expected_statuses` succeeds when the upstream
-//          returns a status the registry says is allowed.
-//   - AC2: The same step FAILS with `unexpected_status_code` when the upstream
-//          returns a status the registry does NOT list.
-// Spec refs: plan §2h Endpoint Schema Registry — Runtime fallback.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -30,8 +18,6 @@ let connectorId = "";
 let upstreamStatus = 201;
 let requests = 0;
 
-// This journey tests actual POST response classification, not preparation.
-// Grant one finite live run explicitly; the normal API must not infer it.
 async function authorizeLiveFixture(workflowId: string) {
   const [workflow] = await ctx.db
     .update(workflows)
@@ -105,8 +91,6 @@ beforeAll(async () => {
   const created = (await createRes.json()) as { id: string };
   connectorId = created.id;
 
-  // Simulate a prior runDocumentAnalysisFlow result: only 201 and 422 are
-  // allowed for POST /v1/charges.
   await ctx.db.insert(connectorEndpointSchemas).values({
     tenant_id: ctx.tenantId,
     connector_id: connectorId,
@@ -159,9 +143,6 @@ describe("50: registry expected_statuses fallback", () => {
   });
 
   test("AC2: upstream 200 fails with unexpected_status_code (registry allows only [201,422])", async () => {
-    // 200 is a success-range status that bypasses driver-level retry
-    // logic and lands in the post-fetch validation branch — exactly
-    // where the registry-driven expected_statuses check fires.
     upstreamStatus = 200;
     const wfRes = await journeyFetch(ctx, "/v1/workflows", {
       method: "POST",

@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-# Lightweight conventional-commit check, no external deps.
-#
-# Mirrors the rules in commitlint.config.json:
-#   - header-max-length: 100
-#   - type-enum: feat|fix|docs|chore|refactor|perf|test|build|ci|style|revert
-#   - subject-case (config-conventional default): subject must not be
-#     sentence-case / start-case / pascal-case / upper-case — i.e. the
-#     first word after `<type>(<scope>): ` must NOT start with a
-#     capital letter (allow non-ASCII letters since names like "OAuth"
-#     ARE valid in this repo's history; restrict only A-Z first char).
-#
-# Pass either:
-#   - a file path containing the message (commit-msg hook)
-#   - --range FROM..TO  (pre-push hook)
-#   - --sha COMMIT_SHA  (single commit)
 
 set -e
 
@@ -24,7 +9,6 @@ check_one() {
   local header="$1"
   local label="$2"
 
-  # Skip merge / revert / fixup messages — git generates these.
   case "$header" in
     "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*)
       return 0
@@ -41,12 +25,8 @@ check_one() {
     echo "  got: $header" >&2
     return 1
   fi
-  # subject = everything after the first ': '
   local subject="${header#*: }"
   local first_char="${subject:0:1}"
-  # Use [[:upper:]] explicitly: glob `[A-Z]` matches lowercase too
-  # under non-POSIX locales (e.g. en_US.UTF-8), which would falsely
-  # flag valid lowercase subjects.
   case "$first_char" in
     [[:upper:]])
       echo "✖ ${label}: subject must not start uppercase (sentence/start/pascal-case): $header" >&2
@@ -73,7 +53,6 @@ if [ "$1" = "--sha" ]; then
   exit $?
 fi
 
-# Default: file path
 msg_file="$1"
 [ -z "$msg_file" ] && exit 0
 [ ! -f "$msg_file" ] && exit 0

@@ -1,8 +1,3 @@
-// loop-authoring-gate — pure unit tests for the inspect-before-loop
-// gate. No DB; the gate reads workflow.steps + latest_preview.step_traces
-// and emits typed blocks when a loop reads `$scope.<X>` without a
-// recorded preview for X.
-
 import { describe, expect, test } from "bun:test";
 import type { WorkflowDraftStepPreview } from "../../types.ts";
 import { evaluateLoopAuthoringGate } from "../loop-authoring-gate.ts";
@@ -115,9 +110,6 @@ describe("evaluateLoopAuthoringGate", () => {
   });
 
   test("ignores references to unknown step ids (already caught earlier)", () => {
-    // referenceValidateStep flags unknown ids; the loop gate only
-    // covers references that point at actual sibling steps in this
-    // draft. Otherwise we'd double-report.
     const result = evaluateLoopAuthoringGate(
       {
         steps: [{ id: "iter", kind: "loop", over: "$scope.does_not_exist.data", body: [] }],

@@ -1,8 +1,3 @@
-// The operations bar as a reader sees it: always six figures, each a link
-// into the list or page of the same window — or a sentence saying why there is
-// no number, never a bare 0 behind a link. And Nutzung mirrors none of it: the
-// figures have one place (§0.1).
-
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -34,7 +29,6 @@ const month = (
     }),
   );
 const budget = month(40_500_000, 150_000_000);
-// The calendar month's money — what the budget figure leads with.
 const monthSpend = answered({
   calls: 900,
   cost: { amount: 135.8, currency: "USD", unpricedModels: [], unpricedCalls: 0 },
@@ -58,10 +52,7 @@ function render(figures: ReturnType<typeof operatingFigures>, locale: Locale = "
 const hrefs = (html: string) =>
   [...html.matchAll(/href="([^"]+)"/g)].map((match) => (match[1] ?? "").replaceAll("&amp;", "&"));
 
-/** The rendered text of one figure, tags stripped. */
 function figureText(html: string, id: string): string {
-  // Only a figure's own box carries `data-figure-state`; its links and detail
-  // lines carry test ids of their own, so the box ends where the next begins.
   const start = html.indexOf(`data-testid="operations-figure-${id}"`);
   const open = html.lastIndexOf("<div", start);
   const next = html.indexOf("data-figure-state=", html.indexOf("data-figure-state=", start) + 1);
@@ -74,7 +65,6 @@ function figureText(html: string, id: string): string {
     .trim();
 }
 
-/** The engine's counts, as `GET /v1/stats/operating-figures` answers them. */
 const counts = (
   over: {
     runs?: { total: number; failed: number; successRatePercent: number | null };
@@ -108,14 +98,11 @@ describe("the operations bar", () => {
     const links = hrefs(html);
     expect(links).toHaveLength(6);
     const from = encodeURIComponent(DAY.from);
-    // Runs, failed runs and decided repairs: the window's bounds, not "all".
     for (const link of [links[0], links[1], links[3]])
       expect(link?.includes(from) || link?.includes(DAY.from)).toBe(true);
     expect(links[1]).toContain("status=failed");
-    // Connector health is a state of now, marked so.
     expect(links[2]).toContain("health=not_ok");
     expect(html).toContain("Stand jetzt");
-    // Cost: Nutzung over the same window. Budget: the month, on Nutzung.
     expect(links[4]).toBe("/cockpit/usage?window=24h");
     expect(links[5]).toBe("/cockpit/usage");
   });
@@ -230,8 +217,6 @@ describe("the operations bar", () => {
   });
 
   test("a failed read is said per figure, with a way to read again", () => {
-    // Runs, success rate, connector health and repair rate are one read: when
-    // it fails, all four say so, each with its retry.
     const html = render(
       figuresOf({
         counts: { state: "failed" },
@@ -242,7 +227,6 @@ describe("the operations bar", () => {
     for (const id of ["runs", "successRate", "connectorHealth", "repairRate", "cost", "budget"])
       expect(html).toContain(`data-testid="operations-figure-${id}-retry"`);
     expect(html).toContain("Nicht lesbar");
-    // A read that answered keeps its figures when another one failed.
     const partial = render(figuresOf({ spend: { state: "failed" } }));
     expect(partial).toContain('data-testid="operations-figure-cost-retry"');
     expect(partial).not.toContain('data-testid="operations-figure-repairRate-retry"');

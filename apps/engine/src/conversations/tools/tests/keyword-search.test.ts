@@ -1,6 +1,3 @@
-// keyword-search — pure scoring helper used by find_workflow /
-// find_connector / find_skill.
-
 import { describe, expect, test } from "bun:test";
 import { keywordSearch } from "../keyword-search.ts";
 
@@ -21,7 +18,6 @@ describe("keywordSearch", () => {
     const ranked = keywordSearch("stripe customers", items, (i) => i.txt);
     expect(ranked[0]?.id).toBe("a");
     expect(ranked[1]?.id).toBe("c");
-    // hubspot row is filtered out (score 0).
     expect(ranked.find((i) => i.id === "b")).toBeUndefined();
   });
 

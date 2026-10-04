@@ -3,8 +3,6 @@ import { z } from "zod";
 import { grantApproval } from "../../tools/approval.ts";
 import type { McpTestSuite } from "./setup.ts";
 
-/** Explicit fixture for the human portal decision, never used by suite setup
- * or automatic tool dispatch. Callers must first obtain a pending approval. */
 export async function replayHumanGrantedMcpCall(
   suite: McpTestSuite,
   client: Client,

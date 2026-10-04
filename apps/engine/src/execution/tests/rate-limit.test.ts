@@ -57,7 +57,6 @@ describe("request 429 + Retry-After", () => {
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const elapsed = Date.now() - start;
     expect(result.status).toBe("succeeded");
-    // Expected at least ~900ms wait (Retry-After: 1 -> 1000ms with sub-jitter)
     expect(elapsed).toBeGreaterThanOrEqual(900);
   }, 15000);
 });

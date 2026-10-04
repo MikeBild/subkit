@@ -1,13 +1,3 @@
-// Ground-truth cardinality for the workflow list services (Fix 3,
-// sessions 2026-06-11/12). `listWorkflows` / `listWorkflowSummaries`
-// return `{ rows, total }` where `total` is the EXACT tenant-scoped
-// count under the same WHERE filters (status, name_contains) ignoring
-// limit/offset — computed via `count(*) over ()` in the same query.
-//
-// Regression target: the fast path rendered "10 workflows:" while the
-// tenant had 20; any consumer of a capped page could only present the
-// page as the universe.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -31,8 +21,6 @@ beforeAll(async () => {
   tenantA = a!.id;
   tenantB = b!.id;
 
-  // Tenant A: 25 workflows — 20 active, 5 archived, 1 of the active
-  // ones soft-deleted (must not count anywhere).
   const rows = Array.from({ length: 25 }, (_, i) => ({
     tenant_id: tenantA,
     slug: `wf-${String(i).padStart(2, "0")}`,
@@ -48,7 +36,6 @@ beforeAll(async () => {
     deleted_at: new Date(FROZEN_NOW),
   });
 
-  // Tenant B: 2 workflows — isolation guard.
   await ctx.db.insert(workflows).values([
     { tenant_id: tenantB, slug: "b-1", name: "B1", lifecycle: "active" },
     { tenant_id: tenantB, slug: "b-2", name: "B2", lifecycle: "active" },
@@ -89,7 +76,6 @@ describe("listWorkflows — { rows, total } contract", () => {
       { name_contains: "Workflow 1", limit: 2 },
       ctx.db,
     );
-    // "Workflow 1" + "Workflow 10".."Workflow 19" = 11 matches.
     expect(total).toBe(11);
     expect(rows).toHaveLength(2);
   });

@@ -1,16 +1,3 @@
-// `disposeBoss` is the TEST teardown path and must not drain.
-//
-// The comment on `disposeBoss` makes two claims; both are asserted here:
-//   1. It asks pg-boss to stop non-gracefully (`graceful: false`), so the
-//      drain loop that polls `hasPendingCleanups()` every 500ms until the
-//      timeout expires never runs.
-//   2. The effect is a teardown that returns promptly against a real boss
-//      with a live worker, instead of burning a multi-second budget and
-//      leaving that worker registered for the next suite.
-//
-// `stopBoss` — the production shutdown — is deliberately NOT covered by
-// this file: production still drains, and nothing here should change that.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { PgBoss } from "pg-boss";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -56,10 +43,6 @@ describe("queue: disposeBoss", () => {
   test("returns promptly while a job is still in flight", async () => {
     const boss = await createBoss({ connectionString: testDb.url });
     await boss.createQueue(QUEUE);
-    // A handler that never settles is the precondition that makes the
-    // difference measurable: `hasPendingCleanups()` stays true, so the
-    // graceful path polls until its timeout expires. Measured on this
-    // fixture: graceful with a 5s budget takes ~5.0s, non-graceful ~20ms.
     let handlerEntered: () => void = () => {};
     const inFlight = new Promise<void>((resolve) => {
       handlerEntered = resolve;

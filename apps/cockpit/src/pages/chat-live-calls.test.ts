@@ -83,8 +83,6 @@ describe("elapsedMs", () => {
   });
 
   test("a finished call reports nothing rather than a frozen number", () => {
-    // No duration is persisted anywhere, so a reloaded transcript must show
-    // no timer at all — not a zero, and not a value it made up.
     expect(elapsedMs({ ...call, done: true }, NOW + 4_000)).toBeNull();
   });
 

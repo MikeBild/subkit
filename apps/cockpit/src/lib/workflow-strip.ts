@@ -1,16 +1,6 @@
 import type { AutomationAction, AutomationState } from "@/lib/automation-state";
 import type { TranslationKey } from "@/lib/i18n";
 
-/**
- * What a workflow's status strip says, top state first (D15, as reviewed):
- * Deaktiviert › Gestoppt › Reparatur nötig › Nicht freigegeben › Wartet auf
- * Freigabe › Wartet auf Konnektor › Schlägt fehl › Freigabe läuft ab ›
- * Reparatur vorbereitet › Läuft. The automation decision
- * (`lib/automation-state.ts`) stays the one judge of whether the workflow may
- * run on its own; the strip orders it against the workflow's switch, the
- * sign-ins of its connectors, its run health and an open repair, and gives
- * the top state alone its action.
- */
 export type StripKind =
   | "loading"
   | "failed"
@@ -35,14 +25,10 @@ export type StripAction =
   | { kind: "chat" }
   | { kind: "enable" }
   | { kind: "resume"; scheduleIds: string[] }
-  /** Opens the approval dialog: a saved change, a first approval or an extension. */
   | { kind: "approve"; via: "apply" | "grant" | "extend" }
   | { kind: "recheck" }
-  /** Opens the connector whose sign-in the workflow waits for. */
   | { kind: "connector"; connectorId: string }
-  /** Opens the newest failed run's sheet. */
   | { kind: "cause"; runId: string }
-  /** Opens the review sheet of the filed repair. */
   | { kind: "review" };
 
 export type StripTone = "ok" | "warn" | "error";
@@ -51,11 +37,9 @@ export interface WorkflowStrip {
   kind: StripKind;
   tone: StripTone;
   action: StripAction | null;
-  /** The lower states that also apply, for "+N weiteres". */
   lower: StripKind[];
 }
 
-/** A connector the workflow uses whose sign-in is gone. */
 export interface WaitingConnector {
   id: string;
   name: string;
@@ -64,17 +48,11 @@ export interface WaitingConnector {
 
 export interface StripInput {
   automation: AutomationState | null;
-  /** The approvals could not be read. */
   failed: boolean;
-  /** The workflow is switched off (`lifecycle: archived`). */
   disabled: boolean;
-  /** The engine's run health; anything but `ok` (or nothing) is failing. */
   health: string | null;
-  /** The newest failed run, where one is on record and may be read. */
   failedRunId: string | null;
-  /** A repair proposal waits for review. */
   repairPrepared: boolean;
-  /** The first connector the workflow uses that cannot sign in. */
   waitingConnector: WaitingConnector | null;
   rights: { write: boolean; chat: boolean };
 }
@@ -146,7 +124,6 @@ function hasAction(state: AutomationState, kind: AutomationAction["kind"]): bool
   return state.primaryAction?.kind === kind || state.secondaryAction?.kind === kind;
 }
 
-/** The strip of one workflow: its top state, that state's one action, and the rest. */
 export function workflowStrip(input: StripInput): WorkflowStrip {
   const { automation, rights } = input;
   if (input.failed) return { kind: "failed", tone: "error", action: { kind: "retry" }, lower: [] };
@@ -171,14 +148,10 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       });
       break;
     }
-    // The gate refuses steps: the diagnosis below the strip carries one act
-    // per step, so the strip carries none.
     case "repair":
       candidates.push({ kind: "repair", action: null });
       break;
     case "grant": {
-      // Something starts it and no approval covers it. Once approved before,
-      // it has stopped; never approved, it waits for its first approval.
       const once = (automation?.history.length ?? 0) > 0;
       candidates.push({
         kind: once ? "stopped" : "grant",
@@ -187,7 +160,6 @@ export function workflowStrip(input: StripInput): WorkflowStrip {
       break;
     }
     case "manual":
-      // Nothing starts it on its own and nothing approved it: only trial runs.
       if (automation?.primaryAction?.kind === "grant" && !automation.facts.inactive)
         candidates.push({
           kind: "unapproved",

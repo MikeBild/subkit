@@ -1,11 +1,3 @@
-// An advisory candidate is never adopted, on any surface.
-//
-// The view marks authoring capabilities and failure patterns not reviewable
-// and the Cockpit hides their action; the HTTP route, the CLI and the chat
-// tool all reach `approveSkillCandidate`, so the rule lives there.
-//
-// Requires a real Postgres database — set REQUIRES_PG=0 to skip.
-
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { tenants } from "../../db/schema/identity.ts";
