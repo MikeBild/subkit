@@ -17,6 +17,7 @@ const skill = (workflowId: string | null) =>
     best_practices: [],
     pitfalls: [],
     doc_refs: [],
+    facts: null,
     evidence_count: 2,
     confidence: "medium",
     status: "proposed",

@@ -49,6 +49,14 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
 
     expect(compatible).toContain("propose_skill");
 
-    expect(incompatible.map((t) => t.name).sort()).toEqual(["call_connector", "probe_connector"]);
+    expect(incompatible.map((t) => t.name).sort()).toEqual(["probe_connector"]);
+  });
+
+  it("no example carries an id-shaped value the model could copy as a real id", () => {
+    const uuidShaped = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const copyable = listTools()
+      .filter((t) => t.example_input && uuidShaped.test(JSON.stringify(t.example_input)))
+      .map((t) => t.name);
+    expect(copyable).toEqual([]);
   });
 });

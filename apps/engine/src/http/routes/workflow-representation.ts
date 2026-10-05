@@ -9,13 +9,18 @@ import {
   workflowTriggerView,
 } from "../../scheduler/index.ts";
 import type * as svc from "../../workflows/index.ts";
-import { TriggerSchema } from "../../workflows/index.ts";
+import { loadCategoryIndex, TriggerSchema, UNCATEGORIZED } from "../../workflows/index.ts";
 
 export const WorkflowSchema = z
   .object({
     id: z.string(),
     tenant_id: z.string(),
     slug: z.string(),
+    category: z
+      .string()
+      .describe(
+        "The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none.",
+      ),
     name: z.string(),
     description: z.string().nullable(),
     lifecycle: z.string(),
@@ -51,7 +56,6 @@ export const WorkflowSchema = z
   .openapi("Workflow");
 
 const WorkflowListItemSchema = WorkflowSchema.extend({
-  category: z.string(),
   connectors: z.array(z.string()),
 }).openapi("WorkflowListItem");
 
@@ -63,11 +67,16 @@ export const WorkflowListResponse = z
   })
   .openapi("WorkflowListResponse");
 
-export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) {
+export function serializeWorkflow(
+  w: svc.WorkflowView,
+  binding: TriggerBinding,
+  categories: ReadonlyMap<string, string>,
+) {
   return {
     id: w.id,
     tenant_id: w.tenant_id,
     slug: w.slug,
+    category: categories.get(w.slug) ?? UNCATEGORIZED,
     name: w.name,
     description: w.description ?? w.definition.description ?? null,
     lifecycle: w.lifecycle,
@@ -97,6 +106,9 @@ export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) 
 }
 
 export async function serializeOne(w: svc.WorkflowView, tenantId: string, db: Executor) {
-  const bindings = await loadTriggerBindings(tenantId, [w.id], db);
-  return serializeWorkflow(w, bindingFor(bindings, w.id));
+  const [bindings, categories] = await Promise.all([
+    loadTriggerBindings(tenantId, [w.id], db),
+    loadCategoryIndex(tenantId, db),
+  ]);
+  return serializeWorkflow(w, bindingFor(bindings, w.id), categories);
 }

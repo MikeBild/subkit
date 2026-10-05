@@ -4,6 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { PermissionMode } from "../conversations/tool-policies.ts";
 import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
+import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
 import { denialDetails, denialHint } from "../rbac/denial.ts";
@@ -167,6 +168,30 @@ async function gateConfirm(
   return { status: "needs_confirm", confirm: { ...confirm, approval_url } };
 }
 
+function executionCtx(
+  deps: DispatchDeps,
+  invocation: ToolInvocation,
+  toolName: string,
+): ToolContext | undefined {
+  return invocation.surface === "chat"
+    ? deps.conversationCtx
+    : (deps.buildMcpStubCtx?.(toolName) ?? deps.conversationCtx);
+}
+
+async function refusalBeforeGate(
+  deps: DispatchDeps,
+  executor: unknown,
+  invocation: ToolInvocation,
+  execArgs: Record<string, unknown>,
+): Promise<ToolResult | null> {
+  const tool = isConversationExecutor(executor) ? executor.tool : undefined;
+  if (!tool) return null;
+  const ctx = executionCtx(deps, invocation, tool.name);
+  if (!ctx) return null;
+  const checked = await checkBeforeGate(tool, { ...ctx, principal: deps.principal }, execArgs);
+  return checked.ok ? null : checked.result;
+}
+
 export async function dispatchTool(
   deps: DispatchDeps,
   invocation: ToolInvocation,
@@ -244,10 +269,7 @@ export async function dispatchTool(
         if (canonical.ok) {
           execArgs = canonical.args;
           canonicalizedForResource = true;
-          const ctx =
-            invocation.surface === "chat"
-              ? deps.conversationCtx
-              : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+          const ctx = executionCtx(deps, invocation, entry.descriptor.name);
           if (!ctx)
             throw new Error("dispatcher missing conversation ctx for resource authorization");
           const permission = executor.tool.permission;
@@ -344,10 +366,16 @@ export async function dispatchTool(
         decisionLabel = "not_available_on_surface";
         halted = true;
       } else if (policy.kind === "needs_confirm") {
-        envelope = await gateConfirm(deps, entry.descriptor.name, invocation, policy.envelope, {
-          execArgs,
-        });
-        decisionLabel = "needs_confirm";
+        const refusal = await refusalBeforeGate(deps, entry.executor, invocation, execArgs);
+        if (refusal) {
+          envelope = normalizeConversationResult(refusal);
+          decisionLabel = "refused_before_gate";
+        } else {
+          envelope = await gateConfirm(deps, entry.descriptor.name, invocation, policy.envelope, {
+            execArgs,
+          });
+          decisionLabel = "needs_confirm";
+        }
         halted = true;
       }
 
@@ -372,10 +400,7 @@ export async function dispatchTool(
         try {
           const executor = entry.executor;
           if (isConversationExecutor(executor)) {
-            const ctx =
-              invocation.surface === "chat"
-                ? deps.conversationCtx
-                : (deps.buildMcpStubCtx?.(entry.descriptor.name) ?? deps.conversationCtx);
+            const ctx = executionCtx(deps, invocation, entry.descriptor.name);
             if (!ctx) {
               throw new Error("dispatcher missing conversation ctx for tool execution");
             }

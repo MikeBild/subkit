@@ -19,6 +19,7 @@ import {
 } from "../../../conversations/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
+import { ensurePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
   buildRuntimeContextFromRequest,
@@ -75,6 +76,7 @@ const createRouteSpec = createRoute({
   responses: {
     201: { description: "Created", content: { "application/json": { schema: RunOutcomeSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -145,6 +147,8 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+    if (body.execution_id)
+      await ensurePermission(c, "execution:read", { type: "execution", id: body.execution_id });
     const focus = body.execution_id
       ? await svc.loadFocusExecution(principal.tenant_id, body.execution_id, db)
       : null;
@@ -261,9 +265,16 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (!detail) throw new NotFoundError("conversation");
     const messages = buildMessages(detail.messages, detail.tool_calls);
     const usage = await svc.readConversationUsage(db, principal.tenant_id, id);
+    const hidden =
+      principal.kind === "user"
+        ? await svc.isConversationHiddenFor(
+            { tenant_id: principal.tenant_id, conversation_id: id, user_id: principal.id },
+            db,
+          )
+        : false;
     return c.json(
       {
-        conversation: detail.conversation,
+        conversation: { ...detail.conversation, hidden },
         owner: detail.owner,
         created_resources: detail.created_resources,
         messages,

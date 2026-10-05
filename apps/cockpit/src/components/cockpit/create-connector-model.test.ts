@@ -60,8 +60,8 @@ describe("connector by hand: what it connects, then how SubKit signs in", () => 
   });
 
   test("without a sign-in leaving the page, an MCP server opens on its tools, a web service on its connection", () => {
-    expect(afterCreateTab("mcp")).toBe("werkzeuge");
-    expect(afterCreateTab("web")).toBe("verbindung");
+    expect(afterCreateTab("mcp")).toBe("tools");
+    expect(afterCreateTab("web")).toBe("connection");
   });
 
   test("only a web service signed in with an account asks for its OAuth app", () => {

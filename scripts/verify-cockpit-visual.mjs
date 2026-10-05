@@ -11,6 +11,7 @@ import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
+import { verifyChatHeader } from "./lib/cockpit-chat-header.mjs";
 import { assertChatLayout } from "./lib/cockpit-chat-layout.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
@@ -19,13 +20,16 @@ import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
+import { verifyFirstClickOpens } from "./lib/cockpit-first-click.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
+import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
+import { verifyRunSheet } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import {
   assertSingleTriggers,
@@ -134,7 +138,7 @@ const routes = [
   "access",
   "api-access",
   "api-access?section=keys",
-  "settings?tab=benachrichtigungen",
+  "settings?tab=notifications",
   "settings",
   "settings?section=auth",
 ];
@@ -1594,11 +1598,12 @@ async function mockApi(route) {
       };
     });
     const status = url.searchParams.get("status");
+    const statuses = status ? status.split(",") : [];
     const limit = Number(url.searchParams.get("limit") ?? "0");
-    const narrowed = status ? items.filter((item) => item.status === status) : items;
+    const narrowed = status ? items.filter((item) => statuses.includes(item.status)) : items;
     return json(route, {
       items: limit > 0 ? narrowed.slice(0, limit) : narrowed,
-      total: status ? narrowed.length : 240,
+      total: statuses.length > 1 ? narrowed.length * 10 : status ? narrowed.length : 240,
       next_cursor: null,
     });
   }
@@ -2531,6 +2536,7 @@ async function mockApi(route) {
       best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
       pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
       doc_refs: ["docs/concepts/self-healing.md"],
+      facts: null,
       evidence_count: 2,
       confidence: "high",
       status: "proposed",
@@ -2551,11 +2557,23 @@ async function mockApi(route) {
         pattern_kind: "authoring_capability",
         connector_id: uuid,
         title: "Workflow 'beispiel-bericht' capabilities",
-        body: `Workflow 'Beispiel-Bericht' (slug beispiel-bericht) — what it does and how to invoke it.\nInputs: none declared.\nOutput shape: unknown.\nConnectors: ${uuid}.`,
+        body: `Workflow 'Beispiel-Bericht' (slug beispiel-bericht) — what it does and how to invoke it.\nInputs: none declared.\nOutput fields: not declared.\nConnectors: ${uuid}.`,
         examples: [],
         best_practices: [],
         pitfalls: [],
         doc_refs: [],
+        facts: {
+          kind: "workflow_capability",
+          inputs: [{ name: "limit", type: "integer", required: true }],
+          output_fields: null,
+          key_paths: ["items", "total"],
+          connector_ids: [uuid],
+          steps: [
+            { id: "fetch", kind: "request" },
+            { id: "shape", kind: "transform" },
+          ],
+          draft_version_id: "018f4b4a-6d33-7b3a-9c2d-0000000000b1",
+        },
         evidence_count: 1,
         status: "context",
         reviewable: false,
@@ -2572,6 +2590,14 @@ async function mockApi(route) {
         best_practices: ["Add input validation before this step"],
         pitfalls: [],
         doc_refs: [],
+        facts: {
+          kind: "recurring_failure",
+          step_key: "write_products",
+          error_kind: "request_outside_declared_boundary",
+          cause_class: "authority_mismatch",
+          count: 3,
+          lookback_days: 30,
+        },
         evidence_count: 3,
         confidence: "low",
         status: "context",
@@ -2634,7 +2660,7 @@ function markerFor(route) {
     return `[data-testid="${query.slice("section=".length)}-section"]`;
   if (path === "api-access" && query.startsWith("section="))
     return `[data-testid="api-access-section-${query.slice("section=".length)}"]`;
-  if (path === "settings" && query === "tab=benachrichtigungen")
+  if (path === "settings" && query === "tab=notifications")
     return '[data-testid="notifications-rules"]';
   if (path === "settings" && query.startsWith("section="))
     return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
@@ -3270,7 +3296,7 @@ async function assertWorkflowDetail(page, label, language) {
   const tabs = await page
     .locator('[data-testid="workflow-tabs-list"] [role="tab"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
-  const expectedTabs = ["verwenden", "verlauf", "aufbau", "freigaben"].map(
+  const expectedTabs = ["use", "history", "structure", "approvals"].map(
     (tab) => `workflow-tabs-tab-${tab}`,
   );
   if (JSON.stringify(tabs) !== JSON.stringify(expectedTabs))
@@ -3294,7 +3320,7 @@ async function assertWorkflowDetail(page, label, language) {
       throw new Error(`${label}: the tab "${tab}" is not in the address`);
   };
   await opened(
-    "verlauf",
+    "history",
     '[data-testid="workflow-runs-row-0"], [data-testid="workflow-runs-mobile-row-0"]',
   );
   let runLink = page.locator('[data-testid="workflow-runs-row-link-0"]');
@@ -3303,10 +3329,10 @@ async function assertWorkflowDetail(page, label, language) {
   const runHref = await runLink.getAttribute("href");
   if (!runHref?.startsWith(`/cockpit/workflows/${uuid}?`) || !runHref.includes("run="))
     throw new Error(`${label}: a run leads to ${runHref}, not to its sheet on this page`);
-  await opened("aufbau", '[data-testid="workflow-steps"]');
+  await opened("structure", '[data-testid="workflow-steps"]');
   if (!(await page.locator('[data-testid="workflow-technical"]').isVisible()))
     throw new Error(`${label}: "Technische Angaben" is missing from "Aufbau"`);
-  await opened("freigaben", '[data-testid="workflow-approvals-summary"]');
+  await opened("approvals", '[data-testid="workflow-approvals-summary"]');
   if (await page.locator('[data-testid="authority-headline"]').count())
     throw new Error(`${label} shows an earlier approval before anyone asked for it`);
   const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
@@ -3330,7 +3356,7 @@ async function assertWorkflowDetail(page, label, language) {
     throw new Error(`${label} authority id is not kept on the headline's title`);
   await page.locator('[data-testid="authority-sheet-close"]').click();
   await page.locator('[data-testid="authority-sheet"]').waitFor({ state: "hidden" });
-  await page.locator('[data-testid="workflow-tabs-tab-verwenden"]').click();
+  await page.locator('[data-testid="workflow-tabs-tab-use"]').click();
   await page.locator('[data-testid="workflow-invocation"]').waitFor({ state: "visible" });
 }
 
@@ -4048,7 +4074,7 @@ for (const locale of variants) {
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "usage")
         await assertUsageOrigins(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "settings?tab=benachrichtigungen")
+      if (route === "settings?tab=notifications")
         await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -4199,6 +4225,10 @@ for (const locale of variants) {
       await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
       );
+    if (standOn(verifyChatHeader))
+      await verifyChatHeader(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, { fullPage: false }),
+      );
     if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
     if (viewport.name === "desktop")
       if (standOn(verifyLoadFailures))
@@ -4223,6 +4253,18 @@ for (const locale of variants) {
     if (standOn(verifyCreateConnector))
       await verifyCreateConnector(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyFirstClickOpens))
+      await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
+    if (standOn(verifyPeopleLoadsPerTab))
+      await verifyPeopleLoadsPerTab(page, stand, `${locale.artifact}/${viewport.name}/people-tabs`);
+    if (standOn(verifyRunSheet))
+      await verifyRunSheet(
+        page,
+        stand,
+        uuid,
+        locale.name,
+        `${locale.artifact}/${viewport.name}/run-sheet`,
       );
     if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>
@@ -4310,15 +4352,32 @@ for (const locale of variants) {
       }
       {
         const where = `${locale.artifact}/desktop/workflow-drafting-context`;
-        await stand.visit(page, `workflows/${uuid}?tab=aufbau`);
+        await stand.visit(page, `workflows/${uuid}?tab=structure`);
         const section = page.locator('[data-testid="workflow-drafting-context"]');
         await section.waitFor({ state: "visible" });
         await section.locator('[data-testid="workflow-drafting-context-toggle"]').click();
         const notes = section.locator('[data-testid="workflow-drafting-context-notes"]');
         await notes.waitFor({ state: "visible" });
         const shown = await notes.innerText();
-        for (const note of ["capabilities", "Recurring failure"])
-          if (!shown.includes(note)) throw new Error(`${where}: the note "${note}" is missing`);
+        for (const fact of [
+          "workflow-drafting-fact-inputs",
+          "workflow-drafting-fact-output",
+          "workflow-drafting-fact-connectors",
+          "workflow-drafting-fact-steps",
+          "workflow-drafting-fact-state",
+          "workflow-drafting-fact-failure",
+        ])
+          if ((await notes.locator(`[data-testid="${fact}"]`).count()) !== 1)
+            throw new Error(`${where}: the fact "${fact}" is missing`);
+        for (const prose of [
+          "what it does",
+          "consistently",
+          "capabilities",
+          "interne Referenz",
+          "internal reference",
+          "Approving",
+        ])
+          if (shown.includes(prose)) throw new Error(`${where}: a note still reads "${prose}"`);
         if (shown.includes("Umbenannte Antwortfelder"))
           throw new Error(`${where}: a proposal is listed as drafting context`);
         if (shown.includes(uuid)) throw new Error(`${where}: a note shows a raw identifier`);

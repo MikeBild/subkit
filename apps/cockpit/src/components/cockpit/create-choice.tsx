@@ -222,7 +222,7 @@ function useManualWorkflow(
       done();
       reset();
       await client.invalidateQueries({ queryKey: ["catalog"] });
-      void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=aufbau` });
+      void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=structure` });
     },
     onError: (failure) => fail(refusal(failure, t("create.workflow.taken"), t)),
   });

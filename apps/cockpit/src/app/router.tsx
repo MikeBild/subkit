@@ -22,7 +22,6 @@ import {
 } from "./route-table";
 import { useSession } from "./session";
 import { AppShell } from "./shell";
-import { guardRouteTransitions } from "./view-transition";
 
 const rootRoute = createRootRoute({ component: AppShell, notFoundComponent: NotFoundPage });
 
@@ -125,8 +124,6 @@ export const router = createRouter({
   trailingSlash: "never",
   defaultErrorComponent: RouteErrorPage,
 });
-
-guardRouteTransitions(router);
 
 declare module "@tanstack/react-router" {
   interface Register {

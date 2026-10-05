@@ -291,7 +291,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     where = `/workflows/<failed> (${localeName})`;
     await stand.visit(page, `workflows/${FAILED}`);
     await expectWorkflowTitle(page, where);
-    await page.getByTestId("workflow-tabs-tab-verlauf").click();
+    await page.getByTestId("workflow-tabs-tab-history").click();
     const newest = await page
       .locator(
         '[data-testid="workflow-runs-row-link-0"], [data-testid="workflow-runs-mobile-row-link-0"]',

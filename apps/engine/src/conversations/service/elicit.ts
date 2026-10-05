@@ -262,6 +262,7 @@ export async function respondElicitation(
       id: resolved.id,
       tool_name: resolved.tool_name,
       input: resolved.input,
+      tool_call_id: resolved.tool_call_id,
     },
     db: exec,
   });

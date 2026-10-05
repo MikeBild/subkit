@@ -7,6 +7,7 @@ import {
   actionLabelKey,
   attentionBadge,
   attentionEntries,
+  attentionRow,
   attentionSentence,
   entryActions,
   entrySnapshot,
@@ -15,7 +16,9 @@ import {
   type ReviewHistory,
   reviewAccess,
   reviewNavigation,
+  reviewSettles,
   reviewTarget,
+  SUBJECT_NAME_MAX,
   sentenceText,
   settleHidden,
   sinceLabel,
@@ -76,6 +79,19 @@ function attention(overrides: Partial<Attention> = {}): Attention {
 }
 
 describe("the sentence", () => {
+  test("a conversation named by its whole first request is shortened only on screen", () => {
+    const request =
+      "Bitte prüfe den fehlgeschlagenen Lauf des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor, die den Versand nicht stoppt";
+    const waiting = item({
+      kind: "conversation",
+      subject: { kind: "conversation", id: W, name: request },
+      reason: "awaiting_answer",
+    });
+    const text = sentenceText(attentionSentence(waiting, de, NOW));
+    expect(text).not.toContain(request);
+    expect(text).toContain("…");
+    expect(attentionRow(waiting, de).name.length).toBeLessThanOrEqual(SUBJECT_NAME_MAX);
+  });
   test("names the subject, the reason and since when", () => {
     const text = sentenceText(attentionSentence(item(), de, NOW));
     expect(text).toBe("Der Workflow „Monatsbericht“ scheitert — seit 3 Tagen.");
@@ -671,5 +687,34 @@ describe("what the Übersicht holds", () => {
     expect(
       overviewSections(overviewView(attention()), { operations: false, history: false }),
     ).toEqual(["calm"]);
+  });
+});
+
+describe("the review closes when its last item is decided", () => {
+  const settles = (
+    openBefore: number | null,
+    openNow: number,
+    listedBefore = true,
+    listedNow = true,
+  ) => reviewSettles({ openBefore, openNow, listedBefore, listedNow });
+
+  test("a review that had items and now has none closes", () => {
+    expect(settles(1, 0)).toBe(true);
+    expect(settles(3, 0)).toBe(true);
+  });
+
+  test("a review decided elsewhere closes once its entry leaves the list", () => {
+    expect(settles(0, 0, true, false)).toBe(true);
+    expect(settles(null, 0, true, false)).toBe(true);
+  });
+
+  test("a review opened on nothing stays, so it can say so and point elsewhere", () => {
+    expect(settles(null, 0, false, false)).toBe(false);
+    expect(settles(0, 0)).toBe(false);
+  });
+
+  test("a review with items left stays open", () => {
+    expect(settles(2, 1)).toBe(false);
+    expect(settles(null, 2, true, false)).toBe(false);
   });
 });

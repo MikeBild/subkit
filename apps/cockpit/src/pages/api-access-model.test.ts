@@ -269,20 +269,20 @@ describe("API keys: live first, revoked collapsed", () => {
 
 describe("the tabs: their order, the one that opens, and what they count", () => {
   test("keys first, then apps", () => {
-    expect([...API_ACCESS_ORDER]).toEqual(["keys", "clients"]);
+    expect([...API_ACCESS_ORDER]).toEqual(["keys", "apps"]);
   });
 
   test("a section the reader may not read is absent, the order stays", () => {
-    expect(readableSections({ keys: false, clients: true })).toEqual(["clients"]);
-    expect(readableSections({ keys: false, clients: false })).toEqual([]);
+    expect(readableSections({ keys: false, apps: true })).toEqual(["apps"]);
+    expect(readableSections({ keys: false, apps: false })).toEqual([]);
   });
 
   test("the address picks the tab when the reader may read it, else the first one", () => {
-    const all = readableSections({ keys: true, clients: true });
+    const all = readableSections({ keys: true, apps: true });
     expect(openApiAccessSection(null, all)).toBe("keys");
-    expect(openApiAccessSection("clients", all)).toBe("clients");
-    const noKeys = readableSections({ keys: false, clients: true });
-    expect(openApiAccessSection("keys", noKeys)).toBe("clients");
+    expect(openApiAccessSection("apps", all)).toBe("apps");
+    const noKeys = readableSections({ keys: false, apps: true });
+    expect(openApiAccessSection("keys", noKeys)).toBe("apps");
     expect(openApiAccessSection("keys", [])).toBeNull();
   });
 

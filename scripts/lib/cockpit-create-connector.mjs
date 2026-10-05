@@ -234,7 +234,7 @@ async function verifyWebAccount(page, stand, words, where, state) {
   await page.waitForURL(
     (url) =>
       url.pathname.endsWith(`/connectors/${WEB_ID}`) &&
-      url.searchParams.get("tab") === "verbindung",
+      url.searchParams.get("tab") === "connection",
     { timeout: 10_000 },
   );
   const sent = state.posted.at(-1);
@@ -271,7 +271,7 @@ async function verifyMcpAccount(page, stand, where, state) {
 }
 
 async function verifyMcpPageSignIn(page, stand, where, state) {
-  await stand.visit(page, `connectors/${MCP_ID}?tab=verbindung`);
+  await stand.visit(page, `connectors/${MCP_ID}?tab=connection`);
   const signIn = page.getByTestId("connector-renew-signin");
   await signIn.waitFor({ state: "visible", timeout: 10_000 });
   const left = page.waitForURL((url) => url.searchParams.get("provider") === "mcp-fixture", {

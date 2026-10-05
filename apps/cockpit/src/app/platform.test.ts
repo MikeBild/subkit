@@ -6,8 +6,8 @@ import { listPagePath, listQueryKey, nextPageParam } from "@/lib/use-infinite-li
 import { loadingPhase, SKELETON_MIN_MS } from "@/lib/use-loading-phase";
 import { backoffDelay } from "./live-events";
 import { keyId, keysForEvent, LIVE_RULES } from "./live-invalidation";
+import { entersRoute } from "./route-entrance";
 import { isNewVersion } from "./version-notice";
-import { routeTransitionTypes, runViewTransition } from "./view-transition";
 
 const SRC = join(import.meta.dir, "..");
 
@@ -157,48 +157,13 @@ describe("endless lists", () => {
   });
 });
 
-describe("route transitions", () => {
-  test("only a change of page crossfades, and never under reduced motion", () => {
-    expect(routeTransitionTypes({ pathChanged: true, reducedMotion: false })).toEqual(["route"]);
-    expect(routeTransitionTypes({ pathChanged: false, reducedMotion: false })).toBe(false);
-    expect(routeTransitionTypes({ pathChanged: true, reducedMotion: true })).toBe(false);
-  });
-
-  test("a skipped transition is caught, and none starts while one runs", async () => {
-    const skipped = () => Promise.reject(new DOMException("Transition was skipped", "AbortError"));
-    let finish: () => void = () => {};
-    let started = 0;
-    const doc = {
-      startViewTransition(arg: (() => Promise<void>) | { update: () => Promise<void> }) {
-        started += 1;
-        const update = typeof arg === "function" ? arg : arg.update;
-        return {
-          updateCallbackDone: update(),
-          ready: skipped(),
-          finished: new Promise<void>((_, reject) => {
-            finish = () => reject(new DOMException("Transition was skipped", "AbortError"));
-          }),
-        };
-      },
-    };
-    const unhandled: unknown[] = [];
-    const onUnhandled = (reason: unknown) => unhandled.push(reason);
-    process.on("unhandledRejection", onUnhandled);
-    let updates = 0;
-    const update = async () => {
-      updates += 1;
-    };
-    await runViewTransition(update, ["route"], doc, true);
-    await runViewTransition(update, ["route"], doc, true);
-    expect(started).toBe(1);
-    expect(updates).toBe(2);
-    finish();
-    await new Promise((resolve) => setImmediate(resolve));
-    await runViewTransition(update, ["route"], doc, true);
-    expect(started).toBe(2);
-    finish();
-    await new Promise((resolve) => setImmediate(resolve));
-    process.off("unhandledRejection", onUnhandled);
-    expect(unhandled).toEqual([]);
+describe("route entrance", () => {
+  test("only a change of page settles in, never the first page and never under reduced motion", () => {
+    expect(entersRoute({ previous: "/", next: "/workflows", reducedMotion: false })).toBe(true);
+    expect(entersRoute({ previous: null, next: "/workflows", reducedMotion: false })).toBe(false);
+    expect(entersRoute({ previous: "/workflows", next: "/workflows", reducedMotion: false })).toBe(
+      false,
+    );
+    expect(entersRoute({ previous: "/", next: "/workflows", reducedMotion: true })).toBe(false);
   });
 });

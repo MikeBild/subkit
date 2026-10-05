@@ -32,6 +32,7 @@ function record(state) {
     tenant_id: TENANT,
     name: "Example API Demo Fetch",
     slug: SLUG,
+    category: "example-api",
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
     lifecycle: "active",
     invalid: Boolean(state.invalid),
@@ -55,52 +56,54 @@ function record(state) {
       source: state.scenario === "manual" ? "default" : "binding",
       state: "active",
     },
-    steps: [
-      {
-        id: "fetch_data",
-        kind: "request",
-        method: "GET",
-        path: "/users",
-        connector_id: HTTP_CONNECTOR,
-        query: { limit: 10 },
-        headers: {
-          Accept: "application/json",
-          Authorization: "Bearer plain-secret-token",
-          "X-Api-Key": "{{credentials.api_key}}",
-        },
-      },
-      {
-        id: "check_status",
-        kind: "branch",
-        when: "fetch_data.status = 200",
-        then_steps: ["shape_success"],
-        else_steps: ["shape_failure"],
-      },
-      {
-        id: "shape_success",
-        kind: "transform",
-        expression: `return { ok: true, source: "${CALLED}" };`,
-      },
-      { id: "shape_failure", kind: "transform", expression: "return { ok: false };" },
-      { id: "each_user", kind: "loop", over: "fetch_data.data", body: ["send_email"] },
-      {
-        id: "send_email",
-        kind: "request",
-        method: "POST",
-        path: "/v1/messages/send",
-        connector_id: MAIL_CONNECTOR,
-        body: { to: "{{recipient}}", subject: "Bericht" },
-      },
-      { id: "pause", kind: "wait", duration_ms: 90_000 },
-      {
-        id: "approval",
-        kind: "wait_for_event",
-        event_name: "report.approved",
-        timeout_ms: 7_200_000,
-      },
-      { id: "sub", kind: "call", workflow_id: CALLED, workflow_slug: "send-report" },
-      { id: "fan", kind: "parallel", branches: [["shape_success"], ["shape_failure"]] },
-    ],
+    steps: state.noSteps
+      ? []
+      : [
+          {
+            id: "fetch_data",
+            kind: "request",
+            method: "GET",
+            path: "/users",
+            connector_id: HTTP_CONNECTOR,
+            query: { limit: 10 },
+            headers: {
+              Accept: "application/json",
+              Authorization: "Bearer plain-secret-token",
+              "X-Api-Key": "{{credentials.api_key}}",
+            },
+          },
+          {
+            id: "check_status",
+            kind: "branch",
+            when: "fetch_data.status = 200",
+            then_steps: ["shape_success"],
+            else_steps: ["shape_failure"],
+          },
+          {
+            id: "shape_success",
+            kind: "transform",
+            expression: `return { ok: true, source: "${CALLED}" };`,
+          },
+          { id: "shape_failure", kind: "transform", expression: "return { ok: false };" },
+          { id: "each_user", kind: "loop", over: "fetch_data.data", body: ["send_email"] },
+          {
+            id: "send_email",
+            kind: "request",
+            method: "POST",
+            path: "/v1/messages/send",
+            connector_id: MAIL_CONNECTOR,
+            body: { to: "{{recipient}}", subject: "Bericht" },
+          },
+          { id: "pause", kind: "wait", duration_ms: 90_000 },
+          {
+            id: "approval",
+            kind: "wait_for_event",
+            event_name: "report.approved",
+            timeout_ms: 7_200_000,
+          },
+          { id: "sub", kind: "call", workflow_id: CALLED, workflow_slug: "send-report" },
+          { id: "fan", kind: "parallel", branches: [["shape_success"], ["shape_failure"]] },
+        ],
   };
 }
 
@@ -298,20 +301,34 @@ function authorities(state) {
   });
   const dev = authority({ id: DEV_GRANT, execution_environment: "dev" });
   if (state.devPending) return [authority(), revoked];
+  const posted = state.granted && state.granted.visit === state.visit ? state.granted.body : null;
+  const granted = posted
+    ? {
+        valid_from: posted.valid_from,
+        valid_until: posted.valid_until,
+        max_runs: posted.max_runs,
+        remaining_runs: posted.max_runs,
+        reserved_runs: 0,
+        created_at: new Date().toISOString(),
+      }
+    : {};
+  if (state.scenario === "manual" && posted) return [authority(granted), revoked];
   if (state.scenario === "approved" || state.scenario === "repair")
     return [
       authority(
-        state.untilRevoked
-          ? {
-              valid_until: null,
-              max_runs: null,
-              remaining_runs: null,
-              reserved_runs: 41,
-              open_ended: true,
-            }
-          : state.expiring
-            ? { remaining_runs: 1, reserved_runs: 29 }
-            : {},
+        posted
+          ? granted
+          : state.untilRevoked
+            ? {
+                valid_until: null,
+                max_runs: null,
+                remaining_runs: null,
+                reserved_runs: 41,
+                open_ended: true,
+              }
+            : state.expiring
+              ? { remaining_runs: 1, reserved_runs: 29 }
+              : {},
       ),
       dev,
       revoked,
@@ -482,7 +499,12 @@ export function api(state) {
         version_id: waiting ? DRAFT : VERSION,
         current_version_id: VERSION,
         version: waiting ? 10 : 9,
-        definition: { name: "Example API Demo Fetch", steps: record(state).steps },
+        definition: {
+          name: "Example API Demo Fetch",
+          steps: waiting
+            ? [...record(state).steps, { id: "notify_team", kind: "wait", duration_ms: 60_000 }]
+            : record(state).steps,
+        },
       });
     }
     if (path === `/v1/workflows/${WORKFLOW}/automation-status`)
@@ -495,8 +517,9 @@ export function api(state) {
     if (path === `/v1/workflows/${WORKFLOW}/execution-authorities`) {
       if (request.method() === "POST") {
         state.grants.push(request.postDataJSON());
-        state.scenario = "approved";
-        return json(route, authority(), 201);
+        state.granted = { body: request.postDataJSON(), visit: state.visit };
+        if (state.scenario !== "manual") state.scenario = "approved";
+        return json(route, authorities(state)[0], 201);
       }
       return json(route, { items: authorities(state), next_cursor: null });
     }
@@ -556,6 +579,11 @@ export function api(state) {
       });
     if (path === "/v1/executions" && url.searchParams.get("workflow_id") === WORKFLOW) {
       const items = state.failedWith ? [failedRun(state.failedWith)] : [];
+      if (url.searchParams.get("started_from") && state.failedWith)
+        return json(route, {
+          items,
+          total: url.searchParams.get("status") === "failed,timed_out,aborted" ? 37 : 120,
+        });
       return json(route, { items, total: items.length });
     }
     if (path === "/v1/patch-candidates") return json(route, { items: [], total: 0 });
@@ -627,6 +655,10 @@ const WORDS = {
     webhookBody: "input.body",
     tabs: { http: "HTTP", webhook: "Webhook", mcp: "MCP", schedule: "Zeitplan", cli: "CLI" },
     branch: "wenn fetch_data.status = 200 → shape_success, sonst shape_failure",
+    connector: "Konnektor",
+    bodyInvalid: "Der Inhalt ist kein gültiges JSON.",
+    savedVersion: "Gespeichert, noch nicht aktiv",
+    noSteps: "Noch keine Schritte",
     daily: "täglich um 07:00",
     waiting: "Wartet auf Freigabe",
     active: "Aktiv",
@@ -663,6 +695,10 @@ const WORDS = {
     webhookBody: "input.body",
     tabs: { http: "HTTP", webhook: "Webhook", mcp: "MCP", schedule: "Schedule", cli: "CLI" },
     branch: "if fetch_data.status = 200 → shape_success, else shape_failure",
+    connector: "Connector",
+    bodyInvalid: "The body is not valid JSON.",
+    savedVersion: "Saved, not active yet",
+    noSteps: "No steps yet",
     daily: "daily at 07:00",
     waiting: "Waiting for approval",
     active: "Active",
@@ -691,12 +727,13 @@ export async function openTab(page, tab) {
   await page.getByTestId(`workflow-tabs-tab-${tab}`).click();
   await page.waitForFunction(
     (value) => new URL(window.location.href).searchParams.get("tab") === value,
-    tab === "verwenden" ? null : tab,
+    tab === "use" ? null : tab,
   );
 }
 
 export async function open(page, stand, state, scenario) {
   state.scenario = scenario;
+  state.visit = (state.visit ?? 0) + 1;
   await stand.visit(page, `workflows/${WORKFLOW}`);
   const panel = page.getByTestId("workflow-automation");
   await page
@@ -802,7 +839,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
     if (
       tabs.join("|") !==
-      ["verwenden", "verlauf", "aufbau", "freigaben"]
+      ["use", "history", "structure", "approvals"]
         .map((tab) => `workflow-tabs-tab-${tab}`)
         .join("|")
     )
@@ -954,7 +991,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     for (const part of ["id", "threadId"])
       if (!output.includes(part)) throw new Error(`${where}: the output lacks "${part}"`);
 
-    await openTab(page, "aufbau");
+    await openTab(page, "structure");
     await page.getByTestId("workflow-steps").waitFor();
     if ((await page.locator('[data-testid^="workflow-step-list-row-"]').count()) < 10)
       throw new Error(`${where}: not every step has a row`);
@@ -999,6 +1036,55 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-step-2-close").click();
     await page.getByTestId("workflow-step-2-sheet").waitFor({ state: "hidden" });
 
+    const editStep = async (index) => {
+      await page
+        .getByTestId(`workflow-step-${index}-menu`)
+        .filter({ visible: true })
+        .first()
+        .click();
+      await page.getByTestId(`workflow-step-${index}-edit`).click();
+      const dialog = page.getByTestId("step-dialog");
+      await dialog.waitFor();
+      return dialog;
+    };
+    const areaValue = (testId) => page.locator(`textarea[data-testid="${testId}"]`).inputValue();
+    let dialog = await editStep(0);
+    const dialogText = await dialog.innerText();
+    if (
+      !dialogText.includes(words.connector) ||
+      (localeName === "de" && dialogText.includes("Connector"))
+    )
+      throw new Error(`${where}: the step editor does not say "${words.connector}"`);
+    if (!(await areaValue("step-query")).includes('"limit": 10'))
+      throw new Error(`${where}: the step editor does not show the query`);
+    const headerValue = await areaValue("step-headers");
+    if (
+      !headerValue.includes("Accept: application/json") ||
+      !headerValue.includes("Authorization: •••")
+    )
+      throw new Error(`${where}: the step editor's headers read "${headerValue}"`);
+    if (headerValue.includes("plain-secret-token"))
+      throw new Error(`${where}: the step editor shows a literal secret header`);
+    await page.locator('textarea[data-testid="step-body"]').fill("{ to: ");
+    await page.getByTestId("step-dialog-submit").click();
+    if ((await text(page, "step-body-error")) !== words.bodyInvalid)
+      throw new Error(`${where}: invalid JSON in the body is not named at the body`);
+    await capture("workflow-step-editor-request");
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    dialog = await editStep(1);
+    if ((await fieldValue(page, "step-when")) !== "fetch_data.status = 200")
+      throw new Error(`${where}: the branch condition is not editable`);
+    if (
+      !(await page.getByTestId("step-then-shape_success").isChecked()) ||
+      !(await page.getByTestId("step-else-shape_failure").isChecked())
+    )
+      throw new Error(`${where}: the branch arms are not shown`);
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden" });
+    if (await page.getByTestId("step-savebar").count())
+      throw new Error(`${where}: closing the step editor left unsaved changes`);
+
     await assertNoVisibleUuids(page.getByTestId("detail-workflows"), where);
 
     if (await page.getByTestId("workflow-technical-slug").count())
@@ -1010,10 +1096,23 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the technical facts lack the version`);
 
     await page.getByTestId("workflow-menu").click();
-    for (const entry of ["ask", "rename", "category"])
+    for (const entry of ["rename", "category"])
       await page.getByTestId(`workflow-menu-${entry}`).waitFor({ state: "visible" });
+    if (await page.getByTestId("workflow-menu-ask").count())
+      throw new Error(`${where}: the menu offers the chat a second time`);
+    await page.getByTestId("workflow-menu-category").click();
+    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "visible" });
+    const current = (await text(page, "catalog-recategorize-select")) ?? "";
+    if (!current.includes("Example Api"))
+      throw new Error(
+        `${where}: the category dialog does not start at the current block: ${current}`,
+      );
+    if (await page.getByTestId("catalog-recategorize-dialog-submit").isEnabled())
+      throw new Error(
+        `${where}: the category dialog offers to move the workflow where it already is`,
+      );
     await page.keyboard.press("Escape");
-    await page.getByTestId("workflow-menu-ask").waitFor({ state: "hidden" });
+    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "hidden" });
 
     await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 
@@ -1040,7 +1139,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
           .querySelector('[data-testid="workflow-automation"]')
           ?.getAttribute("data-state") === "approved",
       undefined,
-      { timeout: 15_000 },
+      { timeout: 5_000 },
     );
     await page.waitForLoadState("networkidle");
     panel = page.getByTestId("workflow-automation");
@@ -1052,7 +1151,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const lastRun = localeName === "de" ? "Letzter Lauf" : "Last run";
     if (!approvedLine.includes(lastRun))
       throw new Error(`${where}: the headline does not say how the last run went: ${approvedLine}`);
-    await openTab(page, "verwenden");
+    await openTab(page, "use");
     await page.getByTestId("workflow-invocation-tab-webhook").click();
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.active)
       throw new Error(`${where}: the hook still reads as waiting`);
@@ -1073,7 +1172,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     where = at("approved");
     panel = await open(page, stand, state, "approved");
     await expectState(page, panel, where, words, "approved", { action: null, openers: 0 });
-    await openTab(page, "freigaben");
+    await openTab(page, "approvals");
     await page.getByTestId("workflow-approvals-summary").waitFor();
     if (await page.getByTestId("authority-headline").count())
       throw new Error(`${where}: an approval stands open before anyone asked`);
@@ -1159,13 +1258,21 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     panel = await open(page, stand, state, "repair");
     await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
     await page.getByTestId("workflow-strip-more").waitFor();
-    await openTab(page, "verlauf");
+    await openTab(page, "history");
     const failedRow = await (await rowLink(page, "workflow-runs", 0)).getAttribute("href");
     if (
       !failedRow?.startsWith(`/cockpit/workflows/${WORKFLOW}?`) ||
       !failedRow.includes(`run=${FAILED_RUN}`)
     )
       throw new Error(`${where}: the failed run's row leads to ${failedRow}`);
+    await page
+      .getByTestId("workflow-runs-summary")
+      .getByText(/120/)
+      .waitFor({ timeout: 10_000 })
+      .catch(() => {});
+    const week = (await text(page, "workflow-runs-summary")) ?? "";
+    if (!week.includes("120") || !week.includes("37"))
+      throw new Error(`${where}: the week counts only the rows it loaded: "${week}"`);
     await capture("workflow-page-unhealthy");
 
     where = at("unhealthy: upstream");
@@ -1240,6 +1347,35 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!applying.includes("v10") || !applying.includes("v9"))
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
     await capture("workflow-page-apply");
+    await openTab(page, "structure");
+    await page.getByTestId("workflow-build-saved").waitFor();
+    if ((await text(page, "workflow-build-saved")) !== words.savedVersion)
+      throw new Error(`${where}: the saved version is not marked as not active yet`);
+    const buildLine = (await text(page, "workflow-build-summary")) ?? "";
+    if (!buildLine.includes("v10") || !buildLine.includes("11"))
+      throw new Error(`${where}: the build tab does not show the saved version: "${buildLine}"`);
+    await page
+      .locator(
+        '[data-testid="workflow-step-list-row-link-10"], [data-testid="workflow-step-list-mobile-row-link-10"]',
+      )
+      .filter({ visible: true })
+      .first()
+      .waitFor();
+    await capture("workflow-build-saved-version");
+
+    where = at("no steps");
+    state.noSteps = true;
+    panel = await open(page, stand, state, "grant");
+    if ((await text(page, "workflow-automation-state")) !== words.noSteps)
+      throw new Error(
+        `${where}: a workflow without steps reads "${await text(page, "workflow-automation-state")}"`,
+      );
+    if (!(await page.getByTestId("workflow-run-open").isDisabled()))
+      throw new Error(`${where}: a workflow without steps can be run`);
+    if (await page.getByTestId("workflow-automation-action").count())
+      throw new Error(`${where}: a workflow without steps offers an approval`);
+    await capture("workflow-page-no-steps");
+    state.noSteps = false;
 
     where = at("paused hook");
     state.hookOnly = true;
@@ -1287,6 +1423,43 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (await page.getByTestId("workflow-input-webhook").count())
       throw new Error(`${where}: a workflow without a hook explains the hook's body`);
     await capture("workflow-page-manual");
+    await page.getByTestId("workflow-menu").click();
+    await page.getByTestId("workflow-menu-delete").click();
+    const removal = (await text(page, "workflow-delete-confirm-consequence")) ?? "";
+    if (/webhook|zeitplan|schedule/i.test(removal))
+      throw new Error(
+        `${where}: deleting names a starter the workflow does not have: "${removal}"`,
+      );
+    await page.getByTestId("workflow-delete-confirm-cancel").click();
+    await page.getByTestId("workflow-delete-confirm").waitFor({ state: "hidden" });
+
+    where = at("manual, just approved");
+    await page.getByTestId("workflow-automation-action").click();
+    await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
+    await page
+      .waitForFunction(
+        () => {
+          const node = document.querySelector('[data-testid="authority-grant-confirm"]');
+          return Boolean(node) && !node.disabled;
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => {});
+    await page.getByTestId("authority-grant-confirm").click();
+    await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
+    await page
+      .waitForFunction(
+        () =>
+          document
+            .querySelector('[data-testid="workflow-automation"]')
+            ?.getAttribute("data-state") === "approved",
+        undefined,
+        { timeout: 5_000 },
+      )
+      .catch(() => {});
+    const justApproved = (await text(page, "workflow-automation-state")) ?? "";
+    if (justApproved === words.states.manual)
+      throw new Error(`${where}: the approval just given still reads "${justApproved}"`);
 
     where = at("no address");
     state.address = false;

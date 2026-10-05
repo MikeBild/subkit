@@ -40,7 +40,12 @@ const listExecutionsRoute = createRoute({
             "Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive.",
           ),
         workflow_id: z.string().uuid().optional(),
-        status: z.string().optional(),
+        status: z
+          .string()
+          .optional()
+          .describe(
+            "One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them.",
+          ),
         request_source: z.string().optional(),
         q: z.string().trim().min(1).max(200).optional(),
         started_from: z

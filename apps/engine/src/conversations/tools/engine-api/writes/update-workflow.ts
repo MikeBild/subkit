@@ -142,16 +142,20 @@ export const updateWorkflowTool: ConversationTool = {
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
       );
     await ctx.setDraft(
-      bindPersistedWorkflow(ctx.getDraft(), {
-        kind: "workflow",
-        id: result.workflow.id,
-        slug: result.workflow.slug,
-        name: result.workflow.name,
-        version_id: result.workflow.current_version_id,
-        version: result.workflow.current_version,
-        environment: null,
-        saved_at: result.workflow.updated_at.toISOString(),
-      }),
+      bindPersistedWorkflow(
+        ctx.getDraft(),
+        {
+          kind: "workflow",
+          id: result.workflow.id,
+          slug: result.workflow.slug,
+          name: result.workflow.name,
+          version_id: result.workflow.current_version_id,
+          version: result.workflow.current_version,
+          environment: null,
+          saved_at: result.workflow.updated_at.toISOString(),
+        },
+        { tool_name: "update_workflow" },
+      ),
     );
 
     return {

@@ -10,6 +10,7 @@ import {
 } from "../../db/schema/index.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { bindPersistedWorkflow } from "../authoring-state.ts";
+import { loadDraft } from "../draft.ts";
 import { runWorkflowTool } from "../tools/engine-api/writes/run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -304,7 +305,7 @@ describe("run_workflow tool", () => {
     });
   }
 
-  test("binds the saved workflow into the next draft and normalizes stringified input", async () => {
+  test("an empty conversation adopts the workflow it runs, definition included, and normalizes stringified input", async () => {
     const { workflow_id } = await seedWorkflow();
     const [conversation] = await ctx.testDb.db
       .insert(conversations)
@@ -347,23 +348,13 @@ describe("run_workflow tool", () => {
     expect(result.ok).toBe(true);
     if (!nextDraft) throw new Error("next draft was not captured");
     const capturedDraft = nextDraft as DraftDocument;
-    expect(capturedDraft.summary?.active_target).toEqual({
-      kind: "workflow",
-      id: workflow_id,
-      slug: "berlin-weather",
-      name: "Berlin Weather",
-      environment: null,
-      lifecycle_state: "persisted",
-    });
+    expect(capturedDraft.workflow.name).toBe("Berlin Weather");
+    expect(capturedDraft.workflow.steps.map((step) => step.id)).toEqual(["shape"]);
     expect(capturedDraft.summary?.persisted_resources).toEqual([
-      expect.objectContaining({
-        kind: "workflow",
-        id: workflow_id,
-        slug: "berlin-weather",
-        name: "Berlin Weather",
-      }),
+      expect.objectContaining({ kind: "workflow", id: workflow_id, slug: "berlin-weather" }),
     ]);
-    expect(capturedDraft.summary?.missing_fields).not.toContain("workflow.steps");
+    expect(capturedDraft.latest_preview?.summary).toContain("run_workflow finished");
+    expect(capturedDraft.state?.latest_execution?.workflow_id).toBe(workflow_id);
 
     const conversationRows = await ctx.testDb.db
       .select({ target_workflow_id: conversations.target_workflow_id })
@@ -371,6 +362,17 @@ describe("run_workflow tool", () => {
       .where(eq(conversations.id, conversation.id))
       .limit(1);
     expect(conversationRows[0]?.target_workflow_id).toBe(workflow_id);
+
+    const again = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft: capturedDraft,
+        setDraft: async () => {},
+      }),
+      runWorkflowTool.inputSchema.parse({ environment: "dev", input: '{"date":"today"}' }),
+    );
+    expect(again.ok).toBe(true);
+    expect((again.data as { workflow_id: string }).workflow_id).toBe(workflow_id);
 
     const executionAuditRows = await ctx.testDb.db
       .select({ metadata: auditLog.metadata })
@@ -385,6 +387,46 @@ describe("run_workflow tool", () => {
     expect((result.data as { output: { date?: unknown } }).output).toMatchObject({
       date: "tomorrow +1",
     });
+  });
+
+  test("running another workflow keeps the workflow the conversation is editing", async () => {
+    const edited = await seedWorkflow("edited-in-chat");
+    const other = await seedWorkflow("run-from-chat");
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        target_workflow_id: edited.workflow_id,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    const draft = await loadDraft(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    let nextDraft: DraftDocument | null = null;
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({
+        conversation_id: conversation.id,
+        draft,
+        setDraft: async (next) => {
+          nextDraft = next;
+        },
+      }),
+      runWorkflowTool.inputSchema.parse({
+        workflow: other.workflow_id,
+        environment: "dev",
+        input: '{"date":"today"}',
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const recorded = nextDraft as DraftDocument | null;
+    expect(recorded?.summary?.active_target?.id).toBe(edited.workflow_id);
+    expect(recorded?.state?.latest_execution?.workflow_id).toBe(other.workflow_id);
+    const [row] = await ctx.testDb.db
+      .select({ target_workflow_id: conversations.target_workflow_id })
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id));
+    expect(row?.target_workflow_id).toBe(edited.workflow_id);
   });
 
   test("a tolerated on_error=continue failure stays succeeded and surfaces step_failed_continued", async () => {

@@ -495,7 +495,7 @@ function PersonSheet({
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"deactivate" | "invite" | "revokeGrants" | null>(null);
-  const grants = useGrants(canReadGrants);
+  const grants = useGrants(canReadGrants && user !== null);
   const ownGrants = (grants.data?.items ?? []).filter(
     (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
   );
@@ -901,7 +901,7 @@ function InvitePersonDialog({
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
   const session = useSession();
-  const roles = useRoles(session.permissions.includes("rbac:read"));
+  const roles = useRoles(open && session.permissions.includes("rbac:read"));
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<PersonRole>("member");
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
@@ -1125,8 +1125,10 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
   const { t } = useI18n();
   const session = useSession();
   const canWrite = session.permissions.includes("rbac:write");
-  const people = usePeople(canWrite && session.permissions.includes("identity:read"));
-  const roles = useRoles();
+  const people = usePeople(
+    group !== null && canWrite && session.permissions.includes("identity:read"),
+  );
+  const roles = useRoles(group !== null);
   const [dialog, setDialog] = useState<"member" | "role" | null>(null);
   const [userId, setUserId] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -1301,12 +1303,12 @@ function GroupsTab({ action }: { action: ReactNode }) {
   );
 }
 
-function useGrantNames() {
+function useGrantNames(enabled = true) {
   const { t } = useI18n();
   const session = useSession();
-  const can = (permission: string) => session.permissions.includes(permission);
+  const can = (permission: string) => enabled && session.permissions.includes(permission);
   const people = usePeople(can("identity:read"));
-  const groups = useGroups();
+  const groups = useGroups(enabled);
   const workflows = useQuery({
     queryKey: ["admin", "workflows"],
     enabled: can("workflow:read"),
@@ -1531,7 +1533,7 @@ function GrantAccessDialog({
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
-  const names = useGrantNames();
+  const names = useGrantNames(open);
   const [subject, setSubject] = useState("");
   const [workflowId, setWorkflowId] = useState("");
   const [permission, setPermission] = useState<string>(GRANT_RIGHTS[0]);
@@ -1709,10 +1711,10 @@ export function PeopleAndAccessPage() {
   const [creating, setCreating] = useState<PeopleSection | null>(null);
   const empty = (data: Envelope<unknown>) => data.items.length === 0;
   const views: Record<PeopleSection, ReturnType<typeof queryView>> = {
-    people: queryView(usePeopleList(canIdentity).view, empty),
-    roles: queryView(useRoles(canRbac), empty),
-    groups: queryView(useGroups(canRbac), empty),
-    grants: queryView(useGrants(canRbac), empty),
+    people: queryView(usePeopleList(canIdentity && section === "people").view, empty),
+    roles: queryView(useRoles(canRbac && section === "roles"), empty),
+    groups: queryView(useGroups(canRbac && section === "groups"), empty),
+    grants: queryView(useGrants(canRbac && section === "grants"), empty),
   };
   const actionFor = (value: PeopleSection) => {
     const spec = SECTION_ACTION[value];
