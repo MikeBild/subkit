@@ -1,5 +1,38 @@
 import { describe, expect, test } from "bun:test";
-import { humanizeCategory, memberCountAfterMove, recategorizedSlug } from "./workflow-category";
+import { deriveCategories } from "../../../engine/src/workflows/categorize.ts";
+import {
+  humanizeCategory,
+  memberCountAfterMove,
+  recategorizedSlug,
+  UNCATEGORIZED,
+} from "./workflow-category";
+
+describe("moving a workflow between blocks the engine derived", () => {
+  const catalog = [
+    "oss-radar-collect",
+    "oss-radar-normalize",
+    "oss-radar-weekly",
+    "company-reporting",
+    "company-retention",
+    "company-analytics",
+  ];
+  const categoryOf = (slugs: readonly string[], slug: string) =>
+    deriveCategories(slugs).get(slug) ?? UNCATEGORIZED;
+
+  test("each move replaces the block instead of stacking prefixes, and leaving drops it", () => {
+    const moved = recategorizedSlug(
+      "oss-radar-weekly",
+      categoryOf(catalog, "oss-radar-weekly"),
+      "company",
+    );
+    expect(moved).toBe("company-weekly");
+    const after = catalog.map((slug) => (slug === "oss-radar-weekly" ? moved : slug));
+    expect(recategorizedSlug(moved, categoryOf(after, moved), "oss-radar")).toBe(
+      "oss-radar-weekly",
+    );
+    expect(recategorizedSlug(moved, categoryOf(after, moved), UNCATEGORIZED)).toBe("weekly");
+  });
+});
 
 describe("recategorized slug", () => {
   test("swaps the current family prefix for the target one", () => {

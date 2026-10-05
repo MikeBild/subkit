@@ -32,6 +32,7 @@ function record(state) {
     tenant_id: TENANT,
     name: "Example API Demo Fetch",
     slug: SLUG,
+    category: "example-api",
     description: "Lädt Nutzer aus der Example API und meldet das Ergebnis per E-Mail.",
     lifecycle: "active",
     invalid: Boolean(state.invalid),
@@ -1012,8 +1013,19 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-menu").click();
     for (const entry of ["ask", "rename", "category"])
       await page.getByTestId(`workflow-menu-${entry}`).waitFor({ state: "visible" });
+    await page.getByTestId("workflow-menu-category").click();
+    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "visible" });
+    const current = (await text(page, "catalog-recategorize-select")) ?? "";
+    if (!current.includes("Example Api"))
+      throw new Error(
+        `${where}: the category dialog does not start at the current block: ${current}`,
+      );
+    if (await page.getByTestId("catalog-recategorize-dialog-submit").isEnabled())
+      throw new Error(
+        `${where}: the category dialog offers to move the workflow where it already is`,
+      );
     await page.keyboard.press("Escape");
-    await page.getByTestId("workflow-menu-ask").waitFor({ state: "hidden" });
+    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "hidden" });
 
     await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 
