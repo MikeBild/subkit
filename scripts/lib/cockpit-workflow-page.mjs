@@ -691,7 +691,7 @@ export async function openTab(page, tab) {
   await page.getByTestId(`workflow-tabs-tab-${tab}`).click();
   await page.waitForFunction(
     (value) => new URL(window.location.href).searchParams.get("tab") === value,
-    tab === "verwenden" ? null : tab,
+    tab === "use" ? null : tab,
   );
 }
 
@@ -802,7 +802,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
     if (
       tabs.join("|") !==
-      ["verwenden", "verlauf", "aufbau", "freigaben"]
+      ["use", "history", "structure", "approvals"]
         .map((tab) => `workflow-tabs-tab-${tab}`)
         .join("|")
     )
@@ -954,7 +954,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     for (const part of ["id", "threadId"])
       if (!output.includes(part)) throw new Error(`${where}: the output lacks "${part}"`);
 
-    await openTab(page, "aufbau");
+    await openTab(page, "structure");
     await page.getByTestId("workflow-steps").waitFor();
     if ((await page.locator('[data-testid^="workflow-step-list-row-"]').count()) < 10)
       throw new Error(`${where}: not every step has a row`);
@@ -1052,7 +1052,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     const lastRun = localeName === "de" ? "Letzter Lauf" : "Last run";
     if (!approvedLine.includes(lastRun))
       throw new Error(`${where}: the headline does not say how the last run went: ${approvedLine}`);
-    await openTab(page, "verwenden");
+    await openTab(page, "use");
     await page.getByTestId("workflow-invocation-tab-webhook").click();
     if ((await text(page, "workflow-invocation-hook-0-state")) !== words.active)
       throw new Error(`${where}: the hook still reads as waiting`);
@@ -1073,7 +1073,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     where = at("approved");
     panel = await open(page, stand, state, "approved");
     await expectState(page, panel, where, words, "approved", { action: null, openers: 0 });
-    await openTab(page, "freigaben");
+    await openTab(page, "approvals");
     await page.getByTestId("workflow-approvals-summary").waitFor();
     if (await page.getByTestId("authority-headline").count())
       throw new Error(`${where}: an approval stands open before anyone asked`);
@@ -1159,7 +1159,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     panel = await open(page, stand, state, "repair");
     await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
     await page.getByTestId("workflow-strip-more").waitFor();
-    await openTab(page, "verlauf");
+    await openTab(page, "history");
     const failedRow = await (await rowLink(page, "workflow-runs", 0)).getAttribute("href");
     if (
       !failedRow?.startsWith(`/cockpit/workflows/${WORKFLOW}?`) ||

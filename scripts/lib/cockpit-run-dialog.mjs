@@ -200,7 +200,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!said.includes(expected))
       throw new Error(`${where} · refused: the dialog says "${said}", not "${expected}"`);
     const remedy = await page.getByTestId("workflow-run-error-remedy").getAttribute("href");
-    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
+    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=connection`)
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
       throw new Error(`${where} · refused: the refused run can be started again`);
@@ -223,7 +223,14 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await page.waitForURL((url) => url.searchParams.get("run") === LIVE_RUN_ID, {
       timeout: 10_000,
     });
+    await page
+      .getByTestId("run-detail")
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .catch((error) => {
+        throw new Error(`${where} · live: the started run's sheet did not open`, { cause: error });
+      });
     await page.keyboard.press("Escape");
+    await page.getByTestId("run-detail").waitFor({ state: "hidden" });
 
     state.variant = "crashed";
     await openDialog(page, stand);

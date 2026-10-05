@@ -19,13 +19,16 @@ import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
+import { verifyFirstClickOpens } from "./lib/cockpit-first-click.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
+import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
+import { verifyRunSheet } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import {
   assertSingleTriggers,
@@ -134,7 +137,7 @@ const routes = [
   "access",
   "api-access",
   "api-access?section=keys",
-  "settings?tab=benachrichtigungen",
+  "settings?tab=notifications",
   "settings",
   "settings?section=auth",
 ];
@@ -1594,11 +1597,12 @@ async function mockApi(route) {
       };
     });
     const status = url.searchParams.get("status");
+    const statuses = status ? status.split(",") : [];
     const limit = Number(url.searchParams.get("limit") ?? "0");
-    const narrowed = status ? items.filter((item) => item.status === status) : items;
+    const narrowed = status ? items.filter((item) => statuses.includes(item.status)) : items;
     return json(route, {
       items: limit > 0 ? narrowed.slice(0, limit) : narrowed,
-      total: status ? narrowed.length : 240,
+      total: statuses.length > 1 ? narrowed.length * 10 : status ? narrowed.length : 240,
       next_cursor: null,
     });
   }
@@ -2634,7 +2638,7 @@ function markerFor(route) {
     return `[data-testid="${query.slice("section=".length)}-section"]`;
   if (path === "api-access" && query.startsWith("section="))
     return `[data-testid="api-access-section-${query.slice("section=".length)}"]`;
-  if (path === "settings" && query === "tab=benachrichtigungen")
+  if (path === "settings" && query === "tab=notifications")
     return '[data-testid="notifications-rules"]';
   if (path === "settings" && query.startsWith("section="))
     return `[data-testid="settings-section-${query.slice("section=".length)}"]`;
@@ -3258,7 +3262,7 @@ async function assertWorkflowDetail(page, label, language) {
   const tabs = await page
     .locator('[data-testid="workflow-tabs-list"] [role="tab"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid")));
-  const expectedTabs = ["verwenden", "verlauf", "aufbau", "freigaben"].map(
+  const expectedTabs = ["use", "history", "structure", "approvals"].map(
     (tab) => `workflow-tabs-tab-${tab}`,
   );
   if (JSON.stringify(tabs) !== JSON.stringify(expectedTabs))
@@ -3282,7 +3286,7 @@ async function assertWorkflowDetail(page, label, language) {
       throw new Error(`${label}: the tab "${tab}" is not in the address`);
   };
   await opened(
-    "verlauf",
+    "history",
     '[data-testid="workflow-runs-row-0"], [data-testid="workflow-runs-mobile-row-0"]',
   );
   let runLink = page.locator('[data-testid="workflow-runs-row-link-0"]');
@@ -3291,10 +3295,10 @@ async function assertWorkflowDetail(page, label, language) {
   const runHref = await runLink.getAttribute("href");
   if (!runHref?.startsWith(`/cockpit/workflows/${uuid}?`) || !runHref.includes("run="))
     throw new Error(`${label}: a run leads to ${runHref}, not to its sheet on this page`);
-  await opened("aufbau", '[data-testid="workflow-steps"]');
+  await opened("structure", '[data-testid="workflow-steps"]');
   if (!(await page.locator('[data-testid="workflow-technical"]').isVisible()))
     throw new Error(`${label}: "Technische Angaben" is missing from "Aufbau"`);
-  await opened("freigaben", '[data-testid="workflow-approvals-summary"]');
+  await opened("approvals", '[data-testid="workflow-approvals-summary"]');
   if (await page.locator('[data-testid="authority-headline"]').count())
     throw new Error(`${label} shows an earlier approval before anyone asked for it`);
   const history = page.locator('[data-testid="workflow-former-grants-toggle"]');
@@ -3318,7 +3322,7 @@ async function assertWorkflowDetail(page, label, language) {
     throw new Error(`${label} authority id is not kept on the headline's title`);
   await page.locator('[data-testid="authority-sheet-close"]').click();
   await page.locator('[data-testid="authority-sheet"]').waitFor({ state: "hidden" });
-  await page.locator('[data-testid="workflow-tabs-tab-verwenden"]').click();
+  await page.locator('[data-testid="workflow-tabs-tab-use"]').click();
   await page.locator('[data-testid="workflow-invocation"]').waitFor({ state: "visible" });
 }
 
@@ -4036,7 +4040,7 @@ for (const locale of variants) {
         await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route === "usage")
         await assertUsageOrigins(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "settings?tab=benachrichtigungen")
+      if (route === "settings?tab=notifications")
         await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
       if (route.startsWith("audit?") && route.includes("action="))
         await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
@@ -4212,6 +4216,18 @@ for (const locale of variants) {
       await verifyCreateConnector(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
+    if (standOn(verifyFirstClickOpens))
+      await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
+    if (standOn(verifyPeopleLoadsPerTab))
+      await verifyPeopleLoadsPerTab(page, stand, `${locale.artifact}/${viewport.name}/people-tabs`);
+    if (standOn(verifyRunSheet))
+      await verifyRunSheet(
+        page,
+        stand,
+        uuid,
+        locale.name,
+        `${locale.artifact}/${viewport.name}/run-sheet`,
+      );
     if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
@@ -4298,7 +4314,7 @@ for (const locale of variants) {
       }
       {
         const where = `${locale.artifact}/desktop/workflow-drafting-context`;
-        await stand.visit(page, `workflows/${uuid}?tab=aufbau`);
+        await stand.visit(page, `workflows/${uuid}?tab=structure`);
         const section = page.locator('[data-testid="workflow-drafting-context"]');
         await section.waitFor({ state: "visible" });
         await section.locator('[data-testid="workflow-drafting-context-toggle"]').click();

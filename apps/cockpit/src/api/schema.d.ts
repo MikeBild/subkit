@@ -6685,6 +6685,7 @@ export interface paths {
                     /** @description Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive. */
                     cursor?: string;
                     workflow_id?: string;
+                    /** @description One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them. */
                     status?: string;
                     request_source?: string;
                     q?: string;

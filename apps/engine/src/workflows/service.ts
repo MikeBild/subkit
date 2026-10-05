@@ -581,7 +581,7 @@ export async function listWorkflows(
   const tenantConds = buildWorkflowListConds(tenant_id, opts);
   const sortColumn =
     opts.sort === "name"
-      ? workflows.name
+      ? sql`lower(${workflows.name})`
       : opts.sort === "lifecycle"
         ? workflows.lifecycle
         : opts.sort === "updated_at"

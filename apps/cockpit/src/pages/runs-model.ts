@@ -87,6 +87,29 @@ export const RUNS_FILTER_KEYS = [
   "started_to",
 ] as const;
 
+export function runsFilterSearch(
+  search: string,
+  filter: Pick<RunsFilter, "status" | "source" | "q">,
+): string {
+  const params = new URLSearchParams(search);
+  const written: [string, string][] = [
+    ["status", filter.status === "all" ? "" : filter.status],
+    ["source", filter.source === "all" ? "" : filter.source],
+    ["q", filter.q.trim()],
+  ];
+  for (const [key, value] of written) {
+    if (value) params.set(key, value);
+    else params.delete(key);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export function failedStatusesFor(status: string): string | null {
+  if (status === "all") return [...FAILED_RUN_STATUSES].join(",");
+  return FAILED_RUN_STATUSES.has(status) ? status : null;
+}
+
 export function runOverlayFromUrl(search: string): { list: boolean; runId: string | null } {
   const params = new URLSearchParams(search);
   const raw = params.get("run")?.trim() ?? "";

@@ -15,6 +15,7 @@ import {
   type ReviewHistory,
   reviewAccess,
   reviewNavigation,
+  reviewSettles,
   reviewTarget,
   sentenceText,
   settleHidden,
@@ -671,5 +672,34 @@ describe("what the Übersicht holds", () => {
     expect(
       overviewSections(overviewView(attention()), { operations: false, history: false }),
     ).toEqual(["calm"]);
+  });
+});
+
+describe("the review closes when its last item is decided", () => {
+  const settles = (
+    openBefore: number | null,
+    openNow: number,
+    listedBefore = true,
+    listedNow = true,
+  ) => reviewSettles({ openBefore, openNow, listedBefore, listedNow });
+
+  test("a review that had items and now has none closes", () => {
+    expect(settles(1, 0)).toBe(true);
+    expect(settles(3, 0)).toBe(true);
+  });
+
+  test("a review decided elsewhere closes once its entry leaves the list", () => {
+    expect(settles(0, 0, true, false)).toBe(true);
+    expect(settles(null, 0, true, false)).toBe(true);
+  });
+
+  test("a review opened on nothing stays, so it can say so and point elsewhere", () => {
+    expect(settles(null, 0, false, false)).toBe(false);
+    expect(settles(0, 0)).toBe(false);
+  });
+
+  test("a review with items left stays open", () => {
+    expect(settles(2, 1)).toBe(false);
+    expect(settles(null, 2, true, false)).toBe(false);
   });
 });
