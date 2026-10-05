@@ -165,9 +165,10 @@ async function verifySettingRows(page, rows, section, where) {
         0,
       ),
       text: main?.textContent ?? "",
+      rowText: items.map((item) => item.textContent ?? "").join(" "),
       rows: items.map((item) => ({
         path: item.getAttribute("data-setting-path"),
-        appliesTo: Boolean(item.querySelector('[data-testid^="setting-applies-to-"]')),
+        appliesTo: item.getAttribute("data-applies-to") === "true",
         copy: Boolean(item.querySelector('[data-testid^="setting-copy-key-"]')),
       })),
       storage: main?.querySelectorAll('[data-testid="settings-summary-help"]').length ?? 0,
@@ -190,6 +191,21 @@ async function verifySettingRows(page, rows, section, where) {
     if (expected.description && shape.text.includes(expected.description))
       throw new Error(`${where}: ${row.path} shows the engine's English description`);
   }
+  if (/Gilt für|Applies to/.test(shape.rowText))
+    throw new Error(`${where}: "Gilt für" stands on a row instead of behind its (?)`);
+  const scoped = shown.find((row) => row.appliesTo);
+  if (!scoped) return;
+  await page
+    .locator(`[data-setting-path="${scoped.path}"] [data-testid^="setting-help-"]`)
+    .first()
+    .hover();
+  const tip = page.locator('[data-slot="tooltip-content"]').first();
+  await tip.waitFor({ state: "visible", timeout: 5_000 });
+  if (!/Gilt für|Applies to/.test(await tip.innerText()))
+    throw new Error(`${where}: ${scoped.path}'s (?) does not say what it applies to`);
+  await page.locator('[data-testid="admin-settings"] h1').first().hover();
+  await page.mouse.move(0, 0, { steps: 8 });
+  await tip.waitFor({ state: "hidden", timeout: 5_000 });
 }
 
 const SETTINGS_WIDTHS = [

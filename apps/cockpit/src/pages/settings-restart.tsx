@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { absolute, auditHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { Button, ConfirmDialog } from "@/components/cockpit/patterns";
+import { Button, ConfirmDialog, ContextHelp } from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import {
   isStillRestarting,
@@ -59,12 +59,16 @@ export function SettingsRestartOffer({
       </Button>
     );
   }
+  if (offer === "manual")
+    return (
+      <ContextHelp label={t("settings.restartNow.button")} testId="settings-restart-manual">
+        {t("settings.restartNow.manual")}
+      </ContextHelp>
+    );
   return (
-    <span
-      className="block text-muted-foreground"
-      data-testid={offer === "manual" ? "settings-restart-manual" : "settings-restart-ask-admin"}
-    >
-      {t(offer === "manual" ? "settings.restartNow.manual" : "settings.restartNow.askAdmin")}
+    <span className="text-muted-foreground" data-testid="settings-restart-ask-admin">
+      <span aria-hidden="true"> · </span>
+      {t("settings.restartNow.askAdmin")}
     </span>
   );
 }
