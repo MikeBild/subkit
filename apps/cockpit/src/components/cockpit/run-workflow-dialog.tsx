@@ -1,20 +1,14 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, runHref } from "@/app/links";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { FormDialog } from "@/components/cockpit/patterns";
+import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,18 +25,13 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   approvalRefusal,
   blockedSentenceKey,
-  blockingConnector,
   connectorFix,
   connectorLabel,
-  defaultEnvironment,
   legacyRefusal,
-  RUN_ENVIRONMENTS,
   type RunEnvironment,
   refusedConnector,
-  runPreviewKey,
   type UnavailableConnector,
 } from "@/lib/run-availability";
-import { statusLabel } from "@/lib/status-label";
 import {
   buildFormInput,
   formFields,
@@ -74,35 +63,7 @@ type Failure =
   | { kind: "approval"; environment: RunEnvironment }
   | { kind: "failed"; executionId: string | null };
 
-function refusedAgain(failure: Failure | null, environment: RunEnvironment | null): boolean {
-  if (!failure || failure.kind === "failed") return false;
-  return failure.kind === "legacy" || failure.environment === environment;
-}
-
-function useRunAvailability(
-  workflowId: string,
-  versionId: string | null,
-  enabled: boolean,
-): { settled: boolean; blocked: Record<RunEnvironment, UnavailableConnector | null> } {
-  const previews = useQueries({
-    queries: RUN_ENVIRONMENTS.map((environment) => ({
-      queryKey: runPreviewKey(workflowId, versionId ?? "", environment),
-      enabled: enabled && versionId !== null,
-      retry: false,
-      queryFn: () =>
-        apiRequest<unknown>(
-          `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(versionId ?? "")}/authority-preview?environment=${environment}`,
-        ),
-    })),
-  });
-  return {
-    settled: versionId === null || previews.every((preview) => !preview.isPending),
-    blocked: {
-      dev: blockingConnector(previews[0]?.data),
-      prod: blockingConnector(previews[1]?.data),
-    },
-  };
-}
+const ENGINE_DEFAULT_ENVIRONMENT: RunEnvironment = "dev";
 
 const UNSET = "__unset";
 
@@ -202,24 +163,18 @@ function InputFieldControl({
 export function RunWorkflowDialog({
   workflowId,
   workflowName,
-  version,
-  versionId,
+  liveEnvironment,
   quiet = false,
 }: {
   quiet?: boolean;
   workflowId: string;
   workflowName: string;
-  version: string | null;
-  versionId: string | null;
+  liveEnvironment: RunEnvironment | null | undefined;
 }) {
   const { t } = useI18n();
+  const sheets = useOpenRunSheet();
   const [open, setOpen] = useState(false);
-  const [chosen, setChosen] = useState<RunEnvironment | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
-  const [confirming, setConfirming] = useState(false);
-  const [outcome, setOutcome] = useState<{ status: string; executionId: string | null } | null>(
-    null,
-  );
   const [failure, setFailure] = useState<Failure | null>(null);
 
   const schema = useQuery({
@@ -235,10 +190,7 @@ export function RunWorkflowDialog({
   const filled = { ...initialInputValues(fields), ...values };
   const missing = missingRequired(fields, filled);
   const invalid = invalidInputs(fields, filled);
-  const availability = useRunAvailability(workflowId, versionId, open);
-  const environment =
-    chosen ?? (availability.settled ? defaultEnvironment(availability.blocked) : null);
-  const blockedHere = environment ? availability.blocked[environment] : null;
+  const environment = liveEnvironment ?? ENGINE_DEFAULT_ENVIRONMENT;
 
   const environmentWord = (value: RunEnvironment) => t(`run.environment.${value}`);
   const blockedSentence = (value: RunEnvironment, connector: UnavailableConnector) => {
@@ -250,10 +202,10 @@ export function RunWorkflowDialog({
 
   const queryClient = useQueryClient();
   const run = useMutation({
-    mutationFn: (target: RunEnvironment) =>
+    mutationFn: () =>
       apiRequest<RunOutcome>("/v1/executions", {
         method: "POST",
-        headers: { "x-subkit-environment": target },
+        ...(liveEnvironment ? { headers: { "x-subkit-environment": liveEnvironment } } : {}),
         body: JSON.stringify({
           source: "saved",
           workflow_id: workflowId,
@@ -263,7 +215,6 @@ export function RunWorkflowDialog({
         }),
       }),
     onSuccess: (result) => {
-      setConfirming(false);
       setFailure(null);
       void invalidateWorkflowAutomation(queryClient, workflowId);
       for (const queryKey of [
@@ -272,19 +223,17 @@ export function RunWorkflowDialog({
         ["workflow", workflowId],
       ])
         void queryClient.invalidateQueries({ queryKey });
-      setOutcome({
-        status: result.status ? statusLabel(t, result.status) : t("run.started"),
-        executionId: result.execution_id ?? null,
-      });
+      setOpen(false);
+      setValues({});
+      toast.success(t("run.startedToast"));
+      if (result.execution_id) sheets.run(result.execution_id);
     },
-    onError: (error, target) => {
-      setConfirming(false);
-      setOutcome(null);
+    onError: (error) => {
       const refused = refusedConnector(error);
       if (refused) {
         setFailure({
           kind: "connector",
-          environment: refused.environment ?? target,
+          environment: refused.environment ?? environment,
           connector: refused,
         });
         return;
@@ -295,7 +244,7 @@ export function RunWorkflowDialog({
         return;
       }
       if (approvalRefusal(error)) {
-        setFailure({ kind: "approval", environment: target });
+        setFailure({ kind: "approval", environment });
         return;
       }
       const details = (error as { details?: Record<string, unknown> | null }).details;
@@ -307,217 +256,104 @@ export function RunWorkflowDialog({
   });
 
   const failureFix = failure?.kind === "connector" ? connectorFix(failure.connector) : null;
-  const repeats = refusedAgain(failure, environment);
+  const repeats = failure !== null && failure.kind !== "failed";
 
   return (
-    <Dialog
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) {
-          setConfirming(false);
-          setOutcome(null);
-          setFailure(null);
-          setChosen(null);
-        }
+        if (!next) setFailure(null);
       }}
-    >
-      <DialogTrigger asChild>
+      trigger={
         <Button variant={quiet ? "outline" : "default"} data-testid="workflow-run-open">
           <Play data-icon="inline-start" />
           {t("run.action")}
         </Button>
-      </DialogTrigger>
-      <DialogContent data-testid="workflow-run-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("run.title", { name: workflowName })}</DialogTitle>
-          <DialogDescription>
-            {version ? t("run.savedVersion", { version }) : t("run.savedVersionUnknown")}
-          </DialogDescription>
-        </DialogHeader>
+      }
+      title={t("run.title", { name: workflowName })}
+      description={t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")}
+      submit={{
+        label: run.isPending ? t("run.running") : t("run.action"),
+        pending: run.isPending,
+        disabled:
+          liveEnvironment === undefined || missing.length > 0 || invalid.length > 0 || repeats,
+        testId: "workflow-run-submit",
+      }}
+      onSubmit={() => run.mutate()}
+      cancelTestId="workflow-run-cancel"
+      testId="workflow-run-dialog"
+    >
+      {fields.length > 0 && (
+        <div className="grid gap-3" data-testid="workflow-run-inputs">
+          {schema.data?.source === "synthesized" && (
+            <p className="text-xs text-muted-foreground">{t("run.schemaSynthesized")}</p>
+          )}
+          {fields.map((field, index) => (
+            <InputFieldControl
+              key={field.name}
+              field={field}
+              index={index}
+              value={filled[field.name] ?? ""}
+              invalid={invalid.includes(field.name)}
+              onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
+            />
+          ))}
+        </div>
+      )}
 
-        <Field>
-          <FieldLabel htmlFor="workflow-run-environment">{t("run.environment")}</FieldLabel>
-          <Select
-            value={environment ?? ""}
-            onValueChange={(next) => {
-              setChosen(next as RunEnvironment);
-              setConfirming(false);
-              setFailure((current) => (current?.kind === "legacy" ? current : null));
-            }}
-          >
-            <SelectTrigger id="workflow-run-environment" data-testid="workflow-run-environment">
-              <SelectValue placeholder={t("common.loading")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {RUN_ENVIRONMENTS.map((value) => {
-                  const blocked = availability.blocked[value];
-                  return (
-                    <SelectItem
-                      key={value}
-                      value={value}
-                      disabled={blocked !== null}
-                      data-testid={`workflow-run-environment-${value}`}
-                    >
-                      {blocked ? blockedSentence(value, blocked) : environmentWord(value)}
-                    </SelectItem>
-                  );
-                })}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {RUN_ENVIRONMENTS.map((value) => {
-            const blocked = availability.blocked[value];
-            if (!blocked) return null;
-            const fix = connectorFix(blocked);
-            return (
-              <p
-                key={value}
-                className="text-sm text-muted-foreground"
-                data-testid={`workflow-run-blocked-${value}`}
-              >
-                {blockedSentence(value, blocked)}.{" "}
-                {fix && (
-                  <a
-                    href={absolute(fix.href)}
-                    className="underline underline-offset-4"
-                    data-testid={`workflow-run-blocked-${value}-remedy`}
-                  >
-                    {t(fix.labelKey)}
-                  </a>
-                )}
-              </p>
-            );
-          })}
-        </Field>
-
-        {fields.length > 0 && (
-          <div className="grid gap-3" data-testid="workflow-run-inputs">
-            {schema.data?.source === "synthesized" && (
-              <p className="text-xs text-muted-foreground">{t("run.schemaSynthesized")}</p>
-            )}
-            {fields.map((field, index) => (
-              <InputFieldControl
-                key={field.name}
-                field={field}
-                index={index}
-                value={filled[field.name] ?? ""}
-                invalid={invalid.includes(field.name)}
-                onChange={(value) => setValues((current) => ({ ...current, [field.name]: value }))}
-              />
-            ))}
-          </div>
-        )}
-
-        {confirming && environment === "prod" && (
-          <Alert variant="destructive" data-testid="workflow-run-confirm">
-            <AlertTitle>{t("run.confirmTitle")}</AlertTitle>
-            <AlertDescription>
-              {t("run.confirmDescription", { name: workflowName })}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {outcome && (
-          <p className="text-sm" data-testid="workflow-run-outcome">
-            {t("run.outcome", { outcome: outcome.status })}{" "}
-            {outcome.executionId && (
+      {failure && (
+        <Alert variant="destructive" data-testid="workflow-run-error">
+          <AlertDescription>
+            <p>
+              {failure.kind === "connector"
+                ? `${blockedSentence(failure.environment, failure.connector)}.`
+                : failure.kind === "legacy"
+                  ? failure.steps.length > 0
+                    ? t("run.legacySteps", { steps: failure.steps.join(", ") })
+                    : t("run.legacy")
+                  : failure.kind === "approval"
+                    ? t("run.approvalMissing", {
+                        environment: environmentWord(failure.environment),
+                      })
+                    : t("run.failed")}
+            </p>
+            {failureFix && (
               <a
-                href={absolute(runHref(outcome.executionId))}
-                className="underline underline-offset-4"
-                data-testid="workflow-run-outcome-link"
+                href={absolute(failureFix.href)}
+                className="font-medium underline underline-offset-4"
+                data-testid="workflow-run-error-remedy"
+              >
+                {t(failureFix.labelKey)}
+              </a>
+            )}
+            {failure.kind === "failed" && failure.executionId && (
+              <a
+                href={absolute(runHref(failure.executionId))}
+                className="font-medium underline underline-offset-4"
+                data-testid="workflow-run-error-run"
               >
                 {t("run.failedWithLink")}
               </a>
             )}
-          </p>
-        )}
-
-        {failure && (
-          <Alert variant="destructive" data-testid="workflow-run-error">
-            <AlertDescription>
-              <p>
-                {failure.kind === "connector"
-                  ? `${blockedSentence(failure.environment, failure.connector)}.`
-                  : failure.kind === "legacy"
-                    ? failure.steps.length > 0
-                      ? t("run.legacySteps", { steps: failure.steps.join(", ") })
-                      : t("run.legacy")
-                    : failure.kind === "approval"
-                      ? t("run.approvalMissing", {
-                          environment: environmentWord(failure.environment),
-                        })
-                      : t("run.failed")}
-              </p>
-              {failureFix && (
-                <a
-                  href={absolute(failureFix.href)}
-                  className="font-medium underline underline-offset-4"
-                  data-testid="workflow-run-error-remedy"
-                >
-                  {t(failureFix.labelKey)}
-                </a>
-              )}
-              {failure.kind === "failed" && failure.executionId && (
-                <a
-                  href={absolute(runHref(failure.executionId))}
-                  className="font-medium underline underline-offset-4"
-                  data-testid="workflow-run-error-run"
-                >
-                  {t("run.failedWithLink")}
-                </a>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <DialogFooter>
-          <Button variant="ghost" data-testid="workflow-run-cancel" onClick={() => setOpen(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            disabled={
-              run.isPending ||
-              missing.length > 0 ||
-              invalid.length > 0 ||
-              environment === null ||
-              blockedHere !== null ||
-              repeats
-            }
-            data-testid="workflow-run-submit"
-            onClick={() => {
-              if (!environment) return;
-              if (environment === "prod" && !confirming) {
-                setConfirming(true);
-                return;
-              }
-              run.mutate(environment);
-            }}
-          >
-            {run.isPending
-              ? t("run.running")
-              : environment === "prod" && !confirming
-                ? t("run.reviewProd")
-                : t("run.action")}
-          </Button>
-        </DialogFooter>
-        {repeats && (
-          <p className="text-xs text-muted-foreground" data-testid="workflow-run-repeats">
-            {t("run.refusedAgain")}
-          </p>
-        )}
-        {missing.length > 0 && (
-          <p className="text-xs text-muted-foreground" data-testid="workflow-run-missing">
-            {t("run.missingInputs", { fields: missing.join(", ") })}
-          </p>
-        )}
-        {invalid.length > 0 && (
-          <p className="text-xs text-destructive" data-testid="workflow-run-invalid">
-            {t("input.invalid", { fields: invalid.join(", ") })}
-          </p>
-        )}
-      </DialogContent>
-    </Dialog>
+          </AlertDescription>
+        </Alert>
+      )}
+      {repeats && (
+        <p className="text-xs text-muted-foreground" data-testid="workflow-run-repeats">
+          {t("run.refusedAgain")}
+        </p>
+      )}
+      {missing.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="workflow-run-missing">
+          {t("run.missingInputs", { fields: missing.join(", ") })}
+        </p>
+      )}
+      {invalid.length > 0 && (
+        <p className="text-xs text-destructive" data-testid="workflow-run-invalid">
+          {t("input.invalid", { fields: invalid.join(", ") })}
+        </p>
+      )}
+    </FormDialog>
   );
 }

@@ -6,13 +6,13 @@ import { remedyFor } from "@/lib/remedy";
 import {
   approvalRefusal,
   blockedSentenceKey,
-  blockingConnector,
   connectorFix,
-  defaultEnvironment,
   legacyRefusal,
+  liveRunEnvironment,
   refusedConnector,
   refusedSignIn,
 } from "@/lib/run-availability";
+import type { WorkflowAuthority } from "@/lib/workflow-authorities";
 
 const GMAIL = "d94b2e61-5a8f-4c3d-b7e0-9f1a2c6d8e45";
 const gmail = {
@@ -22,40 +22,6 @@ const gmail = {
   connector_name: "Gmail",
   reason: "needs_reauth",
 };
-
-describe("blockingConnector", () => {
-  test("names the first unavailable connector of a preview", () => {
-    expect(blockingConnector({ unavailable_connectors: [gmail] })).toMatchObject({
-      connector_id: GMAIL,
-      connector_name: "Gmail",
-      reason: "needs_reauth",
-    });
-  });
-
-  test("a preview that names nothing, failed, or has another shape never blocks", () => {
-    expect(blockingConnector({ unavailable_connectors: [] })).toBeNull();
-    expect(blockingConnector({ unavailable_steps: ["send"] })).toBeNull();
-    expect(blockingConnector({ items: [], total: 0 })).toBeNull();
-    expect(blockingConnector(undefined)).toBeNull();
-  });
-});
-
-describe("defaultEnvironment", () => {
-  test("the first environment that can run", () => {
-    expect(defaultEnvironment({ dev: null, prod: null })).toBe("dev");
-    expect(
-      defaultEnvironment({
-        dev: blockingConnector({ unavailable_connectors: [gmail] }),
-        prod: null,
-      }),
-    ).toBe("prod");
-  });
-
-  test("development when neither can", () => {
-    const blocked = blockingConnector({ unavailable_connectors: [gmail] });
-    expect(defaultEnvironment({ dev: blocked, prod: blocked })).toBe("dev");
-  });
-});
 
 describe("approvalRefusal", () => {
   test("a run no approval admits is refused for that reason", () => {
@@ -107,9 +73,7 @@ describe("refusedConnector", () => {
 describe("the fix for a blocked connector", () => {
   test("a lost or missing sign-in lands on the connector's sign-in card", () => {
     for (const reason of ["needs_reauth", "credential_unavailable"]) {
-      const fix = connectorFix(
-        blockingConnector({ unavailable_connectors: [{ ...gmail, reason }] })!,
-      );
+      const fix = connectorFix({ ...gmail, reason });
       expect(fix).toEqual({
         labelKey: "remedy.reconnect",
         href: `${connectorHref(GMAIL)}?tab=verbindung`,
@@ -118,9 +82,7 @@ describe("the fix for a blocked connector", () => {
   });
 
   test("a connector switched off opens the connector", () => {
-    const fix = connectorFix(
-      blockingConnector({ unavailable_connectors: [{ ...gmail, reason: "disabled" }] })!,
-    );
+    const fix = connectorFix({ ...gmail, reason: "disabled" });
     expect(fix).toEqual({ labelKey: "run.openConnector", href: connectorHref(GMAIL) });
   });
 
@@ -199,5 +161,45 @@ describe("legacyRefusal", () => {
       expect(translate(locale, "run.legacy")).not.toBe(translate(locale, "run.failed"));
     }
     expect(translate("de", "run.legacy")).toContain("älteren Format");
+  });
+});
+
+describe("the environment a run starts in", () => {
+  const NOW = Date.parse("2026-10-05T10:00:00.000Z");
+  const authority = (
+    execution_environment: "dev" | "prod",
+    overrides: Partial<WorkflowAuthority> = {},
+  ) =>
+    ({
+      execution_environment,
+      state: "approved",
+      active_version: true,
+      ready_for_new_run: true,
+      valid_from: "2026-10-01T00:00:00.000Z",
+      valid_until: null,
+      remaining_runs: null,
+      ...overrides,
+    }) as WorkflowAuthority;
+
+  test("production when a live approval covers it there", () => {
+    expect(liveRunEnvironment([authority("dev"), authority("prod")], NOW)).toBe("prod");
+  });
+
+  test("development when only development is approved", () => {
+    expect(liveRunEnvironment([authority("dev")], NOW)).toBe("dev");
+  });
+
+  test("none when no approval is live, so the engine falls back to a preview", () => {
+    expect(liveRunEnvironment([], NOW)).toBeNull();
+    expect(
+      liveRunEnvironment(
+        [
+          authority("prod", { valid_until: "2026-10-02T00:00:00.000Z" }),
+          authority("prod", { active_version: false }),
+          authority("prod", { state: "revoked" }),
+        ],
+        NOW,
+      ),
+    ).toBeNull();
   });
 });
