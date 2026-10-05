@@ -144,6 +144,7 @@ export async function createKnowledgeSource(
         chunk_count: accepted.length,
         refresh_strategy: p.input.refresh_strategy ?? "manual",
         refresh_cron: p.input.refresh_cron ?? null,
+        last_refreshed_at: new Date(),
       })
       .returning();
 

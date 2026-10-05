@@ -48,6 +48,7 @@ export const files = pgTable(
     created_by: uuid("created_by"),
     slug: text("slug"),
     ...timestamps,
+    replaced_at: timestamp("replaced_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
