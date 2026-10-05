@@ -81,6 +81,6 @@ test("a gated connector call names connector, method and target in the reader's 
     expect(html).not.toContain("Policy requires");
   }
   expect(render({ ...gated, gatedTool: "call_connector" }, "de")).toContain(
-    "Diese Aktion freigeben:",
+    "Diese Aktion braucht deine Freigabe.",
   );
 });

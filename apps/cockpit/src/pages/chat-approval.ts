@@ -90,9 +90,11 @@ export function waitsForPerson(input: {
   questions: ReadonlyArray<{ expiresAt: string } | null>;
   now: number;
   pendingApproval: unknown;
+  detailLoaded: boolean;
   rowOutcome: string | null | undefined;
 }): boolean {
   const asked = input.questions.filter((question) => question !== null);
   if (asked.length > 0) return asked.some((question) => Date.parse(question.expiresAt) > input.now);
-  return Boolean(input.pendingApproval) || input.rowOutcome === "awaiting_you";
+  if (input.detailLoaded) return Boolean(input.pendingApproval);
+  return input.rowOutcome === "awaiting_you";
 }

@@ -2341,7 +2341,7 @@ const EN = {
   "chat.decision.externalTool": "{connector}: run the tool “{tool}”?",
   "chat.decision.connectorCall": "Call {connector}: {method} {target}",
   "chat.decision.connectorCallBare": "Call {connector}: {method}",
-  "chat.decision.gatedAction": "Approve this action: {action}",
+  "chat.decision.gatedAction": "This action needs your approval.",
   "chat.decision.recorded": "Your decision: {verdict}",
   "chat.decision.serverClaim": "The server describes this as: {claim}",
 
@@ -6204,7 +6204,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.decision.externalTool": "{connector}: Werkzeug „{tool}“ ausführen?",
   "chat.decision.connectorCall": "{connector} aufrufen: {method} {target}",
   "chat.decision.connectorCallBare": "{connector} aufrufen: {method}",
-  "chat.decision.gatedAction": "Diese Aktion freigeben: {action}",
+  "chat.decision.gatedAction": "Diese Aktion braucht deine Freigabe.",
   "chat.decision.recorded": "Deine Entscheidung: {verdict}",
   "chat.decision.serverClaim": "Laut Server: {claim}",
 

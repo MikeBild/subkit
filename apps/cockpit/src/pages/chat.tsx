@@ -1700,6 +1700,13 @@ export function ChatPage() {
   const current = detail.data?.conversation;
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
+  const openQuestionId = resume?.pending_approval?.id ?? null;
+  const seenQuestionId = useRef(openQuestionId);
+  useEffect(() => {
+    if (seenQuestionId.current === openQuestionId) return;
+    seenQuestionId.current = openQuestionId;
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  }, [openQuestionId, queryClient]);
   const pendingDecision = chatApproval(detail.data);
   const pendingChoice = chatChoice(detail.data);
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
@@ -1842,6 +1849,7 @@ export function ChatPage() {
     questions: [pendingDecision, pendingChoice, pendingForm, pendingText],
     now: clock,
     pendingApproval: resume?.pending_approval ?? null,
+    detailLoaded: detail.data !== undefined,
     rowOutcome: activeRow?.outcome,
   });
   const badge =
