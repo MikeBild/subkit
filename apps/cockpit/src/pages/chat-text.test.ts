@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import type { ConversationDetail } from "@/api/client";
 import {
   chatText,
+  composerAnswerAccepted,
   questionExcerpt,
-  questionIsInTranscript,
   textAnswerAcceptable,
 } from "./chat-text";
 
@@ -57,7 +57,6 @@ test("a question the harness parked from prose has no call and still shows", () 
   expect(text?.toolCallId).toBeNull();
   expect(text?.question).toBe("Welcher Endpoint?");
   expect(text?.placeholder).toBeUndefined();
-  expect(questionIsInTranscript(text!, [])).toBe(false);
 });
 
 test("never reads the question from the summary", () => {
@@ -76,19 +75,24 @@ test("other question kinds are not text questions", () => {
   }
 });
 
-test("a question finds its tool part only by its own call id", () => {
-  const text = chatText(fixture())!;
-  const part = (id: string) => ({ parts: [{ type: "tool_call", call_id: id }] });
-  expect(questionIsInTranscript(text, [part("other")])).toBe(false);
-  expect(questionIsInTranscript(text, [part("other"), part("call")])).toBe(true);
-});
-
 test("an answer is empty or rejected by its declared pattern", () => {
   expect(textAnswerAcceptable({}, "  ")).toBe(false);
   expect(textAnswerAcceptable({}, "anything")).toBe(true);
   expect(textAnswerAcceptable({ pattern: "^[0-9]+$" }, "12")).toBe(true);
   expect(textAnswerAcceptable({ pattern: "^[0-9]+$" }, "zwölf")).toBe(false);
   expect(textAnswerAcceptable({ pattern: "(" }, "x")).toBe(true);
+});
+
+test("the composer takes any message when no text question waits", () => {
+  expect(composerAnswerAccepted(null, "zwölf")).toBe(true);
+});
+
+test("the composer holds back an answer the waiting question would reject", () => {
+  const text = chatText(fixture())!;
+  expect(composerAnswerAccepted(text, "Tagesbericht Kunden")).toBe(true);
+  expect(composerAnswerAccepted(text, "Bericht 2")).toBe(false);
+  expect(composerAnswerAccepted(text, "   ")).toBe(false);
+  expect(composerAnswerAccepted({ ...text, pattern: undefined }, "Bericht 2")).toBe(true);
 });
 
 test("the composer hint names a long question in one short line", () => {
