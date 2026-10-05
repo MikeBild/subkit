@@ -1,8 +1,14 @@
 import type { Conversation } from "@/api/client";
 import type { PatchCandidate, SkillCandidate } from "@/api/decisions";
 import type { TranslationKey } from "@/lib/i18n";
+import { computeLineDiff, type FocusedRow, focusDiff, toDiffLines } from "@/lib/line-diff";
 import { clipAtWord, conversationExcerpt, hideTechnicalIdentifiers } from "@/lib/presentation";
-import type { ConversationEvidence, PatchEvidence, SkillEvidence } from "./decisions-context";
+import {
+  type ConversationEvidence,
+  fixerKey,
+  type PatchEvidence,
+  type SkillEvidence,
+} from "./decisions-context";
 
 export type DecisionKind = "patch" | "skill" | "conversation";
 
@@ -86,9 +92,14 @@ export function ageInDays(waitingSince: string, now: number): number {
 export function patchChangeKind(candidate: PatchCandidate): {
   proposalKind: string | null;
   driftKind: string | null;
+  fixer: string | null;
 } {
   const envelope = readDiffEnvelope(candidate.diff);
-  return { proposalKind: envelope.proposalKind, driftKind: envelope.driftKind };
+  return {
+    proposalKind: envelope.proposalKind,
+    driftKind: envelope.driftKind,
+    fixer: envelope.fixer,
+  };
 }
 
 export interface PatchTitle {
@@ -134,7 +145,7 @@ export function patchDecision(candidate: PatchCandidate, title: string): Decisio
     expiresAt: null,
     confidence: null,
     evidenceCount: null,
-    summary: envelope.description?.trim() ?? null,
+    summary: fixerKey(envelope.fixer) ? null : (envelope.description?.trim() ?? null),
     detail: {
       kind: "patch",
       evidence: {
@@ -143,6 +154,12 @@ export function patchDecision(candidate: PatchCandidate, title: string): Decisio
         connectorId: candidate.connector_id ?? null,
         endpointKey: candidate.endpoint_key ?? null,
         executionId: envelope.executionId,
+        environment: envelope.environment,
+        workflowStepId: envelope.workflowStepId,
+        gateCode: envelope.gateCode,
+        gateReason: envelope.gateReason,
+        gateStepId: envelope.gateStepId,
+        fixer: envelope.fixer,
         driftKind: envelope.driftKind,
         driftSummary: envelope.driftSummary,
         reasoning: envelope.reasoning,
@@ -287,6 +304,12 @@ function readDiffEnvelope(diff: unknown): {
   driftKind: string | null;
   driftSummary: string | null;
   executionId: string | null;
+  environment: "dev" | "prod" | null;
+  workflowStepId: string | null;
+  gateCode: string | null;
+  gateReason: string | null;
+  gateStepId: string | null;
+  fixer: string | null;
   classificationReasons: string[];
   rejections: string[];
 } {
@@ -297,6 +320,12 @@ function readDiffEnvelope(diff: unknown): {
     driftKind: null,
     driftSummary: null,
     executionId: null,
+    environment: null,
+    workflowStepId: null,
+    gateCode: null,
+    gateReason: null,
+    gateStepId: null,
+    fixer: null,
     classificationReasons: [],
     rejections: [],
   };
@@ -326,6 +355,15 @@ function readDiffEnvelope(diff: unknown): {
     driftKind: str(signal.kind),
     driftSummary: str(envelope.drift_diff),
     executionId: str(envelope.execution_id),
+    environment:
+      envelope.environment === "dev" || envelope.environment === "prod"
+        ? envelope.environment
+        : null,
+    workflowStepId: str(envelope.workflow_step_id),
+    gateCode: signal.kind === "gate_block" ? str(signal.code) : null,
+    gateReason: signal.kind === "gate_block" ? str(signal.reason) : null,
+    gateStepId: signal.kind === "gate_block" ? str(signal.step_id) : null,
+    fixer: str(signal.fixer),
     classificationReasons: stringList(envelope.classification_reasons),
     rejections,
   };
@@ -638,8 +676,8 @@ export function humanStep(stepKey: string): string {
 
 export interface ChangeFact {
   path: string;
-  before: string;
-  after: string;
+  inline: { before: string; after: string } | null;
+  rows: FocusedRow[];
 }
 
 const CHANGE_FACT_LIMIT = 3;
@@ -659,8 +697,34 @@ function valueAt(source: unknown, path: string): unknown {
 
 function shownValue(value: unknown): string {
   if (value === undefined) return "—";
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  return text.length > CHANGE_VALUE_LIMIT ? `${text.slice(0, CHANGE_VALUE_LIMIT - 1)}…` : text;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+function fitsOnALine(text: string): boolean {
+  return !text.includes("\n") && text.length <= CHANGE_VALUE_LIMIT;
+}
+
+function focusedRows(before: unknown, after: unknown): FocusedRow[] {
+  return focusDiff(computeLineDiff(toDiffLines(before), toDiffLines(after)));
+}
+
+function changeFact(path: string, before: unknown, after: unknown): ChangeFact {
+  const shownBefore = shownValue(before);
+  const shownAfter = shownValue(after);
+  return fitsOnALine(shownBefore) && fitsOnALine(shownAfter)
+    ? { path, inline: { before: shownBefore, after: shownAfter }, rows: [] }
+    : { path, inline: null, rows: focusedRows(before, after) };
+}
+
+export function changeRows(facts: readonly ChangeFact[]): FocusedRow[] {
+  return facts.flatMap((fact): FocusedRow[] =>
+    fact.inline
+      ? [
+          { type: "removed", text: fact.inline.before },
+          { type: "added", text: fact.inline.after },
+        ]
+      : fact.rows,
+  );
 }
 
 export function changeFacts(
@@ -668,9 +732,10 @@ export function changeFacts(
   after: unknown,
   paths: readonly string[] | null | undefined,
 ): ChangeFact[] {
-  return (paths ?? []).slice(0, CHANGE_FACT_LIMIT).map((path) => ({
-    path,
-    before: shownValue(valueAt(before, path)),
-    after: shownValue(valueAt(after, path)),
-  }));
+  const listed = (paths ?? []).slice(0, CHANGE_FACT_LIMIT);
+  if (listed.length === 0) {
+    const rows = focusedRows(before, after);
+    return rows.length > 0 ? [{ path: "", inline: null, rows }] : [];
+  }
+  return listed.map((path) => changeFact(path, valueAt(before, path), valueAt(after, path)));
 }

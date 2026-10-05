@@ -10,20 +10,25 @@ import {
   listSkillCandidateEvidence,
 } from "@/api/decisions";
 import { absolute, runHref } from "@/app/links";
+import { ChangeSummary } from "@/components/cockpit/change-summary";
 import { DiffCard } from "@/components/cockpit/diff-card";
-import { type Fact, FactList } from "@/components/cockpit/patterns";
+import { ActionMenu, type ActionMenuItem } from "@/components/cockpit/patterns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { diagnosisCauseKey } from "@/lib/gate-diagnosis";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
 import { EMPTY_NAME_INDEX } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { refusalReasonLabel } from "@/lib/refusal-reason";
 import { cn } from "@/lib/utils";
-import type { ContextEntry, DecisionContext } from "@/pages/decisions-context";
+import type { ContextEntry, DecisionContext, PatchEvidence } from "@/pages/decisions-context";
 import {
+  classificationReasonKey,
   driftKindKey,
+  fixerKey,
   patchContext,
   proposalKindKey,
   skillContext,
@@ -34,7 +39,13 @@ import type {
   DecisionItem,
   DecisionOrigin,
 } from "@/pages/decisions-model";
-import { ageInDays, approveBlockedReason, changeFacts, decisionKey } from "@/pages/decisions-model";
+import {
+  ageInDays,
+  approveBlockedReason,
+  changeFacts,
+  changeRows,
+  decisionKey,
+} from "@/pages/decisions-model";
 import { GrantWorkflowAuthority } from "./grant-workflow-authority";
 
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
@@ -85,6 +96,20 @@ function deadlineLabel(
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
+function gateCause(evidence: PatchEvidence, t: Translate): string | null {
+  const reason = refusalReasonLabel(evidence.gateReason, t);
+  if (reason && !reason.machine) return reason.text;
+  const key = evidence.gateCode ? diagnosisCauseKey(evidence.gateCode) : undefined;
+  return key ? t(key) : null;
+}
+
+function stepName(step: unknown): string | null {
+  if (!step || typeof step !== "object") return null;
+  const { name, id } = step as { name?: unknown; id?: unknown };
+  if (typeof name === "string" && name.trim()) return name;
+  return typeof id === "string" && id ? id : null;
+}
+
 function detailHasContent(item: DecidableItem): boolean {
   const detail = item.detail;
   if (detail.kind === "patch") return true;
@@ -117,7 +142,7 @@ function decisionContext(
     const causeKey = driftKindKey(detail.evidence.driftKind);
     return patchContext(
       detail.evidence,
-      { ...labels, cause: causeKey ? t(causeKey) : null },
+      { ...labels, cause: gateCause(detail.evidence, t) ?? (causeKey ? t(causeKey) : null) },
       names,
       canReadRuns,
     );
@@ -250,6 +275,29 @@ function DecisionDetailPanel({
   if (detail.kind === "patch") {
     const { evidence } = detail;
     const changeKey = proposalKindKey(evidence.proposalKind);
+    const fixKey = fixerKey(evidence.fixer);
+    const cause = gateCause(evidence, t);
+    const reasons = evidence.classificationReasons.map((reason) => {
+      const key = classificationReasonKey(reason);
+      return key ? t(key) : reason;
+    });
+    if (fixKey)
+      return (
+        <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
+          <DetailBlock heading={t("decisions.detail.reasoning")}>
+            <p className="max-w-prose text-sm" data-testid={`${testId}-reasoning`}>
+              {cause && evidence.gateStepId
+                ? t("decisions.gate.refused", { step: evidence.gateStepId, reason: cause })
+                : t(fixKey)}
+            </p>
+          </DetailBlock>
+          {reasons.length > 0 && (
+            <DetailBlock heading={t("decisions.detail.classification")}>
+              <DetailList items={reasons} />
+            </DetailBlock>
+          )}
+        </div>
+      );
     return (
       <div className="mt-3 grid gap-4 border-t pt-3" data-testid={`${testId}-detail`}>
         {changeKey && (
@@ -285,9 +333,9 @@ function DecisionDetailPanel({
             </DetailText>
           </DetailBlock>
         )}
-        {evidence.classificationReasons.length > 0 && (
+        {reasons.length > 0 && (
           <DetailBlock heading={t("decisions.detail.classification")}>
-            <DetailList items={evidence.classificationReasons} />
+            <DetailList items={reasons} />
           </DetailBlock>
         )}
         {evidence.rejections.length > 0 && (
@@ -441,9 +489,10 @@ export function DecisionCard({
     enabled: showDiff || (inSheet && item.kind === "patch"),
     queryFn: () => getPatchCandidatePreview(item.id),
   });
+  const changeShown = inSheet && item.kind === "patch" && preview.data !== undefined;
   const blockedReason = approveBlockedReason({
     canDecide,
-    expanded: expanded || !hasDetail,
+    expanded: expanded || !hasDetail || changeShown,
     kind: item.kind,
     reviewDigest: item.reviewDigest,
     preview: item.kind === "patch" ? preview.data : undefined,
@@ -464,104 +513,127 @@ export function DecisionCard({
         {t(blockedReason)}
       </span>
     ) : null;
-  const actions = (
-    <>
-      {canDecide ? (
-        <>
-          {rejecting ? (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid={`${testId}-reject-cancel`}
-                onClick={() => {
-                  setRejecting(false);
-                  setReason("");
-                }}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                data-testid={`${testId}-reject-confirm`}
-                onClick={() => onReject(item, reason.trim())}
-              >
-                {t("decisions.reject")}
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              data-testid={`${testId}-reject`}
-              onClick={() => setRejecting(true)}
-            >
-              {t("decisions.reject")}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            disabled={
-              busy ||
-              rejecting ||
-              blockedReason !== null ||
-              (item.kind === "patch" && (!preview.data?.reviewable || !preview.data?.review_digest))
-            }
-            data-testid={`${testId}-approve`}
-            onClick={() => onApprove(item, preview.data?.review_digest ?? undefined)}
-          >
-            {t(item.kind === "skill" ? "decisions.activateSkill" : "decisions.approve")}
-          </Button>
-          {item.kind === "patch" &&
-            expanded &&
-            preview.data?.reviewable &&
-            preview.data.base_version_id && (
-              <GrantWorkflowAuthority
-                workflowId={preview.data.workflow_id}
-                versionId={preview.data.base_version_id}
-                reviewContent={
-                  <pre className="overflow-auto text-xs">
-                    {JSON.stringify(
-                      { before: preview.data.before_step, after: preview.data.after_step },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                }
-                prepareVersion={async () => {
-                  const prepared = await apiRequest<{ workflow_version_id: string }>(
-                    `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
-                    {
-                      method: "POST",
-                      body: JSON.stringify({
-                        expected_review_digest: preview.data?.review_digest,
-                      }),
-                    },
-                  );
-                  return prepared.workflow_version_id;
-                }}
-                onGrant={(input) =>
-                  apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                      expected_review_digest: preview.data?.review_digest,
-                      execution_authority: input,
-                    }),
-                  })
-                }
-              />
-            )}
-        </>
-      ) : null}
-    </>
-  );
+  const evidence = item.detail.kind === "patch" ? item.detail.evidence : null;
   const facts =
-    inSheet && item.kind === "patch" && preview.data
+    item.kind === "patch" && preview.data
       ? changeFacts(preview.data.before_step, preview.data.after_step, preview.data.changed_paths)
       : [];
+  const step =
+    stepName(preview.data?.after_step) ??
+    stepName(preview.data?.before_step) ??
+    evidence?.workflowStepId ??
+    null;
+  const cause = evidence ? gateCause(evidence, t) : null;
+  const changeKey = evidence
+    ? (fixerKey(evidence.fixer) ??
+      proposalKindKey(evidence.proposalKind) ??
+      driftKindKey(evidence.driftKind))
+    : null;
+  const heading = inSheet && changeKey ? t(changeKey) : item.title;
+  const approvable =
+    !busy &&
+    !rejecting &&
+    blockedReason === null &&
+    (item.kind !== "patch" || (preview.data?.reviewable === true && !!preview.data.review_digest));
+  const grantable =
+    item.kind === "patch" &&
+    (expanded || inSheet) &&
+    preview.data?.reviewable === true &&
+    Boolean(preview.data.base_version_id);
+  const approveItem: ActionMenuItem = {
+    label: t(
+      item.kind === "skill"
+        ? "decisions.activateSkill"
+        : grantable
+          ? "decisions.approveOnly"
+          : "decisions.approve",
+    ),
+    onSelect: () => onApprove(item, preview.data?.review_digest ?? undefined),
+    disabled: !approvable,
+    ...(blockedReason ? { disabledReason: t(blockedReason) } : {}),
+    testId: `${testId}-approve`,
+  };
+  const rejectItem: ActionMenuItem = {
+    label: t("decisions.reject"),
+    onSelect: () => setRejecting(true),
+    disabled: busy,
+    testId: `${testId}-reject`,
+  };
+  const actions = !canDecide ? null : rejecting ? (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        data-testid={`${testId}-reject-cancel`}
+        onClick={() => {
+          setRejecting(false);
+          setReason("");
+        }}
+      >
+        {t("common.cancel")}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        data-testid={`${testId}-reject-confirm`}
+        onClick={() => onReject(item, reason.trim())}
+      >
+        {t("decisions.reject")}
+      </Button>
+    </>
+  ) : grantable && preview.data?.base_version_id ? (
+    <>
+      <ActionMenu
+        size="sm"
+        testId={`${testId}-more`}
+        items={[approveItem, { ...rejectItem, destructive: true }]}
+      />
+      <GrantWorkflowAuthority
+        workflowId={preview.data.workflow_id}
+        versionId={preview.data.base_version_id}
+        disabled={!approvable}
+        triggerVariant="default"
+        {...(evidence?.environment ? { initialEnvironment: evidence.environment } : {})}
+        reviewContent={
+          <ChangeSummary facts={facts} step={step} collapsed testId={`${testId}-grant-change`} />
+        }
+        prepareVersion={async () => {
+          const prepared = await apiRequest<{ workflow_version_id: string }>(
+            `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                expected_review_digest: preview.data?.review_digest,
+              }),
+            },
+          );
+          return prepared.workflow_version_id;
+        }}
+        onGrant={(input) =>
+          apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
+            method: "POST",
+            body: JSON.stringify({
+              expected_review_digest: preview.data?.review_digest,
+              execution_authority: input,
+            }),
+          })
+        }
+      />
+    </>
+  ) : (
+    <>
+      <ActionMenu size="sm" testId={`${testId}-more`} items={[rejectItem]} />
+      <Button
+        size="sm"
+        disabled={!approvable}
+        data-testid={`${testId}-approve`}
+        onClick={approveItem.onSelect}
+      >
+        {approveItem.label}
+      </Button>
+    </>
+  );
 
   return (
     <article
@@ -617,11 +689,11 @@ export function DecisionCard({
 
       <h3
         className="line-clamp-2 text-sm font-medium"
-        title={item.title}
+        title={heading}
         data-testid={`${testId}-title`}
         data-family-slot="decision-title"
       >
-        {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
+        {hideTechnicalIdentifiers(heading, t("tool.referenceHiddenInline"))}
       </h3>
 
       <p className="truncate text-sm text-muted-foreground" data-family-slot="decision-effect">
@@ -629,40 +701,7 @@ export function DecisionCard({
       </p>
 
       {inSheet && facts.length > 0 ? (
-        <FactList
-          testId={`${testId}-facts`}
-          items={[
-            ...(item.target
-              ? [
-                  {
-                    label: t("decisions.fact.step"),
-                    value: hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline")),
-                  },
-                ]
-              : []),
-            ...facts.flatMap((fact): Fact[] =>
-              facts.length === 1
-                ? [
-                    {
-                      label: t("decisions.fact.before"),
-                      value: <span className="font-mono text-xs">{fact.before}</span>,
-                    },
-                    {
-                      label: t("decisions.fact.after"),
-                      value: <span className="font-mono text-xs">{fact.after}</span>,
-                    },
-                  ]
-                : [
-                    {
-                      label: <span className="font-mono text-xs">{fact.path}</span>,
-                      value: (
-                        <span className="font-mono text-xs">{`${fact.before} → ${fact.after}`}</span>
-                      ),
-                    },
-                  ],
-            ),
-          ]}
-        />
+        <ChangeSummary facts={facts} step={step} cause={cause} testId={`${testId}-change`} />
       ) : null}
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
@@ -714,28 +753,12 @@ export function DecisionCard({
 
       {expanded && (
         <div className="border-t pt-3">
-          <p className="text-xs text-muted-foreground" data-testid={`${testId}-origin`}>
-            {t(ORIGIN_LABEL[item.origin])}
-          </p>
-          <p className="mt-1 max-w-prose text-sm font-medium break-words">
-            {hideTechnicalIdentifiers(item.title, t("tool.referenceHiddenInline"))}
-          </p>
           {item.summary && item.summary !== item.title && (
             <p
               className="mt-1 max-w-prose text-sm text-muted-foreground break-words"
               data-testid={`${testId}-summary`}
             >
               {hideTechnicalIdentifiers(item.summary, t("tool.referenceHiddenInline"))}
-            </p>
-          )}
-          <p className="mt-1 text-xs text-muted-foreground">{t(KIND_EFFECT[item.kind])}</p>
-          {item.target ? (
-            <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-target`}>
-              {hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline"))}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testId}-target`}>
-              {t("decisions.target.allWorkflows")}
             </p>
           )}
           {item.confidence && (
@@ -770,6 +793,8 @@ export function DecisionCard({
                   targetLabel={item.target ?? t("decisions.kind.patch")}
                   before={preview.data.before_step}
                   after={preview.data.after_step}
+                  rows={changeRows(facts)}
+                  changeShownAbove={inSheet && facts.length > 0}
                   changedPaths={preview.data.changed_paths}
                   driftSummary={preview.data.drift_summary}
                   patch={preview.data.proposal?.patch}
