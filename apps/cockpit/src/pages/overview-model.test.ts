@@ -7,6 +7,7 @@ import {
   actionLabelKey,
   attentionBadge,
   attentionEntries,
+  attentionRow,
   attentionSentence,
   entryActions,
   entrySnapshot,
@@ -16,6 +17,7 @@ import {
   reviewAccess,
   reviewNavigation,
   reviewTarget,
+  SUBJECT_NAME_MAX,
   sentenceText,
   settleHidden,
   sinceLabel,
@@ -76,6 +78,19 @@ function attention(overrides: Partial<Attention> = {}): Attention {
 }
 
 describe("the sentence", () => {
+  test("a conversation named by its whole first request is shortened only on screen", () => {
+    const request =
+      "Bitte prüfe den fehlgeschlagenen Lauf des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor, die den Versand nicht stoppt";
+    const waiting = item({
+      kind: "conversation",
+      subject: { kind: "conversation", id: W, name: request },
+      reason: "awaiting_answer",
+    });
+    const text = sentenceText(attentionSentence(waiting, de, NOW));
+    expect(text).not.toContain(request);
+    expect(text).toContain("…");
+    expect(attentionRow(waiting, de).name.length).toBeLessThanOrEqual(SUBJECT_NAME_MAX);
+  });
   test("names the subject, the reason and since when", () => {
     const text = sentenceText(attentionSentence(item(), de, NOW));
     expect(text).toBe("Der Workflow „Monatsbericht“ scheitert — seit 3 Tagen.");
