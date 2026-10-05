@@ -129,12 +129,17 @@ const SENSITIVE_HEADER = /authorization|cookie|token|secret|password|api[-_]?key
 
 const REFERENCE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
 
+export const SECRET_MASK = "•••";
+
+export function isLiteralSecretHeader(name: string, value: string): boolean {
+  return SENSITIVE_HEADER.test(name) && !REFERENCE.test(value);
+}
+
 function headerLines(value: unknown): string | null {
   if (!record(value)) return null;
   const lines = Object.entries(value).map(([name, entry]) => {
     const shown = typeof entry === "string" ? entry : JSON.stringify(entry);
-    const literalSecret = SENSITIVE_HEADER.test(name) && !REFERENCE.test(shown);
-    return `${name}: ${literalSecret ? "•••" : shown}`;
+    return `${name}: ${isLiteralSecretHeader(name, shown) ? SECRET_MASK : shown}`;
   });
   return lines.length > 0 ? lines.join("\n") : null;
 }
@@ -434,4 +439,95 @@ const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g
 
 export function maskIdentifiers(value: string): string {
   return value.replace(UUID, "…");
+}
+
+export interface BuildWorkflow {
+  current_version_id: string | null;
+  current_version: number | null;
+  draft_version_id: string | null;
+  steps: readonly unknown[];
+}
+
+export interface SavedDraft {
+  version_id: string;
+  version: number;
+  definition: { steps: readonly unknown[] };
+}
+
+export interface BuildVersion {
+  steps: readonly unknown[];
+  versionId: string | null;
+  version: number | null;
+  saved: boolean;
+  pending: boolean;
+}
+
+export function buildVersion(
+  workflow: BuildWorkflow,
+  draft: { data: SavedDraft | undefined; settled: boolean },
+): BuildVersion {
+  const active: BuildVersion = {
+    steps: workflow.steps,
+    versionId: workflow.current_version_id,
+    version: workflow.current_version,
+    saved: false,
+    pending: false,
+  };
+  const waiting =
+    workflow.draft_version_id !== null && workflow.draft_version_id !== workflow.current_version_id
+      ? workflow.draft_version_id
+      : null;
+  if (!waiting) return active;
+  const loaded = draft.data?.version_id === waiting ? draft.data : null;
+  if (loaded)
+    return {
+      steps: loaded.definition.steps,
+      versionId: loaded.version_id,
+      version: loaded.version,
+      saved: true,
+      pending: false,
+    };
+  return draft.settled ? active : { ...active, steps: [], pending: true };
+}
+
+interface PreviewRunStep {
+  step_key: string;
+  status?: string;
+  held?: boolean;
+}
+
+export interface PreviewSummary {
+  status: string;
+  ran: number;
+  total: number;
+  held: number;
+  stoppedAt: string | null;
+  output: unknown;
+  error: string | null;
+}
+
+export function previewSummary(result: Record<string, unknown>, total: number): PreviewSummary {
+  const steps = Array.isArray(result.steps)
+    ? result.steps.filter(
+        (step): step is PreviewRunStep =>
+          Boolean(step) &&
+          typeof step === "object" &&
+          typeof (step as { step_key?: unknown }).step_key === "string",
+      )
+    : [];
+  const status = typeof result.status === "string" ? result.status : "failed";
+  const failed = steps.find((step) => step.status === "failed");
+  const error =
+    result.error && typeof result.error === "object"
+      ? (result.error as { message?: unknown }).message
+      : result.error;
+  return {
+    status,
+    ran: steps.length,
+    total: Math.max(total, steps.length),
+    held: steps.filter((step) => step.held === true).length,
+    stoppedAt: status === "succeeded" ? null : (failed?.step_key ?? null),
+    output: result.output,
+    error: typeof error === "string" && error ? error : null,
+  };
 }

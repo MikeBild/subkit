@@ -162,6 +162,14 @@ describe.skipIf(skip)("detectFailurePatterns", () => {
     const signals = await detectFailurePatterns(tenantId, testDb.db);
     expect(signals).toHaveLength(1);
     expect(signals[0]!.evidence).toHaveLength(5);
+    expect(signals[0]!.facts).toEqual({
+      kind: "recurring_failure",
+      step_key: "send_email",
+      error_kind: "SMTP_TIMEOUT",
+      cause_class: "driver_error",
+      count: 5,
+      lookback_days: 30,
+    });
   });
 
   test("ERROR KIND: falls back to err.code when err.kind is absent", async () => {

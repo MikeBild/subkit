@@ -2536,6 +2536,7 @@ async function mockApi(route) {
       best_practices: ["Aufgezeichnete Antwort als Vergleich heranziehen"],
       pitfalls: ["Nicht den ganzen Schritt neu schreiben, nur den Pfad"],
       doc_refs: ["docs/concepts/self-healing.md"],
+      facts: null,
       evidence_count: 2,
       confidence: "high",
       status: "proposed",
@@ -2556,11 +2557,23 @@ async function mockApi(route) {
         pattern_kind: "authoring_capability",
         connector_id: uuid,
         title: "Workflow 'beispiel-bericht' capabilities",
-        body: `Workflow 'Beispiel-Bericht' (slug beispiel-bericht) — what it does and how to invoke it.\nInputs: none declared.\nOutput shape: unknown.\nConnectors: ${uuid}.`,
+        body: `Workflow 'Beispiel-Bericht' (slug beispiel-bericht) — what it does and how to invoke it.\nInputs: none declared.\nOutput fields: not declared.\nConnectors: ${uuid}.`,
         examples: [],
         best_practices: [],
         pitfalls: [],
         doc_refs: [],
+        facts: {
+          kind: "workflow_capability",
+          inputs: [{ name: "limit", type: "integer", required: true }],
+          output_fields: null,
+          key_paths: ["items", "total"],
+          connector_ids: [uuid],
+          steps: [
+            { id: "fetch", kind: "request" },
+            { id: "shape", kind: "transform" },
+          ],
+          draft_version_id: "018f4b4a-6d33-7b3a-9c2d-0000000000b1",
+        },
         evidence_count: 1,
         status: "context",
         reviewable: false,
@@ -2577,6 +2590,14 @@ async function mockApi(route) {
         best_practices: ["Add input validation before this step"],
         pitfalls: [],
         doc_refs: [],
+        facts: {
+          kind: "recurring_failure",
+          step_key: "write_products",
+          error_kind: "request_outside_declared_boundary",
+          cause_class: "authority_mismatch",
+          count: 3,
+          lookback_days: 30,
+        },
         evidence_count: 3,
         confidence: "low",
         status: "context",
@@ -4326,8 +4347,25 @@ for (const locale of variants) {
         const notes = section.locator('[data-testid="workflow-drafting-context-notes"]');
         await notes.waitFor({ state: "visible" });
         const shown = await notes.innerText();
-        for (const note of ["capabilities", "Recurring failure"])
-          if (!shown.includes(note)) throw new Error(`${where}: the note "${note}" is missing`);
+        for (const fact of [
+          "workflow-drafting-fact-inputs",
+          "workflow-drafting-fact-output",
+          "workflow-drafting-fact-connectors",
+          "workflow-drafting-fact-steps",
+          "workflow-drafting-fact-state",
+          "workflow-drafting-fact-failure",
+        ])
+          if ((await notes.locator(`[data-testid="${fact}"]`).count()) !== 1)
+            throw new Error(`${where}: the fact "${fact}" is missing`);
+        for (const prose of [
+          "what it does",
+          "consistently",
+          "capabilities",
+          "interne Referenz",
+          "internal reference",
+          "Approving",
+        ])
+          if (shown.includes(prose)) throw new Error(`${where}: a note still reads "${prose}"`);
         if (shown.includes("Umbenannte Antwortfelder"))
           throw new Error(`${where}: a proposal is listed as drafting context`);
         if (shown.includes(uuid)) throw new Error(`${where}: a note shows a raw identifier`);

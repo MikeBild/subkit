@@ -18,7 +18,7 @@ import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
-  FAILED_RUN_STATUSES,
+  failedStatusesFor,
   formatRunDuration,
   isExecutionRecord,
   RUN_STATUSES,
@@ -31,27 +31,28 @@ type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 const PAGE_SIZE = 25;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-function runsOf(list: ExecutionList | undefined): ExecutionListItem[] {
-  return (list?.items ?? []).filter((item): item is ExecutionListItem => isExecutionRecord(item));
-}
-
 function useWeek(workflowId: string): string | null {
   const { t } = useI18n();
   const [from] = useState(() => new Date(Date.now() - WEEK_MS).toISOString());
+  const scope = `workflow_id=${encodeURIComponent(workflowId)}&started_from=${encodeURIComponent(from)}`;
   const week = useQuery({
     queryKey: ["workflow-runs-week", workflowId, from],
+    queryFn: () => apiRequest<ExecutionList>(`/v1/executions?${scope}&limit=1`),
+  });
+  const failedStatuses = failedStatusesFor("all");
+  const failed = useQuery({
+    queryKey: ["workflow-runs-week", workflowId, from, failedStatuses],
     queryFn: () =>
       apiRequest<ExecutionList>(
-        `/v1/executions?workflow_id=${encodeURIComponent(workflowId)}&started_from=${encodeURIComponent(from)}&limit=100`,
+        `/v1/executions?${scope}&status=${encodeURIComponent(failedStatuses ?? "")}&limit=1`,
       ),
   });
-  if (!week.data) return null;
-  const runs = runsOf(week.data);
-  const total = week.data.total ?? runs.length;
-  const failed = runs.filter((run) => FAILED_RUN_STATUSES.has(run.status)).length;
+  const total = week.data?.total;
+  const failedTotal = failed.data?.total;
+  if (typeof total !== "number" || typeof failedTotal !== "number") return null;
   return t(total === 1 ? "workflowRuns.week.one" : "workflowRuns.week.other", {
     count: total,
-    failed,
+    failed: failedTotal,
   });
 }
 

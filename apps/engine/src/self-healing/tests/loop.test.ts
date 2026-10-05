@@ -67,6 +67,7 @@ describe("self-healing/loop — direct call", () => {
     expect(cand.status).toBe("applied");
     expect(cand.classification).toBe("safe");
     expect(cand.fixture_id).toBe(ctx.fixture_id);
+    expect((cand.diff as { environment?: unknown }).environment).toBe("dev");
 
     const versions = await db
       .select()

@@ -28,6 +28,7 @@ test("every complaining step agrees on the other half", () => {
       ],
     ),
     "dev",
+    [],
   );
   expect(found).toBe("prod");
 });
@@ -46,6 +47,7 @@ test("a workflow whose steps live in both halves is not silently halved", () => 
         ],
       ),
       "dev",
+      [],
     ),
   ).toBeNull();
 });
@@ -55,19 +57,24 @@ test("a refusal that is not about the environment changes nothing", () => {
     environmentToCorrectTo(
       review([["fetch_route", "dynamic_request"]], [["fetch_route", "prod"]]),
       "dev",
+      [],
     ),
   ).toBeNull();
 });
 
 test("a review that was accepted is left alone", () => {
   expect(
-    environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", "prod"]], true), "dev"),
+    environmentToCorrectTo(
+      review([["a", "environment_mismatch"]], [["a", "prod"]], true),
+      "dev",
+      [],
+    ),
   ).toBeNull();
 });
 
 test("already looking at the environment the steps name", () => {
   expect(
-    environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", "prod"]]), "prod"),
+    environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", "prod"]]), "prod", []),
   ).toBeNull();
 });
 
@@ -82,15 +89,32 @@ test("a complaining step with no effect is a reason switching will not fix", () 
         [["a", "prod"]],
       ),
       "dev",
+      [],
     ),
   ).toBeNull();
   expect(
-    environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", null]]), "dev"),
+    environmentToCorrectTo(review([["a", "environment_mismatch"]], [["a", null]]), "dev", []),
   ).toBeNull();
 });
 
 test("nothing to read is not an answer", () => {
-  expect(environmentToCorrectTo(null, "dev")).toBeNull();
-  expect(environmentToCorrectTo(undefined, "dev")).toBeNull();
-  expect(environmentToCorrectTo({ manifest: null }, "dev")).toBeNull();
+  expect(environmentToCorrectTo(null, "dev", [])).toBeNull();
+  expect(environmentToCorrectTo(undefined, "dev", [])).toBeNull();
+  expect(environmentToCorrectTo({ manifest: null }, "dev", [])).toBeNull();
+});
+
+test("an environment the workflow runs in or the reader chose is never left", () => {
+  const devOnly = review(
+    [
+      ["read_mail", "environment_mismatch"],
+      ["post_note", "environment_mismatch"],
+    ],
+    [
+      ["read_mail", "dev"],
+      ["post_note", "dev"],
+    ],
+  );
+  expect(environmentToCorrectTo(devOnly, "prod", ["prod"])).toBeNull();
+  expect(environmentToCorrectTo(devOnly, "prod", ["dev"])).toBe("dev");
+  expect(environmentToCorrectTo(devOnly, "prod", [])).toBe("dev");
 });

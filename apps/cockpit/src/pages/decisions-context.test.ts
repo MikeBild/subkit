@@ -33,6 +33,12 @@ const patch = {
   connectorId: "co-1",
   endpointKey: "GET /reports",
   executionId: "ex-1",
+  environment: null,
+  workflowStepId: null,
+  gateCode: null,
+  gateReason: null,
+  gateStepId: null,
+  fixer: null,
   driftKind: "schema_diff",
   driftSummary: "widened: data.id",
   reasoning: "the response moved the id under result",
@@ -51,6 +57,28 @@ describe("patchContext", () => {
     ]);
     expect(sources[2]?.note).toBe("GET /reports");
     expect(targets).toEqual([{ href: "/workflows/wf-1", label: "GA4 Tagesreport" }]);
+  });
+
+  test("a refused gate is a cause, not an endpoint with its internal key", () => {
+    const { sources } = patchContext(
+      {
+        ...patch,
+        connectorId: null,
+        endpointKey: "gate:execution_authority_changed",
+        driftKind: "gate_block",
+        gateCode: "execution_authority_changed",
+        gateReason: "not_utf8",
+        fixer: "use_utf8_encoder",
+      },
+      labels,
+      index,
+      true,
+    );
+    expect(sources.map((entry) => entry.label)).toEqual([
+      "Ein Feld ist umgezogen",
+      "Fehlgeschlagener Lauf",
+    ]);
+    expect(JSON.stringify(sources)).not.toContain("gate:");
   });
 
   test("drops the run link when the person cannot open runs", () => {

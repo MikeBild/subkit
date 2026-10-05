@@ -16,7 +16,7 @@ import {
   type NamedEntity,
   skillTargetName,
 } from "@/lib/name-index";
-import { driftKindKey, proposalKindKey } from "@/pages/decisions-context";
+import { driftKindKey, fixerKey, proposalKindKey } from "@/pages/decisions-context";
 import {
   type DecidableItem,
   decisionKey,
@@ -111,7 +111,10 @@ export function useReviewDecisions(
   const items = [
     ...(query.data?.patches ?? []).map((candidate) => {
       const kinds = patchChangeKind(candidate);
-      const changeKey = proposalKindKey(kinds.proposalKind) ?? driftKindKey(kinds.driftKind);
+      const changeKey =
+        fixerKey(kinds.fixer) ??
+        proposalKindKey(kinds.proposalKind) ??
+        driftKindKey(kinds.driftKind);
       const title = patchTitle({
         workflow: candidate.workflow_name ?? null,
         change: changeKey ? t(changeKey) : null,
