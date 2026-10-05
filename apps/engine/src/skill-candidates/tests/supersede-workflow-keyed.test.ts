@@ -75,20 +75,20 @@ async function liveForWorkflow(): Promise<string[]> {
       and(
         eq(skillCandidates.tenant_id, tenantId),
         eq(skillCandidates.workflow_id, workflowId),
-        eq(skillCandidates.status, "proposed"),
+        eq(skillCandidates.status, "context"),
       ),
     );
   return rows.map((row) => row.fingerprint);
 }
 
 describe.skipIf(skip)("workflow-keyed supersede", () => {
-  test("several connectors, then one: the earlier proposal is superseded", async () => {
+  test("several connectors, then one: the earlier note is superseded", async () => {
     await upsertFromSignal(tenantId, capability("fp-many", null), testDb.db);
     await upsertFromSignal(tenantId, capability("fp-one", connectorIds[0]!), testDb.db);
     expect(await liveForWorkflow()).toEqual(["fp-one"]);
   }, 30_000);
 
-  test("one connector, then another: the earlier proposal is superseded", async () => {
+  test("one connector, then another: the earlier note is superseded", async () => {
     await upsertFromSignal(tenantId, capability("fp-a", connectorIds[0]!), testDb.db);
     await upsertFromSignal(tenantId, capability("fp-b", connectorIds[1]!), testDb.db);
     expect(await liveForWorkflow()).toEqual(["fp-b"]);

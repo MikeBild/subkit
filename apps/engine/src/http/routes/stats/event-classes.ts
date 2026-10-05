@@ -29,6 +29,7 @@ export const EVENT_CLASS_ACTIONS: Record<EventClass, string[]> = {
   ],
   discovery: [
     AuditAction.SKILL_CANDIDATE_PROPOSED,
+    AuditAction.SKILL_CANDIDATE_CONTEXT_RECORDED,
     AuditAction.SKILL_CANDIDATE_APPROVED,
     AuditAction.SKILL_CANDIDATE_REJECTED,
     AuditAction.SKILL_CANDIDATE_SUPERSEDED,

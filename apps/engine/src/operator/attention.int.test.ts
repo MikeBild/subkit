@@ -215,7 +215,7 @@ beforeAll(async () => {
   };
   await db.insert(skillCandidates).values([
     { ...skill, pattern_kind: "success_pattern", fingerprint: "fp-success" },
-    { ...skill, pattern_kind: "failure_pattern", fingerprint: "fp-failure" },
+    { ...skill, pattern_kind: "failure_pattern", status: "context", fingerprint: "fp-failure" },
   ]);
 
   const connectionRow = {

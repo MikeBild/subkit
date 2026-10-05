@@ -73,7 +73,7 @@ function buildAuthoringCapabilitySignal(args: {
     `Workflow '${name}' (slug ${slug}) — what it does and how to invoke it.`,
     ...(args.draft_version_id
       ? [
-          `Saved draft version ${args.draft_version_id}. This candidate describes preparation, not an active capability. Approving this skill does not activate the workflow or authorize execution.`,
+          `Saved draft version ${args.draft_version_id}. This note describes preparation, not an active capability; the workflow is neither activated nor authorized to run.`,
         ]
       : []),
     `Inputs: ${inputSummary}.`,

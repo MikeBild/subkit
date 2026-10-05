@@ -23,3 +23,13 @@ export function skillStateLabelKey(status: string): TranslationKey {
   if (status === "draft") return "skills.state.draft";
   return "skills.state.disabled";
 }
+
+type ListQueryState = { isPending: boolean; error: unknown; failureReason: unknown };
+
+export function skillsLoadState(queries: readonly ListQueryState[]): {
+  pending: boolean;
+  failed: boolean;
+} {
+  const failed = queries.some((query) => Boolean(query.error || query.failureReason));
+  return { pending: !failed && queries.some((query) => query.isPending), failed };
+}

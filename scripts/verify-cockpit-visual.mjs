@@ -2529,6 +2529,7 @@ async function mockApi(route) {
         pitfalls: [],
         doc_refs: [],
         evidence_count: 1,
+        status: "context",
         reviewable: false,
         review_digest: "b".repeat(64),
         fingerprint: "fp-2",
@@ -2545,6 +2546,7 @@ async function mockApi(route) {
         doc_refs: [],
         evidence_count: 3,
         confidence: "low",
+        status: "context",
         reviewable: false,
         review_digest: "c".repeat(64),
         fingerprint: "fp-3",
@@ -2552,16 +2554,15 @@ async function mockApi(route) {
       }),
     ];
     const status = url.searchParams.get("status");
-    const reviewable = url.searchParams.get("reviewable");
+    const workflowId = url.searchParams.get("workflow_id");
     const matching = rows.filter(
       (row) =>
-        (!status || row.status === status) &&
-        (reviewable === null || row.reviewable === (reviewable === "true")),
+        (!status || row.status === status) && (!workflowId || row.workflow_id === workflowId),
     );
     return json(route, {
       items: matching,
       total: matching.length,
-      reviewable_total: matching.filter((row) => row.reviewable).length,
+      reviewable_total: matching.filter((row) => row.status === "proposed").length,
     });
   }
 
@@ -4164,6 +4165,29 @@ for (const locale of variants) {
           .waitFor({ state: "hidden" });
         await page.keyboard.press("Escape");
         await sheet.waitFor({ state: "hidden" });
+      }
+      {
+        const where = `${locale.artifact}/desktop/workflow-drafting-context`;
+        await stand.visit(page, `workflows/${uuid}?tab=aufbau`);
+        const section = page.locator('[data-testid="workflow-drafting-context"]');
+        await section.waitFor({ state: "visible" });
+        await section.locator('[data-testid="workflow-drafting-context-toggle"]').click();
+        const notes = section.locator('[data-testid="workflow-drafting-context-notes"]');
+        await notes.waitFor({ state: "visible" });
+        const shown = await notes.innerText();
+        for (const note of ["capabilities", "Recurring failure"])
+          if (!shown.includes(note)) throw new Error(`${where}: the note "${note}" is missing`);
+        if (shown.includes("Umbenannte Antwortfelder"))
+          throw new Error(`${where}: a proposal is listed as drafting context`);
+        if (shown.includes(uuid)) throw new Error(`${where}: a note shows a raw identifier`);
+        if (await section.getByRole("button", { name: /annehmen|adopt|ablehnen|reject/i }).count())
+          throw new Error(`${where}: drafting context offers a decision`);
+        await notes.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(300);
+        await assertInteractiveSelectors(page, where);
+        await shoot(page, `${locale.artifact}-desktop-workflow-drafting-context`, {
+          fullPage: false,
+        });
       }
       let expandedCards = 0;
       for (const [review, positions] of [

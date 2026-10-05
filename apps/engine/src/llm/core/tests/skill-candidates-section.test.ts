@@ -47,6 +47,17 @@ describe("formatSkillCandidates — AC1 proposed-only render", () => {
     expect(section).toContain("Always add exponential backoff.");
   });
 
+  test("renders a drafting context note without the approval marker", () => {
+    const c = makeCandidate({
+      title: "Workflow 'report' capabilities",
+      pattern_kind: "authoring_capability",
+      status: "context",
+    });
+    const section = formatSkillCandidates([c]);
+    expect(section).toContain("## Workflow 'report' capabilities [drafting context]");
+    expect(section).not.toContain("## Workflow 'report' capabilities [pending approval]");
+  });
+
   test("section heading identifies content as pending operator approval", () => {
     const section = formatSkillCandidates([makeCandidate()]);
     expect(section).not.toBeNull();

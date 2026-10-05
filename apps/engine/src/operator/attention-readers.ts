@@ -553,13 +553,7 @@ const readSkills: TenantReader = async (db, tenantId) => {
       oldest: sql<Date | null>`min(${skillCandidates.created_at})`,
     })
     .from(skillCandidates)
-    .where(
-      and(
-        eq(skillCandidates.tenant_id, tenantId),
-        eq(skillCandidates.status, "proposed"),
-        sql`${skillCandidates.pattern_kind} NOT IN ('failure_pattern', 'authoring_capability')`,
-      ),
-    );
+    .where(and(eq(skillCandidates.tenant_id, tenantId), eq(skillCandidates.status, "proposed")));
   const count = Number(row?.count ?? 0);
   if (count === 0) return [];
   const oldest = row?.oldest ? new Date(row.oldest) : null;
