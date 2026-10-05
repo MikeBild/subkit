@@ -26,7 +26,6 @@ export const diagnoseWorkflowTool: ConversationTool = {
     "`is_current: false` is a draft: propose_workflow_repair repairs the active version only, so make the `fixer`'s change in the draft itself (or apply the draft and diagnose again).",
     "`prepare` means a held preparation run is missing — nothing needs to change in the definition.",
   ],
-  example_input: { workflow_id: "00000000-0000-4000-8000-000000000000", environment: "prod" },
   async execute(ctx, raw): Promise<ToolResult> {
     const args = DiagnoseInput.parse(raw);
     const result = await diagnoseWorkflow(
@@ -65,12 +64,6 @@ export const proposeWorkflowRepairTool: ConversationTool = {
     "Creates a review-queue proposal only; approving it happens in the patch-candidate review.",
     "Refused when the active version offers no such repair — diagnose again after any change.",
   ],
-  example_input: {
-    workflow_id: "00000000-0000-4000-8000-000000000000",
-    step_id: "send_email",
-    fixer: "use_utf8_encoder",
-    environment: "prod",
-  },
   async execute(ctx, raw): Promise<ToolResult> {
     const args = ProposeInput.parse(raw);
     try {
