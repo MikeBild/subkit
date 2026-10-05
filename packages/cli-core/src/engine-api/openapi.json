@@ -16825,6 +16825,11 @@
             "type": "string",
             "format": "uuid"
           },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The run this conversation is about. Binds the conversation to the run's workflow (workflow_id must match when both are given) so 'this run' resolves to it."
+          },
           "initial_message": {
             "type": "string"
           },
@@ -39307,6 +39312,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
