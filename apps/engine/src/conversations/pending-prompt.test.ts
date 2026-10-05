@@ -12,6 +12,28 @@ test("projects a policy question without its execution arguments or approval cap
     }),
   ).toEqual({ prompt: { question: "Start sign-in?", intent_kind: "execute_tool" } });
 });
+test("projects a gated connector call's effect so a reader can phrase it in their language", () => {
+  const effect = {
+    connector: "Reporting API",
+    method: "PATCH",
+    target: "https://api.example/v1/x",
+  };
+  expect(
+    pendingPrompt({
+      question: "Reporting API: PATCH https://api.example/v1/x — approve this call?",
+      effect,
+      commit_intent: { kind: "execute_confirmed_tool_call" },
+    }).prompt,
+  ).toEqual({
+    question: "Reporting API: PATCH https://api.example/v1/x — approve this call?",
+    intent_kind: "execute_confirmed_tool_call",
+    effect,
+  });
+  expect(
+    pendingPrompt({ question: "Continue?", effect: { connector: "", method: "GET" } }).prompt
+      ?.effect,
+  ).toBeUndefined();
+});
 test("projects the provider URL only for a pending OAuth completion", () => {
   const input = {
     question: "Signed in?",

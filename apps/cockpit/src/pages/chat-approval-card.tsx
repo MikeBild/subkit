@@ -3,7 +3,16 @@ import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/pat
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
+import { toolLabel } from "@/lib/tool-presentation";
 import type { ChatApproval } from "./chat-approval";
+
+function toolActionText(t: ReturnType<typeof useI18n>["t"], toolName: string): string {
+  const label = toolLabel(toolName);
+  if (label.kind === "key") return t(label.key);
+  if (label.kind === "background") return t(label.words.active);
+  if (label.kind === "workflow") return label.slug;
+  return label.text;
+}
 
 export function ChatApprovalCard({
   approval,
@@ -50,7 +59,22 @@ export function ChatApprovalCard({
               connector: approval.externalTool.connector,
               tool: approval.externalTool.tool,
             })
-          : readable(approval.question);
+          : approval.connectorCall
+            ? readable(
+                approval.connectorCall.target
+                  ? t("chat.decision.connectorCall", {
+                      connector: approval.connectorCall.connector,
+                      method: approval.connectorCall.method,
+                      target: approval.connectorCall.target,
+                    })
+                  : t("chat.decision.connectorCallBare", {
+                      connector: approval.connectorCall.connector,
+                      method: approval.connectorCall.method,
+                    }),
+              )
+            : approval.gatedTool
+              ? t("chat.decision.gatedAction", { action: toolActionText(t, approval.gatedTool) })
+              : readable(approval.question);
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
     <ChatCard

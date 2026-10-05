@@ -129,6 +129,43 @@ function referencedSlugs(value: unknown, found = new Map<string, boolean>()): Ma
   return found;
 }
 
+export function directConnectorUrl(
+  connector: { driver: string; base_url: string | null; dsn: string | null; config: unknown },
+  args: { path?: unknown },
+): string | null {
+  try {
+    let resolved: URL;
+    if (connector.driver === "s3") {
+      const config = connector.config as Record<string, unknown>;
+      const region = typeof config.region === "string" ? config.region : "us-east-1";
+      const endpoint =
+        typeof config.endpoint === "string" ? config.endpoint : `s3.${region}.amazonaws.com`;
+      if (typeof config.bucket !== "string" || !config.bucket) throw new Error("Missing bucket");
+      resolved = new URL(endpoint.includes("://") ? endpoint : `https://${endpoint}`);
+      const key = typeof args.path === "string" ? args.path.replace(/^\//, "") : "";
+      if (config.force_path_style === false) {
+        resolved.hostname = `${config.bucket}.${resolved.hostname}`;
+        resolved.pathname = `/${key.split("/").map(encodeURIComponent).join("/")}`;
+      } else {
+        resolved.pathname = `${resolved.pathname.replace(/\/$/, "")}/${encodeURIComponent(config.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
+      }
+    } else
+      resolved =
+        connector.driver === "postgres"
+          ? new URL(connector.dsn ?? "")
+          : connector.driver === "graphql"
+            ? new URL(connector.base_url ?? "")
+            : resolveUrl(connector.base_url, typeof args.path === "string" ? args.path : "/");
+    resolved.username = "";
+    resolved.password = "";
+    resolved.search = "";
+    resolved.hash = "";
+    return resolved.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function captureDirectConnectorBinding(p: {
   db: Executor;
   tenant_id: string;
@@ -180,36 +217,7 @@ export async function captureDirectConnectorBinding(p: {
       references.push(binding);
     }
   }
-  let url: string | null = null;
-  try {
-    let resolved: URL;
-    if (connector.driver === "s3") {
-      const config = connector.config as Record<string, unknown>;
-      const region = typeof config.region === "string" ? config.region : "us-east-1";
-      const endpoint =
-        typeof config.endpoint === "string" ? config.endpoint : `s3.${region}.amazonaws.com`;
-      if (typeof config.bucket !== "string" || !config.bucket) throw new Error("Missing bucket");
-      resolved = new URL(endpoint.includes("://") ? endpoint : `https://${endpoint}`);
-      const key = typeof p.args.path === "string" ? p.args.path.replace(/^\//, "") : "";
-      if (config.force_path_style === false) {
-        resolved.hostname = `${config.bucket}.${resolved.hostname}`;
-        resolved.pathname = `/${key.split("/").map(encodeURIComponent).join("/")}`;
-      } else {
-        resolved.pathname = `${resolved.pathname.replace(/\/$/, "")}/${encodeURIComponent(config.bucket)}/${key.split("/").map(encodeURIComponent).join("/")}`;
-      }
-    } else
-      resolved =
-        connector.driver === "postgres"
-          ? new URL(connector.dsn ?? "")
-          : connector.driver === "graphql"
-            ? new URL(connector.base_url ?? "")
-            : resolveUrl(connector.base_url, typeof p.args.path === "string" ? p.args.path : "/");
-    resolved.username = "";
-    resolved.password = "";
-    resolved.search = "";
-    resolved.hash = "";
-    url = resolved.toString();
-  } catch {}
+  const url = directConnectorUrl(connector, p.args);
   return DirectConnectorBindingSchema.parse({
     schema_version: 1,
     tool: p.tool,

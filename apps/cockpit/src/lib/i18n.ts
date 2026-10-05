@@ -2339,6 +2339,10 @@ const EN = {
   "chat.decision.processing": "Processing decision…",
   "chat.decision.save": "Save inactive version",
   "chat.decision.externalTool": "{connector}: run the tool “{tool}”?",
+  "chat.decision.connectorCall": "Call {connector}: {method} {target}",
+  "chat.decision.connectorCallBare": "Call {connector}: {method}",
+  "chat.decision.gatedAction": "Approve this action: {action}",
+  "chat.decision.recorded": "Your decision: {verdict}",
   "chat.decision.serverClaim": "The server describes this as: {claim}",
 
   "chat.context.help": "About the working context",
@@ -6198,6 +6202,10 @@ const DE: Record<TranslationKey, string> = {
   "chat.decision.processing": "Entscheidung wird verarbeitet…",
   "chat.decision.save": "Inaktive Version speichern",
   "chat.decision.externalTool": "{connector}: Werkzeug „{tool}“ ausführen?",
+  "chat.decision.connectorCall": "{connector} aufrufen: {method} {target}",
+  "chat.decision.connectorCallBare": "{connector} aufrufen: {method}",
+  "chat.decision.gatedAction": "Diese Aktion freigeben: {action}",
+  "chat.decision.recorded": "Deine Entscheidung: {verdict}",
   "chat.decision.serverClaim": "Laut Server: {claim}",
 
   "chat.context.help": "Informationen zum Arbeitskontext",

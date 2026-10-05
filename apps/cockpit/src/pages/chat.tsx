@@ -136,7 +136,13 @@ import {
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
-import { type ChatApproval, chatApproval } from "./chat-approval";
+import {
+  type ChatApproval,
+  chatApproval,
+  conversationRefreshInterval,
+  recordedDecisionKey,
+  waitsForPerson,
+} from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import {
   addAttachments,
@@ -173,7 +179,7 @@ import {
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
-import { collectReferencedResources, referencesFromPart } from "./chat-references";
+import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import {
   activeConversationId,
@@ -964,6 +970,17 @@ function ChatMessage({
           if (group.kind === "part") {
             const raw = textFromPart(group.part);
             if (!raw) return null;
+            const recorded = recordedDecisionKey(group.part);
+            if (recorded)
+              return (
+                <p
+                  key={`${message.id}-decision-${group.index}`}
+                  className="text-sm text-muted-foreground"
+                  data-testid={`chat-message-${messageIndex}-decision`}
+                >
+                  {t("chat.decision.recorded", { verdict: t(recorded) })}
+                </p>
+              );
             const split = from === "user" ? splitFileSentinels(raw) : { text: raw, fileIds: [] };
             const text = split.text;
             const mentions = from === "user" ? referencesFromPart(group.part) : null;
@@ -1364,6 +1381,8 @@ export function ChatPage() {
     queryFn: () => getConversation(activeId ?? ""),
     enabled: Boolean(activeId),
     retry: retryConversationRead,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => conversationRefreshInterval(query.state.data),
   });
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
     if (event.type === "text_delta" && typeof event.text === "string") {
@@ -1686,7 +1705,7 @@ export function ChatPage() {
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
   const pendingText = useMemo(() => chatText(detail.data), [detail.data]);
   const [clock, setClock] = useState(Date.now);
-  const lockingId = pendingChoice?.id ?? pendingForm?.id ?? null;
+  const lockingId = pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id ?? null;
   useEffect(() => {
     if (!lockingId) return;
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
@@ -1723,25 +1742,15 @@ export function ChatPage() {
         href: absolute(conversationHref(conversation.id)),
       });
     }
-    for (const resource of createdResources) {
-      const label = resource.name || resource.slug;
-      if (!label) continue;
-      known.set(resource.id, { label, href: catalogHref(resource.kind, resource.id) });
-    }
-    for (const resource of referencedResources) {
-      if (resource.unresolved) continue;
+    for (const resource of namedResources({
+      target: resume?.active_target,
+      created: createdResources,
+      referenced: referencedResources,
+    }).values())
       known.set(resource.id, {
         label: resource.label,
-        href: catalogHref(resource.type, resource.id),
+        href: catalogHref(resource.kind, resource.id),
       });
-    }
-    const target = resume?.active_target;
-    if (target?.id && (target.name || target.slug) && target.kind !== "none") {
-      known.set(target.id, {
-        label: (target.name || target.slug) as string,
-        href: catalogHref(target.kind, target.id),
-      });
-    }
     return (id: string) => known.get(id) ?? null;
   }, [conversationList.items, createdResources, referencedResources, resume?.active_target, t]);
   const session = useSession();
@@ -1829,9 +1838,12 @@ export function ChatPage() {
         at: activeRow?.last_activity_at ?? current.updated_at,
       })
     : "";
-  const waitsForYou = anyQuestion
-    ? anyQuestionOpen
-    : Boolean(resume?.pending_approval) || activeRow?.outcome === "awaiting_you";
+  const waitsForYou = waitsForPerson({
+    questions: [pendingDecision, pendingChoice, pendingForm, pendingText],
+    now: clock,
+    pendingApproval: resume?.pending_approval ?? null,
+    rowOutcome: activeRow?.outcome,
+  });
   const badge =
     send.isPending || decide.isPending
       ? { label: t("chat.outcome.in_progress"), state: "running" }
