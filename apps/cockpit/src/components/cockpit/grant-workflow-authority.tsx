@@ -1097,59 +1097,67 @@ export function GrantWorkflowAuthority({
             </p>
           ) : null}
           {hasEffectDetails ? (
-            <div className="flex items-start gap-1">
-              <CollapsibleSection label={t("authority.effects")} testId="authority-effect-details">
-                <div className="flex flex-col gap-3">
-                  {review.manifest.effects.map((effect) => (
-                    <div key={effect.step_id} className="min-w-0 text-sm">
-                      <p className="font-medium">
-                        {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-                        {" · "}
-                        {effect.connector_id
-                          ? (connectorNames.get(effect.connector_id) ??
-                            t("authority.configuredConnector"))
-                          : t("authority.directRequest")}
-                      </p>
-                      <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
-                      {effect.read_path && <p>{t("authority.readPath")}</p>}
-                      <p className="text-muted-foreground text-xs">
-                        {t("authority.issueStep", { step: effect.step_id })}
-                        {" · "}
-                        {effect.operation}
-                      </p>
-                    </div>
-                  ))}
-                  {review.execution_shape.requests.map((request) => (
-                    <div key={request.step_id} className="flex min-w-0 flex-col gap-1">
-                      <p className="text-muted-foreground text-xs">
-                        {t("authority.attempts", {
-                          count: request.retry_policy_max_attempts ?? t("common.unknown"),
-                        })}
-                      </p>
-                      <CodeBlock
-                        label={t("authority.requestReview", { step: request.step_id })}
-                        code={request.redacted_request_json}
-                        lang="json"
-                      />
-                    </div>
-                  ))}
-                  {review.execution_shape.iterations.map((iteration) => (
-                    <p
-                      key={`${iteration.step_id}:${iteration.kind}`}
-                      className="break-words text-sm"
-                    >
-                      {t("authority.iteration", {
-                        step: iteration.step_id,
-                        children: iteration.body_step_ids.join(", "),
-                      })}
-                    </p>
-                  ))}
+            <Section
+              label={t("authority.effects")}
+              testId="authority-effect-details"
+              aside={
+                <ContextHelp label={t("authority.effects")} testId="authority-effect-help">
+                  {`${t("authority.runNotRequestDescription")} ${t("authority.maskedDescription")}`}
+                </ContextHelp>
+              }
+            >
+              {review.manifest.effects.map((effect) => (
+                <div key={effect.step_id} className="min-w-0 text-sm">
+                  <p className="font-medium">
+                    {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
+                    {" · "}
+                    {effect.connector_id
+                      ? (connectorNames.get(effect.connector_id) ??
+                        t("authority.configuredConnector"))
+                      : t("authority.directRequest")}
+                  </p>
+                  <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                  {effect.read_path && <p>{t("authority.readPath")}</p>}
+                  <p className="text-muted-foreground text-xs">
+                    {t("authority.issueStep", { step: effect.step_id })}
+                    {" · "}
+                    {effect.operation}
+                  </p>
                 </div>
-              </CollapsibleSection>
-              <ContextHelp label={t("authority.effects")} testId="authority-effect-help">
-                {`${t("authority.runNotRequestDescription")} ${t("authority.maskedDescription")}`}
-              </ContextHelp>
-            </div>
+              ))}
+              {review.execution_shape.iterations.map((iteration) => (
+                <p key={`${iteration.step_id}:${iteration.kind}`} className="break-words text-sm">
+                  {t("authority.iteration", {
+                    step: iteration.step_id,
+                    children: iteration.body_step_ids.join(", "),
+                  })}
+                </p>
+              ))}
+              {review.execution_shape.requests.length > 0 ? (
+                <CollapsibleSection
+                  label={t("authority.requests")}
+                  count={review.execution_shape.requests.length}
+                  testId="authority-effect-requests"
+                >
+                  <div className="flex flex-col gap-3">
+                    {review.execution_shape.requests.map((request) => (
+                      <div key={request.step_id} className="flex min-w-0 flex-col gap-1">
+                        <p className="text-muted-foreground text-xs">
+                          {t("authority.attempts", {
+                            count: request.retry_policy_max_attempts ?? t("common.unknown"),
+                          })}
+                        </p>
+                        <CodeBlock
+                          label={t("authority.requestReview", { step: request.step_id })}
+                          code={request.redacted_request_json}
+                          lang="json"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              ) : null}
+            </Section>
           ) : null}
           {!input && boundsVisible && !invalidRuns && !invalidHours && (
             <p className="text-sm" data-testid="authority-review-expired">
