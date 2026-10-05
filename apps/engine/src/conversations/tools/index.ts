@@ -134,7 +134,7 @@ export interface ToolEffect {
   target: string | null;
 }
 
-export type ToolPrecheck = { ok: false; result: ToolResult } | { ok: true; effect: ToolEffect };
+export type ToolPrecheck = { ok: false; result: ToolResult } | { ok: true; effect?: ToolEffect };
 
 export interface ConversationTool {
   readonly name: string;

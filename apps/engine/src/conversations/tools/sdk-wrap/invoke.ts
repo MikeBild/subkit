@@ -563,7 +563,7 @@ export function wrapOne(
             ? await checkBeforeGate(inner, perCallCtx, rawArgs)
             : null;
         const pregateRefusal = pregate && !pregate.ok ? pregate.result : null;
-        const gatedEffect = pregate?.ok ? pregate.effect : null;
+        const gatedEffect = pregate?.ok ? (pregate.effect ?? null) : null;
         if (resolvedMode === "confirm_before_execution" && !pregateRefusal) {
           await recordToolPolicyConfirmationRequired({
             tenant_id: ctx.tenant_id,
