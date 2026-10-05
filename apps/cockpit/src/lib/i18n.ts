@@ -220,6 +220,8 @@ const EN = {
   "authority.production": "Production",
   "authority.development": "Development",
   "authority.window": "Valid from — until (local time)",
+  "authority.sameBoundary": "New versions with the same boundary stay approved.",
+  "authority.repairLine": "{count} step(s) without a stated target",
   "authority.growth.newConnector": "New target: {name}",
   "authority.growth.newTarget": "New address: {target}",
   "authority.growth.writes": "New: writes to {name}",
@@ -314,8 +316,6 @@ const EN = {
   "authority.revokeDescription":
     "Blocks new runs and further external requests using this authority. Requests already sent and changes already made are not undone. Other authorities remain unchanged.",
   "authority.revokeFailed": "The authority could not be revoked.",
-  "authority.retryDescription":
-    "Refresh and try again. Your session needs the required permission; the server remains the source of truth.",
   "authority.revoking": "Revoking…",
   "authority.loadFailed": "The authority history could not be loaded.",
   "authority.more": "Load older authorities",
@@ -4003,6 +4003,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.production": "Produktion",
   "authority.development": "Entwicklung",
   "authority.window": "Gültig von — bis (Ortszeit)",
+  "authority.sameBoundary": "Neue Versionen mit gleicher Grenze bleiben freigegeben.",
+  "authority.repairLine": "{count} Schritt(e) ohne festgelegtes Ziel",
   "authority.growth.newConnector": "Neues Ziel: {name}",
   "authority.growth.newTarget": "Neue Adresse: {target}",
   "authority.growth.writes": "Neu: schreibt an {name}",
@@ -4099,8 +4101,6 @@ const DE: Record<TranslationKey, string> = {
   "authority.revokeDescription":
     "Sperrt neue Runs und weitere externe Anfragen mit dieser Freigabe. Bereits gesendete Anfragen und erfolgte Änderungen werden nicht rückgängig gemacht. Andere Freigaben bleiben unverändert.",
   "authority.revokeFailed": "Die Freigabe konnte nicht widerrufen werden.",
-  "authority.retryDescription":
-    "Aktualisiere die Ansicht und versuche es erneut. Deine Sitzung benötigt die erforderliche Berechtigung; maßgeblich bleibt der Server.",
   "authority.revoking": "Wird widerrufen…",
   "authority.loadFailed": "Der Freigabeverlauf konnte nicht geladen werden.",
   "authority.more": "Ältere Freigaben laden",
