@@ -46,7 +46,7 @@ async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
       examples: null,
       evidence: [],
       confidence: opts.confidence ?? "medium",
-      status: (opts.status as "proposed" | "approved" | "rejected" | "superseded") ?? "proposed",
+      status: (opts.status as SkillCandidateView["status"] | undefined) ?? "proposed",
       fingerprint: nextFingerprint(),
       created_at: createdAt,
       updated_at: createdAt,
@@ -192,6 +192,17 @@ describe("listProposedForAuthoring — status filter", () => {
     await seedCandidate({ scope: "global", title: "Superseded", status: "superseded" });
     const result = await listProposedForAuthoring(tenant_id, {}, ctx.db);
     expect(result.some((c) => c.title === "Superseded")).toBe(false);
+  });
+
+  test("includes drafting context notes for the workflow", async () => {
+    await seedCandidate({
+      scope: "workflow",
+      workflow_id: WORKFLOW_ID,
+      title: "Context note",
+      status: "context",
+    });
+    const result = await listProposedForAuthoring(tenant_id, { workflow_id: WORKFLOW_ID }, ctx.db);
+    expect(result.find((c) => c.title === "Context note")?.status).toBe("context");
   });
 });
 

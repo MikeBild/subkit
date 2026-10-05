@@ -251,7 +251,7 @@ async function buildSnapshot(db: Db, tenantId: string): Promise<OperationalOverv
        WHERE tenant_id = ${tenantId} AND status = 'proposed' AND ${readyPatches}
       UNION ALL
       SELECT created_at, FALSE AS blocking FROM skill_candidates
-       WHERE tenant_id = ${tenantId} AND status = 'proposed' AND pattern_kind NOT IN ('failure_pattern', 'authoring_capability')
+       WHERE tenant_id = ${tenantId} AND status = 'proposed'
       UNION ALL
       SELECT created_at, TRUE AS blocking FROM (${heldAutomation(tenantId)}) held
     ), finished AS (

@@ -15966,7 +15966,8 @@
               "proposed",
               "approved",
               "rejected",
-              "superseded"
+              "superseded",
+              "context"
             ]
           },
           "promoted_skill_id": {
@@ -38184,7 +38185,8 @@
                 "proposed",
                 "approved",
                 "rejected",
-                "superseded"
+                "superseded",
+                "context"
               ]
             },
             "required": false,
@@ -38237,18 +38239,6 @@
             },
             "required": false,
             "name": "pattern_kind",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "enum": [
-                "true",
-                "false"
-              ]
-            },
-            "required": false,
-            "name": "reviewable",
             "in": "query"
           },
           {

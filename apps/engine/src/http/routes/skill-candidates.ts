@@ -6,6 +6,7 @@ import {
   SkillCandidateEvidenceSchema,
   SkillCandidatePatternSchema,
   SkillCandidateSchema,
+  SkillCandidateStatusSchema,
 } from "../../skill-candidates/index.ts";
 import { HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -29,12 +30,11 @@ const listRoute = createRoute({
   request: {
     query: z
       .object({
-        status: z.enum(["proposed", "approved", "rejected", "superseded"]).optional(),
+        status: SkillCandidateStatusSchema.optional(),
         scope: z.enum(["global", "connector", "workflow"]).optional(),
         connector_id: z.string().uuid().optional(),
         workflow_id: z.string().uuid().optional(),
         pattern_kind: SkillCandidatePatternSchema.optional(),
-        reviewable: z.enum(["true", "false"]).optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
         offset: z.coerce.number().int().min(0).optional(),
@@ -190,7 +190,6 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const q = c.req.valid("query");
     const params = {
       tenant_id: principal.tenant_id,
-      ...(q.reviewable !== undefined ? { reviewable: q.reviewable === "true" } : {}),
       ...(q.status ? { status: q.status } : {}),
       ...(q.scope ? { scope: q.scope } : {}),
       ...(q.connector_id ? { connector_id: q.connector_id } : {}),
@@ -203,7 +202,9 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const [items, total, reviewable_total] = await Promise.all([
       svc.listSkillCandidates(params, db),
       svc.countSkillCandidates(params, db),
-      svc.countSkillCandidates({ ...params, reviewable: true }, db),
+      params.status === undefined || params.status === "proposed"
+        ? svc.countSkillCandidates({ ...params, status: "proposed" }, db)
+        : 0,
     ]);
     return c.json({ items, total, reviewable_total }, 200);
   });
@@ -236,34 +237,23 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.title) overrides.title = body.title;
     if (body.body) overrides.body = body.body;
     if (body.status) overrides.status = body.status;
-    let result: Awaited<ReturnType<typeof svc.approveSkillCandidate>>;
-    try {
-      result = await svc.approveSkillCandidate(
-        {
-          tenant_id: principal.tenant_id,
-          candidate_id: id,
-          actor_id: principal.id,
-          ...(body.expected_review_digest
-            ? { expected_review_digest: body.expected_review_digest }
-            : {}),
-          ...(Object.keys(overrides).length > 0
-            ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
-            : {}),
-        },
-        db,
-      );
-    } catch (err) {
-      if (err instanceof svc.AdvisoryCandidateError)
-        throw new HttpError(
-          409,
-          "candidate_advisory",
-          "This proposal is advisory context and cannot be adopted as a skill",
-        );
-      throw err;
-    }
+    const result = await svc.approveSkillCandidate(
+      {
+        tenant_id: principal.tenant_id,
+        candidate_id: id,
+        actor_id: principal.id,
+        ...(body.expected_review_digest
+          ? { expected_review_digest: body.expected_review_digest }
+          : {}),
+        ...(Object.keys(overrides).length > 0
+          ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
+          : {}),
+      },
+      db,
+    );
     if (!result) {
       const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
-      if (candidate)
+      if (candidate && candidate.status !== "context")
         throw new HttpError(
           409,
           "review_changed",

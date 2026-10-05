@@ -10636,12 +10636,11 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    status?: "proposed" | "approved" | "rejected" | "superseded";
+                    status?: "proposed" | "approved" | "rejected" | "superseded" | "context";
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
                     pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
-                    reviewable?: "true" | "false";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
                     offset?: number | null;
@@ -21570,7 +21569,7 @@ export interface components {
             /** @enum {string} */
             confidence: "low" | "medium" | "high";
             /** @enum {string} */
-            status: "proposed" | "approved" | "rejected" | "superseded";
+            status: "proposed" | "approved" | "rejected" | "superseded" | "context";
             promoted_skill_id: string | null;
             reviewable?: boolean;
             review_digest?: string;

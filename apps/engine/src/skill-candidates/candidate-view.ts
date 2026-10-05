@@ -2,20 +2,13 @@ import type { skillCandidates } from "../db/schema/skills.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import type { SkillCandidateView } from "./types.ts";
 
-const ADVISORY_PATTERN_KINDS: ReadonlySet<string> = new Set([
+const CONTEXT_PATTERN_KINDS: ReadonlySet<string> = new Set([
   "failure_pattern",
   "authoring_capability",
 ]);
 
-export function isAdvisoryPatternKind(kind: string): boolean {
-  return ADVISORY_PATTERN_KINDS.has(kind);
-}
-
-export class AdvisoryCandidateError extends Error {
-  constructor(readonly candidate_id: string) {
-    super("an advisory skill candidate cannot be approved");
-    this.name = "AdvisoryCandidateError";
-  }
+export function initialCandidateStatus(kind: string): "proposed" | "context" {
+  return CONTEXT_PATTERN_KINDS.has(kind) ? "context" : "proposed";
 }
 
 export function skillReviewDigest(row: typeof skillCandidates.$inferSelect): string {
@@ -56,7 +49,7 @@ export function toView(
     confidence: row.confidence,
     status: row.status,
     promoted_skill_id: row.promoted_skill_id,
-    reviewable: row.status === "proposed" && !isAdvisoryPatternKind(row.pattern_kind),
+    reviewable: row.status === "proposed",
     review_digest: skillReviewDigest(row),
     fingerprint: row.fingerprint,
     version: row.version,
@@ -64,8 +57,4 @@ export function toView(
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
-}
-
-export function assertAdoptable(row: { id: string; pattern_kind: string }): void {
-  if (isAdvisoryPatternKind(row.pattern_kind)) throw new AdvisoryCandidateError(row.id);
 }

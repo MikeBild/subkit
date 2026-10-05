@@ -1,6 +1,5 @@
 import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
-import { AdvisoryCandidateError } from "../../../../skill-candidates/candidate-view.ts";
 import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
 
@@ -15,16 +14,10 @@ export const approveSkillCandidateTool: ConversationTool = {
   visible_when_readonly: true,
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
-    let out: Awaited<ReturnType<typeof approveSkillCandidate>>;
-    try {
-      out = await approveSkillCandidate(
-        { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
-        ctx.db,
-      );
-    } catch (err) {
-      if (!(err instanceof AdvisoryCandidateError)) throw err;
-      return { ok: false, data: { error: "skill_candidate_advisory" } };
-    }
+    const out = await approveSkillCandidate(
+      { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
+      ctx.db,
+    );
     if (!out) {
       await ctx.engineClient.audit_write({
         resource_type: "skill_candidate",
