@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import type { ConversationDetail } from "@/api/client";
-import { chatApproval } from "./chat-approval";
+import {
+  chatApproval,
+  conversationRefreshInterval,
+  OPEN_QUESTION_REFRESH_MS,
+  recordedDecisionKey,
+  waitsForPerson,
+} from "./chat-approval";
 
 function fixture(tool = "ask_user_confirm", callId: string | null = "call-1") {
   return {
@@ -129,4 +135,110 @@ test("a single-run intent cannot be presented as recurring permission by model w
     },
   };
   expect(chatApproval(detail)).toMatchObject({ singleRun: true, savesInactiveWorkflow: false });
+});
+
+function gatedConnectorCall() {
+  const detail = fixture();
+  detail.tool_calls[0]!.tool = "call_connector";
+  detail.tool_calls[0]!.input = { connector_id: "connector-1", method: "PATCH", path: "/v1/x" };
+  detail.resume_summary!.pending_approval!.prompt = {
+    question: "Reporting API: PATCH https://api.example/v1/x — approve this call?",
+    intent_kind: "execute_confirmed_tool_call",
+    effect: { connector: "Reporting API", method: "PATCH", target: "https://api.example/v1/x" },
+  };
+  return detail;
+}
+
+test("a policy-gated connector call is described by its effect, not by the engine's sentence", () => {
+  expect(chatApproval(gatedConnectorCall())).toMatchObject({
+    connectorCall: {
+      connector: "Reporting API",
+      method: "PATCH",
+      target: "https://api.example/v1/x",
+    },
+    description: null,
+  });
+  const generic = gatedConnectorCall();
+  delete generic.resume_summary!.pending_approval!.prompt!.effect;
+  expect(chatApproval(generic)).toMatchObject({ gatedTool: "call_connector", description: null });
+});
+
+test("once the server records the decision, no decision card remains and nobody is waited for", () => {
+  const decided = gatedConnectorCall();
+  decided.resume_summary!.pending_approval = null;
+  decided.tool_calls = [
+    {
+      ...decided.tool_calls[0]!,
+      confirmation_state: "confirmed",
+      outcome: "ok",
+      output: { status: "resolved", elicitation_id: "elicitation-2" },
+    },
+    {
+      id: "call-2",
+      tool: "call_connector",
+      input: { _harness_auto_persist: true },
+      parent_message_id: null,
+      confirmation_state: "declined",
+      outcome: "error",
+      output: { ok: false, source: "harness_auto_persist" },
+    },
+  ] as unknown as ConversationDetail["tool_calls"];
+  const approval = chatApproval(decided);
+  expect(approval).toBeNull();
+  expect(conversationRefreshInterval(decided)).toBe(false);
+  expect(
+    waitsForPerson({
+      questions: [approval],
+      now: Date.parse("2030-01-01T00:00:00Z"),
+      pendingApproval: decided.resume_summary!.pending_approval,
+      detailLoaded: true,
+      rowOutcome: "awaiting_you",
+    }),
+  ).toBe(false);
+  expect(
+    waitsForPerson({
+      questions: [],
+      now: Date.parse("2030-01-01T00:00:00Z"),
+      pendingApproval: null,
+      detailLoaded: false,
+      rowOutcome: "awaiting_you",
+    }),
+  ).toBe(true);
+});
+
+test("an open decision keeps the conversation fresh so a decision made elsewhere shows up", () => {
+  const open = gatedConnectorCall();
+  expect(conversationRefreshInterval(open)).toBe(OPEN_QUESTION_REFRESH_MS);
+  expect(
+    waitsForPerson({
+      questions: [chatApproval(open)],
+      now: Date.parse("2030-01-01T00:00:00Z"),
+      pendingApproval: open.resume_summary!.pending_approval,
+      detailLoaded: true,
+      rowOutcome: "awaiting_you",
+    }),
+  ).toBe(true);
+  expect(
+    waitsForPerson({
+      questions: [chatApproval(open)],
+      now: Date.parse("2100-01-01T00:00:00Z"),
+      pendingApproval: open.resume_summary!.pending_approval,
+      detailLoaded: true,
+      rowOutcome: "awaiting_you",
+    }),
+  ).toBe(false);
+});
+
+test("a recorded decision reads as the reader's verdict, never as the engine's marker", () => {
+  expect(
+    recordedDecisionKey({
+      type: "text",
+      text: "✓ Approved: call_connector",
+      decision: { state: "confirmed", tool: "call_connector" },
+    }),
+  ).toBe("tool.outcome.approved");
+  expect(recordedDecisionKey({ type: "text", decision: { state: "declined", tool: null } })).toBe(
+    "tool.outcome.declined",
+  );
+  expect(recordedDecisionKey({ type: "text", text: "✓ Approved: call_connector" })).toBeNull();
 });

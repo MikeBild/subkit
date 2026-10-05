@@ -69,6 +69,7 @@ import {
   summarizeToolFailure,
   topLevelElicitationKindForTool,
 } from "./policy-helpers.ts";
+import { checkBeforeGate, describeToolEffect, permissionRefusal } from "./pregate.ts";
 import { redactToolArgsForPersist } from "./redact-tool-args.ts";
 import {
   computeValidationFingerprint,
@@ -557,7 +558,13 @@ export function wrapOne(
           mode: resolvedMode,
           rule: policyDecision.rule,
         });
-        if (resolvedMode === "confirm_before_execution") {
+        const pregate =
+          resolvedMode === "confirm_before_execution"
+            ? await checkBeforeGate(inner, perCallCtx, rawArgs)
+            : null;
+        const pregateRefusal = pregate && !pregate.ok ? pregate.result : null;
+        const gatedEffect = pregate?.ok ? pregate.effect : null;
+        if (resolvedMode === "confirm_before_execution" && !pregateRefusal) {
           await recordToolPolicyConfirmationRequired({
             tenant_id: ctx.tenant_id,
             actor_id: ctx.actor_id ?? null,
@@ -604,8 +611,12 @@ export function wrapOne(
           resolverRule: policyDecision.rule,
           ...(ctx.surface !== undefined ? { surface: ctx.surface } : {}),
         });
-        const needsPreConfirmation = confirmDecision.pause;
-        if (resolvedMode === "confirm_before_execution" && !needsPreConfirmation) {
+        const needsPreConfirmation = confirmDecision.pause && !pregateRefusal;
+        if (
+          resolvedMode === "confirm_before_execution" &&
+          !needsPreConfirmation &&
+          !pregateRefusal
+        ) {
           logger.info({
             module: "conversation_tool",
             action: "policy.gate_skipped",
@@ -633,7 +644,7 @@ export function wrapOne(
           });
         }
 
-        if (inner.category === "tenant_write") {
+        if (inner.category === "tenant_write" && !pregateRefusal) {
           await recordTransition(db, {
             tool_call_id: toolCallId,
             tenant_id: ctx.tenant_id,
@@ -698,6 +709,7 @@ export function wrapOne(
                 : "";
               return `Run workflow "${wfName}" in ${env}${previewBit}`;
             }
+            if (gatedEffect) return describeToolEffect(gatedEffect);
             return `Confirm ${inner.name} (policy: ${resolvedMode})`;
           };
           const policyGateSummary = buildPolicyGateSummary();
@@ -788,8 +800,11 @@ export function wrapOne(
             kind: topLevelKind,
             question: hasConnectorDeleteDependents
               ? `Deleting this connector will break ${connectorDeleteDependents.length} live workflow${connectorDeleteDependents.length === 1 ? "" : "s"} (${connectorDeleteDependents.map((w) => w.slug).join(", ")}). Proceed anyway?`
-              : `Policy requires confirmation before running ${inner.name}. Proceed?`,
+              : gatedEffect
+                ? `${describeToolEffect(gatedEffect)} — approve this call?`
+                : `Policy requires confirmation before running ${inner.name}. Proceed?`,
             target: { tool: inner.name, args: rawArgs },
+            ...(gatedEffect ? { effect: gatedEffect } : {}),
             ...confirmationMetadataForTool(inner.name, rawArgs),
             ...(pendingOutput ? { pending_output: pendingOutput } : {}),
             ...(policyCommitIntent ? { commit_intent: policyCommitIntent } : {}),
@@ -1021,20 +1036,17 @@ export function wrapOne(
         });
 
         let result: ToolResult;
-        const permCheck: ToolPermissionResult = inner.permission
-          ? await checkToolPermission(perCallCtx, inner.permission, rawArgs)
-          : { allow: true };
+        const permCheck: ToolPermissionResult = pregateRefusal
+          ? { allow: true }
+          : inner.permission
+            ? await checkToolPermission(perCallCtx, inner.permission, rawArgs)
+            : { allow: true };
         try {
-          result = permCheck.allow
-            ? await inner.execute(perCallCtx, resolvedArgs)
-            : (inner.permission?.denyResult?.(permCheck.permission, permCheck.reason) ?? {
-                ok: false,
-                data: {
-                  error: "permission_denied",
-                  permission: permCheck.permission,
-                  reason: permCheck.reason,
-                },
-              });
+          result =
+            pregateRefusal ??
+            (permCheck.allow
+              ? await inner.execute(perCallCtx, resolvedArgs)
+              : permissionRefusal(inner, permCheck));
         } catch (err) {
           await langfuseSpan.finish({ status: "error", error: err });
           const msg = err instanceof Error ? err.message : String(err);

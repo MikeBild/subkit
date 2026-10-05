@@ -15,15 +15,18 @@ import {
   callConnectorDisabledRefusal,
   callConnectorDriverRefusal,
 } from "../../connectors/services/call-connector.ts";
+import type { ConnectorView } from "../../connectors/types.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
+import { scrubString } from "../../logging/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import {
   DirectConnectorBindingError,
+  directConnectorUrl,
   type LoadedConnectorCredential,
 } from "../../tools/direct-connector-binding.ts";
 import { directConnectorGuard, preflightDirectConnector } from "./direct-connector-guard.ts";
-import type { ConversationTool, ToolResult } from "./index.ts";
+import type { ConversationTool, ToolContext, ToolEffect, ToolResult } from "./index.ts";
 import { truncateForLlm } from "./truncate.ts";
 
 const Method = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
@@ -173,8 +176,15 @@ export const callConnectorTool: ConversationTool = {
     denyResult: (permission, reason) =>
       structuredError("permission_denied", reason, { permission }),
   },
+  async precheck(ctx, rawArgs) {
+    const checked = await checkCall(ctx, rawArgs);
+    return checked.ok ? { ok: true, effect: callEffect(checked) } : checked;
+  },
   async execute(ctx, rawArgs): Promise<ToolResult> {
-    const args = CallConnectorInput.parse(rawArgs);
+    const checked = await checkCall(ctx, rawArgs);
+    if (!checked.ok) return checked.result;
+    const { args, connector, driver, loadedCredential } = checked;
+    const guard = directConnectorGuard(ctx, connector);
 
     logger.info({
       module: "conversation_tool",
@@ -184,152 +194,6 @@ export const callConnectorTool: ConversationTool = {
       connector_id: args.connector_id,
       method: args.method,
     });
-
-    const connector = await getConnector(ctx.tenant_id, args.connector_id, ctx.db);
-    if (!connector) {
-      logger.warn({
-        module: "conversation_tool",
-        action: "call_connector.failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        connector_id: args.connector_id,
-        error_code: "connector_not_found",
-      });
-      return structuredError(
-        "connector_not_found",
-        `no connector with id '${args.connector_id}' — it may have been deleted or never persisted (drafts are not callable). Call list_connectors for the live catalog, or find_connector to resolve by name/slug; do NOT retry this id.`,
-        { next_best_actions: ["list_connectors", "find_connector"] },
-      );
-    }
-
-    if (!connector.enabled) {
-      logger.warn({
-        module: "conversation_tool",
-        action: "call_connector.failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        connector_id: args.connector_id,
-        error_code: "connector_disabled",
-      });
-      const refusal = callConnectorDisabledRefusal(connector);
-      return structuredError("connector_disabled", refusal.message, {
-        details: refusal.details,
-        next_best_actions: refusal.next_best_actions,
-      });
-    }
-
-    const guard = directConnectorGuard(ctx, connector);
-    try {
-      await preflightDirectConnector(ctx, connector);
-    } catch (error) {
-      if (error instanceof DirectConnectorBindingError)
-        return structuredError(error.code, error.message);
-      throw error;
-    }
-    let loadedCredential: LoadedConnectorCredential = {
-      credential_id: null,
-      credential_revision: null,
-      connection_authority: null,
-    };
-    if (connector.auth_type !== "none") {
-      const cred = await getCredentialForConnector(
-        ctx.tenant_id,
-        connector.id,
-        connector.environment,
-        ctx.db,
-      );
-      if (!cred) {
-        logger.warn({
-          module: "conversation_tool",
-          action: "call_connector.failed",
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          connector_id: args.connector_id,
-          error_code: "credential_required",
-        });
-        return structuredError(
-          "credential_required",
-          "connector has no saved credential — collect one (ask_user_form) and persist via save_connector_draft({credential}) first",
-          { next_best_actions: ["ask_user_form", "save_connector_draft"] },
-        );
-      }
-      loadedCredential = {
-        credential_id: cred.row.id,
-        credential_revision: cred.row.authority_revision,
-        connection_authority: cred.connection_authority ?? null,
-      };
-    }
-
-    const driver = connector.driver;
-    if (driver !== "http" && driver !== "graphql" && driver !== "postgres" && driver !== "s3") {
-      logger.warn({
-        module: "conversation_tool",
-        action: "call_connector.failed",
-        tenant_id: ctx.tenant_id,
-        conversation_id: ctx.conversation_id,
-        connector_id: args.connector_id,
-        error_code: "driver_not_supported_for_call_connector",
-        driver,
-      });
-      const refusal = callConnectorDriverRefusal(driver);
-      return structuredError("driver_not_supported_for_call_connector", refusal.message, {
-        next_best_actions: refusal.next_best_actions,
-      });
-    }
-
-    if (driver === "http" || driver === "graphql") {
-      if (args.sql !== undefined) {
-        return structuredError(
-          "invalid_input",
-          `'sql' is postgres-only; ${driver} connectors take method+path`,
-        );
-      }
-    } else if (driver === "postgres") {
-      if (args.method !== undefined) {
-        return structuredError(
-          "invalid_input",
-          "postgres connectors take 'sql' (and optional 'parameters'/'allow_writes'/'row_limit'), not method",
-        );
-      }
-      if (!args.sql || args.sql.trim().length === 0) {
-        return structuredError("invalid_input", "postgres connectors require non-empty 'sql'");
-      }
-    } else if (driver === "s3") {
-      if (args.sql !== undefined) {
-        return structuredError(
-          "invalid_input",
-          "s3 connectors take method (GET|PUT|HEAD|LIST|DELETE) + path, not sql",
-        );
-      }
-      if (!args.method) {
-        return structuredError(
-          "invalid_input",
-          "s3 connectors require 'method' (one of GET|PUT|HEAD|LIST|DELETE)",
-        );
-      }
-      if (!args.path) {
-        return structuredError("invalid_input", "s3 connectors require 'path' (object key or '/')");
-      }
-    }
-
-    if (driver === "postgres") {
-      const allowWrites = args.allow_writes === true;
-      if (!allowWrites && !isReadOnlySql(args.sql ?? "")) {
-        logger.warn({
-          module: "conversation_tool",
-          action: "call_connector.failed",
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          connector_id: connector.id,
-          error_code: "writes_not_allowed",
-        });
-        return structuredError(
-          "writes_not_allowed",
-          "non-SELECT statements are rejected unless allow_writes:true is passed; pass allow_writes:true to confirm a mutating call",
-          { next_best_actions: ["call_connector_with_allow_writes"] },
-        );
-      }
-    }
 
     const started = Date.now();
     let status = 0;
@@ -588,3 +452,191 @@ export const callConnectorTool: ConversationTool = {
     return { ok: true, data };
   },
 };
+
+type CallConnectorArgs = z.infer<typeof CallConnectorInput>;
+type CallConnectorDriver = "http" | "graphql" | "postgres" | "s3";
+
+type CheckedCall =
+  | { ok: false; result: ToolResult }
+  | {
+      ok: true;
+      args: CallConnectorArgs;
+      connector: ConnectorView;
+      driver: CallConnectorDriver;
+      loadedCredential: LoadedConnectorCredential;
+    };
+
+function refused(
+  error_code: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): CheckedCall {
+  return { ok: false, result: structuredError(error_code, message, extra) };
+}
+
+function callEffect(checked: Extract<CheckedCall, { ok: true }>): ToolEffect {
+  const target = directConnectorUrl(checked.connector, { path: checked.args.path });
+  return {
+    connector: scrubString(checked.connector.display_name || checked.connector.slug),
+    method: checked.args.method ?? (checked.driver === "postgres" ? "SQL" : "GET"),
+    target: target ? scrubString(target) : null,
+  };
+}
+
+async function checkCall(ctx: ToolContext, rawArgs: unknown): Promise<CheckedCall> {
+  const parsed = CallConnectorInput.safeParse(rawArgs);
+  if (!parsed.success)
+    return refused(
+      "invalid_input",
+      parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "input"}: ${issue.message}`)
+        .join("; "),
+    );
+  const args = parsed.data;
+  const connector = await getConnector(ctx.tenant_id, args.connector_id, ctx.db);
+  if (!connector) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "call_connector.failed",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id: args.connector_id,
+      error_code: "connector_not_found",
+    });
+    return refused(
+      "connector_not_found",
+      `no connector with id '${args.connector_id}' — it may have been deleted or never persisted (drafts are not callable). Call list_connectors for the live catalog, or find_connector to resolve by name/slug; do NOT retry this id.`,
+      { next_best_actions: ["list_connectors", "find_connector"] },
+    );
+  }
+
+  if (!connector.enabled) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "call_connector.failed",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id: args.connector_id,
+      error_code: "connector_disabled",
+    });
+    const refusal = callConnectorDisabledRefusal(connector);
+    return refused("connector_disabled", refusal.message, {
+      details: refusal.details,
+      next_best_actions: refusal.next_best_actions,
+    });
+  }
+
+  try {
+    await preflightDirectConnector(ctx, connector);
+  } catch (error) {
+    if (error instanceof DirectConnectorBindingError)
+      return { ok: false, result: structuredError(error.code, error.message) };
+    throw error;
+  }
+  let loadedCredential: LoadedConnectorCredential = {
+    credential_id: null,
+    credential_revision: null,
+    connection_authority: null,
+  };
+  if (connector.auth_type !== "none") {
+    const cred = await getCredentialForConnector(
+      ctx.tenant_id,
+      connector.id,
+      connector.environment,
+      ctx.db,
+    );
+    if (!cred) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "call_connector.failed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: args.connector_id,
+        error_code: "credential_required",
+      });
+      return refused(
+        "credential_required",
+        "connector has no saved credential — collect one (ask_user_form) and persist via save_connector_draft({credential}) first",
+        { next_best_actions: ["ask_user_form", "save_connector_draft"] },
+      );
+    }
+    loadedCredential = {
+      credential_id: cred.row.id,
+      credential_revision: cred.row.authority_revision,
+      connection_authority: cred.connection_authority ?? null,
+    };
+  }
+
+  const driver = connector.driver;
+  if (driver !== "http" && driver !== "graphql" && driver !== "postgres" && driver !== "s3") {
+    logger.warn({
+      module: "conversation_tool",
+      action: "call_connector.failed",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      connector_id: args.connector_id,
+      error_code: "driver_not_supported_for_call_connector",
+      driver,
+    });
+    const refusal = callConnectorDriverRefusal(driver);
+    return refused("driver_not_supported_for_call_connector", refusal.message, {
+      next_best_actions: refusal.next_best_actions,
+    });
+  }
+
+  if (driver === "http" || driver === "graphql") {
+    if (args.sql !== undefined) {
+      return refused(
+        "invalid_input",
+        `'sql' is postgres-only; ${driver} connectors take method+path`,
+      );
+    }
+  } else if (driver === "postgres") {
+    if (args.method !== undefined) {
+      return refused(
+        "invalid_input",
+        "postgres connectors take 'sql' (and optional 'parameters'/'allow_writes'/'row_limit'), not method",
+      );
+    }
+    if (!args.sql || args.sql.trim().length === 0) {
+      return refused("invalid_input", "postgres connectors require non-empty 'sql'");
+    }
+  } else if (driver === "s3") {
+    if (args.sql !== undefined) {
+      return refused(
+        "invalid_input",
+        "s3 connectors take method (GET|PUT|HEAD|LIST|DELETE) + path, not sql",
+      );
+    }
+    if (!args.method) {
+      return refused(
+        "invalid_input",
+        "s3 connectors require 'method' (one of GET|PUT|HEAD|LIST|DELETE)",
+      );
+    }
+    if (!args.path) {
+      return refused("invalid_input", "s3 connectors require 'path' (object key or '/')");
+    }
+  }
+
+  if (driver === "postgres") {
+    const allowWrites = args.allow_writes === true;
+    if (!allowWrites && !isReadOnlySql(args.sql ?? "")) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "call_connector.failed",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        connector_id: connector.id,
+        error_code: "writes_not_allowed",
+      });
+      return refused(
+        "writes_not_allowed",
+        "non-SELECT statements are rejected unless allow_writes:true is passed; pass allow_writes:true to confirm a mutating call",
+        { next_best_actions: ["call_connector_with_allow_writes"] },
+      );
+    }
+  }
+
+  return { ok: true, args, connector, driver, loadedCredential };
+}

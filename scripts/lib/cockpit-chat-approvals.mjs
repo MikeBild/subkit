@@ -167,3 +167,149 @@ export async function verifyChatApprovals(page, stand, conversation, locale, cap
     await page.unroute(answerPattern, answer);
   }
 }
+
+export async function verifyChatDecidedApproval(page, stand, conversation, locale, capture) {
+  await stand.visit(page, `chat/${conversation.id}`);
+  const original = await page.evaluate(
+    async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
+    conversation.id,
+  );
+  const effect = {
+    connector: "Reporting API",
+    method: "PATCH",
+    target: "https://api.example/v1/reports",
+  };
+  const call = {
+    id: "gated-call",
+    tool: "call_connector",
+    input: { connector_id: "connector-gated", method: "PATCH", path: "/v1/reports" },
+    parent_message_id: "gated-message",
+  };
+  const pending = {
+    id: "gated-request",
+    tool_call_id: call.id,
+    tool_name: "ask_user_confirm",
+    summary: "Reporting API: PATCH https://api.example/v1/reports",
+    expires_at: "2099-01-01T00:00:00Z",
+    prompt: {
+      question: "Reporting API: PATCH https://api.example/v1/reports — approve this call?",
+      intent_kind: "execute_confirmed_tool_call",
+      effect,
+    },
+  };
+  let decided = false;
+  const detailPattern = `**/v1/conversations/${conversation.id}`;
+  const detail = (route) =>
+    route.fulfill({
+      json: {
+        ...original,
+        messages: [
+          {
+            id: "gated-message",
+            role: "assistant",
+            created_at: conversation.updated_at,
+            parts: [
+              { type: "tool_call", call_id: call.id, tool: call.tool, input: call.input },
+              {
+                type: "tool_result",
+                call_id: call.id,
+                tool: call.tool,
+                output: decided
+                  ? { status: "resolved", elicitation_id: pending.id }
+                  : { pending: true, status: "awaiting_confirmation" },
+                outcome: decided ? "ok" : "pending",
+              },
+            ],
+          },
+          ...(decided
+            ? [
+                {
+                  id: "gated-decision",
+                  role: "user",
+                  created_at: conversation.updated_at,
+                  parts: [
+                    {
+                      type: "text",
+                      text: "✓ Approved: call_connector",
+                      decision: { state: "confirmed", tool: "call_connector" },
+                    },
+                  ],
+                },
+              ]
+            : []),
+        ],
+        tool_calls: decided
+          ? [
+              { ...call, confirmation_state: "confirmed", outcome: "ok" },
+              {
+                id: "gated-auto-persist",
+                tool: "call_connector",
+                input: { _harness_auto_persist: true },
+                parent_message_id: null,
+                confirmation_state: "declined",
+                outcome: "error",
+                output: { ok: false, source: "harness_auto_persist" },
+              },
+            ]
+          : [call],
+        resume_summary: {
+          ...original.resume_summary,
+          stage: decided ? "onboarding" : "awaiting_approval",
+          pending_approval: decided ? null : pending,
+        },
+      },
+    });
+  const waitingLabel = locale === "de" ? "Wartet auf dich" : "Waiting for you";
+  const listPattern = (url) => url.pathname === "/v1/conversations";
+  const staleRow = {
+    ...conversation,
+    status: "awaiting_input",
+    outcome: "awaiting_you",
+    last_activity_at: conversation.updated_at,
+    hidden: false,
+    pending_elicitation_expires_at: pending.expires_at,
+    pending_elicitation_summary: pending.summary,
+    pending_elicitation_tool: pending.tool_name,
+  };
+  const staleList = (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("hidden") === "only"
+          ? { items: [], total: 0 }
+          : { items: [staleRow], total: 1 },
+    });
+  await page.route(detailPattern, detail);
+  await page.route(listPattern, staleList);
+  try {
+    await stand.visit(page, `chat/${conversation.id}`);
+    const card = page.getByTestId("chat-message-0-approval");
+    await card.waitFor();
+    const line = await card.innerText();
+    const expected =
+      locale === "de"
+        ? "Reporting API aufrufen: PATCH https://api.example/v1/reports"
+        : "Call Reporting API: PATCH https://api.example/v1/reports";
+    if (!line.includes(expected)) throw new Error(`Gated call is not described: ${line}`);
+    for (const raw of ["call_connector", "Policy requires", "approve this call"])
+      if (line.includes(raw)) throw new Error(`Decision card shows engine wording: ${raw}`);
+    if (!(await page.getByTestId("chat-status").innerText()).includes(waitingLabel))
+      throw new Error("An open decision does not say that it waits for the person");
+    await capture("gated-ready");
+    decided = true;
+    await card.waitFor({ state: "hidden", timeout: 15_000 });
+    const status = page.getByTestId("chat-status");
+    if ((await status.count()) && (await status.innerText()).includes(waitingLabel))
+      throw new Error("A decision made elsewhere still shows the conversation as waiting");
+    if (await page.getByTestId(/-approval-approve$/).count())
+      throw new Error("A decided approval still offers its buttons");
+    const transcript = await page.getByTestId("chat-transcript").innerText();
+    const verdict = locale === "de" ? "Deine Entscheidung: Freigegeben" : "Your decision: Approved";
+    if (!transcript.includes(verdict)) throw new Error("The recorded decision is not shown");
+    for (const raw of ["call_connector", "✓ Approved"])
+      if (transcript.includes(raw)) throw new Error(`Transcript shows engine wording: ${raw}`);
+    await capture("gated-decided");
+  } finally {
+    await page.unroute(detailPattern, detail);
+    await page.unroute(listPattern, staleList);
+  }
+}
