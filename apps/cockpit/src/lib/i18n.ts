@@ -1777,8 +1777,7 @@ const EN = {
   "detail.technicalReferenceHint":
     "Quote this line when you ask the operations team about this record.",
   "detail.editMetadata": "Rename",
-  "detail.editMetadataDescription":
-    "Rename this workspace record without changing its governed structure.",
+  "detail.editMetadataDescription": "Only the name changes; steps and approvals stay.",
   "markdown.write": "Write",
   "markdown.preview": "Preview",
   "markdown.split": "Split",
@@ -3343,8 +3342,6 @@ const EN = {
   "workflowPage.io": "Input & output",
   "workflowPage.draftingContext": "What the draft knows",
   "workflowPage.draftingContextFailed": "What the draft knows could not be loaded",
-  "workflowPage.ask": "Ask in chat",
-  "workflowPage.askPrompt": "About the workflow “{name}”: ",
   "workflowPage.approvedIn": "approved for {environment}",
   "workflowPage.steps.one": "{count} step",
   "workflowPage.steps.other": "{count} steps",
@@ -3352,13 +3349,16 @@ const EN = {
   "workflowPage.and": " and ",
   "workflowPage.calledOnRequest": "Called by HTTP, MCP or CLI",
   "workflowPage.disable": "Disable",
-  "workflowPage.disableConsequence":
-    "Schedule and webhook stop until you enable the workflow again; a schedule set apart from its definition has to be set up again.",
+  "workflowPage.disableConsequence.base": "It cannot run until you enable it again.",
+  "workflowPage.disableConsequence.webhook": "Its webhook does not start it meanwhile.",
+  "workflowPage.disableConsequence.schedule":
+    "Its schedule does not start it meanwhile; a schedule set up on its own has to be set up again.",
   "workflowPage.disabled": "{name} disabled",
   "workflowPage.enabled": "{name} enabled",
   "workflowPage.delete": "Delete",
-  "workflowPage.deleteConsequence":
-    "Its webhook answers 404 and its schedule stops; runs and audit stay.",
+  "workflowPage.deleteConsequence.base": "Runs and audit stay.",
+  "workflowPage.deleteConsequence.webhook": "Its webhook answers 404.",
+  "workflowPage.deleteConsequence.schedule": "Its schedule stops.",
   "workflowPage.deleted": "{name} deleted",
   "invocation.httpAddress": "HTTP address",
   "invocation.webhookAddress": "Webhook address",
@@ -5612,8 +5612,7 @@ const DE: Record<TranslationKey, string> = {
   "detail.technicalReferenceHint":
     "Diese Zeile hilft dem Betrieb, wenn du zu diesem Eintrag nachfragst.",
   "detail.editMetadata": "Umbenennen",
-  "detail.editMetadataDescription":
-    "Diesen Datensatz umbenennen, ohne seine gesteuerte Struktur zu ändern.",
+  "detail.editMetadataDescription": "Nur der Name ändert sich; Schritte und Freigaben bleiben.",
   "markdown.write": "Schreiben",
   "markdown.preview": "Vorschau",
   "markdown.split": "Geteilt",
@@ -7226,8 +7225,6 @@ const DE: Record<TranslationKey, string> = {
   "workflowPage.io": "Eingabe & Ausgabe",
   "workflowPage.draftingContext": "Was der Entwurf weiß",
   "workflowPage.draftingContextFailed": "Was der Entwurf weiß, konnte nicht geladen werden",
-  "workflowPage.ask": "Im Chat fragen",
-  "workflowPage.askPrompt": "Zum Workflow „{name}“: ",
   "workflowPage.approvedIn": "für {environment} freigegeben",
   "workflowPage.steps.one": "{count} Schritt",
   "workflowPage.steps.other": "{count} Schritte",
@@ -7235,13 +7232,17 @@ const DE: Record<TranslationKey, string> = {
   "workflowPage.and": " und ",
   "workflowPage.calledOnRequest": "Wird per HTTP, MCP oder CLI aufgerufen",
   "workflowPage.disable": "Deaktivieren",
-  "workflowPage.disableConsequence":
-    "Zeitplan und Webhook lösen nicht mehr aus, bis du den Workflow wieder aktivierst; ein eigens angelegter Zeitplan muss danach neu angelegt werden.",
+  "workflowPage.disableConsequence.base":
+    "Er lässt sich erst wieder ausführen, wenn du ihn aktivierst.",
+  "workflowPage.disableConsequence.webhook": "Sein Webhook startet ihn bis dahin nicht.",
+  "workflowPage.disableConsequence.schedule":
+    "Sein Zeitplan startet ihn bis dahin nicht; ein eigens angelegter Zeitplan muss danach neu angelegt werden.",
   "workflowPage.disabled": "{name} deaktiviert",
   "workflowPage.enabled": "{name} aktiviert",
   "workflowPage.delete": "Löschen",
-  "workflowPage.deleteConsequence":
-    "Der Webhook antwortet dann mit 404 und der Zeitplan stoppt; Läufe und Audit bleiben.",
+  "workflowPage.deleteConsequence.base": "Läufe und Audit bleiben erhalten.",
+  "workflowPage.deleteConsequence.webhook": "Sein Webhook antwortet dann mit 404.",
+  "workflowPage.deleteConsequence.schedule": "Sein Zeitplan stoppt.",
   "workflowPage.deleted": "{name} gelöscht",
   "invocation.httpAddress": "HTTP-Adresse",
   "invocation.webhookAddress": "Webhook-Adresse",

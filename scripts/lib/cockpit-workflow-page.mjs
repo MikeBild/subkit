@@ -1010,10 +1010,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the technical facts lack the version`);
 
     await page.getByTestId("workflow-menu").click();
-    for (const entry of ["ask", "rename", "category"])
+    for (const entry of ["rename", "category"])
       await page.getByTestId(`workflow-menu-${entry}`).waitFor({ state: "visible" });
+    if (await page.getByTestId("workflow-menu-ask").count())
+      throw new Error(`${where}: the menu offers the chat a second time`);
     await page.keyboard.press("Escape");
-    await page.getByTestId("workflow-menu-ask").waitFor({ state: "hidden" });
+    await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
 
     await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 
@@ -1287,6 +1289,15 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (await page.getByTestId("workflow-input-webhook").count())
       throw new Error(`${where}: a workflow without a hook explains the hook's body`);
     await capture("workflow-page-manual");
+    await page.getByTestId("workflow-menu").click();
+    await page.getByTestId("workflow-menu-delete").click();
+    const removal = (await text(page, "workflow-delete-confirm-consequence")) ?? "";
+    if (/webhook|zeitplan|schedule/i.test(removal))
+      throw new Error(
+        `${where}: deleting names a starter the workflow does not have: "${removal}"`,
+      );
+    await page.getByTestId("workflow-delete-confirm-cancel").click();
+    await page.getByTestId("workflow-delete-confirm").waitFor({ state: "hidden" });
 
     where = at("no address");
     state.address = false;
