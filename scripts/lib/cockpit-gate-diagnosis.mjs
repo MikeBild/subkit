@@ -213,13 +213,16 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
   ];
   for (const pattern of patterns) await page.route(pattern, handler);
 
-  const item = (index) => page.getByTestId(`workflow-diagnosis-${index}`);
+  const shown = (testId) => page.getByTestId(testId).filter({ visible: true }).first();
+  const item = (index) => shown(`workflow-diagnosis-${index}`);
   try {
     await stand.visit(page, `workflows/${workflowId}`);
     const section = page.getByTestId("workflow-diagnosis");
     await section.waitFor();
-    if ((await section.locator("li[data-code]").count()) !== 4)
-      throw new Error("The diagnosis does not list every refused step");
+    if ((await section.locator("[data-code]").filter({ visible: true }).count()) !== 4)
+      throw new Error("The diagnosis does not list every refused step as a row");
+    if ((await section.locator("li, p.text-muted-foreground").count()) !== 0)
+      throw new Error("The diagnosis stacks paragraphs instead of one row per step");
     const below = await page.evaluate(() => {
       const strip = document.querySelector('[data-testid="workflow-automation"]');
       const diagnosis = document.querySelector('[data-testid="workflow-diagnosis"]');
@@ -241,6 +244,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     const repairs = await page
       .getByTestId("detail-workflows")
       .getByText(de ? "Automatisch reparieren" : "Repair automatically", { exact: true })
+      .filter({ visible: true })
       .count();
     if (repairs !== 1) throw new Error(`The one computable repair is offered ${repairs} times`);
     const filled = await page
@@ -261,7 +265,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
       throw new Error("The cause block offers a remedy the panel below it owns");
     await assertSingleTriggers(page, `${locale}/gate-diagnosis`, { approvalOpeners: 0 });
 
-    const encoder = await item(0).getByTestId("workflow-diagnosis-0-cause").innerText();
+    const encoder = await shown("workflow-diagnosis-0-cause").innerText();
     const expected = de
       ? "Die Nachricht ist nicht korrekt als UTF-8 kodiert"
       : "The message is not correctly encoded as UTF-8";
@@ -272,27 +276,28 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     if ((await unknown.innerText()) !== "sent_on_a_sunday")
       throw new Error("A reason this build cannot word is not shown as the engine's value");
 
-    await item(0).getByTestId("workflow-diagnosis-0-repair").waitFor();
-    for (const index of [1, 2, 3])
-      if (await item(index).locator('button:not([data-testid$="-run"])').count())
-        throw new Error(`Block ${index} carries a button for an act that is not its own`);
-    const shared = section.getByTestId("workflow-diagnosis-actions");
-    await shared.getByTestId("workflow-diagnosis-prepare").waitFor();
-    const chat = await shared.getByTestId("workflow-diagnosis-chat").getAttribute("href");
-    if (!chat?.includes("/cockpit/chat/new?") || !chat.includes(`workflow_id=${workflowId}`))
-      throw new Error(`The author remedy does not open a chat about this workflow: ${chat}`);
-    const asked = new URL(chat, "http://x").searchParams.get("prompt") ?? "";
-    const authorSteps = await section
-      .locator('li[data-remedy="author"] p:first-child')
-      .allInnerTexts();
-    if (authorSteps.length !== 2) throw new Error("The fixture lost a step that needs an author");
-    for (const step of diagnosis()
+    await shown("workflow-diagnosis-0-repair").waitFor();
+    await shown("workflow-diagnosis-1-prepare").waitFor();
+    const fixes = ["-repair", "-review", "-prepare", "-chat"];
+    for (const index of [0, 1, 2, 3]) {
+      const own = await section
+        .locator(fixes.map((fix) => `[data-testid="workflow-diagnosis-${index}${fix}"]`).join(", "))
+        .filter({ visible: true })
+        .count();
+      if (own !== 1) throw new Error(`Row ${index} offers ${own} fixes, not its one`);
+    }
+    const authorSteps = diagnosis()
       .diagnoses.filter((entry) => entry.remedy_kind === "author")
-      .map((entry) => entry.subject.step_id))
+      .map((entry) => entry.subject.step_id);
+    if (authorSteps.length !== 2) throw new Error("The fixture lost a step that needs an author");
+    for (const [offset, step] of authorSteps.entries()) {
+      const chat = await shown(`workflow-diagnosis-${2 + offset}-chat`).getAttribute("href");
+      if (!chat?.includes("/cockpit/chat/new?") || !chat.includes(`workflow_id=${workflowId}`))
+        throw new Error(`The author remedy does not open a chat about this workflow: ${chat}`);
+      const asked = new URL(chat, "http://x").searchParams.get("prompt") ?? "";
       if (!asked.includes(step))
         throw new Error(`The conversation does not name step ${step}: ${asked}`);
-    if ((await section.locator('[data-testid$="-run"]').count()) !== 1)
-      throw new Error("The run that refused several steps is linked more than once");
+    }
 
     await page.getByTestId("workflow-tabs-tab-verlauf").click();
     const recent = page
@@ -307,12 +312,12 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await section.scrollIntoViewIfNeeded();
     await capture("cause");
 
-    await shared.getByTestId("workflow-diagnosis-prepare").click();
-    await shared.getByTestId("workflow-diagnosis-prepared").waitFor();
+    await shown("workflow-diagnosis-1-prepare").click();
+    await section.getByTestId("workflow-diagnosis-prepared").waitFor();
     if (prepareBodies.length !== 1 || JSON.stringify(prepareBodies[0]) !== '{"environment":"prod"}')
       throw new Error(`The trial run was not asked for exactly: ${JSON.stringify(prepareBodies)}`);
 
-    await item(0).getByTestId("workflow-diagnosis-0-repair").click();
+    await shown("workflow-diagnosis-0-repair").click();
     const sheet = page.getByTestId("attention-review");
     await sheet.waitFor();
     if (
@@ -331,13 +336,14 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     await sheet.waitFor({ state: "hidden" });
 
     await stand.visit(page, `workflows/${workflowId}`);
-    await section.getByTestId("workflow-diagnosis-review").waitFor();
-    if (await item(0).getByTestId("workflow-diagnosis-0-repair").count())
+    await shown("workflow-diagnosis-0-review").waitFor();
+    if (await page.getByTestId("workflow-diagnosis-0-repair").count())
       throw new Error("A filed repair is offered for filing again");
     await page.waitForLoadState("networkidle");
     const reviews = await page
       .getByTestId("detail-workflows")
       .getByText(de ? "Reparatur prüfen" : "Review the repair", { exact: true })
+      .filter({ visible: true })
       .count();
     if (reviews !== 1) throw new Error(`Reviewing the filed repair is offered ${reviews} times`);
     await assertSingleTriggers(page, `${locale}/gate-diagnosis-filed`, { approvalOpeners: 0 });
@@ -345,8 +351,8 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     current = false;
     repaired = false;
     await stand.visit(page, `workflows/${workflowId}`);
-    await item(0).getByTestId("workflow-diagnosis-0-note").waitFor();
-    if (await item(0).getByTestId("workflow-diagnosis-0-repair").count())
+    await shown("workflow-diagnosis-0-note").waitFor();
+    if (await page.getByTestId("workflow-diagnosis-0-repair").count())
       throw new Error("A draft's diagnosis offers a repair the engine would refuse");
     if (repairBodies.length !== 1) throw new Error("Visiting the page filed a repair");
   } finally {
