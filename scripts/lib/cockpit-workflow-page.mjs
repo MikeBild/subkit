@@ -471,6 +471,10 @@ export function api(state) {
     const path = url.pathname;
     if (path === `/v1/workflows/${WORKFLOW}`) return json(route, record(state));
     if (path === `/v1/workflows/${WORKFLOW}/invocation`) return json(route, invocation(state));
+    if (path === "/v1/identity/api-keys")
+      return json(route, {
+        items: state.noKeys ? [] : [{ id: CREATOR, name: "ci-deploy", revoked_at: null }],
+      });
     if (path === `/v1/workflows/${WORKFLOW}/draft`) {
       const waiting = state.scenario === "apply";
       return json(route, {
@@ -565,6 +569,7 @@ export const isPageApi = (url) => {
     pathname.includes(WORKFLOW) ||
     pathname.startsWith("/v1/schedules") ||
     pathname === "/v1/connectors" ||
+    pathname === "/v1/identity/api-keys" ||
     (["/v1/executions", "/v1/patch-candidates"].includes(pathname) &&
       searchParams.get("workflow_id") === WORKFLOW)
   );
@@ -616,6 +621,7 @@ const WORDS = {
     run: "Ausführen",
     required: "Pflicht",
     previewOnly: "Ohne Freigabe läuft nur ein Probelauf ohne Wirkung.",
+    bearer: "API-Schlüssel als Bearer-Token",
     noAddress: "keine öffentliche Adresse",
     where: "Die Eingabe steht im Body unter „input“. Query-Parameter gibt es nicht.",
     webhookBody: "input.body",
@@ -651,6 +657,7 @@ const WORDS = {
     run: "Run",
     required: "required",
     previewOnly: "Without approval this is only a trial run without effect.",
+    bearer: "API key as bearer token",
     noAddress: "No public address",
     where: "Input goes in the request body under “input”. There are no query parameters.",
     webhookBody: "input.body",
@@ -853,6 +860,12 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       if (!call.includes(part)) throw new Error(`${where}: the call lacks ${part}`);
     if (call.includes("x-subkit-tenant"))
       throw new Error(`${where}: the call sends a tenant header`);
+    if (!((await text(page, "workflow-invocation-http-method")) ?? "").includes("POST"))
+      throw new Error(`${where}: the call does not name its method`);
+    if (!((await text(page, "workflow-invocation-http-auth")) ?? "").includes(words.bearer))
+      throw new Error(`${where}: the call does not say how it signs in`);
+    if (await page.getByTestId("workflow-invocation-create-key").count())
+      throw new Error(`${where}: a caller who holds a key is asked to create one`);
     await page.getByTestId("workflow-invocation-responses").hover();
     const tip = page.locator('[data-slot="tooltip-content"]');
     await tip.first().waitFor({ state: "visible" });
@@ -1272,8 +1285,15 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
 
     where = at("no address");
     state.address = false;
+    state.noKeys = true;
     await open(page, stand, state, "manual");
     await page.getByTestId("workflow-invocation-no-address").waitFor();
+    const createKey = page.getByTestId("workflow-invocation-create-key");
+    await createKey.waitFor();
+    if (
+      !((await createKey.getAttribute("href")) ?? "").endsWith("/cockpit/api-access?section=keys")
+    )
+      throw new Error(`${where}: "create a key" does not lead to the keys`);
     const path = (await fieldValue(page, "workflow-invocation-http-url")) ?? "";
     if (!path.includes("/v1/executions") || path.includes("http"))
       throw new Error(`${where}: the address reads "${path}"`);
