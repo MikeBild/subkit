@@ -8,6 +8,7 @@ import {
   ActionMenu,
   type CockpitColumn,
   CodeBlock,
+  ContextHelp,
   type Fact,
   FactList,
   RecordSheet,
@@ -126,16 +127,21 @@ export function WorkflowTestRun({
 }) {
   const { t } = useI18n();
   return (
-    <ActionMenu
-      items={[
-        {
-          label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
-          disabled: steps.running !== null,
-          onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
-          testId: "workflow-test-run",
-        },
-      ]}
-    />
+    <span className="flex items-center gap-1">
+      <ActionMenu
+        items={[
+          {
+            label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
+            disabled: steps.running !== null,
+            onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
+            testId: "workflow-test-run",
+          },
+        ]}
+      />
+      <ContextHelp label={t("workflow.testRun")} testId="workflow-test-run-help">
+        {t("workflow.testRunSecondary")}
+      </ContextHelp>
+    </span>
   );
 }
 
@@ -304,6 +310,14 @@ export function WorkflowStepsList({
           canRun={canRun}
           steps={steps}
           onClose={() => setOpen(null)}
+          {...(editor
+            ? {
+                onEdit: () => {
+                  setOpen(null);
+                  setEditing(open);
+                },
+              }
+            : {})}
         />
       ) : null}
       {editor && editing !== null ? (
@@ -326,6 +340,7 @@ function StepSheet({
   canRun,
   steps,
   onClose,
+  onEdit,
 }: {
   view: WorkflowStepView;
   index: number;
@@ -333,6 +348,7 @@ function StepSheet({
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const { t } = useI18n();
   const testId = `workflow-step-${index}`;
@@ -371,6 +387,15 @@ function StepSheet({
       onOpenChange={(next) => !next && onClose()}
       title={<span className="font-mono">{definition.id}</span>}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
+      menu={
+        onEdit ? (
+          <ActionMenu
+            items={[
+              { label: t("stepEditor.edit"), onSelect: onEdit, testId: `${testId}-sheet-edit` },
+            ]}
+          />
+        ) : undefined
+      }
       action={
         canRun ? (
           <ActionMenu

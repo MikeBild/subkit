@@ -204,7 +204,9 @@ export function RunWorkflowDialog({
   workflowName,
   version,
   versionId,
+  quiet = false,
 }: {
+  quiet?: boolean;
   workflowId: string;
   workflowName: string;
   version: string | null;
@@ -321,7 +323,7 @@ export function RunWorkflowDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button data-testid="workflow-run-open">
+        <Button variant={quiet ? "outline" : "default"} data-testid="workflow-run-open">
           <Play data-icon="inline-start" />
           {t("run.action")}
         </Button>

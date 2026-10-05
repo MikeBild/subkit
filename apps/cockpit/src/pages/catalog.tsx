@@ -1,14 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
-import { Bot, FolderTree } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref, workflowsHref } from "@/app/links";
 import { CreateAction } from "@/components/cockpit/create-choice";
-import { IconButton } from "@/components/cockpit/icon-button";
 import {
   Button,
   type CockpitColumn,
@@ -363,7 +362,6 @@ export function CatalogPage({
   useConnectionCallback(resource === "connectors");
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
-  const [recategorize, setRecategorize] = useState<CatalogRow | null>(null);
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
@@ -431,12 +429,7 @@ export function CatalogPage({
   const rows = list.items;
   const total = list.total ?? rows.length;
   const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
-  const categoryCounts = useMemo(
-    () => new Map(categories.map((entry) => [entry.category, entry.count])),
-    [categories],
-  );
   const title = t(config.titleKey);
-  const canRecategorize = resource === "workflows" && permissions.includes("workflow:write");
   const hasActiveFilters =
     Boolean(state.q) ||
     state.status !== "all" ||
@@ -612,42 +605,12 @@ export function CatalogPage({
           if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
         }}
         rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
-        {...(canRecategorize
-          ? {
-              rowActions: (row: CatalogRow, index: number) => (
-                <IconButton
-                  variant="ghost"
-                  size="icon-sm"
-                  label={t("catalog.changeCategory")}
-                  data-testid={`catalog-recategorize-${index}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setRecategorize(row);
-                  }}
-                >
-                  <FolderTree />
-                </IconButton>
-              ),
-            }
-          : {})}
         total={total}
         infinite={list.infinite}
         columnsLabel={t("catalog.columns")}
         recordsLabel={t("catalog.records")}
         actionsLabel={t("common.actions")}
       />
-      {recategorize && (
-        <RecategorizeDialog
-          row={recategorize}
-          categories={categories}
-          counts={categoryCounts}
-          onClose={() => setRecategorize(null)}
-          onDone={() => {
-            setRecategorize(null);
-            void query.refetch();
-          }}
-        />
-      )}
     </Page>
   );
 }

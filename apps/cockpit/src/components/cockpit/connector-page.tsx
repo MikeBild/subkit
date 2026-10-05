@@ -370,7 +370,7 @@ export function ConnectorPage({
       content: (
         <>
           {typeof record.slug === "string" && permissions.includes("workflow:read") ? (
-            <ConnectorWorkflows slug={record.slug} />
+            <ConnectorWorkflows slug={record.slug} connectorId={id} />
           ) : null}
           {permissions.includes("conversation:read") ? (
             <ConversationsAbout target={{ connector_id: id }} />

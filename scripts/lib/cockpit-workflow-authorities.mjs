@@ -1000,7 +1000,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     )
       throw new Error("Grant ignores the environment the workflow runs in");
     await page.getByTestId("authority-grant-review").waitFor();
-    await page.getByTestId("authority-grant-review").locator("summary").last().click();
+    await page.getByTestId("authority-effect-requests-toggle").click();
     await capture("grant");
     if (
       !(await page.getByTestId("authority-grant-review").innerText()).includes(
