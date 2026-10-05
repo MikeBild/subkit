@@ -1,16 +1,7 @@
 import type { components } from "@/api/schema";
-import { absolute, connectorHref } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 
 type EffectiveTrigger = components["schemas"]["EffectiveTrigger"];
-
-export function connectorSlugHref(
-  slug: string,
-  slugToId: ReadonlyMap<string, string>,
-): string | null {
-  const id = slugToId.get(slug);
-  return id ? absolute(connectorHref(id)) : null;
-}
 
 const ON_REQUEST: TranslationKey = "workflows.trigger.request";
 

@@ -185,11 +185,15 @@ function LinkedCell({
 const INTERACTIVE =
   'a, button, input, select, textarea, label, summary, [role="menuitem"], [role="checkbox"], [role="combobox"]';
 
-function fromInteractive(event: MouseEvent<HTMLElement>): boolean {
-  const target = event.target;
-  if (!(target instanceof Element)) return false;
+function isElement(target: EventTarget | null): target is Element {
+  return target !== null && typeof (target as Partial<Element>).closest === "function";
+}
+
+export function opensRow(event: { target: EventTarget | null; currentTarget: Element }): boolean {
+  const { target, currentTarget } = event;
+  if (!isElement(target) || !currentTarget.contains(target)) return false;
   const control = target.closest(INTERACTIVE);
-  return control !== null && event.currentTarget.contains(control);
+  return control === null || !currentTarget.contains(control);
 }
 
 function isPlainClick(event: MouseEvent): boolean {
@@ -278,6 +282,7 @@ export function DataTable<TData extends RowData>({
   rowActions,
   collectionId = "data-table",
   collectionTier = "primary",
+  pickColumns = true,
   searchLabel = "Tabelle durchsuchen",
   searchText = (row) => JSON.stringify(row) ?? "",
   showDefaultSearch,
@@ -305,6 +310,7 @@ export function DataTable<TData extends RowData>({
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
+  pickColumns?: boolean;
   searchLabel?: string;
   searchText?: (row: TData) => string;
   showDefaultSearch?: boolean;
@@ -348,7 +354,7 @@ export function DataTable<TData extends RowData>({
     .getAllLeafColumns()
     .filter((column) => column.getCanHide() && typeof column.columnDef.header === "string");
   const showColumnPicker = useColumnToggleClaim(
-    collectionTier === "primary" && hideableColumns.length > 1,
+    pickColumns && collectionTier === "primary" && hideableColumns.length > 1,
   );
   const hasActionColumn = Boolean(rowActions);
   const hasChevron = Boolean(onOpen);
@@ -591,8 +597,7 @@ export function DataTable<TData extends RowData>({
                     onClick={
                       open
                         ? (event) => {
-                            if (fromInteractive(event)) return;
-                            open();
+                            if (opensRow(event)) open();
                           }
                         : undefined
                     }
@@ -724,8 +729,7 @@ export function DataTable<TData extends RowData>({
                   onClick={
                     open
                       ? (event) => {
-                          if (fromInteractive(event)) return;
-                          open();
+                          if (opensRow(event)) open();
                         }
                       : undefined
                   }

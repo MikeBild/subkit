@@ -337,7 +337,7 @@ describe("the sign-in card's one line and one action", () => {
       "connectorCredentials.signIn",
       "connectorCredentials.signInAtProvider",
       "connectorCredentials.enterKey",
-      "connectorCredentials.partial",
+      "connectorCredentials.missingScopes",
       "connectorState.off",
       "connectorState.signedIn",
       "connectorState.signedInOff",

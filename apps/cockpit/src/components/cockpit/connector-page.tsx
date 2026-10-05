@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -32,7 +31,6 @@ import {
   Section,
   StatusBadge,
   StatusStrip,
-  searchWithTab,
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -186,11 +184,9 @@ export function ConnectorPage({
   returned: boolean;
 }) {
   const { t } = useI18n();
-  const router = useRouter();
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const canWrite = permissions.includes("connector:write");
   const canTest = permissions.includes("connector:test");
   const canChat = permissions.includes("conversation:write");
@@ -298,11 +294,7 @@ export function ConnectorPage({
     returned: notice === "signed_in" || notice === "signed_in_off",
     rights: { write: canWrite, test: canTest },
   });
-  const toConnection = () => {
-    setShowKey(true);
-    const search = searchWithTab(window.location.search, "tab", "verbindung", "verwendung");
-    router.history.replace(`${window.location.pathname}${search}${window.location.hash}`);
-  };
+  const toConnection = () => setEditing(true);
   const act = (action: ConnectorStripAction) => {
     switch (action.kind) {
       case "enable":
@@ -394,8 +386,6 @@ export function ConnectorPage({
               signsInAtProvider={signInRoute !== null}
               state={auth}
               canWrite={canWrite}
-              showKey={showKey}
-              onShowKey={setShowKey}
               stateInStrip={strip.kind === "connected"}
               providerUrl={
                 probe.data && !probe.data.ok ? (probe.data.provider_action_url ?? null) : null

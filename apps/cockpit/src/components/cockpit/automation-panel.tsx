@@ -38,6 +38,7 @@ import { cronWords } from "@/lib/cron-words";
 import { grantOpeningNotice, hookStartedOnly, OPENING_NOTICE_KEYS } from "@/lib/grant-context";
 import { formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
+import { liveRunEnvironment, type RunEnvironment } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import type { WorkflowAuthorityList } from "@/lib/workflow-authorities";
@@ -73,6 +74,7 @@ export interface WorkflowAutomation {
   rejectedRepairs: readonly string[];
   noteRejectedRepair: (stepId: string) => void;
   refresh: () => void;
+  runEnvironment: RunEnvironment | null | undefined;
 }
 
 export function useWorkflowAutomation(
@@ -227,6 +229,8 @@ export function useWorkflowAutomation(
     noteRejectedRepair: (stepId) =>
       setRejectedRepairs((steps) => (steps.includes(stepId) ? steps : [...steps, stepId])),
     refresh,
+    runEnvironment:
+      items === null || authorities.error ? undefined : liveRunEnvironment(items, now),
   };
 }
 

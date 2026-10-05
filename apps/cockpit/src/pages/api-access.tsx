@@ -18,6 +18,7 @@ import {
   ContextHelp,
   CopyField,
   DataState,
+  FactList,
   Field,
   FieldGroup,
   FieldLabel,
@@ -27,6 +28,8 @@ import {
   PageHeader,
   type PageTab,
   PageTabs,
+  RecordSheet,
+  RowName,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -61,6 +64,17 @@ const SECTION_TITLE_KEYS = {
   keys: "apiAccess.section.keys",
   clients: "apiAccess.section.clients",
 } as const;
+
+function KeyBadge({ apiKey, now }: { apiKey: ApiKeyItem; now: number }) {
+  const { t } = useI18n();
+  if (apiKey.revoked_at) return <StatusBadge state="revoked" label={t("apiKeys.revokedBadge")} />;
+  const state = keyState(apiKey, now);
+  return state ? (
+    <StatusBadge state={state.kind} label={keyStateText(state, t)} />
+  ) : (
+    <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+  );
+}
 
 export function ApiAccessPage() {
   const { t } = useI18n();
@@ -195,6 +209,7 @@ function KeysSection({
   const canRevoke = session.permissions.includes("api_key:revoke");
   const [rotating, setRotating] = useState<ApiKeyItem | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyItem | null>(null);
+  const [opened, setOpened] = useState<ApiKeyItem | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: API_KEYS_QUERY });
 
   const rotate = useMutation({
@@ -205,6 +220,7 @@ function KeysSection({
       ),
     onSuccess: async (result) => {
       setRotating(null);
+      setOpened(null);
       onIssued(result.new.plaintext_key);
       await refresh();
       if (result.old.rotating_out_at)
@@ -217,6 +233,7 @@ function KeysSection({
       apiRequest<void>(`/v1/identity/api-keys/${encodeURIComponent(id)}`, { method: "DELETE" }),
     onSuccess: async () => {
       setRevoking(null);
+      setOpened(null);
       await refresh();
       toast.success(t("apiKeys.revoked"));
     },
@@ -232,32 +249,11 @@ function KeysSection({
         (key) => key.name,
         t("apiAccess.column.name"),
         (key) => (
-          <span className="block min-w-0">
-            <span className="block truncate font-medium">{key.name || t("apiKeys.unnamed")}</span>
-            <span className="block truncate font-mono text-xs text-muted-foreground">
-              {key.prefix}
-            </span>
+          <span className="block truncate font-medium">
+            <RowName>{key.name || t("apiKeys.unnamed")}</RowName>
           </span>
         ),
-        { width: "w-[24%]" },
-      ),
-      column.custom(
-        "state",
-        (key) => keyState(key, nowMs)?.kind ?? "active",
-        t("apiAccess.column.state"),
-        (key, index) => {
-          if (key.revoked_at)
-            return <StatusBadge state="revoked" label={t("apiKeys.revokedBadge")} />;
-          const state = keyState(key, nowMs);
-          return state ? (
-            <span data-testid={`api-key-${state.kind}-${index}`} data-key-state={state.kind}>
-              <StatusBadge state={state.kind} label={keyStateText(state, t)} />
-            </span>
-          ) : (
-            <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
-          );
-        },
-        { width: "w-[18%]" },
+        { width: "w-[30%]", ownsRowLink: true },
       ),
       column.custom(
         "scopes",
@@ -275,7 +271,25 @@ function KeysSection({
             </span>
           );
         },
-        { width: "w-[26%]" },
+        { width: "w-[30%]" },
+      ),
+      column.custom(
+        "state",
+        (key) => keyState(key, nowMs)?.kind ?? "active",
+        t("apiAccess.column.state"),
+        (key, index) => {
+          if (key.revoked_at)
+            return <StatusBadge state="revoked" label={t("apiKeys.revokedBadge")} />;
+          const state = keyState(key, nowMs);
+          return state ? (
+            <span data-testid={`api-key-${state.kind}-${index}`} data-key-state={state.kind}>
+              <StatusBadge state={state.kind} label={keyStateText(state, t)} />
+            </span>
+          ) : (
+            <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+          );
+        },
+        { width: "w-[20%]" },
       ),
       column.custom(
         "last_used_at",
@@ -288,41 +302,32 @@ function KeysSection({
               : t("apiKeys.neverUsed")}
           </span>
         ),
-        { width: "w-[14%]" },
-      ),
-      column.custom(
-        "expires_at",
-        (key) => key.expires_at,
-        t("apiAccess.column.expires"),
-        (key) =>
-          key.revoked_at
-            ? dateTime(key.revoked_at)
-            : key.rotating_out_at
-              ? dateTime(key.rotating_out_at)
-              : key.expires_at
-                ? dateTime(key.expires_at)
-                : t("apiKeys.noExpiry"),
-        { width: "w-[18%]" },
+        { width: "w-[20%]" },
       ),
     ];
-  }, [t, dateTime, locale, nowMs]);
+  }, [t, locale, nowMs]);
 
   const groups = groupApiKeys(query.data?.items ?? []);
-  const keyActions = (key: ApiKeyItem, index: number) => {
+  const keyMenu = (key: ApiKeyItem, prefix: string) => {
     const items: ActionMenuItem[] = [];
+    if (key.revoked_at) return items;
     if (canRotate)
       items.push({
         label: t("apiKeys.rotate"),
         onSelect: () => setRotating(key),
-        testId: `api-key-rotate-${index}`,
+        testId: `${prefix}-rotate`,
       });
     if (canRevoke)
       items.push({
         label: t("apiKeys.revoke"),
         onSelect: () => setRevoking(key),
         destructive: true,
-        testId: `api-key-revoke-${index}`,
+        testId: `${prefix}-revoke`,
       });
+    return items;
+  };
+  const keyActions = (key: ApiKeyItem, index: number) => {
+    const items = keyMenu(key, `api-key-${index}`);
     if (items.length === 0) return null;
     return (
       <span data-action-scope="api-key">
@@ -357,6 +362,8 @@ function KeysSection({
         empty={total === 0 ? t("apiKeys.emptyTitle") : t("apiKeys.noneActive")}
         emptyAction={total === 0 ? emptyAction : undefined}
         rowActions={keyActions}
+        onOpen={(key: ApiKeyItem) => setOpened(key)}
+        rowLabel={(key) => t("apiKeys.openRow", { name: key.name || t("apiKeys.unnamed") })}
       />
       {groups.revoked.length > 0 ? (
         <CollapsibleSection
@@ -373,9 +380,55 @@ function KeysSection({
             resource={t("apiAccess.section.keys")}
             onRetry={() => void query.refetch()}
             empty={t("apiKeys.emptyTitle")}
+            onOpen={(key: ApiKeyItem) => setOpened(key)}
+            rowLabel={(key) => t("apiKeys.openRow", { name: key.name || t("apiKeys.unnamed") })}
           />
         </CollapsibleSection>
       ) : null}
+      <RecordSheet
+        open={opened !== null}
+        onOpenChange={(next) => !next && setOpened(null)}
+        title={opened?.name || t("apiKeys.unnamed")}
+        badge={opened ? <KeyBadge apiKey={opened} now={nowMs} /> : null}
+        menu={
+          opened && keyMenu(opened, "api-key-sheet").length > 0 ? (
+            <ActionMenu items={keyMenu(opened, "api-key-sheet")} testId="api-key-sheet-menu" />
+          ) : null
+        }
+        testId="api-key-sheet"
+      >
+        {opened ? (
+          <FactList
+            testId="api-key-sheet-facts"
+            items={[
+              { label: t("apiKeys.scopes"), value: scopeWords(opened.scopes, t) },
+              { label: t("apiKeys.created"), value: dateTime(opened.created_at) },
+              {
+                label: t("apiAccess.column.lastUsed"),
+                value: opened.last_used_at
+                  ? formatRelativeTime(locale, opened.last_used_at)
+                  : t("apiKeys.neverUsed"),
+              },
+              {
+                label: t("apiAccess.column.expires"),
+                value: opened.revoked_at
+                  ? dateTime(opened.revoked_at)
+                  : opened.rotating_out_at
+                    ? dateTime(opened.rotating_out_at)
+                    : opened.expires_at
+                      ? dateTime(opened.expires_at)
+                      : t("apiKeys.noExpiry"),
+              },
+              {
+                label: t("apiKeys.prefix"),
+                value: <span className="font-mono text-xs">{opened.prefix}</span>,
+                help: t("apiKeys.prefixHelp"),
+                testId: "api-key-sheet-prefix",
+              },
+            ]}
+          />
+        ) : null}
+      </RecordSheet>
       <ConfirmDialog
         open={Boolean(rotating)}
         onOpenChange={(next) => !next && setRotating(null)}

@@ -6,8 +6,10 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { ListTable } from "@/components/cockpit/list-table";
 import {
+  ActionMenu,
   Button,
   type CockpitColumn,
+  ConfirmDialog,
   FactList,
   Field,
   FieldGroup,
@@ -37,6 +39,7 @@ import {
   INBOX_TARGET,
   platformLabel,
   ruleNameLabel,
+  rulesUsing,
   ruleTarget,
   SEVERITIES,
   type Severity,
@@ -344,12 +347,14 @@ export function NotificationSettings({
       <RuleSheet
         rule={ruleOpen}
         target={ruleOpen ? ruleTargetText(t, ruleOpen, channelItems) : ""}
+        canWrite={canWrite}
         onClose={() => setRuleOpen(null)}
       />
       <ChannelSheet
         channel={channelOpen}
         now={now}
         canWrite={canWrite}
+        usedBy={channelOpen ? rulesUsing(channelOpen, ruleItems) : 0}
         onClose={() => setChannelOpen(null)}
       />
       <CreateRuleDialog open={createRule} onOpenChange={onCreateRule} channels={channelItems} />
@@ -358,41 +363,108 @@ export function NotificationSettings({
   );
 }
 
+function useNotificationDelete(
+  kind: "rules" | "channels",
+  onDeleted: () => void,
+): { pending: boolean; remove(id: string): Promise<void> } {
+  const { t } = useI18n();
+  const client = useQueryClient();
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest(`/v1/notifications/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: kind === "rules" ? RULES_QUERY : CHANNELS_QUERY });
+      toast.success(
+        t(kind === "rules" ? "notifications.ruleDeleted" : "notifications.channelDeleted"),
+      );
+      onDeleted();
+    },
+    onError: () =>
+      toast.error(
+        t(
+          kind === "rules" ? "notifications.ruleDeleteFailed" : "notifications.channelDeleteFailed",
+        ),
+      ),
+  });
+  return {
+    pending: remove.isPending,
+    remove: async (id) => {
+      await remove.mutateAsync(id).catch(() => undefined);
+    },
+  };
+}
+
 function RuleSheet({
   rule,
   target,
+  canWrite,
   onClose,
 }: {
   rule: NotificationRuleItem | null;
   target: string;
+  canWrite: boolean;
   onClose(): void;
 }) {
   const { t } = useI18n();
+  const [confirming, setConfirming] = useState(false);
+  const deletion = useNotificationDelete("rules", () => {
+    setConfirming(false);
+    onClose();
+  });
   return (
-    <RecordSheet
-      open={Boolean(rule)}
-      onOpenChange={(open) => !open && onClose()}
-      title={rule ? ruleNameLabel(rule, t) : ""}
-      badge={
-        rule ? (
-          <StatusBadge
-            state={rule.active ? "active" : "paused"}
-            label={t(rule.active ? "notifications.active" : "notifications.paused")}
+    <>
+      <RecordSheet
+        open={Boolean(rule)}
+        onOpenChange={(open) => !open && onClose()}
+        title={rule ? ruleNameLabel(rule, t) : ""}
+        badge={
+          rule ? (
+            <StatusBadge
+              state={rule.active ? "active" : "paused"}
+              label={t(rule.active ? "notifications.active" : "notifications.paused")}
+            />
+          ) : null
+        }
+        menu={
+          rule && canWrite ? (
+            <ActionMenu
+              items={[
+                {
+                  label: t("notifications.deleteRule"),
+                  destructive: true,
+                  onSelect: () => setConfirming(true),
+                  testId: "notifications-rule-delete",
+                },
+              ]}
+            />
+          ) : null
+        }
+        testId="notifications-rule-sheet"
+      >
+        {rule ? (
+          <FactList
+            items={[
+              { label: t("notifications.column.events"), value: <RuleEvents rule={rule} /> },
+              { label: t("notifications.column.severity"), value: severityWord(t, rule.severity) },
+              { label: t("notifications.column.target"), value: target },
+            ]}
           />
-        ) : null
-      }
-      testId="notifications-rule-sheet"
-    >
+        ) : null}
+      </RecordSheet>
       {rule ? (
-        <FactList
-          items={[
-            { label: t("notifications.column.events"), value: <RuleEvents rule={rule} /> },
-            { label: t("notifications.column.severity"), value: severityWord(t, rule.severity) },
-            { label: t("notifications.column.target"), value: target },
-          ]}
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          object={ruleNameLabel(rule, t)}
+          verb={t("notifications.delete")}
+          consequence={t("notifications.deleteRuleConsequence")}
+          destructive
+          pending={deletion.pending}
+          onConfirm={() => deletion.remove(rule.id)}
+          testId="notifications-rule-delete-confirm"
         />
       ) : null}
-    </RecordSheet>
+    </>
   );
 }
 
@@ -400,15 +472,22 @@ function ChannelSheet({
   channel,
   now,
   canWrite,
+  usedBy,
   onClose,
 }: {
   channel: NotificationChannelItem | null;
   now: number;
   canWrite: boolean;
+  usedBy: number;
   onClose(): void;
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const deletion = useNotificationDelete("channels", () => {
+    setConfirming(false);
+    onClose();
+  });
   const resume = useMutation({
     mutationFn: (id: string) =>
       apiRequest(`/v1/notifications/channels/${encodeURIComponent(id)}`, {
@@ -429,60 +508,91 @@ function ChannelSheet({
   });
   const delivery = channel ? deliveryState(channel, now) : null;
   return (
-    <RecordSheet
-      open={Boolean(channel)}
-      onOpenChange={(open) => !open && onClose()}
-      title={channel ? <LabelText label={platformLabel(channel.platform, t)} /> : ""}
-      badge={
-        channel ? (
-          <StatusBadge
-            state={channel.active ? "active" : "paused"}
-            label={t(channel.active ? "notifications.active" : "notifications.paused")}
+    <>
+      <RecordSheet
+        open={Boolean(channel)}
+        onOpenChange={(open) => !open && onClose()}
+        title={channel ? <LabelText label={platformLabel(channel.platform, t)} /> : ""}
+        badge={
+          channel ? (
+            <StatusBadge
+              state={channel.active ? "active" : "paused"}
+              label={t(channel.active ? "notifications.active" : "notifications.paused")}
+            />
+          ) : null
+        }
+        action={
+          channel && !channel.active && canWrite ? (
+            <Button
+              variant="outline"
+              pending={resume.isPending}
+              onClick={() => resume.mutate(channel.id)}
+              data-testid="notifications-channel-resume"
+            >
+              {t("notifications.resume")}
+            </Button>
+          ) : null
+        }
+        menu={
+          channel && canWrite ? (
+            <ActionMenu
+              items={[
+                {
+                  label: t("notifications.deleteChannel"),
+                  destructive: true,
+                  disabled: usedBy > 0,
+                  disabledReason: t("notifications.channelInUse", { count: String(usedBy) }),
+                  onSelect: () => setConfirming(true),
+                  testId: "notifications-channel-delete",
+                },
+              ]}
+            />
+          ) : null
+        }
+        testId="notifications-channel-sheet"
+      >
+        {channel && delivery ? (
+          <FactList
+            items={[
+              {
+                label: t("notifications.column.delivery"),
+                value: deliveryBadge(t, delivery),
+                help:
+                  delivery.kind === "suspended"
+                    ? `${t("notifications.suspendedCause", { count: String(delivery.failures) })} ${
+                        delivery.until
+                          ? t("notifications.suspendedUntil", { time: dateTime(delivery.until) })
+                          : t("notifications.suspendedRetry")
+                      }`
+                    : !channel.active
+                      ? t("notifications.pausedCause")
+                      : undefined,
+              },
+              {
+                label: t("notifications.column.limit"),
+                value: t("notifications.channelLimit", {
+                  severity: severityWord(t, channel.default_severity),
+                  limit: String(channel.rate_limit_per_minute),
+                }),
+              },
+            ]}
           />
-        ) : null
-      }
-      action={
-        channel && !channel.active && canWrite ? (
-          <Button
-            variant="outline"
-            pending={resume.isPending}
-            onClick={() => resume.mutate(channel.id)}
-            data-testid="notifications-channel-resume"
-          >
-            {t("notifications.resume")}
-          </Button>
-        ) : null
-      }
-      testId="notifications-channel-sheet"
-    >
-      {channel && delivery ? (
-        <FactList
-          items={[
-            {
-              label: t("notifications.column.delivery"),
-              value: deliveryBadge(t, delivery),
-              help:
-                delivery.kind === "suspended"
-                  ? `${t("notifications.suspendedCause", { count: String(delivery.failures) })} ${
-                      delivery.until
-                        ? t("notifications.suspendedUntil", { time: dateTime(delivery.until) })
-                        : t("notifications.suspendedRetry")
-                    }`
-                  : !channel.active
-                    ? t("notifications.pausedCause")
-                    : undefined,
-            },
-            {
-              label: t("notifications.column.limit"),
-              value: t("notifications.channelLimit", {
-                severity: severityWord(t, channel.default_severity),
-                limit: String(channel.rate_limit_per_minute),
-              }),
-            },
-          ]}
+        ) : null}
+      </RecordSheet>
+      {channel ? (
+        <ConfirmDialog
+          open={confirming}
+          onOpenChange={setConfirming}
+          object={platformLabel(channel.platform, t).text}
+          verb={t("notifications.remove")}
+          consequence={t("notifications.deleteChannelConsequence")}
+          destructive
+          pending={deletion.pending}
+          onConfirm={() => deletion.remove(channel.id)}
+          testId="notifications-channel-delete-confirm"
         />
       ) : null}
-    </RecordSheet>
+    </>
   );
 }
 

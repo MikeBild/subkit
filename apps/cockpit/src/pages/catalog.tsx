@@ -6,27 +6,30 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, recordHref, runsHref, workflowsHref } from "@/app/links";
+import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
   type CockpitColumn,
+  ContextHelp,
   DataState,
   DataTable,
+  Field,
+  FieldLabel,
   FilterBar,
   type FilterSelect,
   FormDialog,
   Page,
   PageHeader,
-  RowName,
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  StatusBadge,
 } from "@/components/cockpit/patterns";
-import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
+import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -41,17 +44,16 @@ import {
 } from "@/lib/workflow-category";
 import { catalogListParams } from "@/pages/catalog-model";
 import { useConnectionCallback } from "@/pages/connection-callback";
-import { driverLabel, environmentLabel } from "@/pages/connector-detail-model";
+import { driverLabel } from "@/pages/connector-detail-model";
 import {
   type ConnectorHealthFilter,
   connectorHealthFilterFromUrl,
   workflowsByConnector,
 } from "@/pages/connectors-model";
-import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
+import { triggerLabelKey } from "@/pages/workflows-model";
 
 type CatalogResource = "workflows" | "connectors";
 type CatalogRow = Record<string, unknown>;
-type ConnectorListItem = components["schemas"]["ConnectorListItem"];
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
 
 interface CatalogState {
@@ -100,7 +102,7 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     emptyKey: "resource.connectors.empty",
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
-    statuses: ["enabled", "disabled", "ok", "degraded", "needs_reauth"],
+    statuses: [],
   },
 };
 
@@ -112,7 +114,9 @@ function parseState(config: CatalogConfig): CatalogState {
   const order = params.get("order");
   return {
     q: params.get("q") ?? "",
-    status: params.get("status") ?? "all",
+    status: config.statuses.includes(params.get("status") ?? "")
+      ? (params.get("status") ?? "all")
+      : "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
     health:
@@ -158,13 +162,6 @@ function stringField(row: CatalogRow, field: string): string | null {
   return typeof value === "string" && value ? value : null;
 }
 
-function stringList(row: CatalogRow, field: string): string[] {
-  const value = row[field];
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
 function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
   const { t } = useI18n();
   const state = stringField(row, "health_state");
@@ -198,155 +195,83 @@ function catalogColumns(
   t: ReturnType<typeof useI18n>["t"],
   dateTime: ReturnType<typeof useI18n>["dateTime"],
   relations: {
-    connectorIdBySlug: ReadonlyMap<string, string>;
     workflowsByConnectorSlug: ReadonlyMap<string, { id: string; name: string }[]>;
     canReadWorkflows: boolean;
-    onCategory(category: string): void;
   },
 ): CockpitColumn<CatalogRow>[] {
   const column = tableColumns<CatalogRow>({ t, dateTime });
 
   if (resource === "workflows") {
     return [
-      column.custom(
-        "name",
-        (row) => row.name,
-        t("common.name"),
-        (row, index) => (
-          <span className="flex min-w-0 flex-col gap-1">
-            <span className="min-w-0 font-medium">
-              <RowName>{stringField(row, "name") ?? MISSING}</RowName>
-            </span>
-            <HealthMark row={row} index={index} />
-          </span>
-        ),
-        { sortable: true, width: "w-[21%]", ownsRowLink: true, interactive: true },
-      ),
-      column.status("lifecycle", (row) => row.lifecycle, t("catalog.lifecycle"), {
+      column.text("name", (row) => row.name, t("common.name"), {
         sortable: true,
-        width: "w-[11%]",
+        width: "w-[38%]",
       }),
-      column.custom(
-        "category",
-        (row) => row.category,
-        t("catalog.block"),
-        (row, index) => {
-          const category = stringField(row, "category");
-          if (!category) return MISSING;
-          return (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="-ml-2 h-auto py-1 font-normal"
-              data-testid={`catalog-block-${index}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                relations.onCategory(category);
-              }}
-            >
-              {categoryLabel(category, t)}
-            </Button>
-          );
-        },
-        { width: "w-[12%]" },
-      ),
-      column.chips(
-        "connectors",
-        (row) =>
-          stringList(row, "connectors").map((slug) => ({
-            href: connectorSlugHref(slug, relations.connectorIdBySlug),
-            label: slug,
-          })),
-        t("resource.connectors.title"),
-        { width: "w-[16%]" },
-      ),
       column.custom(
         "trigger",
         (row) => row.effective_trigger,
         t("catalog.trigger"),
         (row) => t(triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"])),
-        { width: "w-[11%]" },
+        { width: "w-[18%]" },
       ),
       column.custom(
-        "last_executed_at",
-        (row) => row.last_executed_at,
-        t("catalog.lastRun"),
+        "lifecycle",
+        (row) => row.lifecycle,
+        t("catalog.status"),
         (row, index) => {
-          const at = stringField(row, "last_executed_at");
-          const id = stringField(row, "id");
-          if (!at) return MISSING;
-          return id ? (
-            <a
-              href={absolute(runsHref({ workflowId: id }))}
-              className="underline-offset-4 hover:underline"
-              data-testid={`workflow-last-run-${index}`}
-              onClick={(event) => event.stopPropagation()}
-            >
-              {dateTime(at)}
-            </a>
-          ) : (
-            dateTime(at)
+          const lifecycle = stringField(row, "lifecycle");
+          return (
+            <span className="flex min-w-0 flex-col items-start gap-1">
+              {lifecycle ? (
+                <StatusBadge state={lifecycle} label={statusLabel(t, lifecycle)} />
+              ) : (
+                MISSING
+              )}
+              <HealthMark row={row} index={index} />
+            </span>
           );
         },
-        { width: "w-[14%]" },
+        { sortable: true, width: "w-[26%]", interactive: true },
       ),
-      column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-        sortable: true,
-        width: "w-[14%]",
+      column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
+        width: "w-[18%]",
       }),
     ];
   }
 
-  const columns: CockpitColumn<CatalogRow>[] = [
+  return [
     column.text("name", (row) => row.display_name, t("common.name"), {
       sortable: true,
-      width: "w-[23%]",
+      width: "w-[34%]",
     }),
-    column.status("health", (row) => row.health_state, t("catalog.health"), {
-      width: "w-[18%]",
-    }),
-    column.custom(
-      "enabled",
-      (row) => row.enabled,
-      t("catalog.enabled"),
-      (row) => (row.enabled === true ? t("common.yes") : t("common.no")),
-      { sortable: true, width: "w-[10%]" },
-    ),
-    column.custom(
-      "environment",
-      (row) => row.environment,
-      t("catalog.environment"),
-      (row) => environmentLabel(stringField(row, "environment"), t) || MISSING,
-      { sortable: true, width: "w-[13%]" },
-    ),
     column.custom(
       "driver",
       (row) => row.driver,
-      t("catalog.driver"),
-      (row) => driverLabel(stringField(row, "driver"), t) || MISSING,
-      { sortable: true, width: "w-[13%]" },
+      t("catalog.kind"),
+      (row) => {
+        const kind = driverLabel(stringField(row, "driver"), t) || MISSING;
+        const slug = stringField(row, "slug");
+        if (!relations.canReadWorkflows || !slug) return kind;
+        const users = relations.workflowsByConnectorSlug.get(slug)?.length ?? 0;
+        return `${kind} · ${t("connectors.usedByCount", { count: users })}`;
+      },
+      { width: "w-[30%]" },
     ),
+    column.custom(
+      "health",
+      (row) => row.health_state,
+      t("catalog.status"),
+      (row) => {
+        const state = row.enabled === false ? "disabled" : stringField(row, "health_state");
+        return state ? <StatusBadge state={state} label={statusLabel(t, state)} /> : MISSING;
+      },
+      { width: "w-[18%]" },
+    ),
+    column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
+      sortable: true,
+      width: "w-[18%]",
+    }),
   ];
-  if (relations.canReadWorkflows) {
-    columns.push(
-      column.link(
-        "used_by",
-        (row): Relation | null => {
-          const slug = stringField(row, "slug");
-          if (!slug) return null;
-          const users = relations.workflowsByConnectorSlug.get(slug) ?? [];
-          if (users.length === 0) return null;
-          return {
-            href: absolute(workflowsHref({ connector: slug })),
-            label: t("connectors.usedByCount", { count: users.length }),
-          };
-        },
-        t("catalog.usedBy"),
-        { width: "w-[18%]" },
-      ),
-    );
-  }
-  return columns;
 }
 
 export function CatalogPage({
@@ -376,17 +301,6 @@ export function CatalogPage({
   });
   const query = list.query;
 
-  const connectorIndex = useQuery({
-    queryKey: ["catalog-connector-index"],
-    enabled: resource === "workflows" && permissions.includes("connector:read"),
-    queryFn: () =>
-      apiRequest<{ items: ConnectorListItem[] }>(`/v1/connectors?limit=${RELATION_INDEX_LIMIT}`),
-  });
-  const connectorIdBySlug = useMemo(
-    () => new Map((connectorIndex.data?.items ?? []).map((item) => [item.slug, item.id])),
-    [connectorIndex.data],
-  );
-
   const canReadWorkflows = permissions.includes("workflow:read");
   const workflowIndex = useQuery({
     queryKey: ["catalog-workflow-index"],
@@ -406,24 +320,13 @@ export function CatalogPage({
     [workflowIndex.data],
   );
 
-  const onCategory = useCallback((category: string) => setState({ category }), [setState]);
   const columns = useMemo(
     () =>
       catalogColumns(resource, t, dateTime, {
-        connectorIdBySlug,
         workflowsByConnectorSlug,
         canReadWorkflows,
-        onCategory,
       }),
-    [
-      resource,
-      t,
-      dateTime,
-      connectorIdBySlug,
-      workflowsByConnectorSlug,
-      canReadWorkflows,
-      onCategory,
-    ],
+    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows],
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
@@ -473,8 +376,29 @@ export function CatalogPage({
     );
   }
 
-  const selects: FilterSelect[] = [
-    {
+  const selects: FilterSelect[] = [];
+  if (categories.length > 0)
+    selects.push({
+      value: state.category,
+      onChange: (category) => setState({ category }),
+      label: t(resource === "workflows" ? "catalog.block" : "catalog.kind"),
+      testId: "catalog-category-filter",
+      options: [
+        {
+          value: "all",
+          label: t(resource === "workflows" ? "catalog.allCategories" : "catalog.allKinds"),
+        },
+        ...categories.map((entry) => ({
+          value: entry.category,
+          label:
+            resource === "workflows"
+              ? `${categoryLabel(entry.category, t)} (${entry.count})`
+              : `${driverLabel(entry.category, t)} (${entry.count})`,
+        })),
+      ],
+    });
+  if (resource === "workflows")
+    selects.push({
       value: state.status,
       onChange: (status) => setState({ status }),
       label: t("catalog.filterStatus"),
@@ -482,21 +406,6 @@ export function CatalogPage({
       options: [
         { value: "all", label: t("catalog.allStatuses") },
         ...config.statuses.map((status) => ({ value: status, label: statusLabel(t, status) })),
-      ],
-    },
-  ];
-  if (categories.length > 0)
-    selects.push({
-      value: state.category,
-      onChange: (category) => setState({ category }),
-      label: t("catalog.block"),
-      testId: "catalog-category-filter",
-      options: [
-        { value: "all", label: t("catalog.allCategories") },
-        ...categories.map((entry) => ({
-          value: entry.category,
-          label: `${categoryLabel(entry.category, t)} (${entry.count})`,
-        })),
       ],
     });
 
@@ -608,6 +517,7 @@ export function CatalogPage({
         total={total}
         infinite={list.infinite}
         columnsLabel={t("catalog.columns")}
+        pickColumns={false}
         recordsLabel={t("catalog.records")}
         actionsLabel={t("common.actions")}
       />
@@ -671,31 +581,36 @@ function RecategorizeDialog({
       onSubmit={() => move.mutate()}
       testId="catalog-recategorize-dialog"
     >
-      <Select value={target} onValueChange={setTarget}>
-        <SelectTrigger
-          aria-label={t("catalog.changeCategory")}
-          data-testid="catalog-recategorize-select"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            {options.map((category, index) => (
-              <SelectItem
-                key={category}
-                value={category}
-                data-testid={`catalog-recategorize-option-${index}`}
-              >
-                {categoryLabel(category, t)}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-      <p className="text-sm" data-testid="catalog-recategorize-slug">
+      <Field>
+        <FieldLabel htmlFor="catalog-recategorize-select">{t("catalog.block")}</FieldLabel>
+        <Select value={target} onValueChange={setTarget}>
+          <SelectTrigger id="catalog-recategorize-select" data-testid="catalog-recategorize-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {options.map((category, index) => (
+                <SelectItem
+                  key={category}
+                  value={category}
+                  data-testid={`catalog-recategorize-option-${index}`}
+                >
+                  {categoryLabel(category, t)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+      <p className="flex items-center gap-1 text-sm" data-testid="catalog-recategorize-slug">
         {t("catalog.resultingSlug", { slug: nextSlug })}
+        <ContextHelp
+          label={t("catalog.resultingSlug", { slug: nextSlug })}
+          testId="catalog-recategorize-help"
+        >
+          {t("catalog.renameWarning")}
+        </ContextHelp>
       </p>
-      <p className="text-sm text-muted-foreground">{t("catalog.renameWarning")}</p>
       {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
         <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
           {t("catalog.categoryTooSmall", {

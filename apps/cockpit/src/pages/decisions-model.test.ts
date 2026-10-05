@@ -4,6 +4,7 @@ import {
   approveBlockedReason,
   badgeCount,
   bannerSubset,
+  changeFacts,
   conversationDecision,
   countOpenDecisions,
   type DecisionItem,
@@ -779,5 +780,41 @@ describe("a step key as a person reads it", () => {
   test("underscores and hyphens become spaces", () => {
     expect(humanStep("fetch_orders")).toBe("fetch orders");
     expect(humanStep("send--report_mail")).toBe("send report mail");
+  });
+});
+
+describe("the before and after a repair names", () => {
+  test("reads each changed path from both steps", () => {
+    expect(
+      changeFacts(
+        { config: { path: "/spaces/growth/pages/weekly" } },
+        { config: { path: "/spaces/growth/concepts/weekly" } },
+        ["config.path"],
+      ),
+    ).toEqual([
+      {
+        path: "config.path",
+        before: "/spaces/growth/pages/weekly",
+        after: "/spaces/growth/concepts/weekly",
+      },
+    ]);
+  });
+
+  test("a value only one side has reads as a dash on the other", () => {
+    expect(changeFacts({}, { data_selector: "items" }, ["data_selector"])).toEqual([
+      { path: "data_selector", before: "—", after: "items" },
+    ]);
+  });
+
+  test("structured values are shown compactly and long ones clipped", () => {
+    const [fact] = changeFacts({ body: { a: 1 } }, { body: "x".repeat(200) }, ["body"]);
+    expect(fact?.before).toBe('{"a":1}');
+    expect(fact?.after.length).toBe(120);
+    expect(fact?.after.endsWith("…")).toBe(true);
+  });
+
+  test("names at most three paths and nothing without paths", () => {
+    expect(changeFacts({}, {}, ["a", "b", "c", "d"])).toHaveLength(3);
+    expect(changeFacts({}, {}, null)).toEqual([]);
   });
 });

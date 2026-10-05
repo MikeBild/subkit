@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { components } from "@/api/schema";
-import { diagnosisActs, diagnosisRepairable } from "@/lib/gate-diagnosis";
+import { diagnosisFix, diagnosisRepairable } from "@/lib/gate-diagnosis";
 
 type GateDiagnosis = components["schemas"]["GateDiagnosis"];
 
@@ -21,58 +21,39 @@ function diagnosis(diagnoses: GateDiagnosis[], isCurrent = true) {
   return { is_current: isCurrent, workflow_version_id: "version", diagnoses };
 }
 
-describe("diagnosisActs", () => {
-  test("an act that does the same for every block is offered once", () => {
-    const acts = diagnosisActs(
-      diagnosis([
-        block("send", { evidence: { execution_id: RUN } }),
-        block("notify"),
-        block("load", { remedy_kind: "prepare" }),
-        block("store", { remedy_kind: "prepare" }),
-        block("encode", { remedy_kind: "patch", fixer: "use_utf8_encoder", candidate_id: "c1" }),
-        block("report", { remedy_kind: "patch", fixer: "use_utf8_encoder", candidate_id: "c2" }),
-      ]),
-      all,
-    );
-    expect(acts).toEqual({
-      review: true,
-      prepare: true,
-      author: ["send", "notify"],
-      authorRunId: RUN,
-    });
+describe("the fix a blocked step offers", () => {
+  const fix = (entry: GateDiagnosis, rights = all, rejected: string[] = [], isCurrent = true) =>
+    diagnosisFix(entry, diagnosis([entry], isCurrent), rights, rejected);
+  const patch = { remedy_kind: "patch", fixer: "use_utf8_encoder" } as const;
+
+  test("each step names its own fix", () => {
+    expect(fix(block("encode", patch))).toBe("auto");
+    expect(fix(block("encode", { ...patch, candidate_id: "c1" }))).toBe("review");
+    expect(fix(block("load", { remedy_kind: "prepare" }))).toBe("prepare");
+    expect(fix(block("send", { evidence: { execution_id: RUN } }))).toBe("chat");
   });
 
-  test("a repair that is not filed yet is the step's own act, not a shared one", () => {
-    const entry = block("encode", { remedy_kind: "patch", fixer: "use_utf8_encoder" });
-    const acts = diagnosisActs(diagnosis([entry]), all);
-    expect(acts).toEqual({ review: false, prepare: false, author: [], authorRunId: null });
+  test("a refused repair hands its step to an author", () => {
+    expect(fix(block("encode", patch), all, ["encode"])).toBe("chat");
+  });
+
+  test("a draft's computable repair waits for its version instead of going to chat", () => {
+    const entry = block("encode", patch);
+    expect(fix(entry, all, [], false)).toBeNull();
     expect(diagnosisRepairable(entry, true, all)).toBe(true);
     expect(diagnosisRepairable(entry, false, all)).toBe(false);
     expect(diagnosisRepairable(entry, true, { write: false })).toBe(false);
   });
 
-  test("a refused repair hands its step to an author", () => {
-    const entry = block("encode", { remedy_kind: "patch", fixer: "use_utf8_encoder" });
-    expect(diagnosisActs(diagnosis([entry]), all, ["encode"]).author).toEqual(["encode"]);
-  });
-
   test("nothing is offered to a reader who may not perform it", () => {
-    const acts = diagnosisActs(
-      diagnosis([
-        block("send"),
-        block("load", { remedy_kind: "prepare" }),
-        block("encode", { remedy_kind: "patch", fixer: "use_utf8_encoder", candidate_id: "c1" }),
-      ]),
-      { write: false, run: false, chat: false },
-    );
-    expect(acts).toEqual({ review: false, prepare: false, author: [], authorRunId: null });
+    const none = { write: false, run: false, chat: false };
+    expect(fix(block("send"), none)).toBeNull();
+    expect(fix(block("load", { remedy_kind: "prepare" }), none)).toBeNull();
+    expect(fix(block("encode", { ...patch, candidate_id: "c1" }), none)).toBeNull();
   });
 
   test("a trial run needs a version to run", () => {
-    const entries = [block("load", { remedy_kind: "prepare" })];
-    expect(
-      diagnosisActs({ is_current: true, workflow_version_id: null, diagnoses: entries }, all)
-        .prepare,
-    ).toBe(false);
+    const entry = block("load", { remedy_kind: "prepare" });
+    expect(diagnosisFix(entry, { is_current: true, workflow_version_id: null }, all)).toBeNull();
   });
 });
