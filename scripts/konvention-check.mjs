@@ -2603,9 +2603,9 @@ async function checkRightsKeys(page, where) {
   });
   if (shape.taskList > 0)
     breach("§1", where, "a second task list stands on API-Zugang — tasks live on Übersicht");
-  if (shape.expiredChip !== "abgelaufen")
+  if (shape.expiredChip !== "Abgelaufen")
     breach("§11", `${where} · Altes Skript`, `the expired key says "${shape.expiredChip}"`);
-  if (shape.expiringChip !== "läuft ab in 3 Tagen")
+  if (shape.expiringChip !== "Läuft in 3 Tagen ab")
     breach("§11", `${where} · Nachtlauf`, `the key about to lapse says "${shape.expiringChip}"`);
   if (shape.workingChip !== null)
     breach("§11", `${where} · Reporting-Abruf`, `a working key carries "${shape.workingChip}"`);
