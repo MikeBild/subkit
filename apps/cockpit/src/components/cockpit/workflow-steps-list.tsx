@@ -8,6 +8,7 @@ import {
   ActionMenu,
   type CockpitColumn,
   CodeBlock,
+  ContextHelp,
   type Fact,
   FactList,
   RecordSheet,
@@ -126,16 +127,21 @@ export function WorkflowTestRun({
 }) {
   const { t } = useI18n();
   return (
-    <ActionMenu
-      items={[
-        {
-          label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
-          disabled: steps.running !== null,
-          onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
-          testId: "workflow-test-run",
-        },
-      ]}
-    />
+    <span className="flex items-center gap-1">
+      <ActionMenu
+        items={[
+          {
+            label: t(steps.running === "__workflow" ? "workflow.testing" : "workflow.testRun"),
+            disabled: steps.running !== null,
+            onSelect: () => void steps.runOne("__workflow", { source: "draft", definition }),
+            testId: "workflow-test-run",
+          },
+        ]}
+      />
+      <ContextHelp label={t("workflow.testRun")} testId="workflow-test-run-help">
+        {t("workflow.testRunSecondary")}
+      </ContextHelp>
+    </span>
   );
 }
 

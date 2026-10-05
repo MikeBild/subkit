@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -292,10 +292,12 @@ export function StepSaveBar({
   workflowId,
   record,
   draft,
+  preview,
 }: {
   workflowId: string;
   record: RecordValue;
   draft: StepDraft;
+  preview?: ReactNode;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
@@ -345,6 +347,7 @@ export function StepSaveBar({
         })}
       </span>
       <span className="flex items-center gap-2">
+        {preview}
         <ActionButton
           variant="ghost"
           onClick={draft.discard}

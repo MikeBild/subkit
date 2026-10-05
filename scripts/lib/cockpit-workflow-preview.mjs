@@ -76,7 +76,6 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       throw new Error("Cockpit presents another workflow's schedule as this one's");
     if (!(await rhythm.count())) throw new Error("The schedule's rhythm is not stated");
     await page.getByTestId("workflow-tabs-tab-aufbau").click();
-    await whole.waitFor({ state: "visible" });
     await page
       .locator(
         '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',
@@ -84,6 +83,17 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       .filter({ visible: true })
       .first()
       .waitFor();
+    if (await whole.count())
+      throw new Error("The draft preview is offered while the draft has no changes");
+    await page.getByTestId("workflow-step-2-menu").filter({ visible: true }).first().click();
+    await page.getByTestId("workflow-step-2-up").click();
+    await page.getByTestId("step-savebar").waitFor();
+    await whole.waitFor({ state: "visible" });
+    const filled = await page
+      .getByTestId("detail-workflows")
+      .locator('button[data-variant="default"], a[data-variant="default"]')
+      .count();
+    if (filled !== 1) throw new Error(`An unsaved draft shows ${filled} filled actions`);
     const expected = locale === "de" ? "Als Vorschau ausführen" : "Run as preview";
     if ((await whole.innerText()) !== expected) throw new Error("Preview label is not localized");
     if (await page.getByText(/temporären Kopie|temporary copy: steps/).count())
@@ -110,8 +120,16 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (requests.length !== 2 || requests[1]?.source !== "step") {
       throw new Error("Step preview lost its exact source or dispatched twice");
     }
+    await page.getByTestId("step-savebar-discard").click();
+    await page.getByTestId("step-savebar").waitFor({ state: "detached" });
     await page.reload();
-    await whole.waitFor({ state: "visible" });
+    await page
+      .locator(
+        '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',
+      )
+      .filter({ visible: true })
+      .first()
+      .waitFor();
     if (await page.getByTestId("workflow-test-result").count()) {
       throw new Error("Reload presents a temporary preview as persisted execution evidence");
     }
