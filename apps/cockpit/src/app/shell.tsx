@@ -12,7 +12,7 @@ import {
   UserRound,
   Workflow,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -54,6 +54,7 @@ import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
 import { LiveEventsProvider, type LiveStatus, useLiveStatus } from "./live-events";
 import { navigationItem, visibleNavigation } from "./navigation";
+import { useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
 import {
   CHAT_COLUMN,
@@ -207,6 +208,9 @@ export function AppShell() {
 
 function ShellContent() {
   const { isMobile } = useSidebar();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const content = useRef<HTMLDivElement>(null);
+  useRouteEntrance(content, pathname);
   const header = useShellHeaderState();
   const chat = header.chatHeaders > 0;
   const owner = triggerOwner({
@@ -241,7 +245,11 @@ function ShellContent() {
             <SidebarToggle className="-ml-1" />
           </header>
         ))}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="page-content">
+      <div
+        ref={content}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        data-testid="page-content"
+      >
         <Outlet />
       </div>
       <RunOverlays />
