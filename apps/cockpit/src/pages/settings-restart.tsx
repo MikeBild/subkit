@@ -61,7 +61,10 @@ export function SettingsRestartOffer({
   }
   if (offer === "manual")
     return (
-      <ContextHelp label={t("settings.restartNow.button")} testId="settings-restart-manual">
+      <ContextHelp
+        label={`${t("pattern.help")}: ${t("settings.restartNow.button")}`}
+        testId="settings-restart-manual"
+      >
         {t("settings.restartNow.manual")}
       </ContextHelp>
     );

@@ -146,6 +146,8 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     .locator('[data-testid^="setting-item-"][data-highlighted="true"]')
     .waitFor({ state: "visible" });
   await assertNoTooltipWithoutHover(page, "/settings?leaf=auth.providers");
+  if (await page.evaluate(() => document.activeElement?.matches("[data-tooltip-trigger]")))
+    throw new Error("/settings?leaf=auth.providers: the deep link lands on a (?), not the field");
   await stand.visit(page, "settings?section=server");
   await page.getByTestId("settings-section-server").waitFor({ state: "visible" });
   await assertTabOpensTooltip(page, "/settings?section=server", '[data-testid="settings-panel"]');
