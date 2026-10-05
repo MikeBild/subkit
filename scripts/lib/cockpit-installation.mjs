@@ -1,6 +1,7 @@
 import {
   assertNoTooltipWithoutHover,
   assertTabOpensTooltip,
+  assertTapTogglesHelp,
 } from "./cockpit-unprompted-tooltip.mjs";
 
 const PAGES = [
@@ -151,6 +152,7 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   await stand.visit(page, "settings?section=server");
   await page.getByTestId("settings-section-server").waitFor({ state: "visible" });
   await assertTabOpensTooltip(page, "/settings?section=server", '[data-testid="settings-panel"]');
+  await assertTapTogglesHelp(page, "/settings?section=server", '[data-testid="settings-panel"]');
   await verifySettingRows(page, settings.settingRows, "server", "/settings?section=server");
 
   await verifySettingsSections(page, stand, settings, capture);
@@ -166,8 +168,8 @@ async function verifySettingRows(page, rows, section, where) {
           sum + item.querySelectorAll('details, [data-testid^="setting-technical-"]').length,
         0,
       ),
-      text: main?.textContent ?? "",
-      rowText: items.map((item) => item.textContent ?? "").join(" "),
+      text: main?.innerText ?? "",
+      rowText: items.map((item) => item.innerText ?? "").join(" "),
       rows: items.map((item) => ({
         path: item.getAttribute("data-setting-path"),
         appliesTo: item.getAttribute("data-applies-to") === "true",

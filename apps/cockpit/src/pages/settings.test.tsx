@@ -48,6 +48,29 @@ const de = (key: Parameters<typeof translate>[1], values?: Record<string, string
   translate("de", key, values);
 const ALL_SECTIONS = SETTING_GROUPS.flatMap((group) => group.sections);
 
+function visibleMarkup(html: string): string {
+  const marker = 'data-help-description=""';
+  let out = html;
+  for (let at = out.indexOf(marker); at >= 0; at = out.indexOf(marker)) {
+    const start = out.lastIndexOf("<span", at);
+    let depth = 0;
+    let cursor = start;
+    do {
+      const open = out.indexOf("<span", cursor + 1);
+      const close = out.indexOf("</span>", cursor + 1);
+      if (open >= 0 && open < close) {
+        depth += 1;
+        cursor = open;
+      } else {
+        depth -= 1;
+        cursor = close;
+      }
+    } while (depth >= 0);
+    out = out.slice(0, start) + out.slice(cursor + "</span>".length);
+  }
+  return out;
+}
+
 describe("the section list", () => {
   const html = render(
     <SettingsSectionNav
@@ -137,7 +160,8 @@ describe("the status line", () => {
     const manual = line("manual");
     expect(manual).not.toContain('data-testid="settings-restart-now"');
     expect(manual).toContain('data-testid="settings-restart-manual"');
-    expect(manual).not.toContain("systemctl restart subkit-engine");
+    expect(visibleMarkup(manual)).not.toContain("systemctl restart subkit-engine");
+    expect(manual).toContain("systemctl restart subkit-engine");
     expect(de("settings.restartNow.manual")).toContain("systemctl restart subkit-engine");
 
     const ask = line("ask_admin");
@@ -187,8 +211,9 @@ describe("a setting's row", () => {
   });
 
   test("keeps its restart, source and scope notes behind its (?), not as a line of its own", () => {
-    expect(html).not.toContain(de("settings.restart"));
-    expect(html).not.toContain("Gilt für");
+    expect(visibleMarkup(html)).not.toContain(de("settings.restart"));
+    expect(visibleMarkup(html)).not.toContain("Gilt für");
+    expect(html).toContain("Gilt für: Arbeitsbereich");
     expect(html).toContain('data-testid="setting-help-3"');
     expect(html).toContain('data-requires-restart="true"');
     expect(settingRowNotes(item, de).map((note) => note.text)).toEqual([
