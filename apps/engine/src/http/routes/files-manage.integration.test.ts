@@ -408,3 +408,22 @@ describe("the @attachment:<slug> reference", () => {
     expect(named.workflows.map((w) => w.name).sort()).toEqual(["counts-by-id", "counts-by-ref"]);
   });
 });
+
+describe("GET /v1/files paging", () => {
+  test("a cursor is offered only for the order it can continue", async () => {
+    for (const name of ["paging-a.txt", "paging-b.txt", "paging-c.txt"])
+      await upload(`content of ${name}`, name);
+    const byDate = await request("GET", "/v1/files?q=paging-&limit=2", srv.apiKey);
+    const datePage = (await byDate.json()) as { next_cursor: string | null; total: number };
+    expect(datePage.total).toBe(3);
+    expect(datePage.next_cursor).not.toBeNull();
+    const byName = await request(
+      "GET",
+      "/v1/files?q=paging-&limit=2&sort=filename&order=asc",
+      srv.apiKey,
+    );
+    const namePage = (await byName.json()) as { next_cursor: string | null; total: number };
+    expect(namePage.total).toBe(3);
+    expect(namePage.next_cursor).toBeNull();
+  });
+});
