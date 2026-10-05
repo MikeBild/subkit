@@ -2048,6 +2048,9 @@ const EN = {
   "decisions.applyAndAuthorize": "Apply correction and authorize runs",
   "decisions.applyAndAuthorizeDescription":
     "Applies the correction and allows the corrected version within these limits.",
+  "decisions.fact.step": "Step",
+  "decisions.fact.before": "Before",
+  "decisions.fact.after": "After",
   "decisions.reviewChanged": "The reviewed change is no longer current. Reload the preview.",
   "decisions.description":
     "Review blocked workflows, proposed fixes and skill candidates before making a decision.",
@@ -5891,6 +5894,9 @@ const DE: Record<TranslationKey, string> = {
   "decisions.applyAndAuthorize": "Korrektur anwenden und Ausführungen freigeben",
   "decisions.applyAndAuthorizeDescription":
     "Übernimmt die Korrektur und erlaubt die korrigierte Version in diesen Grenzen.",
+  "decisions.fact.step": "Schritt",
+  "decisions.fact.before": "Vorher",
+  "decisions.fact.after": "Nachher",
   "decisions.reviewChanged":
     "Die geprüfte Änderung ist nicht mehr aktuell. Lade die Vorschau erneut.",
   "decisions.description":

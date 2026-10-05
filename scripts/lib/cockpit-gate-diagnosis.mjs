@@ -328,7 +328,12 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
       throw new Error(`The repair request is not exact: ${JSON.stringify(repairBodies)}`);
     const card = page.locator(`article[data-decision-key="patch:${candidateId}"]`);
     await card.waitFor();
-    if (!(await card.locator('[data-testid$="-approve"]').isDisabled()))
+    if (
+      !(await page
+        .getByTestId("attention-review-actions")
+        .locator('[data-testid$="-approve"]')
+        .isDisabled())
+    )
       throw new Error("The filed repair can be approved before it was opened");
     await assertNoVisibleUuids(sheet, `${locale}/gate-diagnosis-review`);
     await capture("repair-review");
