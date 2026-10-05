@@ -87,7 +87,12 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       throw new Error("The draft preview is offered while the draft has no changes");
     await page.getByTestId("workflow-step-2-menu").filter({ visible: true }).first().click();
     await page.getByTestId("workflow-step-2-up").click();
+    await page.getByRole("menu").waitFor({ state: "detached" });
     await page.getByTestId("step-savebar").waitFor();
+    if (await page.getByRole("dialog").count()) {
+      await page.keyboard.press("Escape");
+      await page.getByRole("dialog").waitFor({ state: "detached" });
+    }
     await whole.waitFor({ state: "visible" });
     const filled = await page
       .getByTestId("detail-workflows")
@@ -120,6 +125,8 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (requests.length !== 2 || requests[1]?.source !== "step") {
       throw new Error("Step preview lost its exact source or dispatched twice");
     }
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workflow-step-0-sheet").waitFor({ state: "detached" });
     await page.getByTestId("step-savebar-discard").click();
     await page.getByTestId("step-savebar").waitFor({ state: "detached" });
     await page.reload();
