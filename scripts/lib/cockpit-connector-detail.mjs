@@ -696,8 +696,13 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await page
       .getByTestId("connector-mcp-tool-row-1")
       .waitFor({ state: "attached", timeout: 10_000 });
-    let second = page.getByTestId("connector-mcp-tool-row-1");
-    if (!(await second.isVisible())) second = page.getByTestId("connector-mcp-tool-mobile-row-1");
+    const second = page
+      .locator(
+        '[data-testid="connector-mcp-tool-row-1"], [data-testid="connector-mcp-tool-mobile-row-1"]',
+      )
+      .filter({ visible: true })
+      .first();
+    await second.waitFor({ state: "visible", timeout: 10_000 });
     const secondText = await second.innerText();
     if (
       !secondText.includes("create_ticket") ||
@@ -706,10 +711,13 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(
         `${where}: the tool list does not show what the server claims — "${secondText}"`,
       );
-    let secondLink = page.getByTestId("connector-mcp-tool-row-link-1");
-    if (!(await secondLink.isVisible()))
-      secondLink = page.getByTestId("connector-mcp-tool-mobile-row-link-1");
-    await secondLink.click();
+    await page
+      .locator(
+        '[data-testid="connector-mcp-tool-row-link-1"], [data-testid="connector-mcp-tool-mobile-row-link-1"]',
+      )
+      .filter({ visible: true })
+      .first()
+      .click();
     await page.getByTestId("connector-mcp-tool-1-trusted").click();
     for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
       await page.waitForTimeout(50);
