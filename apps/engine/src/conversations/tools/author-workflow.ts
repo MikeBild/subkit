@@ -58,7 +58,7 @@ export const authorWorkflowTool: ConversationTool = {
     "Pass the user's goal VERBATIM and pass any explicitly requested name/slug in their fields. Verify them before preview, which can save immediately. Do not defer requested naming to update_workflow after saving.",
     "When the user supplied (or you can infer) an example input payload, pass it as `input_example`. It is persisted as the workflow's sample and becomes the input contract the run/dry-run present — a far more reliable idiom than hand-writing an input_schema. A run/dry-run TEST payload is a separate thing and is never written into the workflow.",
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
-    "The result's `recorded_eval` may carry findings and verified `repair` proposals. The draft is stashed regardless — apply repairs via edit_workflow_patch, then preview.",
+    "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview. A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
   requires_skill: "workflow-authoring",
@@ -109,7 +109,9 @@ export const authorWorkflowTool: ConversationTool = {
           next_best_actions:
             result.error_code === "authoring_connectors_unresolved"
               ? ["list_connectors", "find_connector", "author_workflow"]
-              : ["author_workflow", "edit_workflow_patch"],
+              : result.error_code === "authoring_definition_invalid"
+                ? ["author_workflow"]
+                : ["author_workflow", "edit_workflow_patch"],
           extra: {
             errors: result.errors,
             attempts: result.attempts,

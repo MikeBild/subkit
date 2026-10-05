@@ -179,7 +179,7 @@ describe("runAuthoringPipeline — one-shot contract", () => {
   );
 
   tw(
-    "never-converging mock gives up after MAX_GENERATION_PASSES with findings attached and the draft STILL stashed",
+    "never-converging mock gives up after MAX_GENERATION_PASSES with authoring_definition_invalid and the previous draft untouched",
     async () => {
       let calls = 0;
       getMockProvider().generateOverrides.generate = () => {
@@ -188,14 +188,50 @@ describe("runAuthoringPipeline — one-shot contract", () => {
       };
       const toolCtx = makeCtx();
       const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "loop the things" });
-      expect(result.ok).toBe(true);
-      if (!result.ok) throw new Error("unreachable");
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.error_code).toBe("authoring_definition_invalid");
       expect(calls).toBe(MAX_GENERATION_PASSES);
       expect(result.attempts).toBe(MAX_GENERATION_PASSES);
-      expect(result.validation.ok).toBe(false);
-      expect(result.validation.errors.length).toBeGreaterThan(0);
-      expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
-      expect((toolCtx._draft.value!.workflow as { goal?: string }).goal).toBe("loop the things");
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.message).toContain("not stored as the draft");
+      expect(toolCtx._draft.value).toBeNull();
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw(
+    "a generated definition that fails the workflow schema is refused by author_workflow and never becomes the draft",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => ({
+        name: "Schema broken",
+        slug: "schema-broken",
+        steps: [
+          { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/items" },
+          { id: "branch", kind: "branch", when: "true" },
+          {
+            id: "call",
+            kind: "request",
+            method: "GET",
+            connector_id: "not-a-uuid",
+            path: "/items",
+          },
+        ],
+      });
+      const toolCtx = makeCtx();
+      const before = createEmptyDraftDocument();
+      before.workflow = {
+        name: "Kept",
+        slug: "kept",
+        steps: [{ id: "a", kind: "transform", language: "javascript", expression: "return 1;" }],
+      };
+      toolCtx._draft.value = before;
+      const result = await authorWorkflowTool.execute(toolCtx, { goal: "branch on the items" });
+      expect(result.ok).toBe(false);
+      const data = result.data as { error_code: string; next_best_actions: string[] };
+      expect(data.error_code).toBe("authoring_definition_invalid");
+      expect(data.next_best_actions).toEqual(["author_workflow"]);
+      expect(toolCtx._draft.value?.workflow.slug).toBe("kept");
       expect(fetchCalls).toBe(0);
     },
   );
@@ -357,7 +393,7 @@ describe("GeneratedWorkflowSchema — step breadth bound (P2)", () => {
 
 describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", () => {
   tw(
-    "a deadline/turn abort mid-generation returns the best draft so far with a findings note, no hang",
+    "a deadline/turn abort after an invalid pass refuses with deadline_exceeded and stashes nothing, no hang",
     async () => {
       const controller = new AbortController();
       let calls = 0;
@@ -375,14 +411,13 @@ describe("runAuthoringPipeline — shared deadline / abort degradation (P2)", ()
 
       const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "abort me" });
 
-      expect(result.ok).toBe(true);
-      if (!result.ok) throw new Error("unreachable");
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
       expect(calls).toBe(1);
       expect(result.attempts).toBe(1);
-      expect(result.note).toBeDefined();
-      expect(result.note).toContain("time budget exceeded");
-      expect(toolCtx._draft.value?.workflow.slug).toBe("broken-loop");
-      expect(result.recorded_eval).toBeDefined();
+      expect(result.error_code).toBe("authoring_definition_invalid");
+      expect(result.deadline_exceeded).toBe(true);
+      expect(toolCtx._draft.value).toBeNull();
       expect(fetchCalls).toBe(0);
     },
   );
