@@ -1,3 +1,5 @@
+import type { ListParams } from "@/lib/use-infinite-list";
+
 export interface CatalogQueryState {
   q: string;
   status: string;
@@ -6,34 +8,19 @@ export interface CatalogQueryState {
   health: "not_ok" | null;
   sort: string;
   order: "asc" | "desc";
-  page: number;
 }
 
-export function catalogListParams(
-  resource: string,
-  state: CatalogQueryState,
-  pageSize: number,
-): URLSearchParams {
-  const params = new URLSearchParams({
-    limit: String(pageSize),
-    offset: String(state.page * pageSize),
-    sort: state.sort,
-    order: state.order,
-  });
-  if (state.q) params.set("q", state.q);
-  if (state.category !== "all") params.set("category", state.category);
-  if (resource === "workflows" && state.connector) params.set("connector", state.connector);
-  if (resource === "connectors" && state.health === "not_ok") params.set("health", "not_ok");
+export function catalogListParams(resource: string, state: CatalogQueryState): ListParams {
+  const params: ListParams = { sort: state.sort, order: state.order };
+  if (state.q) params.q = state.q;
+  if (state.category !== "all") params.category = state.category;
+  if (resource === "workflows" && state.connector) params.connector = state.connector;
+  if (resource === "connectors" && state.health === "not_ok") params.health = "not_ok";
   if (state.status !== "all") {
-    if (resource === "connectors") {
-      if (state.status === "enabled" || state.status === "disabled") {
-        params.set("enabled", String(state.status === "enabled"));
-      } else {
-        params.set("health_state", state.status);
-      }
-    } else {
-      params.set("status", state.status);
-    }
+    if (resource !== "connectors") params.status = state.status;
+    else if (state.status === "enabled" || state.status === "disabled")
+      params.enabled = String(state.status === "enabled");
+    else params.health_state = state.status;
   }
   return params;
 }

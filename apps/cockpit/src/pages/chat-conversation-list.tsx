@@ -1,5 +1,10 @@
 import type { Conversation } from "@/api/client";
-import { Button, DataState } from "@/components/cockpit/patterns";
+import {
+  Button,
+  DataState,
+  type InfiniteRows,
+  InfiniteSentinel,
+} from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { cn } from "@/lib/utils";
 import { type ConversationRowLabels, conversationRow } from "./chat-list-model";
@@ -12,6 +17,7 @@ export interface ConversationListProps {
   onToggleHidden(): void;
   labelsFor(conversation: Conversation): ConversationRowLabels;
   failed?: { title: string; onRetry(): void } | null;
+  infinite?: InfiniteRows;
 }
 
 export function ConversationList({
@@ -22,6 +28,7 @@ export function ConversationList({
   onToggleHidden,
   labelsFor,
   failed,
+  infinite,
 }: ConversationListProps) {
   const { t } = useI18n();
   return (
@@ -80,6 +87,9 @@ export function ConversationList({
             {t("chat.hidden.empty")}
           </p>
         )}
+        {infinite && !failed ? (
+          <InfiniteSentinel infinite={infinite} testId="conversation-list-more" />
+        ) : null}
       </nav>
       <Button
         type="button"

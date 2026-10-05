@@ -12,6 +12,7 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
+  OWN_CONVERSATIONS,
   renameConversation,
   respondToChatApproval,
   respondToChatChoice,
@@ -133,6 +134,7 @@ import {
   workflowRunKind,
   workflowRunTitleKey,
 } from "@/lib/tool-presentation";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import { type ChatApproval, chatApproval } from "./chat-approval";
@@ -1325,11 +1327,13 @@ export function ChatPage() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-  const conversations = useQuery({
-    queryKey: ["conversations", "", showHidden ? "hidden" : "visible"],
-    queryFn: () => listConversations("", showHidden ? { hidden: "only" } : {}),
-  });
-  const activeId = activeConversationId(selection, conversations.data?.items[0]?.id);
+  const conversationList = useInfiniteList<Conversation>(
+    "/v1/conversations",
+    { ...OWN_CONVERSATIONS, ...(showHidden ? { hidden: "only" } : {}) },
+    { queryKey: ["conversations", "infinite", showHidden ? "hidden" : "visible"] },
+  );
+  const conversations = conversationList.query;
+  const activeId = activeConversationId(selection, conversationList.items[0]?.id);
   useEffect(() => {
     if (selection.kind === "automatic" && activeId) setChatPath(activeId, true);
   }, [activeId, selection.kind]);
@@ -1469,7 +1473,7 @@ export function ChatPage() {
     message: string,
     references: ConversationReference[] = [],
   ): Promise<boolean> => {
-    const pinned = pinSelectionForSend(selection, conversations.data?.items[0]?.id);
+    const pinned = pinSelectionForSend(selection, conversationList.items[0]?.id);
     if (selection.kind === "automatic") setSelection(pinned);
     const targetId = pinned.kind === "existing" ? pinned.id : null;
     const pending: OptimisticMessage = {
@@ -1489,7 +1493,7 @@ export function ChatPage() {
           queryClient
             .ensureQueryData({
               queryKey: ["conversations", "", "visible"],
-              queryFn: () => listConversations(""),
+              queryFn: () => listConversations(),
             })
             .then((list) => new Set(list.items.map((c) => c.id)))
             .catch(() => null),
@@ -1508,7 +1512,7 @@ export function ChatPage() {
         let openedId: string | null = null;
         if (!targetId) {
           const [listed] = await Promise.all([
-            listConversations("").catch(() => null),
+            listConversations().catch(() => null),
             queryClient.invalidateQueries({ queryKey: ["conversations"] }),
           ]);
           openedId = conversationOpenedByFailedSend({
@@ -1795,11 +1799,8 @@ export function ChatPage() {
     (automationStatus.data?.inbound_hooks?.filter((hook) => hook.ready).length ?? 0);
   const status = send.isPending || decide.isPending ? "streaming" : "ready";
   const ordered = useMemo(
-    () =>
-      [...(conversations.data?.items ?? [])].sort((a, b) =>
-        b.updated_at.localeCompare(a.updated_at),
-      ),
-    [conversations.data],
+    () => [...conversationList.items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+    [conversationList.items],
   );
   const activeRow = ordered.find((conversation) => conversation.id === activeId) ?? null;
   const origin = current
@@ -2019,6 +2020,7 @@ export function ChatPage() {
           : null
       }
       conversations={listRows}
+      infinite={conversationList.infinite}
       activeId={activeId}
       showHidden={showHidden}
       onToggleHidden={() => setShowHidden((value) => !value)}
