@@ -3217,7 +3217,8 @@ const EN = {
   "authority.refusal.report_delivery_contradicted":
     "A trial run reached this step, and the e-mail it would have sent does not match what the step declares: the message is outside the report format, or goes to a different address. As declared, every run would be refused at sending. Change the step or its declaration so the two agree.",
   "diagnosis.title": "What holds this workflow",
-  "diagnosis.step": "Step “{step}”",
+  "diagnosis.column.step": "Step",
+  "diagnosis.column.reason": "Reason",
   "diagnosis.code.execution_authority_changed": "The approval no longer fits what this step sends.",
   "diagnosis.code.connector_unavailable":
     "The connector of this step is not available in this environment.",
@@ -3245,7 +3246,6 @@ const EN = {
   "diagnosis.prepareFailed": "The trial run could not be started.",
   "diagnosis.openApproval": "Open the approval",
   "diagnosis.chatPrompt": "The approval refuses step “{step}”. How do I fix it?",
-  "diagnosis.chatPromptSteps": "The approval refuses the steps {steps}. How do I fix them?",
   "diagnosis.loadFailed": "Why the approval holds this workflow could not be loaded.",
   "automation.title": "Automatic operation",
   "automation.help.label": "About automatic operation",
@@ -7091,7 +7091,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.refusal.report_delivery_contradicted":
     "Ein Probelauf hat diesen Schritt erreicht, und die E-Mail, die er verschickt hätte, passt nicht zu dem, was am Schritt angegeben ist: Die Nachricht liegt außerhalb des Berichtsformats oder geht an eine andere Adresse. So angegeben würde jeder Lauf beim Senden abgewiesen. Passe den Schritt oder seine Angabe an, damit beides übereinstimmt.",
   "diagnosis.title": "Was diesen Workflow aufhält",
-  "diagnosis.step": "Schritt „{step}“",
+  "diagnosis.column.step": "Schritt",
+  "diagnosis.column.reason": "Grund",
   "diagnosis.code.execution_authority_changed":
     "Die Freigabe passt nicht mehr zu dem, was dieser Schritt sendet.",
   "diagnosis.code.connector_unavailable":
@@ -7120,7 +7121,6 @@ const DE: Record<TranslationKey, string> = {
   "diagnosis.prepareFailed": "Der Probelauf konnte nicht gestartet werden.",
   "diagnosis.openApproval": "Freigabe öffnen",
   "diagnosis.chatPrompt": "Die Freigabe weist Schritt „{step}“ ab. Wie behebe ich das?",
-  "diagnosis.chatPromptSteps": "Die Freigabe weist die Schritte {steps} ab. Wie behebe ich das?",
   "diagnosis.loadFailed": "Warum die Freigabe diesen Workflow aufhält, ließ sich nicht laden.",
   "automation.title": "Automatischer Betrieb",
   "automation.help.label": "Was heißt automatischer Betrieb?",

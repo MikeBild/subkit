@@ -31,40 +31,19 @@ export function diagnosisRepairable(
   return Boolean(entry.fixer) && isCurrent && rights.write;
 }
 
-export interface DiagnosisActs {
-  review: boolean;
-  prepare: boolean;
-  author: string[];
-  authorRunId: string | null;
-}
+export type DiagnosisFix = "auto" | "review" | "prepare" | "chat";
 
-export function diagnosisActs(
-  diagnosis: {
-    is_current: boolean;
-    workflow_version_id?: string | null;
-    diagnoses: readonly GateDiagnosis[];
-  },
+export function diagnosisFix(
+  entry: GateDiagnosis,
+  diagnosis: { is_current: boolean; workflow_version_id?: string | null },
   rights: AutomationRights,
   rejectedRepairs: readonly string[] = [],
-): DiagnosisActs {
-  const entries = diagnosis.diagnoses;
-  const needsAuthor = rights.chat
-    ? entries.filter(
-        (entry) =>
-          (!entry.fixer && entry.remedy_kind !== "prepare") ||
-          rejectedRepairs.includes(entry.subject.step_id),
-      )
-    : [];
-  return {
-    review: entries.some(
-      (entry) =>
-        diagnosisRepairable(entry, diagnosis.is_current, rights) && Boolean(entry.candidate_id),
-    ),
-    prepare:
-      rights.run &&
-      Boolean(diagnosis.workflow_version_id) &&
-      entries.some((entry) => entry.remedy_kind === "prepare"),
-    author: [...new Set(needsAuthor.map((entry) => entry.subject.step_id))],
-    authorRunId: needsAuthor[0]?.evidence.execution_id ?? null,
-  };
+): DiagnosisFix | null {
+  const rejected = rejectedRepairs.includes(entry.subject.step_id);
+  if (!rejected && diagnosisRepairable(entry, diagnosis.is_current, rights))
+    return entry.candidate_id ? "review" : "auto";
+  if (entry.remedy_kind === "prepare" && !rejected)
+    return rights.run && diagnosis.workflow_version_id ? "prepare" : null;
+  if (rejected || !entry.fixer) return rights.chat ? "chat" : null;
+  return null;
 }
