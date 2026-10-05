@@ -18,6 +18,7 @@ import {
   SettingsSection,
   SettingsSectionNav,
   SettingsSummary,
+  settingRowNotes,
 } from "@/pages/settings";
 import {
   SETTING_GROUPS,
@@ -43,7 +44,8 @@ function render(node: ReactNode, locale: Locale = "de"): string {
   );
 }
 
-const de = (key: Parameters<typeof translate>[1]) => translate("de", key);
+const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+  translate("de", key, values);
 const ALL_SECTIONS = SETTING_GROUPS.flatMap((group) => group.sections);
 
 describe("the section list", () => {
@@ -135,7 +137,8 @@ describe("the status line", () => {
     const manual = line("manual");
     expect(manual).not.toContain('data-testid="settings-restart-now"');
     expect(manual).toContain('data-testid="settings-restart-manual"');
-    expect(manual).toContain("systemctl restart subkit-engine");
+    expect(manual).not.toContain("systemctl restart subkit-engine");
+    expect(de("settings.restartNow.manual")).toContain("systemctl restart subkit-engine");
 
     const ask = line("ask_admin");
     expect(ask).not.toContain('data-testid="settings-restart-now"');
@@ -181,7 +184,17 @@ describe("a setting's row", () => {
 
   test("reads as a name, not a key", () => {
     expect(html).toContain("Monatliches Token-Kontingent");
-    expect(html).toContain(de("settings.restart"));
+  });
+
+  test("keeps its restart, source and scope notes behind its (?), not as a line of its own", () => {
+    expect(html).not.toContain(de("settings.restart"));
+    expect(html).not.toContain("Gilt für");
+    expect(html).toContain('data-testid="setting-help-3"');
+    expect(html).toContain('data-requires-restart="true"');
+    expect(settingRowNotes(item, de).map((note) => note.text)).toEqual([
+      de("settings.restart"),
+      "Gilt für: Arbeitsbereich",
+    ]);
   });
 
   test("has no technical disclosure, and neither the key nor the engine's English as text", () => {
@@ -205,34 +218,45 @@ describe("a setting's row", () => {
   });
 
   test("says what it applies to only where a workspace can differ", () => {
-    expect(html).toContain('data-testid="setting-applies-to-3"');
-    expect(html).toContain("Gilt für: Arbeitsbereich");
+    expect(html).toContain('data-applies-to="true"');
+    const globalItem = { ...item, meta: { ...item.meta, scope: "global" } };
     const global = render(
-      <SettingRow
-        item={{ ...item, meta: { ...item.meta, scope: "global" } }}
-        index={3}
-        highlighted={false}
-      >
+      <SettingRow item={globalItem} index={3} highlighted={false}>
         <input data-testid="setting-input-3" />
       </SettingRow>,
     );
-    expect(global).not.toContain('data-testid="setting-applies-to-3"');
-    expect(global).not.toContain("Gilt für");
+    expect(global).not.toContain("data-applies-to");
+    expect(settingRowNotes(globalItem, de).map((note) => note.id)).toEqual(["restart"]);
   });
 
-  test("names the source on the row only when it is not the plain installation value", () => {
-    expect(html).not.toContain('data-testid="setting-source-3"');
+  test("names the source behind the (?) only when it is not the plain installation value", () => {
+    expect(settingRowNotes(item, de).some((note) => note.id === "source")).toBe(false);
+    const tenantItem = { ...item, meta: { ...item.meta, source: "tenant" } };
+    expect(settingRowNotes(tenantItem, de).find((note) => note.id === "source")?.text).toBe(
+      de("settings.sourceIs", { source: "Arbeitsbereich" }),
+    );
     const tenant = render(
-      <SettingRow
-        item={{ ...item, meta: { ...item.meta, source: "tenant" } }}
-        index={3}
-        highlighted
-      >
+      <SettingRow item={tenantItem} index={3} highlighted>
         <input data-testid="setting-input-3" />
       </SettingRow>,
     );
-    expect(tenant).toContain('data-testid="setting-source-3"');
     expect(tenant).toContain('data-highlighted="true"');
+  });
+
+  test("states a structured default as changed without printing it", () => {
+    const providers = {
+      ...item,
+      path: "llm.pricing.overrides",
+      value: [{ model: "x" }],
+      meta: { ...item.meta, kind: "array", default: [] },
+    };
+    const changed = render(
+      <SettingRow item={providers} index={4} highlighted={false}>
+        <input data-testid="setting-input-4" />
+      </SettingRow>,
+    );
+    expect(changed).toContain('data-testid="setting-changed-4"');
+    expect(changed).not.toContain('data-testid="setting-default-4"');
   });
 });
 
