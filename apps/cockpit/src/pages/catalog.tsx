@@ -255,7 +255,7 @@ function catalogColumns(
         const users = relations.workflowsByConnectorSlug.get(slug)?.length ?? 0;
         return `${kind} · ${t("connectors.usedByCount", { count: users })}`;
       },
-      { sortable: true, width: "w-[30%]" },
+      { width: "w-[30%]" },
     ),
     column.custom(
       "health",
