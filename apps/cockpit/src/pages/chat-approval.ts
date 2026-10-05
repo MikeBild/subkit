@@ -71,6 +71,81 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
   };
 }
 
+export type ApprovalSubject = Pick<
+  ChatApproval,
+  | "question"
+  | "oauth"
+  | "singleRun"
+  | "workflowName"
+  | "savesInactiveWorkflow"
+  | "externalTool"
+  | "connectorCall"
+  | "gatedTool"
+>;
+
+type Translate = (key: TranslationKey, values?: Record<string, string>) => string;
+
+export function approvalLine(
+  subject: ApprovalSubject,
+  t: Translate,
+  readable: (value: string) => string,
+): string {
+  if (subject.oauth)
+    return t(subject.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp");
+  if (subject.singleRun)
+    return t("chat.singleRun.effect", {
+      name: subject.workflowName ?? t("chat.singleRun.thisWorkflow"),
+    });
+  if (subject.savesInactiveWorkflow) return t("chat.decision.saveEffect");
+  if (subject.externalTool)
+    return t("chat.decision.externalTool", {
+      connector: subject.externalTool.connector,
+      tool: subject.externalTool.tool,
+    });
+  if (subject.connectorCall)
+    return readable(
+      subject.connectorCall.target
+        ? t("chat.decision.connectorCall", {
+            connector: subject.connectorCall.connector,
+            method: subject.connectorCall.method,
+            target: subject.connectorCall.target,
+          })
+        : t("chat.decision.connectorCallBare", {
+            connector: subject.connectorCall.connector,
+            method: subject.connectorCall.method,
+          }),
+    );
+  if (subject.gatedTool) return t("chat.decision.gatedAction");
+  return readable(subject.question);
+}
+
+type PendingApproval = NonNullable<
+  NonNullable<ConversationDetail["resume_summary"]>["pending_approval"]
+>;
+
+export function pendingApprovalSubject(
+  pending: PendingApproval,
+  workflowName: string | null | undefined,
+): ApprovalSubject {
+  const intent = pending.prompt?.intent_kind;
+  const externalTool =
+    intent === "grant_relayed_tool_call" ? pending.prompt?.external_tool : undefined;
+  const connectorCall = externalTool ? undefined : pending.prompt?.effect;
+  return {
+    question: pending.prompt?.question ?? pending.summary,
+    ...(externalTool ? { externalTool } : {}),
+    ...(connectorCall ? { connectorCall } : {}),
+    ...(!externalTool && !connectorCall && intent === "execute_confirmed_tool_call"
+      ? { gatedTool: pending.tool_name }
+      : {}),
+    savesInactiveWorkflow: intent === "save_workflow_draft",
+    ...(intent === "commit_held_workflow_writes" || intent === "run_workflow"
+      ? { singleRun: true, workflowName: workflowName ?? undefined }
+      : {}),
+    ...(intent === "oauth_completed" ? { oauth: "complete" as const } : {}),
+  };
+}
+
 export const OPEN_QUESTION_REFRESH_MS = 5_000;
 
 export function conversationRefreshInterval(

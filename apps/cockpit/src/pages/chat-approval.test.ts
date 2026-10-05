@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import type { ConversationDetail } from "@/api/client";
+import { type TranslationKey, translate } from "@/lib/i18n";
 import {
+  approvalLine,
   chatApproval,
   conversationRefreshInterval,
   OPEN_QUESTION_REFRESH_MS,
+  pendingApprovalSubject,
   recordedDecisionKey,
   waitsForPerson,
 } from "./chat-approval";
@@ -241,4 +244,44 @@ test("a recorded decision reads as the reader's verdict, never as the engine's m
     "tool.outcome.declined",
   );
   expect(recordedDecisionKey({ type: "text", text: "✓ Approved: call_connector" })).toBeNull();
+});
+
+test("an open approval in the context panel reads in the viewer's language, not the engine's", () => {
+  const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);
+  const same = (value: string) => value;
+  const call = pendingApprovalSubject(
+    {
+      id: "elicitation-3",
+      tool_name: "call_connector",
+      summary: "Orders API: POST https://orders.example.test/orders",
+      expires_at: "2099-01-01T00:00:00Z",
+      prompt: {
+        question: "Orders API: POST https://orders.example.test/orders — approve this call?",
+        intent_kind: "execute_confirmed_tool_call",
+        effect: {
+          connector: "Orders API",
+          method: "POST",
+          target: "https://orders.example.test/orders",
+        },
+      },
+    },
+    null,
+  );
+  expect(approvalLine(call, de, same)).toBe(
+    "Orders API aufrufen: POST https://orders.example.test/orders",
+  );
+  const gated = pendingApprovalSubject(
+    {
+      id: "elicitation-4",
+      tool_name: "delete_workflow",
+      summary: "Confirm delete_workflow (policy: confirm_before_execution)",
+      expires_at: "2099-01-01T00:00:00Z",
+      prompt: {
+        question: "Policy requires confirmation before running delete_workflow. Proceed?",
+        intent_kind: "execute_confirmed_tool_call",
+      },
+    },
+    null,
+  );
+  expect(approvalLine(gated, de, same)).toBe(translate("de", "chat.decision.gatedAction"));
 });
