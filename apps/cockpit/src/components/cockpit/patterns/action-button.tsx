@@ -1,4 +1,5 @@
 import { isValidElement, type ReactNode } from "react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "./button";
 
 export type ActionVariant = "primary" | "outline" | "ghost" | "destructive";
@@ -26,6 +27,7 @@ export function ActionButton({
   size = "default",
   pending,
   disabled,
+  disabledReason,
   onClick,
   type = "button",
   testId,
@@ -37,6 +39,7 @@ export function ActionButton({
   size?: "default" | "sm";
   pending?: boolean;
   disabled?: boolean;
+  disabledReason?: string;
   onClick?(): void;
   type?: "button" | "submit";
   testId?: string;
@@ -44,7 +47,7 @@ export function ActionButton({
   className?: string;
   children: ReactNode;
 }) {
-  return (
+  const button = (
     <Button
       type={type}
       variant={VARIANT[variant]}
@@ -58,6 +61,17 @@ export function ActionButton({
     >
       {children}
     </Button>
+  );
+  if (!disabled || !disabledReason) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex" data-testid={testId ? `${testId}-blocked` : undefined}>
+          {button}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{disabledReason}</TooltipContent>
+    </Tooltip>
   );
 }
 
