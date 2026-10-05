@@ -282,6 +282,7 @@ export function DataTable<TData extends RowData>({
   rowActions,
   collectionId = "data-table",
   collectionTier = "primary",
+  pickColumns = true,
   searchLabel = "Tabelle durchsuchen",
   searchText = (row) => JSON.stringify(row) ?? "",
   showDefaultSearch,
@@ -309,6 +310,7 @@ export function DataTable<TData extends RowData>({
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
+  pickColumns?: boolean;
   searchLabel?: string;
   searchText?: (row: TData) => string;
   showDefaultSearch?: boolean;
@@ -352,7 +354,7 @@ export function DataTable<TData extends RowData>({
     .getAllLeafColumns()
     .filter((column) => column.getCanHide() && typeof column.columnDef.header === "string");
   const showColumnPicker = useColumnToggleClaim(
-    collectionTier === "primary" && hideableColumns.length > 1,
+    pickColumns && collectionTier === "primary" && hideableColumns.length > 1,
   );
   const hasActionColumn = Boolean(rowActions);
   const hasChevron = Boolean(onOpen);
