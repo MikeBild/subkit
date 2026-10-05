@@ -968,7 +968,8 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
         conversations: Number(conversationCounts.get(row.id) ?? 0),
       },
     }));
-    const lastVisible = hasMore ? rows[limit - 1] : undefined;
+    const cursorOrder = (!q.sort || q.sort === "created_at") && (!q.order || q.order === "desc");
+    const lastVisible = hasMore && cursorOrder ? rows[limit - 1] : undefined;
     const next_cursor = lastVisible ? lastVisible.created_at.toISOString() : null;
     return c.json({ items, total: Number(totalRow?.total ?? 0), next_cursor }, 200);
   });

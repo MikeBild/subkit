@@ -5,6 +5,7 @@ import {
   listQueryKey,
   nextPageParam,
   type PageParam,
+  uniqueById,
 } from "./use-infinite-list";
 
 const ROWS = Array.from({ length: 61 }, (_, index) => `row-${index + 1}`);
@@ -61,6 +62,20 @@ describe("infinite list paging", () => {
     expect(nextPageParam([{ items: [], total: 10 }])).toBeNull();
     expect(nextPageParam([{ items: ["a"] }])).toBeNull();
     expect(nextPageParam([])).toBeNull();
+  });
+
+  test("a list with a total and no cursor for its order pages by offset", () => {
+    const { items, requested } = loadAll(
+      (path) => ({ ...offsetEngine(path), next_cursor: null }),
+      25,
+    );
+    expect(items).toEqual(ROWS);
+    expect(requested[1]).toContain("offset=25");
+  });
+
+  test("a row that moved to a later page between loads shows once", () => {
+    const rows = uniqueById([{ id: "a" }, { id: "b" }, { id: "a" }, { name: "no id" }]);
+    expect(rows).toEqual([{ id: "a" }, { id: "b" }, { name: "no id" }]);
   });
 
   test("blank filters stay out of the address", () => {

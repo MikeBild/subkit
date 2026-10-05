@@ -28,7 +28,7 @@ export function listQueryKey(path: string, params: ListParams): QueryKey {
 export function nextPageParam<T>(pages: readonly CursorPage<T>[]): PageParam {
   const last = pages[pages.length - 1];
   if (!last) return null;
-  if ("next_cursor" in last) return last.next_cursor ?? null;
+  if (typeof last.next_cursor === "string" && last.next_cursor) return last.next_cursor;
   if (typeof last.total !== "number") return null;
   const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
   return loaded < last.total && last.items.length > 0 ? loaded : null;
@@ -51,6 +51,17 @@ export function listPagePath(
   return `${path}?${search}`;
 }
 
+export function uniqueById<T>(items: readonly T[]): T[] {
+  const seen = new Set<unknown>();
+  return items.filter((item) => {
+    const id = (item as { id?: unknown } | null)?.id;
+    if (id === undefined || id === null) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 export function useInfiniteList<T, P extends CursorPage<T> = CursorPage<T>>(
   path: string,
   params: ListParams = {},
@@ -68,7 +79,7 @@ export function useInfiniteList<T, P extends CursorPage<T> = CursorPage<T>>(
   const pages = query.data?.pages ?? [];
   return {
     query,
-    items: pages.flatMap((page) => page.items),
+    items: uniqueById(pages.flatMap((page) => page.items)),
     total: pages[0]?.total,
     first: pages[0],
     infinite: {
