@@ -16,7 +16,6 @@ import {
   respondToChatApproval,
   respondToChatChoice,
   respondToChatForm,
-  respondToChatText,
   respondToToolCall,
   sendConversationTurn,
   setConversationHidden,
@@ -194,8 +193,7 @@ import {
   turnFailureCause,
   userMessageCount,
 } from "./chat-session";
-import { type ChatText, chatText, questionExcerpt, questionIsInTranscript } from "./chat-text";
-import { ChatTextCard } from "./chat-text-card";
+import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 import { budgetPressure, budgetSummary } from "./usage-model";
 
@@ -508,6 +506,7 @@ function ChatComposer({
   onSend,
   onStop,
   restoreRef,
+  answer,
 }: {
   disabled: boolean;
   locked: boolean;
@@ -521,6 +520,7 @@ function ChatComposer({
   onSend: (message: string, references: ConversationReference[]) => Promise<boolean>;
   onStop: () => void;
   restoreRef: MutableRefObject<RestoreComposer | null>;
+  answer: ChatText | null;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -529,6 +529,15 @@ function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [references, setReferences] = useState<ConversationReference[]>([]);
   const setInput = controller.textInput.setInput;
+  const [answerRejected, setAnswerRejected] = useState(false);
+  const answerId = answer?.id ?? null;
+  const answerDefault = answer?.initialValue ?? null;
+  const currentInput = useRef(controller.textInput.value);
+  currentInput.current = controller.textInput.value;
+  useEffect(() => {
+    setAnswerRejected(false);
+    if (answerId && answerDefault && !currentInput.current.trim()) setInput(answerDefault);
+  }, [answerId, answerDefault, setInput]);
   useEffect(() => {
     restoreRef.current = (text, restored) => {
       setInput(text);
@@ -584,6 +593,11 @@ function ChatComposer({
             onSubmit={async ({ text }) => {
               const trimmed = text.trim();
               if (!trimmed && attachments.length === 0) return;
+              if (!composerAnswerAccepted(answer, trimmed)) {
+                setAnswerRejected(true);
+                throw new Error("answer rejected");
+              }
+              setAnswerRejected(false);
               const sent = reconcileReferences(trimmed, references);
               controller.textInput.clear();
               setReferences([]);
@@ -613,13 +627,15 @@ function ChatComposer({
                 placeholder={placeholder}
                 aria-label={t("chat.composer.label")}
                 aria-describedby={describedBy}
+                aria-invalid={answerRejected || undefined}
                 disabled={disabled}
                 onKeyDown={(event) => {
                   mentions.onKeyDown(event);
                 }}
-                onChange={(event) =>
-                  mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart)
-                }
+                onChange={(event) => {
+                  setAnswerRejected(false);
+                  mentions.onChange(event.currentTarget.value, event.currentTarget.selectionStart);
+                }}
                 onClick={(event) => mentions.onCaretMove(event.currentTarget.selectionStart)}
                 onKeyUp={(event) => {
                   if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End")
@@ -670,6 +686,15 @@ function ChatComposer({
               </PromptInputSubmit>
             </PromptInputFooter>
           </PromptInput>
+          {answerRejected ? (
+            <p
+              role="alert"
+              className="mt-1 text-sm text-destructive"
+              data-testid="chat-composer-invalid"
+            >
+              {t("chat.text.invalid")}
+            </p>
+          ) : null}
         </div>
       </PopoverAnchor>
     </Popover>
@@ -858,7 +883,6 @@ function ChatMessage({
   text = null,
   onForm,
   onChoice,
-  onText = () => {},
   answersQuestion = false,
   approvalBusy,
   approvalError,
@@ -882,7 +906,6 @@ function ChatMessage({
   text?: ChatText | null;
   onForm: (id: string, output: Record<string, unknown>) => void;
   onChoice: (id: string, value: string) => void;
-  onText?: (id: string, value: string) => void;
   answersQuestion?: boolean;
   approvalBusy: boolean;
   approvalError: boolean;
@@ -984,7 +1007,7 @@ function ChatMessage({
                       />
                     ) : (
                       <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
-                        {nameIdentifiers(text, nameFor, t("tool.referenceHiddenInline"))}
+                        {nameIdentifiers(text, nameFor, t("chat.referenceUnnamed"))}
                       </MessageResponse>
                     )}
                   </BubbleContent>
@@ -1019,14 +1042,13 @@ function ChatMessage({
             );
           if (text?.toolCallId === tool.toolCallId)
             return (
-              <ChatTextCard
-                key={`${message.id}-text-question-${partIndex}`}
-                text={text}
-                busy={approvalBusy}
-                error={approvalError}
-                onAnswer={onText}
-                testId={`chat-message-${messageIndex}-text-question`}
-              />
+              <Bubble key={`${message.id}-question-${partIndex}`} variant="ghost" align="start">
+                <BubbleContent data-testid={`chat-message-${messageIndex}-question`}>
+                  <MessageResponse components={CHAT_MARKDOWN_COMPONENTS}>
+                    {nameIdentifiers(text.question, nameFor, t("chat.referenceUnnamed"))}
+                  </MessageResponse>
+                </BubbleContent>
+              </Bubble>
             );
           if (choice?.toolCallId === tool.toolCallId) {
             return (
@@ -1568,14 +1590,12 @@ export function ChatPage() {
       elicitationId,
       approved,
       choiceValue,
-      textValue,
       formOutput,
     }: {
       toolCallId?: string;
       elicitationId?: string;
       approved?: boolean;
       choiceValue?: string;
-      textValue?: string;
       formOutput?: Record<string, unknown>;
     }) => {
       setStreamedText("");
@@ -1586,9 +1606,7 @@ export function ChatPage() {
           ? respondToChatForm(activeId ?? "", elicitationId, formOutput, onTurnEvent)
           : choiceValue !== undefined
             ? respondToChatChoice(activeId ?? "", elicitationId, choiceValue, onTurnEvent)
-            : textValue !== undefined
-              ? respondToChatText(activeId ?? "", elicitationId, textValue, onTurnEvent)
-              : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
+            : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
         : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
     },
     onSuccess: () => {
@@ -1619,12 +1637,6 @@ export function ChatPage() {
     decisionLock.current = true;
     send.reset();
     decide.mutate({ elicitationId, choiceValue });
-  };
-  const submitText = (elicitationId: string, textValue: string) => {
-    if (decisionLock.current || send.isPending || decide.isPending) return;
-    decisionLock.current = true;
-    send.reset();
-    decide.mutate({ elicitationId, textValue });
   };
   const submitForm = (elicitationId: string, formOutput: Record<string, unknown>) => {
     if (decisionLock.current || send.isPending || decide.isPending) return;
@@ -1682,7 +1694,6 @@ export function ChatPage() {
   const formOpen = open(pendingForm);
   const anyQuestion = Boolean(pendingDecision || pendingChoice || pendingForm || pendingText);
   const anyQuestionOpen = open(pendingDecision) || choiceOpen || formOpen || open(pendingText);
-  const pendingTextInline = pendingText ? questionIsInTranscript(pendingText, messages) : false;
   const answerMessageIds = useMemo(
     () =>
       new Set(
@@ -1701,6 +1712,13 @@ export function ChatPage() {
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   const nameFor = useMemo(() => {
     const known = new Map<string, ResolvedIdentifier>();
+    for (const conversation of conversations.data?.items ?? []) {
+      if (!conversation.title) continue;
+      known.set(conversation.id, {
+        label: humanFacingText(conversation.title, t("chat.referenceUnnamed")),
+        href: absolute(conversationHref(conversation.id)),
+      });
+    }
     for (const resource of createdResources) {
       const label = resource.name || resource.slug;
       if (!label) continue;
@@ -1721,7 +1739,7 @@ export function ChatPage() {
       });
     }
     return (id: string) => known.get(id) ?? null;
-  }, [createdResources, referencedResources, resume?.active_target]);
+  }, [conversations.data, createdResources, referencedResources, resume?.active_target, t]);
   const session = useSession();
   const live = useLiveQueryOptions();
   const conversationFiles = useQuery({
@@ -2344,7 +2362,6 @@ export function ChatPage() {
                           text={pendingText}
                           onForm={submitForm}
                           onChoice={submitChoice}
-                          onText={submitText}
                           answersQuestion={answerMessageIds.has(message.id)}
                           approvalBusy={busy}
                           approvalError={decisionErrorFor(
@@ -2512,15 +2529,6 @@ export function ChatPage() {
                         testId="chat-form"
                       />
                     )}
-                    {pendingText && !pendingTextInline && (
-                      <ChatTextCard
-                        text={pendingText}
-                        busy={busy}
-                        error={decisionErrorFor(pendingText.id)}
-                        onAnswer={submitText}
-                        testId="chat-text-question"
-                      />
-                    )}
                     {showPreparation && (
                       <ChatCard
                         testId="chat-preparation-next-step"
@@ -2648,8 +2656,11 @@ export function ChatPage() {
                   locked={choiceOpen || formOpen}
                   status={status}
                   placeholder={
-                    pendingText ? t("chat.text.placeholder") : t("chat.composer.placeholder")
+                    pendingText
+                      ? (pendingText.placeholder ?? t("chat.text.placeholder"))
+                      : t("chat.composer.placeholder")
                   }
+                  answer={pendingText}
                   describedBy={composerHint ? "chat-composer-hint" : undefined}
                   attachments={attachments}
                   onAttach={(next) => setAttachments((current) => addAttachments(current, next))}

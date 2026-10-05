@@ -29,7 +29,7 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
   let appends = 0;
   let answers = 0;
   let expected = "";
-  const input = { question, placeholder };
+  const input = { question, placeholder, validation_regex: "^[^0-9]+$" };
   const detailPattern = `**/v1/conversations/${conversation.id}`;
   const appendPattern = `**/v1/conversations/${conversation.id}/messages`;
   const answerPattern = `**/v1/conversations/${conversation.id}/elicitations/text-question/respond`;
@@ -153,7 +153,6 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     });
   };
   const transcript = () => page.getByTestId("chat-transcript");
-  const questionCard = () => transcript().locator('[data-testid$="text-question"]').first();
   const composer = () => page.getByTestId("chat-composer-input");
   const composerReady = () =>
     page.waitForFunction(() => {
@@ -161,32 +160,39 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
       return el && !el.disabled && !el.value;
     });
   const expectQuestionShown = async (where) => {
-    const card = questionCard();
-    await card.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
-      throw new Error(`${where}: the text question is not shown in the transcript`);
-    });
-    if (!(await card.innerText()).includes(question))
-      throw new Error(`${where}: the question card does not show the question`);
-    const field = card.locator('[data-testid$="text-question-input"]');
-    if (!(await field.isVisible())) throw new Error(`${where}: the question has no answer field`);
-    const submit = card.locator('[data-testid$="text-question-submit"]');
-    if ((await submit.innerText()).trim() !== (de ? "Antworten" : "Answer"))
-      throw new Error(`${where}: the answer action is not named "${de ? "Antworten" : "Answer"}"`);
+    await page
+      .waitForFunction(
+        (asked) =>
+          (document.querySelector('[data-testid="chat-transcript"]')?.textContent ?? "").includes(
+            asked,
+          ),
+        question,
+        { timeout: 10_000 },
+      )
+      .catch(() => {
+        throw new Error(`${where}: the text question is not shown in the transcript`);
+      });
     const hint = page.getByTestId("chat-composer-hint");
-    if (!(await hint.isVisible()))
+    await hint.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
       throw new Error(`${where}: the composer does not say that it answers the question`);
+    });
     const hintText = await hint.innerText();
     if (!hintText.includes(question.slice(0, 30)))
       throw new Error(`${where}: the composer hint does not name the question: ${hintText}`);
+    const fields = await transcript().locator("input, textarea, select").count();
+    if (fields !== 0)
+      throw new Error(`${where}: the transcript carries ${fields} answer field(s) of its own`);
+    if (await page.locator('[data-testid$="text-question"]').count())
+      throw new Error(`${where}: a text question is rendered as a card`);
+    const composers = await page.getByTestId("chat-composer-input").count();
+    if (composers !== 1)
+      throw new Error(`${where}: expected exactly one answer input, found ${composers}`);
+    if (!(await composer().isEnabled()))
+      throw new Error(`${where}: the composer is locked while a text question waits`);
     if (await transcript().locator('[data-testid$="-approve"], [data-testid$="-decline"]').count())
       throw new Error(`${where}: a text question displays binary approval actions`);
-    return { card, field, submit };
   };
   const expectAnswered = async (value) => {
-    await page.waitForFunction(
-      () =>
-        !document.querySelector('[data-testid="chat-transcript"] [data-testid$="text-question"]'),
-    );
     const asked = transcript().locator('[data-testid*="-asked-"]');
     await asked.waitFor();
     if (!(await asked.innerText()).includes(question))
@@ -216,9 +222,9 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     reset({});
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
-    const shown = await expectQuestionShown("tool question");
-    if ((await shown.field.getAttribute("placeholder")) !== placeholder)
-      throw new Error("The answer field does not carry the question's placeholder");
+    await expectQuestionShown("tool question");
+    if ((await composer().getAttribute("placeholder")) !== placeholder)
+      throw new Error("The composer does not carry the question's placeholder");
     const status = page.getByTestId("chat-status");
     if (
       (await status.getAttribute("data-state")) !== "awaiting_input" ||
@@ -228,9 +234,20 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     if (/wartet|waiting/i.test(await page.getByTestId("chat-summary").innerText()))
       throw new Error("The summary line repeats that the conversation is waiting");
     await capture("question");
+    await composer().fill("Bericht 2");
+    await page.getByTestId("chat-composer-submit").click();
+    const invalid = page.getByTestId("chat-composer-invalid");
+    await invalid.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
+      throw new Error("An answer the question rejects is sent without a word");
+    });
+    if ((await composer().inputValue()) !== "Bericht 2")
+      throw new Error("A rejected answer is removed from the composer");
+    if (answers !== 0) throw new Error("A rejected answer was sent");
     expected = "Tagesbericht Kunden-API";
-    await shown.field.fill(expected);
-    await shown.submit.click();
+    await composer().fill(expected);
+    if (await invalid.count()) throw new Error("The rejection stays after the answer changed");
+    await page.getByTestId("chat-composer-submit").click();
+    await composerReady();
     await expectAnswered(expected);
     if (await page.getByTestId("chat-composer-hint").count())
       throw new Error("The composer still claims a question waits after it was answered");
@@ -250,7 +267,8 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     reset({ stale: true, asked: false });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
-    if (await questionCard().count()) throw new Error("A question is shown before it was asked");
+    if (await page.getByTestId("chat-composer-hint").count())
+      throw new Error("A question is announced before it was asked");
     const unseen = de ? "ich sehe hier keinen dialog" : "I don't see any dialog here";
     await composer().fill(unseen);
     await page.getByTestId("chat-composer-submit").click();
@@ -275,16 +293,12 @@ export async function verifyChatReplies(page, stand, conversation, locale, captu
     reset({ mode: "prose" });
     await stand.visit(page, `chat/${conversation.id}`);
     await composer().waitFor();
-    const parked = await expectQuestionShown("prose question");
-    if ((await parked.card.getAttribute("data-testid")) !== "chat-text-question")
-      throw new Error("A parked prose question is not shown below the transcript");
+    await expectQuestionShown("prose question");
     expected = "Wetterdaten";
-    await parked.field.fill(expected);
-    await parked.submit.click();
-    await page.waitForFunction(
-      () =>
-        !document.querySelector('[data-testid="chat-transcript"] [data-testid$="text-question"]'),
-    );
+    await composer().fill(expected);
+    await page.getByTestId("chat-composer-submit").click();
+    await composerReady();
+    await page.getByTestId("chat-composer-hint").waitFor({ state: "detached", timeout: 10_000 });
 
     reset({ asked: false, waiting: false, append: "turn" });
     await stand.visit(page, `chat/${conversation.id}`);
