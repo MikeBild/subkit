@@ -1132,8 +1132,13 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     where = at("repair");
     panel = await open(page, stand, state, "repair");
     await expectState(page, panel, where, words, "repair", { action: null, openers: 0 });
-    await page.getByTestId("workflow-diagnosis-0-repair").waitFor();
-    if ((await text(page, "workflow-diagnosis-chat")) !== words.fixInChat)
+    await page
+      .getByTestId("workflow-diagnosis-0-repair")
+      .filter({ visible: true })
+      .first()
+      .waitFor();
+    const authorFix = page.getByTestId("workflow-diagnosis-1-chat").filter({ visible: true });
+    if ((await authorFix.count()) !== 1 || (await authorFix.innerText()).trim() !== words.fixInChat)
       throw new Error(`${where}: the step that needs an author has no way to one`);
     if ((await page.getByTestId("workflow-diagnosis").count()) !== 1)
       throw new Error(`${where}: the diagnosis does not stand under the strip exactly once`);

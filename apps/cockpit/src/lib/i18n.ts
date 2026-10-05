@@ -481,8 +481,6 @@ const EN = {
   "prepared.decisionFailed": "The decision could not be saved.",
   "settings.secretExternalOnly":
     "Only for an external provider's value, such as a model key; a system that grants access itself is connected under API access.",
-  "connectorCredentials.title": "Sign-in",
-  "connectorCredentials.viaConnection": "Uses the account connection {name}.",
   "connectorCredentials.choose": "Choose a connection",
   "connectorCredentials.choosePlaceholder": "Choose…",
   "connectorCredentials.chooseHint":
@@ -490,7 +488,6 @@ const EN = {
   "connectorCredentials.noConnections": "There is no account connection yet.",
   "connectorCredentials.openConnections": "Open Access on your behalf",
   "connectorCredentials.openConnection": "Open account connection",
-  "connectorCredentials.connectionState": "Account connection: {state}",
   "connectorCredentials.renew": "Sign in again",
   "connectorCredentials.renewViaConnection":
     "The sign-in runs through the account connection {name}. Renewing it there signs in every connector that uses it.",
@@ -506,8 +503,6 @@ const EN = {
   "connectorCredentials.signInAtProvider":
     "Not signed in yet. “Sign in” takes you to the provider and back here.",
   "connectorCredentials.enterKey": "No key stored yet. “Sign in” opens the field for it.",
-  "connectorCredentials.partial":
-    "The provider did not grant every permission that was asked for. Missing: {scopes}.",
   "connectorState.off": "Switched off",
   "connectorState.signedIn": "Signed in",
   "connectorState.signedInOff": "Signed in, but switched off",
@@ -516,9 +511,6 @@ const EN = {
   "connectorState.enabled": "Connector switched on",
   "connectorState.enableFailed": "The connector could not be switched on.",
   "connectorCredentials.use": "Use",
-  "connectorCredentials.key": "Key",
-  "connectorCredentials.keyHint":
-    "Only for an external provider that cannot grant access itself. The key is stored encrypted and never shown again.",
   "connectorCredentials.saved": "Credentials saved",
   "connectorCredentials.saveFailed": "The credentials could not be saved.",
   "connectorLabel.driver.http": "Web API (HTTP)",
@@ -600,7 +592,11 @@ const EN = {
   "connectorDetail.technical.id": "Identifier",
   "connectorDetail.technical.copyId": "Copy identifier",
   "connectorCredentials.stored": "Stored · last changed {date}",
-  "connectorCredentials.replaceKey": "Replace key",
+  "connectorCredentials.credentials": "Credentials",
+  "connectorCredentials.missingScopes": "Not granted",
+  "connectorCredentials.viaConnectionState": "Via {name} · {state}",
+  "connectorCredentials.neverShown":
+    "Stored secrets are never shown again; replace them under Edit.",
   "connectorCredentials.headerName": "Header name",
   "audit.action.boundaryRefused": "Action stopped at its limit",
   "audit.action.scheduleAdmissionChanged": "Schedule permission changed",
@@ -4291,8 +4287,6 @@ const DE: Record<TranslationKey, string> = {
   "prepared.decisionFailed": "Die Entscheidung konnte nicht gespeichert werden.",
   "settings.secretExternalOnly":
     "Nur für den Wert eines externen Anbieters, etwa einen Modell-Schlüssel; ein System, das selbst Zugriff freigibt, verbindest du unter API-Zugang.",
-  "connectorCredentials.title": "Anmeldung",
-  "connectorCredentials.viaConnection": "Nutzt die Verbindung {name}.",
   "connectorCredentials.choose": "Verbindung wählen",
   "connectorCredentials.choosePlaceholder": "Wählen…",
   "connectorCredentials.chooseHint":
@@ -4300,7 +4294,6 @@ const DE: Record<TranslationKey, string> = {
   "connectorCredentials.noConnections": "Es gibt noch keine Verbindung.",
   "connectorCredentials.openConnections": "Zugriff in deinem Namen öffnen",
   "connectorCredentials.openConnection": "Verbindung öffnen",
-  "connectorCredentials.connectionState": "Verbindung: {state}",
   "connectorCredentials.renew": "Neu anmelden",
   "connectorCredentials.renewViaConnection":
     "Die Anmeldung läuft über die Verbindung {name}. Dort erneuert, gilt sie für jeden Konnektor, der sie nutzt.",
@@ -4317,8 +4310,6 @@ const DE: Record<TranslationKey, string> = {
     "Noch nicht angemeldet. „Anmelden“ führt zum Anbieter und wieder hierher.",
   "connectorCredentials.enterKey":
     "Noch kein Schlüssel hinterlegt. „Anmelden“ öffnet das Feld dafür.",
-  "connectorCredentials.partial":
-    "Der Anbieter hat nicht alle angefragten Berechtigungen erteilt. Es fehlen: {scopes}.",
   "connectorState.off": "Abgeschaltet",
   "connectorState.signedIn": "Angemeldet",
   "connectorState.signedInOff": "Angemeldet, aber abgeschaltet",
@@ -4327,9 +4318,6 @@ const DE: Record<TranslationKey, string> = {
   "connectorState.enabled": "Konnektor eingeschaltet",
   "connectorState.enableFailed": "Der Konnektor ließ sich nicht einschalten.",
   "connectorCredentials.use": "Übernehmen",
-  "connectorCredentials.key": "Schlüssel",
-  "connectorCredentials.keyHint":
-    "Nur für einen externen Anbieter, der den Zugriff nicht selbst freigeben kann. Der Schlüssel wird verschlüsselt gespeichert und nie wieder angezeigt.",
   "connectorCredentials.saved": "Zugangsdaten gespeichert",
   "connectorCredentials.saveFailed": "Die Zugangsdaten konnten nicht gespeichert werden.",
   "connectorLabel.driver.http": "Web-API (HTTP)",
@@ -4412,7 +4400,11 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.technical.id": "Kennung",
   "connectorDetail.technical.copyId": "Kennung kopieren",
   "connectorCredentials.stored": "Hinterlegt · zuletzt geändert {date}",
-  "connectorCredentials.replaceKey": "Schlüssel ersetzen",
+  "connectorCredentials.credentials": "Zugangsdaten",
+  "connectorCredentials.missingScopes": "Nicht erteilt",
+  "connectorCredentials.viaConnectionState": "Über {name} · {state}",
+  "connectorCredentials.neverShown":
+    "Gespeicherte Geheimnisse werden nie wieder angezeigt; ersetzen unter Bearbeiten.",
   "connectorCredentials.headerName": "Header-Name",
   "audit.action.boundaryRefused": "Aktion an ihrer Grenze gestoppt",
   "audit.action.scheduleAdmissionChanged": "Zeitplan-Freigabe geändert",
