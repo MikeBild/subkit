@@ -177,24 +177,34 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await stand.visit(page, `?review=workflow:${id}`);
     await page.getByTestId("attention-review-body").waitFor();
   };
+  const header = page.getByTestId("attention-review-actions");
+  const approveOnly = async () => {
+    await header.locator('[data-testid$="-more"]').click();
+    await page.getByRole("menuitem").filter({ visible: true }).first().waitFor();
+    await page.locator('[role="menuitem"][data-testid$="-approve"]').click();
+  };
   try {
     await openSheet();
     const card = page.locator(`article[data-decision-key="patch:${id}"]`);
     await card.waitFor();
-    const approve = page
-      .getByTestId("attention-review-actions")
-      .locator('[data-testid$="-approve"]');
-    if ((await card.locator('[data-testid$="-approve"]').count()) !== 0)
+    if ((await card.locator('[data-testid$="-approve"], [data-testid$="-more"]').count()) !== 0)
       throw new Error(
         "The only decision in the sheet keeps its actions in the card, not the header",
       );
-    if (!(await approve.isDisabled())) throw new Error("Unopened repair can be approved");
-    const facts = await card.locator('[data-testid$="-facts"]').innerText();
+    const facts = card.locator('[data-testid$="-facts"]');
+    await facts.waitFor();
+    const factText = await facts.innerText();
     for (const word of locale === "de" ? ["Vorher", "Nachher"] : ["Before", "After"])
-      if (!facts.includes(word)) throw new Error(`The repair sheet does not state "${word}"`);
-    await card.locator('[data-testid$="-toggle"]').click();
-    await card.locator('[data-testid$="-detail"]').waitFor();
-    await approve.click();
+      if (!factText.includes(word)) throw new Error(`The repair sheet does not state "${word}"`);
+    if (!factText.includes("data.result.id"))
+      throw new Error("The repair sheet does not show the changed value before it is opened");
+    await header.getByTestId("authority-grant-open").waitFor();
+    const headerButtons = await header.locator("button").filter({ visible: true }).count();
+    if (headerButtons !== 2)
+      throw new Error(`The sheet header offers ${headerButtons} buttons, not one act and a menu`);
+    if (await header.locator('[data-testid$="-reject"]').filter({ visible: true }).count())
+      throw new Error("Rejecting stands next to the act instead of in the menu");
+    await approveOnly();
     await page
       .getByText(
         locale === "de"
@@ -208,8 +218,8 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await listed().waitFor({ state: "attached" });
     await openSheet();
     await card.waitFor();
-    await card.locator('[data-testid$="-toggle"]').click();
-    await approve.click();
+    await card.locator('[data-testid$="-facts"]').waitFor();
+    await approveOnly();
     await page.getByTestId("attention-review").waitFor({ state: "hidden" });
     const audit = page.getByTestId("attention-decided-audit");
     await audit.waitFor();
@@ -225,8 +235,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     applied = false;
     await openSheet();
     await card.waitFor();
-    await card.locator('[data-testid$="-toggle"]').click();
-    await page.getByTestId("attention-review-actions").getByTestId("authority-grant-open").click();
+    await header.getByTestId("authority-grant-open").click();
     await page.getByTestId("authority-grant-review").waitFor();
     const dialog = page
       .getByRole("dialog")
@@ -238,6 +247,9 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
       !reviewText.includes("https://reports.example.test/monthly")
     )
       throw new Error("Combined dialog omitted the repair or target");
+    for (const raw of ['"before"', '"after"', '"data_selector"'])
+      if (reviewText.includes(raw))
+        throw new Error(`Combined dialog shows the change as raw JSON (${raw})`);
     if (attempts !== 2 || applied) throw new Error("Preparing the boundary applied the repair");
     await dialog.evaluate(async (node) => {
       await Promise.all(

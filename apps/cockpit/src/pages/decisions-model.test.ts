@@ -5,6 +5,7 @@ import {
   badgeCount,
   bannerSubset,
   changeFacts,
+  changeRows,
   conversationDecision,
   countOpenDecisions,
   type DecisionItem,
@@ -62,6 +63,12 @@ const PATCH_EVIDENCE = {
   connectorId: null,
   endpointKey: null,
   executionId: null,
+  environment: null,
+  workflowStepId: null,
+  gateCode: null,
+  gateReason: null,
+  gateStepId: null,
+  fixer: null,
   driftKind: null,
   driftSummary: null,
   reasoning: null,
@@ -166,7 +173,52 @@ describe("decision adapters", () => {
         created_at: daysAgo(1),
         updated_at: daysAgo(1),
       } as never),
-    ).toEqual({ proposalKind: "rename_param", driftKind: "schema_diff" });
+    ).toEqual({ proposalKind: "rename_param", driftKind: "schema_diff", fixer: null });
+  });
+
+  test("a gate repair carries its rule, its fixer and the environment of the refused run", () => {
+    const decision = patchDecision(
+      {
+        id: "44444444-4444-4444-8444-444444444444",
+        tenant_id: "t",
+        workflow_id: "w",
+        workflow_name: "Monatsreport",
+        connector_id: null,
+        endpoint_key: "gate:execution_authority_changed",
+        classification: "unsafe",
+        status: "proposed",
+        fixture_id: null,
+        diff: {
+          workflow_step_id: "compose",
+          environment: "prod",
+          drift_signal: {
+            kind: "gate_block",
+            code: "execution_authority_changed",
+            reason: "not_utf8",
+            fixer: "use_utf8_encoder",
+            step_id: "send_email",
+          },
+          proposal: {
+            kind: "gate_fix",
+            description: "Encode the report message as UTF-8 in step `compose`",
+            reasoning: "The approval gate refused step `send_email`",
+          },
+        },
+        created_at: daysAgo(1),
+        updated_at: daysAgo(1),
+      } as never,
+      "Korrektur für Monatsreport: Nachricht als UTF-8 kodieren",
+    );
+    expect(decision.summary).toBeNull();
+    if (decision.detail.kind !== "patch") throw new Error("not a patch");
+    expect(decision.detail.evidence).toMatchObject({
+      environment: "prod",
+      workflowStepId: "compose",
+      gateCode: "execution_authority_changed",
+      gateReason: "not_utf8",
+      gateStepId: "send_email",
+      fixer: "use_utf8_encoder",
+    });
   });
 
   describe("patchTitle", () => {
@@ -794,26 +846,61 @@ describe("the before and after a repair names", () => {
     ).toEqual([
       {
         path: "config.path",
-        before: "/spaces/growth/pages/weekly",
-        after: "/spaces/growth/concepts/weekly",
+        inline: {
+          before: "/spaces/growth/pages/weekly",
+          after: "/spaces/growth/concepts/weekly",
+        },
+        rows: [],
       },
     ]);
   });
 
   test("a value only one side has reads as a dash on the other", () => {
     expect(changeFacts({}, { data_selector: "items" }, ["data_selector"])).toEqual([
-      { path: "data_selector", before: "—", after: "items" },
+      { path: "data_selector", inline: { before: "—", after: "items" }, rows: [] },
     ]);
   });
 
-  test("structured values are shown compactly and long ones clipped", () => {
-    const [fact] = changeFacts({ body: { a: 1 } }, { body: "x".repeat(200) }, ["body"]);
-    expect(fact?.before).toBe('{"a":1}');
-    expect(fact?.after.length).toBe(120);
-    expect(fact?.after.endsWith("…")).toBe(true);
+  test("code whose first lines agree shows the line that changed, not the shared start", () => {
+    const head = Array.from({ length: 12 }, (_, line) => `const part${line} = ${line};`);
+    const [fact] = changeFacts(
+      { expression: [...head, "return { raw: sk.base64UrlEncode(msg) };"].join("\n") },
+      { expression: [...head, "return { raw: sk.base64UrlEncodeUtf8(msg) };"].join("\n") },
+      ["expression"],
+    );
+    expect(fact?.inline).toBeNull();
+    expect(fact?.rows[0]).toEqual({ type: "gap", count: 10 });
+    expect(fact?.rows.filter((row) => row.type === "removed")).toEqual([
+      { type: "removed", text: "return { raw: sk.base64UrlEncode(msg) };" },
+    ]);
+    expect(fact?.rows.filter((row) => row.type === "added")).toEqual([
+      { type: "added", text: "return { raw: sk.base64UrlEncodeUtf8(msg) };" },
+    ]);
   });
 
-  test("names at most three paths and nothing without paths", () => {
+  test("a long value is diffed by line instead of clipped", () => {
+    const [fact] = changeFacts({ body: { a: 1 } }, { body: "x".repeat(200) }, ["body"]);
+    expect(fact?.inline).toBeNull();
+    expect(fact?.rows.some((row) => row.type === "added" && row.text === "x".repeat(200))).toBe(
+      true,
+    );
+  });
+
+  test("without named paths the whole step is diffed, focused on its change", () => {
+    const [fact] = changeFacts({ id: "a", path: "/x" }, { id: "a", path: "/y" }, null);
+    expect(fact?.path).toBe("");
+    expect(fact?.rows.some((row) => row.type === "added" && row.text.includes("/y"))).toBe(true);
+  });
+
+  test("the rows of a change put inline values as one removed and one added line", () => {
+    const facts = changeFacts({ a: "x" }, { a: "y" }, ["a"]);
+    expect(changeRows(facts)).toEqual([
+      { type: "removed", text: "x" },
+      { type: "added", text: "y" },
+    ]);
+  });
+
+  test("names at most three paths and nothing when nothing changed", () => {
     expect(changeFacts({}, {}, ["a", "b", "c", "d"])).toHaveLength(3);
     expect(changeFacts({}, {}, null)).toEqual([]);
   });
