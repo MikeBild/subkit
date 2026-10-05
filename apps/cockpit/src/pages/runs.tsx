@@ -27,7 +27,6 @@ import {
 import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -112,27 +111,17 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
     onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
   });
   const running = isLive(run.status);
-  const button = (
+  return (
     <ActionButton
       variant="primary"
       disabled={running}
+      disabledReason={t("runs.rerun.whileRunning")}
       pending={rerun.isPending}
       onClick={() => rerun.mutate()}
       testId="run-rerun-open"
     >
       {t("runs.rerun.open")}
     </ActionButton>
-  );
-  if (!running) return button;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex" data-testid="run-rerun-blocked">
-          {button}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{t("runs.rerun.whileRunning")}</TooltipContent>
-    </Tooltip>
   );
 }
 
