@@ -456,7 +456,7 @@ export function SettingCopyKey({ item, index }: { item: SettingItem; index: numb
         <code className="font-mono">{t("settings.copyKeyTooltip", { key: item.path })}</code>
       }
       size="icon-xs"
-      className="shrink-0"
+      className="shrink-0 opacity-0 group-focus-within/setting:opacity-100 group-hover/setting:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
       data-testid={`setting-copy-key-${index}`}
       onClick={() => void copy(item.path)}
     >
@@ -509,10 +509,14 @@ export function SettingDefaultLine({
       data-testid={`setting-changed-${index}`}
     >
       <span className="font-medium text-foreground">{t("settings.changed")}</span>
-      <span aria-hidden="true">·</span>
-      <span className="break-all" data-testid={`setting-default-${index}`}>
-        {t("settings.defaultIs", { value: settingValueText(item.meta.default, t) })}
-      </span>
+      {typeof item.meta.default === "object" && item.meta.default !== null ? null : (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className="break-all" data-testid={`setting-default-${index}`}>
+            {t("settings.defaultIs", { value: settingValueText(item.meta.default, t) })}
+          </span>
+        </>
+      )}
       {reset !== null && onReset ? (
         <>
           <span aria-hidden="true">·</span>
@@ -779,6 +783,33 @@ export function SettingsSection({
   );
 }
 
+export function settingRowNotes(
+  item: SettingItem,
+  t: ReturnType<typeof useI18n>["t"],
+): Array<{ id: "restart" | "source" | "applies-to"; text: string }> {
+  return [
+    ...(item.meta.requiresRestart ? [{ id: "restart" as const, text: t("settings.restart") }] : []),
+    ...(settingSourceIsNotable(item.meta.source)
+      ? [
+          {
+            id: "source" as const,
+            text: t("settings.sourceIs", {
+              source: settingMetaLabel(item.meta.source, t).text,
+            }),
+          },
+        ]
+      : []),
+    ...(settingAppliesToShown(item.meta)
+      ? [
+          {
+            id: "applies-to" as const,
+            text: t("settings.appliesTo", { scope: settingMetaLabel(item.meta.scope, t).text }),
+          },
+        ]
+      : []),
+  ];
+}
+
 export function SettingRow({
   item,
   index,
@@ -805,22 +836,24 @@ export function SettingRow({
     : settingLabel(item.path, t);
   const help = settingHelpKey(item.path);
   const invalid = settingDraftError(item, draft);
-  const notableSource = settingSourceIsNotable(item.meta.source);
-  const appliesTo = settingAppliesToShown(item.meta);
+  const notes = settingRowNotes(item, t);
   return (
     <div
       data-action-scope="setting"
       className={cn(
-        "grid scroll-mt-24 gap-3 border-t px-4 py-3 first:border-t-0",
-        !wide && "@min-[560px]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]",
+        "group/setting grid scroll-mt-24 gap-2 border-t px-4 py-2.5 first:border-t-0",
+        !wide &&
+          "@min-[560px]/settings-panel:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] @min-[560px]/settings-panel:items-center",
         highlighted && "bg-muted ring-1 ring-ring/40 ring-inset",
       )}
       data-highlighted={highlighted || undefined}
       data-setting-path={item.path}
+      data-applies-to={settingAppliesToShown(item.meta) || undefined}
+      data-requires-restart={item.meta.requiresRestart || undefined}
       data-testid={`setting-item-${index}`}
     >
       <div className="min-w-0">
-        <div className="flex min-w-0 items-start gap-1">
+        <div className="flex min-w-0 items-center gap-0.5">
           {wide ? (
             <p className="min-w-0 text-sm font-medium break-words">{label.text}</p>
           ) : (
@@ -828,12 +861,19 @@ export function SettingRow({
               <LabelText label={label} />
             </label>
           )}
-          {help ? (
+          {help || notes.length > 0 ? (
             <ContextHelp
               label={`${t("pattern.help")}: ${label.text}`}
               testId={`setting-help-${index}`}
             >
-              {t(help)}
+              <span className="grid gap-1">
+                {help ? <span>{t(help)}</span> : null}
+                {notes.map((note) => (
+                  <span key={note.id} data-testid={`setting-${note.id}-${index}`}>
+                    {note.text}
+                  </span>
+                ))}
+              </span>
             </ContextHelp>
           ) : null}
           {canCopyKey ? <SettingCopyKey item={item} index={index} /> : null}
@@ -845,23 +885,6 @@ export function SettingRow({
           disabled={disabled}
           onReset={onReset}
         />
-        {item.meta.requiresRestart || notableSource || appliesTo ? (
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {item.meta.requiresRestart ? (
-              <span data-testid={`setting-restart-${index}`}>{t("settings.restart")}</span>
-            ) : null}
-            {notableSource ? (
-              <span data-testid={`setting-source-${index}`}>
-                <LabelText label={settingMetaLabel(item.meta.source, t)} />
-              </span>
-            ) : null}
-            {appliesTo ? (
-              <span data-testid={`setting-applies-to-${index}`}>
-                {t("settings.appliesTo", { scope: settingMetaLabel(item.meta.scope, t).text })}
-              </span>
-            ) : null}
-          </p>
-        ) : null}
       </div>
       <div className="min-w-0" data-slot="setting-control">
         {children}
