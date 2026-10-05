@@ -385,7 +385,7 @@ describe("every source, as an admin reads it", () => {
     expect(chat?.href).toStartWith(`/cockpit/chat/new?workflow_id=${wf.chat}&execution_id=`);
     expect(items.get(`workflow:${wf.chat}`)?.actions.find((a) => !a.primary)).toMatchObject({
       verb: "open_runs",
-      href: `/cockpit?runs=all&workflow_id=${wf.chat}&status=failed`,
+      href: `/cockpit?runs=all&runs_workflow=${wf.chat}&runs_status=failed`,
     });
     expect(primary(`conversation:${ownConversationId}`)).toMatchObject({
       verb: "answer",

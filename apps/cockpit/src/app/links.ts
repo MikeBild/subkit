@@ -46,6 +46,15 @@ function record(section: string, id: string): string {
   return `/${section}/${encodeURIComponent(id)}`;
 }
 
+export const RUNS_FILTER_PARAMS = {
+  workflowId: "runs_workflow",
+  status: "runs_status",
+  source: "runs_source",
+  q: "runs_q",
+  startedFrom: "runs_from",
+  startedTo: "runs_to",
+} as const;
+
 export function runsHref(
   filter: {
     workflowId?: string | null;
@@ -58,12 +67,12 @@ export function runsHref(
 ): string {
   return withQuery("/", {
     runs: "all",
-    workflow_id: filter.workflowId,
-    status: filter.status === "all" ? null : filter.status,
-    source: filter.source === "all" ? null : filter.source,
-    q: filter.q,
-    started_from: filter.startedFrom,
-    started_to: filter.startedTo,
+    [RUNS_FILTER_PARAMS.workflowId]: filter.workflowId,
+    [RUNS_FILTER_PARAMS.status]: filter.status === "all" ? null : filter.status,
+    [RUNS_FILTER_PARAMS.source]: filter.source === "all" ? null : filter.source,
+    [RUNS_FILTER_PARAMS.q]: filter.q,
+    [RUNS_FILTER_PARAMS.startedFrom]: filter.startedFrom,
+    [RUNS_FILTER_PARAMS.startedTo]: filter.startedTo,
   });
 }
 
