@@ -28,7 +28,13 @@ export const EXECUTION_LIST_DEFAULT_LIMIT = 50;
 function buildExecutionListFilters(tenant_id: string, opts: ListExecutionsOptions, db: Executor) {
   const conds = [];
   if (opts.workflow_id) conds.push(eq(executions.workflow_id, opts.workflow_id));
-  if (opts.status) conds.push(eq(executions.status, opts.status as ExecutionRow["status"]));
+  const statuses = (opts.status ?? "")
+    .split(",")
+    .map((status) => status.trim())
+    .filter(Boolean) as ExecutionRow["status"][];
+  if (statuses.length === 1)
+    conds.push(eq(executions.status, statuses[0] as ExecutionRow["status"]));
+  else if (statuses.length > 1) conds.push(inArray(executions.status, statuses));
   if (opts.request_source) conds.push(eq(executions.request_source, opts.request_source));
   if (opts.parent_execution_id)
     conds.push(eq(executions.parent_execution_id, opts.parent_execution_id));

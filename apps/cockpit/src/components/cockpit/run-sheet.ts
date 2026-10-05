@@ -13,10 +13,13 @@ export function runHereHref(runId: string): string {
 export function useOpenRunSheet(): {
   run(runId: string): void;
   all(): void;
+  show(next: { list: boolean; runId: string | null }): void;
 } {
   const router = useRouter();
+  const show = (next: { list: boolean; runId: string | null }) => router.history.push(here(next));
   return {
-    run: (runId) => router.history.push(here({ list: false, runId })),
-    all: () => router.history.push(here({ list: true, runId: null })),
+    run: (runId) => show({ list: false, runId }),
+    all: () => show({ list: true, runId: null }),
+    show,
   };
 }

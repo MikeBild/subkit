@@ -6685,6 +6685,7 @@ export interface paths {
                     /** @description Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive. */
                     cursor?: string;
                     workflow_id?: string;
+                    /** @description One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them. */
                     status?: string;
                     request_source?: string;
                     q?: string;
@@ -11435,6 +11436,15 @@ export interface paths {
                 };
                 /** @description Bad request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -21800,6 +21810,11 @@ export interface components {
             connector_id?: string;
             /** Format: uuid */
             workflow_id?: string;
+            /**
+             * Format: uuid
+             * @description The run this conversation is about. Binds the conversation to the run's workflow (workflow_id must match when both are given) so 'this run' resolves to it.
+             */
+            execution_id?: string;
             initial_message?: string;
             memory?: string;
             model?: string;
@@ -21864,6 +21879,11 @@ export interface components {
                             connector: string;
                             tool: string;
                             server_claim?: string;
+                        };
+                        effect?: {
+                            connector: string;
+                            method: string;
+                            target: string | null;
                         };
                     };
                     expires_at: string;

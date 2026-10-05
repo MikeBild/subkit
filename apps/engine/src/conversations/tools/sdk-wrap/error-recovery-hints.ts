@@ -17,7 +17,15 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
   rewrite_of_bound_workflow:
     "this conversation is bound to a saved workflow, and author_workflow would regenerate the whole definition — dropping every guard the goal does not restate. There is no override. Change it with edit_workflow_patch (step_patches by step_id; add steps at /steps/-; replace a whole step at /steps/N), however many operations that takes. If a patch keeps failing, read the error's own guidance and fix that field — do not switch tools.",
   patch_target_invalid:
-    "a step_patches entry named a step_id that does not resolve to exactly one step in the current draft (missing, or duplicated). Nothing was changed. Call inspect_workflow_draft to read the real step ids, then re-issue with the exact id — never guess an id or fall back to a numeric position.",
+    "a step_patches entry named a step_id that does not resolve to exactly one step in the current draft (missing, or duplicated). Nothing was changed. The error names the workflow the draft holds: if you meant another workflow, open it with open_workflow_draft. Otherwise call inspect_workflow_draft to read the real step ids, then re-issue with the exact id — never guess an id or fall back to a numeric position.",
+  draft_target_mismatch:
+    "the patch was meant for another workflow than the one this conversation's draft holds. Nothing was changed. Open the intended workflow with open_workflow_draft (it starts from the saved definition), then re-issue the patch with that workflow's slug.",
+  workflow_already_exists:
+    "a saved workflow already has that slug. Do not regenerate it with author_workflow: open it with open_workflow_draft and change it with edit_workflow_patch. Only pick a new slug when the user wants a separate workflow.",
+  draft_has_unsaved_changes:
+    "the current draft has unsaved changes, so it was not replaced. Save it with save_workflow_draft, or ask the user whether to drop them and then call open_workflow_draft with discard_unsaved:true.",
+  authoring_definition_invalid:
+    "the generated definition did not validate, so it was not stored and the previous draft is unchanged. Retry author_workflow with a narrower goal, or split the workflow into smaller ones. Do not hand-write the definition piecewise into an unrelated draft.",
   preview_input_unavailable:
     "the preview could not take its input from a saved schedule: the workflow has none enabled in this environment, or more than one, so the engine will not pick for you. Nothing ran. Read them with list_schedules and pass that schedule's saved input explicitly; if there is genuinely none, ask the user for the real values with ask_user_form. Never invent sample values to make a preview pass.",
   draft_conflict:

@@ -27,6 +27,7 @@ import {
   absolute,
   chatNewHref,
   chatSeedFromUrl,
+  chatTargetFromUrl,
   connectorHref,
   conversationHref,
   recordHref,
@@ -136,7 +137,13 @@ import {
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
-import { type ChatApproval, chatApproval } from "./chat-approval";
+import {
+  type ChatApproval,
+  chatApproval,
+  conversationRefreshInterval,
+  recordedDecisionKey,
+  waitsForPerson,
+} from "./chat-approval";
 import { ChatApprovalCard } from "./chat-approval-card";
 import {
   addAttachments,
@@ -173,7 +180,7 @@ import {
 import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
-import { collectReferencedResources, referencesFromPart } from "./chat-references";
+import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
 import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
 import {
   activeConversationId,
@@ -964,6 +971,17 @@ function ChatMessage({
           if (group.kind === "part") {
             const raw = textFromPart(group.part);
             if (!raw) return null;
+            const recorded = recordedDecisionKey(group.part);
+            if (recorded)
+              return (
+                <p
+                  key={`${message.id}-decision-${group.index}`}
+                  className="text-sm text-muted-foreground"
+                  data-testid={`chat-message-${messageIndex}-decision`}
+                >
+                  {t("chat.decision.recorded", { verdict: t(recorded) })}
+                </p>
+              );
             const split = from === "user" ? splitFileSentinels(raw) : { text: raw, fileIds: [] };
             const text = split.text;
             const mentions = from === "user" ? referencesFromPart(group.part) : null;
@@ -1364,6 +1382,8 @@ export function ChatPage() {
     queryFn: () => getConversation(activeId ?? ""),
     enabled: Boolean(activeId),
     retry: retryConversationRead,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => conversationRefreshInterval(query.state.data),
   });
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
     if (event.type === "text_delta" && typeof event.text === "string") {
@@ -1394,11 +1414,7 @@ export function ChatPage() {
       setStreamedDiffs([]);
       setLiveCalls([]);
 
-      const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
-      const target = {
-        ...(workflowId ? { workflow_id: workflowId } : {}),
-        ...(connectorId ? { connector_id: connectorId } : {}),
-      };
+      const target = chatTargetFromUrl(window.location.search);
       startedConversationId.current = null;
       let targetId = conversationId;
       let text = message;
@@ -1681,12 +1697,19 @@ export function ChatPage() {
   const current = detail.data?.conversation;
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
+  const openQuestionId = resume?.pending_approval?.id ?? null;
+  const seenQuestionId = useRef(openQuestionId);
+  useEffect(() => {
+    if (seenQuestionId.current === openQuestionId) return;
+    seenQuestionId.current = openQuestionId;
+    void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+  }, [openQuestionId, queryClient]);
   const pendingDecision = chatApproval(detail.data);
   const pendingChoice = chatChoice(detail.data);
   const pendingForm = useMemo(() => chatForm(detail.data), [detail.data]);
   const pendingText = useMemo(() => chatText(detail.data), [detail.data]);
   const [clock, setClock] = useState(Date.now);
-  const lockingId = pendingChoice?.id ?? pendingForm?.id ?? null;
+  const lockingId = pendingDecision?.id ?? pendingChoice?.id ?? pendingForm?.id ?? null;
   useEffect(() => {
     if (!lockingId) return;
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
@@ -1723,25 +1746,15 @@ export function ChatPage() {
         href: absolute(conversationHref(conversation.id)),
       });
     }
-    for (const resource of createdResources) {
-      const label = resource.name || resource.slug;
-      if (!label) continue;
-      known.set(resource.id, { label, href: catalogHref(resource.kind, resource.id) });
-    }
-    for (const resource of referencedResources) {
-      if (resource.unresolved) continue;
+    for (const resource of namedResources({
+      target: resume?.active_target,
+      created: createdResources,
+      referenced: referencedResources,
+    }).values())
       known.set(resource.id, {
         label: resource.label,
-        href: catalogHref(resource.type, resource.id),
+        href: catalogHref(resource.kind, resource.id),
       });
-    }
-    const target = resume?.active_target;
-    if (target?.id && (target.name || target.slug) && target.kind !== "none") {
-      known.set(target.id, {
-        label: (target.name || target.slug) as string,
-        href: catalogHref(target.kind, target.id),
-      });
-    }
     return (id: string) => known.get(id) ?? null;
   }, [conversationList.items, createdResources, referencedResources, resume?.active_target, t]);
   const session = useSession();
@@ -1829,9 +1842,13 @@ export function ChatPage() {
         at: activeRow?.last_activity_at ?? current.updated_at,
       })
     : "";
-  const waitsForYou = anyQuestion
-    ? anyQuestionOpen
-    : Boolean(resume?.pending_approval) || activeRow?.outcome === "awaiting_you";
+  const waitsForYou = waitsForPerson({
+    questions: [pendingDecision, pendingChoice, pendingForm, pendingText],
+    now: clock,
+    pendingApproval: resume?.pending_approval ?? null,
+    detailLoaded: detail.data !== undefined,
+    rowOutcome: activeRow?.outcome,
+  });
   const badge =
     send.isPending || decide.isPending
       ? { label: t("chat.outcome.in_progress"), state: "running" }
@@ -2229,13 +2246,13 @@ export function ChatPage() {
           className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
           data-testid="chat-list-panel"
         >
-          <div className="md:-mx-4 md:h-18 md:border-b md:px-4">{chatHeader}</div>
+          <div className="md:-mx-4 md:h-18 md:border-b md:px-2">{chatHeader}</div>
           {newConversation ? <div className="md:-mx-2 md:pt-2">{newConversation}</div> : null}
           <section
             id="chat-conversation-list"
             aria-label={t("chat.conversations")}
             className={cn(
-              "col-span-2 min-h-0 flex-1 flex-col pt-2 pb-4",
+              "col-span-2 -mx-2 min-h-0 flex-1 flex-col pt-2 pb-4",
               listOpen ? "flex max-h-[40vh] md:max-h-none" : "hidden md:flex",
             )}
           >

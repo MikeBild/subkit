@@ -15,6 +15,7 @@ import {
   auditHref,
   chatNewHref,
   chatSeedFromUrl,
+  chatTargetFromUrl,
   connectorHref,
   connectorsHref,
   conversationHref,
@@ -239,6 +240,12 @@ describe("a new conversation", () => {
     });
   });
 
+  test("a chat opened for a run creates its conversation with that run and its workflow", () => {
+    const href = chatNewHref({ workflowId: ID, executionId: "e-1", prompt: "Warum?" });
+    expect(chatTargetFromUrl(query(href))).toEqual({ workflow_id: ID, execution_id: "e-1" });
+    expect(chatTargetFromUrl(query(chatNewHref({ prompt: "Hallo" })))).toEqual({});
+  });
+
   test("an unseeded conversation is the bare address", () => {
     expect(chatNewHref()).toBe("/chat/new");
   });
@@ -260,15 +267,13 @@ describe("the remaining addresses", () => {
   });
 
   test("the tab the address names opens, and one the reader may not read falls back", () => {
-    const all = readableSections({ clients: true, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), all)).toBe("clients");
+    const all = readableSections({ apps: true, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), all)).toBe("apps");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("keys");
-    const keysOnly = readableSections({ clients: false, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), keysOnly)).toBe(
-      "keys",
-    );
+    const keysOnly = readableSections({ apps: false, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), keysOnly)).toBe("keys");
   });
 });
 

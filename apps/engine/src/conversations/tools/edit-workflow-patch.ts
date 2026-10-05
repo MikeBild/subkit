@@ -7,6 +7,7 @@ import {
 } from "../../workflows/reference-validator.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
+import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
 import { emitRecordedEvalSignals, runRecordedEval } from "../recorded-eval.ts";
@@ -16,6 +17,7 @@ import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.
 import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { classifyStepReferences } from "./inherited-step-references.ts";
 import { getLastPreview } from "./last-preview-store.ts";
+import { boundWorkflowIdOf } from "./open-workflow-draft.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 import { resolveStepPatches, StepPatchSchema } from "./step-targeted-patch.ts";
 
@@ -30,6 +32,13 @@ const PatchOp = z.discriminatedUnion("op", [
 
 const inputSchema = z
   .object({
+    workflow: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Slug or id of the workflow this patch is meant for. The patch is refused with draft_target_mismatch when the draft belongs to another workflow.",
+      ),
     patches: z.array(PatchOp).min(1).max(64).optional(),
     step_patches: z.array(StepPatchSchema).min(1).max(64).optional(),
   })
@@ -57,16 +66,52 @@ function repairExtras(draft: { steps?: Array<Record<string, unknown>> }): Record
   };
 }
 
+interface DraftTarget {
+  workflow_id: string | null;
+  slug: string | null;
+  saved_slug: string | null;
+  name: string | null;
+}
+
+export function draftTargetOf(ctx: ToolContext): DraftTarget {
+  const draft = ctx.getDraft();
+  const bound = draft.state ? persistedWorkflowResource(draft.state) : null;
+  const workflowId = boundWorkflowIdOf(ctx);
+  return {
+    workflow_id: workflowId,
+    slug: draft.workflow?.slug ?? bound?.slug ?? null,
+    saved_slug: bound?.id === workflowId ? (bound?.slug ?? null) : null,
+    name: draft.workflow?.name || bound?.name || null,
+  };
+}
+
+function targetMatches(target: DraftTarget, ref: string): boolean {
+  return ref === target.workflow_id || ref === target.slug || ref === target.saved_slug;
+}
+
 export const editWorkflowPatchTool: ConversationTool = {
   name: "edit_workflow_patch",
   description:
-    "THE workflow editor. Prefer step_patches for edits inside existing top-level steps: each entry has step_id, op, path relative to that step (e.g. /s3/scope), and value for add/replace/test. The server resolves stable IDs against the current draft; never count step indices. Do not mix step_patches with patches. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
+    "THE workflow editor for the workflow the conversation's draft holds; pass that workflow's slug as `workflow` so a patch meant for another workflow is refused instead of applied — switch with open_workflow_draft. Prefer step_patches for edits inside existing top-level steps: each entry has step_id, op, path relative to that step (e.g. /s3/scope), and value for add/replace/test. The server resolves stable IDs against the current draft; never count step indices. Do not mix step_patches with patches. Apply an RFC 6902 JSON Patch array to the workflow draft: append/replace a step (`add /steps/-`, `replace /steps/N`), set a single field or header (`replace /steps/N/headers/Accept`), retarget references, add an edge (`add /edges/-`), or reorder steps (`move`). Coordinated multi-edits land atomically. The patched draft must still validate; partial application is never persisted.",
   inputSchema,
   category: "draft_write" as const,
   authoring_resource: "workflow",
   requires_draft: true,
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
+    const target = draftTargetOf(ctx);
+    if (args.workflow !== undefined && !targetMatches(target, args.workflow)) {
+      return {
+        ok: false,
+        data: buildGateError(ctx.getDraft(), {
+          error_code: "draft_target_mismatch",
+          message: `the patch is meant for "${args.workflow}", but this conversation's draft is workflow "${target.slug ?? target.workflow_id ?? target.name ?? "(unnamed)"}". Nothing was changed. Open "${args.workflow}" with open_workflow_draft first, then patch it.`,
+          recommended_mode: "workflow",
+          next_best_actions: ["open_workflow_draft"],
+          extra: { target, requested_workflow: args.workflow },
+        }),
+      };
+    }
     let patches: ToolDiff[];
     try {
       patches = args.step_patches
@@ -77,8 +122,9 @@ export const editWorkflowPatchTool: ConversationTool = {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
           error_code: "patch_target_invalid",
-          message: error instanceof Error ? error.message : "Invalid step target",
-          next_best_actions: ["inspect_workflow_draft"],
+          message: `${error instanceof Error ? error.message : "Invalid step target"} (in the draft of workflow "${target.slug ?? target.workflow_id ?? target.name ?? "(unnamed)"}")`,
+          next_best_actions: ["inspect_workflow_draft", "open_workflow_draft"],
+          extra: { target },
         }),
       };
     }
@@ -301,6 +347,7 @@ export async function applyWorkflowPatchToDraft(
       data: buildDraftMutationPayload(nextDraft, {
         resource_kind: "workflow",
         extra: {
+          target: draftTargetOf(ctx),
           patch_count: patches.length,
           ...(references.notice ? { inherited_step_references: references.notice } : {}),
           steps: patched.steps.length,

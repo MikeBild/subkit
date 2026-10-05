@@ -19,7 +19,12 @@ import {
   refreshDraftSummary,
 } from "./authoring-state.ts";
 import { canonicalJson } from "./text-line-diff.ts";
-import type { DraftDocument, WorkflowDraftDocument, WorkflowDraftStepPreview } from "./types.ts";
+import type {
+  DraftDocument,
+  LatestExecutionSummary,
+  WorkflowDraftDocument,
+  WorkflowDraftStepPreview,
+} from "./types.ts";
 
 function emptyDraft(): DraftDocument {
   return createEmptyDraftDocument();
@@ -102,7 +107,7 @@ async function buildPreviewFromLastExecution(
   };
 }
 
-async function hydrateBoundWorkflow(
+export async function hydrateBoundWorkflow(
   tenant_id: string,
   target_workflow_id: string | null,
   draft: DraftDocument,
@@ -262,6 +267,37 @@ async function hydrateBoundWorkflow(
     environment: null,
     saved_at: workflow.updated_at.toISOString(),
   });
+}
+
+export async function loadFocusExecution(
+  tenant_id: string,
+  execution_id: string,
+  exec: Executor,
+): Promise<LatestExecutionSummary | null> {
+  const [row] = await exec
+    .select({
+      id: executions.id,
+      workflow_id: executions.workflow_id,
+      workflow_version_id: executions.workflow_version_id,
+      status: executions.status,
+      execution_mode: executions.execution_mode,
+      finished_at: executions.finished_at,
+      created_at: executions.created_at,
+    })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .limit(1);
+  if (!row) return null;
+  return {
+    execution_id: row.id,
+    workflow_id: row.workflow_id,
+    workflow_version_id: row.workflow_version_id,
+    status: row.status,
+    environment: row.execution_mode,
+    warnings_count: 0,
+    recorded_at: (row.finished_at ?? row.created_at).toISOString(),
+    diagnosis_available: true,
+  };
 }
 
 export async function loadDraft(

@@ -63,6 +63,19 @@ describe("listExecutions — { rows, total } contract", () => {
     expect(scheduler.total).toBe(3);
   });
 
+  test("several statuses separated by commas count every run in any of them", async () => {
+    const both = await listExecutions(tenantA, { status: "succeeded, failed", limit: 1 }, ctx.db);
+    expect(both.rows).toHaveLength(1);
+    expect(both.total).toBe(12);
+
+    const failing = await listExecutions(
+      tenantA,
+      { status: "failed,timed_out,aborted", limit: 1 },
+      ctx.db,
+    );
+    expect(failing.total).toBe(3);
+  });
+
   test("a later page keeps the true total", async () => {
     const first = await listExecutions(tenantA, { limit: 5 }, ctx.db);
     expect(first.next_cursor).not.toBeNull();

@@ -57,6 +57,7 @@ describe("conversation tools — registration", () => {
     "test_connector",
     "update_connector_draft",
     "edit_workflow_patch",
+    "open_workflow_draft",
     "propose_schema_migration",
     "validate_connector_draft",
     "validate_draft",

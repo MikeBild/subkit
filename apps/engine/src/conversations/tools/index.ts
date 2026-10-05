@@ -42,6 +42,7 @@ import { listCapabilityGapsTool } from "./list-capability-gaps.ts";
 import { listSkillSuggestionsTool } from "./list-skill-suggestions.ts";
 import { listSkillsTool } from "./list-skills.ts";
 import { matchConnectorTemplateByUrlTool } from "./match-connector-template-by-url.ts";
+import { openWorkflowDraftTool } from "./open-workflow-draft.ts";
 import { previewAttachmentTool } from "./preview-attachment.ts";
 import { probeConnectorTool } from "./probe-connector.ts";
 import { probeConnectorDraftTool } from "./probe-connector-draft.ts";
@@ -127,6 +128,14 @@ export type ToolResult =
 
 export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
 
+export interface ToolEffect {
+  connector: string;
+  method: string;
+  target: string | null;
+}
+
+export type ToolPrecheck = { ok: false; result: ToolResult } | { ok: true; effect: ToolEffect };
+
 export interface ConversationTool {
   readonly name: string;
   readonly description: string;
@@ -134,6 +143,7 @@ export interface ConversationTool {
   readonly category: ToolCategory;
   readonly authoring_resource?: "connector" | "workflow";
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
+  precheck?(ctx: ToolContext, args: unknown): Promise<ToolPrecheck>;
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   readonly requires_skill?: string;
@@ -208,6 +218,7 @@ register(editRoleTool);
 register(matchConnectorTemplateByUrlTool);
 register(importConnectorFromSpecTool);
 register(editWorkflowPatchTool);
+register(openWorkflowDraftTool);
 register(proposeSchemaMigrationTool);
 register(updateConnectorDraftTool);
 register(diagnoseLatestExecutionTool);

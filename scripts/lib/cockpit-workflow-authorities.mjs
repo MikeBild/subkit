@@ -153,7 +153,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
   await page.route(repairPattern, noRepair);
   try {
     const openHistory = async () => {
-      await page.getByTestId("workflow-tabs-tab-freigaben").click();
+      await page.getByTestId("workflow-tabs-tab-approvals").click();
       const toggle = page.getByTestId("workflow-former-grants-toggle");
       await toggle.waitFor();
       if (await page.getByTestId("workflow-former-approvals-row-0").count())

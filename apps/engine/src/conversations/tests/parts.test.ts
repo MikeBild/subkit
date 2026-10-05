@@ -36,6 +36,30 @@ describe("toMessageParts", () => {
     expect(ui.parts).toEqual([{ type: "text", text: "hello" }]);
   });
 
+  test("a recorded approval decision carries its verdict for the reader's language", () => {
+    const ui = toMessageParts(
+      msg({
+        id: "m1",
+        role: "user",
+        content: {
+          kind: "confirmation_decision",
+          text: "✓ Approved: call_connector",
+          tool: "call_connector",
+          to_state: "confirmed",
+          tool_call_id: "call-1",
+        },
+      }),
+      [],
+    );
+    expect(ui.parts).toEqual([
+      {
+        type: "text",
+        text: "✓ Approved: call_connector",
+        decision: { state: "confirmed", tool: "call_connector" },
+      },
+    ]);
+  });
+
   test("extracts text from { text } wrapper objects", () => {
     const ui = toMessageParts(
       msg({

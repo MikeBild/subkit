@@ -1,4 +1,6 @@
 import type { ConversationDetail } from "@/api/client";
+import type { TranslationKey } from "@/lib/i18n";
+import { toolOutcomeKey } from "@/lib/tool-presentation";
 
 export interface ChatApproval {
   id: string;
@@ -12,6 +14,8 @@ export interface ChatApproval {
   workflowName?: string;
   authorizationUrl?: string;
   externalTool?: { connector: string; tool: string; server_claim?: string };
+  connectorCall?: { connector: string; method: string; target: string | null };
+  gatedTool?: string;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -33,13 +37,22 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
   if (typeof input.question !== "string" || !input.question.trim()) return null;
   const externalTool =
     intent.kind === "grant_relayed_tool_call" ? pending.prompt?.external_tool : undefined;
+  const connectorCall = externalTool ? undefined : pending.prompt?.effect;
+  const gatedTool =
+    !externalTool && !connectorCall && intent.kind === "execute_confirmed_tool_call"
+      ? call.tool
+      : undefined;
   return {
     id: pending.id,
     toolCallId: call.id,
     question: input.question,
     description:
-      !externalTool && typeof intent.description === "string" ? intent.description : null,
+      !externalTool && !connectorCall && !gatedTool && typeof intent.description === "string"
+        ? intent.description
+        : null,
     ...(externalTool ? { externalTool } : {}),
+    ...(connectorCall ? { connectorCall } : {}),
+    ...(gatedTool ? { gatedTool } : {}),
     savesInactiveWorkflow: intent.kind === "save_workflow_draft",
     expiresAt: pending.expires_at,
     ...(intent.kind === "commit_held_workflow_writes" || intent.kind === "run_workflow"
@@ -56,4 +69,32 @@ export function chatApproval(detail: ConversationDetail | undefined): ChatApprov
       ? { authorizationUrl: pending.prompt.authorization_url }
       : {}),
   };
+}
+
+export const OPEN_QUESTION_REFRESH_MS = 5_000;
+
+export function conversationRefreshInterval(
+  detail: ConversationDetail | undefined,
+): number | false {
+  return detail?.resume_summary?.pending_approval ? OPEN_QUESTION_REFRESH_MS : false;
+}
+
+export function recordedDecisionKey(part: unknown): TranslationKey | null {
+  const decision = record(record(part).decision);
+  return typeof decision.state === "string"
+    ? toolOutcomeKey({ confirmationState: decision.state })
+    : null;
+}
+
+export function waitsForPerson(input: {
+  questions: ReadonlyArray<{ expiresAt: string } | null>;
+  now: number;
+  pendingApproval: unknown;
+  detailLoaded: boolean;
+  rowOutcome: string | null | undefined;
+}): boolean {
+  const asked = input.questions.filter((question) => question !== null);
+  if (asked.length > 0) return asked.some((question) => Date.parse(question.expiresAt) > input.now);
+  if (input.detailLoaded) return Boolean(input.pendingApproval);
+  return input.rowOutcome === "awaiting_you";
 }

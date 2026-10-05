@@ -124,7 +124,7 @@ export const PATTERN_MIGRATED_VIEWS = [
   "people",
   "api-access",
   "settings",
-  "settings?tab=benachrichtigungen",
+  "settings?tab=notifications",
   "workflows/$id",
   "connectors/$id",
   "?runs=all",

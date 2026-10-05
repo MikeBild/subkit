@@ -3,7 +3,7 @@ import type { AuthType, DriverName, Environment } from "../connectors/types.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { Citation } from "./citations.ts";
 import type { ConversationReference } from "./references.ts";
-import type { ExternalToolSubject } from "./resume.ts";
+import type { ConnectorCallSubject, ExternalToolSubject } from "./resume.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
 
@@ -477,6 +477,7 @@ export interface ConversationResumeSummary {
       authorization_url?: string;
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;
+      effect?: ConnectorCallSubject;
     };
     summary: string;
     expires_at: string;
@@ -501,6 +502,7 @@ export type ContentPart =
       text: string;
       references?: ConversationReference[];
       unresolved_references?: ConversationReference[];
+      decision?: { state: string; tool: string | null };
     }
   | { type: "reasoning"; text: string }
   | {
