@@ -124,6 +124,20 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (!keysTotal.includes(String(fixture.activeKeys)))
     throw new Error(`${where}: the keys' total says "${keysTotal}"`);
 
+  await page
+    .locator('[data-testid="api-keys-row-link-0"], [data-testid="api-keys-mobile-row-link-0"]')
+    .filter({ visible: true })
+    .first()
+    .click();
+  const sheet = page.getByTestId("api-key-sheet");
+  await sheet.waitFor({ state: "visible" });
+  if (!(await sheet.getByTestId("api-key-sheet-prefix").count()))
+    throw new Error(`${where}: a key's sheet does not say how the key starts`);
+  if (!(await sheet.getByTestId("api-key-sheet-menu").count()))
+    throw new Error(`${where}: a live key's sheet offers no way to rotate or revoke it`);
+  await sheet.locator('[data-slot="sheet-close"]').click();
+  await sheet.waitFor({ state: "detached" });
+
   const taskLists = await page
     .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')
     .count();
