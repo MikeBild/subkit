@@ -11442,6 +11442,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -21769,6 +21778,11 @@ export interface components {
             connector_id?: string;
             /** Format: uuid */
             workflow_id?: string;
+            /**
+             * Format: uuid
+             * @description The run this conversation is about. Binds the conversation to the run's workflow (workflow_id must match when both are given) so 'this run' resolves to it.
+             */
+            execution_id?: string;
             initial_message?: string;
             memory?: string;
             model?: string;
