@@ -76,6 +76,7 @@ async function seedCommittedWorkflow(
   slug: string,
   connectorId: string,
   path: string,
+  query?: Record<string, string | number | boolean>,
 ): Promise<string> {
   const [w] = await db.db
     .insert(workflows)
@@ -89,7 +90,16 @@ async function seedCommittedWorkflow(
       version: 1,
       dag: {
         name: slug,
-        steps: [{ kind: "request", id: "call", method: "GET", connector_id: connectorId, path }],
+        steps: [
+          {
+            kind: "request",
+            id: "call",
+            method: "GET",
+            connector_id: connectorId,
+            path,
+            ...(query ? { query } : {}),
+          },
+        ],
       },
     })
     .returning();
@@ -167,6 +177,37 @@ describe("endpoint-contract scan", () => {
 
     expect(requestedPaths.some((p) => p.includes("items"))).toBe(false);
     expect((await connectorRow(connectorId)).health_state).toBe("ok");
+  });
+
+  test("a committed operation is probed with its static query, never as a bare path", async () => {
+    const connectorId = await seedConnector(tenantId, "contract-query");
+    await seedCommittedWorkflow(tenantId, "wf-query", connectorId, "/stats", {
+      bucket: "day",
+      limit: 5,
+    });
+    requestedPaths = [];
+
+    await runEndpointContractScanForTenant(tenantId, NOW, db.db);
+
+    const probes = requestedPaths.filter((p) => p.startsWith("/stats"));
+    expect(probes).toHaveLength(1);
+    const query = new URL(probes[0] ?? "", "http://probe.test").searchParams;
+    expect(query.get("bucket")).toBe("day");
+    expect(query.get("limit")).toBe("5");
+  });
+
+  test("an operation whose query is resolved at run time is never probed", async () => {
+    const connectorId = await seedConnector(tenantId, "contract-query-placeholder");
+    await seedCommittedWorkflow(tenantId, "wf-query-ph", connectorId, "/window", {
+      bucket: "hour",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the literal placeholder syntax is the subject under test
+      from: "${input.from}",
+    });
+    requestedPaths = [];
+
+    await runEndpointContractScanForTenant(tenantId, NOW, db.db);
+
+    expect(requestedPaths.some((p) => p.startsWith("/window"))).toBe(false);
   });
 
   test("tenant isolation: another tenant's identical workflow is untouched", async () => {
