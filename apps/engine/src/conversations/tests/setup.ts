@@ -83,7 +83,12 @@ export async function appendMessageWithTurn(
   params: svc.AppendMessageParams &
     Pick<
       svc.RunConversationTurnParams,
-      "onEvent" | "runtime_context" | "surface" | "next_suggestion_suppress" | "principal"
+      | "onEvent"
+      | "runtime_context"
+      | "surface"
+      | "next_suggestion_suppress"
+      | "principal"
+      | "elicitationBridge"
     > & { answer_actor?: AnswerActor },
   db: Db,
 ): Promise<svc.ConversationTurnOutcome> {
@@ -94,6 +99,7 @@ export async function appendMessageWithTurn(
     next_suggestion_suppress,
     answer_actor,
     principal,
+    elicitationBridge,
     ...appendParams
   } = params;
   const appended = await svc.appendUserMessage(appendParams, db);
@@ -114,6 +120,7 @@ export async function appendMessageWithTurn(
         ...(surface ? { surface } : {}),
         ...(next_suggestion_suppress !== undefined ? { next_suggestion_suppress } : {}),
         ...(principal !== undefined ? { principal } : {}),
+        ...(elicitationBridge ? { elicitationBridge } : {}),
       },
       db,
     );

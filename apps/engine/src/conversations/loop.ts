@@ -1825,8 +1825,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     completedStatus = "awaiting_input";
   } else {
     completedStatus = "active";
-    const unattendedTurn =
-      p.permission_mode === "auto" || (p.surface === "mcp" && !p.elicitationBridge);
+    const unattendedTurn = p.surface === "mcp" && !p.elicitationBridge;
     const closingAsk = unattendedTurn ? closingProseQuestion(signals.lastAssistantText) : null;
     if (closingAsk) {
       try {

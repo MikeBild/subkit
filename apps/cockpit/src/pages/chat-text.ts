@@ -45,21 +45,16 @@ export function textAnswerAcceptable(text: Pick<ChatText, "pattern">, value: str
   }
 }
 
+export function composerAnswerAccepted(
+  text: Pick<ChatText, "pattern"> | null,
+  value: string,
+): boolean {
+  return text === null || textAnswerAcceptable(text, value);
+}
+
 export function questionExcerpt(question: string, max = 120): string {
   const flat = question.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
-}
-
-export function questionIsInTranscript(
-  text: Pick<ChatText, "toolCallId">,
-  messages: readonly { parts: readonly unknown[] }[],
-): boolean {
-  if (!text.toolCallId) return false;
-  return messages.some((message) =>
-    message.parts.some(
-      (part) => isRecord(part) && part.type === "tool_call" && part.call_id === text.toolCallId,
-    ),
-  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

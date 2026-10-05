@@ -169,6 +169,14 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
           mockToolCallPart(step.tool, (step.args ?? {}) as Record<string, unknown>, nextId("tc")),
         );
         chunks.push(finishPart("tool-calls", promptTokens, 8));
+      } else if (step && typeof step === "object" && "text" in step) {
+        const id = nextId("text");
+        chunks.push(textStartPart(id));
+        chunks.push(textDeltaPart(id, step.text));
+        chunks.push(textEndPart(id));
+        chunks.push(
+          finishPart("stop", promptTokens, Math.max(8, Math.floor(step.text.length / 4))),
+        );
       } else {
         const id = nextId("text");
         const ack = `Acknowledged: ${lastUser.slice(0, 200)}. (mock)`;
