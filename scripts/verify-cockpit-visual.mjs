@@ -3058,7 +3058,7 @@ async function assertNotificationRules(page, label) {
     await page.getByTestId(sheet).waitFor({ state: "visible" });
   };
   const closeSheet = async (sheet) => {
-    await page.keyboard.press("Escape");
+    await page.getByTestId(sheet).locator('[data-slot="sheet-close"]').click();
     await page.getByTestId(sheet).waitFor({ state: "detached" });
   };
   await openRow("notifications-rules-table", 1, "notifications-rule-sheet");
@@ -3193,20 +3193,14 @@ async function assertRunDetail(page, label, language) {
   page.on("request", countRerun);
   try {
     await page.locator('[data-testid="run-rerun-open"]').click();
-    const consequence = page.locator('[data-testid="run-rerun-consequence"]');
-    await consequence.waitFor();
-    const said = await consequence.innerText();
-    for (const word of language === "de"
-      ? ["derselben Version", "derselben Eingabe", "echter Lauf"]
-      : ["same version", "same input", "real run"])
-      if (!said.includes(word))
-        throw new Error(`${label} rerun dialog does not state its consequence: ${said}`);
-    await page.locator('[data-testid="run-rerun-cancel"]').click();
-    await consequence.waitFor({ state: "hidden" });
+    for (let attempt = 0; attempt < 40 && reruns === 0; attempt += 1) await page.waitForTimeout(50);
+    if (await page.getByRole("alertdialog").count())
+      throw new Error(`${label} asks again before running again; the dummy starts the run`);
   } finally {
     page.off("request", countRerun);
   }
-  if (reruns !== 0) throw new Error(`${label} cancelling the rerun started one`);
+  if (reruns !== 1) throw new Error(`${label} one click on rerun sent ${reruns} runs`);
+
   await toggle.click();
   await result.waitFor({ state: "hidden" });
 }
