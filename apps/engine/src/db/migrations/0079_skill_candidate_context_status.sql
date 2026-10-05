@@ -1,0 +1,1 @@
+ALTER TYPE "subkit"."skill_candidate_status" ADD VALUE 'context';

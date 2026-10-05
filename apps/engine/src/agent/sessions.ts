@@ -58,7 +58,10 @@ export async function proposeLearning(
     tags: domainTags(p.domains),
     evidence: [{ evidence_type: "agent_session", summary: p.evidence_summary.slice(0, 2_000) }],
   };
-  return await upsertFromSignal(p.tenant_id, signal, p.db);
+  const result = await upsertFromSignal(p.tenant_id, signal, p.db);
+  if (result.action === "recorded")
+    throw new Error("a session learning is a proposal, never drafting context");
+  return { action: result.action, candidate_id: result.candidate_id };
 }
 
 const LearningSchema = z.object({

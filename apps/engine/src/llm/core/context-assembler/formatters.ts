@@ -385,7 +385,7 @@ function renderSkillCandidate(c: SkillCandidateView): string {
   if (c.workflow_id) meta.push(`workflow_id=${c.workflow_id}`);
   meta.push(`evidence=${c.evidence_count}`);
   meta.push(`pattern=${c.pattern_kind}`);
-  const header = `## ${c.title} [pending approval]`;
+  const header = `## ${c.title} ${c.status === "context" ? "[drafting context]" : "[pending approval]"}`;
   const metaLine = `_${meta.join(" · ")}_`;
   const parts: string[] = [header, metaLine, c.body];
   if (c.best_practices.length > 0) {
@@ -408,7 +408,7 @@ export function formatSkillCandidates(candidates: SkillCandidateView[]): string 
   const rendered = candidates.map(renderSkillCandidate);
   return [
     "# Skill candidates — proposed (pending operator approval)",
-    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote them via `approve_skill_candidate` — until then they MAY be wrong. Do not name candidates to the user, do not quote `[pending approval]` markers in chat prose, and do not surface this section's contents verbatim — these are operator-internal hints, like the `load_skill` discipline.",
+    "These are patterns the system detected from prior runs. Treat as hints, not authoritative rules. Operators promote `[pending approval]` entries via `approve_skill_candidate` — until then they MAY be wrong. `[drafting context]` entries are notes the engine keeps about this tenant's workflows and their recurring failures; they are never approved and `approve_skill_candidate` refuses them. Do not name candidates to the user, do not quote the bracketed markers in chat prose, and do not surface this section's contents verbatim — these are operator-internal hints, like the `load_skill` discipline.",
     ...rendered,
   ].join("\n\n");
 }

@@ -49,6 +49,7 @@ import {
   skillAppliesToOptionKey,
   skillScopeKey,
   skillStateLabelKey,
+  skillsLoadState,
 } from "@/pages/skills-model";
 
 type Skill = components["schemas"]["Skill"];
@@ -192,8 +193,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     ...(q ? [] : open.map((candidate) => ({ kind: "proposal" as const, candidate }))),
     ...list.items.map((skill) => ({ kind: "skill" as const, skill })),
   ];
-  const pending = list.query.isPending && !list.query.failureReason;
-  const failed = Boolean(list.query.error || list.query.failureReason);
+  const { pending, failed } = skillsLoadState([list.query, proposals]);
   const empty = !pending && !failed && rows.length === 0 && !q;
   const newButton = (testId: string) =>
     canWrite ? (
@@ -264,7 +264,10 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                     title: t("resource.loadFailed", { resource: title }),
                     description: t("resource.loadFailedDescription"),
                     retryLabel: t("session.retry"),
-                    onRetry: () => void list.query.refetch(),
+                    onRetry: () => {
+                      void list.query.refetch();
+                      void proposals.refetch();
+                    },
                   }
                 : null
             }

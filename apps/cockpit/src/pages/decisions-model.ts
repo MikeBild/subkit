@@ -172,7 +172,7 @@ export function skillDecision(
     kind: "skill",
     reviewable: candidate.reviewable === true,
     reviewDigest: candidate.review_digest,
-    reviewReason: candidate.reviewable ? null : "advisory",
+    reviewReason: null,
     id: candidate.id,
     title: candidate.title,
     target: targetName,

@@ -345,6 +345,8 @@ export const log = {
     candidate: {
       proposed: (ctx: Ctx) =>
         logger.info({ module: "skill", action: "candidate.proposed", ...ctx }),
+      contextRecorded: (ctx: Ctx) =>
+        logger.info({ module: "skill", action: "candidate.context_recorded", ...ctx }),
       approved: (ctx: Ctx) =>
         logger.info({ module: "skill", action: "candidate.approved", ...ctx }),
       rejected: (ctx: Ctx) =>

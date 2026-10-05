@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -15,7 +15,7 @@ import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { createSkill, retireReplacedConnectorSkills } from "../skills/service.ts";
 import { now } from "../utils/clock.ts";
-import { assertAdoptable, skillReviewDigest, toView } from "./candidate-view.ts";
+import { initialCandidateStatus, skillReviewDigest, toView } from "./candidate-view.ts";
 import {
   detectFailurePatterns,
   detectRepairPatterns,
@@ -29,6 +29,7 @@ import type {
   PatternSignal,
   RejectSkillCandidateParams,
   SkillCandidateEvidenceView,
+  SkillCandidateStatus,
   SkillCandidateView,
 } from "./types.ts";
 
@@ -63,15 +64,7 @@ async function getEvidenceCounts(
 function listFilterConds(p: ListSkillCandidatesParams) {
   const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
   if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
-  if (p.reviewable !== undefined)
-    tenantConds.push(
-      p.reviewable
-        ? and(
-            eq(skillCandidates.status, "proposed"),
-            notInArray(skillCandidates.pattern_kind, ["failure_pattern", "authoring_capability"]),
-          )!
-        : inArray(skillCandidates.pattern_kind, ["failure_pattern", "authoring_capability"]),
-    );
+  if (p.statuses) tenantConds.push(inArray(skillCandidates.status, p.statuses));
   if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
   if (p.connector_id) tenantConds.push(eq(skillCandidates.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skillCandidates.workflow_id, p.workflow_id));
@@ -117,6 +110,8 @@ export async function countSkillCandidates(
 
 export const LIST_PROPOSED_FOR_AUTHORING_CAP = 8;
 
+const OPEN_STATUSES: SkillCandidateStatus[] = ["proposed", "context"];
+
 const UNREVIEWED_PROMPT_EXCLUDED_KINDS: ReadonlySet<string> = new Set(["connector_capability"]);
 
 export async function listProposedForAuthoring(
@@ -133,12 +128,12 @@ export async function listProposedForAuthoring(
       : "global";
 
   const [globalRows, connectorRows, workflowRows] = await Promise.all([
-    listSkillCandidates({ tenant_id, status: "proposed", scope: "global", limit: 500 }, db),
+    listSkillCandidates({ tenant_id, statuses: OPEN_STATUSES, scope: "global", limit: 500 }, db),
     scope_hints.connector_id
       ? listSkillCandidates(
           {
             tenant_id,
-            status: "proposed",
+            statuses: OPEN_STATUSES,
             scope: "connector",
             connector_id: scope_hints.connector_id,
             limit: 500,
@@ -150,7 +145,7 @@ export async function listProposedForAuthoring(
       ? listSkillCandidates(
           {
             tenant_id,
-            status: "proposed",
+            statuses: OPEN_STATUSES,
             scope: "workflow",
             workflow_id: scope_hints.workflow_id,
             limit: 500,
@@ -251,9 +246,14 @@ export interface CreateCandidateFromAuthoringParams {
   db: Db;
 }
 
+export type UpsertCandidateResult = {
+  action: "proposed" | "recorded" | "updated" | "skipped";
+  candidate_id: string | null;
+};
+
 export async function createCandidateFromAuthoring(
   p: CreateCandidateFromAuthoringParams,
-): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
+): Promise<UpsertCandidateResult> {
   const normalizedTitle = p.title.toLowerCase().replace(/\s+/g, " ").trim();
   if (p.connector_id && p.workflow_id) {
     throw new Error("proposal cannot set both connector_id and workflow_id");
@@ -362,7 +362,8 @@ export async function upsertFromSignal(
   tenant_id: string,
   signal: PatternSignal,
   exec: Db,
-): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
+): Promise<UpsertCandidateResult> {
+  const status = initialCandidateStatus(signal.pattern_kind);
   return await exec.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`skill-candidates:${tenant_id}`}, 0))`,
@@ -494,7 +495,7 @@ export async function upsertFromSignal(
     if (!signal.endpoint_key && signal.pattern_kind !== "session_learning") {
       const tenantSupersedeScope = [
         eq(skillCandidates.tenant_id, tenant_id),
-        eq(skillCandidates.status, "proposed"),
+        inArray(skillCandidates.status, OPEN_STATUSES),
         eq(skillCandidates.scope, signal.scope),
         eq(skillCandidates.pattern_kind, signal.pattern_kind),
         isNull(skillCandidates.endpoint_key),
@@ -518,7 +519,7 @@ export async function upsertFromSignal(
             and(
               eq(skillCandidates.tenant_id, tenant_id),
               eq(skillCandidates.id, s.id),
-              eq(skillCandidates.status, "proposed"),
+              inArray(skillCandidates.status, OPEN_STATUSES),
             ),
           );
         await auditAwait(
@@ -559,6 +560,7 @@ export async function upsertFromSignal(
         },
         evidence: signal.evidence,
         confidence: signal.confidence,
+        status,
         fingerprint: signal.fingerprint,
         tags: signal.tags ?? [],
       })
@@ -584,7 +586,10 @@ export async function upsertFromSignal(
       {
         tenant_id,
         actor_type: "system",
-        action: AuditAction.SKILL_CANDIDATE_PROPOSED,
+        action:
+          status === "context"
+            ? AuditAction.SKILL_CANDIDATE_CONTEXT_RECORDED
+            : AuditAction.SKILL_CANDIDATE_PROPOSED,
         resource_type: "skill_candidate",
         resource_id: row.id,
         result: "success",
@@ -599,14 +604,18 @@ export async function upsertFromSignal(
       tx,
     );
 
-    log.skill.candidate.proposed({
+    const logged = {
       candidate_id: row.id,
       tenant_id,
       pattern_kind: signal.pattern_kind,
       confidence: signal.confidence,
       superseded_count: supersededCount,
-    });
-
+    };
+    if (status === "context") {
+      log.skill.candidate.contextRecorded(logged);
+      return { action: "recorded" as const, candidate_id: row.id };
+    }
+    log.skill.candidate.proposed(logged);
     return { action: "proposed" as const, candidate_id: row.id };
   });
 }
@@ -680,7 +689,6 @@ export async function approveSkillCandidate(
       .limit(1);
     const row = rows[0];
     if (!row) return null;
-    assertAdoptable(row);
     if (p.expected_review_digest && p.expected_review_digest !== skillReviewDigest(row))
       return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
