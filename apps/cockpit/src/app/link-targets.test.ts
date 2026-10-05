@@ -86,6 +86,64 @@ test("Übersicht and its review sheet resolve to the start page, spelled as the 
   expect(links.absolute(links.attentionHref())).toBe("/cockpit");
 });
 
+const ENGINE_SRC = join(import.meta.dir, "..", "..", "..", "engine", "src");
+const ENGINE_NON_PAGES = new Set(["/cockpit/favicon.svg", "/cockpit/{path}"]);
+
+function engineCockpitAddresses(): { file: string; value: string }[] {
+  const out: { file: string; value: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "tests") walk(full);
+      } else if (/\.ts$/.test(entry.name) && !entry.name.includes(".test.")) {
+        const text = readFileSync(full, "utf8");
+        for (const m of text.matchAll(/['"`}](\/cockpit(?![\w-])[^"'`\s]*)/g)) {
+          const value = m[1]!;
+          if (value.startsWith("/cockpit${")) continue;
+          out.push({ file: full, value });
+        }
+        for (const m of text.matchAll(/\bcockpitHref\(\s*"([^"]*)"/g))
+          out.push({ file: full, value: `/cockpit${m[1]}` });
+      }
+    }
+  };
+  walk(ENGINE_SRC);
+  return out;
+}
+
+function engineRoute(value: string): string {
+  const path = value.split(/[?#]/)[0] ?? "";
+  const filled = path.replace(/\$\{[^}]*\}?/g, "x").replace(/^\/cockpit/, "") || "/";
+  return filled.length > 1 ? filled.replace(/\/$/, "") : filled;
+}
+
+test("every cockpit address the engine hands out resolves to one of the cockpit's pages", () => {
+  const found = engineCockpitAddresses();
+  const producers = new Set(found.map((entry) => entry.file.split("/").pop()));
+  for (const known of [
+    "attention-readers.ts",
+    "operational-overview.ts",
+    "operating-figures.ts",
+    "oauth-origin.ts",
+  ])
+    expect(producers.has(known)).toBe(true);
+  const dead = found
+    .filter((entry) => !ENGINE_NON_PAGES.has(entry.value))
+    .filter((entry) => !(entry.value === "/cockpit/" || resolves(engineRoute(entry.value))))
+    .map((entry) => `${entry.file}: ${entry.value}`);
+  expect(dead).toEqual([]);
+});
+
+test("the engine names no retired cockpit address", () => {
+  const retired =
+    /^\/cockpit\/(runs|connections|notifications|inbox|decisions|operations|system|today)\b/;
+  const named = engineCockpitAddresses()
+    .filter((entry) => retired.test(entry.value))
+    .map((entry) => `${entry.file}: ${entry.value}`);
+  expect(named).toEqual([]);
+});
+
 test("every address the cockpit builds resolves to one of its pages", () => {
   const dead = builtPaths()
     .map((entry) => ({
