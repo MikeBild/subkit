@@ -3047,6 +3047,32 @@ async function assertNotificationRules(page, label) {
   });
   if (clipped.length > 0)
     throw new Error(`${label}: rules wider than their card: ${clipped.join(", ")}`);
+  const openRow = async (table, index, sheet) => {
+    await page
+      .locator(
+        `[data-testid="${table}-row-link-${index}"], [data-testid="${table}-mobile-row-link-${index}"]`,
+      )
+      .filter({ visible: true })
+      .first()
+      .click();
+    await page.getByTestId(sheet).waitFor({ state: "visible" });
+  };
+  const closeSheet = async (sheet) => {
+    await page.keyboard.press("Escape");
+    await page.getByTestId(sheet).waitFor({ state: "detached" });
+  };
+  await openRow("notifications-rules-table", 1, "notifications-rule-sheet");
+  if (!(await page.getByTestId("notifications-rule-delete").isEnabled()))
+    throw new Error(`${label}: a rule's sheet offers no way to delete it`);
+  await closeSheet("notifications-rule-sheet");
+  await openRow("notifications-channels-table", 1, "notifications-channel-sheet");
+  if (!(await page.getByTestId("notifications-channel-delete").isDisabled()))
+    throw new Error(`${label}: a channel two rules deliver to can be removed`);
+  await closeSheet("notifications-channel-sheet");
+  await openRow("notifications-channels-table", 2, "notifications-channel-sheet");
+  if (!(await page.getByTestId("notifications-channel-delete").isEnabled()))
+    throw new Error(`${label}: an unused channel cannot be removed`);
+  await closeSheet("notifications-channel-sheet");
 }
 
 const ENDLESS_LISTS = {

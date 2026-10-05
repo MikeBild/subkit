@@ -116,14 +116,24 @@ export function ruleTarget(
   channels: readonly NotificationChannelLike[],
 ): RuleTarget {
   if (isInboxRule(rule)) return { kind: "inbox" };
-  const channel = channels.find(
-    (candidate) =>
-      candidate.channel_id === rule.target_channel_id &&
-      (rule.target_workspace_id === undefined ||
-        candidate.workspace_id === undefined ||
-        candidate.workspace_id === rule.target_workspace_id),
-  );
+  const channel = channels.find((candidate) => delivers(rule, candidate));
   return channel ? { kind: "channel", channel } : { kind: "pending" };
+}
+
+function delivers(rule: NotificationRuleLike, channel: NotificationChannelLike): boolean {
+  return (
+    channel.channel_id === rule.target_channel_id &&
+    (rule.target_workspace_id === undefined ||
+      channel.workspace_id === undefined ||
+      channel.workspace_id === rule.target_workspace_id)
+  );
+}
+
+export function rulesUsing(
+  channel: NotificationChannelLike,
+  rules: readonly NotificationRuleLike[],
+): number {
+  return rules.filter((rule) => delivers(rule, channel)).length;
 }
 
 export type DeliveryState =
