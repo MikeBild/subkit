@@ -99,3 +99,39 @@ export async function assertNoTooltipWithoutHover(page, where) {
   if (open.length > 0)
     throw new Error(`${where}: a tooltip opened without hover or a Tab to it — ${open[0]}`);
 }
+
+export async function assertTapTogglesHelp(page, where, within) {
+  const help = page.locator(`${within} [data-testid^="setting-help-"]`).first();
+  await help.waitFor();
+  await page.mouse.move(0, 0);
+  await page.locator('[data-slot="tooltip-content"]').first().waitFor({ state: "hidden" });
+  const tap = () =>
+    help.evaluate((button) => {
+      button.dispatchEvent(
+        new PointerEvent("pointerdown", { pointerType: "touch", bubbles: true, cancelable: true }),
+      );
+      button.dispatchEvent(
+        new PointerEvent("click", { pointerType: "touch", bubbles: true, cancelable: true }),
+      );
+    });
+  const content = page.locator('[data-slot="tooltip-content"]').first();
+  await tap();
+  const opened = await content
+    .waitFor({ state: "visible", timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!opened) throw new Error(`${where}: a tap on (?) does not show its help`);
+  if ((await help.getAttribute("aria-describedby")) === null)
+    throw new Error(`${where}: an open (?) lost its description for screen readers`);
+  await tap();
+  const closed = await content
+    .waitFor({ state: "hidden", timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!closed) throw new Error(`${where}: a second tap on (?) leaves its help open`);
+  const described = await help.evaluate((button) => {
+    const id = button.getAttribute("aria-describedby");
+    return id ? (document.getElementById(id)?.textContent ?? "").trim().length > 0 : false;
+  });
+  if (!described) throw new Error(`${where}: a closed (?) gives screen readers no help text`);
+}

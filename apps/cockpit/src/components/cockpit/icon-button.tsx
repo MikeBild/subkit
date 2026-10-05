@@ -11,6 +11,8 @@ type IconButtonProps = Omit<
   "data-testid": string;
   size?: "icon-xs" | "icon-sm" | "icon" | "icon-lg";
   tooltip?: ReactNode;
+  tooltipOpen?: boolean;
+  onTooltipOpenChange?: (open: boolean) => void;
 };
 
 export function IconButton({
@@ -18,6 +20,8 @@ export function IconButton({
   label,
   size = "icon-sm",
   tooltip,
+  tooltipOpen,
+  onTooltipOpenChange,
   variant = "ghost",
   "data-testid": testId,
   ...props
@@ -31,7 +35,7 @@ export function IconButton({
   );
 
   return (
-    <Tooltip>
+    <Tooltip open={tooltipOpen} onOpenChange={onTooltipOpenChange}>
       <TooltipTrigger asChild>
         {props.disabled ? <span className="inline-flex">{button}</span> : button}
       </TooltipTrigger>
