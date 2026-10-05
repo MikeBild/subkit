@@ -10,6 +10,7 @@ import { useSession } from "@/app/session";
 import { useDirtyGuard } from "@/app/version-notice";
 import {
   ActionMenu,
+  type ActionMenuItem,
   Button,
   Checkbox,
   type CockpitColumn,
@@ -30,8 +31,10 @@ import {
   PageHeader,
   PageTabs,
   RecordSheet,
+  RowName,
   SaveBar,
   Section,
+  SegmentedControl,
   Select,
   SelectContent,
   SelectGroup,
@@ -50,7 +53,6 @@ import { LabelText } from "@/lib/machine-label";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
   assignableRoles,
-  GRANT_RESOURCE_TYPES,
   type GrantResourceType,
   isGrantResourceType,
   isPersonRole,
@@ -459,7 +461,11 @@ function PersonSheet({
   const canReadGrants = session.permissions.includes("rbac:read");
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<"deactivate" | "invite" | null>(null);
+  const [confirm, setConfirm] = useState<"deactivate" | "invite" | "revokeGrants" | null>(null);
+  const grants = useGrants(canReadGrants);
+  const ownGrants = (grants.data?.items ?? []).filter(
+    (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
+  );
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
   const role = user ? (roles?.find((item) => item.name === user.role) ?? null) : null;
   const detail = useRoleDetail(role);
@@ -507,6 +513,18 @@ function PersonSheet({
     },
     onError: (error) => refusalToast(error, t),
   });
+  const revokeGrants = useMutation({
+    mutationFn: async (ids: readonly string[]) => {
+      for (const id of ids)
+        await apiRequest<void>(`/v1/rbac/grants/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ["admin", "grants"] }),
+    onSuccess: () => {
+      setConfirm(null);
+      toast.success(t("people.grantsRevoked"));
+    },
+    onError: (error) => refusalToast(error, t),
+  });
   const issueInvite = useMutation({
     mutationFn: (id: string) =>
       apiRequest<{ plaintext_token: string; expires_at: string }>(
@@ -524,21 +542,37 @@ function PersonSheet({
   const purpose = user ? builtinRoleDescription(user.role, role?.description ?? null, t) : null;
   const changed = user && picked && picked !== user.role ? picked : null;
   useDirtyGuard(Boolean(changed));
-  const menu = canWrite
-    ? [
-        {
-          label: t("people.invite"),
-          onSelect: () => setConfirm("invite"),
-          testId: "people-invite",
-        },
-        {
-          label: t("people.deactivate"),
-          onSelect: () => setConfirm("deactivate"),
-          destructive: true,
-          testId: "people-deactivate",
-        },
-      ]
-    : [];
+  const self = user?.id === session.principal.id;
+  const menu: ActionMenuItem[] =
+    canWrite && user && !self
+      ? [
+          ...(user.status === "invited"
+            ? [
+                {
+                  label: t("people.invite"),
+                  onSelect: () => setConfirm("invite"),
+                  testId: "people-invite",
+                },
+              ]
+            : []),
+          {
+            label: t("people.deactivate"),
+            onSelect: () => setConfirm("deactivate"),
+            destructive: true,
+            testId: "people-deactivate",
+          },
+          ...(canAssignCustom && ownGrants.length > 0
+            ? [
+                {
+                  label: t("people.revokeGrants"),
+                  onSelect: () => setConfirm("revokeGrants"),
+                  destructive: true,
+                  testId: "people-revoke-grants",
+                },
+              ]
+            : []),
+        ]
+      : [];
   const connections = user?.oauth_connections ?? 0;
 
   return (
@@ -658,6 +692,19 @@ function PersonSheet({
           if (user) await remove.mutateAsync(user.id).catch(() => {});
         }}
         testId="people-deactivate-confirm"
+      />
+      <ConfirmDialog
+        open={confirm === "revokeGrants"}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        object={t("people.grantsObject", { email: user?.email ?? "" })}
+        verb={t("people.revokeGrantsVerb")}
+        consequence={t("people.revokeGrantsConsequence", { count: String(ownGrants.length) })}
+        destructive
+        pending={revokeGrants.isPending}
+        onConfirm={async () => {
+          await revokeGrants.mutateAsync(ownGrants.map((grant) => grant.id)).catch(() => {});
+        }}
+        testId="people-revoke-grants-confirm"
       />
       <ConfirmDialog
         open={confirm === "invite"}
@@ -1258,6 +1305,10 @@ function useGrantNames() {
   };
 }
 
+function grantTitle(names: ReturnType<typeof useGrantNames>, grant: GrantItem): string {
+  return `${names.subjectName(grant)} → ${names.resourceName(grant)}`;
+}
+
 function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): void }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
@@ -1286,16 +1337,19 @@ function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): vo
       <RecordSheet
         open={Boolean(grant)}
         onOpenChange={(open) => !open && onClose()}
-        title={permission ? <LabelText label={permission} /> : null}
-        action={
+        title={grant ? grantTitle(names, grant) : null}
+        menu={
           grant && session.permissions.includes("rbac:write") ? (
-            <Button
-              variant="outline"
-              onClick={() => setConfirming(true)}
-              data-testid="grant-revoke"
-            >
-              {t("access.revokeGrant")}
-            </Button>
+            <ActionMenu
+              items={[
+                {
+                  label: t("access.revokeGrant"),
+                  destructive: true,
+                  onSelect: () => setConfirming(true),
+                  testId: "grant-revoke",
+                },
+              ]}
+            />
           ) : null
         }
         testId="grant-sheet"
@@ -1305,8 +1359,12 @@ function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): vo
           <FactList
             testId="grant-sheet-facts"
             items={[
-              { label: t("access.subject"), value: names.subjectName(grant) },
+              { label: t("access.who"), value: names.subjectName(grant) },
               { label: t("access.grantRecord"), value: names.resourceName(grant) },
+              {
+                label: t("access.right"),
+                value: <LabelText label={permissionLabel(grant.permission, t)} />,
+              },
               {
                 label: t("access.validity"),
                 value: grant.expires_at
@@ -1353,28 +1411,25 @@ function GrantsTab({ action }: { action: ReactNode }) {
     const column = tableColumns<GrantItem>({ t, dateTime });
     return [
       column.custom(
+        "subject",
+        (row) => row.subject_id,
+        t("access.grant"),
+        (row) => (
+          <span className="block truncate">
+            <RowName>{grantTitle(names, row)}</RowName>
+          </span>
+        ),
+        { width: "w-[50%]", ownsRowLink: true },
+      ),
+      column.custom(
         "permission",
         (row) => row.permission,
-        t("access.permission"),
+        t("access.right"),
         (row) => (
           <span className="block truncate">
             <LabelText label={permissionLabel(row.permission, t)} />
           </span>
         ),
-        { width: "w-[30%]" },
-      ),
-      column.custom(
-        "subject",
-        (row) => row.subject_id,
-        t("access.subject"),
-        (row) => <span className="block truncate">{names.subjectName(row)}</span>,
-        { width: "w-[25%]" },
-      ),
-      column.custom(
-        "record",
-        (row) => row.resource_id,
-        t("access.grantRecord"),
-        (row) => <span className="block truncate">{names.resourceName(row)}</span>,
         { width: "w-[25%]" },
       ),
       column.custom(
@@ -1385,7 +1440,7 @@ function GrantsTab({ action }: { action: ReactNode }) {
           row.expires_at
             ? t("access.grantExpires", { time: dateTime(row.expires_at) })
             : t("access.grantNoExpiry"),
-        { width: "w-[20%]" },
+        { width: "w-[25%]" },
       ),
     ];
   })();
@@ -1422,6 +1477,8 @@ function GrantsTab({ action }: { action: ReactNode }) {
   );
 }
 
+const GRANT_RIGHTS = ["workflow:run", "workflow:write"] as const;
+
 function GrantAccessDialog({
   open,
   onOpenChange,
@@ -1432,16 +1489,10 @@ function GrantAccessDialog({
   const { t } = useI18n();
   const client = useQueryClient();
   const names = useGrantNames();
-  const permissions = useQuery({
-    queryKey: ["admin", "permissions"],
-    queryFn: () => apiRequest<Envelope<PermissionItem>>("/v1/rbac/permissions"),
-    enabled: open,
-  });
-  const [subjectType, setSubjectType] = useState<"user" | "group">("user");
-  const [subjectId, setSubjectId] = useState("");
-  const [resourceType, setResourceType] = useState<GrantResourceType>("workflow");
-  const [resourceId, setResourceId] = useState("");
-  const [permission, setPermission] = useState("");
+  const [subject, setSubject] = useState("");
+  const [workflowId, setWorkflowId] = useState("");
+  const [permission, setPermission] = useState<string>(GRANT_RIGHTS[0]);
+  const [subjectType, subjectId] = subject.split(":") as ["user" | "group" | "", string];
   const create = useMutation({
     mutationFn: () =>
       apiRequest("/v1/rbac/grants", {
@@ -1449,99 +1500,76 @@ function GrantAccessDialog({
         body: JSON.stringify({
           subject_type: subjectType,
           subject_id: subjectId,
-          resource_type: resourceType,
-          resource_id: resourceId,
+          resource_type: "workflow",
+          resource_id: workflowId,
           permission,
         }),
       }),
     onSuccess: async () => {
       onOpenChange(false);
+      setSubject("");
+      setWorkflowId("");
       await client.invalidateQueries({ queryKey: ["admin", "grants"] });
       toast.success(t("access.grantCreated"));
     },
     onError: (error) => refusalToast(error, t),
   });
-  const subjects =
-    subjectType === "user"
-      ? names.people.map((item) => ({ value: item.id, label: item.email }))
-      : names.groups.map((item) => ({ value: item.id, label: item.name }));
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       title={t("access.createGrant")}
       submit={{
-        label: t("access.createGrant"),
+        label: t("access.grantVerb"),
         pending: create.isPending,
-        disabled: !subjectId || !resourceId || !permission,
+        disabled: !subjectId || !workflowId,
       }}
       onSubmit={() => create.mutate()}
       testId="grant-create-dialog"
     >
       <ChoiceField
-        label={t("access.subjectType")}
-        value={subjectType}
-        onChange={(value) => {
-          setSubjectType(value === "group" ? "group" : "user");
-          setSubjectId("");
-        }}
-        options={[
-          { value: "user", label: t("access.person") },
-          { value: "group", label: t("access.group") },
-        ]}
-        testId="grant-subject-type"
-      />
-      <ChoiceField
-        label={t("access.subject")}
-        value={subjectId}
-        onChange={setSubjectId}
+        label={t("access.who")}
+        value={subject}
+        onChange={setSubject}
         placeholder={t("access.chooseSubject")}
-        options={subjects}
+        options={[
+          ...names.people.map((item) => ({ value: `user:${item.id}`, label: item.email })),
+          ...names.groups.map((item) => ({ value: `group:${item.id}`, label: item.name })),
+        ]}
         testId="grant-subject"
         byIndex
       />
       <ChoiceField
-        label={t("access.resourceType")}
-        help={t("access.grantTypesNote")}
-        value={resourceType}
-        onChange={(value) => {
-          if (!isGrantResourceType(value)) return;
-          setResourceType(value);
-          setResourceId("");
-          setPermission("");
-        }}
-        options={GRANT_RESOURCE_TYPES.map((type) => ({
-          value: type,
-          label: <LabelText label={resourceTypeLabel(type, t)} />,
-        }))}
-        testId="grant-resource-type"
-      />
-      <ChoiceField
-        label={t("access.grantRecord")}
-        value={resourceId}
-        onChange={setResourceId}
+        label={t("access.workflow")}
+        value={workflowId}
+        onChange={setWorkflowId}
         placeholder={t("access.chooseRecord")}
-        options={names.records(resourceType).map((record) => ({
+        options={names.records("workflow").map((record) => ({
           value: record.id,
-          label: names.recordName(record) ?? resourceTypeLabel(resourceType, t).text,
+          label: names.recordName(record) ?? resourceTypeLabel("workflow", t).text,
         }))}
         testId="grant-resource"
         byIndex
       />
-      <ChoiceField
-        label={t("access.permission")}
-        value={permission}
-        onChange={setPermission}
-        placeholder={t("access.choosePermission")}
-        options={(permissions.data?.items ?? [])
-          .filter((item) => item.resource_type === resourceType)
-          .map((item) => ({
-            value: item.name,
-            label: <LabelText label={permissionLabel(item.name, t)} />,
+      <Field>
+        <FieldLabel className="flex items-center gap-1">
+          {t("access.right")}
+          <ContextHelp label={t("access.right")} testId="grant-permission-help">
+            {t("access.grantRightHelp")}
+          </ContextHelp>
+        </FieldLabel>
+        <SegmentedControl
+          label={t("access.right")}
+          value={permission}
+          onValueChange={setPermission}
+          testId="grant-permission"
+          options={GRANT_RIGHTS.map((name) => ({
+            value: name,
+            label: t(name === "workflow:run" ? "access.right.run" : "access.right.write"),
+            testId: `grant-permission-${name === "workflow:run" ? "run" : "write"}`,
           }))}
-        testId="grant-permission"
-        byIndex
-      />
+        />
+      </Field>
     </FormDialog>
   );
 }

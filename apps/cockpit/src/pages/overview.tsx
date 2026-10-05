@@ -586,11 +586,19 @@ function ReviewSheet({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   return (
     <RecordSheet
       open={Boolean(id)}
       onOpenChange={(open) => !open && onClose()}
       title={item ? attentionRow(item, t).name : t("overview.sheet.title")}
+      action={
+        <span
+          ref={setActionsSlot}
+          className="flex items-center gap-2 empty:hidden"
+          data-testid="attention-review-actions"
+        />
+      }
       titleTestId="attention-review-title"
       testId="attention-review"
       closeTestId="attention-review-close"
@@ -599,7 +607,7 @@ function ReviewSheet({
         <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
       ) : null}
       {item?.detail ? <EngineWording text={item.detail} testId="attention-review-detail" /> : null}
-      {id ? <ReviewBody id={id} item={item} onClose={onClose} /> : null}
+      {id ? <ReviewBody id={id} item={item} onClose={onClose} actionsSlot={actionsSlot} /> : null}
     </RecordSheet>
   );
 }
@@ -608,10 +616,12 @@ function ReviewBody({
   id,
   item,
   onClose,
+  actionsSlot,
 }: {
   id: string;
   item: AttentionItem | null;
   onClose: () => void;
+  actionsSlot: HTMLElement | null;
 }) {
   const { t } = useI18n();
   const session = useSession();
@@ -748,6 +758,11 @@ function ReviewBody({
             decide.mutate({ item: target, approve: true, reason: "", reviewDigest })
           }
           onReject={(target, reason) => decide.mutate({ item: target, approve: false, reason })}
+          actionsSlot={
+            decisions.length === 1 && held.length === 0 && heldHooks.length === 0
+              ? actionsSlot
+              : null
+          }
         />
       ))}
       {decisions.length === 0 && held.length === 0 && heldHooks.length === 0 ? (

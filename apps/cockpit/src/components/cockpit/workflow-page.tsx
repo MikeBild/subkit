@@ -436,8 +436,7 @@ export function WorkflowPage({
                 quiet={editor.dirty}
                 workflowId={id}
                 workflowName={title}
-                version={version === null ? null : String(version)}
-                versionId={versionId}
+                liveEnvironment={automation.runEnvironment}
               />
             ) : undefined
           }

@@ -5,15 +5,16 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, attentionHref, chatNewHref, routerTarget } from "@/app/links";
 import { useSession } from "@/app/session";
-import { ActionMenu, type ActionMenuItem, DataState, Section } from "@/components/cockpit/patterns";
+import { ActionMenu, ContextHelp, DataState } from "@/components/cockpit/patterns";
+import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
-import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
+import { tableColumns } from "@/components/cockpit/table-columns";
 import { AUTOMATION_REFRESH_MS, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import {
-  diagnosisActs,
+  type DiagnosisFix,
   diagnosisCauseKey,
+  diagnosisFix,
   diagnosisNote,
-  diagnosisRepairable,
   type RepairStatus,
 } from "@/lib/gate-diagnosis";
 import type { TranslationKey } from "@/lib/i18n";
@@ -103,14 +104,16 @@ export function WorkflowGateDiagnosis({
   rejectedRepairs: readonly string[];
   onRepairRejected: (stepId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
   const session = useSession();
   const canRead = session.permissions.includes("workflow:read");
+  const [notes, setNotes] = useState<Readonly<Record<string, RepairNote>>>({});
   const diagnosis = useQuery({
     ...workflowDiagnosisQuery(workflowId, environment),
     enabled: canRead && environment !== null,
     retryOnMount: false,
   });
+  const prepare = usePrepare(diagnosis.data ?? null, environment);
   if (!canRead || environment === null) return null;
   if (diagnosis.error)
     return (
@@ -124,217 +127,75 @@ export function WorkflowGateDiagnosis({
   const entries = diagnosis.data?.diagnoses ?? [];
   if (!diagnosis.data || entries.length === 0) return null;
   const answer = diagnosis.data;
-  return (
-    <div data-testid="workflow-diagnosis">
-      <Section label={t("diagnosis.title")}>
-        <ul className="flex flex-col gap-2">
-          {entries.map((entry, index) => (
-            <DiagnosisItem
-              key={`${entry.subject.step_id}:${entry.code}:${entry.fixer ?? ""}`}
-              index={index}
-              entry={entry}
-              diagnosis={answer}
-              environment={environment}
-              showRun={
-                entries.findIndex(
-                  (other) => other.evidence.execution_id === entry.evidence.execution_id,
-                ) === index
-              }
-              onRepairRejected={() => onRepairRejected(entry.subject.step_id)}
-            />
-          ))}
-        </ul>
-        <DiagnosisActions
-          diagnosis={answer}
-          environment={environment}
-          rejectedRepairs={rejectedRepairs}
-          onOpenApproval={onOpenApproval}
-        />
-      </Section>
-    </div>
-  );
-}
-
-function DiagnosisItem({
-  entry,
-  diagnosis,
-  environment,
-  index,
-  showRun,
-  onRepairRejected,
-}: {
-  entry: GateDiagnosis;
-  diagnosis: WorkflowDiagnosis;
-  environment: "dev" | "prod";
-  index: number;
-  showRun: boolean;
-  onRepairRejected: () => void;
-}) {
-  const { t } = useI18n();
-  const session = useSession();
-  const sheets = useOpenRunSheet();
-  const testId = `workflow-diagnosis-${index}`;
-  const [note, setNote] = useState<RepairNote | null>(null);
-  const repair = useStepRepair({
-    entry,
-    diagnosis,
-    environment,
-    onNote: (value) => {
-      setNote(value);
-      if (value === "rejected") onRepairRejected();
-    },
-  });
-
-  const causeKey = diagnosisCauseKey(entry.code);
-  const cause = catalogLabel(entry.code, causeKey, t);
-  const canRepair = diagnosisRepairable(entry, diagnosis.is_current, {
+  const rights = {
     write: session.permissions.includes("workflow:write"),
-  });
-  const offersRepair = canRepair && !entry.candidate_id;
-  const runId = showRun ? entry.evidence.execution_id : undefined;
-  const acts: ActionMenuItem[] = [
-    ...(offersRepair
-      ? [
-          {
-            label: t("diagnosis.repair"),
-            disabled: repair.isPending,
-            onSelect: () => entry.fixer && repair.mutate(entry.fixer),
-            testId: `${testId}-repair`,
-          },
-        ]
-      : []),
-    ...(runId
-      ? [{ label: t("remedy.openRun"), onSelect: () => sheets.run(runId), testId: `${testId}-run` }]
-      : []),
-  ];
-  const sentence = (key: TranslationKey) => (
-    <p className="text-sm text-muted-foreground" data-testid={`${testId}-note`}>
-      {t(key)}
-    </p>
-  );
-
-  return (
-    <li
-      className="flex flex-col gap-1 rounded-lg border border-amber-500/40 px-3 py-2"
-      data-testid={testId}
-      data-code={entry.code}
-      data-remedy={entry.remedy_kind}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 text-sm" data-testid={`${testId}-cause`}>
-          <span className="font-medium">
-            {t("diagnosis.step", { step: entry.subject.step_id })}
-          </span>
-          {" · "}
-          {entry.reason ? (
-            <RefusalReasonLine reason={entry.reason} testId={`${testId}-reason`} />
-          ) : (
-            <LabelText label={cause} />
-          )}
-        </p>
-        {acts.map((act) => (
-          <ActionMenu key={act.testId} items={[act]} />
-        ))}
-      </div>
-      <p className="text-sm text-muted-foreground" data-testid={`${testId}-remedy`}>
-        {t(`diagnosis.remedy.${entry.remedy_kind}`)}
-      </p>
-      {entry.fixer && !diagnosis.is_current ? sentence("diagnosis.draftOnly") : null}
-      {note ? sentence(REPAIR_NOTE_KEYS[note]) : null}
-    </li>
-  );
-}
-
-function DiagnosisActions({
-  diagnosis,
-  environment,
-  rejectedRepairs,
-  onOpenApproval,
-}: {
-  diagnosis: WorkflowDiagnosis;
-  environment: "dev" | "prod";
-  rejectedRepairs: readonly string[];
-  onOpenApproval?: () => void;
-}) {
-  const { t } = useI18n();
-  const session = useSession();
-  const client = useQueryClient();
-  const navigate = useNavigate();
-  const workflowId = diagnosis.workflow_id;
-  const [prepared, setPrepared] = useState<TranslationKey | null>(null);
-  const prepare = useMutation({
-    mutationFn: () =>
-      apiRequest<PrepareResponse>(
-        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(diagnosis.workflow_version_id ?? "")}/prepare-authority`,
-        { method: "POST", body: JSON.stringify({ environment }) },
-      ),
-    onSuccess: (result) => {
-      setPrepared(preparedKey(result));
-      void invalidateWorkflowAutomation(client, workflowId);
-    },
-    onError: () => setPrepared("diagnosis.prepareFailed"),
-  });
-  const acts = diagnosisActs(
-    diagnosis,
-    {
-      write: session.permissions.includes("workflow:write"),
-      run: session.permissions.includes("workflow:run"),
-      chat: session.permissions.includes("conversation:write"),
-    },
-    rejectedRepairs,
-  );
-  if (!acts.review && !acts.prepare && acts.author.length === 0) return null;
-  const [firstStep] = acts.author;
-  const chatPrompt =
-    acts.author.length === 1 && firstStep
-      ? t("diagnosis.chatPrompt", { step: firstStep })
-      : t("diagnosis.chatPromptSteps", { steps: acts.author.join(", ") });
-  const items: ActionMenuItem[] = [
-    ...(acts.review
-      ? [
-          {
-            label: t("remedy.reviewRepair"),
-            onSelect: () => void navigate(routerTarget(repairReviewHref(workflowId))),
-            testId: "workflow-diagnosis-review",
-          },
-        ]
-      : []),
-    ...(acts.prepare
-      ? [
-          {
-            label: t("diagnosis.prepare"),
-            disabled: prepare.isPending,
-            onSelect: () => prepare.mutate(),
-            testId: "workflow-diagnosis-prepare",
-          },
-        ]
-      : []),
-    ...(acts.author.length > 0
-      ? [
-          {
-            label: t("remedy.chat"),
-            href: absolute(
-              chatNewHref({ workflowId, executionId: acts.authorRunId, prompt: chatPrompt }),
-            ),
-            testId: "workflow-diagnosis-chat",
-          },
-        ]
-      : []),
+    run: session.permissions.includes("workflow:run"),
+    chat: session.permissions.includes("conversation:write"),
+  };
+  const column = tableColumns<GateDiagnosis>({ t, dateTime });
+  const columns = [
+    column.custom(
+      "step",
+      (entry) => entry.subject.step_id,
+      t("diagnosis.column.step"),
+      (entry) => <span className="font-mono text-sm">{entry.subject.step_id}</span>,
+      { width: "w-[30%]" },
+    ),
+    column.custom(
+      "reason",
+      (entry) => entry.code,
+      t("diagnosis.column.reason"),
+      (entry) => {
+        const index = entries.indexOf(entry);
+        const note = notes[entry.subject.step_id];
+        return (
+          <DiagnosisReason
+            entry={entry}
+            index={index}
+            note={
+              note
+                ? REPAIR_NOTE_KEYS[note]
+                : entry.fixer && !answer.is_current
+                  ? "diagnosis.draftOnly"
+                  : null
+            }
+          />
+        );
+      },
+      { width: "w-[70%]" },
+    ),
   ];
   return (
-    <div className="flex flex-col gap-2" data-testid="workflow-diagnosis-actions">
-      <div className="flex flex-wrap items-center gap-2">
-        {items.map((item) => (
-          <ActionMenu key={item.testId} items={[item]} />
-        ))}
-      </div>
-      {prepared ? (
-        <div className="flex flex-col items-start gap-1" role="status">
+    <div data-testid="workflow-diagnosis" className="flex flex-col gap-2">
+      <RecordTable
+        collectionId="workflow-diagnosis-table"
+        columns={columns}
+        data={[...entries]}
+        emptyLine={t("diagnosis.title")}
+        getRowId={(entry) => `${entry.subject.step_id}:${entry.code}:${entry.fixer ?? ""}`}
+        rowActions={(entry, index) => (
+          <DiagnosisFixAction
+            entry={entry}
+            index={index}
+            diagnosis={answer}
+            environment={environment}
+            fix={diagnosisFix(entry, answer, rights, rejectedRepairs)}
+            prepare={prepare}
+            onNote={(note) => {
+              setNotes((current) => ({ ...current, [entry.subject.step_id]: note }));
+              if (note === "rejected") onRepairRejected(entry.subject.step_id);
+            }}
+          />
+        )}
+      />
+      {prepare.result ? (
+        <div className="flex flex-wrap items-center gap-2" role="status">
           <p className="text-sm text-muted-foreground" data-testid="workflow-diagnosis-prepared">
-            {t(prepared)}
+            {t(prepare.result)}
           </p>
-          {prepared === "diagnosis.prepareNeedsSample" && onOpenApproval ? (
+          {prepare.result === "diagnosis.prepareNeedsSample" && onOpenApproval ? (
             <ActionMenu
+              size="sm"
               items={[
                 {
                   label: t("diagnosis.openApproval"),
@@ -348,4 +209,156 @@ function DiagnosisActions({
       ) : null}
     </div>
   );
+}
+
+function DiagnosisReason({
+  entry,
+  index,
+  note,
+}: {
+  entry: GateDiagnosis;
+  index: number;
+  note: TranslationKey | null;
+}) {
+  const { t } = useI18n();
+  const testId = `workflow-diagnosis-${index}`;
+  const cause = catalogLabel(entry.code, diagnosisCauseKey(entry.code), t);
+  return (
+    <span
+      className="flex min-w-0 flex-col gap-0.5"
+      data-testid={testId}
+      data-code={entry.code}
+      data-remedy={entry.remedy_kind}
+    >
+      <span className="flex min-w-0 items-center gap-1 text-sm">
+        <span className="min-w-0" data-testid={`${testId}-cause`}>
+          {entry.reason ? (
+            <RefusalReasonLine reason={entry.reason} testId={`${testId}-reason`} />
+          ) : (
+            <LabelText label={cause} />
+          )}
+        </span>
+        <ContextHelp label={t("diagnosis.title")} testId={`${testId}-help`}>
+          {t(`diagnosis.remedy.${entry.remedy_kind}`)}
+        </ContextHelp>
+      </span>
+      {note ? (
+        <span className="text-xs text-muted-foreground" data-testid={`${testId}-note`}>
+          {t(note)}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+interface Prepare {
+  pending: boolean;
+  result: TranslationKey | null;
+  run(): void;
+}
+
+function usePrepare(
+  diagnosis: WorkflowDiagnosis | null,
+  environment: "dev" | "prod" | null,
+): Prepare {
+  const client = useQueryClient();
+  const [result, setResult] = useState<TranslationKey | null>(null);
+  const workflowId = diagnosis?.workflow_id ?? "";
+  const prepare = useMutation({
+    mutationFn: () =>
+      apiRequest<PrepareResponse>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/versions/${encodeURIComponent(diagnosis?.workflow_version_id ?? "")}/prepare-authority`,
+        { method: "POST", body: JSON.stringify({ environment }) },
+      ),
+    onSuccess: (response) => {
+      setResult(preparedKey(response));
+      void invalidateWorkflowAutomation(client, workflowId);
+    },
+    onError: () => setResult("diagnosis.prepareFailed"),
+  });
+  return { pending: prepare.isPending, result, run: () => prepare.mutate() };
+}
+
+function DiagnosisFixAction({
+  entry,
+  index,
+  diagnosis,
+  environment,
+  fix,
+  prepare,
+  onNote,
+}: {
+  entry: GateDiagnosis;
+  index: number;
+  diagnosis: WorkflowDiagnosis;
+  environment: "dev" | "prod";
+  fix: DiagnosisFix | null;
+  prepare: Prepare;
+  onNote: (note: RepairNote) => void;
+}) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const repair = useStepRepair({ entry, diagnosis, environment, onNote });
+  const testId = `workflow-diagnosis-${index}`;
+  if (fix === "auto")
+    return (
+      <ActionMenu
+        size="sm"
+        items={[
+          {
+            label: t("diagnosis.repair"),
+            disabled: repair.isPending,
+            onSelect: () => entry.fixer && repair.mutate(entry.fixer),
+            testId: `${testId}-repair`,
+          },
+        ]}
+      />
+    );
+  if (fix === "review")
+    return (
+      <ActionMenu
+        size="sm"
+        items={[
+          {
+            label: t("remedy.reviewRepair"),
+            onSelect: () => void navigate(routerTarget(repairReviewHref(diagnosis.workflow_id))),
+            testId: `${testId}-review`,
+          },
+        ]}
+      />
+    );
+  if (fix === "prepare")
+    return (
+      <ActionMenu
+        size="sm"
+        items={[
+          {
+            label: t("diagnosis.prepare"),
+            disabled: prepare.pending,
+            onSelect: prepare.run,
+            testId: `${testId}-prepare`,
+          },
+        ]}
+      />
+    );
+  if (fix === "chat")
+    return (
+      <ActionMenu
+        size="sm"
+        items={[
+          {
+            label: t("remedy.chat"),
+            href: absolute(
+              chatNewHref({
+                workflowId: diagnosis.workflow_id,
+                executionId: entry.evidence.execution_id ?? null,
+                prompt: t("diagnosis.chatPrompt", { step: entry.subject.step_id }),
+              }),
+            ),
+            testId: `${testId}-chat`,
+          },
+        ]}
+      />
+    );
+  return null;
 }

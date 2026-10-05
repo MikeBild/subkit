@@ -7,6 +7,7 @@ import {
   eventPatternLabels,
   platformLabel,
   ruleNameLabel,
+  rulesUsing,
   ruleTarget,
   workflowPatternLabel,
 } from "@/pages/notifications-model";
@@ -189,5 +190,27 @@ describe("channels", () => {
       kind: "machine",
       value: "draining",
     });
+  });
+});
+
+describe("a channel's rules", () => {
+  const rule = (channel: string) => ({
+    name: "Fehler",
+    event_pattern: "execution.failed",
+    workflow_pattern: "*",
+    target_workspace_id: "T1",
+    target_channel_id: channel,
+  });
+  const other = { ...SLACK, id: "ch-2", channel_id: "C2" };
+
+  test("counts only the rules that deliver to it", () => {
+    expect(rulesUsing(SLACK, [rule("C1"), rule("C1"), rule("C2")])).toBe(2);
+    expect(rulesUsing(other, [rule("C1")])).toBe(0);
+  });
+
+  test("the inbox rule keeps the inbox channel in use", () => {
+    const inbox = { ...SLACK, id: "ch-inbox", workspace_id: "_cli", channel_id: "_inbox" };
+    expect(rulesUsing(inbox, [SEEDED_RULE])).toBe(1);
+    expect(rulesUsing(SLACK, [SEEDED_RULE])).toBe(0);
   });
 });

@@ -12,7 +12,6 @@ import {
   type CockpitColumn,
   CodeBlock,
   CollapsibleSection,
-  ConfirmDialog,
   DataState,
   DataTable,
   type Fact,
@@ -98,7 +97,6 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
 function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const rerun = useMutation({
     mutationFn: () =>
       apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
@@ -107,37 +105,28 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
       }),
     onSuccess: async (result) => {
       toast.success(t("runs.rerun.started"));
-      setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["runs"] });
       onStarted(result.execution_id);
     },
     onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
   });
-  const running = run.status === "running" || run.status === "queued";
+  const running = isLive(run.status);
   return (
-    <>
-      <ActionButton
-        variant="primary"
-        disabled={running}
-        onClick={() => setOpen(true)}
-        testId="run-rerun-open"
-      >
-        {t("runs.rerun.open")}
-      </ActionButton>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={(next) => !rerun.isPending && setOpen(next)}
-        object={runName(run, t)}
-        verb={t("runs.rerun.open")}
-        consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
-        pending={rerun.isPending}
-        onConfirm={async () => {
-          await rerun.mutateAsync().catch(() => undefined);
-        }}
-        testId="run-rerun"
-      />
-    </>
+    <ActionButton
+      variant="primary"
+      disabled={running}
+      disabledReason={t("runs.rerun.whileRunning")}
+      pending={rerun.isPending}
+      onClick={() => rerun.mutate()}
+      testId="run-rerun-open"
+    >
+      {t("runs.rerun.open")}
+    </ActionButton>
   );
+}
+
+function isLive(status: string): boolean {
+  return status === "running" || status === "queued";
 }
 
 function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
@@ -309,16 +298,40 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             }
           />
         </div>
-      ) : sentence ? (
+      ) : isLive(current.status) ? (
         <StatusStrip
-          tone="ok"
+          tone="info"
+          testId="run-detail-progress"
           line={
-            <span data-testid="run-detail-outcome">
-              <OutcomeText sentence={sentence} />
-            </span>
+            <>
+              <span className="font-medium">{verdict.label}</span>
+              {" · "}
+              {t("runs.strip.running", { step: String(Math.max(1, stepItems.length)) })}
+            </>
           }
         />
-      ) : null}
+      ) : (
+        <StatusStrip
+          tone="ok"
+          testId="run-detail-done"
+          line={
+            <>
+              <span className="font-medium">{verdict.label}</span>
+              {" · "}
+              <span data-testid="run-detail-outcome">
+                {sentence ? (
+                  <OutcomeText sentence={sentence} />
+                ) : (
+                  t("runs.strip.done", {
+                    count: String(stepItems.length),
+                    duration: duration ?? MISSING,
+                  })
+                )}
+              </span>
+            </>
+          }
+        />
+      )}
       <SummaryLine
         text={[
           current.started_at ? dateTime(current.started_at) : null,

@@ -60,6 +60,17 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   await capture("grant-revoke");
   await page.getByTestId("grant-revoke-confirm-cancel").click();
   await revokeConfirm.waitFor({ state: "hidden" });
+  await page.getByTestId("grant-sheet-close").click();
+  await page.getByTestId("grant-create").click();
+  const grantDialog = page.getByTestId("grant-create-dialog");
+  await grantDialog.waitFor({ state: "visible" });
+  const fields = await grantDialog.locator('[data-slot="field-label"]').allInnerTexts();
+  const asked = fields.map((field) => field.trim()).filter(Boolean);
+  if (JSON.stringify(asked) !== JSON.stringify(["Wer", "Workflow", "Recht"]))
+    throw new Error(`/people?section=grants: the grant dialog asks ${JSON.stringify(asked)}`);
+  await capture("grant-create");
+  await page.getByTestId("grant-create-dialog-cancel").click();
+  await grantDialog.waitFor({ state: "hidden" });
 
   await stand.visit(page, "usage");
   const pressure = page.getByTestId("usage-pressure-critical");

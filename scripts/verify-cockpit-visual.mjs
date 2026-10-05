@@ -3047,6 +3047,32 @@ async function assertNotificationRules(page, label) {
   });
   if (clipped.length > 0)
     throw new Error(`${label}: rules wider than their card: ${clipped.join(", ")}`);
+  const openRow = async (table, index, sheet) => {
+    await page
+      .locator(
+        `[data-testid="${table}-row-link-${index}"], [data-testid="${table}-mobile-row-link-${index}"]`,
+      )
+      .filter({ visible: true })
+      .first()
+      .click();
+    await page.getByTestId(sheet).waitFor({ state: "visible" });
+  };
+  const closeSheet = async (sheet) => {
+    await page.getByTestId(sheet).locator('[data-slot="sheet-close"]').click();
+    await page.getByTestId(sheet).waitFor({ state: "detached" });
+  };
+  await openRow("notifications-rules-table", 1, "notifications-rule-sheet");
+  if (!(await page.getByTestId("notifications-rule-delete").isEnabled()))
+    throw new Error(`${label}: a rule's sheet offers no way to delete it`);
+  await closeSheet("notifications-rule-sheet");
+  await openRow("notifications-channels-table", 1, "notifications-channel-sheet");
+  if (!(await page.getByTestId("notifications-channel-delete").isDisabled()))
+    throw new Error(`${label}: a channel two rules deliver to can be removed`);
+  await closeSheet("notifications-channel-sheet");
+  await openRow("notifications-channels-table", 2, "notifications-channel-sheet");
+  if (!(await page.getByTestId("notifications-channel-delete").isEnabled()))
+    throw new Error(`${label}: an unused channel cannot be removed`);
+  await closeSheet("notifications-channel-sheet");
 }
 
 const ENDLESS_LISTS = {
@@ -3160,6 +3186,7 @@ async function assertRunDetail(page, label, language) {
     throw new Error(
       `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
     );
+  const rerunOf = new URL(page.url()).searchParams.get("run");
   let reruns = 0;
   const countRerun = (request) => {
     if (request.method() === "POST" && request.url().includes("/rerun")) reruns += 1;
@@ -3167,21 +3194,22 @@ async function assertRunDetail(page, label, language) {
   page.on("request", countRerun);
   try {
     await page.locator('[data-testid="run-rerun-open"]').click();
-    const consequence = page.locator('[data-testid="run-rerun-consequence"]');
-    await consequence.waitFor();
-    const said = await consequence.innerText();
-    for (const word of language === "de"
-      ? ["derselben Version", "derselben Eingabe", "echter Lauf"]
-      : ["same version", "same input", "real run"])
-      if (!said.includes(word))
-        throw new Error(`${label} rerun dialog does not state its consequence: ${said}`);
-    await page.locator('[data-testid="run-rerun-cancel"]').click();
-    await consequence.waitFor({ state: "hidden" });
+    for (let attempt = 0; attempt < 40 && reruns === 0; attempt += 1) await page.waitForTimeout(50);
+    if (await page.getByRole("alertdialog").count())
+      throw new Error(`${label} asks again before running again; the dummy starts the run`);
   } finally {
     page.off("request", countRerun);
   }
-  if (reruns !== 0) throw new Error(`${label} cancelling the rerun started one`);
-  await toggle.click();
+  if (reruns !== 1) throw new Error(`${label} one click on rerun sent ${reruns} runs`);
+  await page
+    .waitForURL((url) => url.searchParams.get("run") !== rerunOf, { timeout: 2_000 })
+    .catch(() => undefined);
+  if (new URL(page.url()).searchParams.get("run") !== rerunOf) {
+    await page.goBack();
+    await page.waitForURL((url) => url.searchParams.get("run") === rerunOf);
+  }
+  await toggle.waitFor();
+  if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click();
   await result.waitFor({ state: "hidden" });
 }
 
@@ -4475,9 +4503,7 @@ for (const locale of variants) {
         fullPage: false,
       });
       await stand.visit(page, "workflows");
-      await page
-        .locator('[data-testid="data-table-desktop"] [data-testid="catalog-recategorize-0"]')
-        .hover();
+      await page.locator('[data-testid="sidebar-trigger"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-tooltip`, {

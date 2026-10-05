@@ -181,8 +181,17 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await openSheet();
     const card = page.locator(`article[data-decision-key="patch:${id}"]`);
     await card.waitFor();
-    const approve = card.locator('[data-testid$="-approve"]');
+    const approve = page
+      .getByTestId("attention-review-actions")
+      .locator('[data-testid$="-approve"]');
+    if ((await card.locator('[data-testid$="-approve"]').count()) !== 0)
+      throw new Error(
+        "The only decision in the sheet keeps its actions in the card, not the header",
+      );
     if (!(await approve.isDisabled())) throw new Error("Unopened repair can be approved");
+    const facts = await card.locator('[data-testid$="-facts"]').innerText();
+    for (const word of locale === "de" ? ["Vorher", "Nachher"] : ["Before", "After"])
+      if (!facts.includes(word)) throw new Error(`The repair sheet does not state "${word}"`);
     await card.locator('[data-testid$="-toggle"]').click();
     await card.locator('[data-testid$="-detail"]').waitFor();
     await approve.click();
@@ -217,7 +226,7 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
     await openSheet();
     await card.waitFor();
     await card.locator('[data-testid$="-toggle"]').click();
-    await card.getByTestId("authority-grant-open").click();
+    await page.getByTestId("attention-review-actions").getByTestId("authority-grant-open").click();
     await page.getByTestId("authority-grant-review").waitFor();
     const dialog = page
       .getByRole("dialog")

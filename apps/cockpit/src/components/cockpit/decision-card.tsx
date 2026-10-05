@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { apiRequest } from "@/api/client";
 import {
   dryRunPatchCandidate,
@@ -10,6 +11,7 @@ import {
 } from "@/api/decisions";
 import { absolute, runHref } from "@/app/links";
 import { DiffCard } from "@/components/cockpit/diff-card";
+import { type Fact, FactList } from "@/components/cockpit/patterns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +34,7 @@ import type {
   DecisionItem,
   DecisionOrigin,
 } from "@/pages/decisions-model";
-import { ageInDays, approveBlockedReason, decisionKey } from "@/pages/decisions-model";
+import { ageInDays, approveBlockedReason, changeFacts, decisionKey } from "@/pages/decisions-model";
 import { GrantWorkflowAuthority } from "./grant-workflow-authority";
 
 const KIND_LABEL: Record<DecidableKind, TranslationKey> = {
@@ -403,6 +405,7 @@ export interface DecisionCardProps {
   names?: NameIndex;
   canReadRuns?: boolean;
   priority: "urgent" | "normal";
+  actionsSlot?: HTMLElement | null;
 }
 
 export function DecisionCard({
@@ -417,6 +420,7 @@ export function DecisionCard({
   names = EMPTY_NAME_INDEX,
   canReadRuns = false,
   priority,
+  actionsSlot = null,
 }: DecisionCardProps) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -431,9 +435,10 @@ export function DecisionCard({
   const context = decisionContext(item, t, names, canReadRuns);
   const hasDetail = detailHasContent(item);
 
+  const inSheet = actionsSlot !== null;
   const preview = useQuery({
     queryKey: ["patch-candidate", "preview", item.id],
-    enabled: showDiff,
+    enabled: showDiff || (inSheet && item.kind === "patch"),
     queryFn: () => getPatchCandidatePreview(item.id),
   });
   const blockedReason = approveBlockedReason({
@@ -450,11 +455,120 @@ export function DecisionCard({
     queryFn: () => dryRunPatchCandidate(item.id),
   });
 
+  const blocked =
+    blockedReason && !busy && !rejecting ? (
+      <span
+        className={cn("text-xs text-muted-foreground", inSheet ? "" : "basis-full text-right")}
+        data-testid={`${testId}-approve-blocked`}
+      >
+        {t(blockedReason)}
+      </span>
+    ) : null;
+  const actions = (
+    <>
+      {canDecide ? (
+        <>
+          {rejecting ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid={`${testId}-reject-cancel`}
+                onClick={() => {
+                  setRejecting(false);
+                  setReason("");
+                }}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                data-testid={`${testId}-reject-confirm`}
+                onClick={() => onReject(item, reason.trim())}
+              >
+                {t("decisions.reject")}
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              data-testid={`${testId}-reject`}
+              onClick={() => setRejecting(true)}
+            >
+              {t("decisions.reject")}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            disabled={
+              busy ||
+              rejecting ||
+              blockedReason !== null ||
+              (item.kind === "patch" && (!preview.data?.reviewable || !preview.data?.review_digest))
+            }
+            data-testid={`${testId}-approve`}
+            onClick={() => onApprove(item, preview.data?.review_digest ?? undefined)}
+          >
+            {t(item.kind === "skill" ? "decisions.activateSkill" : "decisions.approve")}
+          </Button>
+          {item.kind === "patch" &&
+            expanded &&
+            preview.data?.reviewable &&
+            preview.data.base_version_id && (
+              <GrantWorkflowAuthority
+                workflowId={preview.data.workflow_id}
+                versionId={preview.data.base_version_id}
+                reviewContent={
+                  <pre className="overflow-auto text-xs">
+                    {JSON.stringify(
+                      { before: preview.data.before_step, after: preview.data.after_step },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                }
+                prepareVersion={async () => {
+                  const prepared = await apiRequest<{ workflow_version_id: string }>(
+                    `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        expected_review_digest: preview.data?.review_digest,
+                      }),
+                    },
+                  );
+                  return prepared.workflow_version_id;
+                }}
+                onGrant={(input) =>
+                  apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
+                    method: "POST",
+                    body: JSON.stringify({
+                      expected_review_digest: preview.data?.review_digest,
+                      execution_authority: input,
+                    }),
+                  })
+                }
+              />
+            )}
+        </>
+      ) : null}
+    </>
+  );
+  const facts =
+    inSheet && item.kind === "patch" && preview.data
+      ? changeFacts(preview.data.before_step, preview.data.after_step, preview.data.changed_paths)
+      : [];
+
   return (
     <article
       className={cn(
-        "@container flex min-h-[162px] flex-col gap-1.5 rounded-2xl border border-l-2 p-3",
-        priority === "urgent" ? "border-l-warning" : "border-l-border",
+        "@container flex flex-col",
+        inSheet ? "gap-3" : "min-h-[162px] gap-1.5 rounded-2xl border border-l-2 p-3",
+        !inSheet && (priority === "urgent" ? "border-l-warning" : "border-l-border"),
       )}
       data-testid={testId}
       data-decision-key={key}
@@ -514,6 +628,43 @@ export function DecisionCard({
         {t(KIND_EFFECT[item.kind])}
       </p>
 
+      {inSheet && facts.length > 0 ? (
+        <FactList
+          testId={`${testId}-facts`}
+          items={[
+            ...(item.target
+              ? [
+                  {
+                    label: t("decisions.fact.step"),
+                    value: hideTechnicalIdentifiers(item.target, t("tool.referenceHiddenInline")),
+                  },
+                ]
+              : []),
+            ...facts.flatMap((fact): Fact[] =>
+              facts.length === 1
+                ? [
+                    {
+                      label: t("decisions.fact.before"),
+                      value: <span className="font-mono text-xs">{fact.before}</span>,
+                    },
+                    {
+                      label: t("decisions.fact.after"),
+                      value: <span className="font-mono text-xs">{fact.after}</span>,
+                    },
+                  ]
+                : [
+                    {
+                      label: <span className="font-mono text-xs">{fact.path}</span>,
+                      value: (
+                        <span className="font-mono text-xs">{`${fact.before} → ${fact.after}`}</span>
+                      ),
+                    },
+                  ],
+            ),
+          ]}
+        />
+      ) : null}
+
       <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
         <span data-family-slot="decision-details">
           {hasDetail && !compact ? (
@@ -528,111 +679,25 @@ export function DecisionCard({
             </Button>
           ) : null}
         </span>
-        <div
-          className="flex min-w-0 flex-wrap items-center justify-end gap-2"
-          data-family-slot="decision-actions"
-        >
-          {canDecide ? (
-            <>
-              {rejecting ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    data-testid={`${testId}-reject-cancel`}
-                    onClick={() => {
-                      setRejecting(false);
-                      setReason("");
-                    }}
-                  >
-                    {t("common.cancel")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    data-testid={`${testId}-reject-confirm`}
-                    onClick={() => onReject(item, reason.trim())}
-                  >
-                    {t("decisions.reject")}
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  data-testid={`${testId}-reject`}
-                  onClick={() => setRejecting(true)}
-                >
-                  {t("decisions.reject")}
-                </Button>
-              )}
-              <Button
-                size="sm"
-                disabled={
-                  busy ||
-                  rejecting ||
-                  blockedReason !== null ||
-                  (item.kind === "patch" &&
-                    (!preview.data?.reviewable || !preview.data?.review_digest))
-                }
-                data-testid={`${testId}-approve`}
-                onClick={() => onApprove(item, preview.data?.review_digest ?? undefined)}
-              >
-                {t(item.kind === "skill" ? "decisions.activateSkill" : "decisions.approve")}
-              </Button>
-              {item.kind === "patch" &&
-                expanded &&
-                preview.data?.reviewable &&
-                preview.data.base_version_id && (
-                  <GrantWorkflowAuthority
-                    workflowId={preview.data.workflow_id}
-                    versionId={preview.data.base_version_id}
-                    reviewContent={
-                      <pre className="overflow-auto text-xs">
-                        {JSON.stringify(
-                          { before: preview.data.before_step, after: preview.data.after_step },
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    }
-                    prepareVersion={async () => {
-                      const prepared = await apiRequest<{ workflow_version_id: string }>(
-                        `/v1/patch-candidates/${encodeURIComponent(item.id)}/prepare`,
-                        {
-                          method: "POST",
-                          body: JSON.stringify({
-                            expected_review_digest: preview.data?.review_digest,
-                          }),
-                        },
-                      );
-                      return prepared.workflow_version_id;
-                    }}
-                    onGrant={(input) =>
-                      apiRequest(`/v1/patch-candidates/${encodeURIComponent(item.id)}/approve`, {
-                        method: "POST",
-                        body: JSON.stringify({
-                          expected_review_digest: preview.data?.review_digest,
-                          execution_authority: input,
-                        }),
-                      })
-                    }
-                  />
-                )}
-            </>
-          ) : null}
-          {blockedReason && !busy && !rejecting ? (
-            <span
-              className="basis-full text-right text-xs text-muted-foreground"
-              data-testid={`${testId}-approve-blocked`}
-            >
-              {t(blockedReason)}
-            </span>
-          ) : null}
-        </div>
+        {inSheet ? null : (
+          <div
+            className="flex min-w-0 flex-wrap items-center justify-end gap-2"
+            data-family-slot="decision-actions"
+          >
+            {actions}
+            {blocked}
+          </div>
+        )}
       </div>
+      {inSheet ? blocked : null}
+      {inSheet && actionsSlot
+        ? createPortal(
+            <span className="flex flex-wrap items-center gap-2" data-testid={`${testId}-actions`}>
+              {actions}
+            </span>,
+            actionsSlot,
+          )
+        : null}
 
       {rejecting && (
         <div className="border-t pt-3">

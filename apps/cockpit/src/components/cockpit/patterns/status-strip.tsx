@@ -5,10 +5,11 @@ import { type ActionSpec, renderAction } from "./action-button";
 import { ContextHelp } from "./context-help";
 import { Skeleton } from "./skeleton";
 
-export type StatusTone = "ok" | "warn" | "error";
+export type StatusTone = "ok" | "info" | "warn" | "error";
 
 const DOT: Record<StatusTone, string> = {
   ok: "bg-emerald-500",
+  info: "bg-blue-500",
   warn: "bg-amber-500",
   error: "bg-destructive",
 };

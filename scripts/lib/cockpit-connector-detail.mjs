@@ -340,6 +340,18 @@ async function signInAtProvider(page) {
   await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
 }
 
+async function helpText(page, testId) {
+  const help = page.getByTestId(testId);
+  if (!(await help.count())) return "";
+  await help.hover();
+  const tip = page.locator('[data-slot="tooltip-content"]').first();
+  await tip.waitFor({ state: "visible", timeout: 5_000 });
+  const said = (await tip.innerText()).trim();
+  await page.mouse.move(0, 0);
+  await tip.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+  return said;
+}
+
 async function signInWord(page) {
   return (await text(page, "connector-auth-state")) ?? (await text(page, "connector-strip-state"));
 }
@@ -367,7 +379,6 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         enable: "Einschalten",
         whatRenewDoes: "führt zum Anbieter und wieder hierher",
         misleading: "Verbindungstest liefert",
-        missing: "Es fehlen: mail.send.",
         steps: "Schritte im Chat",
         kind: "Anmeldung beim Anbieter (OAuth)",
         readOnly: "Erneuern darf, wer diesen Konnektor ändern darf",
@@ -382,7 +393,6 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         enable: "Switch on",
         whatRenewDoes: "takes you to the provider and back here",
         misleading: "to get the renewal link",
-        missing: "Missing: mail.send.",
         steps: "steps in the chat",
         kind: "Sign-in with the provider (OAuth)",
         readOnly: "takes permission to change this connector",
@@ -447,7 +457,9 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     throw new Error(`${where}: the sign-in reads "${await signInWord(page)}"`);
   if ((await occurrences(page, words.expired)) !== 1)
     throw new Error(`${where}: "${words.expired}" does not stand exactly once`);
-  const sentence = (await text(page, "connector-credential-sentence")) ?? "";
+  if (await page.getByTestId("connector-credential-sentence").count())
+    throw new Error(`${where}: the sign-in explains itself in a line instead of behind (?)`);
+  const sentence = await helpText(page, "connector-credential-help");
   if (!sentence.includes(words.whatRenewDoes) || sentence.includes(words.misleading))
     throw new Error(`${where}: the line does not say what the button does — "${sentence}"`);
   if ((await text(page, "connector-renew-signin")) !== words.renew)
@@ -468,7 +480,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
     await openOauth(page, stand);
     if (await page.getByTestId("connector-renew-signin").count())
       throw new Error(`${where} · read-only: a renewal the reader may not start`);
-    const line = (await text(page, "connector-credential-sentence")) ?? "";
+    const line = await helpText(page, "connector-credential-help");
     if (!line.includes(words.readOnly))
       throw new Error(`${where} · read-only: the line reads "${line}"`);
   });
@@ -548,7 +560,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   if ((await noticeKind()) !== "signed_in")
     throw new Error(`${where}: the page says "${await noticeKind()}" after the sign-in`);
   const withheld = (await text(page, "connector-missing-scopes")) ?? "";
-  if (!withheld.includes(words.missing))
+  if (!withheld.includes("mail.send"))
     throw new Error(`${where}: the withheld permissions are not named — "${withheld}"`);
   if ((await text(page, "connector-renew-signin")) !== words.renew)
     throw new Error(`${where}: no "${words.renew}" for the withheld permissions`);
@@ -644,10 +656,17 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
 
     if (await page.getByTestId("connector-connection-select").count())
       throw new Error(`${where}: "Verbindung wählen" is offered for a header key`);
-    await page.getByTestId("connector-key-toggle").click();
-    const header = await page.getByTestId("connector-key-header").inputValue();
+    if (await page.getByTestId("connector-key-toggle").count())
+      throw new Error(`${where}: "Schlüssel ersetzen" stands in the tab; it lives in Bearbeiten`);
+    await page.getByTestId("connector-menu").click();
+    await page.getByTestId("connector-menu-edit").click();
+    const header = await page.locator("#connector-edit-header").inputValue();
     if (header !== "X-API-KEY")
-      throw new Error(`${where}: the key form does not keep the header name — "${header}"`);
+      throw new Error(`${where}: editing does not keep the header name — "${header}"`);
+    if (!(await page.locator("#connector-edit-secret").count()))
+      throw new Error(`${where}: editing offers no way to replace the key`);
+    await page.getByTestId("connector-edit-dialog-cancel").click();
+    await page.getByTestId("connector-edit-dialog").waitFor({ state: "detached" });
     await assertNoVisibleUuids(page.locator("main").first(), where);
     await assertNoSidewaysScroll(page, where);
     await assertSingleTriggers(page, where);
@@ -659,12 +678,20 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where}: the negotiated session is not said — "${session}"`);
     if (await page.getByTestId("connector-mcp-note").count())
       throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" choice`);
+    await page
+      .getByTestId("connector-mcp-tool-row-0")
+      .filter({ hasText: "search_items" })
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .catch(() => {});
     const stored = (await text(page, "connector-mcp-tool-row-0")) ?? "";
     if (
       !stored.includes("search_items") ||
       !stored.includes(de ? "Ohne Rückfrage" : "without asking")
     )
-      throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
+      throw new Error(
+        `${where}: the stored "Ohne Rückfrage" tool does not show as such: "${stored}"`,
+      );
     await page.getByTestId("connector-mcp-reload").click();
     await page
       .getByTestId("connector-mcp-tool-row-1")

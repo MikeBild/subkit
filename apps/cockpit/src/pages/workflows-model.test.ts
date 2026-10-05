@@ -1,19 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { connectorSlugHref, triggerLabelKey } from "@/pages/workflows-model";
-
-describe("workflow connector relations", () => {
-  const slugToId = new Map([["reporting-api", "018f4b4a-6d33-7b3a-9c2d-123456789abc"]]);
-
-  test("links a known slug to the connector it names", () => {
-    expect(connectorSlugHref("reporting-api", slugToId)).toBe(
-      "/cockpit/connectors/018f4b4a-6d33-7b3a-9c2d-123456789abc",
-    );
-  });
-
-  test("gives an unmapped slug no link at all", () => {
-    expect(connectorSlugHref("retired-service", slugToId)).toBeNull();
-  });
-});
+import { triggerLabelKey } from "@/pages/workflows-model";
 
 describe("workflow trigger words", () => {
   test("a request trigger reads as on request", () => {

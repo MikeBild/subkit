@@ -33,6 +33,8 @@ export function ConnectorEditDialog({
   const [name, setName] = useState(text(record, "display_name") || text(record, "name"));
   const [address, setAddress] = useState(text(record, "base_url"));
   const [secret, setSecret] = useState("");
+  const [typedHeader, setHeader] = useState<string | null>(null);
+  const header = typedHeader ?? headerName;
   const [error, setError] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: async () => {
@@ -45,7 +47,7 @@ export function ConnectorEditDialog({
             : {}),
         }),
       });
-      const body = credentialBody(authType, secret, headerName);
+      const body = credentialBody(authType, secret, header);
       if (body)
         await apiRequest(`/v1/connectors/${encodeURIComponent(id)}/credentials`, {
           method: "POST",
@@ -99,6 +101,15 @@ export function ConnectorEditDialog({
           label={t("create.connector.address")}
           value={address}
           onChange={setAddress}
+          mono
+        />
+      ) : null}
+      {authType === "header" ? (
+        <TextField
+          id="connector-edit-header"
+          label={t("connectorCredentials.headerName")}
+          value={header}
+          onChange={setHeader}
           mono
         />
       ) : null}
