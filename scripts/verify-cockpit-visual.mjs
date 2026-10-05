@@ -3186,6 +3186,7 @@ async function assertRunDetail(page, label, language) {
     throw new Error(
       `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
     );
+  const rerunOf = new URL(page.url()).searchParams.get("run");
   let reruns = 0;
   const countRerun = (request) => {
     if (request.method() === "POST" && request.url().includes("/rerun")) reruns += 1;
@@ -3200,8 +3201,15 @@ async function assertRunDetail(page, label, language) {
     page.off("request", countRerun);
   }
   if (reruns !== 1) throw new Error(`${label} one click on rerun sent ${reruns} runs`);
-
-  await toggle.click();
+  await page
+    .waitForURL((url) => url.searchParams.get("run") !== rerunOf, { timeout: 2_000 })
+    .catch(() => undefined);
+  if (new URL(page.url()).searchParams.get("run") !== rerunOf) {
+    await page.goBack();
+    await page.waitForURL((url) => url.searchParams.get("run") === rerunOf);
+  }
+  await toggle.waitFor();
+  if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click();
   await result.waitFor({ state: "hidden" });
 }
 
