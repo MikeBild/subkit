@@ -1,21 +1,17 @@
 import { ApiError } from "@/api/client";
 import { connectorHref } from "@/app/links";
+import { authorityIsLive } from "@/lib/automation-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { type Remedy, type RemedyInput, remedyFor } from "@/lib/remedy";
+import type { WorkflowAuthority } from "@/lib/workflow-authorities";
 
 export type RunEnvironment = "dev" | "prod";
-
-export const RUN_ENVIRONMENTS: readonly RunEnvironment[] = ["dev", "prod"];
 
 export interface UnavailableConnector {
   connector_id: string | null;
   connector_slug: string | null;
   connector_name: string | null;
   reason: string;
-}
-
-export function runPreviewKey(workflowId: string, versionId: string, environment: RunEnvironment) {
-  return ["workflow-run-preview", workflowId, versionId, environment] as const;
 }
 
 function text(value: unknown): string | null {
@@ -35,12 +31,6 @@ function asUnavailable(value: unknown): UnavailableConnector | null {
   };
 }
 
-export function blockingConnector(preview: unknown): UnavailableConnector | null {
-  if (!preview || typeof preview !== "object") return null;
-  const list = (preview as { unavailable_connectors?: unknown }).unavailable_connectors;
-  return Array.isArray(list) ? asUnavailable(list[0]) : null;
-}
-
 export function legacyRefusal(error: unknown): { steps: string[] } | null {
   if (!(error instanceof ApiError) || error.code !== "workflow_version_invalid") return null;
   const issues = Array.isArray(error.details?.issues) ? error.details.issues : [];
@@ -57,12 +47,6 @@ export function approvalRefusal(error: unknown): boolean {
     error.status === 409 &&
     (error.code ?? "").startsWith("execution_authority_")
   );
-}
-
-export function defaultEnvironment(
-  blocked: Record<RunEnvironment, UnavailableConnector | null>,
-): RunEnvironment {
-  return RUN_ENVIRONMENTS.find((environment) => !blocked[environment]) ?? "dev";
 }
 
 export function refusedConnector(
@@ -120,4 +104,14 @@ export function refusedSignIn(
     state: connector.reason === "needs_reauth" ? "expired" : "credentials_missing",
     section: "credentials",
   };
+}
+
+export function liveRunEnvironment(
+  authorities: readonly WorkflowAuthority[],
+  now: number,
+): RunEnvironment | null {
+  const live = authorities.filter((authority) => authorityIsLive(authority, now));
+  if (live.some((authority) => authority.execution_environment === "prod")) return "prod";
+  if (live.some((authority) => authority.execution_environment === "dev")) return "dev";
+  return null;
 }

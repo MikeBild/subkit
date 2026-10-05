@@ -33,32 +33,40 @@ const MAIL_REFUSAL = {
   connector_name: "Mail",
 };
 
-function preview(environment, unavailable) {
-  return {
-    manifest: {
-      schema_version: 1,
-      workflow_id: WORKFLOW_ID,
-      workflow_version_id: CURRENT_VERSION_ID,
-      execution_environment: environment,
-      effects: [],
-      issues: [],
-    },
-    digest: "a".repeat(64),
-    eligible_for_repeated_runs: false,
-    unavailable_steps: unavailable ? ["send"] : [],
-    unavailable_connectors: unavailable ? [{ ...MAIL_REFUSAL, reason: "needs_reauth" }] : [],
-    request_refusals: [],
-    storage_refusals: [],
-    execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
-    schedules: [],
-    suggested_bounds: {
-      valid_from: "2026-08-10T09:00:00.000Z",
-      valid_until: "2026-08-11T09:00:00.000Z",
-      max_runs: 1,
-    },
-    suggested_bounds_basis: { kind: "manual" },
-  };
-}
+const LIVE_RUN_ID = "7a2c9e41-6b3d-4f58-9e07-c1d4a8b6f293";
+
+const PROD_AUTHORITY = {
+  id: "5d8e2b17-9c4a-4e63-b1f0-a7c3d9e6f402",
+  tenant_id: WORKFLOW_ID,
+  workflow_id: WORKFLOW_ID,
+  workflow_version_id: CURRENT_VERSION_ID,
+  effect_manifest_digest: "a".repeat(64),
+  effect_manifest: {
+    schema_version: 1,
+    workflow_id: WORKFLOW_ID,
+    workflow_version_id: CURRENT_VERSION_ID,
+    execution_environment: "prod",
+    effects: [],
+    issues: [],
+  },
+  execution_environment: "prod",
+  target_constraints: { targets: [] },
+  valid_from: "2026-08-01T09:00:00.000Z",
+  valid_until: null,
+  max_runs: null,
+  reserved_runs: 0,
+  remaining_runs: null,
+  open_ended: true,
+  created_by: WORKFLOW_ID,
+  created_at: "2026-08-01T09:00:00.000Z",
+  revoked_at: null,
+  revoked_by: null,
+  inherited_from: null,
+  superseded_by: null,
+  active_version: true,
+  ready_for_new_run: true,
+  state: "approved",
+};
 
 const TYPED_SCHEMA = {
   type: "object",
@@ -86,23 +94,17 @@ function runDialogApi(state) {
     if (path === `/v1/workflows/${WORKFLOW_ID}/draft`)
       return json(route, { version_id: DRAFT_VERSION_ID, version: 5 });
     if (path === `/v1/workflows/${WORKFLOW_ID}/execution-authorities`)
-      return json(route, { items: [], next_cursor: null });
-    const previewMatch = path.match(
-      new RegExp(`^/v1/workflows/${WORKFLOW_ID}/versions/([^/]+)/authority-preview$`),
-    );
-    if (previewMatch) {
-      const environment = url.searchParams.get("environment");
-      state.previewed.push(`${previewMatch[1]}:${environment}`);
-      return json(
-        route,
-        preview(environment, state.variant === "blocked" && environment === "dev"),
-      );
-    }
+      return json(route, {
+        items: state.variant === "live" ? [PROD_AUTHORITY] : [],
+        next_cursor: null,
+      });
     if (path === "/v1/executions" && request.method() === "POST") {
       state.runs.push({
         environment: request.headers()["x-subkit-environment"],
         body: request.postDataJSON(),
       });
+      if (state.variant === "live")
+        return json(route, { execution_id: LIVE_RUN_ID, status: "running" }, 202);
       if (state.variant === "crashed")
         return json(route, { code: "internal_error", message: "internal error" }, 500);
       if (state.variant === "invalid")
@@ -162,82 +164,69 @@ async function openDialog(page, stand) {
 
 export async function verifyRunDialog(page, stand, localeName, capture) {
   const de = localeName === "de";
-  const state = { variant: "blocked", previewed: [], runs: [] };
+  const state = { variant: "refused", runs: [] };
   const handler = runDialogApi(state);
   await page.route(isRunDialogApi, handler);
   const where = `/workflows/<run dialog> (${localeName})`;
   try {
     await openDialog(page, stand);
-    const blocked = page.getByTestId("workflow-run-blocked-dev");
-    await blocked.waitFor({ state: "visible", timeout: 10_000 });
-    for (const version of state.previewed.map((entry) => entry.split(":")[0]))
-      if (version !== CURRENT_VERSION_ID)
-        throw new Error(`${where}: the pre-check judged version ${version}, not the one POST runs`);
-    if (!state.previewed.some((entry) => entry.endsWith(":dev")))
-      throw new Error(`${where}: development was never checked`);
-    if (!state.previewed.some((entry) => entry.endsWith(":prod")))
-      throw new Error(`${where}: production was never checked`);
-    const sentence = (await blocked.innerText()).trim();
-    const expected = de
-      ? "Entwicklung: Mail muss neu verbunden werden"
-      : "Development: Mail must be reconnected";
-    if (!sentence.includes(expected))
-      throw new Error(`${where}: the blocked line reads "${sentence}", not "${expected}"`);
-    const reconnect = await page
-      .getByTestId("workflow-run-blocked-dev-remedy")
-      .getAttribute("href");
-    if (reconnect !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
-      throw new Error(`${where}: the blocked line leads to ${reconnect}, not Mail's sign-in`);
-    const chosen = await text(page, "workflow-run-environment");
-    if (!chosen?.includes(de ? "Produktion" : "Production"))
-      throw new Error(`${where}: the default is "${chosen}", not the first environment that runs`);
-    await page.getByTestId("workflow-run-environment").click();
-    const devItem = page.getByTestId("workflow-run-environment-dev");
-    await devItem.waitFor({ state: "visible", timeout: 5_000 });
-    if ((await devItem.getAttribute("data-disabled")) === null)
-      throw new Error(`${where}: development can still be chosen`);
-    if (!(await devItem.innerText()).includes(expected))
-      throw new Error(`${where}: the disabled option does not say why`);
-    await page.keyboard.press("Escape");
+    const title = (await text(page, "workflow-run-dialog-title")) ?? "";
+    const asked = de
+      ? "Tagesbericht versenden jetzt ausführen?"
+      : "Run Tagesbericht versenden now?";
+    if (title !== asked) throw new Error(`${where}: the dialog asks "${title}", not "${asked}"`);
+    const preview = (await text(page, "workflow-run-dialog-description")) ?? "";
+    if (!preview.includes(de ? "Probelauf ohne Wirkung" : "preview without effects"))
+      throw new Error(`${where}: without an approval the dialog says "${preview}"`);
+    for (const retired of ["workflow-run-environment", "workflow-run-confirm"])
+      if (await page.getByTestId(retired).count())
+        throw new Error(`${where}: the dialog still shows ${retired}`);
     const submit = (await text(page, "workflow-run-submit")) ?? "";
-    if (submit !== (de ? "Weiter" : "Continue"))
-      throw new Error(`${where}: production runs without its confirmation ("${submit}")`);
-    await assertNoEngineWords(page, where);
+    if (submit !== (de ? "Ausführen" : "Run"))
+      throw new Error(`${where}: the dialog's verb is "${submit}"`);
     await assertNoVisibleUuids(page.getByTestId("workflow-run-dialog"), where);
-    await capture("run-dialog-blocked");
-
-    state.variant = "refused";
-    state.previewed = [];
-    await openDialog(page, stand);
-    await page.getByTestId("workflow-run-submit").waitFor({ state: "visible" });
-    for (let attempt = 0; attempt < 40 && state.previewed.length < 2; attempt += 1)
-      await page.waitForTimeout(50);
-    const chosenRefused = await text(page, "workflow-run-environment");
-    if (!chosenRefused?.includes(de ? "Entwicklung" : "Development"))
-      throw new Error(`${where} · refused: the default is "${chosenRefused}", not development`);
+    await capture("run-dialog");
     await page.getByTestId("workflow-run-submit").click();
     const error = page.getByTestId("workflow-run-error");
     await error.waitFor({ state: "visible", timeout: 10_000 });
-    if (state.runs.at(-1)?.environment !== "dev")
-      throw new Error(`${where} · refused: the run went to ${state.runs.at(-1)?.environment}`);
+    if (state.runs.at(-1)?.environment !== undefined)
+      throw new Error(
+        `${where} · refused: the cockpit chose ${state.runs.at(-1)?.environment} without an approval`,
+      );
+    const expected = de
+      ? "Entwicklung: Mail muss neu verbunden werden"
+      : "Development: Mail must be reconnected";
     const said = (await error.innerText()).trim();
     if (!said.includes(expected))
       throw new Error(`${where} · refused: the dialog says "${said}", not "${expected}"`);
     const remedy = await page.getByTestId("workflow-run-error-remedy").getAttribute("href");
     if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
-    if (await page.getByTestId("workflow-run-outcome").count())
-      throw new Error(`${where} · refused: an outcome line stands beside the refusal`);
     if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
       throw new Error(`${where} · refused: the refused run can be started again`);
     await page.getByTestId("workflow-run-repeats").waitFor({ state: "visible" });
     await assertNoEngineWords(page, `${where} · refused`);
     await capture("run-dialog-refused");
 
+    state.variant = "live";
+    await openDialog(page, stand);
+    const live = page.getByTestId("workflow-run-dialog-description");
+    await live
+      .filter({ hasText: de ? "freigegebenen Version" : "approved version" })
+      .waitFor({ timeout: 10_000 });
+    await page.getByTestId("workflow-run-submit").click();
+    await page.getByTestId("workflow-run-dialog").waitFor({ state: "detached", timeout: 10_000 });
+    if (state.runs.at(-1)?.environment !== "prod")
+      throw new Error(
+        `${where} · live: the approved run went to ${state.runs.at(-1)?.environment}, not production`,
+      );
+    await page.waitForURL((url) => url.searchParams.get("run") === LIVE_RUN_ID, {
+      timeout: 10_000,
+    });
+    await page.keyboard.press("Escape");
+
     state.variant = "crashed";
     await openDialog(page, stand);
-    for (let attempt = 0; attempt < 40 && state.previewed.length < 4; attempt += 1)
-      await page.waitForTimeout(50);
     await page.getByTestId("workflow-run-submit").click();
     await page.getByTestId("workflow-run-error").waitFor({ state: "visible", timeout: 10_000 });
     const crashed = (await text(page, "workflow-run-error")) ?? "";
@@ -270,11 +259,8 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await capture("run-dialog-invalid");
 
     state.variant = "typed";
-    state.previewed = [];
     await openDialog(page, stand);
     await page.getByTestId("workflow-run-inputs").waitFor({ state: "visible", timeout: 10_000 });
-    for (let attempt = 0; attempt < 40 && state.previewed.length < 2; attempt += 1)
-      await page.waitForTimeout(50);
     const typed = `${where} · typed`;
     const limit = page.getByTestId("workflow-run-input-1");
     if ((await limit.getAttribute("type")) !== "number")
