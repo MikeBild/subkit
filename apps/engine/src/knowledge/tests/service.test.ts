@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { auditLog, knowledgeChunks } from "../../db/schema/index.ts";
+import { and, eq, sql } from "drizzle-orm";
+import { auditLog, events, knowledgeChunks } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { getKnowledgeSource, listKnowledgeSources } from "../catalog.ts";
 import {
@@ -255,6 +255,23 @@ describe.skipIf(skip)("knowledge/service", () => {
       .from(auditLog)
       .where(eq(auditLog.resource_id, createdId));
     expect(audits.some((a) => a.action === "knowledge_source.deleted")).toBe(true);
+  });
+
+  test("each write of the source announces a knowledge list change in its transaction", async () => {
+    const announced = await ctx.testDb.db
+      .select({ type: events.type })
+      .from(events)
+      .where(
+        and(
+          eq(events.tenant_id, ctx.tenantId),
+          eq(events.channel, "resource.lifecycle"),
+          sql`${events.payload}->>'knowledge_source_id' = ${createdId}`,
+        ),
+      );
+    expect(announced.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(announced.map((row) => row.type))).toEqual(
+      new Set(["knowledge_source.changed"]),
+    );
   });
 
   test("deleteKnowledgeSource returns false for non-existent", async () => {

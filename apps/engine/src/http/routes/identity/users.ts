@@ -17,7 +17,9 @@ import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { UserSchema } from "./schemas.ts";
 
-const UserListResponse = paginatedResponse(UserSchema, "UserListResponse");
+const UserListResponse = paginatedResponse(UserSchema, "UserListResponse").extend({
+  total: z.number().int().nonnegative(),
+});
 
 const CreateUserBody = z
   .object({
@@ -164,14 +166,17 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     enforce(principal, policy.adminOnly(principal), { resource_type: "user" }, db);
     const q = c.req.valid("query");
-    const items = await identity.listUsers(
-      principal.tenant_id,
-      {
-        ...(q.limit !== undefined ? { limit: q.limit } : {}),
-        ...(q.offset !== undefined ? { offset: q.offset } : {}),
-      },
-      db,
-    );
+    const [items, total] = await Promise.all([
+      identity.listUsers(
+        principal.tenant_id,
+        {
+          ...(q.limit !== undefined ? { limit: q.limit } : {}),
+          ...(q.offset !== undefined ? { offset: q.offset } : {}),
+        },
+        db,
+      ),
+      identity.countUsers(principal.tenant_id, db),
+    ]);
     const roleRows = await db
       .select({ id: roles.id, name: roles.name })
       .from(roles)
@@ -187,6 +192,7 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         items: items.map((user) =>
           serialize(user, roleNames.get(user.role_id) ?? null, connections.get(user.id) ?? 0),
         ),
+        total,
       },
       200,
     );

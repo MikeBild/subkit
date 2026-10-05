@@ -205,6 +205,31 @@ describe("cockpitStreamConds", () => {
     expect(cockpitStreamConds(tenantA, new Set())).toBeNull();
   });
 
+  test("each list family reaches only readers of that list; audit readers hear every change", async () => {
+    const changes = [
+      ["knowledge:read", "knowledge_source.changed"],
+      ["file:read", "file.changed"],
+      ["identity:read", "identity.changed"],
+      ["rbac:read", "rbac.changed"],
+      ["api_key:read", "api_key.changed"],
+      ["settings:read", "settings.changed"],
+    ] as const;
+    const first = await emit(tenantA, "resource.lifecycle", changes[0][1], {});
+    for (const [, type] of changes.slice(1)) await emit(tenantA, "resource.lifecycle", type, {});
+    const heard = async (permissions: string[]) => {
+      const conds = cockpitStreamConds(tenantA, new Set(permissions));
+      const rows = await ctx.db
+        .select({ id: events.id, type: events.type })
+        .from(events)
+        .where(and(...(conds ?? [])))
+        .orderBy(asc(events.id));
+      return rows.filter((row) => row.id >= first).map((row) => row.type);
+    };
+    for (const [permission, type] of changes) expect(await heard([permission])).toEqual([type]);
+    expect(await heard(["audit:read"])).toEqual(changes.map(([, type]) => type));
+    expect(await heard(["workflow:read", "connector:read", "execution:read"])).toEqual([]);
+  });
+
   test("projection keeps id-shaped values of allowlisted keys only", () => {
     expect(
       projectCockpitPayload({
