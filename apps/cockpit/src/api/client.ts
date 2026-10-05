@@ -197,7 +197,11 @@ function withReferences(references?: readonly ConversationReference[]) {
   return references && references.length > 0 ? { references } : {};
 }
 
-type ConversationTarget = { workflow_id?: string; connector_id?: string };
+export type ConversationTarget = {
+  workflow_id?: string;
+  connector_id?: string;
+  execution_id?: string;
+};
 
 export type SendConversationTurnInput = {
   message: string;
