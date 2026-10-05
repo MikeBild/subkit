@@ -9,15 +9,21 @@ function Shell({
   id,
   label,
   help,
+  error,
   children,
 }: {
   id: string;
   label: string;
   help?: string;
+  error?: string | null;
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5" data-slot="form-field">
+    <div
+      className="flex min-w-0 flex-col gap-1.5"
+      data-slot="form-field"
+      data-invalid={error ? true : undefined}
+    >
       <span className="flex items-center gap-1">
         <label htmlFor={id} className="text-sm font-medium">
           {label}
@@ -29,6 +35,11 @@ function Shell({
         ) : null}
       </span>
       {children}
+      {error ? (
+        <p role="alert" className="text-destructive text-xs" data-testid={`${id}-error`}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -43,6 +54,7 @@ export function TextField({
   placeholder,
   required,
   invalid,
+  error,
   mono,
 }: {
   id: string;
@@ -54,17 +66,18 @@ export function TextField({
   placeholder?: string;
   required?: boolean;
   invalid?: boolean;
+  error?: string | null;
   mono?: boolean;
 }) {
   return (
-    <Shell id={id} label={label} help={help}>
+    <Shell id={id} label={label} help={help} error={error}>
       <input
         id={id}
         type={type}
         value={value}
         placeholder={placeholder}
         required={required}
-        aria-invalid={invalid || undefined}
+        aria-invalid={invalid || Boolean(error) || undefined}
         autoComplete="off"
         onChange={(event) => onChange(event.target.value)}
         className={cn(CONTROL, "h-10 sm:h-8", mono && "font-mono")}
@@ -102,6 +115,8 @@ export function TextAreaField({
   help,
   rows = 6,
   mono,
+  placeholder,
+  error,
 }: {
   id: string;
   label: string;
@@ -110,13 +125,17 @@ export function TextAreaField({
   help?: string;
   rows?: number;
   mono?: boolean;
+  placeholder?: string;
+  error?: string | null;
 }) {
   return (
-    <Shell id={id} label={label} help={help}>
+    <Shell id={id} label={label} help={help} error={error}>
       <textarea
         id={id}
         rows={rows}
         value={value}
+        placeholder={placeholder}
+        aria-invalid={Boolean(error) || undefined}
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
         className={cn(CONTROL, "py-2", mono && "font-mono text-xs md:text-xs")}
@@ -133,6 +152,7 @@ export function SelectField({
   onChange,
   options,
   help,
+  error,
 }: {
   id: string;
   label: string;
@@ -140,12 +160,14 @@ export function SelectField({
   onChange(value: string): void;
   options: readonly { value: string; label: string }[];
   help?: string;
+  error?: string | null;
 }) {
   return (
-    <Shell id={id} label={label} help={help}>
+    <Shell id={id} label={label} help={help} error={error}>
       <select
         id={id}
         value={value}
+        aria-invalid={Boolean(error) || undefined}
         onChange={(event) => onChange(event.target.value)}
         className={cn(CONTROL, "h-10 sm:h-8")}
         data-testid={id}
@@ -193,5 +215,72 @@ export function ChoiceField<T extends string>({
         options={options.map((option) => ({ ...option, testId: `${testId}-${option.value}` }))}
       />
     </div>
+  );
+}
+
+export function CheckListField({
+  id,
+  label,
+  values,
+  onChange,
+  options,
+  help,
+  empty,
+  error,
+}: {
+  id: string;
+  label: string;
+  values: readonly string[];
+  onChange(values: string[]): void;
+  options: readonly { value: string; label: string }[];
+  help?: string;
+  empty: string;
+  error?: string | null;
+}) {
+  return (
+    <fieldset
+      className="flex min-w-0 flex-col gap-1.5"
+      data-slot="form-field"
+      data-testid={id}
+      aria-invalid={Boolean(error) || undefined}
+    >
+      <legend className="flex items-center gap-1 text-sm font-medium">
+        {label}
+        {help ? (
+          <ContextHelp label={label} testId={`${id}-help`}>
+            {help}
+          </ContextHelp>
+        ) : null}
+      </legend>
+      {options.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {options.map((option) => (
+            <label key={option.value} className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={values.includes(option.value)}
+                data-testid={`${id}-${option.value}`}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...values, option.value]
+                      : values.filter((value) => value !== option.value),
+                  )
+                }
+              />
+              <span className="font-mono text-xs">{option.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      {error ? (
+        <p role="alert" className="text-destructive text-xs" data-testid={`${id}-error`}>
+          {error}
+        </p>
+      ) : null}
+    </fieldset>
   );
 }

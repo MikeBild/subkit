@@ -18,6 +18,7 @@ import {
   type ActionMenuItem,
   CollapsibleSection,
   ConfirmDialog,
+  ContextHelp,
   type Fact,
   FactList,
   Page,
@@ -40,6 +41,7 @@ import {
   useStepDraft,
 } from "@/components/cockpit/workflow-step-editor";
 import {
+  useBuildVersion,
   useWorkflowSteps,
   WorkflowStepsList,
   WorkflowTestResult,
@@ -156,8 +158,14 @@ export function WorkflowPage({
   const disabled = record.lifecycle === "archived";
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
-  const editor = useStepDraft(stepRecords);
-  const steps = useWorkflowSteps({ workflowId: id, versionId, steps: editor.steps });
+  const build = useBuildVersion(id, { ...workflow, steps: stepRecords });
+  const noSteps = !build.pending && build.steps.length === 0;
+  const editor = useStepDraft(build.steps);
+  const steps = useWorkflowSteps({
+    workflowId: id,
+    versionId: build.versionId,
+    steps: editor.steps,
+  });
   const connectorRecords = useConnectorRecords();
   const waitingConnector = useWaitingConnector(
     steps.views.map((view) => ({
@@ -269,13 +277,30 @@ export function WorkflowPage({
   const buildSummary = (
     <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
       {[
-        version === null ? null : t("automation.fact.version", { version: `v${version}` }),
-        t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
-          count: steps.views.length,
-        }),
+        build.version === null
+          ? null
+          : t("automation.fact.version", { version: `v${build.version}` }),
+        build.pending
+          ? null
+          : t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
+              count: steps.views.length,
+            }),
       ]
         .filter(Boolean)
         .join(" · ")}
+      {build.saved ? (
+        <span
+          className="flex items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 text-xs"
+          data-testid="workflow-build-saved"
+        >
+          {t("workflowPage.savedVersion")}
+          <ContextHelp label={t("workflowPage.savedVersion")} testId="workflow-build-saved-help">
+            {version === null
+              ? t("workflowPage.savedVersionHelpNone")
+              : t("workflowPage.savedVersionHelp", { version: `v${version}` })}
+          </ContextHelp>
+        </span>
+      ) : null}
       {[...connectors.values()].map((entry, index) =>
         entry.href ? (
           <a
@@ -344,9 +369,9 @@ export function WorkflowPage({
             }
             testId="workflow-build-summary"
           />
-          <WorkflowTestResult steps={steps} />
+          <WorkflowTestResult steps={steps} dirty={editor.dirty} />
           <WorkflowStepsList
-            key={`${id}:${versionId ?? "none"}`}
+            key={`${id}:${build.versionId ?? "none"}`}
             steps={steps}
             canRun={canRun}
             {...(canWrite && !legacy
@@ -433,6 +458,7 @@ export function WorkflowPage({
             canRun && !legacy && !disabled ? (
               <RunWorkflowDialog
                 quiet={editor.dirty}
+                disabled={stepRecords.length === 0}
                 workflowId={id}
                 workflowName={title}
                 liveEnvironment={automation.runEnvironment}
@@ -452,6 +478,7 @@ export function WorkflowPage({
           lastRunAt={text(record, "last_executed_at")}
           waitingConnector={waitingConnector}
           permissions={permissions}
+          noSteps={noSteps}
         />
         <PageTabs tabs={tabs} param="tab" testId="workflow-tabs" />
       </div>
