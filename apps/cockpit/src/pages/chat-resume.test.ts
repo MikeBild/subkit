@@ -4,6 +4,7 @@ import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "@/pages/c
 
 const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);
 const en = (key: TranslationKey, values?: Record<string, string>) => translate("en", key, values);
+const day = (iso: string) => iso.slice(0, 10);
 
 const STAGES = [
   { stage: "awaiting_approval", kind: "connector", name: "Reporting API" },
@@ -13,6 +14,7 @@ const STAGES = [
   { stage: "workflow_drafting", kind: "workflow", name: "Monatsreport" },
   { stage: "workflow_ready_to_commit", kind: "workflow", name: "Monatsreport" },
   { stage: "workflow_saved", kind: "workflow", name: "Monatsreport" },
+  { stage: "workflow_open", kind: "workflow", name: "Monatsreport" },
   { stage: "onboarding", kind: "none", name: null },
 ] as const;
 
@@ -23,6 +25,7 @@ function summary(entry: (typeof STAGES)[number]) {
       active_target: { kind: entry.kind, name: entry.name, environment: null },
     },
     de,
+    day,
   );
 }
 
@@ -52,17 +55,20 @@ describe("cockpit chat resume", () => {
   });
 
   test("survives the sentence arriving without its appended next action", () => {
-    expect(resumeSummaryLine({ stage: "onboarding", active_target: null }, de)).toBeNull();
+    expect(resumeSummaryLine({ stage: "onboarding", active_target: null }, de, day)).toBeNull();
   });
 
   test("says nothing for a stage it has not learned, rather than a filler", () => {
-    expect(resumeSummaryLine({ stage: "some_future_stage", active_target: null }, de)).toBeNull();
+    expect(
+      resumeSummaryLine({ stage: "some_future_stage", active_target: null }, de, day),
+    ).toBeNull();
   });
 
   test("names an unnamed target without leaking the word none", () => {
     const line = resumeSummaryLine(
       { stage: "connector_drafting", active_target: { kind: "connector", name: "none" } },
       de,
+      day,
     );
     expect(line).not.toContain("none");
     expect(line).toContain("Konnektor");
@@ -76,6 +82,7 @@ describe("cockpit chat resume", () => {
           active_target: { kind: "connector", name: "Reporting API", environment: "prod" },
         },
         de,
+        day,
       ),
     ).toContain("prod");
   });
@@ -106,6 +113,7 @@ describe("cockpit chat resume", () => {
           pending_approval: { tool_name },
         },
         de,
+        day,
       );
       expect(line, tool_name).not.toMatch(/wartet|Antwort|Rückfrage|offen gelassen/i);
       expect(line).toContain("Reporting API");
@@ -113,12 +121,12 @@ describe("cockpit chat resume", () => {
   });
 
   test("a conversation that has not started carries no line under its title", () => {
-    expect(resumeSummaryLine(null, de)).toBeNull();
-    expect(resumeSummaryLine(undefined, en)).toBeNull();
+    expect(resumeSummaryLine(null, de, day)).toBeNull();
+    expect(resumeSummaryLine(undefined, en, day)).toBeNull();
   });
 
   test("keeps the English catalog usable for an English reader", () => {
-    expect(resumeSummaryLine({ stage: "connector_saved", active_target: null }, en)).toBe(
+    expect(resumeSummaryLine({ stage: "connector_saved", active_target: null }, en, day)).toBe(
       translate("en", "chat.resume.connectorSaved"),
     );
   });
@@ -129,7 +137,36 @@ test("business choices are questions rather than authority requests in the chat 
     const line = resumeSummaryLine(
       { stage: "awaiting_approval", pending_approval: { tool_name: "ask_user_choice" } },
       t,
+      day,
     );
     expect(line).not.toMatch(/Freigabe|approval/i);
   }
+});
+
+describe("a chat opened for a run", () => {
+  const run = {
+    stage: "run_focus",
+    active_target: { kind: "workflow", name: "Wachstumsbericht" },
+    focused_run: { recorded_at: "2026-09-01T08:00:00.000Z" },
+  };
+
+  test("says it investigates that run, with its workflow and date, never that it saved", () => {
+    const line = resumeSummaryLine(run, de, day);
+    expect(line).toBe("Du untersuchst den Lauf von „Wachstumsbericht“ vom 2026-09-01.");
+    expect(line).not.toContain("gespeichert");
+    expect(resumeSummaryLine(run, en, day)).toBe(
+      "You are looking into the run of “Wachstumsbericht” from 2026-09-01.",
+    );
+  });
+
+  test("names the stage and the next step for the run", () => {
+    expect(resumeStageLabel("run_focus", de)).toBe("Lauf wird untersucht");
+    expect(resumeNextAction("run_focus", de)).toContain("Lauf");
+  });
+
+  test("a run without a known workflow name still reads as a sentence", () => {
+    expect(
+      resumeSummaryLine({ ...run, active_target: { kind: "workflow", name: null } }, de, day),
+    ).toBe("Du untersuchst einen Lauf vom 2026-09-01.");
+  });
 });

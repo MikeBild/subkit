@@ -67,7 +67,6 @@ export const getConnectorTool: ConversationTool = {
     "Issues a `connector:read` RBAC check; low-privilege principals get `permission_denied` instead of the config.",
     "Secrets in `config` and the password inside `dsn` read as `***redacted***`. Send that value back unchanged in update_connector to keep the stored secret.",
   ],
-  example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "connector:read", resourceType: "connector", resourceIdArg: "id" },

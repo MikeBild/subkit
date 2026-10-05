@@ -10,12 +10,14 @@ export interface ResumeSummaryLike {
   stage?: string | null;
   pending_approval?: { tool_name: string } | null;
   active_target?: ResumeTargetLike | null;
+  focused_run?: { recorded_at: string } | null;
 }
 
 type Translate = (key: TranslationKey, values?: Record<string, string>) => string;
 
 const SENTENCE_KEYS: Partial<Record<string, TranslationKey>> = {
   workflow_saved: "chat.resume.workflowSaved",
+  workflow_open: "chat.resume.workflowOpen",
   awaiting_approval: "chat.resume.settingUp",
   connector_ready_to_save: "chat.resume.connectorReadyToSave",
   connector_drafting: "chat.resume.connectorDrafting",
@@ -26,6 +28,8 @@ const SENTENCE_KEYS: Partial<Record<string, TranslationKey>> = {
 
 const NEXT_ACTION_KEYS: Partial<Record<string, TranslationKey>> = {
   workflow_saved: "chat.schedule.effect",
+  run_focus: "chat.resume.next.runFocus",
+  workflow_open: "chat.resume.next.workflowOpen",
   awaiting_approval: "chat.resume.next.approval",
   connector_drafting: "chat.resume.next.probeConnector",
   connector_ready_to_save: "chat.resume.next.saveConnector",
@@ -36,6 +40,8 @@ const NEXT_ACTION_KEYS: Partial<Record<string, TranslationKey>> = {
 
 const STAGE_KEYS: Partial<Record<string, TranslationKey>> = {
   workflow_saved: "chat.resume.stage.workflowSaved",
+  run_focus: "chat.resume.stage.runFocus",
+  workflow_open: "chat.resume.stage.workflowOpen",
   onboarding: "chat.context.onboarding",
   awaiting_approval: "chat.resume.stage.awaitingApproval",
   connector_drafting: "chat.resume.stage.connectorDrafting",
@@ -65,8 +71,16 @@ export function resumeTarget(target: ResumeTargetLike | null | undefined, t: Tra
 export function resumeSummaryLine(
   resume: ResumeSummaryLike | null | undefined,
   t: Translate,
+  formatDate: (iso: string) => string,
 ): string | null {
   if (!resume) return null;
+  if (resume.stage?.toLowerCase() === "run_focus" && resume.focused_run) {
+    const date = formatDate(resume.focused_run.recorded_at);
+    const name = resume.active_target?.name?.trim();
+    return name
+      ? t("chat.resume.runFocus", { name, date })
+      : t("chat.resume.runFocusUnnamed", { date });
+  }
   const key = SENTENCE_KEYS[resume.stage?.toLowerCase() ?? ""];
   if (!key) return null;
   return t(key, { target: resumeTarget(resume.active_target, t) });

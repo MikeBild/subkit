@@ -61,6 +61,13 @@ const EN = {
 
   "chat.resume.workflowSaved": "Saved {target}.",
   "chat.resume.stage.workflowSaved": "Workflow saved",
+  "chat.resume.runFocus": "You are looking into the run of “{name}” from {date}.",
+  "chat.resume.runFocusUnnamed": "You are looking into a run from {date}.",
+  "chat.resume.stage.runFocus": "Looking into a run",
+  "chat.resume.next.runFocus": "Ask what went wrong in this run or how to repair it.",
+  "chat.resume.workflowOpen": "You are working on {target}.",
+  "chat.resume.stage.workflowOpen": "Workflow open",
+  "chat.resume.next.workflowOpen": "Describe what should change in this workflow.",
   "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
   "chat.preparation.title": "Preparation not yet complete",
   "chat.preparation.effect": "SubKit can finish checking your change and prepare it for use.",
@@ -3874,6 +3881,14 @@ const DE: Record<TranslationKey, string> = {
 
   "chat.resume.workflowSaved": "Du hast {target} gespeichert.",
   "chat.resume.stage.workflowSaved": "Workflow gespeichert",
+  "chat.resume.runFocus": "Du untersuchst den Lauf von „{name}“ vom {date}.",
+  "chat.resume.runFocusUnnamed": "Du untersuchst einen Lauf vom {date}.",
+  "chat.resume.stage.runFocus": "Lauf wird untersucht",
+  "chat.resume.next.runFocus":
+    "Frag, was in diesem Lauf schiefging oder wie er sich reparieren lässt.",
+  "chat.resume.workflowOpen": "Du arbeitest an {target}.",
+  "chat.resume.stage.workflowOpen": "Workflow geöffnet",
+  "chat.resume.next.workflowOpen": "Beschreibe, was sich an diesem Workflow ändern soll.",
   "chat.schedule.count":
     "Die {count} blockierten Zeitpläne zählen weiterhin als offene Entscheidungen.",
   "chat.preparation.title": "Vorbereitung noch nicht abgeschlossen",

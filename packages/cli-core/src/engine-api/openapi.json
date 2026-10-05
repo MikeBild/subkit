@@ -16977,6 +16977,28 @@
               "stage": {
                 "type": "string"
               },
+              "focused_run": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "execution_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "recorded_at": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "execution_id",
+                  "status",
+                  "recorded_at"
+                ]
+              },
               "last_successful_probe": {
                 "type": [
                   "string",
@@ -17180,6 +17202,7 @@
             "required": [
               "active_target",
               "stage",
+              "focused_run",
               "last_successful_probe",
               "last_successful_preview",
               "unsaved",
@@ -39336,6 +39359,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {

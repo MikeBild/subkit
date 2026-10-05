@@ -171,6 +171,7 @@ export async function injectSyntheticToolCall(p: {
   synthetic: SyntheticToolResult;
   intent?: CommitIntent;
   description?: string;
+  decision: "confirmed" | "declined";
 }): Promise<string> {
   const commitIntentKind = p.intent?.kind ?? null;
   const callId = await insertToolCall(p.db, {
@@ -194,8 +195,7 @@ export async function injectSyntheticToolCall(p: {
   await p.db
     .update(conversationToolCalls)
     .set({
-      confirmation_state:
-        commitIntentKind === "run_workflow" ? null : p.synthetic.ok ? "confirmed" : "declined",
+      confirmation_state: commitIntentKind === "run_workflow" ? null : p.decision,
       confirmation_data: { source: "harness_auto_persist", commit_intent_kind: commitIntentKind },
     })
     .where(

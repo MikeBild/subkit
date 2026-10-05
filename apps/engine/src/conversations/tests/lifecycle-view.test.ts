@@ -6,6 +6,7 @@ import {
 } from "../lifecycle-view.ts";
 import {
   buildTitlePrompt,
+  deriveConversationTitle,
   shouldRefreshTitle,
   TITLE_WORDS_MAX,
   titleFromSummary,
@@ -125,12 +126,17 @@ describe("automatic title", () => {
     expect(titleFromSummary("")).toBeNull();
     expect(titleFromSummary('""')).toBeNull();
   });
-  test("titleFromSummary caps the word count and the column width", () => {
-    const long = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
+  test("titleFromSummary caps the word count and stores whole words without an ellipsis", () => {
+    const long = Array.from({ length: 20 }, (_, i) => `Datenbankverbindungsprüfung${i}`).join(" ");
     const title = titleFromSummary(long);
     expect(title).not.toBeNull();
-    expect(title!.split(" ").length).toBeLessThanOrEqual(TITLE_WORDS_MAX);
-    expect(title!.length).toBeLessThanOrEqual(50);
+    expect(title!.split(" ")).toEqual(long.split(" ").slice(0, TITLE_WORDS_MAX));
+    expect(title).not.toContain("…");
+  });
+  test("the opening line is stored whole; only the screen shortens it", () => {
+    const opening =
+      "Bitte prüfe den fehlgeschlagenen Lauf des wöchentlichen Wachstumsberichts und schlage eine Reparatur vor";
+    expect(deriveConversationTitle({ text: `  ${opening}\n` })).toBe(opening);
   });
   test("a fragment that announces more text is not a title", () => {
     expect(titleFromSummary("Hier ist die Reparatur:")).toBeNull();

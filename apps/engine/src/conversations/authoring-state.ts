@@ -638,6 +638,8 @@ export function withWorkflowPersisted(
   });
 }
 
+export const WORKFLOW_BINDING_TOOL = "workflow_binding";
+
 export function bindPersistedWorkflow(
   draft: DraftDocument,
   resource: PersistedResourceRef,
@@ -659,7 +661,7 @@ export function bindPersistedWorkflow(
   state = recordCheckpoint(
     state,
     "workflow_persisted",
-    options?.tool_name ?? "workflow_binding",
+    options?.tool_name ?? WORKFLOW_BINDING_TOOL,
     true,
     options?.summary ??
       (resource.persistence_kind === "draft"
