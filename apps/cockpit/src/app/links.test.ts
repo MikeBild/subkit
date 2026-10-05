@@ -15,6 +15,7 @@ import {
   auditHref,
   chatNewHref,
   chatSeedFromUrl,
+  chatTargetFromUrl,
   connectorHref,
   connectorsHref,
   conversationHref,
@@ -237,6 +238,12 @@ describe("a new conversation", () => {
       connectorId: "c-1",
       executionId: "e-1",
     });
+  });
+
+  test("a chat opened for a run creates its conversation with that run and its workflow", () => {
+    const href = chatNewHref({ workflowId: ID, executionId: "e-1", prompt: "Warum?" });
+    expect(chatTargetFromUrl(query(href))).toEqual({ workflow_id: ID, execution_id: "e-1" });
+    expect(chatTargetFromUrl(query(chatNewHref({ prompt: "Hallo" })))).toEqual({});
   });
 
   test("an unseeded conversation is the bare address", () => {

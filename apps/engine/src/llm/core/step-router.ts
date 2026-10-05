@@ -374,13 +374,11 @@ function priorStepWasSuccessfulConnectorAutoPersist(params: StepRouterParams): b
 function isHardStage(stage: AuthoringStage | undefined): boolean {
   if (!stage) return false;
   switch (stage) {
-    case "connector_validated":
-    case "connector_persisted":
-    case "workflow_validated":
-    case "workflow_persisted":
-    case "repairing":
-      return true;
-    default:
+    case "idle":
+    case "connector_targeted":
+    case "workflow_targeted":
       return false;
+    default:
+      return true;
   }
 }
