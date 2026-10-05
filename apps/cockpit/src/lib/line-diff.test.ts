@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { computeLineDiff, isUnchanged, selectChangeView, toDiffLines } from "./line-diff";
+import {
+  computeLineDiff,
+  focusDiff,
+  isUnchanged,
+  selectChangeView,
+  toDiffLines,
+} from "./line-diff";
 
 describe("line diff", () => {
   test("marks only the changed line", () => {
@@ -63,5 +69,31 @@ describe("what a proposal shows", () => {
     expect(selectChangeView({ before: { a: 1 }, after: { a: 1 }, patch: null }).kind).toBe(
       "unchanged",
     );
+  });
+});
+
+describe("a diff focused on its change", () => {
+  test("keeps the changed line with its neighbours and folds the rest", () => {
+    const before = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const after = ["a", "b", "c", "d", "e", "f", "g", "H"];
+    expect(focusDiff(computeLineDiff(before, after), 2)).toEqual([
+      { type: "gap", count: 5 },
+      { type: "context", text: "f" },
+      { type: "context", text: "g" },
+      { type: "removed", text: "h" },
+      { type: "added", text: "H" },
+    ]);
+  });
+
+  test("two distant changes keep a fold between them", () => {
+    const before = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    const after = ["X", "2", "3", "4", "5", "6", "7", "8", "Y"];
+    const rows = focusDiff(computeLineDiff(before, after), 1);
+    expect(rows.filter((row) => row.type === "gap")).toEqual([{ type: "gap", count: 5 }]);
+    expect(rows[0]).toEqual({ type: "removed", text: "1" });
+  });
+
+  test("an unchanged text has nothing to show", () => {
+    expect(focusDiff(computeLineDiff(["a"], ["a"]))).toEqual([]);
   });
 });
