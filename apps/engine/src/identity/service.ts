@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -59,6 +59,15 @@ export async function listUsers(tenantId: string, opts: ListOptions = {}, exec?:
     .orderBy(desc(users.created_at))
     .limit(clampLimit(opts.limit))
     .offset(opts.offset ?? 0);
+}
+
+export async function countUsers(tenantId: string, exec?: Executor): Promise<number> {
+  const db = exec ?? getDb();
+  const [row] = await db
+    .select({ total: count() })
+    .from(users)
+    .where(and(eq(users.tenant_id, tenantId), isNull(users.deleted_at)));
+  return row?.total ?? 0;
 }
 
 export async function getUser(tenantId: string, id: string, exec?: Executor) {

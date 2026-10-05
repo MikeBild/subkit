@@ -24,6 +24,7 @@ import {
   FieldLabel,
   FilterBar,
   FormDialog,
+  type InfiniteRows,
   Input,
   Page,
   PageHeader,
@@ -46,6 +47,7 @@ import { queryView } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
+import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
   assignableRoles,
   GRANT_RESOURCE_TYPES,
@@ -124,6 +126,24 @@ const fetchGrants = () => apiRequest<Envelope<GrantItem>>("/v1/rbac/grants");
 function usePeople(enabled = true) {
   const live = useLiveQueryOptions();
   return useQuery({ queryKey: ["admin", "people"], queryFn: fetchPeople, enabled, ...live });
+}
+function usePeopleList(enabled = true) {
+  const list = useInfiniteList<UserItem>(
+    "/v1/identity/users",
+    {},
+    { enabled, queryKey: ["admin", "people", "list"] },
+  );
+  const { query } = list;
+  return {
+    ...list,
+    view: {
+      data: list.first ? { items: list.items } : undefined,
+      error: query.error,
+      failureReason: query.failureReason,
+      isPending: query.isPending,
+      refetch: query.refetch,
+    },
+  };
 }
 function useRoles(enabled = true) {
   const live = useLiveQueryOptions();
@@ -211,6 +231,7 @@ function AdminTable<T extends RowData>({
   toolbar,
   filtered = false,
   onReset,
+  infinite,
 }: {
   collectionId: string;
   columns: CockpitColumn<T>[];
@@ -220,6 +241,7 @@ function AdminTable<T extends RowData>({
   toolbar?: ReactNode;
   filtered?: boolean;
   onReset?(): void;
+  infinite?: InfiniteRows;
 }) {
   const { t } = useI18n();
   return (
@@ -241,6 +263,7 @@ function AdminTable<T extends RowData>({
         },
       }}
       hasActiveFilters={filtered}
+      infinite={infinite}
       sorting={[]}
       onSortingChange={() => {}}
       columnsLabel={t("catalog.columns")}
@@ -664,13 +687,14 @@ function PersonSheet({
 function PeopleTab({ action }: { action: ReactNode }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
-  const query = usePeople();
+  const people = usePeopleList();
   const roles = useRoles(session.permissions.includes("rbac:read"));
   const roleItems = roles.data?.items;
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const items = query.data?.items ?? [];
+  const items = people.items;
+  const count = people.total ?? items.length;
   const opened = items.find((item) => item.id === openedId) ?? null;
   const invited = items.filter((item) => item.status === "invited").length;
   const needle = search.trim().toLowerCase();
@@ -719,21 +743,20 @@ function PeopleTab({ action }: { action: ReactNode }) {
       <SectionList
         name="people"
         resource={t("people.section.people")}
-        query={query}
+        query={people.view}
         emptyLine={t("resource.people.empty")}
         emptyAction={action}
         summary={
           invited > 0
-            ? t("people.summaryInvited", { count: items.length, invited })
-            : t(items.length === 1 ? "people.summary.one" : "people.summary", {
-                count: items.length,
-              })
+            ? t("people.summaryInvited", { count, invited })
+            : t(count === 1 ? "people.summary.one" : "people.summary", { count })
         }
       >
         <AdminTable
           collectionId="people-list"
           columns={columns}
           data={shown}
+          infinite={people.infinite}
           onOpen={(row) => setOpenedId(row.id)}
           rowLabel={(row) =>
             t("people.openRow", {
@@ -1615,7 +1638,7 @@ export function PeopleAndAccessPage() {
   const [creating, setCreating] = useState<PeopleSection | null>(null);
   const empty = (data: Envelope<unknown>) => data.items.length === 0;
   const views: Record<PeopleSection, ReturnType<typeof queryView>> = {
-    people: queryView(usePeople(canIdentity), empty),
+    people: queryView(usePeopleList(canIdentity).view, empty),
     roles: queryView(useRoles(canRbac), empty),
     groups: queryView(useGroups(canRbac), empty),
     grants: queryView(useGrants(canRbac), empty),
