@@ -710,6 +710,23 @@ export function withWorkflowExecution(
   });
 }
 
+export function withFocusedExecution(
+  draft: DraftDocument,
+  execution: LatestExecutionSummary,
+  last_action: string | null = "execution_focused",
+): DraftDocument {
+  const normalized = normalizeDraftDocument(draft);
+  const state = cloneState(normalized.state ?? createEmptyState("execution"));
+  state.mode = "execution";
+  state.latest_execution = execution;
+  state.latest_diagnosis = null;
+  return refreshDraftSummary({
+    ...normalized,
+    state,
+    summary: { ...(normalized.summary ?? emptySummary()), last_action },
+  });
+}
+
 export function withWorkflowDiagnosis(
   draft: DraftDocument,
   diagnosis: LatestDiagnosisSummary,
