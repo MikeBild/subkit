@@ -1391,11 +1391,14 @@ export function ChatPage() {
   const loadTranscript = (id: string | null): Promise<boolean> =>
     id
       ? queryClient
-          .fetchQuery({
-            queryKey: ["conversation", id],
-            queryFn: () => getConversation(id),
-            staleTime: 0,
-          })
+          .cancelQueries({ queryKey: ["conversation", id], exact: true })
+          .then(() =>
+            queryClient.fetchQuery({
+              queryKey: ["conversation", id],
+              queryFn: () => getConversation(id),
+              staleTime: 0,
+            }),
+          )
           .then(
             () => true,
             () => false,

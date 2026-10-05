@@ -143,10 +143,12 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
     for (const failure of judge(numbers, expect)) failures.push(`${phase}: ${failure}`);
   };
   let reads = 0;
+  let lastRead = Date.now();
   const detailPattern = `**/v1/conversations/${conversation.id}`;
   const detail = async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     reads += 1;
+    lastRead = Date.now();
     const turn = state.turn
       ? [
           {
@@ -197,6 +199,14 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
     for (const token of tokens(ANSWER)) {
       await emit("message", { type: "text_delta", text: token });
       await page.waitForTimeout(15);
+    }
+    if (where === "existing") {
+      const stale = 15_500 - (Date.now() - lastRead);
+      if (stale > 0) await page.waitForTimeout(stale);
+      const before = reads;
+      await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+      for (let wait = 0; wait < 20 && reads === before; wait += 1) await page.waitForTimeout(25);
+      if (reads === before) failures.push(`${where}: a focus did not read the conversation`);
     }
     state.turn = text;
     await emit("outcome", { conversation, status: "active" });
