@@ -6,7 +6,10 @@ import { auditLog } from "../../db/schema/audit.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/index.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "../../knowledge/tests/setup.ts";
-import { createKnowledgeSourceFromUrl } from "../../knowledge/url-source.ts";
+import {
+  createKnowledgeSourceFromUrl,
+  refreshKnowledgeSource,
+} from "../../knowledge/url-source.ts";
 import { type IngestKnowledgeJob, processIngestKnowledgeJob } from "./ingest-knowledge.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -135,6 +138,29 @@ describe.skipIf(skip)(
       const text = await chunkText(source.id);
       expect(text).toContain("Zweite Fassung");
       expect(text).not.toContain("Erste Fassung");
+    });
+
+    test("reading the address now moves the read time, even when the page did not change", async () => {
+      const source = await createKnowledgeSourceFromUrl(
+        {
+          tenant_id: ctx.tenantId,
+          actor_id: null,
+          url: `${pageUrl}-jetzt`,
+          input: { scope: "global" },
+        },
+        ctx.testDb.db,
+      );
+      const before = source.last_refreshed_at;
+      expect(before).not.toBeNull();
+      await Bun.sleep(20);
+      const refreshed = await refreshKnowledgeSource(
+        { tenant_id: ctx.tenantId, actor_id: null, id: source.id },
+        ctx.testDb.db,
+      );
+      expect(refreshed?.last_refreshed_at).not.toBeNull();
+      expect(Date.parse(refreshed?.last_refreshed_at ?? "")).toBeGreaterThan(
+        Date.parse(before ?? ""),
+      );
     });
 
     test("a source without an address is refused, not emptied", async () => {
