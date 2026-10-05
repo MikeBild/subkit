@@ -9,7 +9,7 @@ import {
   shouldRefreshTitle,
   TITLE_WORDS_MAX,
   titleFromSummary,
-  titleSourceTurns,
+  titleSourceRequests,
 } from "../title.ts";
 
 const NOW = Date.parse("2026-09-03T12:00:00.000Z");
@@ -132,23 +132,34 @@ describe("automatic title", () => {
     expect(title!.split(" ").length).toBeLessThanOrEqual(TITLE_WORDS_MAX);
     expect(title!.length).toBeLessThanOrEqual(50);
   });
-  test("buildTitlePrompt asks for the user's language and an imperative object", () => {
+  test("a fragment that announces more text is not a title", () => {
+    expect(titleFromSummary("Hier ist die Reparatur:")).toBeNull();
+    expect(titleFromSummary("Ich prüfe jetzt …")).toBeNull();
+    expect(titleFromSummary("Let me check...")).toBeNull();
+    expect(titleFromSummary("Fehlgeschlagenen Lauf reparieren")).toBe(
+      "Fehlgeschlagenen Lauf reparieren",
+    );
+  });
+  test("buildTitlePrompt names the person's requests and nothing the assistant wrote", () => {
     const prompt = buildTitlePrompt([
-      { role: "user", text: "Bitte repariere den Monatsreport." },
-      { role: "assistant", text: "Ich habe die Transformation eingegrenzt." },
+      "Warum ist dieser Lauf fehlgeschlagen, und wie behebe ich das?",
+      "Ja",
     ]);
-    expect(prompt).toContain("in the language the user writes in");
+    expect(prompt).toContain("in the language the person writes in");
     expect(prompt).toContain("imperative verb");
-    expect(prompt).toContain("User: Bitte repariere den Monatsreport.");
-    expect(prompt).toContain("Assistant: Ich habe die Transformation eingegrenzt.");
+    expect(prompt).toContain("- Warum ist dieser Lauf fehlgeschlagen, und wie behebe ich das?");
+    expect(prompt).toContain("- Ja");
+    expect(prompt).not.toContain("Assistant:");
     expect(prompt).toContain("Reply with the title only");
   });
-  test("an empty historical assistant payload leaves the user request as a valid title source", () => {
+  test("the title source is the person's requests, without recorded approval decisions", () => {
     expect(
-      titleSourceTurns([
-        { role: "user", content: { text: "Prüfe den Editorial-Workflow" } },
-        { role: "assistant", content: {} },
+      titleSourceRequests([
+        { content: { text: "Prüfe den Editorial-Workflow" } },
+        { content: { kind: "confirmation_decision", text: "✓ Approved: call_connector" } },
+        { content: {} },
+        { content: { text: "Ja" } },
       ]),
-    ).toEqual([{ role: "user", text: "Prüfe den Editorial-Workflow" }]);
+    ).toEqual(["Prüfe den Editorial-Workflow", "Ja"]);
   });
 });
