@@ -678,12 +678,20 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where}: the negotiated session is not said — "${session}"`);
     if (await page.getByTestId("connector-mcp-note").count())
       throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" choice`);
+    await page
+      .getByTestId("connector-mcp-tool-row-0")
+      .filter({ hasText: "search_items" })
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .catch(() => {});
     const stored = (await text(page, "connector-mcp-tool-row-0")) ?? "";
     if (
       !stored.includes("search_items") ||
       !stored.includes(de ? "Ohne Rückfrage" : "without asking")
     )
-      throw new Error(`${where}: the stored "Ohne Rückfrage" tool does not show as such`);
+      throw new Error(
+        `${where}: the stored "Ohne Rückfrage" tool does not show as such: "${stored}"`,
+      );
     await page.getByTestId("connector-mcp-reload").click();
     await page
       .getByTestId("connector-mcp-tool-row-1")
