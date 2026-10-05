@@ -9,6 +9,8 @@ type Translate = (key: TranslationKey, values?: Record<string, string | number>)
 export type ApiKeyItem = components["schemas"]["ApiKey"];
 export type ConnectedClientItem = components["schemas"]["OAuthClient"];
 
+export const API_KEYS_QUERY = ["admin", "api-keys"] as const;
+
 export const WILDCARD_SCOPE = "*";
 
 export const ROTATE_OVERLAP_MINUTES = 60;

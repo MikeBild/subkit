@@ -3598,6 +3598,10 @@ const EN = {
   "invocation.http.snippet": "Request",
   "invocation.http.body": "Request body",
   "invocation.http.language": "Language",
+  "invocation.http.method": "Method",
+  "invocation.http.signIn": "Authentication",
+  "invocation.http.bearer": "API key as bearer token",
+  "invocation.http.bearerHelp": "Without a valid key SubKit answers 401.",
   "invocation.http.responses": "Answers 200 with the result, 202 when queued, 409 when refused.",
   "invocation.http.previewOnly": "Without approval this is only a trial run without effect.",
   "invocation.http.unconfirmed":
@@ -7450,6 +7454,10 @@ const DE: Record<TranslationKey, string> = {
   "invocation.http.snippet": "Aufruf",
   "invocation.http.body": "Body des Aufrufs",
   "invocation.http.language": "Sprache",
+  "invocation.http.method": "Methode",
+  "invocation.http.signIn": "Anmeldung",
+  "invocation.http.bearer": "API-Schlüssel als Bearer-Token",
+  "invocation.http.bearerHelp": "Ohne gültigen Schlüssel antwortet SubKit mit 401.",
   "invocation.http.responses": "Antwort: 200 mit Ergebnis, 202 eingereiht, 409 abgelehnt.",
   "invocation.http.previewOnly": "Ohne Freigabe läuft nur ein Probelauf ohne Wirkung.",
   "invocation.http.unconfirmed":
