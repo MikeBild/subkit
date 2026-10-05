@@ -38,6 +38,7 @@ import {
   patternViewRoot,
   TRANSCRIPT,
 } from "./lib/cockpit-single-trigger.mjs";
+import { watchUnpromptedTooltips } from "./lib/cockpit-unprompted-tooltip.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
 import { verifyWorkflowPage } from "./lib/cockpit-workflow-page.mjs";
@@ -3996,6 +3997,7 @@ for (const locale of variants) {
         document.head.append(style);
       });
     });
+    const tooltips = await watchUnpromptedTooltips(context);
     const page = await context.newPage();
     page.on("pageerror", (error) => {
       const message = `${locale.artifact}/${viewport.name}: ${error.message}`;
@@ -4139,6 +4141,7 @@ for (const locale of variants) {
             ),
           ),
         );
+      tooltips.assertNone(`${locale.artifact}/${viewport.name}/${route}`);
       await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
         fullPage: false,
       });
@@ -4631,6 +4634,7 @@ for (const locale of variants) {
         fullPage: false,
       });
     }
+    tooltips.assertNone(`${locale.artifact}/${viewport.name}`);
     await context.close();
   }
 }

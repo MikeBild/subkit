@@ -1,4 +1,5 @@
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
+import { assertNoTooltipWithoutHover } from "./cockpit-unprompted-tooltip.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 
 const MCP_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
@@ -722,9 +723,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       .first()
       .click();
     await page.getByTestId("connector-mcp-tool-1-sheet").waitFor({ state: "visible" });
-    await page.waitForTimeout(900);
-    if (await page.locator('[role="tooltip"]').count())
-      throw new Error(`${where}: opening the tool sheet opened a tooltip on its first button`);
+    await assertNoTooltipWithoutHover(page, `${where} · tool sheet`);
     await page.getByTestId("connector-mcp-tool-1-trusted").click();
     for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
       await page.waitForTimeout(50);

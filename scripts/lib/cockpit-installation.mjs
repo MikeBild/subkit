@@ -1,3 +1,8 @@
+import {
+  assertNoTooltipWithoutHover,
+  assertTabOpensTooltip,
+} from "./cockpit-unprompted-tooltip.mjs";
+
 const PAGES = [
   { route: "people", marker: "admin-people", tabs: ["people", "roles", "groups", "grants"] },
   { route: "settings?tab=notifications", marker: "admin-notifications" },
@@ -136,8 +141,14 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     "/settings?leaf=tokens.monthly_budget",
   );
   await capture("settings-budget-leaf");
+  await stand.visit(page, "settings?leaf=auth.providers");
+  await page
+    .locator('[data-testid^="setting-item-"][data-highlighted="true"]')
+    .waitFor({ state: "visible" });
+  await assertNoTooltipWithoutHover(page, "/settings?leaf=auth.providers");
   await stand.visit(page, "settings?section=server");
   await page.getByTestId("settings-section-server").waitFor({ state: "visible" });
+  await assertTabOpensTooltip(page, "/settings?section=server", '[data-testid="settings-panel"]');
   await verifySettingRows(page, settings.settingRows, "server", "/settings?section=server");
 
   await verifySettingsSections(page, stand, settings, capture);
