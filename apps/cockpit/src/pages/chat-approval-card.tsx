@@ -50,7 +50,22 @@ export function ChatApprovalCard({
               connector: approval.externalTool.connector,
               tool: approval.externalTool.tool,
             })
-          : readable(approval.question);
+          : approval.connectorCall
+            ? readable(
+                approval.connectorCall.target
+                  ? t("chat.decision.connectorCall", {
+                      connector: approval.connectorCall.connector,
+                      method: approval.connectorCall.method,
+                      target: approval.connectorCall.target,
+                    })
+                  : t("chat.decision.connectorCallBare", {
+                      connector: approval.connectorCall.connector,
+                      method: approval.connectorCall.method,
+                    }),
+              )
+            : approval.gatedTool
+              ? t("chat.decision.gatedAction")
+              : readable(approval.question);
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
     <ChatCard

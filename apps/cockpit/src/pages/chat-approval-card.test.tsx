@@ -52,3 +52,35 @@ test("without a server claim nothing is attributed", () => {
   );
   expect(html).not.toContain("approval-server-claim");
 });
+
+const gated: ChatApproval = {
+  id: "approval",
+  toolCallId: "call",
+  question: "Policy requires confirmation before running call_connector. Proceed?",
+  description: null,
+  savesInactiveWorkflow: false,
+  expiresAt: "2030-01-01T00:00:00Z",
+};
+
+test("a gated connector call names connector, method and target in the reader's language", () => {
+  const connectorCall = {
+    connector: "Reporting API",
+    method: "PATCH",
+    target: "https://api.example/v1/reports",
+  };
+  const german = render({ ...gated, connectorCall }, "de");
+  expect(german).toContain("Reporting API aufrufen: PATCH https://api.example/v1/reports");
+  expect(render({ ...gated, connectorCall }, "en")).toContain(
+    "Call Reporting API: PATCH https://api.example/v1/reports",
+  );
+  expect(render({ ...gated, connectorCall: { ...connectorCall, target: null } }, "de")).toContain(
+    "Reporting API aufrufen: PATCH",
+  );
+  for (const html of [german, render({ ...gated, gatedTool: "call_connector" }, "de")]) {
+    expect(html).not.toContain("call_connector");
+    expect(html).not.toContain("Policy requires");
+  }
+  expect(render({ ...gated, gatedTool: "call_connector" }, "de")).toContain(
+    "Diese Aktion braucht deine Freigabe.",
+  );
+});

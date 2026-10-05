@@ -17131,6 +17131,28 @@
                           "connector",
                           "tool"
                         ]
+                      },
+                      "effect": {
+                        "type": "object",
+                        "properties": {
+                          "connector": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "connector",
+                          "method",
+                          "target"
+                        ]
                       }
                     },
                     "required": [

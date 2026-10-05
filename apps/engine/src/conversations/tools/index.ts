@@ -128,6 +128,14 @@ export type ToolResult =
 
 export type ToolCategory = "draft_write" | "tenant_read" | "tenant_write";
 
+export interface ToolEffect {
+  connector: string;
+  method: string;
+  target: string | null;
+}
+
+export type ToolPrecheck = { ok: false; result: ToolResult } | { ok: true; effect: ToolEffect };
+
 export interface ConversationTool {
   readonly name: string;
   readonly description: string;
@@ -135,6 +143,7 @@ export interface ConversationTool {
   readonly category: ToolCategory;
   readonly authoring_resource?: "connector" | "workflow";
   execute(ctx: ToolContext, args: unknown): Promise<ToolResult>;
+  precheck?(ctx: ToolContext, args: unknown): Promise<ToolPrecheck>;
   readonly use_case?: string;
   readonly important_notes?: readonly string[];
   readonly requires_skill?: string;
