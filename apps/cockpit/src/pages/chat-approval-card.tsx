@@ -3,7 +3,7 @@ import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/pat
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import type { ChatApproval } from "./chat-approval";
+import { approvalLine, type ChatApproval } from "./chat-approval";
 
 export function ChatApprovalCard({
   approval,
@@ -37,35 +37,7 @@ export function ChatApprovalCard({
           ? "chat.decision.saveTitle"
           : "chat.decision.title",
   );
-  const line = approval.oauth
-    ? t(approval.oauth === "start" ? "chat.oauth.startHelp" : "chat.oauth.completeHelp")
-    : approval.singleRun
-      ? t("chat.singleRun.effect", {
-          name: approval.workflowName ?? t("chat.singleRun.thisWorkflow"),
-        })
-      : approval.savesInactiveWorkflow
-        ? t("chat.decision.saveEffect")
-        : approval.externalTool
-          ? t("chat.decision.externalTool", {
-              connector: approval.externalTool.connector,
-              tool: approval.externalTool.tool,
-            })
-          : approval.connectorCall
-            ? readable(
-                approval.connectorCall.target
-                  ? t("chat.decision.connectorCall", {
-                      connector: approval.connectorCall.connector,
-                      method: approval.connectorCall.method,
-                      target: approval.connectorCall.target,
-                    })
-                  : t("chat.decision.connectorCallBare", {
-                      connector: approval.connectorCall.connector,
-                      method: approval.connectorCall.method,
-                    }),
-              )
-            : approval.gatedTool
-              ? t("chat.decision.gatedAction")
-              : readable(approval.question);
+  const line = approvalLine(approval, t, readable);
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (
     <ChatCard

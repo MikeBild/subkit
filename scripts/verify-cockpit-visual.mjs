@@ -11,6 +11,7 @@ import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
+import { verifyChatHeader } from "./lib/cockpit-chat-header.mjs";
 import { assertChatLayout } from "./lib/cockpit-chat-layout.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
@@ -4186,6 +4187,10 @@ for (const locale of variants) {
     if (standOn(verifyChatReplies))
       await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyChatHeader))
+      await verifyChatHeader(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, { fullPage: false }),
       );
     if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
     if (viewport.name === "desktop")
