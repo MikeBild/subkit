@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, workflowHref } from "@/app/links";
@@ -8,6 +8,7 @@ import {
   ActionMenu,
   type CockpitColumn,
   CodeBlock,
+  CollapsibleSection,
   ContextHelp,
   type Fact,
   FactList,
@@ -19,15 +20,15 @@ import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { StepDialog, type StepDraft, stepId } from "@/components/cockpit/workflow-step-editor";
 import { useI18n } from "@/lib/i18n-context";
+import { type WorkflowPreviewSource, workflowPreviewRequest } from "@/lib/workflow-preview";
 import {
-  type WorkflowPreviewSource,
-  workflowPreviewRequest,
-  workflowPreviewSucceeded,
-} from "@/lib/workflow-preview";
-import {
+  type BuildVersion,
+  buildVersion,
   connectorNameOf,
   type ExecutionStep,
   joinStepsWithLastRun,
+  previewSummary,
+  type SavedDraft,
   stepEssenceText,
   stepResultPreview,
   type WorkflowStepView,
@@ -36,9 +37,27 @@ import {
 
 type Execution = components["schemas"]["Execution"];
 
-interface PreviewResult {
-  ok: boolean;
-  preview: string;
+type PreviewResult =
+  | { result: Record<string, unknown>; failure: null }
+  | { result: null; failure: string };
+
+export function useBuildVersion(
+  workflowId: string,
+  workflow: {
+    current_version_id: string | null;
+    current_version: number | null;
+    draft_version_id: string | null;
+    steps: readonly unknown[];
+  },
+): BuildVersion {
+  const waiting =
+    workflow.draft_version_id !== null && workflow.draft_version_id !== workflow.current_version_id;
+  const draft = useQuery({
+    queryKey: ["workflow-draft-version", workflowId, workflow.draft_version_id],
+    enabled: waiting,
+    queryFn: () => apiRequest<SavedDraft>(`/v1/workflows/${encodeURIComponent(workflowId)}/draft`),
+  });
+  return buildVersion(workflow, { data: draft.data, settled: !draft.isPending });
 }
 
 const STEP_MARK_KEYS = {
@@ -94,25 +113,30 @@ export function useWorkflowSteps({
     setRunning(key);
     try {
       const result = await preview.mutateAsync(body);
-      setResults((current) => ({
-        ...current,
-        [key]: { ok: workflowPreviewSucceeded(result), preview: JSON.stringify(result, null, 2) },
-      }));
+      setResults((current) => ({ ...current, [key]: { result, failure: null } }));
     } catch (error) {
       setResults((current) => ({
         ...current,
-        [key]: { ok: false, preview: error instanceof Error ? error.message : String(error) },
+        [key]: { result: null, failure: error instanceof Error ? error.message : String(error) },
       }));
     } finally {
       setRunning(null);
     }
   }
+  const clear = useCallback((key: string): void => {
+    setResults((current) => {
+      if (!(key in current)) return current;
+      const { [key]: _gone, ...rest } = current;
+      return rest;
+    });
+  }, []);
   return {
     views: joinStepsWithLastRun(steps, runSteps.data?.items ?? []),
     pending: lastExecution.isPending,
     results,
     running,
     runOne,
+    clear,
   };
 }
 
@@ -145,19 +169,87 @@ export function WorkflowTestRun({
   );
 }
 
-export function WorkflowTestResult({ steps }: { steps: WorkflowSteps }) {
-  const { t } = useI18n();
+export function WorkflowTestResult({ steps, dirty }: { steps: WorkflowSteps; dirty: boolean }) {
   const whole = steps.results.__workflow;
-  if (!whole) return null;
+  const { clear } = steps;
+  useEffect(() => {
+    if (!dirty) clear("__workflow");
+  }, [dirty, clear]);
+  if (!whole || !dirty) return null;
+  return <PreviewCard result={whole} total={steps.views.length} testId="workflow-test-result" />;
+}
+
+function PreviewCard({
+  result,
+  total,
+  testId,
+}: {
+  result: PreviewResult;
+  total: number;
+  testId: string;
+}) {
+  const { t } = useI18n();
+  const summary = result.result ? previewSummary(result.result, total) : null;
+  const facts: Fact[] = summary
+    ? [
+        {
+          label: t("workflow.preview.steps"),
+          value: t("workflow.preview.stepsValue", { ran: summary.ran, total: summary.total }),
+          testId: `${testId}-steps`,
+        },
+        ...(summary.held > 0
+          ? [
+              {
+                label: t("workflow.preview.held"),
+                value: t(
+                  summary.held === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other",
+                  {
+                    count: summary.held,
+                  },
+                ),
+                testId: `${testId}-held`,
+              },
+            ]
+          : []),
+        ...(summary.stoppedAt
+          ? [
+              {
+                label: t("workflow.preview.stoppedAt"),
+                value: <span className="font-mono text-xs">{summary.stoppedAt}</span>,
+                testId: `${testId}-stopped`,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const failure = summary ? summary.error : result.failure;
   return (
-    <Copyable>
-      <CodeBlock
-        label={t(whole.ok ? "workflow.testRun" : "workflowSteps.testFailed")}
-        code={whole.preview}
-        lang="json"
-        testId="workflow-test-result"
-      />
-    </Copyable>
+    <div className="rounded-lg border p-3" data-testid={testId}>
+      <Section
+        label={t("workflow.preview.title")}
+        aside={<StatusBadge state={summary?.status ?? "failed"} testId={`${testId}-status`} />}
+      >
+        {facts.length > 0 ? <FactList items={facts} /> : null}
+        {summary ? (
+          <CollapsibleSection label={t("workflow.preview.output")} testId={`${testId}-output`}>
+            {summary.output === undefined || summary.output === null ? (
+              <p className="text-sm text-muted-foreground">{t("workflow.preview.noOutput")}</p>
+            ) : (
+              <Copyable>
+                <CodeBlock code={JSON.stringify(summary.output, null, 2)} lang="json" />
+              </Copyable>
+            )}
+          </CollapsibleSection>
+        ) : null}
+        {failure ? (
+          <CollapsibleSection label={t("workflow.preview.error")} testId={`${testId}-error`}>
+            <Copyable>
+              <CodeBlock code={failure} lang="text" />
+            </Copyable>
+          </CollapsibleSection>
+        ) : null}
+      </Section>
+    </div>
   );
 }
 
@@ -439,16 +531,7 @@ function StepSheet({
           <p className="text-sm text-muted-foreground">{t("workflow.neverRan")}</p>
         )}
       </Section>
-      {result ? (
-        <Copyable>
-          <CodeBlock
-            label={t(result.ok ? "workflow.testStep" : "workflowSteps.testFailed")}
-            code={result.preview}
-            lang="json"
-            testId={`${testId}-test-result`}
-          />
-        </Copyable>
-      ) : null}
+      {result ? <PreviewCard result={result} total={1} testId={`${testId}-test-result`} /> : null}
     </RecordSheet>
   );
 }

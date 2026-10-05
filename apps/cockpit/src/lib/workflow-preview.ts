@@ -5,7 +5,3 @@ export type WorkflowPreviewSource =
 export function workflowPreviewRequest(source: WorkflowPreviewSource) {
   return { ...source, hold_writes: true as const };
 }
-
-export function workflowPreviewSucceeded(result: Record<string, unknown>): boolean {
-  return result.status === "succeeded";
-}

@@ -165,8 +165,10 @@ export function RunWorkflowDialog({
   workflowName,
   liveEnvironment,
   quiet = false,
+  disabled = false,
 }: {
   quiet?: boolean;
+  disabled?: boolean;
   workflowId: string;
   workflowName: string;
   liveEnvironment: RunEnvironment | null | undefined;
@@ -266,7 +268,11 @@ export function RunWorkflowDialog({
         if (!next) setFailure(null);
       }}
       trigger={
-        <Button variant={quiet ? "outline" : "default"} data-testid="workflow-run-open">
+        <Button
+          variant={quiet || disabled ? "outline" : "default"}
+          disabled={disabled}
+          data-testid="workflow-run-open"
+        >
           <Play data-icon="inline-start" />
           {t("run.action")}
         </Button>
