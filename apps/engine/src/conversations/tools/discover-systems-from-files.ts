@@ -102,7 +102,6 @@ export const discoverSystemsFromFilesTool: ConversationTool = {
     'Cached per-tenant for 24h keyed on the source knowledge_source_id. A second call within the window returns `source: "cache"` and does NOT invoke the LLM.',
     "Output is provisional. Treat candidates as a starting point the operator must refine — do NOT auto-create connectors from them without confirmation.",
   ],
-  example_input: { knowledge_source_id: "00000000-0000-0000-0000-000000000000" },
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs) as DiscoverSystemsFromFilesArgs;
 

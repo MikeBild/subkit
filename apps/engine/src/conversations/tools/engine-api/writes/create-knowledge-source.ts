@@ -104,9 +104,9 @@ export const createKnowledgeSourceTool: ConversationTool = {
     "Omit `description`/`tags` to let the engine auto-generate them from the content; pass them only when the user dictates specific values.",
   ],
   example_input: {
-    mode: "from_attachment",
-    file_id: "fid_00000000-0000-0000-0000-000000000000",
-    name: "OCPP 2.0.1 — Protocol reference",
+    mode: "inline",
+    name: "Refund policy",
+    content: "# Refund policy\n\nRefunds above 500 EUR need a second approver.",
   },
   inputSchema: CreateKnowledgeSourceInput,
   category: "tenant_write",
