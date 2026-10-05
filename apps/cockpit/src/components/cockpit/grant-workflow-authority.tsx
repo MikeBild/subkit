@@ -10,6 +10,7 @@ import {
   GrantRemedyAction,
   GrantScopeWarnings,
   GrantSuggestionNote,
+  loadGrantStartedIn,
   useGrantContext,
   useGrantRemedy,
 } from "@/components/cockpit/grant-notices";
@@ -124,7 +125,7 @@ export function GrantWorkflowAuthority({
     return () => clearInterval(tick);
   }, [trialStartedAt]);
   const [review, setReview] = useState<WorkflowAuthorityPreview | null>(null);
-  const corrected = useRef(false);
+  const settled = useRef(false);
   const latestReview = useRef(0);
   const isLatest = (token: number) => token === latestReview.current;
   const [sample, setSample] = useState<{ slug: string; versionId: string } | null>(null);
@@ -173,10 +174,16 @@ export function GrantWorkflowAuthority({
       let asked = env;
       let result = await preview(asked);
       if (!isLatest(token)) throw superseded();
-      if (!corrected.current) {
-        const belongs = environmentToCorrectTo(result, asked);
+      if (!settled.current && environmentToCorrectTo(result, asked, [])) {
+        const runsIn = await loadGrantStartedIn(
+          client,
+          workflowId,
+          session.permissions.includes("schedule:read"),
+        );
+        if (!isLatest(token)) throw superseded();
+        const belongs = environmentToCorrectTo(result, asked, runsIn);
+        settled.current = true;
         if (belongs) {
-          corrected.current = true;
           asked = belongs;
           setEnvironment(belongs);
           result = await preview(asked);
@@ -435,7 +442,7 @@ export function GrantWorkflowAuthority({
     activateOnly.reset();
     setSample(null);
     if (value) {
-      corrected.current = false;
+      settled.current = false;
       setLimit(DEFAULT_GRANT_LIMIT);
       setEnvironment(initialEnvironment);
       startReview(initialEnvironment);
@@ -879,6 +886,7 @@ export function GrantWorkflowAuthority({
             disabled={busy}
             onValueChange={(value) => {
               if (value !== "dev" && value !== "prod") return;
+              settled.current = true;
               setEnvironment(value);
               grant.reset();
               startReview(value);
