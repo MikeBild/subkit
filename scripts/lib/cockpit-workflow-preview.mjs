@@ -89,10 +89,8 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     await page.getByTestId("workflow-step-2-up").click();
     await page.getByRole("menu").waitFor({ state: "detached" });
     await page.getByTestId("step-savebar").waitFor();
-    if (await page.getByRole("dialog").count()) {
-      await page.keyboard.press("Escape");
-      await page.getByRole("dialog").waitFor({ state: "detached" });
-    }
+    if (await page.getByRole("dialog").count())
+      throw new Error("Choosing a row menu item also opened the row's sheet");
     await whole.waitFor({ state: "visible" });
     const filled = await page
       .getByTestId("detail-workflows")
