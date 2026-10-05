@@ -10,21 +10,21 @@ import {
 
 describe("the filter a link asks for", () => {
   test("reads BOTH halves of the incidents link", () => {
-    const filter = filterFromUrl("?status=failed&source=scheduler");
+    const filter = filterFromUrl("?runs_status=failed&runs_source=scheduler");
     expect(filter.status).toBe("failed");
     expect(filter.source).toBe("scheduler");
   });
 
   test("a source the page cannot name narrows nothing", () => {
-    expect(filterFromUrl("?source=carrier-pigeon").source).toBe("all");
-    expect(filterFromUrl("?source=").source).toBe("all");
+    expect(filterFromUrl("?runs_source=carrier-pigeon").source).toBe("all");
+    expect(filterFromUrl("?runs_source=").source).toBe("all");
     expect(filterFromUrl("").source).toBe("all");
   });
 
   test("every source the page offers is one it accepts from a link", () => {
     for (const source of REQUEST_SOURCES) {
       expect(isKnownRequestSource(source)).toBe(true);
-      expect(filterFromUrl(`?source=${source}`).source).toBe(source);
+      expect(filterFromUrl(`?runs_source=${source}`).source).toBe(source);
     }
   });
 
@@ -33,17 +33,17 @@ describe("the filter a link asks for", () => {
   });
 
   test("an unknown status still falls back to all, as it did before", () => {
-    expect(filterFromUrl("?status=bogus").status).toBe("all");
-    expect(filterFromUrl("?status=failed").status).toBe("failed");
+    expect(filterFromUrl("?runs_status=bogus").status).toBe("all");
+    expect(filterFromUrl("?runs_status=failed").status).toBe("failed");
   });
 
   test("the search needle is bounded", () => {
-    expect(filterFromUrl(`?q=${"x".repeat(500)}`).q).toHaveLength(200);
+    expect(filterFromUrl(`?runs_q=${"x".repeat(500)}`).q).toHaveLength(200);
   });
 
   test("a workflow id narrows the query the engine receives", () => {
     const id = "018f4b4a-6d33-7b3a-9c2d-123456789abc";
-    const filter = filterFromUrl(`?workflow_id=${id}&status=failed`);
+    const filter = filterFromUrl(`?runs_workflow=${id}&runs_status=failed`);
     expect(filter.workflowId).toBe(id);
     const params = executionsQuery(filter, { limit: 25, offset: 0 });
     expect(params.get("workflow_id")).toBe(id);
@@ -53,9 +53,9 @@ describe("the filter a link asks for", () => {
 
   test("a workflow id the engine would refuse narrows nothing", () => {
     for (const bad of ["", "abc", "monthly report", "018f4b4a-6d33-7b3a-9c2d"])
-      expect(filterFromUrl(`?workflow_id=${encodeURIComponent(bad)}`).workflowId).toBeNull();
+      expect(filterFromUrl(`?runs_workflow=${encodeURIComponent(bad)}`).workflowId).toBeNull();
     expect(
-      executionsQuery(filterFromUrl("?workflow_id=abc"), { limit: 25, offset: 0 }).has(
+      executionsQuery(filterFromUrl("?runs_workflow=abc"), { limit: 25, offset: 0 }).has(
         "workflow_id",
       ),
     ).toBe(false);
@@ -65,22 +65,44 @@ describe("the filter a link asks for", () => {
 describe("the filter the address keeps", () => {
   test("status, source and search are written, the rest of the address stays", () => {
     expect(
-      runsFilterSearch("?runs=all&workflow_id=abc", {
+      runsFilterSearch("?runs=all&runs_workflow=abc", {
         status: "failed",
         source: "scheduler",
         q: " Bericht ",
       }),
-    ).toBe("?runs=all&workflow_id=abc&status=failed&source=scheduler&q=Bericht");
+    ).toBe("?runs=all&runs_workflow=abc&runs_status=failed&runs_source=scheduler&runs_q=Bericht");
   });
 
   test("a filter set back to all leaves the address", () => {
     expect(
-      runsFilterSearch("?runs=all&status=failed&source=api&q=x", {
+      runsFilterSearch("?runs=all&runs_status=failed&runs_source=api&runs_q=x", {
         status: "all",
         source: "all",
         q: "",
       }),
     ).toBe("?runs=all");
+  });
+
+  test("filtering over a page leaves the page's own q, status and source alone", () => {
+    const host = "?q=foo&status=active&source=import&runs=all";
+    const filtered = runsFilterSearch(host, { status: "failed", source: "api", q: "Bericht" });
+    const params = new URLSearchParams(filtered);
+    expect([params.get("q"), params.get("status"), params.get("source")]).toEqual([
+      "foo",
+      "active",
+      "import",
+    ]);
+    expect([params.get("runs_q"), params.get("runs_status"), params.get("runs_source")]).toEqual([
+      "Bericht",
+      "failed",
+      "api",
+    ]);
+    expect(runsFilterSearch(filtered, { status: "all", source: "all", q: "" })).toBe(host);
+  });
+
+  test("the page's own q and status are not read as the list's filter", () => {
+    const read = filterFromUrl("?q=foo&status=failed&source=api&runs=all");
+    expect([read.status, read.source, read.q]).toEqual(["all", "all", ""]);
   });
 
   test("what the address keeps is what the page reads back", () => {

@@ -54,8 +54,24 @@ function cockpitHref(path: string, query: Record<string, string>): string {
   return `/cockpit${path}?${new URLSearchParams(query).toString()}`;
 }
 
-export function cockpitRunsHref(query: Record<string, string>): string {
-  return cockpitHref("", { runs: "all", ...query });
+export const COCKPIT_RUNS_FILTER_PARAMS = {
+  workflowId: "runs_workflow",
+  status: "runs_status",
+  source: "runs_source",
+  q: "runs_q",
+  startedFrom: "runs_from",
+  startedTo: "runs_to",
+} as const;
+
+export type CockpitRunsFilter = Partial<Record<keyof typeof COCKPIT_RUNS_FILTER_PARAMS, string>>;
+
+export function cockpitRunsHref(filter: CockpitRunsFilter = {}): string {
+  const query: Record<string, string> = { runs: "all" };
+  for (const [name, key] of Object.entries(COCKPIT_RUNS_FILTER_PARAMS)) {
+    const value = filter[name as keyof CockpitRunsFilter];
+    if (value) query[key] = value;
+  }
+  return cockpitHref("", query);
 }
 
 export const OPERATING_WINDOW_MAX_MS = 366 * 86_400_000;
@@ -116,7 +132,7 @@ export async function readOperatingFigures(
 
   const from = bounds.from.toISOString();
   const to = bounds.to.toISOString();
-  const runWindow = { started_from: from, started_to: to };
+  const runWindow = { startedFrom: from, startedTo: to };
   return {
     schema_version: OPERATING_FIGURES_SCHEMA_VERSION,
     window: { from, to },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { translate } from "@/lib/i18n";
+import { translate, translatePlural } from "@/lib/i18n";
 import {
   formatRunDuration,
   isExecutionRecord,
@@ -11,6 +11,8 @@ import {
   runName,
   runOverlayFromUrl,
   runOverlaySearch,
+  runsFilterSearch,
+  runsSummaryText,
 } from "@/pages/runs-model";
 
 const t = (key: Parameters<typeof translate>[1]) => translate("en", key);
@@ -213,7 +215,7 @@ describe("the run sheets an address opens", () => {
 
   test("reads one run and the list of all runs out of the query", () => {
     expect(runOverlayFromUrl(`?run=${ID}`)).toEqual({ list: false, runId: ID });
-    expect(runOverlayFromUrl("?runs=all&status=failed")).toEqual({ list: true, runId: null });
+    expect(runOverlayFromUrl("?runs=all&runs_status=failed")).toEqual({ list: true, runId: null });
     expect(runOverlayFromUrl(`?runs=all&run=${ID}`)).toEqual({ list: true, runId: ID });
   });
 
@@ -226,18 +228,42 @@ describe("the run sheets an address opens", () => {
   test("opening and closing keeps the page's own parameters", () => {
     expect(runOverlaySearch("?review=x", { list: false, runId: ID })).toBe(`?review=x&run=${ID}`);
     expect(runOverlaySearch(`?review=x&run=${ID}`, { list: false, runId: null })).toBe("?review=x");
-    expect(runOverlaySearch("?runs=all&status=failed", { list: true, runId: ID })).toBe(
-      `?runs=all&status=failed&run=${ID}`,
+    expect(runOverlaySearch("?runs=all&runs_status=failed", { list: true, runId: ID })).toBe(
+      `?runs=all&runs_status=failed&run=${ID}`,
     );
   });
 
   test("closing the list drops the narrowing it read", () => {
     expect(
-      runOverlaySearch("?runs=all&status=failed&workflow_id=w&tab=x", {
+      runOverlaySearch("?runs=all&runs_status=failed&runs_workflow=w&runs_q=a&tab=x", {
         list: false,
         runId: null,
       }),
     ).toBe("?tab=x");
+  });
+
+  test("the catalog's q and status survive opening, filtering and closing the list", () => {
+    const host = "?q=foo&status=active";
+    const opened = runOverlaySearch(host, { list: true, runId: null });
+    expect(opened).toBe("?q=foo&status=active&runs=all");
+    const filtered = runsFilterSearch(opened, { status: "failed", source: "api", q: "Bericht" });
+    const run = runOverlaySearch(filtered, { list: true, runId: ID });
+    expect(runOverlaySearch(run, { list: false, runId: null })).toBe(host);
+  });
+
+  test("opening one run over a page keeps that page's q and status", () => {
+    const host = "?q=foo&status=active";
+    const opened = runOverlaySearch(host, { list: false, runId: ID });
+    expect(opened).toBe(`${host}&run=${ID}`);
+    expect(runOverlaySearch(opened, { list: false, runId: null })).toBe(host);
+  });
+
+  test("a new chat's workflow and execution survive the list opening and closing over it", () => {
+    const host = `?workflow_id=${ID}&execution_id=e1`;
+    const opened = runOverlaySearch(host, { list: true, runId: null });
+    const filtered = runsFilterSearch(opened, { status: "failed", source: "all", q: "" });
+    expect(new URLSearchParams(filtered).get("workflow_id")).toBe(ID);
+    expect(runOverlaySearch(filtered, { list: false, runId: null })).toBe(host);
   });
 });
 
@@ -294,5 +320,23 @@ describe("isExecutionRecord — what came back with a 200", () => {
   test("the engine's own record is accepted", () => {
     expect(isExecutionRecord(run())).toBe(true);
     expect(isExecutionRecord({ id: "run-1", status: "failed" })).toBe(true);
+  });
+});
+
+describe("the summary line over all runs", () => {
+  test("the total stands even when the failed count cannot be read", () => {
+    const tn = (key: Parameters<typeof translatePlural>[1], count: number) =>
+      translatePlural("en", key, count);
+    expect(runsSummaryText(240, null, tn)).toBe("240 runs");
+    expect(runsSummaryText(1, null, tn)).toBe("1 run");
+  });
+
+  test("the failed count joins the total once it is read", () => {
+    expect(
+      runsSummaryText(240, 120, (key, count, values) => translatePlural("de", key, count, values)),
+    ).toBe("240 Läufe · 120 fehlgeschlagen");
+    expect(
+      runsSummaryText(1240, 0, (key, count, values) => translatePlural("de", key, count, values)),
+    ).toBe("1.240 Läufe · 0 fehlgeschlagen");
   });
 });

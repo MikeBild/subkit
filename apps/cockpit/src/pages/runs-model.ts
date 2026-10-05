@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
-import { auditHref, instantParam, uuidParam } from "@/app/links";
+import { auditHref, instantParam, RUNS_FILTER_PARAMS, uuidParam } from "@/app/links";
 import { causeClassLabel } from "@/lib/cause-class";
-import { LOCALE_TAGS, type Locale, type TranslationKey } from "@/lib/i18n";
+import { LOCALE_TAGS, type Locale, type PluralKey, type TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { shortIdentifier } from "@/pages/audit-model";
 
@@ -51,15 +51,15 @@ export interface RunsFilter {
 
 export function filterFromUrl(search: string): RunsFilter {
   const params = new URLSearchParams(search);
-  const status = params.get("status") ?? "";
-  const source = params.get("source") ?? "";
+  const status = params.get(RUNS_FILTER_PARAMS.status) ?? "";
+  const source = params.get(RUNS_FILTER_PARAMS.source) ?? "";
   return {
     status: RUN_STATUSES.includes(status as (typeof RUN_STATUSES)[number]) ? status : "all",
-    q: (params.get("q") ?? "").slice(0, 200),
+    q: (params.get(RUNS_FILTER_PARAMS.q) ?? "").slice(0, 200),
     source: isKnownRequestSource(source) ? source : "all",
-    workflowId: uuidParam(params, "workflow_id"),
-    startedFrom: instantParam(params, "started_from"),
-    startedTo: instantParam(params, "started_to"),
+    workflowId: uuidParam(params, RUNS_FILTER_PARAMS.workflowId),
+    startedFrom: instantParam(params, RUNS_FILTER_PARAMS.startedFrom),
+    startedTo: instantParam(params, RUNS_FILTER_PARAMS.startedTo),
   };
 }
 
@@ -78,14 +78,7 @@ export function executionsQuery(
   return params;
 }
 
-export const RUNS_FILTER_KEYS = [
-  "workflow_id",
-  "status",
-  "source",
-  "q",
-  "started_from",
-  "started_to",
-] as const;
+export const RUNS_FILTER_KEYS: readonly string[] = Object.values(RUNS_FILTER_PARAMS);
 
 export function runsFilterSearch(
   search: string,
@@ -93,9 +86,9 @@ export function runsFilterSearch(
 ): string {
   const params = new URLSearchParams(search);
   const written: [string, string][] = [
-    ["status", filter.status === "all" ? "" : filter.status],
-    ["source", filter.source === "all" ? "" : filter.source],
-    ["q", filter.q.trim()],
+    [RUNS_FILTER_PARAMS.status, filter.status === "all" ? "" : filter.status],
+    [RUNS_FILTER_PARAMS.source, filter.source === "all" ? "" : filter.source],
+    [RUNS_FILTER_PARAMS.q, filter.q.trim()],
   ];
   for (const [key, value] of written) {
     if (value) params.set(key, value);
@@ -150,6 +143,16 @@ export function previewText(value: unknown): string | null {
 }
 
 export type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
+
+export type TranslatePlural = (
+  key: PluralKey,
+  count: number,
+  values?: Record<string, string | number>,
+) => string;
+
+export function runsSummaryText(total: number, failed: number | null, tn: TranslatePlural): string {
+  return failed === null ? tn("runs.summaryTotal", total) : tn("runs.summary", total, { failed });
+}
 
 export type RunFact = [label: string, value: ReactNode, full?: string];
 
