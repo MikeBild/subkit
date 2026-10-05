@@ -3,8 +3,10 @@ import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { absolute } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { useNameIndex } from "@/app/use-decisions";
 import {
   Button,
   type CockpitColumn,
@@ -18,6 +20,7 @@ import {
   Page,
   PageHeader,
   RecordSheet,
+  Section,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -38,15 +41,18 @@ import {
   auditEvidenceBlocks,
   auditFilterFromUrl,
   auditLinkParams,
+  auditMetadataFacts,
   auditResourceHref,
   auditResourceLabel,
   auditResultFromUrl,
   auditResultLabel,
   auditScopeParams,
+  auditSearchActions,
   canReadDirectory,
   isAuditEntry,
   isAuditScope,
   NO_AUDIT_LINK,
+  searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
 
@@ -63,7 +69,6 @@ const SCOPE_KEYS: Record<(typeof SCOPES)[number], TranslationKey> = {
 const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
   before: "audit.detail.before",
   after: "audit.detail.after",
-  metadata: "audit.detail.metadata",
 };
 
 function AuditDetail({
@@ -74,6 +79,8 @@ function AuditDetail({
   directory: ReadonlyMap<string, string>;
 }) {
   const { t, dateTime } = useI18n();
+  const session = useSession();
+  const names = useNameIndex(session.permissions, true);
   const detail = useQuery({
     queryKey: ["audit-entry", entry.id],
     queryFn: () => apiRequest<unknown>(`/v1/audit-log/${encodeURIComponent(entry.id)}`),
@@ -82,6 +89,7 @@ function AuditDetail({
   const current = isAuditEntry(detail.data) ? detail.data : entry;
   const facts = auditDetailFacts(current, t, dateTime, directory);
   const evidence = auditEvidenceBlocks(current);
+  const extra = auditMetadataFacts(current.metadata, t, names);
   const toFact = (fact: (typeof facts)[number]): Fact => ({
     label: fact.label,
     value:
@@ -112,6 +120,28 @@ function AuditDetail({
         />
       ) : null}
 
+      {extra.facts.length > 0 ? (
+        <Section label={t("audit.detail.metadata")} testId="audit-detail-metadata">
+          <FactList
+            testId="audit-detail-metadata-facts"
+            items={extra.facts.map((fact) => ({
+              label: fact.label,
+              value: fact.href ? (
+                <a
+                  href={absolute(fact.href)}
+                  className="underline-offset-4 hover:underline"
+                  data-testid={`audit-detail-meta-${fact.key}`}
+                >
+                  {fact.value}
+                </a>
+              ) : (
+                fact.value
+              ),
+            }))}
+          />
+        </Section>
+      ) : null}
+
       {evidence.map((block) => (
         <CodeBlock
           key={block.kind}
@@ -124,6 +154,14 @@ function AuditDetail({
 
       <CollapsibleSection label={t("audit.detail.technical")} testId="audit-detail-technical">
         <FactList items={facts.filter((fact) => fact.mono).map(toFact)} />
+        {extra.rest ? (
+          <CodeBlock
+            label={t("audit.detail.metadataRest")}
+            lang="json"
+            code={extra.rest}
+            testId="audit-detail-metadata-rest"
+          />
+        ) : null}
       </CollapsibleSection>
     </>
   );
@@ -185,18 +223,19 @@ export function AuditPage() {
     }),
     [result, scope, linked],
   );
-  const list = useInfiniteList<AuditEntry>("/v1/audit-log", params, { enabled: allowed });
+  const searched = useMemo(() => {
+    const needle = debouncedSearch.trim();
+    return searchedActionParams(
+      params as Record<string, string>,
+      needle ? auditSearchActions(needle, t) : null,
+    );
+  }, [params, debouncedSearch, t]);
+  const list = useInfiniteList<AuditEntry>("/v1/audit-log", searched ?? params, {
+    enabled: allowed && searched !== null,
+  });
   const query = list.query;
-  const items = list.items;
-  const rows = useMemo(() => {
-    const needle = debouncedSearch.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((entry) => {
-      if (entry.action.toLowerCase().includes(needle)) return true;
-      const label = auditActionLabel(entry.action);
-      return label.kind === "named" && t(label.key).toLowerCase().includes(needle);
-    });
-  }, [items, debouncedSearch, t]);
+  const rows = searched === null ? [] : list.items;
+  const pending = searched !== null && query.isPending;
   const actionName = (action: string) => {
     const label = auditActionLabel(action);
     return label.kind === "named" ? t(label.key) : label.value;
@@ -322,15 +361,15 @@ export function AuditPage() {
           testId="audit-summary"
           text={
             <span data-testid="audit-scope-note">
-              {query.isPending
+              {pending
                 ? t("audit.summary")
                 : t(
                     list.infinite.hasNextPage
                       ? "audit.countMore"
-                      : items.length === 1
+                      : rows.length === 1
                         ? "audit.count.one"
                         : "audit.count",
-                    { count: items.length },
+                    { count: rows.length },
                   )}
             </span>
           }
@@ -435,7 +474,7 @@ export function AuditPage() {
             )}
           </>
         }
-        pending={query.isPending}
+        pending={pending}
         error={
           query.error
             ? {

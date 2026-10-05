@@ -22,7 +22,7 @@ const PERMISSION_RESOURCE_KEYS: Readonly<Record<string, TranslationKey>> = {
   audit: "nav.audit",
   chat_identity: "permission.resource.chatIdentity",
   chat_workspace: "permission.resource.chatWorkspace",
-  connection: "apiAccess.section.grants",
+  connection: "permission.resource.connections",
   connector: "resource.connectors.title",
   conversation: "nav.chat",
   credential: "permission.resource.credentials",
@@ -90,6 +90,47 @@ export function permissionLabel(permission: string, t: Translate): CatalogLabel 
   if (reach === undefined) return { text: t("permission.label", values), machine: false };
   if (reach === "all") return { text: t("permission.labelAll", values), machine: false };
   return { text: permission, machine: true };
+}
+
+export interface PermissionGroup {
+  key: string;
+  area: CatalogLabel;
+  items: CatalogLabel[];
+}
+
+function permissionActionLabel(permission: string, t: Translate): CatalogLabel {
+  const [, action, reach, ...rest] = permission.split(":");
+  const actionKey = action ? PERMISSION_ACTION_KEYS[action] : undefined;
+  if (!actionKey || rest.length > 0 || (reach !== undefined && reach !== "all"))
+    return { text: permission, machine: true };
+  const text = t(actionKey);
+  return {
+    text: reach === "all" ? t("permission.actionAll", { action: text }) : text,
+    machine: false,
+  };
+}
+
+export function permissionGroups(permissions: readonly string[], t: Translate): PermissionGroup[] {
+  const byArea = new Map<string, string[]>();
+  for (const permission of permissions) {
+    const [resource = permission] = permission.split(":");
+    byArea.set(resource, [...(byArea.get(resource) ?? []), permission]);
+  }
+  return [...byArea.entries()]
+    .map(([resource, held]) => {
+      const areaKey = PERMISSION_RESOURCE_KEYS[resource];
+      const known = Boolean(areaKey);
+      return {
+        key: resource,
+        area: catalogLabel(resource, areaKey, t),
+        items: [...held]
+          .sort()
+          .map((permission) =>
+            known ? permissionActionLabel(permission, t) : { text: permission, machine: true },
+          ),
+      };
+    })
+    .sort((a, b) => a.area.text.localeCompare(b.area.text));
 }
 
 export function resourceTypeLabel(resourceType: string, t: Translate): CatalogLabel {

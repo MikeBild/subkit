@@ -6,6 +6,8 @@ import {
   deliveryState,
   eventPatternLabels,
   platformLabel,
+  ruleDraftOf,
+  ruleEditBody,
   ruleNameLabel,
   rulesUsing,
   ruleTarget,
@@ -76,9 +78,9 @@ describe("rules", () => {
     const labels = eventPatternLabels(SEEDED_RULE.event_pattern, de);
     expect(labels.map((label) => label.text)).toEqual([
       "Fehlgeschlagene Läufe",
-      "Anmeldung beim Connector fehlgeschlagen",
+      "Anmeldung beim Konnektor fehlgeschlagen",
       "Anmeldung abgelehnt",
-      "Connector-Zustand geändert",
+      "Konnektor-Zustand geändert",
       "Reparatur vorgeschlagen",
     ]);
     expect(labels.every((label) => !label.machine)).toBe(true);
@@ -212,5 +214,56 @@ describe("a channel's rules", () => {
     const inbox = { ...SLACK, id: "ch-inbox", workspace_id: "_cli", channel_id: "_inbox" };
     expect(rulesUsing(inbox, [SEEDED_RULE])).toBe(1);
     expect(rulesUsing(SLACK, [SEEDED_RULE])).toBe(0);
+  });
+});
+
+describe("editing a rule", () => {
+  const slack = {
+    id: "ch-1",
+    platform: "slack",
+    workspace_id: "T1",
+    channel_id: "C1",
+    circuit_state: "closed",
+    active: true,
+  };
+  const rule = {
+    name: "Fehler",
+    event_pattern: "execution.failed",
+    workflow_pattern: "*",
+    severity: "error",
+    target_workspace_id: "T1",
+    target_channel_id: "C1",
+  };
+
+  test("the form starts from what the rule does now", () => {
+    expect(ruleDraftOf(rule, [slack])).toEqual({
+      name: "Fehler",
+      event: "execution.failed",
+      severity: "error",
+      target: "ch-1",
+    });
+  });
+
+  test("saving sends only what changed", () => {
+    const before = ruleDraftOf(rule, [slack]);
+    expect(ruleEditBody(before, { ...before }, [slack])).toEqual({});
+    expect(ruleEditBody(before, { ...before, severity: "critical" }, [slack])).toEqual({
+      severity: "critical",
+    });
+  });
+
+  test("moving the rule to the inbox names the inbox as its target", () => {
+    const before = ruleDraftOf(rule, [slack]);
+    expect(ruleEditBody(before, { ...before, target: "inbox" }, [slack])).toEqual({
+      target_workspace_id: "_cli",
+      target_channel_id: "_inbox",
+    });
+  });
+
+  test("a target no channel answers for stays untouched", () => {
+    const orphan = { ...rule, target_channel_id: "gone" };
+    const before = ruleDraftOf(orphan, [slack]);
+    expect(before.target).toBe("current");
+    expect(ruleEditBody(before, { ...before, name: "Neu" }, [slack])).toEqual({ name: "Neu" });
   });
 });

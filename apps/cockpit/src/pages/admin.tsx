@@ -14,6 +14,7 @@ import {
   Button,
   Checkbox,
   type CockpitColumn,
+  CollapsibleSection,
   ConfirmDialog,
   ContextHelp,
   CopyField,
@@ -59,6 +60,7 @@ import {
   openPeopleSection,
   PERSON_ROLES,
   type PersonRole,
+  permissionGroups,
   permissionLabel,
   personRefusal,
   readablePeopleSections,
@@ -384,6 +386,37 @@ function PermissionList({
   );
 }
 
+function PermissionGroups({
+  permissions,
+  testId,
+}: {
+  permissions: readonly string[];
+  testId: string;
+}) {
+  const { t } = useI18n();
+  const groups = permissionGroups(permissions, t);
+  return (
+    <div className="flex flex-col gap-3" data-testid={testId}>
+      {groups.map((group) => (
+        <CollapsibleSection
+          key={group.key}
+          label={group.area.text}
+          count={group.items.length}
+          testId={`${testId}-${group.key}`}
+        >
+          <ul className="grid gap-0.5 text-sm">
+            {group.items.map((item) => (
+              <li key={item.text}>
+                <LabelText label={item} />
+              </li>
+            ))}
+          </ul>
+        </CollapsibleSection>
+      ))}
+    </div>
+  );
+}
+
 function RoleChangeConsequence({
   user,
   to,
@@ -467,7 +500,8 @@ function PersonSheet({
     (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
   );
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
-  const role = user ? (roles?.find((item) => item.name === user.role) ?? null) : null;
+  const shownRoleName = user ? (picked ?? user.role) : null;
+  const role = shownRoleName ? (roles?.find((item) => item.name === shownRoleName) ?? null) : null;
   const detail = useRoleDetail(role);
   const choices = useMemo(() => {
     const all = assignableRoles(roles ?? []);
@@ -538,9 +572,11 @@ function PersonSheet({
     onError: (error) => refusalToast(error, t),
   });
 
-  const label = user ? roleName(user.role, roles, t) : null;
-  const purpose = user ? builtinRoleDescription(user.role, role?.description ?? null, t) : null;
   const changed = user && picked && picked !== user.role ? picked : null;
+  const label = user ? roleName(user.role, roles, t) : null;
+  const purpose = shownRoleName
+    ? builtinRoleDescription(shownRoleName, role?.description ?? null, t)
+    : null;
   useDirtyGuard(Boolean(changed));
   const self = user?.id === session.principal.id;
   const menu: ActionMenuItem[] =
@@ -628,7 +664,14 @@ function PersonSheet({
             roles={roles}
           />
         ) : null}
-        <Section label={t("people.sheet.permissions")} testId="people-sheet-permissions-section">
+        <Section
+          label={
+            changed
+              ? t("people.sheet.permissionsOf", { role: roleName(changed, roles, t).text })
+              : t("people.sheet.permissions")
+          }
+          testId="people-sheet-permissions-section"
+        >
           {!role ? (
             <p className="text-sm text-muted-foreground" data-testid="people-sheet-unreadable">
               {t("people.sheet.unreadable")}
@@ -637,8 +680,8 @@ function PersonSheet({
             detail.data.permissions.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("people.sheet.none")}</p>
             ) : (
-              <PermissionList
-                permissions={[...detail.data.permissions].sort()}
+              <PermissionGroups
+                permissions={detail.data.permissions}
                 testId="people-sheet-permissions"
               />
             )
@@ -1599,7 +1642,7 @@ function CreateRecordDialog({
       await client.invalidateQueries({
         queryKey: ["admin", created === "role" ? "roles" : "groups"],
       });
-      toast.success(t("access.created"));
+      toast.success(t(created === "role" ? "access.roleCreated" : "access.groupCreated"));
     },
     onError: (error) => refusalToast(error, t),
   });

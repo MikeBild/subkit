@@ -224,6 +224,18 @@ export function settingSecretStored(item: Pick<SettingItem, "value" | "meta">): 
   return item.meta.sensitive && !isUnset(item) && item.value !== "";
 }
 
+export function settingSecretCover(
+  item: Pick<SettingItem, "path" | "value" | "meta">,
+  items: readonly SettingItem[],
+): string | null {
+  if (item.path !== "llm.api_key" || settingSecretStored(item)) return null;
+  const provider = items.find((entry) => entry.path === "llm.provider")?.value;
+  if (typeof provider !== "string" || !provider) return null;
+  const path = `llm.providers.${provider}.api_key`;
+  const cover = items.find((entry) => entry.path === path);
+  return cover && settingSecretStored(cover) ? path : null;
+}
+
 export function settingIsChanged(item: SettingItem): boolean {
   if (item.meta.sensitive) return settingSecretStored(item);
   if (!settingHasDefault(item)) return false;

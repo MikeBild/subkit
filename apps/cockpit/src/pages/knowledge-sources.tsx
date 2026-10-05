@@ -39,6 +39,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { queryView } from "@/components/failure-state";
+import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
@@ -60,6 +61,7 @@ const ENDPOINT = "/v1/knowledge-sources";
 
 const KIND_KEYS = {
   url: "knowledge.kind.url",
+  discovered: "knowledge.kind.url",
   file: "knowledge.kind.file",
   text: "knowledge.kind.text",
   bundle: "knowledge.kind.bundle",
@@ -467,7 +469,7 @@ interface SourceContent {
 }
 
 export function KnowledgeSourcePage({ permissions }: { permissions: readonly string[] }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const live = useLiveQueryOptions();
@@ -500,6 +502,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     onSuccess: (source) => {
       client.setQueryData(queryKey, source);
       void client.invalidateQueries({ queryKey: [...queryKey, "chunks"] });
+      void client.invalidateQueries({ queryKey: ["catalog"] });
       toast.success(
         t("knowledge.refreshed", {
           name: source.name,
@@ -598,20 +601,22 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     ) : (
       <StatusStrip
         tone="ok"
-        line={t("knowledge.strip.active", { when: dateTime(readAt) })}
+        line={t("knowledge.strip.active", { when: formatRelativeTime(locale, readAt) })}
         testId="knowledge-strip"
       />
     );
   const sections = sourceSections(chunks.data?.items ?? []);
   const facts: Fact[] = [
-    ...(kind === "url"
+    ...(kind === "url" || kind === "discovered"
       ? [
           {
             label: t("knowledge.field.url"),
             value: <span className="font-mono text-xs">{source.source_uri}</span>,
           },
-          { label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) },
         ]
+      : []),
+    ...(kind === "url"
+      ? [{ label: t("knowledge.field.refresh"), value: rhythmLabel(t, source) }]
       : []),
     {
       label: t("knowledge.field.scope"),

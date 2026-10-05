@@ -10,12 +10,16 @@ export function skillAppliesToOptionKey(appliesTo: SkillAppliesTo): TranslationK
   return "skills.editor.appliesTo.both";
 }
 
-export function skillScopeKey(scope: string, appliesTo: string = "both"): TranslationKey {
+export function skillScopeKey(scope: string): TranslationKey {
   if (scope === "connector") return "skills.scope.connector";
   if (scope === "workflow") return "skills.scope.workflow";
-  if (appliesTo === "chat") return "skills.scope.chat";
-  if (appliesTo === "authoring") return "skills.scope.authoring";
   return "skills.scope.global";
+}
+
+export function skillWhereKey(appliesTo: string | null | undefined): TranslationKey {
+  if (appliesTo === "chat") return "skills.where.chat";
+  if (appliesTo === "authoring") return "skills.where.authoring";
+  return "skills.where.both";
 }
 
 export function skillStateLabelKey(status: string): TranslationKey {

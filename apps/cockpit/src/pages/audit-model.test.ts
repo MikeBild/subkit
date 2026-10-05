@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import type { components } from "@/api/schema";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
+import { buildNameIndex } from "@/lib/name-index";
 import {
   actorTypeLabel,
   auditActionLabel,
@@ -13,16 +14,19 @@ import {
   auditEvidenceBlocks,
   auditFilterFromUrl,
   auditLinkParams,
+  auditMetadataFacts,
   auditReasonLabel,
   auditResourceHref,
   auditResourceLabel,
   auditResultLabel,
   auditScopeParams,
+  auditSearchActions,
   auditTraceFromUrl,
   canReadDirectory,
   isAuditEntry,
   isAuditScope,
   LINKED_RESOURCE_TYPES,
+  searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
 
@@ -131,7 +135,7 @@ describe("audit vocabulary", () => {
       ["mcp_oauth_client", "audit.resource.oauthClient"],
       ["mcp_oauth_code", "audit.resource.oauthCode"],
       ["mcp_oauth_token", "audit.resource.oauthToken"],
-      ["connection", "apiAccess.section.grants"],
+      ["connection", "permission.resource.connections"],
     ];
     for (const [type, key] of named)
       expect(auditResourceLabel(type, deText), type).toEqual({ text: deText(key), machine: false });
@@ -341,14 +345,8 @@ describe("the record behind a row", () => {
 describe("the evidence the table dropped on the floor", () => {
   const kinds = (value: AuditEntry) => auditEvidenceBlocks(value).map((block) => block.kind);
 
-  test("an empty metadata object renders nothing at all", () => {
-    expect(auditEvidenceBlocks(entry({ metadata: {} }))).toEqual([]);
-  });
-
-  test("metadata with something in it gets its block", () => {
-    const blocks = auditEvidenceBlocks(entry({ metadata: { version: 7 } }));
-    expect(blocks.map((block) => block.kind)).toEqual(["metadata"]);
-    expect(blocks[0]?.text).toBe('{\n  "version": 7\n}');
+  test("metadata is never a raw block beside the snapshots", () => {
+    expect(auditEvidenceBlocks(entry({ metadata: { version: 7 } }))).toEqual([]);
   });
 
   test("a change is two blocks, before first", () => {
@@ -776,4 +774,79 @@ describe("the engine's audited resource types", () => {
       }
     });
   }
+});
+
+describe("the additional details of one record", () => {
+  const t = (key: TranslationKey, values?: Record<string, string | number>) =>
+    translate("de", key, values);
+  const names = buildNameIndex(
+    [{ id: "6f1d6c2e-0000-4000-8000-000000000001", name: "Wochenbericht" }],
+    [],
+  );
+
+  test("a workflow it names reads as the workflow's name and opens it", () => {
+    const { facts, rest } = auditMetadataFacts(
+      { workflow_id: "6f1d6c2e-0000-4000-8000-000000000001", version: 4 },
+      t,
+      names,
+    );
+    expect(facts.map((fact) => [fact.label, fact.value])).toEqual([
+      ["Workflow", "Wochenbericht"],
+      ["Fassung", "4"],
+    ]);
+    expect(facts[0]?.href).toContain("6f1d6c2e-0000-4000-8000-000000000001");
+    expect(facts[1]?.href).toBeNull();
+    expect(rest).toBeNull();
+  });
+
+  test("an unknown workflow still opens, without its identifier as the text", () => {
+    const { facts } = auditMetadataFacts(
+      { workflow_id: "6f1d6c2e-0000-4000-8000-0000000000ff" },
+      t,
+      names,
+    );
+    expect(facts[0]?.value).toBe("Workflow öffnen");
+  });
+
+  test("what has no reading of its own stays technical", () => {
+    const { facts, rest } = auditMetadataFacts(
+      { request_source: "cockpit", details: { a: 1 } },
+      t,
+      names,
+    );
+    expect(facts).toEqual([]);
+    expect(rest).toContain("request_source");
+  });
+
+  test("an empty record has no additional details", () => {
+    expect(auditMetadataFacts({}, t, names)).toEqual({ facts: [], rest: null });
+  });
+});
+
+describe("searching the whole record, not the rows on screen", () => {
+  const t = (key: TranslationKey, values?: Record<string, string | number>) =>
+    translate("de", key, values);
+
+  test("a word finds every operation it names, by label or by code", () => {
+    const actions = auditSearchActions("gelöscht", t);
+    expect(actions).toContain("connector.deleted");
+    expect(auditSearchActions("connector.deleted", t)).toEqual(["connector.deleted"]);
+    expect(auditSearchActions("zzz-nichts", t)).toEqual([]);
+  });
+
+  test("the search goes to the engine as an action filter", () => {
+    expect(searchedActionParams({ result: "error" }, ["a.b", "c.d"])).toEqual({
+      result: "error",
+      action: "a.b,c.d",
+    });
+    expect(searchedActionParams({ result: "error" }, null)).toEqual({ result: "error" });
+  });
+
+  test("a search inside a filtered view keeps only what both allow", () => {
+    expect(searchedActionParams({ action: "a.b,x.y" }, ["a.b", "c.d"])).toEqual({
+      action: "a.b",
+    });
+    expect(searchedActionParams({ action: "x.y" }, ["a.b"])).toBeNull();
+    expect(searchedActionParams({}, [])).toBeNull();
+  });
 });

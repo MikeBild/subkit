@@ -72,7 +72,7 @@ function KeyBadge({ apiKey, now }: { apiKey: ApiKeyItem; now: number }) {
   return state ? (
     <StatusBadge state={state.kind} label={keyStateText(state, t)} />
   ) : (
-    <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+    <StatusBadge state="active" />
   );
 }
 
@@ -286,7 +286,7 @@ function KeysSection({
               <StatusBadge state={state.kind} label={keyStateText(state, t)} />
             </span>
           ) : (
-            <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+            <StatusBadge state="active" />
           );
         },
         { width: "w-[20%]" },
