@@ -29,6 +29,7 @@ import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
+import { pluralKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
@@ -322,8 +323,8 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                 {sentence ? (
                   <OutcomeText sentence={sentence} />
                 ) : (
-                  t("runs.strip.done", {
-                    count: String(stepItems.length),
+                  t(pluralKey("runs.strip.done", stepItems.length), {
+                    count: stepItems.length,
                     duration: duration ?? MISSING,
                   })
                 )}

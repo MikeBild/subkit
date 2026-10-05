@@ -10,7 +10,7 @@ export function BoundaryPanels({
 }: {
   effects: WorkflowAuthorityPreview["manifest"]["effects"];
 }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   return (
     <>
       {effects
@@ -70,7 +70,7 @@ export function BoundaryPanels({
                 {shown.classNotice && <p>{t("authority.boundary.classNotice")}</p>}
                 {shown.declaredDestructive && <p>{t("authority.boundary.declaredDestructive")}</p>}
                 <p>{t(shown.body.key, shown.body.values)}</p>
-                <p>{t("authority.boundary.calls", { count: shown.calls })}</p>
+                <p>{tn("authority.boundary.calls", shown.calls)}</p>
                 {shown.paging && <p>{t(shown.paging.key, shown.paging.values)}</p>}
                 <p>{t("authority.boundary.contentNotice")}</p>
               </AlertDescription>

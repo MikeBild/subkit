@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { type Locale, translate } from "@/lib/i18n";
+import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import {
   SettingEnumSelect,
@@ -33,6 +33,7 @@ function render(node: ReactNode, locale: Locale = "de"): string {
     preference: locale,
     setPreference() {},
     t: (key, values) => translate(locale, key, values),
+    tn: (key, count, values) => translatePlural(locale, key, count, values),
     dateTime: (date) => String(date),
   } as I18nValue;
   return renderToStaticMarkup(

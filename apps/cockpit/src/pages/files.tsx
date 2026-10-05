@@ -34,7 +34,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { LOCALE_TAGS } from "@/lib/i18n";
+import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 
@@ -241,11 +241,11 @@ export function FilesPage() {
             testId="files-summary"
             text={
               allLoaded
-                ? t("files.summary", {
+                ? t(pluralKey("files.summary", total), {
                     count: total,
                     size: formatBytes(totalBytes, LOCALE_TAGS[locale]),
                   })
-                : t("files.summaryCount", { count: total })
+                : t(pluralKey("files.summaryCount", total), { count: total })
             }
             help={t("files.summaryHelp")}
           />

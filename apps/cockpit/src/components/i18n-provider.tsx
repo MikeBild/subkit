@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useSyncExternalStore } from "react";
-import { formatDateTime, translate } from "@/lib/i18n";
+import { formatDateTime, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { createLocaleStore } from "@/lib/locale-store";
 
@@ -40,6 +40,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       ...snapshot,
       setPreference: localeStore.set,
       t: (key, values) => translate(snapshot.locale, key, values),
+      tn: (key, count, values) => translatePlural(snapshot.locale, key, count, values),
       dateTime: (date) => formatDateTime(snapshot.locale, date),
     }),
     [snapshot],

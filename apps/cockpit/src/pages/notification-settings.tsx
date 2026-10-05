@@ -177,7 +177,7 @@ export function NotificationSettings({
   createChannel: boolean;
   onCreateChannel(open: boolean): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const session = useSession();
   const canWrite = session.permissions.includes("notification:write");
   const [ruleOpen, setRuleOpen] = useState<NotificationRuleItem | null>(null);
@@ -310,10 +310,10 @@ export function NotificationSettings({
       {ruleItems.length + channelItems.length > 0 ? (
         <SummaryLine
           testId="notifications-summary"
-          text={t("notifications.summary", {
-            rules: String(ruleItems.length),
-            channels: String(channelItems.length),
-          })}
+          text={`${tn("notifications.summary.rules", ruleItems.length)} · ${tn(
+            "notifications.summary.channels",
+            channelItems.length,
+          )}`}
         />
       ) : null}
       <Section label={t("notifications.rules")} testId="notifications-rules">
@@ -481,7 +481,7 @@ function ChannelSheet({
   usedBy: number;
   onClose(): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const deletion = useNotificationDelete("channels", () => {
@@ -541,7 +541,7 @@ function ChannelSheet({
                   label: t("notifications.deleteChannel"),
                   destructive: true,
                   disabled: usedBy > 0,
-                  disabledReason: t("notifications.channelInUse", { count: String(usedBy) }),
+                  disabledReason: tn("notifications.channelInUse", usedBy),
                   onSelect: () => setConfirming(true),
                   testId: "notifications-channel-delete",
                 },
@@ -559,7 +559,7 @@ function ChannelSheet({
                 value: deliveryBadge(t, delivery),
                 help:
                   delivery.kind === "suspended"
-                    ? `${t("notifications.suspendedCause", { count: String(delivery.failures) })} ${
+                    ? `${tn("notifications.suspendedCause", delivery.failures)} ${
                         delivery.until
                           ? t("notifications.suspendedUntil", { time: dateTime(delivery.until) })
                           : t("notifications.suspendedRetry")
