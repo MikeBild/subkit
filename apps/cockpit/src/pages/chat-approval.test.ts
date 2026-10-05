@@ -191,9 +191,19 @@ test("once the server records the decision, no decision card remains and nobody 
       questions: [approval],
       now: Date.parse("2030-01-01T00:00:00Z"),
       pendingApproval: decided.resume_summary!.pending_approval,
-      rowOutcome: "answered",
+      detailLoaded: true,
+      rowOutcome: "awaiting_you",
     }),
   ).toBe(false);
+  expect(
+    waitsForPerson({
+      questions: [],
+      now: Date.parse("2030-01-01T00:00:00Z"),
+      pendingApproval: null,
+      detailLoaded: false,
+      rowOutcome: "awaiting_you",
+    }),
+  ).toBe(true);
 });
 
 test("an open decision keeps the conversation fresh so a decision made elsewhere shows up", () => {
@@ -204,6 +214,7 @@ test("an open decision keeps the conversation fresh so a decision made elsewhere
       questions: [chatApproval(open)],
       now: Date.parse("2030-01-01T00:00:00Z"),
       pendingApproval: open.resume_summary!.pending_approval,
+      detailLoaded: true,
       rowOutcome: "awaiting_you",
     }),
   ).toBe(true);
@@ -212,6 +223,7 @@ test("an open decision keeps the conversation fresh so a decision made elsewhere
       questions: [chatApproval(open)],
       now: Date.parse("2100-01-01T00:00:00Z"),
       pendingApproval: open.resume_summary!.pending_approval,
+      detailLoaded: true,
       rowOutcome: "awaiting_you",
     }),
   ).toBe(false);

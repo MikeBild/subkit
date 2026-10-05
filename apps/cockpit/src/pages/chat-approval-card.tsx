@@ -3,16 +3,7 @@ import { Button, ChatCard, ContextHelp, Spinner } from "@/components/cockpit/pat
 import { formatDateTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
-import { toolLabel } from "@/lib/tool-presentation";
 import type { ChatApproval } from "./chat-approval";
-
-function toolActionText(t: ReturnType<typeof useI18n>["t"], toolName: string): string {
-  const label = toolLabel(toolName);
-  if (label.kind === "key") return t(label.key);
-  if (label.kind === "background") return t(label.words.active);
-  if (label.kind === "workflow") return label.slug;
-  return label.text;
-}
 
 export function ChatApprovalCard({
   approval,
@@ -73,7 +64,7 @@ export function ChatApprovalCard({
                     }),
               )
             : approval.gatedTool
-              ? t("chat.decision.gatedAction", { action: toolActionText(t, approval.gatedTool) })
+              ? t("chat.decision.gatedAction")
               : readable(approval.question);
   const details = approval.description ?? (approval.singleRun ? approval.question : null);
   return (

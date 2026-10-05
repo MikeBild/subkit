@@ -17,6 +17,7 @@ import {
 } from "../../connectors/services/call-connector.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
+import { scrubString } from "../../logging/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
 import {
@@ -474,10 +475,11 @@ function refused(
 }
 
 function callEffect(checked: Extract<CheckedCall, { ok: true }>): ToolEffect {
+  const target = directConnectorUrl(checked.connector, { path: checked.args.path });
   return {
-    connector: checked.connector.display_name || checked.connector.slug,
+    connector: scrubString(checked.connector.display_name || checked.connector.slug),
     method: checked.args.method ?? (checked.driver === "postgres" ? "SQL" : "GET"),
-    target: directConnectorUrl(checked.connector, { path: checked.args.path }),
+    target: target ? scrubString(target) : null,
   };
 }
 

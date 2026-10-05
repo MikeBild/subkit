@@ -179,4 +179,19 @@ describe("a person is never asked to approve a call that cannot run", () => {
     expect(events.some((event) => event.type === "elicit_request")).toBe(true);
     expect(await confirmationAuditsOf(conversation_id)).toHaveLength(1);
   });
+
+  it("a secret the model put into the path never reaches the question", async () => {
+    const conversation_id = await newConversation();
+    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    await callConnector(conversation_id, {
+      connector_id: ctx.connector_id,
+      method: "POST",
+      path: `/users/${token}`,
+      body: { name: "Ada" },
+    });
+    const [elicitation] = await elicitationsOf(conversation_id);
+    const input = elicitation?.input as { question: string; effect: { target: string } };
+    for (const text of [input.question, input.effect.target, elicitation?.summary ?? ""])
+      expect(text).not.toContain(token);
+  });
 });

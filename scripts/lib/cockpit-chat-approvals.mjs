@@ -260,7 +260,26 @@ export async function verifyChatDecidedApproval(page, stand, conversation, local
       },
     });
   const waitingLabel = locale === "de" ? "Wartet auf dich" : "Waiting for you";
+  const listPattern = (url) => url.pathname === "/v1/conversations";
+  const staleRow = {
+    ...conversation,
+    status: "awaiting_input",
+    outcome: "awaiting_you",
+    last_activity_at: conversation.updated_at,
+    hidden: false,
+    pending_elicitation_expires_at: pending.expires_at,
+    pending_elicitation_summary: pending.summary,
+    pending_elicitation_tool: pending.tool_name,
+  };
+  const staleList = (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).searchParams.get("hidden") === "only"
+          ? { items: [], total: 0 }
+          : { items: [staleRow], total: 1 },
+    });
   await page.route(detailPattern, detail);
+  await page.route(listPattern, staleList);
   try {
     await stand.visit(page, `chat/${conversation.id}`);
     const card = page.getByTestId("chat-message-0-approval");
@@ -291,5 +310,6 @@ export async function verifyChatDecidedApproval(page, stand, conversation, local
     await capture("gated-decided");
   } finally {
     await page.unroute(detailPattern, detail);
+    await page.unroute(listPattern, staleList);
   }
 }
