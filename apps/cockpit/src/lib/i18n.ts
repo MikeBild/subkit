@@ -9,15 +9,14 @@ export const LOCALE_TAGS: Record<Locale, string> = {
 const EN = {
   "authority.content.title": "Allow scheduled publication?",
   "authority.content.description":
-    "Update and publish the listed content on the existing schedule. Nothing is published now.",
+    "The content is updated and published on schedule; nothing is published now.",
   "authority.content.members": "Update {count} fixed content items",
   "authority.content.scope":
     "Only new revisions of these items, up to 1 MB each, may be published to this site. Other items and removals are excluded.",
   "authority.content.targets": "Content and publication destination",
   "authority.content.confirm": "Allow scheduled publication",
   "authority.report.title": "Allow scheduled reports?",
-  "authority.report.description":
-    "Approve future reports within the limits below. Nothing is sent now.",
+  "authority.report.description": "Allows future reports within these limits; nothing is sent now.",
   "authority.report.recipients": "Fixed delivery",
   "authority.report.delivery": "From {from} to {to}",
   "authority.report.variable":
@@ -48,7 +47,7 @@ const EN = {
 
   "chat.activation.title": "Use this change",
   "chat.activation.description":
-    "Use the saved change and allow automatic runs within the limits below. No run starts immediately.",
+    "Applies the change and allows runs within these limits; none starts now.",
   "chat.activation.confirm": "Use change and allow runs",
   "chat.activation.saved":
     "Change applied and permission saved. Automatic runs have been checked again.",
@@ -137,12 +136,12 @@ const EN = {
   "authority.unsupportedSteps": "Review these steps: {steps}",
   "authority.adjustTitle": "Automatic operation is not ready for approval",
   "authority.adjustDescription":
-    "SubKit cannot yet verify the allowed actions of this workflow. Investigate the cause here in chat. A single test run does not resolve this open decision.",
+    "SubKit cannot verify the allowed actions yet; have the cause investigated here in chat.",
   "authority.adjust": "Investigate in this chat",
   "authority.existing.title": "Already approved until {until} · {runs} runs left",
   "authority.existing.titleOne": "Already approved until {until} · 1 run left",
   "authority.existing.description":
-    "A further approval extends it or changes its limits. The existing one stays valid until it ends or is revoked.",
+    "Another approval extends the existing one or changes its limits.",
   "authority.existing.confirm": "Extend / change limits",
   "authority.scope.environment.title": "This approval only applies to {selected}",
   "authority.scope.environment.description":
@@ -187,8 +186,7 @@ const EN = {
   "authority.reviewExpired": "Review is no longer current",
   "authority.reviewExpiredHint": "Check again before granting permission.",
   "authority.grantOpen": "Review permission",
-  "authority.grantDescription":
-    "Check the targets and choose how many runs to allow. Confirming does not start a run.",
+  "authority.grantDescription": "Check the targets and set the runs; approving starts no run.",
   "authority.hours": "Valid for (hours)",
   "authority.runNotRequest": "One run can send several external requests",
   "authority.runNotRequestDescription":
@@ -2049,7 +2047,7 @@ const EN = {
   "decisions.loadMore": "Load more approvals",
   "decisions.applyAndAuthorize": "Apply correction and authorize runs",
   "decisions.applyAndAuthorizeDescription":
-    "Approve the displayed correction and allow the repaired version to run within these limits. Both changes are saved together.",
+    "Applies the correction and allows the corrected version within these limits.",
   "decisions.reviewChanged": "The reviewed change is no longer current. Reload the preview.",
   "decisions.description":
     "Review blocked workflows, proposed fixes and skill candidates before making a decision.",
@@ -3811,7 +3809,7 @@ export type TranslationKey = keyof typeof EN;
 const DE: Record<TranslationKey, string> = {
   "authority.content.title": "Regelmäßige Veröffentlichung freigeben?",
   "authority.content.description":
-    "Die aufgeführten Inhalte werden nach dem bestehenden Zeitplan aktualisiert und veröffentlicht. Jetzt wird nichts veröffentlicht.",
+    "Die Inhalte werden nach Zeitplan aktualisiert und veröffentlicht; jetzt noch nichts.",
   "authority.content.members": "{count} festgelegte Inhalte aktualisieren",
   "authority.content.scope":
     "Nur neue Fassungen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
@@ -3819,7 +3817,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.content.confirm": "Regelmäßige Veröffentlichung freigeben",
   "authority.report.title": "Regelmäßige Berichte freigeben?",
   "authority.report.description":
-    "Erlaube künftige Berichte innerhalb der folgenden Grenzen. Jetzt wird nichts versendet.",
+    "Erlaubt künftige Berichte in diesen Grenzen; jetzt wird nichts versendet.",
   "authority.report.recipients": "Fester Versand",
   "authority.report.delivery": "Von {from} an {to}",
   "authority.report.variable":
@@ -3850,7 +3848,7 @@ const DE: Record<TranslationKey, string> = {
 
   "chat.activation.title": "Änderung übernehmen",
   "chat.activation.description":
-    "Die gespeicherte Änderung übernehmen und automatische Läufe in den folgenden Grenzen erlauben. Es startet nicht sofort ein Lauf.",
+    "Übernimmt die Änderung und erlaubt Läufe in diesen Grenzen; jetzt startet keiner.",
   "chat.activation.confirm": "Übernehmen und Läufe erlauben",
   "chat.activation.saved":
     "Änderung übernommen und Freigabe gespeichert. Automatische Läufe wurden erneut geprüft.",
@@ -3943,12 +3941,12 @@ const DE: Record<TranslationKey, string> = {
   "authority.unsupportedSteps": "Diese Schritte prüfen: {steps}",
   "authority.adjustTitle": "Automatik noch nicht freigabefähig",
   "authority.adjustDescription":
-    "SubKit kann die erlaubten Aktionen dieses Ablaufs noch nicht eindeutig prüfen. Lass die Ursache hier im Chat untersuchen. Ein einzelner Testlauf erledigt diese offene Entscheidung nicht.",
+    "SubKit kann die erlaubten Aktionen noch nicht prüfen; lass die Ursache hier im Chat untersuchen.",
   "authority.adjust": "Ursache im Chat prüfen",
   "authority.existing.title": "Bereits freigegeben bis {until} · {runs} Läufe übrig",
   "authority.existing.titleOne": "Bereits freigegeben bis {until} · 1 Lauf übrig",
   "authority.existing.description":
-    "Eine weitere Freigabe verlängert sie oder ändert die Grenzen. Die bisherige bleibt gültig, bis sie endet oder widerrufen wird.",
+    "Eine weitere Freigabe verlängert die bestehende oder ändert ihre Grenzen.",
   "authority.existing.confirm": "Verlängern / Grenzen ändern",
   "authority.scope.environment.title": "Diese Freigabe gilt nur für {selected}",
   "authority.scope.environment.description":
@@ -3995,7 +3993,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.reviewExpiredHint": "Vor der Freigabe erneut prüfen.",
   "authority.grantOpen": "Freigabe prüfen",
   "authority.grantDescription":
-    "Ziele prüfen und Anzahl erlaubter Läufe festlegen. Die Bestätigung startet keinen Lauf.",
+    "Ziele prüfen und Läufe festlegen; die Freigabe startet keinen Lauf.",
   "authority.hours": "Gültig für (Stunden)",
   "authority.runNotRequest": "Ein Run kann mehrere externe Anfragen auslösen",
   "authority.runNotRequestDescription":
@@ -5892,7 +5890,7 @@ const DE: Record<TranslationKey, string> = {
   "decisions.loadMore": "Weitere Freigaben laden",
   "decisions.applyAndAuthorize": "Korrektur anwenden und Ausführungen freigeben",
   "decisions.applyAndAuthorizeDescription":
-    "Bestätige die angezeigte Korrektur und erlaube Ausführungen der korrigierten Version innerhalb dieser Grenzen. Beides wird gemeinsam gespeichert.",
+    "Übernimmt die Korrektur und erlaubt die korrigierte Version in diesen Grenzen.",
   "decisions.reviewChanged":
     "Die geprüfte Änderung ist nicht mehr aktuell. Lade die Vorschau erneut.",
   "decisions.description":
