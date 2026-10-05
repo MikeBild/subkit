@@ -34,6 +34,7 @@ import {
   type DigestFailureGroup,
   failingScheduledGroups,
 } from "./health-digest.ts";
+import { cockpitRunsHref } from "./operating-figures.ts";
 import { getOperationalOverview, type HealthState } from "./operational-overview.ts";
 import { computeRiskSignals, type RiskSignal } from "./risk-signals.ts";
 
@@ -51,8 +52,7 @@ export const attentionHref = {
     connectorIds.length === 1 && connectorIds[0]
       ? `/cockpit/connectors/${encodeURIComponent(connectorIds[0])}`
       : "/cockpit/connectors",
-  failedRuns: (workflowId: string) =>
-    `/cockpit?runs=all&workflow_id=${encodeURIComponent(workflowId)}&status=failed`,
+  failedRuns: (workflowId: string) => cockpitRunsHref({ workflowId, status: "failed" }),
   operations: "/cockpit/audit?scope=operations",
   settings: "/cockpit/settings",
   usage: "/cockpit/usage",
