@@ -298,20 +298,34 @@ function authorities(state) {
   });
   const dev = authority({ id: DEV_GRANT, execution_environment: "dev" });
   if (state.devPending) return [authority(), revoked];
+  const posted = state.granted?.visit === state.visit ? state.granted.body : null;
+  const granted = posted
+    ? {
+        valid_from: posted.valid_from,
+        valid_until: posted.valid_until,
+        max_runs: posted.max_runs,
+        remaining_runs: posted.max_runs,
+        reserved_runs: 0,
+        created_at: new Date().toISOString(),
+      }
+    : {};
+  if (state.scenario === "manual" && posted) return [authority(granted), revoked];
   if (state.scenario === "approved" || state.scenario === "repair")
     return [
       authority(
-        state.untilRevoked
-          ? {
-              valid_until: null,
-              max_runs: null,
-              remaining_runs: null,
-              reserved_runs: 41,
-              open_ended: true,
-            }
-          : state.expiring
-            ? { remaining_runs: 1, reserved_runs: 29 }
-            : {},
+        posted
+          ? granted
+          : state.untilRevoked
+            ? {
+                valid_until: null,
+                max_runs: null,
+                remaining_runs: null,
+                reserved_runs: 41,
+                open_ended: true,
+              }
+            : state.expiring
+              ? { remaining_runs: 1, reserved_runs: 29 }
+              : {},
       ),
       dev,
       revoked,
@@ -495,8 +509,9 @@ export function api(state) {
     if (path === `/v1/workflows/${WORKFLOW}/execution-authorities`) {
       if (request.method() === "POST") {
         state.grants.push(request.postDataJSON());
-        state.scenario = "approved";
-        return json(route, authority(), 201);
+        state.granted = { body: request.postDataJSON(), visit: state.visit };
+        if (state.scenario !== "manual") state.scenario = "approved";
+        return json(route, authorities(state)[0], 201);
       }
       return json(route, { items: authorities(state), next_cursor: null });
     }
@@ -697,6 +712,7 @@ export async function openTab(page, tab) {
 
 export async function open(page, stand, state, scenario) {
   state.scenario = scenario;
+  state.visit = (state.visit ?? 0) + 1;
   await stand.visit(page, `workflows/${WORKFLOW}`);
   const panel = page.getByTestId("workflow-automation");
   await page
@@ -1042,7 +1058,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
           .querySelector('[data-testid="workflow-automation"]')
           ?.getAttribute("data-state") === "approved",
       undefined,
-      { timeout: 15_000 },
+      { timeout: 5_000 },
     );
     await page.waitForLoadState("networkidle");
     panel = page.getByTestId("workflow-automation");
@@ -1298,6 +1314,34 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       );
     await page.getByTestId("workflow-delete-confirm-cancel").click();
     await page.getByTestId("workflow-delete-confirm").waitFor({ state: "hidden" });
+
+    where = at("manual, just approved");
+    await page.getByTestId("workflow-automation-action").click();
+    await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
+    await page
+      .waitForFunction(
+        () => {
+          const node = document.querySelector('[data-testid="authority-grant-confirm"]');
+          return Boolean(node) && !node.disabled;
+        },
+        { timeout: 60_000 },
+      )
+      .catch(() => {});
+    await page.getByTestId("authority-grant-confirm").click();
+    await page.getByTestId("authority-grant-cancel").waitFor({ state: "hidden" });
+    await page
+      .waitForFunction(
+        () =>
+          document
+            .querySelector('[data-testid="workflow-automation"]')
+            ?.getAttribute("data-state") === "approved",
+        undefined,
+        { timeout: 5_000 },
+      )
+      .catch(() => {});
+    const justApproved = (await text(page, "workflow-automation-state")) ?? "";
+    if (justApproved === words.states.manual)
+      throw new Error(`${where}: the approval just given still reads "${justApproved}"`);
 
     where = at("no address");
     state.address = false;

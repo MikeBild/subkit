@@ -83,9 +83,9 @@ export function useWorkflowAutomation(
   permissions: readonly string[],
 ): WorkflowAutomation {
   const client = useQueryClient();
-  const [now, setNow] = useState(() => Date.now());
+  const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), REFRESH_MS);
+    const timer = window.setInterval(() => setTick(Date.now()), REFRESH_MS);
     return () => window.clearInterval(timer);
   }, []);
   const [grantRequest, setGrantRequest] = useState(0);
@@ -130,6 +130,12 @@ export function useWorkflowAutomation(
       ),
   });
 
+  const now = Math.max(
+    tick,
+    authorities.dataUpdatedAt,
+    schedules.dataUpdatedAt,
+    status.dataUpdatedAt,
+  );
   const items = useMemo(() => {
     const pages = authorities.data?.pages;
     if (!pages || pages.some((page) => !Array.isArray(page?.items))) return null;
