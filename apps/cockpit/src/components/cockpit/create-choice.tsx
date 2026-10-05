@@ -75,13 +75,12 @@ function CreateChoiceDialog({
       manual.reset();
     }
   };
-  const title = t(kind === "workflow" ? "resource.workflows.action" : "resource.connectors.action");
   if (step === "choose")
     return (
       <FormDialog
         open={open}
         onOpenChange={close}
-        title={title}
+        title={t(kind === "workflow" ? "create.workflow.how" : "create.connector.how")}
         size="wide"
         step="choose"
         testId={`create-${kind}-dialog`}
@@ -123,7 +122,9 @@ function CreateChoiceDialog({
     <FormDialog
       open={open}
       onOpenChange={close}
-      title={title}
+      title={t(
+        kind === "workflow" ? "create.workflow.byHandTitle" : "create.connector.byHandTitle",
+      )}
       size="wide"
       step="manual"
       {...(canChat

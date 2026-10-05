@@ -55,11 +55,13 @@ function ApprovalSheet({
   authority,
   versions,
   now,
+  canRevoke,
   onClose,
 }: {
   authority: WorkflowAuthority;
   versions: ReadonlyMap<string, number>;
   now: number;
+  canRevoke: boolean;
   onClose: () => void;
 }) {
   const { t, locale } = useI18n();
@@ -106,6 +108,16 @@ function ApprovalSheet({
       title={<span title={authority.id}>{authorityHeadline(authority, t, locale)}</span>}
       titleTestId="authority-headline"
       badge={<StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />}
+      menu={
+        canRevoke && !authority.revoked_at ? (
+          <RevokeApproval
+            authority={authority}
+            versionText={version.text}
+            testId="authority-sheet"
+            onRevoked={onClose}
+          />
+        ) : undefined
+      }
       testId="authority-sheet"
       closeTestId="authority-sheet-close"
     >
@@ -130,10 +142,12 @@ function RevokeApproval({
   authority,
   versionText,
   testId,
+  onRevoked,
 }: {
   authority: WorkflowAuthority;
   versionText: string;
   testId: string;
+  onRevoked?: () => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -153,7 +167,10 @@ function RevokeApproval({
       ["attention"],
     ],
     errorMessage: () => t("authority.revokeFailed"),
-    onSuccess: () => setOpen(false),
+    onSuccess: () => {
+      setOpen(false);
+      onRevoked?.();
+    },
   });
   return (
     <>
@@ -259,6 +276,7 @@ function ApprovalTable({
           authority={open}
           versions={versions}
           now={now}
+          canRevoke={automation.canWrite}
           onClose={() => setOpen(null)}
         />
       ) : null}

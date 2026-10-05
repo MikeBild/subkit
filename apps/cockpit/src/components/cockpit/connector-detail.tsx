@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { absolute, workflowHref } from "@/app/links";
+import type { components } from "@/api/schema";
+import { absolute, chatNewHref, workflowHref } from "@/app/links";
+import { useSession } from "@/app/session";
 import {
   ActionMenu,
+  Button,
   type CockpitColumn,
   CopyField,
   DataState,
@@ -39,6 +42,7 @@ import {
   toolsWithoutConfirmation,
   transportLabel,
 } from "@/pages/connector-detail-model";
+import { triggerLabelKey } from "@/pages/workflows-model";
 
 type RecordValue = Record<string, unknown>;
 
@@ -406,6 +410,12 @@ export function ConnectorMcpTools({
   const client = useQueryClient();
   const [open, setOpen] = useState<number | null>(null);
   const trusted = toolsWithoutConfirmation(record);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current || !canTest || inspect.data || inspect.pending) return;
+    asked.current = true;
+    onInspect();
+  }, [canTest, inspect.data, inspect.pending, onInspect]);
   const runtime = useQuery({
     queryKey: ["connector-runtime", connectorId],
     queryFn: () => apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(connectorId)}/runtime`),
@@ -539,9 +549,13 @@ export function ConnectorMcpTools({
   );
 }
 
+type WorkflowListItem = components["schemas"]["WorkflowListItem"];
+
 interface WorkflowItem {
   id: string;
   name?: string | null;
+  effective_trigger?: WorkflowListItem["effective_trigger"];
+  last_executed_at?: string | null;
 }
 
 export function useConnectorWorkflows(slug: string | null) {
@@ -555,14 +569,27 @@ export function useConnectorWorkflows(slug: string | null) {
   });
 }
 
-export function ConnectorWorkflows({ slug }: { slug: string }) {
+export function ConnectorWorkflows({ slug, connectorId }: { slug: string; connectorId: string }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
+  const { permissions } = useSession();
   const query = useConnectorWorkflows(slug);
   const rows = query.data?.items ?? [];
   const columns = useMemo<CockpitColumn<WorkflowItem>[]>(() => {
     const column = tableColumns<WorkflowItem>({ t, dateTime });
-    return [column.text("name", (row) => row.name, t("runs.column.workflow"), { width: "w-full" })];
+    return [
+      column.text("name", (row) => row.name, t("runs.column.workflow"), { width: "w-[50%]" }),
+      column.custom(
+        "trigger",
+        (row) => row.effective_trigger,
+        t("catalog.trigger"),
+        (row) => (row.effective_trigger ? t(triggerLabelKey(row.effective_trigger)) : MISSING),
+        { width: "w-[25%]" },
+      ),
+      column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
+        width: "w-[25%]",
+      }),
+    ];
   }, [t, dateTime]);
   const count = query.data?.total ?? rows.length;
   return (
@@ -583,6 +610,18 @@ export function ConnectorWorkflows({ slug }: { slug: string }) {
           data={rows}
           collectionId="connector-workflow"
           emptyLine={t("connectorDetail.usage.noWorkflows")}
+          emptyAction={
+            permissions.includes("conversation:write") ? (
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={absolute(chatNewHref({ prompt: t("create.workflow.prompt"), connectorId }))}
+                  data-testid="connector-workflows-create"
+                >
+                  {t("connectorDetail.usage.createInChat")}
+                </a>
+              </Button>
+            ) : undefined
+          }
           pending={query.isPending}
           error={
             query.error

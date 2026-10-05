@@ -310,6 +310,14 @@ export function WorkflowStepsList({
           canRun={canRun}
           steps={steps}
           onClose={() => setOpen(null)}
+          {...(editor
+            ? {
+                onEdit: () => {
+                  setOpen(null);
+                  setEditing(open);
+                },
+              }
+            : {})}
         />
       ) : null}
       {editor && editing !== null ? (
@@ -332,6 +340,7 @@ function StepSheet({
   canRun,
   steps,
   onClose,
+  onEdit,
 }: {
   view: WorkflowStepView;
   index: number;
@@ -339,6 +348,7 @@ function StepSheet({
   canRun: boolean;
   steps: WorkflowSteps;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const { t } = useI18n();
   const testId = `workflow-step-${index}`;
@@ -377,6 +387,15 @@ function StepSheet({
       onOpenChange={(next) => !next && onClose()}
       title={<span className="font-mono">{definition.id}</span>}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
+      menu={
+        onEdit ? (
+          <ActionMenu
+            items={[
+              { label: t("stepEditor.edit"), onSelect: onEdit, testId: `${testId}-sheet-edit` },
+            ]}
+          />
+        ) : undefined
+      }
       action={
         canRun ? (
           <ActionMenu
