@@ -11,6 +11,7 @@ import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
+import { assertChatLayout } from "./lib/cockpit-chat-layout.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
 import { verifyChatReplies } from "./lib/cockpit-chat-replies.mjs";
@@ -3451,6 +3452,7 @@ async function assertFirstSendIsNeverLost(browser) {
 }
 
 async function assertChat(page, label) {
+  await assertChatLayout(page, label, { openList: true });
   const layout = await page.evaluate(() => {
     const rect = (testId) => {
       const element = document.querySelector(`[data-testid="${testId}"]`);
@@ -4163,11 +4165,12 @@ for (const locale of variants) {
         shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
       );
     if (standOn(verifyChatApprovals))
-      await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+      await verifyChatApprovals(page, stand, conversation, locale.name, async (state) => {
+        await assertChatLayout(page, `${locale.artifact}/${viewport.name}/chat-approval-${state}`);
+        await shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
           fullPage: false,
-        }),
-      );
+        });
+      });
     if (standOn(verifyChatDecidedApproval))
       await verifyChatDecidedApproval(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {

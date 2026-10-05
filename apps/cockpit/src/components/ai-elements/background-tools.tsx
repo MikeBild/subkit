@@ -27,7 +27,7 @@ export function BackgroundTools({ lines, testId, className }: BackgroundToolsPro
 
   if (lines.length === 1 || anyRunning) {
     return (
-      <div className={cn("mb-2 flex flex-col gap-1", className)} data-testid={testId}>
+      <div className={cn("flex flex-col gap-1", className)} data-testid={testId}>
         {lines.map((line, index) => (
           <BackgroundLine
             key={`${line.label}-${index}`}
@@ -40,7 +40,7 @@ export function BackgroundTools({ lines, testId, className }: BackgroundToolsPro
   }
 
   return (
-    <Collapsible className={cn("mb-2", className)} data-testid={testId}>
+    <Collapsible className={className} data-testid={testId}>
       <CollapsibleTrigger
         className="group/bg flex items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
         data-testid={`${testId}-toggle`}

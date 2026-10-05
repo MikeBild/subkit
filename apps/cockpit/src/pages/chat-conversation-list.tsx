@@ -35,7 +35,7 @@ export function ConversationList({
     <div className="flex min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <nav
         aria-label={t("chat.conversations")}
-        className="scrollbar-thin relative -mx-2 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"
+        className="scrollbar-thin relative grid min-h-0 flex-1 content-start gap-1 overflow-y-auto"
       >
         {failed ? (
           <DataState
