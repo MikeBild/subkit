@@ -135,7 +135,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
             updated_at: "2026-08-10T09:00:00.000Z",
             webhooks_active: 0,
             effective_trigger: { kind: "request", source: "default", state: "active" },
-            steps: [],
+            steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
             health_state: "ok",
             health_reason: null,
           }),
@@ -316,7 +316,10 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
         version: 9,
         current_version_id: activeVersionId,
         digest: "9".repeat(64),
-        definition: { name: "Monatsreport", steps: [] },
+        definition: {
+          name: "Monatsreport",
+          steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
+        },
       }),
     });
   const preview = async (route) => {
@@ -473,7 +476,10 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
         version: 9,
         current_version_id: activeVersionId,
         digest: "4".repeat(64),
-        definition: { name: "Monatsreport", steps: [] },
+        definition: {
+          name: "Monatsreport",
+          steps: [{ id: "fetch-route", name: "Seite lesen", kind: "request" }],
+        },
       }),
     });
   const preview = async (route) => {
@@ -727,7 +733,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
             current_version: 8,
             current_version_id: versionId,
             draft_version_id: null,
-            steps: [],
+            steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
             updated_at: "2026-08-10T09:00:00.000Z",
           }),
         })
@@ -1132,7 +1138,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
               current_version: 8,
               current_version_id: "5e8a1c7d-3b9f-4d26-b5e0-7a4c2f1d8b63",
               draft_version_id: "c2d7f4b8-6a1e-4c59-9d83-1f5b8e3a7c40",
-              steps: [],
+              steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
               updated_at: "2026-08-10T09:00:00.000Z",
             }),
           })
