@@ -306,6 +306,24 @@ async function loadTargetConnectors(
   return out;
 }
 
+export async function isConversationHiddenFor(
+  p: { tenant_id: string; conversation_id: string; user_id: string },
+  exec: Db,
+): Promise<boolean> {
+  const rows = await exec
+    .select({ conversation_id: conversationHidden.conversation_id })
+    .from(conversationHidden)
+    .where(
+      and(
+        eq(conversationHidden.tenant_id, p.tenant_id),
+        eq(conversationHidden.conversation_id, p.conversation_id),
+        eq(conversationHidden.user_id, p.user_id),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function setConversationHidden(
   p: { tenant_id: string; conversation_id: string; user_id: string; hidden: boolean },
   exec: Db,

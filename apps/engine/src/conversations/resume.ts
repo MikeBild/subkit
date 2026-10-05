@@ -1,4 +1,4 @@
-import { refreshDraftSummary } from "./authoring-state.ts";
+import { refreshDraftSummary, WORKFLOW_BINDING_TOOL } from "./authoring-state.ts";
 import type { ResumeFormField } from "./resume-form.ts";
 import { resumeFormFields } from "./resume-form.ts";
 import type { ConversationRecord, DraftDocument, WorkflowDraftPreviewSummary } from "./types.ts";
@@ -14,6 +14,11 @@ export interface ResumeSummary {
     environment: string | null;
   };
   stage: string;
+  focused_run: {
+    execution_id: string;
+    status: string;
+    recorded_at: string;
+  } | null;
   last_successful_probe: string | null;
   last_successful_preview: string | null;
   unsaved: boolean;
@@ -65,13 +70,28 @@ export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boole
 export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSummary {
   const { conversation, draft } = params;
   const d: Partial<DraftDocument> = draft ? refreshDraftSummary(draft) : {};
-  const workflowSaved =
+  const workflowPersisted =
     d.summary?.checkpoints.some(
       (checkpoint) =>
         checkpoint.key === "workflow_persisted" &&
         checkpoint.status === "fresh" &&
         checkpoint.ok === true,
     ) ?? false;
+  const openedOnly =
+    d.state?.checkpoints.workflow_persisted?.verified_by_tool === WORKFLOW_BINDING_TOOL;
+  const workflowSaved = workflowPersisted && !openedOnly;
+  const workflowOpen = workflowPersisted && openedOnly;
+  const latestRun = d.state?.latest_execution ?? null;
+  const focusedRun =
+    workflowOpen &&
+    latestRun &&
+    (!conversation.target_workflow_id || latestRun.workflow_id === conversation.target_workflow_id)
+      ? {
+          execution_id: latestRun.execution_id,
+          status: latestRun.status,
+          recorded_at: latestRun.recorded_at,
+        }
+      : null;
   const connector = d.connector ?? null;
   const connectorSaved = typeof connector?.saved_connector_id === "string";
   const workflow = d.workflow;
@@ -133,6 +153,8 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     connectorSaved,
     hasWorkflow,
     workflowSaved,
+    workflowOpen,
+    focusedRun: focusedRun !== null,
     probe,
     preview,
     pendingApproval,
@@ -143,6 +165,8 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     connectorSaved,
     hasWorkflow,
     workflowSaved,
+    workflowOpen,
+    focusedRun: focusedRun !== null,
     probe,
     preview,
     pendingApproval,
@@ -166,9 +190,11 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
       environment,
     },
     stage,
+    focused_run: focusedRun,
     last_successful_probe: lastProbe,
     last_successful_preview: lastPreview,
-    unsaved: activeKind === "connector" ? !connectorSaved : hasWorkflow && !workflowSaved,
+    unsaved:
+      activeKind === "connector" ? !connectorSaved : hasWorkflow && !workflowSaved && !workflowOpen,
     pending_approval: pendingApproval,
     next_action: nextAction,
     one_sentence: oneSentence,
@@ -181,6 +207,8 @@ interface NextActionInputs {
   connectorSaved: boolean;
   hasWorkflow: boolean;
   workflowSaved: boolean;
+  workflowOpen: boolean;
+  focusedRun: boolean;
   probe: ConnectorProbe | null;
   preview: WorkflowDraftPreviewSummary | null;
   pendingApproval: ResumeSummary["pending_approval"];
@@ -199,6 +227,8 @@ function computeNextAction(p: NextActionInputs): string {
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
     if (p.workflowSaved)
       return "Workflow saved. Review activation and automatic-run permission in the workflow.";
+    if (p.focusedRun) return "Ask what went wrong in this run, or how to repair it.";
+    if (p.workflowOpen) return "Describe what to change in this workflow.";
     if (p.preview?.ok !== true) {
       return "Preview a step or the whole workflow before committing.";
     }
@@ -217,6 +247,8 @@ function computeStage(
     | "connectorSaved"
     | "hasWorkflow"
     | "workflowSaved"
+    | "workflowOpen"
+    | "focusedRun"
     | "probe"
     | "preview"
     | "pendingApproval"
@@ -229,6 +261,8 @@ function computeStage(
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
     if (p.workflowSaved) return "workflow_saved";
+    if (p.focusedRun) return "run_focus";
+    if (p.workflowOpen) return "workflow_open";
     if (p.preview?.ok === true) return "workflow_ready_to_commit";
     return "workflow_drafting";
   }
@@ -263,6 +297,10 @@ function buildOneSentence(p: OneSentenceInputs): string {
       return `You were drafting ${target}${env} but have not probed it yet. ${p.nextAction}`;
     case "workflow_saved":
       return `You saved ${target}. ${p.nextAction}`;
+    case "run_focus":
+      return `You are looking into a run of ${target}. ${p.nextAction}`;
+    case "workflow_open":
+      return `You are working on ${target}. ${p.nextAction}`;
     case "workflow_ready_to_commit":
       return `You were authoring ${target}; the last preview succeeded. ${p.nextAction}`;
     case "workflow_drafting":

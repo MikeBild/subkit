@@ -1,15 +1,11 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, like, not } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConnector } from "../../connectors/service.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
-import {
-  conversationElicitations,
-  conversations,
-  conversationToolCalls,
-} from "../../db/schema/index.ts";
+import { conversationElicitations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
@@ -93,9 +89,25 @@ export interface AutoPersistInput {
     id: string;
     tool_name: string;
     input: unknown;
+    tool_call_id?: string | null;
   };
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
   db: Db;
+}
+
+async function recordGatedCallOutcome(p: AutoPersistInput, outcome: "ok" | "error"): Promise<void> {
+  const gatedCallId = p.elicitation.tool_call_id;
+  if (!gatedCallId) return;
+  await p.db
+    .update(conversationToolCalls)
+    .set({ outcome })
+    .where(
+      and(
+        eq(conversationToolCalls.tenant_id, p.tenant_id),
+        eq(conversationToolCalls.id, gatedCallId),
+        not(like(conversationToolCalls.tool, "ask\\_user\\_%")),
+      ),
+    );
 }
 
 const CHAT_DISPATCHABLE_INTENTS: ReadonlySet<CommitIntentKind> = new Set([
@@ -264,6 +276,7 @@ export async function maybeAutoPersistFromElicitation(
         conversation_id: p.conversation_id,
         synthetic,
         description: `write confirmation approved without commit_intent (kind=${inputKind})`,
+        decision: "confirmed",
       });
       return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
     }
@@ -287,6 +300,7 @@ export async function maybeAutoPersistFromElicitation(
       conversation_id: p.conversation_id,
       synthetic,
       intent,
+      decision: "declined",
     });
     return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
   }
@@ -323,12 +337,14 @@ export async function maybeAutoPersistFromElicitation(
       next_best_actions: ["cannot_help"],
       source: "harness_auto_persist",
     };
+    await recordGatedCallOutcome(p, "error");
     const callId = await injectSyntheticToolCall({
       db: p.db,
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       synthetic,
       intent,
+      decision: "confirmed",
     });
     return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
   }
@@ -612,12 +628,6 @@ export async function maybeAutoPersistFromElicitation(
             hold_writes: admitted.hold_writes,
           },
         });
-        await p.db
-          .update(conversations)
-          .set({ target_workflow_id: workflowId, updated_at: new Date() })
-          .where(
-            and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
-          );
         const heldPreview = run.warnings?.find(
           (warning) => warning.code === HELD_PREVIEW_WARNING_CODE,
         );
@@ -799,12 +809,6 @@ export async function maybeAutoPersistFromElicitation(
             tool_approval_id: claim.approval_id,
           },
         });
-        await p.db
-          .update(conversations)
-          .set({ target_workflow_id: workflowId, updated_at: new Date() })
-          .where(
-            and(eq(conversations.tenant_id, p.tenant_id), eq(conversations.id, p.conversation_id)),
-          );
         result = {
           ok: heldRun.status === "succeeded",
           data: {
@@ -1132,12 +1136,14 @@ export async function maybeAutoPersistFromElicitation(
       next_best_actions: translated.next_best_actions,
       source: "harness_auto_persist",
     };
+    await recordGatedCallOutcome(p, "error");
     const callId = await injectSyntheticToolCall({
       db: p.db,
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       synthetic,
       intent,
+      decision: "confirmed",
     });
     return { dispatched: true, synthetic_result: synthetic, synthetic_tool_call_id: callId };
   }
@@ -1173,12 +1179,14 @@ export async function maybeAutoPersistFromElicitation(
   );
 
   const synthetic = buildSyntheticFromResult(toolName, result);
+  await recordGatedCallOutcome(p, result.ok || prepared ? "ok" : "error");
   const callId = await injectSyntheticToolCall({
     db: p.db,
     tenant_id: p.tenant_id,
     conversation_id: p.conversation_id,
     synthetic,
     intent,
+    decision: "confirmed",
   });
   if (result.pause) {
     await p.db
