@@ -48,6 +48,7 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
+import { removalConsequenceKeys } from "@/lib/workflow-removal";
 import { WorkflowRecategorize } from "@/pages/catalog";
 
 type RecordValue = Record<string, unknown>;
@@ -194,17 +195,6 @@ export function WorkflowPage({
   });
 
   const menu: ActionMenuItem[] = [
-    ...(canChat
-      ? [
-          {
-            label: t("workflowPage.ask"),
-            href: absolute(
-              chatNewHref({ workflowId: id, prompt: t("workflowPage.askPrompt", { name: title }) }),
-            ),
-            testId: "workflow-menu-ask",
-          },
-        ]
-      : []),
     ...(canWrite
       ? [
           {
@@ -247,6 +237,15 @@ export function WorkflowPage({
       ? [t("invocation.mode.schedule")]
       : []),
   ];
+  const starters = {
+    webhook:
+      (state?.triggers.some((entry) => entry.kind === "hook") ?? false) || webhooksActive > 0,
+    schedule: state?.triggers.some((entry) => entry.kind === "schedule") ?? false,
+  };
+  const consequence = (removal: "delete" | "disable") =>
+    removalConsequenceKeys(removal, starters)
+      .map((key) => t(key))
+      .join(" ");
   const useSummary = state ? (
     kinds.length > 0 ? (
       <span data-testid="workflow-automation-triggers">
@@ -473,7 +472,7 @@ export function WorkflowPage({
         onOpenChange={(next) => !next && setConfirming(null)}
         object={title}
         verb={t("workflowPage.disable")}
-        consequence={t("workflowPage.disableConsequence")}
+        consequence={consequence("disable")}
         pending={lifecycle.isPending}
         onConfirm={async () => {
           await lifecycle.mutateAsync("archived").catch(() => undefined);
@@ -485,7 +484,7 @@ export function WorkflowPage({
         onOpenChange={(next) => !next && setConfirming(null)}
         object={title}
         verb={t("workflowPage.delete")}
-        consequence={t("workflowPage.deleteConsequence")}
+        consequence={consequence("delete")}
         destructive
         pending={remove.isPending}
         onConfirm={async () => {
