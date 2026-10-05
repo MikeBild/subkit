@@ -4227,7 +4227,9 @@ for (const locale of variants) {
       );
     if (standOn(verifyChatHeader))
       await verifyChatHeader(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, { fullPage: false }),
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, {
+          fullPage: false,
+        }),
       );
     if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
     if (viewport.name === "desktop")
