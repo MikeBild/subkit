@@ -635,3 +635,42 @@ export function suggestionTargets(
 export function humanStep(stepKey: string): string {
   return stepKey.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
+
+export interface ChangeFact {
+  path: string;
+  before: string;
+  after: string;
+}
+
+const CHANGE_FACT_LIMIT = 3;
+const CHANGE_VALUE_LIMIT = 120;
+
+function valueAt(source: unknown, path: string): unknown {
+  return path
+    .split(".")
+    .reduce<unknown>(
+      (current, key) =>
+        current && typeof current === "object"
+          ? (current as Record<string, unknown>)[key]
+          : undefined,
+      source,
+    );
+}
+
+function shownValue(value: unknown): string {
+  if (value === undefined) return "—";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > CHANGE_VALUE_LIMIT ? `${text.slice(0, CHANGE_VALUE_LIMIT - 1)}…` : text;
+}
+
+export function changeFacts(
+  before: unknown,
+  after: unknown,
+  paths: readonly string[] | null | undefined,
+): ChangeFact[] {
+  return (paths ?? []).slice(0, CHANGE_FACT_LIMIT).map((path) => ({
+    path,
+    before: shownValue(valueAt(before, path)),
+    after: shownValue(valueAt(after, path)),
+  }));
+}
