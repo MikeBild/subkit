@@ -45,7 +45,7 @@ import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automat
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
 import { type AuthorityPages, withProvisionalAuthority } from "@/lib/optimistic-authorities";
-import { environmentToCorrectTo } from "@/lib/resolved-environment";
+import { environmentToCorrectTo, heldEnvironments } from "@/lib/resolved-environment";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   AUTHORITY_EFFECT_KEYS,
@@ -176,14 +176,21 @@ export function GrantWorkflowAuthority({
       let asked = env;
       let result = await preview(asked);
       if (!isLatest(token)) throw superseded();
-      if (!settled.current && environmentToCorrectTo(result, asked, [])) {
+      if (
+        !settled.current &&
+        environmentToCorrectTo(result, asked, heldEnvironments({ chosen: initialEnvironment }))
+      ) {
         const runsIn = await loadGrantStartedIn(
           client,
           workflowId,
           session.permissions.includes("schedule:read"),
         );
         if (!isLatest(token)) throw superseded();
-        const belongs = environmentToCorrectTo(result, asked, ranIn ? [...runsIn, ranIn] : runsIn);
+        const belongs = environmentToCorrectTo(
+          result,
+          asked,
+          heldEnvironments({ chosen: initialEnvironment, ranIn, runsIn }),
+        );
         settled.current = true;
         if (belongs) {
           asked = belongs;

@@ -48,3 +48,14 @@ export function environmentToCorrectTo(
   const [only] = [...resolved];
   return only && only !== current ? only : null;
 }
+
+export function heldEnvironments(sources: {
+  chosen?: ReviewEnvironment | null;
+  ranIn?: ReviewEnvironment | null;
+  runsIn?: readonly ReviewEnvironment[];
+}): ReviewEnvironment[] {
+  const held = new Set<ReviewEnvironment>(sources.runsIn ?? []);
+  if (sources.chosen) held.add(sources.chosen);
+  if (sources.ranIn) held.add(sources.ranIn);
+  return [...held];
+}
