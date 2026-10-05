@@ -21834,6 +21834,11 @@ export interface components {
                             tool: string;
                             server_claim?: string;
                         };
+                        effect?: {
+                            connector: string;
+                            method: string;
+                            target: string | null;
+                        };
                     };
                     expires_at: string;
                 } | null;

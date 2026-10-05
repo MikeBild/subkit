@@ -9,7 +9,7 @@ import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with {
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
-import { verifyChatApprovals } from "./lib/cockpit-chat-approvals.mjs";
+import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
 import { verifyChatChoices } from "./lib/cockpit-chat-choices.mjs";
 import { verifyChatOAuth } from "./lib/cockpit-chat-oauth.mjs";
 import { verifyChatReauth } from "./lib/cockpit-chat-reauth.mjs";
@@ -4164,6 +4164,12 @@ for (const locale of variants) {
       );
     if (standOn(verifyChatApprovals))
       await verifyChatApprovals(page, stand, conversation, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+          fullPage: false,
+        }),
+      );
+    if (standOn(verifyChatDecidedApproval))
+      await verifyChatDecidedApproval(page, stand, conversation, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
           fullPage: false,
         }),

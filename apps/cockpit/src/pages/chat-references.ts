@@ -72,3 +72,33 @@ export function collectReferencedResources(
     .sort((a, b) => b.at.localeCompare(a.at) || b.order - a.order)
     .map(({ order: _order, ...resource }) => resource);
 }
+
+export interface NamedResource {
+  id: string;
+  kind: string;
+  label: string;
+}
+
+export function namedResources(sources: {
+  target:
+    | { id?: string | null; name?: string | null; slug?: string | null; kind: string }
+    | null
+    | undefined;
+  created: ReadonlyArray<{ id: string; kind: string; name?: string | null; slug?: string | null }>;
+  referenced: readonly ReferencedResource[];
+}): Map<string, NamedResource> {
+  const named = new Map<string, NamedResource>();
+  const target = sources.target;
+  const targetLabel = target?.name || target?.slug;
+  if (target?.id && targetLabel && target.kind !== "none")
+    named.set(target.id, { id: target.id, kind: target.kind, label: targetLabel });
+  for (const resource of sources.created) {
+    const label = resource.name || resource.slug;
+    if (label) named.set(resource.id, { id: resource.id, kind: resource.kind, label });
+  }
+  for (const resource of sources.referenced) {
+    if (resource.unresolved) continue;
+    named.set(resource.id, { id: resource.id, kind: resource.type, label: resource.label });
+  }
+  return named;
+}

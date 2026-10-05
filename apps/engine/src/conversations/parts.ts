@@ -14,11 +14,13 @@ export function toMessageParts(
   const text = extractText(message.content);
   if (text !== null && text.length > 0) {
     const refs = extractReferences(message.content);
+    const decision = extractDecision(message.content);
     parts.push({
       type: "text",
       text,
       ...(refs.references ? { references: refs.references } : {}),
       ...(refs.unresolved ? { unresolved_references: refs.unresolved } : {}),
+      ...(decision ? { decision } : {}),
     });
   }
 
@@ -109,6 +111,13 @@ function extractReferences(content: unknown): {
     references: isReferenceArray(rec.references) ? rec.references : null,
     unresolved: isReferenceArray(rec.unresolved_references) ? rec.unresolved_references : null,
   };
+}
+
+function extractDecision(content: unknown): { state: string; tool: string | null } | null {
+  if (content === null || typeof content !== "object") return null;
+  const rec = content as Record<string, unknown>;
+  if (rec.kind !== "confirmation_decision" || typeof rec.to_state !== "string") return null;
+  return { state: rec.to_state, tool: typeof rec.tool === "string" ? rec.tool : null };
 }
 
 function extractText(content: unknown): string | null {

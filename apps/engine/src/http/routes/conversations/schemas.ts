@@ -182,6 +182,13 @@ export const ConversationDetailSchema = z
                     server_claim: z.string().optional(),
                   })
                   .optional(),
+                effect: z
+                  .object({
+                    connector: z.string(),
+                    method: z.string(),
+                    target: z.string().nullable(),
+                  })
+                  .optional(),
               })
               .optional(),
             expires_at: z.string(),

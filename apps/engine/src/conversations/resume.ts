@@ -27,6 +27,7 @@ export interface ResumeSummary {
       authorization_url?: string;
       fields?: ResumeFormField[];
       external_tool?: ExternalToolSubject;
+      effect?: ConnectorCallSubject;
     };
     summary: string;
     expires_at: string;
@@ -279,6 +280,20 @@ export interface ExternalToolSubject {
   server_claim?: string;
 }
 
+export interface ConnectorCallSubject {
+  connector: string;
+  method: string;
+  target: string | null;
+}
+
+function connectorCallSubject(value: unknown): ConnectorCallSubject | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { connector, method, target } = value as Record<string, unknown>;
+  if (typeof connector !== "string" || !connector.trim()) return undefined;
+  if (typeof method !== "string" || !method.trim()) return undefined;
+  return { connector, method, target: typeof target === "string" && target ? target : null };
+}
+
 function externalToolSubject(value: unknown): ExternalToolSubject | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const { connector, tool, server_claim } = value as Record<string, unknown>;
@@ -298,6 +313,7 @@ export function pendingPrompt(input: unknown): {
     authorization_url?: string;
     fields?: ResumeFormField[];
     external_tool?: ExternalToolSubject;
+    effect?: ConnectorCallSubject;
   };
 } {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
@@ -305,6 +321,7 @@ export function pendingPrompt(input: unknown): {
   if (typeof value.question !== "string" || !value.question.trim()) return {};
   const fields = resumeFormFields(value.fields);
   const externalTool = externalToolSubject(value.external_tool);
+  const effect = connectorCallSubject(value.effect);
   const intent = value.commit_intent as { kind?: unknown } | undefined;
   let authorizationUrl: string | undefined;
   if (intent?.kind === "oauth_completed" && typeof value.authorization_url === "string") {
@@ -327,6 +344,7 @@ export function pendingPrompt(input: unknown): {
       ...(typeof intent?.kind === "string" ? { intent_kind: intent.kind } : {}),
       ...(authorizationUrl ? { authorization_url: authorizationUrl } : {}),
       ...(externalTool ? { external_tool: externalTool } : {}),
+      ...(effect ? { effect } : {}),
     },
   };
 }

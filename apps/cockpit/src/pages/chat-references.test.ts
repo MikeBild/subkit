@@ -1,5 +1,42 @@
 import { describe, expect, test } from "bun:test";
-import { collectReferencedResources } from "./chat-references";
+import { collectReferencedResources, namedResources } from "./chat-references";
+
+describe("namedResources", () => {
+  test("an id is named by the resource it belongs to, not by the name the draft targets", () => {
+    const named = namedResources({
+      target: { kind: "workflow", id: "workflow-growth", name: "watchkit-finding-triage" },
+      created: [],
+      referenced: [
+        {
+          type: "workflow",
+          id: "workflow-growth",
+          label: "Mission Cockpit weekly growth report",
+          at: "2026-09-01T10:00:00Z",
+          unresolved: false,
+        },
+      ],
+    });
+    expect(named.get("workflow-growth")?.label).toBe("Mission Cockpit weekly growth report");
+  });
+
+  test("a created resource outranks the target, and an unresolved reference names nothing", () => {
+    const named = namedResources({
+      target: { kind: "workflow", id: "workflow-1", name: "draft name" },
+      created: [{ kind: "workflow", id: "workflow-1", name: "Saved report", slug: "saved-report" }],
+      referenced: [
+        {
+          type: "connector",
+          id: "connector-1",
+          label: "gone",
+          at: "2026-09-01T10:00:00Z",
+          unresolved: true,
+        },
+      ],
+    });
+    expect(named.get("workflow-1")?.label).toBe("Saved report");
+    expect(named.has("connector-1")).toBe(false);
+  });
+});
 
 describe("collectReferencedResources", () => {
   test("deduplicates by type and id while the latest occurrence owns the label and state", () => {
