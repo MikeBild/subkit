@@ -75,7 +75,7 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (scheduleText.includes("foreign-fixture"))
       throw new Error("Cockpit presents another workflow's schedule as this one's");
     if (!(await rhythm.count())) throw new Error("The schedule's rhythm is not stated");
-    await page.getByTestId("workflow-tabs-tab-aufbau").click();
+    await page.getByTestId("workflow-tabs-tab-structure").click();
     await page
       .locator(
         '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',

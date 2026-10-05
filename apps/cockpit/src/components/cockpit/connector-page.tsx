@@ -357,7 +357,7 @@ export function ConnectorPage({
 
   const tabs: PageTab[] = [
     {
-      value: "verwendung",
+      value: "usage",
       label: t("connectorPage.tab.usage"),
       content: (
         <>
@@ -371,7 +371,7 @@ export function ConnectorPage({
       ),
     },
     {
-      value: "verbindung",
+      value: "connection",
       label: t("connectorPage.tab.connection"),
       content: (
         <>
@@ -422,7 +422,7 @@ export function ConnectorPage({
     ...(isMcp
       ? [
           {
-            value: "werkzeuge",
+            value: "tools",
             label: t("connectorPage.tab.tools"),
             content: (
               <ConnectorMcpTools

@@ -182,6 +182,13 @@ export const ConversationDetailSchema = z
                     server_claim: z.string().optional(),
                   })
                   .optional(),
+                effect: z
+                  .object({
+                    connector: z.string(),
+                    method: z.string(),
+                    target: z.string().nullable(),
+                  })
+                  .optional(),
               })
               .optional(),
             expires_at: z.string(),
@@ -216,6 +223,13 @@ export const CreateBody = z
   .object({
     connector_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    execution_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "The run this conversation is about. Binds the conversation to the run's workflow (workflow_id must match when both are given) so 'this run' resolves to it.",
+      ),
     initial_message: z.string().optional(),
     memory: z.string().optional(),
     model: z.string().optional(),
