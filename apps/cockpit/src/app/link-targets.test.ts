@@ -154,3 +154,16 @@ test("every address the cockpit builds resolves to one of its pages", () => {
     .map((entry) => `${entry.file}: ${entry.value} -> ${entry.route}`);
   expect(dead).toEqual([]);
 });
+
+test("the engine narrows the run list with the same query keys the overlay reads", () => {
+  const source = readFileSync(join(ENGINE_SRC, "operator", "operating-figures.ts"), "utf8");
+  const block = /COCKPIT_RUNS_FILTER_PARAMS = \{([^}]*)\}/.exec(source)?.[1] ?? "";
+  const engineKeys = Object.fromEntries(
+    [...block.matchAll(/(\w+): "([^"]+)"/g)].map((m) => [m[1], m[2]]),
+  );
+  expect(engineKeys).toEqual({ ...links.RUNS_FILTER_PARAMS });
+  const spelled = engineCockpitAddresses()
+    .filter((entry) => /[?&]runs=all/.test(entry.value))
+    .map((entry) => `${entry.file}: ${entry.value}`);
+  expect(spelled).toEqual([]);
+});

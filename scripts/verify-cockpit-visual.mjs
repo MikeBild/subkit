@@ -29,7 +29,7 @@ import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
-import { verifyRunSheet } from "./lib/cockpit-run-sheet.mjs";
+import { verifyRunSheet, verifyRunsOverCatalog } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
 import {
   assertSingleTriggers,
@@ -846,7 +846,7 @@ const ATTENTION_ITEMS = [
       },
       {
         verb: "open_runs",
-        href: `/cockpit?runs=all&workflow_id=${runWorkflowId}&status=failed`,
+        href: `/cockpit?runs=all&runs_workflow=${runWorkflowId}&runs_status=failed`,
         primary: false,
         permission: "execution:read",
       },
@@ -1872,7 +1872,7 @@ async function mockApi(route) {
     const to = url.searchParams.get("to");
     if (!from || !to)
       return json(route, { code: "validation", message: "request validation failed" }, 400);
-    const window = { started_from: from, started_to: to };
+    const window = { runs_from: from, runs_to: to };
     return json(route, {
       schema_version: "operating-figures.v1",
       window: { from, to },
@@ -1883,7 +1883,7 @@ async function mockApi(route) {
         finished: 40,
         success_rate_percent: 90,
         href: `/cockpit?${new URLSearchParams({ runs: "all", ...window })}`,
-        failed_href: `/cockpit?${new URLSearchParams({ runs: "all", status: "failed", ...window })}`,
+        failed_href: `/cockpit?${new URLSearchParams({ runs: "all", runs_status: "failed", ...window })}`,
       },
       connectors: {
         enabled: 32,
@@ -2932,7 +2932,7 @@ async function assertOperationsBar(page, label) {
   if (shape.belowTop !== null && shape.belowTop > shape.innerHeight)
     throw new Error(`${label}: the bar pushes what needs the reader below the first screen`);
   for (const href of shape.links)
-    if (!/started_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
+    if (!/runs_from=|ts_from=|health=not_ok|\/usage(\?window=24h)?$/.test(href ?? ""))
       throw new Error(`${label}: a figure links to ${href}, not to the list of its window`);
   if (!/412[,.]87/.test(shape.budget ?? ""))
     throw new Error(
@@ -4267,6 +4267,12 @@ for (const locale of variants) {
         uuid,
         locale.name,
         `${locale.artifact}/${viewport.name}/run-sheet`,
+      );
+    if (standOn(verifyRunsOverCatalog))
+      await verifyRunsOverCatalog(
+        page,
+        stand,
+        `${locale.artifact}/${viewport.name}/runs-over-catalog`,
       );
     if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>

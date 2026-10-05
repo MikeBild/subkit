@@ -2,12 +2,38 @@ import { expect, test } from "bun:test";
 import { attentionHref } from "./attention-readers.ts";
 import { cockpitRunsHref } from "./operating-figures.ts";
 
-test("the run list is the overlay on Übersicht, narrowed by its query", () => {
-  expect(cockpitRunsHref({})).toBe("/cockpit?runs=all");
-  expect(cockpitRunsHref({ status: "failed", started_from: "2026-01-01T00:00:00.000Z" })).toBe(
-    "/cockpit?runs=all&status=failed&started_from=2026-01-01T00%3A00%3A00.000Z",
+test("the run list is the overlay on Übersicht, narrowed by its own query keys", () => {
+  expect(cockpitRunsHref()).toBe("/cockpit?runs=all");
+  expect(cockpitRunsHref({ status: "failed", startedFrom: "2026-01-01T00:00:00.000Z" })).toBe(
+    "/cockpit?runs=all&runs_status=failed&runs_from=2026-01-01T00%3A00%3A00.000Z",
   );
-  expect(attentionHref.failedRuns("w/1")).toBe("/cockpit?runs=all&workflow_id=w%2F1&status=failed");
+  expect(cockpitRunsHref({ status: "failed", source: "scheduler" })).toBe(
+    "/cockpit?runs=all&runs_status=failed&runs_source=scheduler",
+  );
+  expect(attentionHref.failedRuns("w/1")).toBe(
+    "/cockpit?runs=all&runs_workflow=w%2F1&runs_status=failed",
+  );
+});
+
+test("a run link never claims a query key the page under the overlay owns", () => {
+  const href = cockpitRunsHref({
+    workflowId: "w",
+    status: "failed",
+    source: "api",
+    q: "x",
+    startedFrom: "a",
+    startedTo: "b",
+  });
+  const keys = [...new URL(href, "http://cockpit.example").searchParams.keys()];
+  expect(keys).toEqual([
+    "runs",
+    "runs_workflow",
+    "runs_status",
+    "runs_source",
+    "runs_q",
+    "runs_from",
+    "runs_to",
+  ]);
 });
 
 test("an account sign-in leads to the one connector that uses it, else the list", () => {

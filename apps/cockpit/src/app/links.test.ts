@@ -89,9 +89,9 @@ describe("router-relative, and absolute only on request", () => {
       to: "/",
       search: { review: "skills" },
     });
-    expect(routerTarget(`/cockpit?runs=all&workflow_id=${ID}&status=failed`)).toEqual({
+    expect(routerTarget(`/cockpit?runs=all&runs_workflow=${ID}&runs_status=failed`)).toEqual({
       to: "/",
-      search: { runs: "all", workflow_id: ID, status: "failed" },
+      search: { runs: "all", runs_workflow: ID, runs_status: "failed" },
     });
     const panel = routerTarget(`/cockpit/workflows/${ID}#workflow-automation`);
     expect(`${panel.to}#${panel.hash}`).toBe(workflowAutomationHref(ID));
@@ -125,9 +125,9 @@ describe("runs", () => {
   });
 
   test("a window that is not two instants is dropped, never forwarded", () => {
-    expect(filterFromUrl("?started_from=yesterday").startedFrom).toBeNull();
-    expect(filterFromUrl("?started_to=2026-13-45T99:00:00Z").startedTo).toBeNull();
-    expect(filterFromUrl("?started_from=2026-08-03T14:00:00%2B02:00").startedFrom).toBe(
+    expect(filterFromUrl("?runs_from=yesterday").startedFrom).toBeNull();
+    expect(filterFromUrl("?runs_to=2026-13-45T99:00:00Z").startedTo).toBeNull();
+    expect(filterFromUrl("?runs_from=2026-08-03T14:00:00%2B02:00").startedFrom).toBe(
       "2026-08-03T12:00:00.000Z",
     );
   });
@@ -137,6 +137,34 @@ describe("runs", () => {
     expect(runHref(ID)).toBe(`/?run=${ID}`);
     expect(runOverlayFromUrl(query(runsHref()))).toEqual({ list: true, runId: null });
     expect(runOverlayFromUrl(query(runHref(ID)))).toEqual({ list: false, runId: ID });
+  });
+
+  test("the list narrows with its own keys, never the page's q, status or source", () => {
+    const href = runsHref({
+      workflowId: ID,
+      status: "failed",
+      source: "scheduler",
+      q: "x",
+      startedFrom: "2026-08-03T12:00:00.000Z",
+      startedTo: "2026-08-10T12:00:00.000Z",
+    });
+    expect([...new URLSearchParams(query(href)).keys()]).toEqual([
+      "runs",
+      "runs_workflow",
+      "runs_status",
+      "runs_source",
+      "runs_q",
+      "runs_from",
+      "runs_to",
+    ]);
+    expect(filterFromUrl(`?q=foo&status=failed&source=api&workflow_id=${ID}`)).toEqual({
+      workflowId: null,
+      status: "all",
+      source: "all",
+      q: "",
+      startedFrom: null,
+      startedTo: null,
+    });
   });
 
   test("the list's word for no narrowing is left out of the address", () => {

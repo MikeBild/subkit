@@ -1,7 +1,36 @@
 const COPY = {
-  de: { summary: "240 Läufe · 120 fehlgeschlagen" },
-  en: { summary: "240 runs · 120 failed" },
+  de: { summary: "240 Läufe · 120 fehlgeschlagen", total: "240 Läufe" },
+  en: { summary: "240 runs · 120 failed", total: "240 runs" },
 };
+
+const FILTER_KEYS = [
+  "runs_workflow",
+  "runs_status",
+  "runs_source",
+  "runs_q",
+  "runs_from",
+  "runs_to",
+];
+
+async function summaryReads(page, expected, where, why) {
+  const summary = page.locator('[data-testid="runs-summary"]');
+  await summary.waitFor({ state: "visible", timeout: 5000 }).catch((error) => {
+    throw new Error(`${where}: ${why} — the summary line is gone`, { cause: error });
+  });
+  await page
+    .waitForFunction(
+      (text) =>
+        document.querySelector('[data-testid="runs-summary"]')?.textContent?.trim() === text,
+      expected,
+      { timeout: 5000 },
+    )
+    .catch(async (error) => {
+      throw new Error(
+        `${where}: ${why} — "${(await summary.innerText()).trim()}", expected "${expected}"`,
+        { cause: error },
+      );
+    });
+}
 
 async function sheetWidth(page, testId) {
   const sheet = page.locator(`[data-testid="${testId}"]`);
@@ -57,17 +86,44 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
   await page.locator('[data-testid="run-step-sheet"]').waitFor({ state: "hidden" });
   await page.locator('[data-testid="run-detail"]').waitFor({ state: "visible" });
 
-  await stand.visit(page, "?runs=all");
-  const summary = page.locator('[data-testid="runs-summary"]');
-  await summary.waitFor({ state: "visible" });
-  const line = (await summary.innerText()).trim();
-  if (line !== copy.summary)
-    throw new Error(
-      `${where}: the summary counts failures in the loaded rows, not in the window — "${line}", expected "${copy.summary}"`,
+  let refused = 0;
+  const failedCount = (route) => {
+    if (!(new URL(route.request().url()).searchParams.get("status") ?? "").includes(","))
+      return route.fallback();
+    refused += 1;
+    return route.fulfill({ status: 500, json: { error: { code: "internal", message: "down" } } });
+  };
+  await page.route("**/v1/executions?**", failedCount);
+  try {
+    await stand.visit(page, "?runs=all");
+    await summaryReads(
+      page,
+      copy.total,
+      where,
+      "a failed count that cannot be read must not hide the total",
     );
+    const deadline = Date.now() + 15_000;
+    while (refused < 4 && Date.now() < deadline) await page.waitForTimeout(250);
+    if (refused < 4)
+      throw new Error(
+        `${where}: the failed count was asked ${refused} times, not once and three retries — the error state was never reached`,
+      );
+    await page.waitForTimeout(300);
+    await summaryReads(page, copy.total, where, "the total vanished once the failed count gave up");
+  } finally {
+    await page.unroute("**/v1/executions?**", failedCount);
+  }
+
+  await stand.visit(page, "?runs=all");
+  await summaryReads(
+    page,
+    copy.summary,
+    where,
+    "the summary counts failures in the loaded rows, not in the window",
+  );
 
   await page.locator('[data-testid="runs-search"]').fill("Monatsreport");
-  await page.waitForURL(/[?&]q=Monatsreport/, { timeout: 3000 }).catch((error) => {
+  await page.waitForURL(/[?&]runs_q=Monatsreport/, { timeout: 3000 }).catch((error) => {
     throw new Error(`${where}: the search is not kept in the address — ${page.url()}`, {
       cause: error,
     });
@@ -77,7 +133,7 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
   if (kept !== "Monatsreport")
     throw new Error(`${where}: a reload lost the search — the field reads "${kept}"`);
   await page.locator('[data-testid="runs-search"]').fill("");
-  await page.waitForURL((url) => !url.searchParams.has("q"), { timeout: 3000 });
+  await page.waitForURL((url) => !url.searchParams.has("runs_q"), { timeout: 3000 });
 
   const listed = await sheetWidth(page, "resource-runs");
   await page
@@ -113,4 +169,52 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
     .catch((error) => {
       throw new Error(`${where}: one Escape did not close the sheet`, { cause: error });
     });
+}
+
+export async function verifyRunsOverCatalog(page, stand, where) {
+  const host = { q: "foo", status: "active" };
+  const hostKept = (url, when) => {
+    const params = new URL(url).searchParams;
+    if (params.get("q") !== host.q || params.get("status") !== host.status)
+      throw new Error(`${where}: ${when} the catalog's own q and status left the address — ${url}`);
+  };
+  await stand.visit(page, `workflows?q=${host.q}&status=${host.status}&runs=all`);
+  await page.locator('[data-testid="resource-runs"]').waitFor({ state: "visible" });
+  hostKept(page.url(), "opening the runs");
+  const read = await page.locator('[data-testid="runs-search"]').inputValue();
+  if (read !== "")
+    throw new Error(`${where}: the runs read the catalog's search "${read}" as their own`);
+  if (new URL(page.url()).searchParams.has("runs_status"))
+    throw new Error(`${where}: the runs read the catalog's status as their own — ${page.url()}`);
+
+  await page.locator('[data-testid="runs-search"]').fill("Bericht");
+  await page.waitForURL(/[?&]runs_q=Bericht/, { timeout: 3000 }).catch((error) => {
+    throw new Error(`${where}: the runs search is not kept in its own key — ${page.url()}`, {
+      cause: error,
+    });
+  });
+  hostKept(page.url(), "searching the runs");
+
+  await page.keyboard.press("Escape");
+  await page.locator('[data-testid="resource-runs"]').waitFor({ state: "hidden", timeout: 3000 });
+  hostKept(page.url(), "closing the runs");
+  const left = [...new URL(page.url()).searchParams.keys()].filter(
+    (key) => key === "runs" || FILTER_KEYS.includes(key),
+  );
+  if (left.length)
+    throw new Error(`${where}: closing the runs left ${left.join(", ")} in the address`);
+  const kept = await page.locator('[data-testid="catalog-search"]').inputValue();
+  if (kept !== host.q)
+    throw new Error(`${where}: the catalog search reads "${kept}" after the runs closed`);
+  if (
+    (await page
+      .locator('[data-testid="catalog-workflows"] [data-testid$="-row-0"]:visible')
+      .count()) === 0
+  )
+    throw new Error(`${where}: the catalog shows no rows after the runs closed`);
+
+  await page.reload({ waitUntil: "networkidle" });
+  const reloaded = await page.locator('[data-testid="catalog-search"]').inputValue();
+  if (reloaded !== host.q)
+    throw new Error(`${where}: a reload after closing the runs lost the catalog search`);
 }

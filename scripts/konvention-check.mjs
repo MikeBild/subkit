@@ -358,7 +358,7 @@ const ATTENTION_ITEMS = [
       },
       {
         verb: "open_runs",
-        href: `/cockpit?runs=all&workflow_id=${ID}&status=failed`,
+        href: `/cockpit?runs=all&runs_workflow=${ID}&runs_status=failed`,
         primary: false,
         permission: "execution:read",
       },
@@ -1012,7 +1012,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
         return json(route, { code: "validation", message: "request validation failed" }, 400);
       const rows = catalogRows("/v1/connectors").filter((row) => row.enabled === true);
       const notOk = rows.filter((row) => row.health_state !== "ok").length;
-      const window = { started_from: from, started_to: to };
+      const window = { runs_from: from, runs_to: to };
       return json(route, {
         schema_version: "operating-figures.v1",
         window: { from, to },
@@ -1023,7 +1023,7 @@ function apiMock(gateOpen, { unknownDecisionKind = false, failedAttentionSource 
           finished: 22,
           success_rate_percent: 91,
           href: `/cockpit?${new URLSearchParams({ runs: "all", ...window })}`,
-          failed_href: `/cockpit?${new URLSearchParams({ runs: "all", status: "failed", ...window })}`,
+          failed_href: `/cockpit?${new URLSearchParams({ runs: "all", runs_status: "failed", ...window })}`,
         },
         connectors: {
           enabled: rows.length,
@@ -2029,10 +2029,10 @@ async function checkOperationsBar(page, where) {
           ? figure.state === "uncapped"
             ? query.get("leaf") === "tokens.monthly_budget"
             : target.pathname.endsWith("/usage")
-          : Boolean(query.get("started_from") && query.get("started_to"));
+          : Boolean(query.get("runs_from") && query.get("runs_to"));
     if (!windowed)
       breach("§10.1", `${where} · ${figure.id}`, `links to ${figure.href} — not the same window`);
-    if (figure.id === "operations-figure-successRate" && query.get("status") !== "failed")
+    if (figure.id === "operations-figure-successRate" && query.get("runs_status") !== "failed")
       breach("§10.1", `${where} · ${figure.id}`, "the rate does not open the failed runs");
   }
 }

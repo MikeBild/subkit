@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, runHref, workflowHref } from "@/app/links";
+import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
   ActionButton,
@@ -50,6 +50,7 @@ import {
   previewText,
   REQUEST_SOURCES,
   RUN_STATUSES,
+  RUNS_FILTER_KEYS,
   type RunFact,
   requestSourceLabel,
   rerunFailureText,
@@ -62,6 +63,7 @@ import {
   runOverlayFromUrl,
   runStatusSentence,
   runsFilterSearch,
+  runsSummaryText,
   runVerdict,
   SOURCE_KIND_KEYS,
   stepConnectorId,
@@ -463,7 +465,7 @@ function RunStepSheet({
 }
 
 function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, tn, dateTime, locale } = useI18n();
   const [initial] = useState(() => filterFromUrl(window.location.search));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
@@ -524,7 +526,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     window.history.replaceState(
       window.history.state,
       "",
-      `${window.location.pathname}${query ? `?${query}` : ""}`,
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
     );
   }, []);
 
@@ -597,17 +599,14 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     setSourceFilter("all");
     setWorkflowFilter(null);
     setStartedWindow({ from: null, to: null });
-    forgetInAddress(["workflow_id", "status", "source", "q", "started_from", "started_to"]);
+    forgetInAddress(RUNS_FILTER_KEYS);
   }, [forgetInAddress]);
 
   return (
     <div className="flex flex-col gap-6">
-      {list.query.data && failedCount !== null ? (
+      {list.query.data ? (
         <SummaryLine
-          text={t((list.total ?? rows.length) === 1 ? "runs.summary.one" : "runs.summary.other", {
-            count: list.total ?? rows.length,
-            failed: failedCount,
-          })}
+          text={runsSummaryText(list.total ?? rows.length, failedCount, tn)}
           testId="runs-summary"
         />
       ) : null}
@@ -660,7 +659,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
                       testId="runs-workflow-filter"
                       onClick={() => {
                         setWorkflowFilter(null);
-                        forgetInAddress(["workflow_id"]);
+                        forgetInAddress([RUNS_FILTER_PARAMS.workflowId]);
                       }}
                     >
                       {t("runs.workflowFilter")}
@@ -673,7 +672,10 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
                       testId="runs-window-filter"
                       onClick={() => {
                         setStartedWindow({ from: null, to: null });
-                        forgetInAddress(["started_from", "started_to"]);
+                        forgetInAddress([
+                          RUNS_FILTER_PARAMS.startedFrom,
+                          RUNS_FILTER_PARAMS.startedTo,
+                        ]);
                       }}
                     >
                       {windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}

@@ -85,7 +85,7 @@ test("no core metric or health component drilldown leads to the operations page"
   const byId = new Map(overview.core.health.components.map((c) => [c.id, c.drilldown.path]));
   expect(byId.get("decisions.blocked")).toBe("/cockpit");
   expect(byId.get("executions.success_ratio")).toBe(
-    "/cockpit?runs=all&status=failed&source=scheduler",
+    "/cockpit?runs=all&runs_status=failed&runs_source=scheduler",
   );
   expect(byId.get("connectors.healthy_ratio")).toBe("/cockpit/connectors?health=not_ok");
   const tile = overview.sections
