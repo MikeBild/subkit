@@ -27,10 +27,7 @@ export type MockFailure =
   | "overloaded"
   | "context_length_exceeded";
 
-export interface ConverseMockStep {
-  tool: string;
-  args: Record<string, unknown>;
-}
+export type ConverseMockStep = { tool: string; args: Record<string, unknown> } | { text: string };
 
 class MockProvider {
   calls: MockCall[] = [];
