@@ -216,6 +216,7 @@ export const AuditAction = {
   DISCOVERY_ARTIFACT_REJECTED: "discovery.artifact_rejected",
 
   SKILL_CANDIDATE_PROPOSED: "skill_candidate.proposed",
+  SKILL_CANDIDATE_CONTEXT_RECORDED: "skill_candidate.context_recorded",
   SKILL_CANDIDATE_UPDATED: "skill_candidate.updated",
   SKILL_CANDIDATE_APPROVED: "skill_candidate.approved",
   SKILL_CANDIDATE_REJECTED: "skill_candidate.rejected",

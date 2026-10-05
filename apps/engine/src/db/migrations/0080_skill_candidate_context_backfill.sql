@@ -1,0 +1,1 @@
+UPDATE "skill_candidates" SET "status" = 'context' WHERE "status" = 'proposed' AND "pattern_kind" IN ('failure_pattern', 'authoring_capability');

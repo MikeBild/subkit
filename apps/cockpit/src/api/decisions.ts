@@ -40,7 +40,13 @@ export function listPatchCandidatesByStatus(
 }
 
 export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
-  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed&reviewable=true");
+  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
+}
+
+export function listWorkflowContextNotes(workflowId: string): Promise<SkillCandidateList> {
+  return apiRequest(
+    `/v1/skill-candidates?status=context&workflow_id=${encodeURIComponent(workflowId)}&limit=50`,
+  );
 }
 
 export function listSkillCandidatesByStatus(

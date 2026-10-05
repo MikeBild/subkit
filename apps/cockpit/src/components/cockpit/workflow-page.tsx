@@ -28,6 +28,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RunWorkflowDialog } from "@/components/cockpit/run-workflow-dialog";
 import { MISSING } from "@/components/cockpit/table-columns";
+import { WorkflowDraftingContext } from "@/components/cockpit/workflow-drafting-context";
 import { WorkflowApprovals } from "@/components/cockpit/workflow-grants";
 import { WorkflowInvocation } from "@/components/cockpit/workflow-invocation";
 import { WorkflowInputOutput } from "@/components/cockpit/workflow-io";
@@ -382,6 +383,9 @@ export function WorkflowPage({
             >
               <FactList items={technical} />
             </CollapsibleSection>
+            {permissions.includes("skill:read") ? (
+              <WorkflowDraftingContext workflowId={id} />
+            ) : null}
             {permissions.includes("conversation:read") ? (
               <ConversationsAbout target={{ workflow_id: id }} />
             ) : null}

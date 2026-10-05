@@ -123,9 +123,9 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
 }
 
 describe.skipIf(skip)(
-  "D.1 — first commit creates exactly one proposed authoring_capability candidate",
+  "D.1 — first commit records exactly one authoring_capability context note",
   () => {
-    test("skill_candidate row has status:proposed, pattern_kind:authoring_capability, scope:workflow", async () => {
+    test("skill_candidate row has status:context, pattern_kind:authoring_capability, scope:workflow", async () => {
       const conversationId = await freshConversation();
       const draft = readyDraft("sc-first-commit", "SC First Commit");
       const toolCtx = stubToolCtx(conversationId, draft);
@@ -151,17 +151,13 @@ describe.skipIf(skip)(
       expect(candidates).toHaveLength(1);
 
       const candidate = candidates[0]!;
-      expect(candidate.status).toBe("proposed");
+      expect(candidate.status).toBe("context");
       expect(candidate.pattern_kind).toBe("authoring_capability");
       expect(candidate.scope).toBe("workflow");
       expect(candidate.workflow_id).toBe(workflowId);
       expect(candidate.version).toBe(1);
-      expect(candidate.body).toContain(
-        "This candidate describes preparation, not an active capability",
-      );
-      expect(candidate.body).toContain(
-        "Approving this skill does not activate the workflow or authorize execution",
-      );
+      expect(candidate.body).toContain("This note describes preparation, not an active capability");
+      expect(candidate.body).toContain("the workflow is neither activated nor authorized to run");
       expect(candidate.body).not.toContain("/runs");
       expect(candidate.body).toContain(
         (result.data as { workflow_version_id: string }).workflow_version_id,
@@ -226,7 +222,7 @@ describe.skipIf(skip)(
       const v2 = afterCandidates[0]!;
       expect(v2.id).toBe(v1.id);
       expect(v2.version).toBeGreaterThan(v1.version);
-      expect(v2.status).toBe("proposed");
+      expect(v2.status).toBe("context");
     }, 60_000);
   },
 );

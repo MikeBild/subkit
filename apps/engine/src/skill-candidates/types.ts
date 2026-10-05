@@ -5,6 +5,7 @@ export const SkillCandidateStatusSchema = z.enum([
   "approved",
   "rejected",
   "superseded",
+  "context",
 ]);
 export const SkillCandidateConfidenceSchema = z.enum(["low", "medium", "high"]);
 export const SkillCandidatePatternSchema = z.enum([
@@ -101,7 +102,7 @@ export function computeConfidence(
 export interface ListSkillCandidatesParams {
   tenant_id: string;
   status?: SkillCandidateStatus;
-  reviewable?: boolean;
+  statuses?: SkillCandidateStatus[];
   scope?: "global" | "connector" | "workflow";
   connector_id?: string;
   workflow_id?: string;

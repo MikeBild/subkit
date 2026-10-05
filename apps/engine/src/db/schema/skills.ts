@@ -85,6 +85,7 @@ export const skillCandidateStatusEnum = pgEnum("skill_candidate_status", [
   "approved",
   "rejected",
   "superseded",
+  "context",
 ]);
 
 export const skillCandidateConfidenceEnum = pgEnum("skill_candidate_confidence", [
