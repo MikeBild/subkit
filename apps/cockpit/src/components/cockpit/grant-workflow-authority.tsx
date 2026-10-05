@@ -69,7 +69,8 @@ export function GrantWorkflowAuthority({
   prepareVersion,
   onGrant,
   reviewContent,
-  initialEnvironment = "dev",
+  initialEnvironment,
+  ranIn,
   versionLabel,
   disabled = false,
   triggerLabel,
@@ -89,6 +90,7 @@ export function GrantWorkflowAuthority({
   onGrant?: (input: NonNullable<ReturnType<typeof authorityGrantInput>>) => Promise<unknown>;
   reviewContent?: ReactNode;
   initialEnvironment?: "dev" | "prod";
+  ranIn?: "dev" | "prod";
   versionLabel?: string;
   disabled?: boolean;
   triggerLabel?: string;
@@ -181,7 +183,7 @@ export function GrantWorkflowAuthority({
           session.permissions.includes("schedule:read"),
         );
         if (!isLatest(token)) throw superseded();
-        const belongs = environmentToCorrectTo(result, asked, runsIn);
+        const belongs = environmentToCorrectTo(result, asked, ranIn ? [...runsIn, ranIn] : runsIn);
         settled.current = true;
         if (belongs) {
           asked = belongs;
@@ -444,8 +446,9 @@ export function GrantWorkflowAuthority({
     if (value) {
       settled.current = false;
       setLimit(DEFAULT_GRANT_LIMIT);
-      setEnvironment(initialEnvironment);
-      startReview(initialEnvironment);
+      const opening = initialEnvironment ?? ranIn ?? "dev";
+      setEnvironment(opening);
+      startReview(opening);
     } else {
       latestReview.current += 1;
       setReview(null);

@@ -594,7 +594,7 @@ export function DecisionCard({
         versionId={preview.data.base_version_id}
         disabled={!approvable}
         triggerVariant="default"
-        {...(evidence?.environment ? { initialEnvironment: evidence.environment } : {})}
+        {...(evidence?.environment ? { ranIn: evidence.environment } : {})}
         reviewContent={
           <ChangeSummary facts={facts} step={step} collapsed testId={`${testId}-grant-change`} />
         }
