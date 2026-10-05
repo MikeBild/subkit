@@ -1,3 +1,7 @@
+import {
+  isReportMessageRefusal,
+  reportRefusalReason,
+} from "../workflows/report-delivery-boundary.ts";
 import type { StepDef } from "../workflows/types.ts";
 import { CONNECTOR_DISABLED_CODE } from "./connector-availability.ts";
 import type { RunResult, StepResult } from "./types.ts";
@@ -14,6 +18,7 @@ export const PREVIEW_CLASSIFICATIONS = [
   "connector_unavailable",
   "refused_before_start",
   "authority_mismatch",
+  "payload_invalid",
   "driver_error",
   "preview_unsupported",
   "unknown",
@@ -120,7 +125,10 @@ export function classifyFailure(result: StepResult): PreviewClassification {
     return "connector_unavailable";
   }
   if (code === "orphaned_preparation") return "refused_before_start";
-  if (code.startsWith("execution_authority_")) return "authority_mismatch";
+  if (code.startsWith("execution_authority_"))
+    return isReportMessageRefusal(reportRefusalReason(result.error))
+      ? "payload_invalid"
+      : "authority_mismatch";
   if (code === "llm_quota_exhausted" || code === "llm_budget_exceeded") return "budget_exhausted";
   if (code === "missing_graphql" || code === "unknown_step_kind") return "driver_error";
   if (code === "data_selector_error") return "schema_mismatch";
@@ -157,11 +165,12 @@ export function classifyPersistedFailure(failure: PersistedFailure): PersistedFa
     failure.status === "timed_out" || failure.status === "aborted" || failure.status === "skipped"
       ? failure.status
       : "failed";
+  const reason = typeof err.reason === "string" ? { reason: err.reason } : {};
   const classification = classifyFailure({
     status,
     retry_count: 0,
     duration_ms: 0,
-    error: error_code ? { code: error_code, message } : null,
+    error: error_code ? { code: error_code, message, ...reason } : null,
   });
   return { classification, error_code, message, guidance };
 }
@@ -192,6 +201,8 @@ export function humanizeClassification(
       return `The run was refused before it started and never ran.`;
     case "authority_mismatch":
       return `The run's approval no longer matches what it would do — review the approval again.`;
+    case "payload_invalid":
+      return `The message the ${kind} step built is malformed and was not sent — fix how the step builds it; the approval still fits.`;
     case "preview_unsupported":
       return `This step kind cannot be run in isolation yet.`;
     case "driver_error":
