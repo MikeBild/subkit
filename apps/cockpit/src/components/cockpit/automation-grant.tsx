@@ -288,6 +288,7 @@ export function AutomationGrant({
       onSingleRun={onPrepareSingleRun}
       onAdjust={onAdjust}
       initialEnvironment={environment}
+      environmentChosen
       triggerTestId={testId}
       triggerLabel={triggerLabel ?? t("chat.schedule.review")}
       triggerVariant={triggerVariant}
