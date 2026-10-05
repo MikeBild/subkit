@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
+  bindPersistedWorkflow,
   createEmptyDraftDocument,
+  withFocusedExecution,
   withLatestPreview,
   withWorkflowDraft,
   withWorkflowPersisted,
@@ -260,6 +262,71 @@ describe("saved workflow resume", () => {
     });
     expect(result.stage).toBe("awaiting_approval");
     expect(result.unsaved).toBe(false);
+  });
+});
+
+describe("an opened workflow is not a saved one", () => {
+  const ref = {
+    kind: "workflow" as const,
+    id: "workflow-7",
+    name: "Growth report",
+    slug: "growth-report",
+    version_id: "version-3",
+    version: 3,
+    environment: null,
+    saved_at: new Date(TEST_NOW_MS).toISOString(),
+  };
+  function opened(): DraftDocument {
+    const draft = withWorkflowDraft(createEmptyDraftDocument(), {
+      name: "Growth report",
+      slug: "growth-report",
+      steps: [{ id: "fetch", kind: "transform", config: { expression: "1" } }],
+    });
+    return bindPersistedWorkflow(draft, ref);
+  }
+  const run = {
+    execution_id: "run-1",
+    workflow_id: "workflow-7",
+    workflow_version_id: "version-3",
+    status: "failed",
+    environment: "prod" as const,
+    warnings_count: 0,
+    recorded_at: "2026-09-01T08:00:00.000Z",
+    diagnosis_available: true,
+  };
+
+  test("a chat opened for a run investigates that run and claims no save", () => {
+    const result = buildResumeSummary({
+      conversation: conv({ target_workflow_id: "workflow-7" }),
+      draft: withFocusedExecution(opened(), run),
+    });
+    expect(result.stage).toBe("run_focus");
+    expect(result.focused_run).toEqual({
+      execution_id: "run-1",
+      status: "failed",
+      recorded_at: "2026-09-01T08:00:00.000Z",
+    });
+    expect(result.unsaved).toBe(false);
+    expect(result.one_sentence).not.toContain("saved");
+  });
+
+  test("a workflow opened without a run is being worked on, not saved", () => {
+    const result = buildResumeSummary({
+      conversation: conv({ target_workflow_id: "workflow-7" }),
+      draft: opened(),
+    });
+    expect(result.stage).toBe("workflow_open");
+    expect(result.focused_run).toBeNull();
+    expect(result.unsaved).toBe(false);
+  });
+
+  test("saving it in the chat turns it into a saved workflow", () => {
+    const result = buildResumeSummary({
+      conversation: conv({ target_workflow_id: "workflow-7" }),
+      draft: withWorkflowPersisted(withFocusedExecution(opened(), run), ref),
+    });
+    expect(result.stage).toBe("workflow_saved");
+    expect(result.focused_run).toBeNull();
   });
 });
 

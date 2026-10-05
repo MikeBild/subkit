@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
-import { auditLog, conversationElicitations, conversations } from "../../db/schema/index.ts";
+import {
+  auditLog,
+  conversationElicitations,
+  conversations,
+  workflows,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import type { PermissionMode } from "../tool-policies.ts";
@@ -155,8 +160,18 @@ describe("conversation confirmation — no transport bypass", () => {
 
   it("delete_workflow over mcp still PAUSES on a pending ask_user_confirm", async () => {
     const conversation_id = await newConversation();
+    const [workflow] = await ctx.testDb.db
+      .insert(workflows)
+      .values({
+        tenant_id: ctx.tenant_id,
+        slug: "collapse-delete-target",
+        name: "Delete target",
+        lifecycle: "active",
+      })
+      .returning({ id: workflows.id });
+    if (!workflow) throw new Error("seed workflow failed");
     const { result, events } = await runGatedTool(conversation_id, "mcp", "delete_workflow", {
-      id: "00000000-0000-0000-0000-000000000001",
+      id: workflow.id,
     });
 
     expect(result.ok).toBe(false);

@@ -2,6 +2,7 @@ import type { components } from "@/api/schema";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import { clipAtWord } from "@/lib/presentation";
 
 export type Attention = components["schemas"]["AttentionV1"];
 export type AttentionItem = components["schemas"]["AttentionItem"];
@@ -165,9 +166,16 @@ export interface AttentionSentence {
   since: string | null;
 }
 
+export const SUBJECT_NAME_MAX = 60;
+
+function subjectName(item: AttentionItem): string | null {
+  const name = item.subject?.name?.trim();
+  return name ? clipAtWord(name, SUBJECT_NAME_MAX) : null;
+}
+
 function subjectPhrase(item: AttentionItem, t: Translate): string {
   if (!item.subject) return "";
-  const name = item.subject.name?.trim();
+  const name = subjectName(item);
   return t(SUBJECT_KEYS[item.subject.kind] ?? "overview.subject.other", {
     name: name ? t("overview.quoted", { name }) : t("overview.unnamed"),
   });
@@ -530,7 +538,7 @@ export interface AttentionRow {
 
 export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
   const name =
-    item.subject?.name?.trim() ||
+    subjectName(item) ||
     (item.reason === "skills_proposed"
       ? t("overview.object.skills")
       : item.reason === "budget_critical"

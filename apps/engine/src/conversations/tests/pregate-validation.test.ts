@@ -73,9 +73,9 @@ function toolCtxFor(conversation_id: string): ToolContext {
   };
 }
 
-async function callConnector(conversation_id: string, args: Record<string, unknown>) {
-  const inner = getTool("call_connector");
-  if (!inner) throw new Error("call_connector is not registered");
+async function callTool(name: string, conversation_id: string, args: Record<string, unknown>) {
+  const inner = getTool(name);
+  if (!inner) throw new Error(`${name} is not registered`);
   const events: TurnEvent[] = [];
   const wrapped = wrapOne(
     inner,
@@ -90,6 +90,10 @@ async function callConnector(conversation_id: string, args: Record<string, unkno
   // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
   const result = await (wrapped.execute as any)(args, { toolCallId: "fake", messages: [] });
   return { result: result as { ok: boolean; pause?: unknown; data?: unknown }, events };
+}
+
+async function callConnector(conversation_id: string, args: Record<string, unknown>) {
+  return callTool("call_connector", conversation_id, args);
 }
 
 async function elicitationsOf(conversation_id: string) {
@@ -193,5 +197,31 @@ describe("a person is never asked to approve a call that cannot run", () => {
     const input = elicitation?.input as { question: string; effect: { target: string } };
     for (const text of [input.question, input.effect.target, elicitation?.summary ?? ""])
       expect(text).not.toContain(token);
+  });
+
+  it("deleting a workflow id that does not exist is refused before any approval", async () => {
+    const conversation_id = await newConversation();
+    const { result, events } = await callTool("delete_workflow", conversation_id, {
+      id: "2a9e7c1d-5b3f-4c8e-9d2a-1f0e3b4c5d6e",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.pause).toBeUndefined();
+    expect(result.data).toMatchObject({ error: { code: "workflow_not_found" } });
+    expect(events.some((event) => event.type === "elicit_request")).toBe(false);
+    expect(await elicitationsOf(conversation_id)).toHaveLength(0);
+    expect(await confirmationAuditsOf(conversation_id)).toHaveLength(0);
+  });
+
+  it("deleting a workflow slug that names nothing is refused before any approval", async () => {
+    const conversation_id = await newConversation();
+    const { result } = await callTool("delete_workflow", conversation_id, {
+      slug: "no-such-workflow",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.pause).toBeUndefined();
+    expect(result.data).toMatchObject({ error: { code: "workflow_not_found" } });
+    expect(await elicitationsOf(conversation_id)).toHaveLength(0);
   });
 });

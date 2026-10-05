@@ -1,10 +1,8 @@
 import { jsonSchema, type Tool, tool } from "ai";
-import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import type { Db } from "../../../db/client.ts";
-import { conversations } from "../../../db/schema/index.ts";
 import { runExecution } from "../../../execution/engine.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import { admitWorkflowRun } from "../../../execution/workflow-run-admission.ts";
@@ -430,12 +428,6 @@ async function executeSyntheticRun(
       },
       db,
     );
-    await db
-      .update(conversations)
-      .set({ target_workflow_id: entry.workflow_id, updated_at: new Date() })
-      .where(
-        and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
-      );
     recordConversationToolCall({
       category: "tenant_write",
       tool: name,

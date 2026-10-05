@@ -44,6 +44,55 @@ function summarizeReason(
   return `Execution succeeded across ${stepCount} step${stepCount === 1 ? "" : "s"} with no warnings.`;
 }
 
+export interface StepWarningSource {
+  step_key: string;
+  code: string;
+  identifier: string | null;
+}
+
+function previewRecordOf(preview: unknown): Record<string, unknown> | null {
+  return preview && typeof preview === "object" && !Array.isArray(preview)
+    ? (preview as Record<string, unknown>)
+    : null;
+}
+
+export function stepWarningSources(
+  rows: ReadonlyArray<{ step_key: string; output_preview: unknown; request_meta: unknown }>,
+): StepWarningSource[] {
+  const sources: StepWarningSource[] = [];
+  for (const row of rows) {
+    const previewRecord = previewRecordOf(row.output_preview);
+    const rawWarnings = Array.isArray(previewRecord?.warnings) ? previewRecord.warnings : [];
+    for (const warning of rawWarnings) {
+      if (
+        warning &&
+        typeof warning === "object" &&
+        typeof (warning as { code?: unknown }).code === "string"
+      ) {
+        sources.push({
+          step_key: row.step_key,
+          code: (warning as { code: string }).code,
+          identifier:
+            typeof (warning as { identifier?: unknown }).identifier === "string"
+              ? ((warning as { identifier?: string }).identifier ?? null)
+              : null,
+        });
+      }
+    }
+    const meta = row.request_meta as { extras?: { held?: unknown } } | null;
+    if (
+      meta?.extras?.held === true &&
+      !sources.some(
+        (warning) =>
+          warning.step_key === row.step_key && warning.code === HELD_PREVIEW_WARNING_CODE,
+      )
+    ) {
+      sources.push({ step_key: row.step_key, code: HELD_PREVIEW_WARNING_CODE, identifier: null });
+    }
+  }
+  return sources;
+}
+
 export async function buildExecutionDiagnosis(
   db: Db,
   tenant_id: string,
@@ -79,45 +128,9 @@ export async function buildExecutionDiagnosis(
     )
     .orderBy(asc(executionSteps.step_index), asc(executionSteps.started_at));
 
-  const warning_sources: Array<{ step_key: string; code: string; identifier: string | null }> = [];
+  const warning_sources = stepWarningSources(rows);
   const steps = rows.map((row) => {
-    const previewRecord =
-      row.output_preview &&
-      typeof row.output_preview === "object" &&
-      !Array.isArray(row.output_preview)
-        ? (row.output_preview as Record<string, unknown>)
-        : null;
-    const rawWarnings = Array.isArray(previewRecord?.warnings) ? previewRecord.warnings : [];
-    for (const warning of rawWarnings) {
-      if (
-        warning &&
-        typeof warning === "object" &&
-        typeof (warning as { code?: unknown }).code === "string"
-      ) {
-        warning_sources.push({
-          step_key: row.step_key,
-          code: (warning as { code: string }).code,
-          identifier:
-            typeof (warning as { identifier?: unknown }).identifier === "string"
-              ? ((warning as { identifier?: string }).identifier ?? null)
-              : null,
-        });
-      }
-    }
-    const meta = row.request_meta as { extras?: { held?: unknown } } | null;
-    if (
-      meta?.extras?.held === true &&
-      !warning_sources.some(
-        (warning) =>
-          warning.step_key === row.step_key && warning.code === HELD_PREVIEW_WARNING_CODE,
-      )
-    ) {
-      warning_sources.push({
-        step_key: row.step_key,
-        code: HELD_PREVIEW_WARNING_CODE,
-        identifier: null,
-      });
-    }
+    const previewRecord = previewRecordOf(row.output_preview);
     const previewValue =
       previewRecord && Object.hasOwn(previewRecord, "value")
         ? previewRecord.value

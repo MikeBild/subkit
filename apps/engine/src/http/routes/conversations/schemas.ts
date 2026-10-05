@@ -160,6 +160,13 @@ export const ConversationDetailSchema = z
           environment: z.string().nullable(),
         }),
         stage: z.string(),
+        focused_run: z
+          .object({
+            execution_id: z.string(),
+            status: z.string(),
+            recorded_at: z.string(),
+          })
+          .nullable(),
         last_successful_probe: z.string().nullable(),
         last_successful_preview: z.string().nullable(),
         unsaved: z.boolean(),

@@ -11443,6 +11443,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -21818,6 +21827,11 @@ export interface components {
                     environment: string | null;
                 };
                 stage: string;
+                focused_run: {
+                    execution_id: string;
+                    status: string;
+                    recorded_at: string;
+                } | null;
                 last_successful_probe: string | null;
                 last_successful_preview: string | null;
                 unsaved: boolean;
