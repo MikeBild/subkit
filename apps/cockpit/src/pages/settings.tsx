@@ -863,7 +863,7 @@ export function SettingRow({
           </p>
         ) : null}
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0" data-slot="setting-control">
         {children}
         {invalid ? (
           <p
@@ -1039,7 +1039,9 @@ function SystemSettings() {
       const item = document.querySelector<HTMLElement>(`[data-testid="setting-item-${index}"]`);
       const field =
         document.getElementById(`setting-${index}`) ??
-        item?.querySelector<HTMLElement>("input, button, select, textarea") ??
+        item?.querySelector<HTMLElement>(
+          '[data-slot="setting-control"] :is(input, button, select, textarea)',
+        ) ??
         null;
       (item ?? field)?.scrollIntoView({ block: "center", inline: "nearest" });
       field?.focus({ preventScroll: true });
