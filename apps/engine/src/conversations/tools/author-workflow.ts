@@ -3,10 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { conversations } from "../../db/schema/index.ts";
 import { runAuthoringPipeline } from "../authoring-pipeline.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
-import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
+import { getWorkflowDraft, startNewWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { emitRecordedEvalSignals } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
 
 const inputSchema = z
   .object({
@@ -50,7 +51,7 @@ const inputSchema = z
 export const authorWorkflowTool: ConversationTool = {
   name: "author_workflow",
   description:
-    "THE canonical entry for authoring a NEW or fully-replaced workflow. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, inspect it, then call dry_run_workflow.",
+    "THE canonical entry for authoring a NEW workflow. Never for an existing one: a slug that is already saved is refused with workflow_already_exists — open it with open_workflow_draft and change it with edit_workflow_patch. One call runs the engine-side pipeline — ground in the named connectors (recorded endpoint samples + docs), generate the COMPLETE definition (JavaScript transforms by default), evaluate it against recorded evidence with bounded auto-repair — and returns the evaluated draft. Set the requested name and slug on the draft, inspect it, then call dry_run_workflow.",
   use_case:
     "Use whenever the user asks to build/create/author a workflow. This is THE builder; apply targeted follow-up edits afterwards with edit_workflow_patch.",
   important_notes: [
@@ -90,6 +91,22 @@ export const authorWorkflowTool: ConversationTool = {
           next_best_actions: ["inspect_workflow_draft", "edit_workflow_patch"],
         }),
       };
+    }
+
+    if (args.slug !== undefined) {
+      const existing = await resolveSavedWorkflow(ctx, args.slug);
+      if (existing && existing.slug === args.slug && existing.id !== bound?.id) {
+        return {
+          ok: false,
+          data: buildGateError(ctx.getDraft(), {
+            error_code: "workflow_already_exists",
+            message: `a saved workflow "${existing.slug}" already exists (${existing.id}). author_workflow builds a new workflow from scratch and would discard its saved definition. Open it with open_workflow_draft { workflow: "${existing.slug}" }, which starts from the saved definition, and change it with edit_workflow_patch. To build a separate workflow, choose a slug that is not taken.`,
+            recommended_mode: "workflow",
+            next_best_actions: ["open_workflow_draft", "edit_workflow_patch"],
+            extra: { existing_workflow: existing },
+          }),
+        };
+      }
     }
 
     const result = await runAuthoringPipeline({
@@ -133,6 +150,16 @@ export const authorWorkflowTool: ConversationTool = {
     });
 
     if (currentSlug !== result.definition.slug) {
+      if (bound) {
+        await ctx.setDraft(
+          withWorkflowDraft(
+            startNewWorkflowDraft(ctx.getDraft()),
+            getWorkflowDraft(ctx.getDraft()),
+            "workflow_authored_one_shot",
+          ),
+        );
+        ctx.workflow_id = null;
+      }
       await ctx.db
         .update(conversations)
         .set({ target_workflow_id: null, updated_at: new Date() })
