@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import {
@@ -63,6 +63,7 @@ import {
   entryActions,
   overviewView,
   reviewNavigation,
+  reviewSettles,
   reviewTarget,
   sinceLabel,
   sourceLabel,
@@ -607,7 +608,9 @@ function ReviewSheet({
         <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
       ) : null}
       {item?.detail ? <EngineWording text={item.detail} testId="attention-review-detail" /> : null}
-      {id ? <ReviewBody id={id} item={item} onClose={onClose} actionsSlot={actionsSlot} /> : null}
+      {id ? (
+        <ReviewBody key={id} id={id} item={item} onClose={onClose} actionsSlot={actionsSlot} />
+      ) : null}
     </RecordSheet>
   );
 }
@@ -634,6 +637,30 @@ function ReviewBody({
   const canDecideSkills =
     session.permissions.includes("skill:write") && session.permissions.includes("skill:activate");
   const { decisions, held, heldHooks } = review;
+  const closed = useRef(false);
+  const closeOnce = useCallback(() => {
+    if (closed.current) return;
+    closed.current = true;
+    onClose();
+  }, [onClose]);
+  const openCount = decisions.length + held.length + heldHooks.length;
+  const loaded = review.access === "readable" && !review.isPending && !review.failed;
+  const listed = item !== null;
+  const seen = useRef<{ open: number | null; listed: boolean }>({ open: null, listed: false });
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { open: loaded ? openCount : before.open, listed: before.listed || listed };
+    if (
+      reviewSettles({
+        openBefore: before.open,
+        openNow: loaded ? openCount : 0,
+        listedBefore: before.listed,
+        listedNow: listed,
+      }) &&
+      (loaded || !listed)
+    )
+      closeOnce();
+  }, [loaded, openCount, listed, closeOnce]);
 
   const decide = useMutation({
     mutationFn: async (input: {
@@ -659,7 +686,7 @@ function ReviewBody({
       return { settles };
     },
     onSuccess: async (_result, input, context) => {
-      if (context?.settles) onClose();
+      if (context?.settles) closeOnce();
       toast.success(t(input.approve ? "decisions.approved" : "decisions.rejected"), {
         description: (
           <a

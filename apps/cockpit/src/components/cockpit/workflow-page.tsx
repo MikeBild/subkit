@@ -298,7 +298,7 @@ export function WorkflowPage({
 
   const tabs: PageTab[] = [
     {
-      value: "verwenden",
+      value: "use",
       label: t("workflowPage.tab.use"),
       content: (
         <>
@@ -323,14 +323,14 @@ export function WorkflowPage({
     ...(permissions.includes("execution:read")
       ? [
           {
-            value: "verlauf",
+            value: "history",
             label: t("workflowPage.tab.history"),
             content: <WorkflowRuns workflowId={id} />,
           },
         ]
       : []),
     {
-      value: "aufbau",
+      value: "structure",
       label: t("workflowPage.tab.build"),
       content: (
         <>
@@ -394,7 +394,7 @@ export function WorkflowPage({
       ),
     },
     {
-      value: "freigaben",
+      value: "approvals",
       label: t("workflowPage.tab.approvals"),
       content: <WorkflowApprovals automation={automation} />,
     },

@@ -440,6 +440,17 @@ export function reviewAccess(target: ReviewTarget, permissions: readonly string[
   return "nothing";
 }
 
+export function reviewSettles(review: {
+  openBefore: number | null;
+  openNow: number;
+  listedBefore: boolean;
+  listedNow: boolean;
+}): boolean {
+  if (review.openNow > 0) return false;
+  if (review.openBefore !== null && review.openBefore > 0) return true;
+  return review.listedBefore && !review.listedNow;
+}
+
 export interface ReviewHistory {
   readonly state: unknown;
   pushState(state: unknown, unused: string, url: string): void;

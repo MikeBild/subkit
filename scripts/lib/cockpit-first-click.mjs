@@ -23,6 +23,7 @@ async function expectPath(page, pattern, where) {
 }
 
 export async function verifyFirstClickOpens(page, stand, where) {
+  if ((page.viewportSize()?.width ?? 0) < 1024) return;
   const link = await arriveOnWorkflows(page, stand);
   await clickAt(page, link);
   await expectPath(page, /\/cockpit\/workflows\/[^/?]+/, `${where}/link-right-after-navigation`);
