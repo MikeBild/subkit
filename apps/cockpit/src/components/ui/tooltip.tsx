@@ -20,8 +20,49 @@ function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
-function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+export function trackTabFocus(
+  target: Pick<EventTarget, "addEventListener">,
+  defer: (release: () => void) => void = (release) => setTimeout(release, 0),
+): () => boolean {
+  let tabbed = false;
+  target.addEventListener(
+    "keydown",
+    (event) => {
+      tabbed = (event as KeyboardEvent).key === "Tab";
+      if (tabbed)
+        defer(() => {
+          tabbed = false;
+        });
+    },
+    true,
+  );
+  target.addEventListener(
+    "pointerdown",
+    () => {
+      tabbed = false;
+    },
+    true,
+  );
+  return () => tabbed;
+}
+
+const focusCameFromTab = typeof document === "undefined" ? () => false : trackTabFocus(document);
+
+function TooltipTrigger({
+  onFocus,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      data-tooltip-trigger=""
+      {...props}
+      onFocus={(event) => {
+        onFocus?.(event);
+        if (!focusCameFromTab()) event.preventDefault();
+      }}
+    />
+  );
 }
 
 function TooltipContent({

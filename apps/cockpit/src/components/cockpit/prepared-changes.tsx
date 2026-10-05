@@ -7,6 +7,8 @@ import { ListTable } from "@/components/cockpit/list-table";
 import { Button, type CockpitColumn, ContextHelp, Section } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { useI18n } from "@/lib/i18n-context";
+import { LabelText } from "@/lib/machine-label";
+import { settingLabel } from "@/pages/settings-model";
 
 export type PreparedChange = {
   name: string;
@@ -54,7 +56,11 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
           }),
         );
       } else {
-        toast.success(t("prepared.approved", { target: preparedChangeTarget(outcome.name) }));
+        toast.success(
+          t("prepared.approved", {
+            target: settingLabel(preparedChangeTarget(outcome.name), t).text,
+          }),
+        );
       }
       await refresh();
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
@@ -68,7 +74,9 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
         { method: "POST" },
       ),
     onSuccess: async (_result, change) => {
-      toast.success(t("prepared.rejected", { target: preparedChangeTarget(change.name) }));
+      toast.success(
+        t("prepared.rejected", { target: settingLabel(preparedChangeTarget(change.name), t).text }),
+      );
       await refresh();
     },
     onError: () => toast.error(t("prepared.decisionFailed")),
@@ -82,7 +90,9 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
         (change) => change.name,
         t("prepared.column.setting"),
         (change) => (
-          <span className="block truncate font-medium">{preparedChangeTarget(change.name)}</span>
+          <span className="block truncate font-medium">
+            <LabelText label={settingLabel(preparedChangeTarget(change.name), t)} />
+          </span>
         ),
         { width: "w-[30%]" },
       ),
@@ -104,7 +114,9 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
         t("prepared.column.rebinds"),
         (change) => (
           <span className="block truncate" title={change.bindings.join(", ")}>
-            {change.bindings.length > 0 ? change.bindings.join(", ") : "—"}
+            {change.bindings.length > 0
+              ? change.bindings.map((path) => settingLabel(path, t).text).join(", ")
+              : "—"}
           </span>
         ),
         { width: "w-[30%]" },

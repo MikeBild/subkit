@@ -485,7 +485,7 @@ const EN = {
   "prepared.title": "Prepared changes",
   "prepared.description":
     "Somebody prepared a new value for this installation. Nothing changes until you approve it.",
-  "prepared.meta": "Version {version} · prepared by {by} · since {since}",
+  "prepared.meta": "Version {version} · {by} · {since}",
   "prepared.column.setting": "Setting",
   "prepared.column.prepared": "Prepared",
   "prepared.column.rebinds": "Applies to on approval",
@@ -2860,6 +2860,7 @@ const EN = {
   "settings.copyKey": "Copy key",
   "settings.copyKeyTooltip": "sk settings set {key}",
   "settings.appliesTo": "Applies to: {scope}",
+  "settings.sourceIs": "Source: {source}",
   "settings.storage.body":
     "Every change is stored in the database as a new, immutable version; earlier versions stay traceable in the audit. Most values take effect immediately on every instance. Values marked “Takes effect after a restart” apply only after a restart — until then the previous version keeps running.",
   "settings.restartWho.restart":
@@ -4447,7 +4448,7 @@ const DE: Record<TranslationKey, string> = {
   "prepared.title": "Vorbereitete Änderungen",
   "prepared.description":
     "Jemand hat einen neuen Wert für diese Installation vorbereitet. Es ändert sich nichts, bis du ihn freigibst.",
-  "prepared.meta": "Version {version} · vorbereitet von {by} · seit {since}",
+  "prepared.meta": "Version {version} · {by} · {since}",
   "prepared.column.setting": "Einstellung",
   "prepared.column.prepared": "Vorbereitet",
   "prepared.column.rebinds": "Gilt bei Freigabe für",
@@ -6873,6 +6874,7 @@ const DE: Record<TranslationKey, string> = {
   "settings.copyKey": "Schlüssel kopieren",
   "settings.copyKeyTooltip": "sk settings set {key}",
   "settings.appliesTo": "Gilt für: {scope}",
+  "settings.sourceIs": "Quelle: {source}",
   "settings.storage.body":
     "Jede Änderung wird als neue, unveränderliche Version in der Datenbank gespeichert; frühere Versionen bleiben im Audit nachvollziehbar. Die meisten Werte gelten sofort auf allen Instanzen. Werte mit ‚Wirkt nach Neustart‘ gelten erst nach einem Neustart — bis dahin läuft die vorherige Version weiter.",
   "settings.restartWho.restart":

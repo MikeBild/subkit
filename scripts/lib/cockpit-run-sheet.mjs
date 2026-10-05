@@ -1,3 +1,5 @@
+import { assertNoTooltipWithoutHover } from "./cockpit-unprompted-tooltip.mjs";
+
 const COPY = {
   de: { summary: "240 Läufe · 120 fehlgeschlagen", total: "240 Läufe" },
   en: { summary: "240 runs · 120 failed", total: "240 runs" },
@@ -159,9 +161,7 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
   await stand.visit(page, "");
   await page.locator('[data-testid="overview-all-runs"]').click();
   await page.locator('[data-testid="resource-runs"]').waitFor({ state: "visible" });
-  await page.waitForTimeout(900);
-  if (await page.locator('[role="tooltip"]').count())
-    throw new Error(`${where}: opening the sheet opened a tooltip on its first button`);
+  await assertNoTooltipWithoutHover(page, `${where} · runs sheet`);
   await page.keyboard.press("Escape");
   await page
     .locator('[data-testid="resource-runs"]')
