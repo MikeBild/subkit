@@ -16,12 +16,7 @@ export function catalogListParams(resource: string, state: CatalogQueryState): L
   if (state.category !== "all") params.category = state.category;
   if (resource === "workflows" && state.connector) params.connector = state.connector;
   if (resource === "connectors" && state.health === "not_ok") params.health = "not_ok";
-  if (state.status !== "all") {
-    if (resource !== "connectors") params.status = state.status;
-    else if (state.status === "enabled" || state.status === "disabled")
-      params.enabled = String(state.status === "enabled");
-    else params.health_state = state.status;
-  }
+  if (resource === "workflows" && state.status !== "all") params.status = state.status;
   return params;
 }
 

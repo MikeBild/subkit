@@ -4501,9 +4501,7 @@ for (const locale of variants) {
         fullPage: false,
       });
       await stand.visit(page, "workflows");
-      await page
-        .locator('[data-testid="data-table-desktop"] [data-testid="catalog-recategorize-0"]')
-        .hover();
+      await page.locator('[data-testid="sidebar-trigger"]').hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-tooltip`, {
