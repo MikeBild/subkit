@@ -137,7 +137,8 @@ describe("endless lists", () => {
 
   test("the next page follows the paging the endpoint answered with", () => {
     expect(nextPageParam([{ items: [1], next_cursor: "c1" }])).toBe("c1");
-    expect(nextPageParam([{ items: [1], next_cursor: null, total: 9 }])).toBeNull();
+    expect(nextPageParam([{ items: [1], next_cursor: null, total: 9 }])).toBe(1);
+    expect(nextPageParam([{ items: [1], next_cursor: null }])).toBeNull();
     expect(nextPageParam([{ items: [1, 2], total: 3 }])).toBe(2);
     expect(
       nextPageParam([
