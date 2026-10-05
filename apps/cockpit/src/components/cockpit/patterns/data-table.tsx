@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Columns3,
   Loader2,
-  RefreshCw,
   Search,
 } from "lucide-react";
 import {
@@ -30,7 +29,6 @@ import {
   useState,
 } from "react";
 import { absolute } from "@/app/links";
-import { IconButton } from "@/components/cockpit/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,6 +48,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useI18n } from "@/lib/i18n-context";
+import { PREFETCH_MARGIN, scrollRoot, wantsNextPage } from "@/lib/infinite-scroll";
 import { useArrived, useLoadingPhase } from "@/lib/use-loading-phase";
 import { cn } from "@/lib/utils";
 import { useColumnToggleClaim } from "./column-toggle-claim";
@@ -74,7 +73,7 @@ export interface InfiniteRows {
   isFetchingNextPage: boolean;
 }
 
-function InfiniteSentinel({
+export function InfiniteSentinel({
   infinite,
   testId,
   className,
@@ -88,13 +87,14 @@ function InfiniteSentinel({
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = infinite;
   useEffect(() => {
     const element = sentinel.current;
-    if (!element || !hasNextPage || typeof IntersectionObserver === "undefined") return;
+    if (!element || !hasNextPage || isFetchingNextPage) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const root = scrollRoot(element, (box) => getComputedStyle(box).overflowY);
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage)
-          void fetchNextPage();
+        if (wantsNextPage(entries, { hasNextPage, isFetchingNextPage })) void fetchNextPage();
       },
-      { rootMargin: "0px 0px 320px 0px" },
+      { root, rootMargin: PREFETCH_MARGIN },
     );
     observer.observe(element);
     return () => observer.disconnect();
@@ -264,9 +264,6 @@ export function DataTable<TData extends RowData>({
   rowLabel,
   linkColumn,
   toolbar,
-  onRefresh,
-  refreshing,
-  refreshLabel,
   pending,
   error,
   emptyState,
@@ -275,7 +272,6 @@ export function DataTable<TData extends RowData>({
   getRowId,
   skeletonRows = LOADING_ROWS,
   total,
-  onPageChange,
   columnsLabel,
   recordsLabel,
   actionsLabel,
@@ -295,9 +291,6 @@ export function DataTable<TData extends RowData>({
   rowLabel?(row: TData): string;
   linkColumn?: string;
   toolbar?: ReactNode;
-  onRefresh?(): void;
-  refreshing?: boolean;
-  refreshLabel?: string;
   rowActions?: (row: TData, index: number) => ReactNode;
   pending?: boolean;
   error?: TableErrorState | null;
@@ -307,7 +300,6 @@ export function DataTable<TData extends RowData>({
   getRowId?(row: TData): string;
   skeletonRows?: number;
   total?: number;
-  onPageChange?(page: number): void;
   columnsLabel: string;
   recordsLabel?: string;
   actionsLabel: string;
@@ -358,7 +350,7 @@ export function DataTable<TData extends RowData>({
   const showColumnPicker = useColumnToggleClaim(
     collectionTier === "primary" && hideableColumns.length > 1,
   );
-  const hasActionColumn = Boolean(rowActions) || Boolean(onRefresh && refreshLabel);
+  const hasActionColumn = Boolean(rowActions);
   const hasChevron = Boolean(onOpen);
   const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (hasChevron ? 1 : 0);
   const linkColumnId = rowLinkColumn(
@@ -442,10 +434,7 @@ export function DataTable<TData extends RowData>({
               id={searchInputId}
               type="search"
               value={queryText}
-              onChange={(event) => {
-                setQueryText(event.target.value);
-                onPageChange?.(0);
-              }}
+              onChange={(event) => setQueryText(event.target.value)}
               placeholder={searchLabel}
               className="pl-8"
               data-family-action="search"
@@ -537,21 +526,8 @@ export function DataTable<TData extends RowData>({
                   );
                 })}
                 {hasActionColumn ? (
-                  <TableHead className={rowActions ? "w-32" : "w-16"}>
-                    <span className="flex items-center justify-end">
-                      <span className="sr-only">{actionsLabel}</span>
-                      {onRefresh && refreshLabel && (
-                        <IconButton
-                          variant="ghost"
-                          size="icon-sm"
-                          label={refreshLabel}
-                          data-testid={`${collectionId}-refresh`}
-                          onClick={onRefresh}
-                        >
-                          <RefreshCw className={refreshing ? "animate-spin" : undefined} />
-                        </IconButton>
-                      )}
-                    </span>
+                  <TableHead className="w-32">
+                    <span className="sr-only">{actionsLabel}</span>
                   </TableHead>
                 ) : null}
                 {hasChevron ? <TableHead className="w-8" aria-hidden="true" /> : null}

@@ -51,7 +51,7 @@ export function listPagePath(
   return `${path}?${search}`;
 }
 
-export function useInfiniteList<T>(
+export function useInfiniteList<T, P extends CursorPage<T> = CursorPage<T>>(
   path: string,
   params: ListParams = {},
   options: { limit?: number; enabled?: boolean; queryKey?: QueryKey } = {},
@@ -62,7 +62,7 @@ export function useInfiniteList<T>(
     enabled: options.enabled ?? true,
     initialPageParam: null as PageParam,
     queryFn: ({ pageParam, signal }) =>
-      apiRequest<CursorPage<T>>(listPagePath(path, params, limit, pageParam), { signal }),
+      apiRequest<P>(listPagePath(path, params, limit, pageParam), { signal }),
     getNextPageParam: (_last, pages) => nextPageParam(pages),
   });
   const pages = query.data?.pages ?? [];
@@ -70,6 +70,7 @@ export function useInfiniteList<T>(
     query,
     items: pages.flatMap((page) => page.items),
     total: pages[0]?.total,
+    first: pages[0],
     infinite: {
       fetchNextPage: query.fetchNextPage,
       hasNextPage: query.hasNextPage,

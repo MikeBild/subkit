@@ -75,19 +75,41 @@ const AUTOMATION: QueryKey[] = [
   ["attention"],
 ];
 
+const KNOWLEDGE: QueryKey[] = [["catalog"], ["catalog-detail"], ["knowledge-source"]];
+
+const FILES: QueryKey[] = [["catalog"], ["catalog-detail"], ["file"]];
+
+const IDENTITY: QueryKey[] = [["admin"], ["audit-directory"]];
+
+const RBAC: QueryKey[] = [["admin"]];
+
+const API_KEYS: QueryKey[] = [["admin", "api-keys"]];
+
+const SETTINGS: QueryKey[] = [["admin", "settings"]];
+
+const AUDIT: QueryKey = ["audit"];
+
+const STEP_PREFIX = "execution.step.";
+
 export interface LiveRule {
   prefix: string;
   keys: readonly QueryKey[];
 }
 
 export const LIVE_RULES: readonly LiveRule[] = [
-  { prefix: "execution.step.", keys: RUN_DETAIL },
+  { prefix: STEP_PREFIX, keys: RUN_DETAIL },
   { prefix: "execution.", keys: [...RUN_DETAIL, ...RUN_LISTS] },
   { prefix: "workflow.automation_changed", keys: AUTOMATION },
   { prefix: "workflow.", keys: WORKFLOW },
   { prefix: "connector.", keys: CONNECTOR },
   { prefix: "patch.", keys: [...DECISIONS, ["workflow"], ["catalog-detail"]] },
   { prefix: "skill.", keys: [...DECISIONS, ["catalog"], ["catalog-detail"]] },
+  { prefix: "knowledge_source.", keys: KNOWLEDGE },
+  { prefix: "file.", keys: FILES },
+  { prefix: "identity.", keys: IDENTITY },
+  { prefix: "rbac.", keys: RBAC },
+  { prefix: "api_key.", keys: API_KEYS },
+  { prefix: "settings.", keys: SETTINGS },
 ];
 
 function matches(rule: LiveRule, type: string): boolean {
@@ -95,7 +117,9 @@ function matches(rule: LiveRule, type: string): boolean {
 }
 
 export function keysForEvent(type: string): readonly QueryKey[] {
-  return LIVE_RULES.find((rule) => matches(rule, type))?.keys ?? [];
+  const rule = LIVE_RULES.find((candidate) => matches(candidate, type));
+  if (!rule) return [];
+  return rule.prefix === STEP_PREFIX ? rule.keys : [...rule.keys, AUDIT];
 }
 
 export function keyId(key: QueryKey): string {

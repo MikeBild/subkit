@@ -435,9 +435,6 @@ export function AuditPage() {
             )}
           </>
         }
-        onRefresh={() => void query.refetch()}
-        refreshing={query.isFetching}
-        refreshLabel={t("common.refresh")}
         pending={query.isPending}
         error={
           query.error

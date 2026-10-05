@@ -21,6 +21,7 @@ export {
   cockpitTableFeatures,
   DataTable,
   type InfiniteRows,
+  InfiniteSentinel,
   priorityClass,
   RowName,
   rowLinkColumn,

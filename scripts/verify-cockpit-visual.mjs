@@ -269,6 +269,27 @@ const AUDIT_FIXTURE_ENTRIES = Array.from({ length: 24 }, (_, index) => {
   };
 });
 
+const AUDIT_PAGING_TAIL = Array.from({ length: 60 }, (_, offset) => {
+  const index = AUDIT_FIXTURE_ENTRIES.length + offset;
+  return {
+    ...AUDIT_FIXTURE_ENTRIES[0],
+    id: `audit-${index}`,
+    ts: new Date(Date.parse(conversation.updated_at) - index * 120_000).toISOString(),
+    action: "patch_candidate.approved",
+    resource_type: "patch_candidate",
+    result: "success",
+    reason: null,
+  };
+});
+
+const AUDIT_PAGED_ENTRIES = [...AUDIT_FIXTURE_ENTRIES, ...AUDIT_PAGING_TAIL];
+
+function pageOf(items, url) {
+  const limit = Number(url.searchParams.get("limit") ?? "0");
+  const offset = Number(url.searchParams.get("offset") ?? "0");
+  return limit > 0 ? items.slice(offset, offset + limit) : items.slice(offset);
+}
+
 const SWEEP_NOW = Date.now();
 
 const conversations = Array.from({ length: 32 }, (_, index) => {
@@ -1530,7 +1551,7 @@ async function mockApi(route) {
           ]
         : undefined;
     return json(route, {
-      items,
+      items: pageOf(items, url),
       total: items.length,
       ...(categories ? { categories } : {}),
     });
@@ -1664,16 +1685,22 @@ async function mockApi(route) {
       .filter(Boolean);
     const actorType = url.searchParams.get("actor_type");
     const byAction = wanted.length
-      ? AUDIT_FIXTURE_ENTRIES.filter((entry) => wanted.includes(entry.action))
-      : AUDIT_FIXTURE_ENTRIES;
-    const items = actorType ? byAction.filter((entry) => entry.actor_type === actorType) : byAction;
-    if (url.searchParams.get("cursor")) return json(route, { items: [], next_cursor: null });
-    return json(route, { items, next_cursor: "audit-cursor-2" });
+      ? AUDIT_PAGED_ENTRIES.filter((entry) => wanted.includes(entry.action))
+      : AUDIT_PAGED_ENTRIES;
+    const matching = actorType
+      ? byAction.filter((entry) => entry.actor_type === actorType)
+      : byAction;
+    const after = url.searchParams.get("cursor");
+    const start = after ? matching.findIndex((entry) => entry.id === after) + 1 : 0;
+    const limit = Number(url.searchParams.get("limit") ?? "50");
+    const items = matching.slice(start, start + limit);
+    const more = start + limit < matching.length;
+    return json(route, { items, next_cursor: more ? (items.at(-1)?.id ?? null) : null });
   }
   const auditEntryPath = /^\/v1\/audit-log\/([^/]+)$/.exec(path);
   if (auditEntryPath) {
     const id = decodeURIComponent(auditEntryPath[1]);
-    const entry = AUDIT_FIXTURE_ENTRIES.find((candidate) => candidate.id === id);
+    const entry = AUDIT_PAGED_ENTRIES.find((candidate) => candidate.id === id);
     return entry
       ? json(route, entry)
       : json(route, { error: { code: "not_found", message: "audit_entry" } }, 404);
@@ -3021,6 +3048,53 @@ async function assertNotificationRules(page, label) {
     throw new Error(`${label}: rules wider than their card: ${clipped.join(", ")}`);
 }
 
+const ENDLESS_LISTS = {
+  workflows: { path: "/v1/workflows", firstPage: 25, paging: "offset" },
+  audit: { path: "/v1/audit-log", firstPage: 50, paging: "cursor" },
+};
+
+async function assertEndlessList(page, label, route) {
+  const list = ENDLESS_LISTS[route];
+  const desktop = await page.locator('[data-testid="data-table-desktop"]').isVisible();
+  const row = (index) =>
+    page.locator(`[data-testid="data-table-${desktop ? "row" : "mobile-row"}-${index}"]`);
+  await row(0).waitFor();
+  if ((await row(list.firstPage).count()) > 0)
+    throw new Error(`${label}: row ${list.firstPage + 1} is there before the list was scrolled`);
+  const followUps = [];
+  const onRequest = (request) => {
+    const url = new URL(request.url());
+    if (url.pathname !== list.path) return;
+    const follows =
+      list.paging === "offset"
+        ? url.searchParams.get("offset") === String(list.firstPage)
+        : Boolean(url.searchParams.get("cursor"));
+    if (follows) followUps.push(url.search);
+  };
+  page.on("request", onRequest);
+  try {
+    for (let attempt = 0; attempt < 20 && (await row(list.firstPage).count()) === 0; attempt += 1) {
+      await page.evaluate((mobile) => {
+        const scope = document.querySelector(
+          `[data-testid="data-table-${mobile ? "mobile" : "desktop"}"]`,
+        );
+        for (let box = scope; box; box = box.parentElement)
+          if (/auto|scroll/.test(getComputedStyle(box).overflowY)) box.scrollTop = box.scrollHeight;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      }, !desktop);
+      await page.waitForTimeout(150);
+    }
+  } finally {
+    page.off("request", onRequest);
+  }
+  if (followUps.length === 0)
+    throw new Error(`${label}: scrolling to the end asked the engine for no next page`);
+  if ((await row(list.firstPage).count()) === 0)
+    throw new Error(
+      `${label}: row ${list.firstPage + 1} never appeared after scrolling to the end`,
+    );
+}
+
 async function assertAuditActionChip(page, label) {
   if (!(await page.locator('[data-testid="audit-action-filter"]').isVisible()))
     throw new Error(`${label}: the verbs the link narrowed to are not shown as a chip`);
@@ -3984,6 +4058,8 @@ for (const locale of variants) {
       });
       if (route === "")
         await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
+      if (route in ENDLESS_LISTS)
+        await assertEndlessList(page, `${locale.artifact}/${viewport.name}/${route}`, route);
     }
     if (!focused && new Set(headingLeft.values()).size !== 1)
       throw new Error(
@@ -4374,8 +4450,10 @@ for (const locale of variants) {
       await shoot(page, `${locale.artifact}-desktop-chat-interaction`, {
         fullPage: false,
       });
-      await stand.visit(page, "audit");
-      await page.locator('[data-testid="data-table-refresh"]').hover();
+      await stand.visit(page, "workflows");
+      await page
+        .locator('[data-testid="data-table-desktop"] [data-testid="catalog-recategorize-0"]')
+        .hover();
       await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
       await page.waitForTimeout(300);
       await shoot(page, `${locale.artifact}-desktop-tooltip`, {

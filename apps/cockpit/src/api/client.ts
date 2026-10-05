@@ -96,19 +96,15 @@ export async function bootstrap(): Promise<Bootstrap> {
   return result;
 }
 
-export function listConversations(
-  q = "",
-  options: { hidden?: "only" } = {},
-): Promise<ConversationList> {
-  const params = new URLSearchParams({
-    owner: "me",
-    owner_kind: "user",
-    limit: "100",
-    sort: "updated_at",
-    order: "desc",
-  });
-  if (options.hidden) params.set("hidden", options.hidden);
-  if (q) params.set("q", q);
+export const OWN_CONVERSATIONS = {
+  owner: "me",
+  owner_kind: "user",
+  sort: "updated_at",
+  order: "desc",
+} as const;
+
+export function listConversations(): Promise<ConversationList> {
+  const params = new URLSearchParams({ ...OWN_CONVERSATIONS, limit: "100" });
   return apiRequest(`/v1/conversations?${params}`);
 }
 

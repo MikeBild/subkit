@@ -59,6 +59,22 @@ describe("live invalidation table", () => {
     expect(ids("skill.created")).toContain(keyId(["decisions"]));
   });
 
+  test("knowledge, files, people, API keys and settings refresh their lists live", () => {
+    expect(ids("knowledge_source.changed")).toContain(keyId(["catalog"]));
+    expect(ids("knowledge_source.changed")).toContain(keyId(["knowledge-source"]));
+    expect(ids("file.changed")).toContain(keyId(["file"]));
+    expect(ids("identity.changed")).toContain(keyId(["admin"]));
+    expect(ids("rbac.changed")).toContain(keyId(["admin"]));
+    expect(ids("api_key.changed")).toContain(keyId(["admin", "api-keys"]));
+    expect(ids("settings.changed")).toContain(keyId(["admin", "settings"]));
+  });
+
+  test("every change refreshes the audit trail, a step frame does not", () => {
+    for (const type of ["execution.failed", "workflow.updated", "file.changed", "rbac.changed"])
+      expect(ids(type)).toContain(keyId(["audit"]));
+    expect(ids("execution.step.finished")).not.toContain(keyId(["audit"]));
+  });
+
   test("an unknown type refreshes nothing", () => {
     expect(keysForEvent("something.new")).toEqual([]);
   });
