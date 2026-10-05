@@ -9,19 +9,54 @@ import {
 import type { AuthType, DriverName } from "../connectors/types.ts";
 import type { Db } from "../db/client.ts";
 import { connectors, workflows, workflowVersions } from "../db/schema/index.ts";
+import { hasPlaceholders } from "../llm/substitution/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 
 const MAX_OPERATIONS_PER_TENANT = 25;
 const PROBE_TIMEOUT_MS = 10_000;
 
-interface CommittedOperation {
+type ProbeQuery = Record<string, string | number | boolean>;
+
+interface GetOperation {
   connector_id: string;
   path: string;
+  query?: ProbeQuery;
+}
+
+interface CommittedOperation extends GetOperation {
   workflows: Array<{ id: string; slug: string }>;
 }
 
-function extractGetOperations(dag: unknown): Array<{ connector_id: string; path: string }> {
-  const out: Array<{ connector_id: string; path: string }> = [];
+function staticQuery(raw: unknown): ProbeQuery | null | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  const query: ProbeQuery = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === "string") {
+      if (hasPlaceholders(value)) return null;
+      query[key] = value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      query[key] = value;
+    } else {
+      return null;
+    }
+  }
+  return Object.keys(query).length > 0 ? query : undefined;
+}
+
+export function operationKey(op: GetOperation): string {
+  const query = op.query
+    ? new URLSearchParams(
+        Object.entries(op.query)
+          .map(([key, value]): [string, string] => [key, String(value)])
+          .sort(([a], [b]) => a.localeCompare(b)),
+      ).toString()
+    : "";
+  return `${op.connector_id} ${op.path}?${query}`;
+}
+
+export function extractGetOperations(dag: unknown): GetOperation[] {
+  const out: GetOperation[] = [];
   const steps = (dag as { steps?: unknown })?.steps;
   if (!Array.isArray(steps)) return out;
   for (const step of steps) {
@@ -31,8 +66,10 @@ function extractGetOperations(dag: unknown): Array<{ connector_id: string; path:
     const method = typeof s.method === "string" ? s.method.toUpperCase() : "GET";
     if (method !== "GET") continue;
     if (typeof s.connector_id !== "string" || typeof s.path !== "string") continue;
-    if (s.path.includes("${")) continue;
-    out.push({ connector_id: s.connector_id, path: s.path });
+    if (hasPlaceholders(s.path)) continue;
+    const query = staticQuery(s.query);
+    if (query === null) continue;
+    out.push({ connector_id: s.connector_id, path: s.path, ...(query ? { query } : {}) });
   }
   return out;
 }
@@ -61,7 +98,7 @@ export async function runEndpointContractScanForTenant(
   const ops = new Map<string, CommittedOperation>();
   for (const row of committed) {
     for (const op of extractGetOperations(row.dag)) {
-      const key = `${op.connector_id} ${op.path}`;
+      const key = operationKey(op);
       const existing = ops.get(key);
       if (existing) {
         existing.workflows.push({ id: row.workflow_id, slug: row.workflow_slug });
@@ -134,6 +171,7 @@ export async function runEndpointContractScanForTenant(
         connector_id: op.connector_id,
         method: "GET",
         path: op.path,
+        ...(op.query ? { query: op.query } : {}),
         timeout_ms: PROBE_TIMEOUT_MS,
       });
       probed += 1;
