@@ -199,6 +199,48 @@ describe("prepareStep — escalation rules", () => {
   });
 });
 
+describe("prepareStep — authoring keeps the escalated model across the whole edit", () => {
+  it("never drops back to the tenant default while a bound workflow is opened, rewritten, previewed and repaired", () => {
+    const sequence = [
+      "workflow_persisted",
+      "workflow_draft_started",
+      "workflow_inspected",
+      "workflow_validated",
+      "workflow_previewed",
+      "workflow_executed",
+      "diagnosing",
+      "repairing",
+    ] as const;
+    for (const stage of sequence) {
+      const decision = prepareStep(
+        baseParams({
+          tenantDefaultModelId: "claude-haiku-4-5",
+          signals: { stage, surface: "web" },
+        }),
+      );
+      expect({ stage, model: decision?.modelId }).toEqual({ stage, model: "claude-sonnet-4-6" });
+    }
+  });
+
+  it("connector authoring stages escalate too", () => {
+    for (const stage of ["connector_draft_started", "connector_probed"] as const) {
+      const decision = prepareStep(
+        baseParams({ tenantDefaultModelId: "claude-haiku-4-5", signals: { stage } }),
+      );
+      expect(decision?.modelId).toBe("claude-sonnet-4-6");
+    }
+  });
+
+  it("idle and discovery stages keep the tenant default", () => {
+    for (const stage of ["idle", "workflow_targeted", "connector_targeted"] as const) {
+      const decision = prepareStep(
+        baseParams({ tenantDefaultModelId: "claude-haiku-4-5", signals: { stage } }),
+      );
+      expect(decision?.modelId).toBeUndefined();
+    }
+  });
+});
+
 describe("prepareStep — chat surface suppresses the authoring hard-stage escalation (P2)", () => {
   it("does NOT escalate on stage='workflow_persisted' when surface='chat'", () => {
     const decision = prepareStep(
