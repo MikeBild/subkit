@@ -45,6 +45,7 @@ const chunk = (
 describe("knowledge sources as a reader sees them", () => {
   test("the engine's source types read as four kinds", () => {
     expect(sourceKind("url")).toBe("url");
+    expect(sourceKind("discovery_endpoint_index")).toBe("discovered");
     expect(sourceKind("inline")).toBe("text");
     expect(sourceKind("bundle")).toBe("bundle");
     expect(sourceKind("seed")).toBe("bundle");

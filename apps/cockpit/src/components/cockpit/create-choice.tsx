@@ -7,23 +7,19 @@ import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { ConnectorSignInFields } from "@/components/cockpit/connector-sign-in-fields";
 import {
   afterCreateTab,
   type ConnectorSignIn,
   type ConnectorTarget,
   connectorCreateBody,
+  DEFAULT_SIGN_IN,
   EMPTY_OAUTH_CLIENT,
   manualConnectorProblem,
-  needsOAuthClient,
   needsSecret,
   type OAuthClientFields,
 } from "@/components/cockpit/create-connector-model";
-import {
-  ChoiceField,
-  CopyValueField,
-  SelectField,
-  TextField,
-} from "@/components/cockpit/form-field";
+import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
@@ -293,16 +289,14 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
   const client = useQueryClient();
   const callbackUrl = useSession().oauth_callback_url;
   const [target, setTarget] = useState<ConnectorTarget>("web");
-  const [signIn, setSignIn] = useState<ConnectorSignIn>("account");
+  const [signIn, setSignIn] = useState<ConnectorSignIn>(DEFAULT_SIGN_IN);
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [secret, setSecret] = useState("");
   const [oauth, setOAuth] = useState<OAuthClientFields>(EMPTY_OAUTH_CLIENT);
-  const oauthField = (key: keyof OAuthClientFields) => (value: string) =>
-    setOAuth((current) => ({ ...current, [key]: value }));
   const reset = () => {
     setTarget("web");
-    setSignIn("account");
+    setSignIn(DEFAULT_SIGN_IN);
     setName("");
     setAddress("");
     setSecret("");
@@ -355,7 +349,6 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
     },
     onError: (failure) => fail(refusal(failure, t("create.connector.taken"), t)),
   });
-  const oauthFields = needsOAuthClient(target, signIn);
   return {
     pending: create.isPending,
     reset,
@@ -385,18 +378,6 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
             { value: "mcp", label: t("create.connector.target.mcp") },
           ]}
         />
-        <ChoiceField<ConnectorSignIn>
-          label={t("create.connector.signIn")}
-          value={signIn}
-          onChange={setSignIn}
-          help={t("create.connector.signInHelp")}
-          testId="create-connector-signin"
-          options={[
-            { value: "account", label: t("create.connector.signIn.account") },
-            { value: "key", label: t("create.connector.signIn.key") },
-            { value: "none", label: t("create.connector.signIn.none") },
-          ]}
-        />
         <TextField
           id="create-connector-name"
           label={t("create.name")}
@@ -413,62 +394,20 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
           onChange={setAddress}
           mono
         />
-        {needsSecret(signIn) ? (
-          <TextField
-            id="create-connector-secret"
-            type="password"
-            label={t("create.connector.secret")}
-            placeholder={t("create.connector.secretPlaceholder")}
-            value={secret}
-            onChange={setSecret}
-          />
-        ) : null}
-        {oauthFields && callbackUrl ? (
-          <CopyValueField
-            id="create-connector-callback"
-            label={t("create.connector.callback")}
-            value={callbackUrl}
-            copyLabel={t("create.connector.copyCallback")}
-            help={t("create.connector.callbackHelp")}
-          />
-        ) : null}
-        {oauthFields ? (
-          <>
-            <TextField
-              id="create-connector-issuer"
-              type="url"
-              label={t("create.connector.issuer")}
-              placeholder="https://accounts.example.com"
-              help={t("create.connector.issuerHelp")}
-              value={oauth.issuer}
-              onChange={oauthField("issuer")}
-              mono
-            />
-            <TextField
-              id="create-connector-client-id"
-              label={t("create.connector.clientId")}
-              value={oauth.clientId}
-              onChange={oauthField("clientId")}
-              mono
-            />
-            <TextField
-              id="create-connector-client-secret"
-              type="password"
-              label={t("create.connector.clientSecret")}
-              placeholder={t("create.connector.secretPlaceholder")}
-              value={oauth.clientSecret}
-              onChange={oauthField("clientSecret")}
-            />
-            <TextField
-              id="create-connector-scopes"
-              label={t("create.connector.scopes")}
-              placeholder={t("create.connector.scopesPlaceholder")}
-              value={oauth.scopes}
-              onChange={oauthField("scopes")}
-              mono
-            />
-          </>
-        ) : null}
+        <ConnectorSignInFields
+          idPrefix="create-connector"
+          testId="create-connector-signin"
+          target={target}
+          signIn={signIn}
+          onSignIn={(next) => setSignIn(next ?? DEFAULT_SIGN_IN)}
+          secret={secret}
+          onSecret={setSecret}
+          keepsKey={false}
+          keepsClientSecret={false}
+          oauth={oauth}
+          onOAuth={setOAuth}
+          callbackUrl={callbackUrl}
+        />
       </>
     ),
   };

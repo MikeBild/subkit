@@ -1,7 +1,8 @@
-export type SourceKind = "url" | "file" | "text" | "bundle";
+export type SourceKind = "url" | "discovered" | "file" | "text" | "bundle";
 
 export function sourceKind(sourceType: string): SourceKind {
   if (sourceType === "url") return "url";
+  if (sourceType === "discovery_endpoint_index") return "discovered";
   if (sourceType === "inline") return "text";
   if (sourceType === "bundle" || sourceType === "seed") return "bundle";
   return "file";

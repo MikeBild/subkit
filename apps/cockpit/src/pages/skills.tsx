@@ -50,6 +50,7 @@ import {
   skillScopeKey,
   skillStateLabelKey,
   skillsLoadState,
+  skillWhereKey,
 } from "@/pages/skills-model";
 
 type Skill = components["schemas"]["Skill"];
@@ -88,10 +89,8 @@ function rowScope(row: SkillRow): string {
   return row.kind === "skill" ? row.skill.scope : row.candidate.scope;
 }
 
-function rowScopeKey(row: SkillRow) {
-  return row.kind === "skill"
-    ? skillScopeKey(row.skill.scope, row.skill.applies_to)
-    : skillScopeKey(row.candidate.scope);
+function rowWhere(row: SkillRow): string | null {
+  return row.kind === "skill" ? row.skill.applies_to : null;
 }
 
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
@@ -138,7 +137,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         (row) => rowTitle(row),
         {
           sortable: true,
-          width: "w-[44%]",
+          width: "w-[36%]",
         },
       ),
       column.custom(
@@ -151,23 +150,36 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           ) : (
             <StatusBadge state="proposed" label={t("skills.state.proposed")} />
           ),
-        { sortable: true, width: "w-[16%]" },
+        { sortable: true, width: "w-[14%]" },
       ),
       {
         ...column.custom(
           "scope",
           (row) => rowScope(row),
           t("skills.column.scope"),
-          (row) => t(rowScopeKey(row)),
-          { sortable: true, width: "w-[20%]" },
+          (row) => t(skillScopeKey(rowScope(row))),
+          { sortable: true, width: "w-[14%]" },
         ),
-        meta: { width: "w-[20%]", priority: "low" },
+        meta: { width: "w-[14%]", priority: "low" },
+      },
+      {
+        ...column.custom(
+          "applies_to",
+          (row) => rowWhere(row) ?? "",
+          t("skills.column.where"),
+          (row) => {
+            const where = rowWhere(row);
+            return where ? t(skillWhereKey(where)) : MISSING;
+          },
+          { width: "w-[18%]" },
+        ),
+        meta: { width: "w-[18%]", priority: "low" },
       },
       column.date(
         "updated_at",
         (row) => (row.kind === "skill" ? row.skill.updated_at : row.candidate.updated_at),
         t("skills.column.changed"),
-        { sortable: true, width: "w-[20%]" },
+        { sortable: true, width: "w-[18%]" },
       ),
     ];
   }, [t, dateTime]);
@@ -444,6 +456,15 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           },
         ]
       : []),
+    ...(!active && canActivate
+      ? [
+          {
+            label: t("skills.activate"),
+            onSelect: () => lifecycle.mutate("activate"),
+            testId: "skill-menu-activate",
+          },
+        ]
+      : []),
     ...(canDelete
       ? [
           {
@@ -498,7 +519,8 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         <Section testId="skill-content">
           <SummaryLine
             text={t("skills.appliesTo", {
-              scope: t(skillScopeKey(skill.scope, skill.applies_to)),
+              scope: t(skillScopeKey(skill.scope)),
+              where: t(skillWhereKey(skill.applies_to)),
               when: dateTime(skill.updated_at),
             })}
           />

@@ -37,6 +37,7 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
+import { cn } from "@/lib/utils";
 
 type StoredFile = components["schemas"]["File"];
 type ListedFile = components["schemas"]["FileListItem"];
@@ -342,6 +343,8 @@ function UploadDialog({
     toQueue(initial.slice(0, single ? 1 : undefined)),
   );
   const [busy, setBusy] = useState(false);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const previewed = queue.find((item) => item.key === previewKey) ?? queue[0] ?? null;
 
   function toQueue(files: File[]): QueuedFile[] {
     return files.map((file, index) => ({
@@ -435,7 +438,22 @@ function UploadDialog({
             >
               <span className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate">{item.file.name}</span>
+                  {queue.length > 1 ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        "truncate text-left underline-offset-4 hover:underline",
+                        item.key === previewed?.key && "font-medium",
+                      )}
+                      aria-pressed={item.key === previewed?.key}
+                      onClick={() => setPreviewKey(item.key)}
+                      data-testid={`files-upload-show-${index}`}
+                    >
+                      {item.file.name}
+                    </button>
+                  ) : (
+                    <span className="truncate">{item.file.name}</span>
+                  )}
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {formatBytes(item.file.size, LOCALE_TAGS[locale])}
                   </span>
@@ -474,6 +492,14 @@ function UploadDialog({
             </li>
           ))}
         </ul>
+      ) : null}
+      {previewed ? (
+        <FilePreview
+          key={previewed.key}
+          name={previewed.file.name}
+          file={previewed.file}
+          testId="files-upload-preview"
+        />
       ) : null}
     </FormDialog>
   );
@@ -658,6 +684,9 @@ function FileSheet({
                   value: sizeText(file.size_bytes, LOCALE_TAGS[locale]),
                 },
                 { label: t("files.fact.uploaded"), value: dateTime(file.created_at) },
+                ...(file.replaced_at
+                  ? [{ label: t("files.fact.replaced"), value: dateTime(file.replaced_at) }]
+                  : []),
                 { label: t("files.fact.usedBy"), value: usedBy ?? "…" },
               ]}
             />

@@ -17,6 +17,7 @@ import {
   settingMetaLabel,
   settingNavigation,
   settingResetDraft,
+  settingSecretCover,
   settingSecretName,
   settingSectionOf,
   settingSourceIsNotable,
@@ -400,5 +401,38 @@ describe("one save", () => {
     expect(de("settings.conflict")).toBe(
       "Inzwischen hat jemand gespeichert – neu laden, deine Entwürfe bleiben.",
     );
+  });
+});
+
+describe("a secret another secret stands in for", () => {
+  const primary = setting("llm.api_key", "", { kind: "string", sensitive: true });
+  const provider = setting("llm.provider", "anthropic", { kind: "enum" });
+  const anthropic = setting("llm.providers.anthropic.api_key", "***", {
+    kind: "string",
+    sensitive: true,
+  });
+
+  test("the primary key is not missing when the active provider's key is stored", () => {
+    expect(settingSecretCover(primary, [primary, provider, anthropic])).toBe(
+      "llm.providers.anthropic.api_key",
+    );
+  });
+
+  test("it is missing when neither is stored", () => {
+    const empty = { ...anthropic, value: "" };
+    expect(settingSecretCover(primary, [primary, provider, empty])).toBeNull();
+  });
+
+  test("a stored primary key needs no stand-in, and no other secret has one", () => {
+    expect(settingSecretCover({ ...primary, value: "***" }, [provider, anthropic])).toBeNull();
+    expect(settingSecretCover(anthropic, [primary, provider, anthropic])).toBeNull();
+  });
+
+  test("the row says which setting stands in", () => {
+    expect(
+      de("settings.secret.covered", {
+        setting: settingLabel("llm.providers.anthropic.api_key", de).text,
+      }),
+    ).toBe("Nicht nötig · Anthropic · API-Schlüssel ist hinterlegt");
   });
 });
