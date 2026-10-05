@@ -270,9 +270,15 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
               testId={`workflow-invocation-hook-${index}-state`}
             />
           </div>
-          <p className={line} data-testid={`workflow-invocation-hook-${index}-signing`}>
-            {signingSentence(hook, t)}
-          </p>
+          <FactList
+            items={[
+              {
+                label: t("invocation.hook.signature"),
+                value: signingSentence(hook, t),
+                testId: `workflow-invocation-hook-${index}-signing`,
+              },
+            ]}
+          />
         </div>
       ))}
       {invocation.base_url === null ? <p className={line}>{t("invocation.noAddress")}</p> : null}

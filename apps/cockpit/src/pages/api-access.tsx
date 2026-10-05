@@ -513,7 +513,7 @@ function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose()
       onSubmit={onClose}
       testId="secret-dialog"
     >
-      <CopyField value={secret ?? ""} label={t("apiKeys.ready")} testId="secret-value" />
+      <CopyField value={secret ?? ""} label={t("apiKeys.key")} testId="secret-value" />
       <p className="text-sm text-muted-foreground" data-testid="secret-once">
         {t("secret.once")}
       </p>

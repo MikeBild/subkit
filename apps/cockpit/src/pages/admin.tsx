@@ -323,7 +323,7 @@ export function SecretDialog({
       onSubmit={onClose}
       testId="secret-dialog"
     >
-      <CopyField value={secret ?? ""} label={t("secret.once")} testId="secret-value" />
+      <CopyField value={secret ?? ""} label={t("people.inviteCode")} testId="secret-value" />
       <p className="text-sm text-muted-foreground">{t("secret.once")}</p>
     </FormDialog>
   );
