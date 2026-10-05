@@ -33624,9 +33624,11 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "description": "One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them."
             },
             "required": false,
+            "description": "One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them.",
             "name": "status",
             "in": "query"
           },
