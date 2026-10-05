@@ -8,13 +8,13 @@ import { conversations } from "../../db/schema/index.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
-import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { createEmptyDraftDocument, withFocusedExecution } from "../authoring-state.ts";
 import type { ConversationSurface } from "../lifecycle-view.ts";
 import { appendMessage } from "../persist.ts";
 import type { ConversationReference } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import { deriveConversationTitle } from "../title.ts";
-import type { ConversationRecord } from "../types.ts";
+import type { ConversationRecord, DraftDocument, LatestExecutionSummary } from "../types.ts";
 import { normalizePermissionMode, rowToRecord } from "./shared.ts";
 
 export interface CreateConversationParams {
@@ -23,6 +23,7 @@ export interface CreateConversationParams {
   principal?: ResolvedPrincipal | null;
   connector_id?: string | null;
   workflow_id?: string | null;
+  focus_execution?: LatestExecutionSummary | null;
   initial_message?: string;
   references?: ConversationReference[] | null;
   memory?: string | null;
@@ -50,8 +51,12 @@ export async function createConversation(
 ): Promise<CreateConversationResult> {
   const memory = typeof p.memory === "string" ? p.memory : null;
   const initialPermissionMode = normalizePermissionMode(p.permission_mode) ?? "auto";
-  const initialDraft = createEmptyDraftDocument();
+  const focus = p.focus_execution ?? null;
+  const initialDraft: DraftDocument = focus
+    ? withFocusedExecution(createEmptyDraftDocument(), focus)
+    : createEmptyDraftDocument();
   const playground = p.playground === true;
+  const targetWorkflowId = playground ? null : (p.workflow_id ?? focus?.workflow_id ?? null);
   if (initialPermissionMode || playground) {
     initialDraft.session = {
       ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
@@ -68,7 +73,7 @@ export async function createConversation(
     .values({
       tenant_id: p.tenant_id,
       target_connector_id: p.connector_id ?? null,
-      target_workflow_id: playground ? null : (p.workflow_id ?? null),
+      target_workflow_id: targetWorkflowId,
       status: "active",
       draft: initialDraft,
       owner_id: p.actor_id ?? null,
@@ -88,7 +93,7 @@ export async function createConversation(
     tenant_id: p.tenant_id,
     actor_id: p.actor_id,
     connector_id: p.connector_id ?? null,
-    workflow_id: p.workflow_id ?? null,
+    workflow_id: targetWorkflowId,
     has_initial_message: Boolean(p.initial_message),
     memory_included: Boolean(memory),
   });
@@ -104,7 +109,8 @@ export async function createConversation(
       result: "success",
       metadata: {
         connector_id: p.connector_id ?? null,
-        workflow_id: playground ? null : (p.workflow_id ?? null),
+        workflow_id: targetWorkflowId,
+        execution_id: focus?.execution_id ?? null,
         owner_id: p.actor_id ?? null,
         model: p.model ?? null,
         title: p.title ?? null,

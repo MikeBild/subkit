@@ -17,7 +17,7 @@ import {
   surfaceFromClientHeader,
   unregisterConversationAbort,
 } from "../../../conversations/index.ts";
-import { NotFoundError } from "../../errors.ts";
+import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
@@ -75,6 +75,7 @@ const createRouteSpec = createRoute({
   responses: {
     201: { description: "Created", content: { "application/json": { schema: RunOutcomeSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -144,12 +145,24 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+    const focus = body.execution_id
+      ? await svc.loadFocusExecution(principal.tenant_id, body.execution_id, db)
+      : null;
+    if (body.execution_id && !focus) throw new NotFoundError("execution");
+    if (focus && body.workflow_id && focus.workflow_id !== body.workflow_id) {
+      throw new BadRequestError("execution_id belongs to a different workflow than workflow_id", {
+        execution_id: focus.execution_id,
+        execution_workflow_id: focus.workflow_id,
+        workflow_id: body.workflow_id,
+      });
+    }
     const createParams = {
       tenant_id: principal.tenant_id,
       actor_id: principal.id,
       principal,
       ...(body.connector_id ? { connector_id: body.connector_id } : {}),
       ...(body.workflow_id ? { workflow_id: body.workflow_id } : {}),
+      ...(focus ? { focus_execution: focus } : {}),
       ...(body.initial_message ? { initial_message: body.initial_message } : {}),
       ...(body.memory !== undefined ? { memory: body.memory } : {}),
       ...(body.model ? { model: body.model } : {}),

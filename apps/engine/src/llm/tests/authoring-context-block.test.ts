@@ -133,6 +133,7 @@ describe("renderAuthoringContextBlock", () => {
       "Latest execution: status=succeeded env=dev warnings=2 diagnosis_available=true",
     );
     expect(block!).toContain("Latest diagnosis: Missing .data in transform scope path.");
+    expect(block!).toContain("This run: execution exec_123 of workflow");
   });
 
   test("includes a guided-next-step section", () => {
