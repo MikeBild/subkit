@@ -6,7 +6,7 @@ import { upsertFromSignal } from "../../skill-candidates/service.ts";
 import type { Db } from "../client.ts";
 import { dataMigrations, skillCandidates, workflows, workflowVersions } from "../schema/index.ts";
 
-export const CONTEXT_NOTE_FACTS_BACKFILL_NAME = "context_note_facts_v1";
+export const CONTEXT_NOTE_FACTS_BACKFILL_NAME = "context_note_facts";
 
 export interface ContextNoteFactsBackfillReport {
   skipped: boolean;
