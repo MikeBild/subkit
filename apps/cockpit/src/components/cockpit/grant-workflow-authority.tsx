@@ -70,6 +70,7 @@ export function GrantWorkflowAuthority({
   onGrant,
   reviewContent,
   initialEnvironment,
+  environmentChosen = false,
   ranIn,
   versionLabel,
   disabled = false,
@@ -90,6 +91,7 @@ export function GrantWorkflowAuthority({
   onGrant?: (input: NonNullable<ReturnType<typeof authorityGrantInput>>) => Promise<unknown>;
   reviewContent?: ReactNode;
   initialEnvironment?: "dev" | "prod";
+  environmentChosen?: boolean;
   ranIn?: "dev" | "prod";
   versionLabel?: string;
   disabled?: boolean;
@@ -178,7 +180,11 @@ export function GrantWorkflowAuthority({
       if (!isLatest(token)) throw superseded();
       if (
         !settled.current &&
-        environmentToCorrectTo(result, asked, heldEnvironments({ chosen: initialEnvironment }))
+        environmentToCorrectTo(
+          result,
+          asked,
+          heldEnvironments({ chosen: environmentChosen ? initialEnvironment : null }),
+        )
       ) {
         const runsIn = await loadGrantStartedIn(
           client,
@@ -189,7 +195,11 @@ export function GrantWorkflowAuthority({
         const belongs = environmentToCorrectTo(
           result,
           asked,
-          heldEnvironments({ chosen: initialEnvironment, ranIn, runsIn }),
+          heldEnvironments({
+            chosen: environmentChosen ? initialEnvironment : null,
+            ranIn,
+            runsIn,
+          }),
         );
         settled.current = true;
         if (belongs) {
