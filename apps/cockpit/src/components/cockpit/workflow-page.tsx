@@ -3,13 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
-import { absolute, chatNewHref } from "@/app/links";
+import { absolute, chatNewHref, connectorHref } from "@/app/links";
 import {
   useWaitingConnector,
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
-import { useConnectorNames } from "@/components/cockpit/connector-names";
+import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
 import {
@@ -47,7 +47,6 @@ import {
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
-import { connectorNameOf } from "@/lib/workflow-steps";
 import { WorkflowRecategorize } from "@/pages/catalog";
 
 type RecordValue = Record<string, unknown>;
@@ -157,7 +156,7 @@ export function WorkflowPage({
   const automation = useWorkflowAutomation(id, workflow, permissions);
   const editor = useStepDraft(stepRecords);
   const steps = useWorkflowSteps({ workflowId: id, versionId, steps: editor.steps });
-  const connectorNames = useConnectorNames();
+  const connectorRecords = useConnectorRecords();
   const waitingConnector = useWaitingConnector(
     steps.views.map((view) => ({
       connectorId: view.definition.connectorId,
@@ -256,22 +255,45 @@ export function WorkflowPage({
       t("workflowPage.calledOnRequest")
     )
   ) : null;
-  const connectors = [
-    ...new Set(
-      steps.views
-        .map((view) => connectorNameOf(view.definition, connectorNames))
-        .filter((name): name is string => Boolean(name)),
-    ),
-  ];
-  const buildSummary = [
-    version === null ? null : t("automation.fact.version", { version: `v${version}` }),
-    t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
-      count: steps.views.length,
-    }),
-    connectors.length > 0 ? connectors.join(", ") : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const connectors = new Map<string, { label: string; href: string | null }>();
+  for (const view of steps.views) {
+    const { connector, connectorId } = view.definition;
+    const known = connectorRecords.find((item) =>
+      connectorId ? item.id === connectorId : item.slug === connector,
+    );
+    const label = known?.display_name ?? connector;
+    if (!label || connectors.has(label)) continue;
+    const id = known?.id ?? connectorId ?? null;
+    connectors.set(label, { label, href: id ? absolute(connectorHref(id)) : null });
+  }
+  const buildSummary = (
+    <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
+      {[
+        version === null ? null : t("automation.fact.version", { version: `v${version}` }),
+        t(steps.views.length === 1 ? "workflowPage.steps.one" : "workflowPage.steps.other", {
+          count: steps.views.length,
+        }),
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+      {[...connectors.values()].map((entry, index) =>
+        entry.href ? (
+          <a
+            key={entry.label}
+            href={entry.href}
+            className="rounded-md border px-1.5 py-0.5 text-xs text-foreground underline-offset-4 hover:underline"
+            data-testid={`workflow-build-connector-${index}`}
+          >
+            {entry.label}
+          </a>
+        ) : (
+          <span key={entry.label} className="rounded-md border px-1.5 py-0.5 text-xs">
+            {entry.label}
+          </span>
+        ),
+      )}
+    </span>
+  );
 
   const tabs: PageTab[] = [
     {
@@ -313,21 +335,12 @@ export function WorkflowPage({
         <>
           <SummaryLine
             text={buildSummary}
-            help={canRun && steps.views.length > 0 ? t("workflow.testRunSecondary") : undefined}
             aside={
-              <>
-                {canRun && steps.views.length > 0 ? (
-                  <WorkflowTestRun
-                    steps={steps}
-                    definition={draftDefinition(record, editor.steps as RecordValue[])}
-                  />
-                ) : null}
-                {canWrite && !legacy && editor.steps.length > 0 ? (
-                  <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
-                    {t("stepEditor.addTitle")}
-                  </ActionButton>
-                ) : null}
-              </>
+              canWrite && !legacy && editor.steps.length > 0 ? (
+                <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
+                  {t("stepEditor.addTitle")}
+                </ActionButton>
+              ) : undefined
             }
             testId="workflow-build-summary"
           />
@@ -347,7 +360,21 @@ export function WorkflowPage({
                 }
               : {})}
           />
-          {canWrite ? <StepSaveBar workflowId={id} record={record} draft={editor} /> : null}
+          {canWrite ? (
+            <StepSaveBar
+              workflowId={id}
+              record={record}
+              draft={editor}
+              preview={
+                canRun && steps.views.length > 0 ? (
+                  <WorkflowTestRun
+                    steps={steps}
+                    definition={draftDefinition(record, editor.steps as RecordValue[])}
+                  />
+                ) : undefined
+              }
+            />
+          ) : null}
           <div className="flex flex-col gap-2">
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
@@ -402,6 +429,7 @@ export function WorkflowPage({
           action={
             canRun && !legacy && !disabled ? (
               <RunWorkflowDialog
+                quiet={editor.dirty}
                 workflowId={id}
                 workflowName={title}
                 version={version === null ? null : String(version)}

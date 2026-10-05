@@ -34,6 +34,7 @@ import { tableColumns } from "@/components/cockpit/table-columns";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
+  API_KEYS_QUERY,
   type ApiKeyItem,
   type ConnectedClientItem,
   defaultKeyScopes,
@@ -54,7 +55,6 @@ import {
 type IssuedApiKey = ApiKeyItem & { plaintext_key: string };
 type Translate = ReturnType<typeof useI18n>["t"];
 
-const KEYS_QUERY = ["admin", "api-keys"] as const;
 const CLIENTS_QUERY = ["admin", "oauth-clients"] as const;
 
 const SECTION_TITLE_KEYS = {
@@ -71,7 +71,7 @@ export function ApiAccessPage() {
   const live = useLiveQueryOptions();
 
   const keys = useQuery({
-    queryKey: KEYS_QUERY,
+    queryKey: API_KEYS_QUERY,
     queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
     enabled: canKeys,
     ...live,
@@ -195,7 +195,7 @@ function KeysSection({
   const canRevoke = session.permissions.includes("api_key:revoke");
   const [rotating, setRotating] = useState<ApiKeyItem | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyItem | null>(null);
-  const refresh = () => client.invalidateQueries({ queryKey: KEYS_QUERY });
+  const refresh = () => client.invalidateQueries({ queryKey: API_KEYS_QUERY });
 
   const rotate = useMutation({
     mutationFn: (id: string) =>
@@ -432,7 +432,7 @@ function CreateKeyDialog({
     onSuccess: async (result) => {
       setName("");
       setPicked(defaultKeyScopes(session.permissions));
-      await client.invalidateQueries({ queryKey: KEYS_QUERY });
+      await client.invalidateQueries({ queryKey: API_KEYS_QUERY });
       await onIssued(result.plaintext_key);
     },
   });
@@ -513,7 +513,7 @@ function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose()
       onSubmit={onClose}
       testId="secret-dialog"
     >
-      <CopyField value={secret ?? ""} label={t("apiKeys.ready")} testId="secret-value" />
+      <CopyField value={secret ?? ""} label={t("apiKeys.key")} testId="secret-value" />
       <p className="text-sm text-muted-foreground" data-testid="secret-once">
         {t("secret.once")}
       </p>

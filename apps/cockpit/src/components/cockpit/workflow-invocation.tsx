@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { absolute, apiAccessHref } from "@/app/links";
+import { useSession } from "@/app/session";
 import {
   CodeBlock,
   ContextHelp,
   CopyField,
   DataState,
+  FactList,
   SegmentedControl,
   StatusBadge,
 } from "@/components/cockpit/patterns";
@@ -30,6 +33,7 @@ import {
   scheduleRowKey,
   verifierName,
 } from "@/lib/workflow-invocation";
+import { API_KEYS_QUERY, type ApiKeyItem, groupApiKeys } from "@/pages/api-access-model";
 
 type Environment = "dev" | "prod";
 
@@ -76,6 +80,22 @@ function Copyable({ children }: { children: ReactNode }) {
 
 const line = "text-sm text-muted-foreground";
 
+function useMissingKey(): boolean {
+  const { permissions } = useSession();
+  const canRead = permissions.includes("api_key:read");
+  const keys = useQuery({
+    queryKey: API_KEYS_QUERY,
+    enabled: canRead,
+    queryFn: () => apiRequest<{ items: ApiKeyItem[] }>("/v1/identity/api-keys"),
+  });
+  return (
+    canRead &&
+    permissions.includes("api_key:write") &&
+    keys.data !== undefined &&
+    groupApiKeys(keys.data.items).active.length === 0
+  );
+}
+
 function HttpMode({
   invocation,
   approvedEnvironment,
@@ -89,6 +109,7 @@ function HttpMode({
   const { http } = invocation;
   const snippet = http.snippets?.[environment][language] ?? null;
   const verdict = callVerdict(invocation, environment, approvedEnvironment);
+  const missingKey = useMissingKey();
   return (
     <div className="flex flex-col gap-3">
       <Copyable>
@@ -103,6 +124,36 @@ function HttpMode({
           {t("invocation.noAddress")}
         </p>
       ) : null}
+      <FactList
+        testId="workflow-invocation-http-facts"
+        items={[
+          {
+            label: t("invocation.http.method"),
+            value: http.method,
+            testId: "workflow-invocation-http-method",
+          },
+          {
+            label: t("invocation.http.signIn"),
+            help: t("invocation.http.bearerHelp"),
+            value: missingKey ? (
+              <>
+                {t("invocation.http.bearer")}
+                {" · "}
+                <a
+                  href={absolute(apiAccessHref("keys"))}
+                  className="underline underline-offset-4"
+                  data-testid="workflow-invocation-create-key"
+                >
+                  {t("apiKeys.create")}
+                </a>
+              </>
+            ) : (
+              t("invocation.http.bearer")
+            ),
+            testId: "workflow-invocation-http-auth",
+          },
+        ]}
+      />
       {snippet ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -219,9 +270,15 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
               testId={`workflow-invocation-hook-${index}-state`}
             />
           </div>
-          <p className={line} data-testid={`workflow-invocation-hook-${index}-signing`}>
-            {signingSentence(hook, t)}
-          </p>
+          <FactList
+            items={[
+              {
+                label: t("invocation.hook.signature"),
+                value: signingSentence(hook, t),
+                testId: `workflow-invocation-hook-${index}-signing`,
+              },
+            ]}
+          />
         </div>
       ))}
       {invocation.base_url === null ? <p className={line}>{t("invocation.noAddress")}</p> : null}

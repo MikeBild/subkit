@@ -17,12 +17,17 @@ import { OPENS_APPROVAL } from "@/components/cockpit/opens-approval";
 import {
   Button,
   CodeBlock,
+  CollapsibleSection,
+  ContextHelp,
+  DataState,
+  FactList,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   FormDialog,
   Input,
+  Section,
   SegmentedControl,
   Select,
   SelectContent,
@@ -646,13 +651,22 @@ export function GrantWorkflowAuthority({
       <GrantScopeWarnings warnings={scopeWarnings} />
       {recurringContent &&
         publications.map((publication, index) => (
-          <Notice key={index} testId="authority-content-boundary">
-            <NoticeTitle>
-              {t("authority.content.members", {
-                count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
-              })}
-            </NoticeTitle>
-            <div className="flex flex-col gap-1">
+          <Section
+            key={index}
+            testId="authority-content-boundary"
+            label={t("authority.content.members", {
+              count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
+            })}
+            aside={
+              <ContextHelp
+                label={t("authority.content.targets")}
+                testId={`authority-content-scope-${index}`}
+              >
+                {t("authority.content.scope")}
+              </ContextHelp>
+            }
+          >
+            <div className="flex flex-col gap-1 text-sm">
               <p>{publication.origin}</p>
               <ul>
                 {publication.sources.flatMap((source) =>
@@ -662,9 +676,10 @@ export function GrantWorkflowAuthority({
                   }),
                 )}
               </ul>
-              <p>{t("authority.content.scope")}</p>
-              <details>
-                <summary>{t("authority.content.targets")}</summary>
+              <CollapsibleSection
+                label={t("authority.content.targets")}
+                testId={`authority-content-targets-${index}`}
+              >
                 <ul>
                   {publication.sources.flatMap((source) =>
                     source.item_ids.map((id) => (
@@ -676,7 +691,7 @@ export function GrantWorkflowAuthority({
                   )}
                 </ul>
                 <p className="break-all">{`${publication.origin}/v1/sites/${publication.site_id}`}</p>
-              </details>
+              </CollapsibleSection>
               {review?.schedules?.map((schedule, scheduleIndex) => (
                 <p key={scheduleIndex}>
                   {t("authority.report.next", {
@@ -692,7 +707,7 @@ export function GrantWorkflowAuthority({
                 </p>
               ))}
             </div>
-          </Notice>
+          </Section>
         ))}
       {callGroups.map((group) =>
         group.step_id === null ? (
@@ -703,28 +718,42 @@ export function GrantWorkflowAuthority({
             className="flex flex-col gap-4 rounded-md border border-border/60 p-3"
             data-testid="authority-call-section"
           >
-            <p className="font-medium">
+            <p className="flex items-center gap-1 font-medium">
               {t("authority.call.title", {
                 step: group.step_id,
                 name: group.workflow_name ?? t("common.unknown"),
                 version: group.version ?? t("common.unknown"),
               })}
+              <ContextHelp
+                label={t("authority.effects")}
+                testId={`authority-call-scope-${group.step_id}`}
+              >
+                {t("authority.call.scope")}
+              </ContextHelp>
             </p>
-            <p className="text-muted-foreground text-sm">{t("authority.call.scope")}</p>
             <BoundaryPanels effects={group.effects} />
           </section>
         ),
       )}
       {recurringReport && (
-        <Notice testId="authority-report-boundary">
-          <NoticeTitle>{t("authority.report.recipients")}</NoticeTitle>
-          <div className="flex flex-col gap-1">
+        <Section
+          testId="authority-report-boundary"
+          label={t("authority.report.recipients")}
+          aside={
+            <ContextHelp
+              label={t("authority.report.recipients")}
+              testId="authority-report-variable"
+            >
+              {t("authority.report.variable")}
+            </ContextHelp>
+          }
+        >
+          <div className="flex flex-col gap-1 text-sm">
             {deliveries.map((delivery, index) => (
               <p key={`${delivery.to}:${index}`}>
                 {t("authority.report.delivery", { from: delivery.from, to: delivery.to })}
               </p>
             ))}
-            <p>{t("authority.report.variable")}</p>
             {review?.schedules?.map((schedule, index) => (
               <p key={index}>
                 {t("authority.report.next", {
@@ -740,12 +769,11 @@ export function GrantWorkflowAuthority({
               </p>
             ))}
           </div>
-        </Notice>
+        </Section>
       )}
       {unsupported && issues.length > 0 && (
-        <Notice testId="authority-issues">
-          <NoticeTitle>{t("authority.issuesTitle")}</NoticeTitle>
-          <div className="flex flex-col gap-1">
+        <Section testId="authority-issues" label={t("authority.issuesTitle")}>
+          <div className="flex flex-col gap-1 text-sm">
             <ul className="flex flex-col gap-2">
               {issues.map((issue) => (
                 <li key={issue.key}>
@@ -777,24 +805,30 @@ export function GrantWorkflowAuthority({
               ))}
             </ul>
           </div>
-        </Notice>
+        </Section>
       )}
       {unsupported && issues.length === 0 && !onSingleRun && (
-        <Notice testId="authority-needs-adjustment">
-          <NoticeTitle>{t("schedules.held.status")}</NoticeTitle>
-          <div className="flex flex-col gap-1">
-            {t("authority.unsupportedSteps", {
-              steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
-            })}
-          </div>
-        </Notice>
+        <p className="text-sm" data-testid="authority-needs-adjustment">
+          {t("authority.unsupportedSteps", {
+            steps: review?.unavailable_steps.join(", ") || t("authority.effects"),
+          })}
+        </p>
       )}
       {unsupported && (repairable.data?.proposals?.length ?? 0) > 0 && (
-        <Notice testId="authority-repair">
-          <NoticeTitle>{t("authority.repairTitle")}</NoticeTitle>
-          <div className="flex flex-col items-start gap-3">
-            <p>
+        <Section
+          testId="authority-repair"
+          label={t("authority.repairTitle")}
+          aside={
+            <ContextHelp label={t("authority.repairTitle")} testId="authority-repair-help">
               {t("authority.repairDescription", {
+                count: String(repairable.data?.proposals?.length ?? 0),
+              })}
+            </ContextHelp>
+          }
+        >
+          <div className="flex flex-col items-start gap-3 text-sm">
+            <p>
+              {t("authority.repairLine", {
                 count: String(repairable.data?.proposals?.length ?? 0),
               })}
             </p>
@@ -827,13 +861,15 @@ export function GrantWorkflowAuthority({
               {t(repair.isPending ? "authority.repairWorking" : "authority.repairAction")}
             </Button>
           </div>
-        </Notice>
+        </Section>
       )}
       {incomplete && !unsupported && (
-        <Notice testId="authority-incomplete">
-          <NoticeTitle>{t("authority.incompleteTitle")}</NoticeTitle>
-          <div className="flex flex-col gap-1">{t("authority.incompleteDescription")}</div>
-        </Notice>
+        <p className="flex items-center gap-1 text-sm" data-testid="authority-incomplete">
+          {t("authority.incompleteTitle")}
+          <ContextHelp label={t("authority.incompleteTitle")} testId="authority-incomplete-help">
+            {t("authority.incompleteDescription")}
+          </ContextHelp>
+        </p>
       )}
       <FieldGroup>
         <Field>
@@ -865,7 +901,12 @@ export function GrantWorkflowAuthority({
         </Field>
         {boundsVisible && (
           <Field>
-            <FieldLabel>{t("authority.limit.label")}</FieldLabel>
+            <FieldLabel className="flex items-center gap-1">
+              {t("authority.limit.label")}
+              <ContextHelp label={t("authority.limit.label")} testId="authority-limit-hint">
+                {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
+              </ContextHelp>
+            </FieldLabel>
             <SegmentedControl
               label={t("authority.limit.label")}
               value={limit}
@@ -886,9 +927,6 @@ export function GrantWorkflowAuthority({
                 },
               ]}
             />
-            <p className="text-sm text-muted-foreground" data-testid="authority-limit-hint">
-              {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
-            </p>
           </Field>
         )}
         {boundsVisible && limited && (
@@ -933,25 +971,35 @@ export function GrantWorkflowAuthority({
         (trialStartedAt === null ? (
           <p role="status">{t("common.loading")}</p>
         ) : (
-          <Notice testId="authority-trial-running">
-            <NoticeTitle>{t("authority.trial.title")}</NoticeTitle>
-            <div className="flex flex-col gap-1">
-              <p>{t("authority.trial.what")}</p>
-              <p role="status">{t("authority.trial.elapsed", { seconds: elapsed })}</p>
-            </div>
-          </Notice>
+          <p
+            role="status"
+            className="flex items-center gap-1 text-sm"
+            data-testid="authority-trial-running"
+          >
+            {t("authority.trial.title")}
+            {" · "}
+            {t("authority.trial.elapsed", { seconds: elapsed })}
+            <ContextHelp label={t("authority.trial.title")} testId="authority-trial-help">
+              {t("authority.trial.what")}
+            </ContextHelp>
+          </p>
         ))}
       {trialElsewhere && !prepare.isPending && (
-        <Notice testId="authority-trial-elsewhere">
-          <NoticeTitle>{t("authority.trial.title")}</NoticeTitle>
-          <div className="flex flex-col gap-1">{t("authority.trial.alreadyRunning")}</div>
-        </Notice>
+        <p role="status" className="text-sm" data-testid="authority-trial-elsewhere">
+          {t("authority.trial.alreadyRunning")}
+        </p>
       )}
       {sample && !prepare.isPending && (
-        <Notice testId="authority-sample">
-          <NoticeTitle>{t("authority.sample.title", { slug: sample.slug })}</NoticeTitle>
+        <Section
+          testId="authority-sample"
+          label={t("authority.sample.title", { slug: sample.slug })}
+          aside={
+            <ContextHelp label={t("authority.sample.label")} testId="authority-sample-help">
+              {t("authority.sample.what", { slug: sample.slug })}
+            </ContextHelp>
+          }
+        >
           <div className="flex flex-col gap-3">
-            <p>{t("authority.sample.what", { slug: sample.slug })}</p>
             <Field>
               <FieldLabel htmlFor="authority-sample-input">
                 {t("authority.sample.label")}
@@ -994,139 +1042,130 @@ export function GrantWorkflowAuthority({
               {t("authority.sample.prepare")}
             </Button>
           </div>
-        </Notice>
+        </Section>
       )}
       {prepare.error && sampleRefused === null && (
-        <Notice tone="error">
-          <NoticeTitle>{t("authority.loadFailed")}</NoticeTitle>
-          <div className="flex flex-col gap-1">{t("authority.retryDescription")}</div>
-        </Notice>
+        <DataState
+          state="error"
+          line={t("authority.loadFailed")}
+          testId="authority-load-failed"
+          className="py-0"
+        />
       )}
       {review && (
         <div className="flex min-w-0 flex-col gap-4" data-testid="authority-grant-review">
-          {versionLabel ? (
-            <div className="flex flex-wrap gap-2">
-              <span
-                className="rounded-md border px-2 py-0.5 text-xs font-medium"
-                data-testid="authority-version-label"
-              >
-                {versionLabel}
-              </span>
-            </div>
+          {versionLabel || input ? (
+            <FactList
+              testId="authority-boundary-facts"
+              items={[
+                ...(versionLabel
+                  ? [
+                      {
+                        label: t("catalog.version"),
+                        value: versionLabel,
+                        testId: "authority-version-label",
+                      },
+                    ]
+                  : []),
+                ...(input
+                  ? [
+                      {
+                        label: t("authority.window"),
+                        value: `${dateTime(input.valid_from)} — ${
+                          input.valid_until === null
+                            ? t("authority.headline.untilRevoked")
+                            : dateTime(input.valid_until)
+                        }`,
+                        testId: "authority-window",
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           ) : null}
           {carriesOver ? (
             <p className="text-sm font-medium" data-testid="authority-carry-over">
               {t("authority.carryOver.hint")}
             </p>
-          ) : null}
-          {review && growthLine(t, review.boundary_growth) ? (
+          ) : growthLine(t, review.boundary_growth) ? (
             <p className="text-sm font-medium" data-testid="authority-growth">
               {growthLine(t, review.boundary_growth)}
             </p>
-          ) : null}
-          {input && (
-            <p className="text-sm">
-              {t("authority.window")}
-              {": "}
-              {dateTime(input.valid_from)}
-              {" — "}
-              {input.valid_until === null
-                ? t("authority.headline.untilRevoked")
-                : dateTime(input.valid_until)}
+          ) : boundsVisible ? (
+            <p className="text-sm" data-testid="authority-consequence">
+              {t("authority.sameBoundary")}
             </p>
-          )}
+          ) : null}
           {hasEffectDetails ? (
-            <details
-              open={!unsupported && !recurringReport && !recurringContent}
-              data-testid="authority-effect-details"
+            <Section
+              label={t("authority.effects")}
+              testId="authority-effect-details"
+              aside={
+                <ContextHelp label={t("authority.effects")} testId="authority-effect-help">
+                  {`${t("authority.runNotRequestDescription")} ${t("authority.maskedDescription")}`}
+                </ContextHelp>
+              }
             >
-              <summary className="cursor-pointer text-sm font-medium">
-                {t("authority.effects")}
-              </summary>
-              <div className="mt-3 flex flex-col gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {t("authority.runNotRequestDescription")}
-                </p>
-                {review.manifest.effects.map((effect) => (
-                  <div key={effect.step_id} className="min-w-0 text-sm">
-                    <p className="font-medium">
-                      {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
-                      {" · "}
-                      {effect.connector_id
-                        ? (connectorNames.get(effect.connector_id) ??
-                          t("authority.configuredConnector"))
-                        : t("authority.directRequest")}
-                    </p>
-                    <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
-                    {effect.read_path && <p>{t("authority.readPath")}</p>}
-                    <p className="text-muted-foreground text-xs">
-                      {t("authority.issueStep", { step: effect.step_id })}
-                      {" · "}
-                      {effect.operation}
-                    </p>
-                  </div>
-                ))}
-                {review.execution_shape.requests.map((request) => (
-                  <details key={request.step_id}>
-                    <summary className="cursor-pointer text-sm font-medium">
-                      {t("authority.requestReview", { step: request.step_id })}
-                    </summary>
-                    <p className="my-2 text-sm">
-                      {t("authority.attempts", {
-                        count: request.retry_policy_max_attempts ?? t("common.unknown"),
-                      })}
-                    </p>
-                    <CodeBlock code={request.redacted_request_json} lang="json" />
-                  </details>
-                ))}
-                {review.execution_shape.iterations.map((iteration) => (
-                  <p key={`${iteration.step_id}:${iteration.kind}`} className="break-words text-sm">
-                    {t("authority.iteration", {
-                      step: iteration.step_id,
-                      children: iteration.body_step_ids.join(", "),
-                    })}
+              {review.manifest.effects.map((effect) => (
+                <div key={effect.step_id} className="min-w-0 text-sm">
+                  <p className="font-medium">
+                    {t(AUTHORITY_EFFECT_KEYS[effect.effect])}
+                    {" · "}
+                    {effect.connector_id
+                      ? (connectorNames.get(effect.connector_id) ??
+                        t("authority.configuredConnector"))
+                      : t("authority.directRequest")}
                   </p>
-                ))}
-                <p className="text-sm text-muted-foreground">{t("authority.maskedDescription")}</p>
-              </div>
-            </details>
+                  <p className="break-all">{effect.target ?? t("authority.unboundTarget")}</p>
+                  {effect.read_path && <p>{t("authority.readPath")}</p>}
+                  <p className="text-muted-foreground text-xs">
+                    {t("authority.issueStep", { step: effect.step_id })}
+                    {" · "}
+                    {effect.operation}
+                  </p>
+                </div>
+              ))}
+              {review.execution_shape.iterations.map((iteration) => (
+                <p key={`${iteration.step_id}:${iteration.kind}`} className="break-words text-sm">
+                  {t("authority.iteration", {
+                    step: iteration.step_id,
+                    children: iteration.body_step_ids.join(", "),
+                  })}
+                </p>
+              ))}
+              {review.execution_shape.requests.length > 0 ? (
+                <CollapsibleSection
+                  label={t("authority.requests")}
+                  count={review.execution_shape.requests.length}
+                  testId="authority-effect-requests"
+                >
+                  <div className="flex flex-col gap-3">
+                    {review.execution_shape.requests.map((request) => (
+                      <div key={request.step_id} className="flex min-w-0 flex-col gap-1">
+                        <p className="text-muted-foreground text-xs">
+                          {t("authority.attempts", {
+                            count: request.retry_policy_max_attempts ?? t("common.unknown"),
+                          })}
+                        </p>
+                        <CodeBlock
+                          label={t("authority.requestReview", { step: request.step_id })}
+                          code={request.redacted_request_json}
+                          lang="json"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              ) : null}
+            </Section>
           ) : null}
           {!input && boundsVisible && !invalidRuns && !invalidHours && (
-            <Notice>
-              <NoticeTitle>{t("authority.reviewExpired")}</NoticeTitle>
-              <div className="flex flex-col gap-1">{t("authority.reviewExpiredHint")}</div>
-            </Notice>
+            <p className="text-sm" data-testid="authority-review-expired">
+              {t("authority.reviewExpired")} · {t("authority.reviewExpiredHint")}
+            </p>
           )}
         </div>
       )}
     </FormDialog>
   );
-}
-
-function Notice({
-  testId,
-  tone,
-  children,
-}: {
-  testId?: string;
-  tone?: "error";
-  children: ReactNode;
-}) {
-  return (
-    <section
-      role={tone === "error" ? "alert" : undefined}
-      className={
-        tone === "error"
-          ? "flex flex-col gap-1 rounded-lg border border-destructive/40 p-3 text-sm text-destructive"
-          : "flex flex-col gap-1 rounded-lg border bg-accent/10 p-3 text-sm"
-      }
-      data-testid={testId}
-    >
-      {children}
-    </section>
-  );
-}
-
-function NoticeTitle({ children }: { children: ReactNode }) {
-  return <p className="font-medium">{children}</p>;
 }

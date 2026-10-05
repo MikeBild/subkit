@@ -1716,7 +1716,7 @@ export function ChatPage() {
   const referencedResources = useMemo(() => collectReferencedResources(messages), [messages]);
   const nameFor = useMemo(() => {
     const known = new Map<string, ResolvedIdentifier>();
-    for (const conversation of conversations.data?.items ?? []) {
+    for (const conversation of conversationList.items) {
       if (!conversation.title) continue;
       known.set(conversation.id, {
         label: humanFacingText(conversation.title, t("chat.referenceUnnamed")),
@@ -1743,7 +1743,7 @@ export function ChatPage() {
       });
     }
     return (id: string) => known.get(id) ?? null;
-  }, [conversations.data, createdResources, referencedResources, resume?.active_target, t]);
+  }, [conversationList.items, createdResources, referencedResources, resume?.active_target, t]);
   const session = useSession();
   const live = useLiveQueryOptions();
   const conversationFiles = useQuery({
