@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 
 export interface RequestBoundaryView {
   method: string;
@@ -86,7 +86,7 @@ export function presentRequestBoundary(
         };
   const paging = boundary.pagination
     ? {
-        key: "authority.boundary.paging" as const,
+        key: pluralKey("authority.boundary.paging", boundary.pagination.max_requests),
         values: {
           params: boundary.pagination.params.join(", "),
           count: boundary.pagination.max_requests,

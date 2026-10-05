@@ -1,7 +1,7 @@
 const WORDS = {
   de: {
     target: ["Web-Dienst", "MCP-Server"],
-    signIn: ["Mit Konto", "Mit Schlüssel", "Ohne"],
+    signIn: ["Ohne", "Mit Schlüssel", "Mit Konto"],
     secret: "Zugangsschlüssel",
     oauth: ["Rückleitung", "Anmeldedienst", "Client-ID", "Client-Secret", "Berechtigungen"],
     serviceFailed: "Anmeldedienst nicht gefunden oder hat abgelehnt.",
@@ -9,7 +9,7 @@ const WORDS = {
   },
   en: {
     target: ["Web service", "MCP server"],
-    signIn: ["With account", "With key", "None"],
+    signIn: ["None", "With key", "With account"],
     secret: "Access key",
     oauth: ["Redirect address", "Sign-in service", "Client ID", "Client secret", "Scopes"],
     serviceFailed: "Sign-in service not found, or it refused.",
@@ -176,9 +176,16 @@ async function verifyForm(page, stand, words, where, capture) {
   if (JARGON.test(visible)) throw new Error(`${where}: the dialog still reads protocol words`);
   for (const testId of ["create-connector-target", "create-connector-signin"])
     await assertInside(page, testId, where);
-  if (await page.locator("#create-connector-secret").count())
-    throw new Error(`${where}: an account sign-in asks for a key`);
+  const secret = page.locator("#create-connector-secret");
+  await secret.waitFor({ state: "visible", timeout: 5_000 });
+  const label = (await page.locator('label[for="create-connector-secret"]').innerText()).trim();
+  if (label !== words.secret) throw new Error(`${where}: the key field reads "${label}"`);
+  if ((await oauthFieldsShown(page)) !== 0)
+    throw new Error(`${where}: a new connector starts with more than its key`);
+  await capture("create-connector-key");
 
+  await page.getByTestId("create-connector-signin-account").click();
+  if (await secret.count()) throw new Error(`${where}: an account sign-in asks for a key`);
   if ((await oauthFieldsShown(page)) !== OAUTH_FIELDS.length)
     throw new Error(`${where}: a web service with an account does not ask for its OAuth app`);
   const labels = [];
@@ -200,11 +207,7 @@ async function verifyForm(page, stand, words, where, capture) {
     throw new Error(`${where}: an MCP server is asked for an OAuth app`);
 
   await page.getByTestId("create-connector-signin-key").click();
-  const secret = page.locator("#create-connector-secret");
   await secret.waitFor({ state: "visible", timeout: 5_000 });
-  const label = (await page.locator('label[for="create-connector-secret"]').innerText()).trim();
-  if (label !== words.secret) throw new Error(`${where}: the key field reads "${label}"`);
-  await capture("create-connector-key");
 
   await page.getByTestId("create-connector-target-web").click();
   if ((await oauthFieldsShown(page)) !== 0)
@@ -217,6 +220,7 @@ async function verifyForm(page, stand, words, where, capture) {
 
 async function verifyWebAccount(page, stand, words, where, state) {
   const dialog = await openForm(page, stand);
+  await page.getByTestId("create-connector-signin-account").click();
   await fill(page, "create-connector-name", "Fixture Mail");
   await fill(page, "create-connector-address", "https://mail.example.org/v1");
   await fill(page, "create-connector-issuer", "https://accounts.example.org");
@@ -253,6 +257,7 @@ async function verifyWebAccount(page, stand, words, where, state) {
 async function verifyMcpAccount(page, stand, where, state) {
   await openForm(page, stand);
   await page.getByTestId("create-connector-target-mcp").click();
+  await page.getByTestId("create-connector-signin-account").click();
   await fill(page, "create-connector-name", "Fixture Tickets");
   await fill(page, "create-connector-address", "https://mcp.tickets.example.org/mcp");
   const left = page.waitForURL((url) => url.searchParams.get("provider") === "mcp-fixture", {
@@ -289,6 +294,7 @@ async function verifyNoPublicAddress(page, stand, words, where, state) {
   await page.route(matcher, handler);
   try {
     const dialog = await openForm(page, stand);
+    await page.getByTestId("create-connector-signin-account").click();
     if (await page.getByTestId("create-connector-callback").count())
       throw new Error(`${where}: a redirect address is shown that the engine does not have`);
     await fill(page, "create-connector-name", "Nowhere");

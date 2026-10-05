@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { translate } from "@/lib/i18n";
 import {
   assignableRoles,
+  permissionGroups,
   permissionLabel,
   personRefusal,
   roleChange,
@@ -148,5 +149,33 @@ describe("what a role change says beyond its permissions", () => {
       de("people.refusal.engine", { reason: "short and stout" }),
     );
     expect(personRefusal(null, de)).toBe(de("people.roleUpdateFailed"));
+  });
+});
+
+describe("a role's permissions are read by area", () => {
+  test("each area is one group, named once, holding only its actions", () => {
+    const groups = permissionGroups(
+      ["workflow:run", "connection:read", "workflow:read", "audit:read"],
+      de,
+    );
+    expect(groups.map((group) => group.area.text)).toEqual(
+      [de("nav.audit"), "Kontoverbindungen", de("resource.workflows.title")].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    );
+    const workflow = groups.find((group) => group.key === "workflow");
+    expect(workflow?.items.map((item) => item.text)).toEqual([
+      de("permission.action.read"),
+      de("permission.action.run"),
+    ]);
+  });
+
+  test("the old on-behalf label is gone from the vocabulary", () => {
+    expect(permissionLabel("connection:read", de).text).not.toContain("in deinem Namen");
+  });
+
+  test("an unknown permission stays visible as itself", () => {
+    const [group] = permissionGroups(["novel:thing"], de);
+    expect(group?.items[0]).toEqual({ text: "novel:thing", machine: true });
   });
 });

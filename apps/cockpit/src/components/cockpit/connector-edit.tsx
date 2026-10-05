@@ -3,10 +3,27 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import type { components } from "@/api/schema";
+import { useSession } from "@/app/session";
+import { ConnectorSignInFields } from "@/components/cockpit/connector-sign-in-fields";
+import {
+  type ConnectorEditDraft,
+  type ConnectorEditPrior,
+  type ConnectorSignIn,
+  connectorEditPlan,
+  connectorEditProblem,
+  connectorTargetOf,
+  type OAuthClientFields,
+  oauthClientOf,
+  signInOf,
+} from "@/components/cockpit/create-connector-model";
 import { TextField } from "@/components/cockpit/form-field";
 import { ConfirmDialog, FormDialog } from "@/components/cockpit/patterns";
+import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
-import { credentialBody, offersKeyReplacement } from "@/pages/connector-detail-model";
+import { authLabel, offersKeyReplacement } from "@/pages/connector-detail-model";
+
+type Connector = components["schemas"]["Connector"];
 
 type RecordValue = Record<string, unknown>;
 
@@ -28,40 +45,66 @@ export function ConnectorEditDialog({
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
-  const authType = text(record, "auth_type") || null;
-  const hasAddress = Boolean(text(record, "base_url"));
-  const [name, setName] = useState(text(record, "display_name") || text(record, "name"));
-  const [address, setAddress] = useState(text(record, "base_url"));
+  const callbackUrl = useSession().oauth_callback_url;
+  const prior: ConnectorEditPrior = {
+    driver: text(record, "driver") || null,
+    authType: text(record, "auth_type") || null,
+    name: text(record, "display_name") || text(record, "name"),
+    address: text(record, "base_url"),
+    config: record.config,
+  };
+  const target = connectorTargetOf(prior.driver);
+  const priorSignIn = signInOf(prior.authType);
+  const [name, setName] = useState(prior.name);
+  const [address, setAddress] = useState(prior.address);
+  const [signIn, setSignIn] = useState<ConnectorSignIn | null>(priorSignIn);
   const [secret, setSecret] = useState("");
+  const [oauth, setOAuth] = useState<OAuthClientFields>(() => oauthClientOf(prior.config));
   const [typedHeader, setHeader] = useState<string | null>(null);
   const header = typedHeader ?? headerName;
   const [error, setError] = useState<string | null>(null);
+  const draft: ConnectorEditDraft = { name, address, signIn, secret, header, oauth };
+  const unchangedKind = signIn === priorSignIn;
   const save = useMutation({
     mutationFn: async () => {
-      await apiRequest(`/v1/connectors/${encodeURIComponent(id)}`, {
+      const plan = connectorEditPlan(prior, draft);
+      const path = `/v1/connectors/${encodeURIComponent(id)}`;
+      const connector = await apiRequest<Connector>(path, {
         method: "PATCH",
-        body: JSON.stringify({
-          name: name.trim(),
-          ...(hasAddress && address.trim() !== text(record, "base_url")
-            ? { base_url: address.trim() }
-            : {}),
-        }),
+        body: JSON.stringify(plan.patch),
       });
-      const body = credentialBody(authType, secret, header);
-      if (body)
-        await apiRequest(`/v1/connectors/${encodeURIComponent(id)}/credentials`, {
+      if (plan.credential)
+        await apiRequest(`${path}/credentials`, {
           method: "POST",
-          body: JSON.stringify(body),
+          body: JSON.stringify(plan.credential),
         });
-      return Boolean(body);
+      return {
+        replaced: Boolean(plan.credential),
+        route: plan.startSignIn ? connectorSignIn(connector) : null,
+      };
     },
-    onSuccess: async (replaced) => {
-      toast.success(t(replaced ? "connectorEdit.savedWithKey" : "connectorEdit.saved"));
-      onOpenChange(false);
+    onSuccess: async ({ replaced, route }) => {
       setSecret("");
       await client.invalidateQueries({ queryKey: ["catalog-detail", "connectors", id] });
       await client.invalidateQueries({ queryKey: ["connector-credential", id] });
       await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
+      if (route) {
+        try {
+          const start = await apiRequest<{ authorization_url: string }>(route.start, {
+            method: "POST",
+          });
+          if (start.authorization_url) {
+            window.location.assign(start.authorization_url);
+            return;
+          }
+        } catch (failure) {
+          onOpenChange(false);
+          toast.error(signInFailure(failure, t));
+          return;
+        }
+      }
+      onOpenChange(false);
+      toast.success(t(replaced ? "connectorEdit.savedWithKey" : "connectorEdit.saved"));
     },
     onError: (failure) =>
       setError(
@@ -74,14 +117,11 @@ export function ConnectorEditDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("connectorEdit.title", {
-        name: text(record, "display_name") || text(record, "name"),
-      })}
+      title={t("connectorEdit.title", { name: prior.name })}
       submit={{ label: t("common.save"), pending: save.isPending }}
       onSubmit={() => {
-        if (!name.trim()) return setError(t("create.nameMissing"));
-        if (hasAddress && !/^https?:\/\/\S+\.\S+/.test(address.trim()))
-          return setError(t("create.connector.addressInvalid"));
+        const problem = connectorEditProblem(prior, draft, callbackUrl);
+        if (problem) return setError(t(problem));
         setError(null);
         save.mutate();
       }}
@@ -94,7 +134,7 @@ export function ConnectorEditDialog({
         value={name}
         onChange={setName}
       />
-      {hasAddress ? (
+      {prior.address ? (
         <TextField
           id="connector-edit-address"
           type="url"
@@ -104,7 +144,26 @@ export function ConnectorEditDialog({
           mono
         />
       ) : null}
-      {authType === "header" ? (
+      {target ? (
+        <ConnectorSignInFields
+          idPrefix="connector-edit"
+          testId="connector-edit-signin"
+          target={target}
+          signIn={signIn}
+          onSignIn={setSignIn}
+          currentLabel={
+            priorSignIn === null ? authLabel(prior.authType, header ? [header] : [], t) : undefined
+          }
+          secret={secret}
+          onSecret={setSecret}
+          keepsKey={unchangedKind}
+          keepsClientSecret={unchangedKind}
+          oauth={oauth}
+          onOAuth={setOAuth}
+          callbackUrl={callbackUrl}
+        />
+      ) : null}
+      {(!target || signIn === null) && prior.authType === "header" ? (
         <TextField
           id="connector-edit-header"
           label={t("connectorCredentials.headerName")}
@@ -113,7 +172,7 @@ export function ConnectorEditDialog({
           mono
         />
       ) : null}
-      {offersKeyReplacement(authType) ? (
+      {(!target || signIn === null) && offersKeyReplacement(prior.authType) ? (
         <TextField
           id="connector-edit-secret"
           type="password"

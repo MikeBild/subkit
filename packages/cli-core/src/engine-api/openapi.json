@@ -18844,6 +18844,12 @@
           "updated_at": {
             "type": "string"
           },
+          "replaced_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "deleted_at": {
             "type": [
               "string",
@@ -18873,6 +18879,7 @@
           "scan_result",
           "created_at",
           "updated_at",
+          "replaced_at",
           "deleted_at",
           "slug",
           "reference"

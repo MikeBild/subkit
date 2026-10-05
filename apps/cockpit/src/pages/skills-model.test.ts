@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { skillsLoadState } from "./skills-model";
+import { translate } from "@/lib/i18n";
+import { skillScopeKey, skillsLoadState, skillWhereKey } from "./skills-model";
 
 const done = { isPending: false, error: null, failureReason: null };
 const loading = { isPending: true, error: null, failureReason: null };
@@ -19,5 +20,16 @@ describe("skillsLoadState", () => {
 
   test("both loaded is neither pending nor failed", () => {
     expect(skillsLoadState([done, done])).toEqual({ pending: false, failed: false });
+  });
+});
+
+describe("what a skill covers and where it is used are two answers", () => {
+  test("the scope never names the chat and the place never names a connector", () => {
+    expect(translate("de", skillScopeKey("global"))).toBe("Alles");
+    expect(translate("de", skillScopeKey("connector"))).toBe("Einen Konnektor");
+    expect(translate("de", skillScopeKey("workflow"))).toBe("Einen Workflow");
+    expect(translate("de", skillWhereKey("chat"))).toBe("Chat");
+    expect(translate("de", skillWhereKey("authoring"))).toBe("Workflow-Entwürfe");
+    expect(translate("de", skillWhereKey("both"))).toBe("Chat und Workflow-Entwürfe");
   });
 });

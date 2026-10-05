@@ -7,7 +7,7 @@ import {
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { type Locale, translate } from "@/lib/i18n";
+import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 
 export function i18nValue(locale: Locale = "de"): I18nValue {
@@ -16,6 +16,7 @@ export function i18nValue(locale: Locale = "de"): I18nValue {
     preference: locale,
     setPreference() {},
     t: (key, values) => translate(locale, key, values),
+    tn: (key, count, values) => translatePlural(locale, key, count, values),
     dateTime: (date) => String(date),
   } as I18nValue;
 }

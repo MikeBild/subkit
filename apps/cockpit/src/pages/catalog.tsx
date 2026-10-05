@@ -30,7 +30,7 @@ import {
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -253,7 +253,7 @@ function catalogColumns(
         const slug = stringField(row, "slug");
         if (!relations.canReadWorkflows || !slug) return kind;
         const users = relations.workflowsByConnectorSlug.get(slug)?.length ?? 0;
-        return `${kind} · ${t("connectors.usedByCount", { count: users })}`;
+        return `${kind} · ${t(pluralKey("connectors.usedByCount", users), { count: users })}`;
       },
       { width: "w-[30%]" },
     ),

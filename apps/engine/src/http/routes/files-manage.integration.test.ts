@@ -124,6 +124,32 @@ describe("POST /v1/files/{id}/replace", () => {
     expect(await content.text()).toBe("version two");
   });
 
+  test("a replaced file keeps its name and says when its content was replaced", async () => {
+    const file = (await upload("first words", "vertrag.txt")) as {
+      id: string;
+      replaced_at: string | null;
+    };
+    expect(file.replaced_at).toBeNull();
+    const response = await request("POST", `/v1/files/${file.id}/replace`, srv.apiKey, {
+      filename: "scan-0042.txt",
+      content_base64: Buffer.from("second words").toString("base64"),
+    });
+    const replaced = (await response.json()) as {
+      filename: string;
+      created_at: string;
+      replaced_at: string | null;
+    };
+    expect(replaced.filename).toBe("vertrag.txt");
+    expect(replaced.replaced_at).not.toBeNull();
+    expect(Date.parse(replaced.replaced_at ?? "")).toBeGreaterThanOrEqual(
+      Date.parse(replaced.created_at),
+    );
+    const renamed = (await (
+      await request("PATCH", `/v1/files/${file.id}`, srv.apiKey, { filename: "neu.txt" })
+    ).json()) as { replaced_at: string | null };
+    expect(renamed.replaced_at).toBe(replaced.replaced_at);
+  });
+
   test("refuses content another file already holds", async () => {
     await upload("taken content", "first.txt");
     const second = await upload("other content", "second.txt");

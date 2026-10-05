@@ -71,7 +71,8 @@ export function registerCredentialsRoutes(app: OpenAPIHono<AppEnv>): void {
       connector.environment,
       db,
     );
-    if (!summary) return c.json(null, 200);
+    if (!summary || !credsvc.credentialServesAuthType(connector.auth_type, summary.mode))
+      return c.json(null, 200);
     const diff = await connectorSvc.computeConnectorScopeDiff(db, principal.tenant_id, connector);
     return c.json(
       { ...summary, missing_scopes: diff?.partial_grant === true ? diff.missing : [] },

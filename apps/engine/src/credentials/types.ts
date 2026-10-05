@@ -14,6 +14,16 @@ export const CredentialMode = z.enum([
 ]);
 export type CredentialMode = z.infer<typeof CredentialMode>;
 
+const SECRET_MODES = new Set(["header", "query", "bearer", "basic", "aws_sigv4"]);
+const TOKEN_AUTH_TYPES = new Set(["oauth2", "oauth2_client", "oauth2_private_key"]);
+
+export function credentialServesAuthType(auth_type: string, mode: string): boolean {
+  if (auth_type === "none") return false;
+  if (SECRET_MODES.has(mode)) return mode === auth_type;
+  if (mode === "oauth2" || mode === "connection") return TOKEN_AUTH_TYPES.has(auth_type);
+  return true;
+}
+
 export const HeaderCredentialValue = z.object({
   headers: z.record(z.string(), z.string()),
 });
