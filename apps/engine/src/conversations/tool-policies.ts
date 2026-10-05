@@ -323,6 +323,7 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
   },
   author_workflow: { defaultMode: "no_confirm" },
   edit_workflow_patch: { defaultMode: "no_confirm" },
+  open_workflow_draft: { defaultMode: "no_confirm" },
   save_connector_draft: {
     defaultMode: "confirm_before_execution",
     computeModeFromInput: (input) => {

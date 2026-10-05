@@ -44,6 +44,10 @@ export function getLastPreview(opts: {
   return { scope: slot.scope, input: slot.input };
 }
 
+export function clearLastPreview(opts: { tenant_id: string; conversation_id: string }): void {
+  store.delete(keyFor(opts.tenant_id, opts.conversation_id));
+}
+
 export function __resetLastPreviewStoreForTest(): void {
   store.clear();
 }
