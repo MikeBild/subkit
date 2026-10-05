@@ -66,7 +66,8 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   await grantDialog.waitFor({ state: "visible" });
   const fields = await grantDialog.locator('[data-slot="field-label"]').allInnerTexts();
   const asked = fields.map((field) => field.trim()).filter(Boolean);
-  if (JSON.stringify(asked) !== JSON.stringify(["Wer", "Workflow", "Recht"]))
+  const expected = locale === "de" ? ["Wer", "Workflow", "Recht"] : ["Who", "Workflow", "Right"];
+  if (JSON.stringify(asked) !== JSON.stringify(expected))
     throw new Error(`/people?section=grants: the grant dialog asks ${JSON.stringify(asked)}`);
   await capture("grant-create");
   await page.getByTestId("grant-create-dialog-cancel").click();
