@@ -10,6 +10,7 @@ import {
   ISOLATION_MIGRATION_TAG,
   MIGRATION_SEARCH_PATH_SQL,
 } from "./client.ts";
+import { runContextNoteFactsBackfill } from "./migrations/context-note-facts-backfill.ts";
 import { runConversationTitleBackfill } from "./migrations/conversation-title-backfill.ts";
 import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedded.ts";
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
@@ -271,6 +272,16 @@ async function applyMigrations(
       module: "db",
       action: "migrate.code_backfill_failed",
       msg: "metrics:read scope backfill failed (non-fatal; retried on next boot)",
+      ...errorFields(err),
+    });
+  }
+  try {
+    await runContextNoteFactsBackfill(db);
+  } catch (err) {
+    logger.error({
+      module: "db",
+      action: "migrate.code_backfill_failed",
+      msg: "context note facts backfill failed (non-fatal; retried on next boot)",
       ...errorFields(err),
     });
   }

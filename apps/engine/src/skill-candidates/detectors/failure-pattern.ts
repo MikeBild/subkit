@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { classifyPersistedFailure, type PreviewClassification } from "../../execution/classify.ts";
 import { logger } from "../../logging/logger.ts";
 import { now } from "../../utils/clock.ts";
 import { computeConfidence, type PatternSignal } from "../types.ts";
@@ -13,6 +14,7 @@ interface FailureGroup {
   workflow_id: string;
   step_key: string;
   error_kind: string;
+  cause_class: PreviewClassification;
   count: number;
   execution_ids: string[];
 }
@@ -67,6 +69,8 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
         workflow_id: row.workflow_id,
         step_key: row.step_key,
         error_kind: errorKind,
+        cause_class: classifyPersistedFailure({ status: "failed", error: row.error })
+          .classification,
         count: 1,
         execution_ids: [row.execution_id],
       });
@@ -95,6 +99,14 @@ export async function detectFailurePatterns(tenant_id: string, exec: Db): Promis
       title: `Recurring failure on step '${group.step_key}'`,
       body: `Step '${group.step_key}' fails with '${group.error_kind}' consistently (${group.count} times in ${LOOKBACK_DAYS} days). Consider adding input validation or a guard step.`,
       examples: [`${group.count} failures with error kind '${group.error_kind}'`],
+      facts: {
+        kind: "recurring_failure",
+        step_key: group.step_key,
+        error_kind: group.error_kind,
+        cause_class: group.cause_class,
+        count: group.count,
+        lookback_days: LOOKBACK_DAYS,
+      },
       best_practices: [
         "Add input validation before this step",
         "Consider a branch step to handle this case",

@@ -24,6 +24,7 @@ function makeCandidate(overrides: Partial<SkillCandidateView> = {}): SkillCandid
     best_practices: [],
     pitfalls: [],
     doc_refs: [],
+    facts: null,
     evidence_count: 3,
     confidence: "medium",
     status: "proposed",
