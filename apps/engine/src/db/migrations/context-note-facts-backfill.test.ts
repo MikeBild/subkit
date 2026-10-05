@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { toView } from "../../skill-candidates/candidate-view.ts";
 import { createWorkflow } from "../../workflows/service.ts";
-import { dataMigrations, skillCandidates, tenants } from "../schema/index.ts";
+import { dataMigrations, skillCandidates, tenants, workflows } from "../schema/index.ts";
 import { createTestDb, type TestDb } from "../tests/setup.ts";
 import {
   CONTEXT_NOTE_FACTS_BACKFILL_NAME,
@@ -101,6 +101,16 @@ describe("context note facts backfill", () => {
     expect(capability).toHaveLength(1);
     const view = toView(capability[0]!);
     expect(view.body).not.toContain("Approving this skill");
+    const [workflow] = await testDb.db
+      .select({
+        draft: workflows.draft_version_id,
+        current: workflows.current_version_id,
+      })
+      .from(workflows)
+      .where(eq(workflows.id, workflowId));
+    expect(workflow?.draft).toBeNull();
+    expect(workflow?.current).toBeTruthy();
+    expect(view.body).not.toContain("Saved draft version");
     expect(view.facts).toMatchObject({
       kind: "workflow_capability",
       inputs: [{ name: "limit", type: "integer", required: true }],

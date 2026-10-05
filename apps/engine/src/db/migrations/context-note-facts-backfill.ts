@@ -32,6 +32,7 @@ async function regenerateCapability(
       id: workflows.id,
       slug: workflows.slug,
       name: workflows.name,
+      draft_version_id: workflows.draft_version_id,
       version_id: sql<
         string | null
       >`coalesce(${workflows.draft_version_id}, ${workflows.current_version_id})`,
@@ -69,7 +70,7 @@ async function regenerateCapability(
       ...(dag.output_schema ? { output_schema: dag.output_schema as Record<string, unknown> } : {}),
     },
     scope_index: {},
-    draft_version_id: workflow.version_id,
+    ...(workflow.draft_version_id ? { draft_version_id: workflow.draft_version_id } : {}),
   });
   const result = await upsertFromSignal(note.tenant_id, signal, db);
   return result.action !== "skipped";
