@@ -40,6 +40,7 @@ export const FileSchema = z
     scan_result: z.string().nullable(),
     created_at: z.string(),
     updated_at: z.string(),
+    replaced_at: z.string().nullable(),
     deleted_at: z.string().nullable(),
     slug: z.string().nullable(),
     reference: z.string().nullable(),

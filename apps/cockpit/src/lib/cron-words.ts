@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n";
+import { type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -7,6 +7,10 @@ const STEP = /^\*\/(\d{1,2})$/;
 
 const clock = (hour: string, minute: string) =>
   `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+
+function interval(t: Translate, key: PluralKey, count: number): string {
+  return t(pluralKey(key, count), { count });
+}
 
 function weekday(day: number, localeTag: string): string {
   return new Intl.DateTimeFormat(localeTag, { weekday: "long", timeZone: "UTC" }).format(
@@ -19,9 +23,9 @@ export function cronWords(cron: string, t: Translate, localeTag: string): string
   const every = /^every:(\d+)$/.exec(expression);
   if (every) {
     const seconds = Number(every[1]);
-    if (seconds % 3600 === 0) return t("cron.everyHours", { count: seconds / 3600 });
-    if (seconds % 60 === 0) return t("cron.everyMinutes", { count: seconds / 60 });
-    return t("cron.everySeconds", { count: seconds });
+    if (seconds % 3600 === 0) return interval(t, "cron.everyHours", seconds / 3600);
+    if (seconds % 60 === 0) return interval(t, "cron.everyMinutes", seconds / 60);
+    return interval(t, "cron.everySeconds", seconds);
   }
   const fields = expression.split(/\s+/);
   if (fields.length !== 5) return expression;
@@ -31,10 +35,10 @@ export function cronWords(cron: string, t: Translate, localeTag: string): string
   const anyDay = dayOfMonth === "*" && dayOfWeek === "*";
   const minuteStep = STEP.exec(minute);
   if (minuteStep && hour === "*" && anyDay)
-    return t("cron.everyMinutes", { count: Number(minuteStep[1]) });
+    return interval(t, "cron.everyMinutes", Number(minuteStep[1]));
   const hourStep = STEP.exec(hour);
   if (hourStep && minute === "0" && anyDay)
-    return t("cron.everyHours", { count: Number(hourStep[1]) });
+    return interval(t, "cron.everyHours", Number(hourStep[1]));
   if (!NUMBER.test(minute)) return expression;
   if (hour === "*" && anyDay) return t("cron.hourly", { minute: minute.padStart(2, "0") });
   if (!NUMBER.test(hour)) return expression;

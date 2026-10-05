@@ -155,3 +155,56 @@ export function deliveryState(channel: NotificationChannelLike, now: number): De
       : { kind: "suspended", until, failures };
   return { kind: "machine", value: channel.circuit_state };
 }
+
+export const CURRENT_TARGET = "current";
+export const INBOX_CHOICE = "inbox";
+
+export interface RuleDraft {
+  name: string;
+  event: string;
+  severity: string;
+  target: string;
+}
+
+export function ruleDraftOf(
+  rule: NotificationRuleLike & { severity: string },
+  channels: readonly NotificationChannelLike[],
+): RuleDraft {
+  const target = ruleTarget(rule, channels);
+  return {
+    name: rule.name,
+    event: rule.event_pattern,
+    severity: rule.severity,
+    target:
+      target.kind === "inbox"
+        ? INBOX_CHOICE
+        : target.kind === "channel"
+          ? target.channel.id
+          : CURRENT_TARGET,
+  };
+}
+
+export function ruleTargetFields(
+  target: string,
+  channels: readonly NotificationChannelLike[],
+): { target_workspace_id: string; target_channel_id: string } | null {
+  if (target === CURRENT_TARGET) return null;
+  const channel = channels.find((candidate) => candidate.id === target);
+  return {
+    target_workspace_id: channel?.workspace_id ?? INBOX_TARGET.workspace,
+    target_channel_id: channel?.channel_id ?? INBOX_TARGET.channel,
+  };
+}
+
+export function ruleEditBody(
+  before: RuleDraft,
+  after: RuleDraft,
+  channels: readonly NotificationChannelLike[],
+): Record<string, string> {
+  const body: Record<string, string> = {};
+  if (after.name.trim() !== before.name) body.name = after.name.trim();
+  if (after.event !== before.event) body.event_pattern = after.event;
+  if (after.severity !== before.severity) body.severity = after.severity;
+  if (after.target !== before.target) Object.assign(body, ruleTargetFields(after.target, channels));
+  return body;
+}

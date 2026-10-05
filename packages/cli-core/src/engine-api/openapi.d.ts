@@ -22225,6 +22225,7 @@ export interface components {
             scan_result: string | null;
             created_at: string;
             updated_at: string;
+            replaced_at: string | null;
             deleted_at: string | null;
             slug: string | null;
             reference: string | null;

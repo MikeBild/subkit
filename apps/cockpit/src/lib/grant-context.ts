@@ -1,6 +1,6 @@
 import type { components } from "@/api/schema";
 import { authorityIsLive } from "@/lib/automation-state";
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import type { ReviewEnvironment } from "@/lib/review-environment";
 import type { WorkflowAuthority, WorkflowAuthorityPreview } from "@/lib/workflow-authorities";
 
@@ -83,7 +83,10 @@ export function suggestionNote(
   if (basis.observed_deliveries === 0)
     return { key: "authority.suggestion.hookNone", values: { days: basis.observed_days } };
   return {
-    key: basis.minimum_applied ? "authority.suggestion.hookMinimum" : "authority.suggestion.hook",
+    key: pluralKey(
+      basis.minimum_applied ? "authority.suggestion.hookMinimum" : "authority.suggestion.hook",
+      basis.observed_deliveries,
+    ),
     values: { count: basis.observed_deliveries, days: basis.observed_days },
   };
 }

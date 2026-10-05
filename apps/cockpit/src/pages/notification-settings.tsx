@@ -32,15 +32,20 @@ import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import {
   CHANNEL_PLATFORMS,
+  CURRENT_TARGET,
   type DeliveryState,
   deliveryState,
   EVENT_KEYS,
   eventPatternLabels,
-  INBOX_TARGET,
+  INBOX_CHOICE,
   platformLabel,
+  type RuleDraft,
+  ruleDraftOf,
+  ruleEditBody,
   ruleNameLabel,
   rulesUsing,
   ruleTarget,
+  ruleTargetFields,
   SEVERITIES,
   type Severity,
   workflowPatternLabel,
@@ -177,7 +182,7 @@ export function NotificationSettings({
   createChannel: boolean;
   onCreateChannel(open: boolean): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const session = useSession();
   const canWrite = session.permissions.includes("notification:write");
   const [ruleOpen, setRuleOpen] = useState<NotificationRuleItem | null>(null);
@@ -310,10 +315,10 @@ export function NotificationSettings({
       {ruleItems.length + channelItems.length > 0 ? (
         <SummaryLine
           testId="notifications-summary"
-          text={t("notifications.summary", {
-            rules: String(ruleItems.length),
-            channels: String(channelItems.length),
-          })}
+          text={`${tn("notifications.summary.rules", ruleItems.length)} · ${tn(
+            "notifications.summary.channels",
+            channelItems.length,
+          )}`}
         />
       ) : null}
       <Section label={t("notifications.rules")} testId="notifications-rules">
@@ -348,6 +353,7 @@ export function NotificationSettings({
         rule={ruleOpen}
         target={ruleOpen ? ruleTargetText(t, ruleOpen, channelItems) : ""}
         canWrite={canWrite}
+        channels={channelItems}
         onClose={() => setRuleOpen(null)}
       />
       <ChannelSheet
@@ -357,7 +363,7 @@ export function NotificationSettings({
         usedBy={channelOpen ? rulesUsing(channelOpen, ruleItems) : 0}
         onClose={() => setChannelOpen(null)}
       />
-      <CreateRuleDialog open={createRule} onOpenChange={onCreateRule} channels={channelItems} />
+      {createRule ? <RuleDialog open onOpenChange={onCreateRule} channels={channelItems} /> : null}
       <CreateChannelDialog open={createChannel} onOpenChange={onCreateChannel} />
     </div>
   );
@@ -398,18 +404,35 @@ function RuleSheet({
   rule,
   target,
   canWrite,
+  channels,
   onClose,
 }: {
   rule: NotificationRuleItem | null;
   target: string;
   canWrite: boolean;
+  channels: readonly NotificationChannelItem[];
   onClose(): void;
 }) {
   const { t } = useI18n();
+  const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
   const deletion = useNotificationDelete("rules", () => {
     setConfirming(false);
     onClose();
+  });
+  const toggle = useMutation({
+    mutationFn: (next: { id: string; active: boolean }) =>
+      apiRequest(`/v1/notifications/rules/${encodeURIComponent(next.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: next.active }),
+      }),
+    onSuccess: async (_result, next) => {
+      await client.invalidateQueries({ queryKey: RULES_QUERY });
+      toast.success(t(next.active ? "notifications.ruleResumed" : "notifications.rulePaused"));
+      onClose();
+    },
+    onError: () => toast.error(t("common.actionFailed")),
   });
   return (
     <>
@@ -430,6 +453,12 @@ function RuleSheet({
             <ActionMenu
               items={[
                 {
+                  label: t(rule.active ? "notifications.pauseRule" : "notifications.resumeRule"),
+                  disabled: toggle.isPending,
+                  onSelect: () => toggle.mutate({ id: rule.id, active: !rule.active }),
+                  testId: "notifications-rule-toggle",
+                },
+                {
                   label: t("notifications.deleteRule"),
                   destructive: true,
                   onSelect: () => setConfirming(true),
@@ -437,6 +466,17 @@ function RuleSheet({
                 },
               ]}
             />
+          ) : null
+        }
+        action={
+          rule && canWrite ? (
+            <Button
+              variant="outline"
+              onClick={() => setEditing(true)}
+              data-testid="notifications-rule-edit"
+            >
+              {t("notifications.editRule")}
+            </Button>
           ) : null
         }
         testId="notifications-rule-sheet"
@@ -451,6 +491,15 @@ function RuleSheet({
           />
         ) : null}
       </RecordSheet>
+      {rule && editing ? (
+        <RuleDialog
+          open
+          onOpenChange={setEditing}
+          onSaved={onClose}
+          channels={channels}
+          rule={rule}
+        />
+      ) : null}
       {rule ? (
         <ConfirmDialog
           open={confirming}
@@ -481,7 +530,7 @@ function ChannelSheet({
   usedBy: number;
   onClose(): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const deletion = useNotificationDelete("channels", () => {
@@ -541,7 +590,7 @@ function ChannelSheet({
                   label: t("notifications.deleteChannel"),
                   destructive: true,
                   disabled: usedBy > 0,
-                  disabledReason: t("notifications.channelInUse", { count: String(usedBy) }),
+                  disabledReason: tn("notifications.channelInUse", usedBy),
                   onSelect: () => setConfirming(true),
                   testId: "notifications-channel-delete",
                 },
@@ -559,7 +608,7 @@ function ChannelSheet({
                 value: deliveryBadge(t, delivery),
                 help:
                   delivery.kind === "suspended"
-                    ? `${t("notifications.suspendedCause", { count: String(delivery.failures) })} ${
+                    ? `${tn("notifications.suspendedCause", delivery.failures)} ${
                         delivery.until
                           ? t("notifications.suspendedUntil", { time: dateTime(delivery.until) })
                           : t("notifications.suspendedRetry")
@@ -598,54 +647,73 @@ function ChannelSheet({
 
 const ALL_EVENTS = "*";
 
-function CreateRuleDialog({
+function RuleDialog({
   open,
   onOpenChange,
   channels,
+  rule,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
   channels: readonly NotificationChannelItem[];
+  rule?: NotificationRuleItem;
+  onSaved?(): void;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
-  const [name, setName] = useState("");
-  const [event, setEvent] = useState<string>(ALL_EVENTS);
-  const [severity, setSeverity] = useState<Severity>("info");
-  const [target, setTarget] = useState<string>("inbox");
-  const create = useMutation({
+  const before: RuleDraft = rule
+    ? ruleDraftOf(rule, channels)
+    : { name: "", event: ALL_EVENTS, severity: "info", target: INBOX_CHOICE };
+  const [name, setName] = useState(before.name);
+  const [event, setEvent] = useState<string>(before.event);
+  const [severity, setSeverity] = useState<string>(before.severity);
+  const [target, setTarget] = useState<string>(before.target);
+  const knownEvent = event === ALL_EVENTS || Object.hasOwn(EVENT_KEYS, event);
+  const save = useMutation({
     mutationFn: () => {
-      const channel = channels.find((candidate) => candidate.id === target);
+      const after: RuleDraft = { name, event, severity, target };
+      if (rule)
+        return apiRequest(`/v1/notifications/rules/${encodeURIComponent(rule.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(ruleEditBody(before, after, channels)),
+        });
       return apiRequest("/v1/notifications/rules", {
         method: "POST",
         body: JSON.stringify({
           name: name.trim(),
           event_pattern: event,
           severity,
-          target_workspace_id: channel?.workspace_id ?? INBOX_TARGET.workspace,
-          target_channel_id: channel?.channel_id ?? INBOX_TARGET.channel,
+          ...ruleTargetFields(target, channels),
         }),
       });
     },
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: RULES_QUERY });
-      toast.success(t("notifications.ruleCreated"));
+      toast.success(t(rule ? "notifications.ruleSaved" : "notifications.ruleCreated"));
       setName("");
       onOpenChange(false);
+      onSaved?.();
     },
   });
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t("notifications.createRule")}
+      title={
+        rule
+          ? t("notifications.editRuleTitle", { name: ruleNameLabel(rule, t) })
+          : t("notifications.createRule")
+      }
       submit={{
-        label: t("notifications.create"),
-        pending: create.isPending,
+        label: rule ? t("common.save") : t("notifications.create"),
+        pending: save.isPending,
         disabled: !name.trim(),
       }}
-      onSubmit={() => create.mutate()}
-      error={create.error ? t("notifications.createFailed") : null}
+      onSubmit={() => save.mutate()}
+      error={
+        save.error ? t(rule ? "notifications.saveFailed" : "notifications.createFailed") : null
+      }
       testId="notifications-rule-dialog"
     >
       <FieldGroup>
@@ -668,6 +736,13 @@ function CreateRuleDialog({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              {!knownEvent ? (
+                <SelectItem value={event} data-testid="notifications-rule-event-current">
+                  {eventPatternLabels(event, t)
+                    .map((label) => label.text)
+                    .join(", ")}
+                </SelectItem>
+              ) : null}
               <SelectItem value={ALL_EVENTS} data-testid="notifications-rule-event-all">
                 {t("notifications.events.all")}
               </SelectItem>
@@ -715,7 +790,12 @@ function CreateRuleDialog({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="inbox" data-testid="notifications-rule-target-inbox">
+              {target === CURRENT_TARGET ? (
+                <SelectItem value={CURRENT_TARGET} data-testid="notifications-rule-target-current">
+                  {t("notifications.target.pending")}
+                </SelectItem>
+              ) : null}
+              <SelectItem value={INBOX_CHOICE} data-testid="notifications-rule-target-inbox">
                 {t("notifications.platform.inbox")}
               </SelectItem>
               {channels

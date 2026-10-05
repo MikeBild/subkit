@@ -72,7 +72,7 @@ function KeyBadge({ apiKey, now }: { apiKey: ApiKeyItem; now: number }) {
   return state ? (
     <StatusBadge state={state.kind} label={keyStateText(state, t)} />
   ) : (
-    <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+    <StatusBadge state="active" />
   );
 }
 
@@ -202,7 +202,7 @@ function KeysSection({
   emptyAction: ReactNode;
   onIssued(plaintext: string): void;
 }) {
-  const { t, locale, dateTime } = useI18n();
+  const { t, tn, locale, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canRotate = session.permissions.includes("api_key:rotate");
@@ -286,7 +286,7 @@ function KeysSection({
               <StatusBadge state={state.kind} label={keyStateText(state, t)} />
             </span>
           ) : (
-            <StatusBadge state="active" label={t("apiKeys.activeBadge")} />
+            <StatusBadge state="active" />
           );
         },
         { width: "w-[20%]" },
@@ -344,10 +344,7 @@ function KeysSection({
       {total > 0 ? (
         <SummaryLine
           testId="api-access-total-keys"
-          text={t("apiAccess.total.keysSummary", {
-            count: String(total),
-            active: String(activeCount),
-          })}
+          text={tn("apiAccess.total.keysSummary", total, { active: activeCount })}
           help={t("apiAccess.keysHelp")}
         />
       ) : null}

@@ -16,7 +16,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   BUDGET_SETTING,
@@ -193,7 +193,9 @@ export function UsagePage() {
         <span className="whitespace-nowrap tabular-nums">
           {row.cost !== null
             ? currency.format(row.cost)
-            : t("resource.usage.tokensAmount", { count: number.format(row.tokens) })}
+            : t(pluralKey("resource.usage.tokensAmount", row.tokens), {
+                count: number.format(row.tokens),
+              })}
         </span>
       </span>
     ),
@@ -322,7 +324,9 @@ export function UsagePage() {
 
   const spent = money
     ? currency.format(money.amount)
-    : t("resource.usage.tokensAmount", { count: number.format(windowTokens) });
+    : t(pluralKey("resource.usage.tokensAmount", windowTokens), {
+        count: number.format(windowTokens),
+      });
   const share = budgetPercent(budget);
   const pressure = budgetPressure(budget);
   const capPart = status.error ? (

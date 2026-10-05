@@ -110,10 +110,10 @@ describe("a key's state, on its row", () => {
       const state = keyState(key({ expires_at: expires }), NOW);
       return state ? keyStateText(state, t) : null;
     };
-    expect(text(daysAhead(3))).toBe("läuft ab in 3 Tagen");
-    expect(text(daysAhead(KEY_EXPIRING_DAYS))).toBe(`läuft ab in ${KEY_EXPIRING_DAYS} Tagen`);
-    expect(text(daysAgo(2))).toBe("abgelaufen");
-    expect(text(new Date(NOW).toISOString())).toBe("abgelaufen");
+    expect(text(daysAhead(3))).toBe("Läuft in 3 Tagen ab");
+    expect(text(daysAhead(KEY_EXPIRING_DAYS))).toBe(`Läuft in ${KEY_EXPIRING_DAYS} Tagen ab`);
+    expect(text(daysAgo(2))).toBe("Abgelaufen");
+    expect(text(new Date(NOW).toISOString())).toBe("Abgelaufen");
   });
 
   test("today and tomorrow are calendar days in the reader's zone, not 24-hour blocks", () => {
@@ -122,9 +122,9 @@ describe("a key's state, on its row", () => {
       const state = keyState(key({ expires_at: expires.toISOString() }), evening);
       return state ? keyStateText(state, t) : null;
     };
-    expect(chip(new Date(2026, 8, 2, 1, 0))).toBe("läuft morgen ab");
-    expect(chip(new Date(2026, 8, 1, 23, 30))).toBe("läuft heute ab");
-    expect(chip(new Date(2026, 8, 3, 5, 0))).toBe("läuft ab in 2 Tagen");
+    expect(chip(new Date(2026, 8, 2, 1, 0))).toBe("Läuft morgen ab");
+    expect(chip(new Date(2026, 8, 1, 23, 30))).toBe("Läuft heute ab");
+    expect(chip(new Date(2026, 8, 3, 5, 0))).toBe("Läuft in 2 Tagen ab");
     expect(calendarDaysUntil(new Date(2026, 8, 2, 0, 1).getTime(), evening)).toBe(1);
   });
 
@@ -139,10 +139,10 @@ describe("a key's state, on its row", () => {
   test("a key idle past the threshold says since when, used or never", () => {
     const idle = keyState(key({ last_used_at: daysAgo(UNUSED_KEY_DAYS + 5) }), NOW);
     expect(idle).toEqual({ kind: "idle", days: UNUSED_KEY_DAYS + 5 });
-    expect(idle ? keyStateText(idle, t) : null).toBe(`seit ${UNUSED_KEY_DAYS + 5} Tagen ungenutzt`);
+    expect(idle ? keyStateText(idle, t) : null).toBe(`Seit ${UNUSED_KEY_DAYS + 5} Tagen ungenutzt`);
     const never = keyState(key({ last_used_at: null, created_at: daysAgo(UNUSED_KEY_DAYS) }), NOW);
     expect(never).toEqual({ kind: "neverUsed", days: UNUSED_KEY_DAYS });
-    expect(never ? keyStateText(never, t) : null).toBe(`seit ${UNUSED_KEY_DAYS} Tagen nie benutzt`);
+    expect(never ? keyStateText(never, t) : null).toBe(`Seit ${UNUSED_KEY_DAYS} Tagen nie benutzt`);
     expect(keyState(key({ last_used_at: daysAgo(UNUSED_KEY_DAYS - 1) }), NOW)).toBeNull();
   });
 

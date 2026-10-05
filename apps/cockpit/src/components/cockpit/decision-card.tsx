@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { diagnosisCauseKey } from "@/lib/gate-diagnosis";
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import type { NameIndex } from "@/lib/name-index";
 import { EMPTY_NAME_INDEX } from "@/lib/name-index";
@@ -134,7 +134,7 @@ function decisionContext(
     pattern: t(ORIGIN_LABEL[item.origin]),
     observedCases:
       item.evidenceCount !== null
-        ? t("decisions.evidence", { count: String(item.evidenceCount) })
+        ? t(pluralKey("decisions.evidence", item.evidenceCount), { count: item.evidenceCount })
         : "",
   };
   const detail = item.detail;
@@ -767,7 +767,7 @@ export function DecisionCard({
                 level: t(CONFIDENCE_LABEL[item.confidence]),
               })}
               {item.evidenceCount !== null
-                ? ` · ${t("decisions.evidence", { count: String(item.evidenceCount) })}`
+                ? ` · ${t(pluralKey("decisions.evidence", item.evidenceCount), { count: item.evidenceCount })}`
                 : ""}
             </p>
           )}

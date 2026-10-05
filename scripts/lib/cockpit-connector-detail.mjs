@@ -674,8 +674,11 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
 
     await openTab(page, "tools");
     const session = (await text(page, "connector-mcp-session")) ?? "";
-    if (!session.includes(RUNTIME.mcp_session.protocol_version))
-      throw new Error(`${where}: the negotiated session is not said — "${session}"`);
+    if (session.includes(RUNTIME.mcp_session.protocol_version))
+      throw new Error(`${where}: the session line shows the bare protocol date — "${session}"`);
+    const protocol = await helpText(page, "connector-mcp-protocol");
+    if (!protocol.includes(RUNTIME.mcp_session.protocol_version))
+      throw new Error(`${where}: the negotiated protocol is not said behind (?) — "${protocol}"`);
     if (await page.getByTestId("connector-mcp-note").count())
       throw new Error(`${where}: a permanent note explains the "Ohne Rückfrage" choice`);
     await page

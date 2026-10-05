@@ -1,15 +1,18 @@
 import type { components } from "@/api/schema";
 import {
   absolute,
+  connectorHref,
   conversationHref,
   identifierParam,
   instantParam,
   recordHref,
   runHref,
+  workflowHref,
 } from "@/app/links";
 import type { CatalogResource } from "@/app/route-table";
 import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
+import type { NameIndex } from "@/lib/name-index";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -129,7 +132,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   role: "access.roles",
   user: "people.section.people",
   settings: "nav.settings",
-  connection: "apiAccess.section.grants",
+  connection: "permission.resource.connections",
   schedule: "permission.resource.schedules",
   subscription: "permission.resource.subscriptions",
   inbound_hook: "permission.resource.inboundHooks",
@@ -296,6 +299,24 @@ export function auditActionLabel(action: string): AuditActionLabel {
   return key ? { kind: "named", key } : { kind: "machine", value: action };
 }
 
+export function auditSearchActions(needle: string, t: Translate): string[] {
+  const term = needle.trim().toLowerCase();
+  if (!term) return [];
+  return Object.entries(ACTION_KEYS)
+    .filter(([action, key]) => action.includes(term) || t(key).toLowerCase().includes(term))
+    .map(([action]) => action);
+}
+
+export function searchedActionParams(
+  params: Readonly<Record<string, string>>,
+  searched: readonly string[] | null,
+): Record<string, string> | null {
+  if (searched === null) return { ...params };
+  const allowed = params.action ? params.action.split(",") : null;
+  const actions = allowed ? searched.filter((action) => allowed.includes(action)) : searched;
+  return actions.length > 0 ? { ...params, action: actions.join(",") } : null;
+}
+
 export function namedActionCount(): number {
   return Object.keys(ACTION_KEYS).length;
 }
@@ -438,7 +459,7 @@ export function isAuditEntry(value: unknown): value is AuditEntry {
   );
 }
 
-export type AuditEvidenceKind = "before" | "after" | "metadata";
+export type AuditEvidenceKind = "before" | "after";
 
 export interface AuditEvidenceBlock {
   kind: AuditEvidenceKind;
@@ -450,7 +471,7 @@ function formatSnapshot(value: unknown): string {
 }
 
 export function auditEvidenceBlocks(
-  entry: Pick<AuditEntry, "before" | "after" | "metadata">,
+  entry: Pick<AuditEntry, "before" | "after">,
 ): AuditEvidenceBlock[] {
   const blocks: AuditEvidenceBlock[] = [];
   for (const kind of ["before", "after"] as const) {
@@ -458,11 +479,92 @@ export function auditEvidenceBlocks(
     if (value === null || value === undefined) continue;
     blocks.push({ kind, text: formatSnapshot(value) });
   }
-  const { metadata } = entry;
-  if (metadata && Object.keys(metadata).length > 0) {
-    blocks.push({ kind: "metadata", text: formatSnapshot(metadata) });
-  }
   return blocks;
+}
+
+export interface AuditMetadataFact {
+  key: string;
+  label: string;
+  value: string;
+  href: string | null;
+}
+
+type MetadataReference = {
+  label: TranslationKey;
+  open: TranslationKey;
+  href(id: string): string;
+  names?: keyof NameIndex;
+};
+
+const METADATA_REFERENCES: Readonly<Record<string, MetadataReference>> = {
+  workflow_id: {
+    label: "audit.meta.workflow",
+    open: "audit.meta.openWorkflow",
+    href: workflowHref,
+    names: "workflow",
+  },
+  connector_id: {
+    label: "audit.meta.connector",
+    open: "audit.meta.openConnector",
+    href: connectorHref,
+    names: "connector",
+  },
+  execution_id: { label: "audit.meta.run", open: "audit.detail.openRun", href: runHref },
+  conversation_id: {
+    label: "audit.meta.conversation",
+    open: "audit.meta.openConversation",
+    href: conversationHref,
+  },
+};
+
+const METADATA_VALUES: Readonly<Record<string, TranslationKey>> = {
+  slug: "audit.meta.slug",
+  name: "audit.meta.name",
+  version: "audit.meta.version",
+  environment: "audit.meta.environment",
+  scope: "audit.meta.scope",
+  status: "audit.meta.status",
+  chunk_count: "audit.meta.chunkCount",
+  count: "audit.meta.count",
+};
+
+function scalarText(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+export function auditMetadataFacts(
+  metadata: Readonly<Record<string, unknown>> | null | undefined,
+  t: Translate,
+  names: NameIndex,
+): { facts: AuditMetadataFact[]; rest: string | null } {
+  const facts: AuditMetadataFact[] = [];
+  const rest: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata ?? {})) {
+    const reference = METADATA_REFERENCES[key];
+    const text = scalarText(value);
+    if (reference && text) {
+      const name = reference.names ? names[reference.names].get(text) : undefined;
+      facts.push({
+        key,
+        label: t(reference.label),
+        value: name ?? t(reference.open),
+        href: reference.href(text),
+      });
+      continue;
+    }
+    const label = METADATA_VALUES[key];
+    if (label && text) {
+      facts.push({ key, label: t(label), value: text, href: null });
+      continue;
+    }
+    rest[key] = value;
+  }
+  return {
+    facts,
+    rest: Object.keys(rest).length > 0 ? formatSnapshot(rest) : null,
+  };
 }
 
 export interface AuditFact {

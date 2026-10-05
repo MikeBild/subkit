@@ -1,4 +1,4 @@
-import type { TranslationKey } from "@/lib/i18n";
+import { pluralKey, type TranslationKey } from "@/lib/i18n";
 
 export interface StorageScopePresentation {
   title: TranslationKey;
@@ -22,7 +22,7 @@ export function presentStorageScope(
     case "LIST":
       return {
         title: "authority.storage.read",
-        detail: "authority.storage.listScope",
+        detail: pluralKey("authority.storage.listScope", scope.max_keys),
         values: { count: scope.max_keys },
         destructive: false,
       };
@@ -37,7 +37,7 @@ export function presentStorageScope(
     case "DELETE":
       return {
         title: "authority.storage.delete",
-        detail: "authority.storage.deleteScope",
+        detail: pluralKey("authority.storage.deleteScope", scope.max_deletes ?? 0),
         values: { count: formatNumber(scope.max_deletes ?? 0) },
         destructive: true,
       };

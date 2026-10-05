@@ -47,6 +47,11 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   if (!(await roleChange.innerText()).includes("reviewer@example.com"))
     throw new Error("/people: the role change does not name the person");
   await page.getByTestId("people-role-save").waitFor({ state: "visible" });
+  const permissions = page.getByTestId("people-sheet-permissions-section");
+  const memberWord = locale === "de" ? "Mitglied" : "Member";
+  await permissions.filter({ hasText: memberWord }).first().waitFor({ state: "visible" });
+  if ((await permissions.innerText()).includes("in deinem Namen"))
+    throw new Error("/people: the permissions still read the old on-behalf label");
   await capture("role-change");
   await page.getByTestId("people-sheet-close").click();
   await sheet.waitFor({ state: "hidden" });

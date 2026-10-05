@@ -3089,8 +3089,20 @@ async function assertNotificationRules(page, label) {
     await page.getByTestId(sheet).waitFor({ state: "detached" });
   };
   await openRow("notifications-rules-table", 1, "notifications-rule-sheet");
+  const ruleSheet = page.getByTestId("notifications-rule-sheet");
+  await ruleSheet.getByTestId("action-menu").click();
   if (!(await page.getByTestId("notifications-rule-delete").isEnabled()))
     throw new Error(`${label}: a rule's sheet offers no way to delete it`);
+  if (!(await page.getByTestId("notifications-rule-toggle").isVisible()))
+    throw new Error(`${label}: a rule's sheet offers no way to pause it`);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("notifications-rule-edit").click();
+  const ruleDialog = page.getByTestId("notifications-rule-dialog");
+  await ruleDialog.waitFor({ state: "visible" });
+  if (!(await page.getByTestId("notifications-rule-name").inputValue()).trim())
+    throw new Error(`${label}: editing a rule does not start from its name`);
+  await page.getByTestId("notifications-rule-dialog-cancel").click();
+  await ruleDialog.waitFor({ state: "detached" });
   await closeSheet("notifications-rule-sheet");
   await openRow("notifications-channels-table", 1, "notifications-channel-sheet");
   if (!(await page.getByTestId("notifications-channel-delete").isDisabled()))

@@ -196,7 +196,7 @@ describe("where the suggested limits come from", () => {
         observed_days: 14,
         minimum_applied: false,
       }),
-    ).toEqual({ key: "authority.suggestion.hook", values: { count: 140, days: 14 } });
+    ).toEqual({ key: "authority.suggestion.hook.other", values: { count: 140, days: 14 } });
   });
 
   test("the floor is said as the floor", () => {
@@ -208,7 +208,7 @@ describe("where the suggested limits come from", () => {
         observed_days: 14,
         minimum_applied: true,
       })?.key,
-    ).toBe("authority.suggestion.hookMinimum");
+    ).toBe("authority.suggestion.hookMinimum.other");
   });
 
   test("no call at all is not counted as 'only 0 calls'", () => {

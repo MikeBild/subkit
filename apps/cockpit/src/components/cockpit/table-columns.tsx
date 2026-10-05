@@ -2,6 +2,7 @@ import { createColumnHelper, type RowData } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import type { CockpitColumn, CockpitTableFeatures } from "@/components/cockpit/patterns/data-table";
 import { Badge } from "@/components/ui/badge";
+import { pluralKey } from "@/lib/i18n";
 import type { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 
@@ -185,10 +186,12 @@ export function tableColumns<TRow extends RowData>({
               {hidden > 0 ? (
                 <span
                   className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground"
-                  title={t("common.moreRelations", { count: hidden })}
+                  title={t(pluralKey("common.moreRelations", hidden), { count: hidden })}
                 >
                   <span aria-hidden="true">+{hidden}</span>
-                  <span className="sr-only">{t("common.moreRelations", { count: hidden })}</span>
+                  <span className="sr-only">
+                    {t(pluralKey("common.moreRelations", hidden), { count: hidden })}
+                  </span>
                 </span>
               ) : null}
             </span>

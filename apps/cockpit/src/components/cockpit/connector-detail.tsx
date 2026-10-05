@@ -10,6 +10,7 @@ import {
   ActionMenu,
   Button,
   type CockpitColumn,
+  ContextHelp,
   CopyField,
   DataState,
   type Fact,
@@ -483,7 +484,6 @@ export function ConnectorMcpTools({
   }, [t, dateTime]);
   const sessionLine = session
     ? [
-        session.protocol_version,
         session.capabilities
           .map((key) => catalogLabel(key, CAPABILITY_KEYS[key], t).text)
           .join(", "),
@@ -500,7 +500,19 @@ export function ConnectorMcpTools({
   return (
     <div className="flex flex-col gap-3" data-testid="connector-mcp-tools">
       <SummaryLine
-        text={<span data-testid="connector-mcp-session">{sessionLine}</span>}
+        text={
+          <span className="inline-flex items-center gap-1">
+            <span data-testid="connector-mcp-session">{sessionLine}</span>
+            {session?.protocol_version ? (
+              <ContextHelp
+                label={t("connectorDetail.tools.protocol")}
+                testId="connector-mcp-protocol"
+              >
+                {t("connectorDetail.tools.protocolVersion", { version: session.protocol_version })}
+              </ContextHelp>
+            ) : null}
+          </span>
+        }
         aside={
           canTest ? (
             <ActionMenu

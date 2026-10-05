@@ -56,6 +56,7 @@ import {
   settingMetaLabel,
   settingNavigation,
   settingResetDraft,
+  settingSecretCover,
   settingSecretName,
   settingSecretStored,
   settingSectionLabel,
@@ -537,6 +538,7 @@ export function SettingSecretControl({
   index,
   draft,
   disabled,
+  coveredBy,
   onDraft,
   onCancel,
 }: {
@@ -544,6 +546,7 @@ export function SettingSecretControl({
   index: number;
   draft: string | undefined;
   disabled: boolean;
+  coveredBy?: string | null;
   onDraft: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -556,8 +559,15 @@ export function SettingSecretControl({
         data-testid={`setting-secret-${index}`}
         data-stored={stored || undefined}
       >
-        <span className={cn(!stored && "text-muted-foreground")}>
-          {t(stored ? "settings.secret.stored" : "settings.secret.notStored")}
+        <span
+          className={cn(!stored && "text-muted-foreground")}
+          data-testid={`setting-secret-state-${index}`}
+        >
+          {stored
+            ? t("settings.secret.stored")
+            : coveredBy
+              ? t("settings.secret.covered", { setting: settingLabel(coveredBy, t).text })
+              : t("settings.secret.notStored")}
         </span>
         <span aria-hidden="true" className="text-muted-foreground">
           ·
@@ -1128,6 +1138,7 @@ function SystemSettings() {
             index={index}
             draft={drafts[item.path]}
             disabled={disabled}
+            coveredBy={settingSecretCover(item, allItems)}
             onDraft={draft}
             onCancel={dropDraft}
           />

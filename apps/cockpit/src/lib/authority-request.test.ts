@@ -135,14 +135,16 @@ describe("presentRequestBoundary", () => {
   test("the copy is honest about what the approval does not cover", () => {
     for (const locale of ["de", "en"] as const) {
       const notice = translate(locale, "authority.boundary.contentNotice");
-      const calls = translate(locale, "authority.boundary.calls", { count: 3 });
+      const calls = translate(locale, "authority.boundary.calls.other", { count: 3 });
       expect(notice.length).toBeGreaterThan(40);
       expect(calls).toContain("3");
     }
-    expect(translate("de", "authority.boundary.calls", { count: 3 })).toContain(
+    expect(translate("de", "authority.boundary.calls.other", { count: 3 })).toContain(
       "noch nicht mitgezählt",
     );
-    expect(translate("en", "authority.boundary.calls", { count: 3 })).toContain("not yet counted");
+    expect(translate("en", "authority.boundary.calls.other", { count: 3 })).toContain(
+      "not yet counted",
+    );
     expect(translate("en", "authority.boundary.contentNotice")).toContain("not what it contains");
   });
 });
