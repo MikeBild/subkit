@@ -64,6 +64,31 @@ export function isUnchanged(lines: readonly DiffLine[]): boolean {
   return lines.every((line) => line.type === "context");
 }
 
+export type FocusedRow = DiffLine | { type: "gap"; count: number };
+
+export function focusDiff(lines: readonly DiffLine[], context = 2): FocusedRow[] {
+  if (isUnchanged(lines)) return [];
+  const keep = lines.map(() => false);
+  lines.forEach((line, index) => {
+    if (line.type === "context") return;
+    const last = Math.min(lines.length - 1, index + context);
+    for (let near = Math.max(0, index - context); near <= last; near++) keep[near] = true;
+  });
+  const rows: FocusedRow[] = [];
+  let gap = 0;
+  lines.forEach((line, index) => {
+    if (!keep[index]) {
+      gap++;
+      return;
+    }
+    if (gap > 0) rows.push({ type: "gap", count: gap });
+    gap = 0;
+    rows.push(line);
+  });
+  if (gap > 0) rows.push({ type: "gap", count: gap });
+  return rows;
+}
+
 export type ChangeView =
   | { kind: "diff"; lines: DiffLine[] }
   | { kind: "patch"; lines: string[] }

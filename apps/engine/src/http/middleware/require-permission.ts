@@ -39,57 +39,64 @@ export function requirePermission(
   resourceFrom?: ResourceFromFn,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const principal = c.get("principal");
-    if (!principal) {
-      throw new UnauthorizedError();
-    }
-    const db = c.get("db");
-    const resource = resourceFrom ? resourceFrom(c) : undefined;
-    const resourceArg = resource?.id ? resource : undefined;
-    const check = resourceArg
-      ? {
-          tenant_id: principal.tenant_id,
-          principal,
-          permission,
-          resource: resourceArg,
-        }
-      : {
-          tenant_id: principal.tenant_id,
-          principal,
-          permission,
-        };
-    const decision = await can(db, check);
-    if (!decision.allow) {
-      try {
-        await auditAwait(
-          {
-            tenant_id: principal.tenant_id,
-            actor_type: principal.kind,
-            actor_id: principal.id,
-            action: AuditAction.POLICY_DENIED,
-            resource_type: resourceArg?.type ?? "policy",
-            resource_id: resourceArg?.id ?? null,
-            result: "denied",
-            reason: decision.reason ?? `permission_denied:${permission}`,
-            metadata: {
-              permission,
-              resource_type: resourceArg?.type ?? null,
-              resource_id: resourceArg?.id ?? null,
-            },
-          },
-          db,
-        );
-      } catch {}
-      throw await forbiddenFor(
-        db,
-        principal,
-        decision,
-        resourceArg,
-        `permission_denied:${permission}`,
-      );
-    }
+    await ensurePermission(c, permission, resourceFrom ? resourceFrom(c) : undefined);
     await next();
   };
+}
+
+export async function ensurePermission(
+  c: Context<AppEnv>,
+  permission: string,
+  resource: { type: string; id: string } | undefined,
+): Promise<void> {
+  const principal = c.get("principal");
+  if (!principal) {
+    throw new UnauthorizedError();
+  }
+  const db = c.get("db");
+  const resourceArg = resource?.id ? resource : undefined;
+  const check = resourceArg
+    ? {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission,
+        resource: resourceArg,
+      }
+    : {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission,
+      };
+  const decision = await can(db, check);
+  if (!decision.allow) {
+    try {
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: principal.kind,
+          actor_id: principal.id,
+          action: AuditAction.POLICY_DENIED,
+          resource_type: resourceArg?.type ?? "policy",
+          resource_id: resourceArg?.id ?? null,
+          result: "denied",
+          reason: decision.reason ?? `permission_denied:${permission}`,
+          metadata: {
+            permission,
+            resource_type: resourceArg?.type ?? null,
+            resource_id: resourceArg?.id ?? null,
+          },
+        },
+        db,
+      );
+    } catch {}
+    throw await forbiddenFor(
+      db,
+      principal,
+      decision,
+      resourceArg,
+      `permission_denied:${permission}`,
+    );
+  }
 }
 
 export function requireAnyPermission(

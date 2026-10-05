@@ -93,8 +93,8 @@ export function manualConnectorProblem(p: {
   return null;
 }
 
-export function afterCreateTab(target: ConnectorTarget): "werkzeuge" | "verbindung" {
-  return target === "mcp" ? "werkzeuge" : "verbindung";
+export function afterCreateTab(target: ConnectorTarget): "tools" | "connection" {
+  return target === "mcp" ? "tools" : "connection";
 }
 
 export function connectorTargetOf(driver: string | null): ConnectorTarget | null {

@@ -6685,6 +6685,7 @@ export interface paths {
                     /** @description Opaque `next_cursor` of the previous page, passed back verbatim. Pages are newest first by (created_at, id) and stay stable while new runs arrive. */
                     cursor?: string;
                     workflow_id?: string;
+                    /** @description One status, or several separated by commas (`failed,timed_out,aborted`); `total` then counts every run in any of them. */
                     status?: string;
                     request_source?: string;
                     q?: string;
@@ -11435,6 +11436,15 @@ export interface paths {
                 };
                 /** @description Bad request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -19657,6 +19667,8 @@ export interface components {
             id: string;
             tenant_id: string;
             slug: string;
+            /** @description The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none. */
+            category: string;
             name: string;
             description: string | null;
             lifecycle: string;
@@ -19724,7 +19736,6 @@ export interface components {
             }[];
         };
         WorkflowListItem: components["schemas"]["Workflow"] & {
-            category: string;
             connectors: string[];
         };
         ScheduleListResponse: {
@@ -20123,7 +20134,7 @@ export interface components {
             failure: {
                 step_key: string | null;
                 /** @enum {string|null} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
                 /** @enum {string|null} */
                 refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
                 connector: {
@@ -20164,7 +20175,7 @@ export interface components {
                 kind: string;
             } | null;
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
             error_code: string | null;
             /** @enum {string|null} */
             refusal_reason: "not_json_raw" | "not_base64url" | "not_utf8" | "header_control_byte" | "header_folded" | "header_not_allowed" | "header_duplicate" | "missing_headers" | "sender_invalid" | "recipient_invalid" | "extra_recipients" | "multipart_unsupported" | "content_type_unsupported" | "transfer_encoding_unsupported" | "body_not_base64" | "recipient_differs" | "sender_differs" | "content_type_differs" | null;
@@ -21030,7 +21041,7 @@ export interface components {
                 /** @description Low-cardinality failure code: the status class (`4xx_auth`, `5xx`, …), `network_error` for a call with no status, `remote_error` for an MCP tool that answered with an error. */
                 code: string;
                 /** @enum {string} */
-                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown";
+                cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
             } | null;
             /** @description Whether this connector's driver records every call in the audit log. False means the absence of calls says nothing. */
             recorded: boolean;
@@ -21576,6 +21587,7 @@ export interface components {
             pitfalls: string[];
             /** @default [] */
             doc_refs: string[];
+            facts: components["schemas"]["SkillCandidateFacts"];
             evidence_count: number;
             /** @enum {string} */
             confidence: "low" | "medium" | "high";
@@ -21590,6 +21602,35 @@ export interface components {
             tags: string[];
             created_at: string;
             updated_at: string;
+        };
+        /** @description What a drafting-context note states, as structured facts. Absent for candidates whose knowledge is prose only. */
+        SkillCandidateFacts: components["schemas"]["WorkflowCapabilityFacts"] | components["schemas"]["RecurringFailureFacts"] | null;
+        WorkflowCapabilityFacts: {
+            /** @enum {string} */
+            kind: "workflow_capability";
+            inputs: {
+                name: string;
+                type: string;
+                required: boolean;
+            }[];
+            output_fields: string[] | null;
+            key_paths: string[];
+            connector_ids: string[];
+            steps: {
+                id: string;
+                kind: string;
+            }[];
+            draft_version_id: string | null;
+        };
+        RecurringFailureFacts: {
+            /** @enum {string} */
+            kind: "recurring_failure";
+            step_key: string;
+            error_kind: string;
+            /** @enum {string} */
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
+            count: number;
+            lookback_days: number;
         };
         SkillCandidateEvidence: {
             id: string;
@@ -21817,6 +21858,11 @@ export interface components {
                     environment: string | null;
                 };
                 stage: string;
+                focused_run: {
+                    execution_id: string;
+                    status: string;
+                    recorded_at: string;
+                } | null;
                 last_successful_probe: string | null;
                 last_successful_preview: string | null;
                 unsaved: boolean;
@@ -22524,7 +22570,7 @@ export interface components {
             guidance: string | null;
         };
         /** @enum {string} */
-        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown";
+        FailureCauseClass: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown";
         OperatorDigestPatch: {
             id: string;
             workflow_id: string | null;
@@ -22624,7 +22670,7 @@ export interface components {
                 execution_id: string | null;
             };
             /** @enum {string|null} */
-            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
+            cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
             counts: {
                 patches?: number;
                 failures?: number;
@@ -22830,7 +22876,7 @@ export interface components {
                         /** @description Residual engine free text (a failing group's cause, a connector's health reason), or null. Show it as the engine's wording. */
                         detail: string | null;
                         /** @enum {string|null} */
-                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "driver_error" | "preview_unsupported" | "unknown" | null;
+                        cause_class: "ok" | "auth_failed" | "placeholder_unresolved" | "schema_mismatch" | "timeout" | "aborted" | "connector_missing" | "budget_exhausted" | "connector_unavailable" | "refused_before_start" | "authority_mismatch" | "payload_invalid" | "driver_error" | "preview_unsupported" | "unknown" | null;
                         drilldown: {
                             path: string;
                             label_id: string;

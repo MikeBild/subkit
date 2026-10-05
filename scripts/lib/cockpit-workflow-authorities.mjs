@@ -135,7 +135,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
             updated_at: "2026-08-10T09:00:00.000Z",
             webhooks_active: 0,
             effective_trigger: { kind: "request", source: "default", state: "active" },
-            steps: [],
+            steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
             health_state: "ok",
             health_reason: null,
           }),
@@ -153,7 +153,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
   await page.route(repairPattern, noRepair);
   try {
     const openHistory = async () => {
-      await page.getByTestId("workflow-tabs-tab-freigaben").click();
+      await page.getByTestId("workflow-tabs-tab-approvals").click();
       const toggle = page.getByTestId("workflow-former-grants-toggle");
       await toggle.waitFor();
       if (await page.getByTestId("workflow-former-approvals-row-0").count())
@@ -268,6 +268,8 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     await verifyPreparedVersion(page, stand, workflowId, locale, capture);
     await verifyActivationWhenNotApprovable(page, stand, workflowId, capture);
     await verifyEnvironmentCorrection(page, stand, workflowId, capture);
+    await verifyEnvironmentKept(page, stand, workflowId, capture, "chosen");
+    await verifyEnvironmentKept(page, stand, workflowId, capture, "running");
     await verifyLateReviewDropped(page, stand, workflowId);
     await verifyTrialAlreadyRunning(page, stand, workflowId, locale, capture);
   } finally {
@@ -316,7 +318,10 @@ async function verifyPreparedVersion(page, stand, workflowId, locale, capture) {
         version: 9,
         current_version_id: activeVersionId,
         digest: "9".repeat(64),
-        definition: { name: "Monatsreport", steps: [] },
+        definition: {
+          name: "Monatsreport",
+          steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
+        },
       }),
     });
   const preview = async (route) => {
@@ -473,7 +478,10 @@ async function verifyActivationWhenNotApprovable(page, stand, workflowId, captur
         version: 9,
         current_version_id: activeVersionId,
         digest: "4".repeat(64),
-        definition: { name: "Monatsreport", steps: [] },
+        definition: {
+          name: "Monatsreport",
+          steps: [{ id: "fetch-route", name: "Seite lesen", kind: "request" }],
+        },
       }),
     });
   const preview = async (route) => {
@@ -694,6 +702,132 @@ async function verifyEnvironmentCorrection(page, stand, workflowId, capture) {
   }
 }
 
+async function verifyEnvironmentKept(page, stand, workflowId, capture, why) {
+  const versionId = "2c5f8b1e-9a4d-4e73-b6a2-8d1c4f7e3b59";
+  const runsInProduction = why === "running";
+  const workflowPattern = `**/v1/workflows/${workflowId}`;
+  const previewPattern = `**/v1/workflows/${workflowId}/versions/*/authority-preview?*`;
+  const historyPattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
+  const statusPattern = `**/v1/workflows/${workflowId}/automation-status`;
+  const asked = [];
+  const granted = [];
+  const history = async (route) => {
+    if (route.request().method() === "POST") {
+      granted.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, contentType: "application/json", body: "{}" });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null }),
+    });
+  };
+  const status = async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ schedules: [], inbound_hooks: [] }),
+    });
+  const record = async (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: workflowId,
+            name: "Postfach-Notiz",
+            slug: "postfach-notiz",
+            lifecycle: "active",
+            current_version: 4,
+            current_version_id: versionId,
+            draft_version_id: null,
+            webhooks_active: runsInProduction ? 1 : 0,
+            steps: [{ id: "read_mail", name: "Post lesen", kind: "request" }],
+            updated_at: "2026-08-10T09:00:00.000Z",
+          }),
+        })
+      : route.fallback();
+  const preview = async (route) => {
+    const environment = new URL(route.request().url()).searchParams.get("environment");
+    asked.push(environment);
+    const effects = ["read_mail", "post_note"].map((step_id) => ({
+      step_id,
+      environment: "dev",
+      driver: "http",
+      operation: "GET",
+      effect: "read",
+      target: "https://mail.example.test/inbox",
+      rewrites_target: false,
+    }));
+    const mismatched = environment !== "dev";
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        digest: (mismatched ? "c" : "d").repeat(64),
+        manifest: {
+          schema_version: 1,
+          workflow_id: workflowId,
+          workflow_version_id: versionId,
+          execution_environment: environment,
+          effects,
+          issues: mismatched
+            ? effects.map((effect) => ({ step_id: effect.step_id, code: "environment_mismatch" }))
+            : [],
+        },
+        eligible_for_repeated_runs: !mismatched,
+        unavailable_steps: [],
+        suggested_bounds: { ...wholeDaySpan(), max_runs: 1 },
+        execution_shape: { requests: [], iterations: [], run_limit_is_request_limit: false },
+      }),
+    });
+  };
+  await page.route(historyPattern, history);
+  await page.route(statusPattern, status);
+  await page.route(workflowPattern, record);
+  await page.route(previewPattern, preview);
+  const where = `environment kept (${why})`;
+  const shown = async () => (await page.getByTestId("authority-environment").innerText()).trim();
+  try {
+    await stand.visit(page, `workflows/${workflowId}`);
+    await page.getByTestId("workflow-automation-action").click();
+    await page.getByTestId("authority-grant-review").waitFor();
+    if (!runsInProduction) {
+      await page.getByTestId("authority-environment").click();
+      await page.getByTestId("authority-environment-prod").click();
+      await page.getByTestId("authority-issues").waitFor({ timeout: 15_000 });
+    }
+    await page.getByTestId("authority-grant-review").waitFor();
+    await page
+      .waitForFunction(
+        () => !document.querySelector('[data-testid="authority-grant-dialog"] [role="status"]'),
+        { timeout: 15_000 },
+      )
+      .catch(() => {});
+    const environment = await shown();
+    if (!/Produktion|Production/.test(environment))
+      throw new Error(
+        `${where}: production became ${environment} after the review answered; asked ${asked.join(", ")}`,
+      );
+    const expected = runsInProduction ? ["prod"] : ["dev", "prod"];
+    if (asked.join(",") !== expected.join(","))
+      throw new Error(`${where}: environments asked about: ${asked.join(", ") || "(none)"}`);
+    if ((await page.getByTestId("authority-issues").count()) === 0)
+      throw new Error(`${where}: production cannot be approved, and the dialog does not say why`);
+    if (await page.getByTestId("authority-grant-confirm").count())
+      throw new Error(`${where}: the dialog offers to approve what production cannot run`);
+    await capture(`environment-kept-${why}`);
+    await page.getByTestId("authority-grant-cancel").click();
+    await page.getByRole("dialog").waitFor({ state: "hidden" });
+    if (granted.length) throw new Error(`${where}: looking at the dialog granted something`);
+  } finally {
+    await page.unroute(previewPattern, preview);
+    await page.unroute(workflowPattern, record);
+    await page.unroute(statusPattern, status);
+    await page.unroute(historyPattern, history);
+  }
+}
+
 async function verifyLateReviewDropped(page, stand, workflowId) {
   const versionId = "e4b7a0d3-6c2f-4f98-8b51-3a9e6d2c1f74";
   const workflowPattern = `**/v1/workflows/${workflowId}`;
@@ -727,7 +861,7 @@ async function verifyLateReviewDropped(page, stand, workflowId) {
             current_version: 8,
             current_version_id: versionId,
             draft_version_id: null,
-            steps: [],
+            steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
             updated_at: "2026-08-10T09:00:00.000Z",
           }),
         })
@@ -1132,7 +1266,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
               current_version: 8,
               current_version_id: "5e8a1c7d-3b9f-4d26-b5e0-7a4c2f1d8b63",
               draft_version_id: "c2d7f4b8-6a1e-4c59-9d83-1f5b8e3a7c40",
-              steps: [],
+              steps: [{ id: "publish-report", name: "Report senden", kind: "request" }],
               updated_at: "2026-08-10T09:00:00.000Z",
             }),
           })

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { upsertFromSignal } from "../../skill-candidates/service.ts";
-import type { PatternSignal } from "../../skill-candidates/types.ts";
+import type { PatternSignal, WorkflowCapabilityFacts } from "../../skill-candidates/types.ts";
 import type { ScopeIndex, WorkflowDefFromDraft } from "./commit-workflow.ts";
 
 function canonicalJson(value: unknown): string {
@@ -16,25 +16,60 @@ function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
-function describeInputSchema(input_schema: unknown): string {
-  if (!input_schema || typeof input_schema !== "object") return "none declared";
+function inputFacts(input_schema: unknown): WorkflowCapabilityFacts["inputs"] {
+  if (!input_schema || typeof input_schema !== "object") return [];
   const schema = input_schema as Record<string, unknown>;
   const props = (schema.properties ?? {}) as Record<string, unknown>;
   const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
-  const names = Object.keys(props);
-  if (names.length === 0) return "none declared";
-  return names
-    .map((name) => {
-      const p = (props[name] ?? {}) as Record<string, unknown>;
-      const type = typeof p.type === "string" ? p.type : "any";
-      const req = required.includes(name) ? " (required)" : "";
-      const desc = typeof p.description === "string" ? ` — ${p.description}` : "";
-      return `${name}: ${type}${req}${desc}`;
-    })
+  return Object.keys(props).map((name) => {
+    const p = (props[name] ?? {}) as Record<string, unknown>;
+    return {
+      name,
+      type: typeof p.type === "string" ? p.type : "any",
+      required: required.includes(name),
+    };
+  });
+}
+
+function outputFields(output_schema: unknown): string[] | null {
+  if (!output_schema || typeof output_schema !== "object") return null;
+  const props = (output_schema as Record<string, unknown>).properties;
+  return props && typeof props === "object" ? Object.keys(props) : [];
+}
+
+export function workflowCapabilityFacts(args: {
+  def: WorkflowDefFromDraft;
+  scope_index: ScopeIndex;
+  draft_version_id?: string;
+}): WorkflowCapabilityFacts {
+  const { def, scope_index } = args;
+  const steps = def.steps.flatMap((s) =>
+    typeof s.id === "string" ? [{ id: s.id, kind: typeof s.kind === "string" ? s.kind : "?" }] : [],
+  );
+  const last = steps[steps.length - 1];
+  return {
+    kind: "workflow_capability",
+    inputs: inputFacts(def.input_schema),
+    output_fields: outputFields(def.output_schema),
+    key_paths: (last ? scope_index[last.id]?.available_paths : undefined)?.slice(0, 12) ?? [],
+    connector_ids: Array.from(
+      new Set(
+        def.steps.flatMap((s) => (typeof s.connector_id === "string" ? [s.connector_id] : [])),
+      ),
+    ),
+    steps,
+    draft_version_id: args.draft_version_id ?? null,
+  };
+}
+
+function describeInputs(inputs: WorkflowCapabilityFacts["inputs"]): string {
+  if (inputs.length === 0) return "none declared";
+  return inputs
+    .map((input) => `${input.name}: ${input.type}${input.required ? " (required)" : ""}`)
     .join("; ");
 }
 
-function buildAuthoringCapabilitySignal(args: {
+export function authoringCapabilitySignal(args: {
   workflow_id: string;
   slug: string;
   name: string;
@@ -42,54 +77,33 @@ function buildAuthoringCapabilitySignal(args: {
   scope_index: ScopeIndex;
   draft_version_id?: string;
 }): PatternSignal {
-  const { workflow_id, slug, name, def, scope_index } = args;
-
-  const connectorIds = Array.from(
-    new Set(
-      def.steps
-        .map((s) => (typeof s.connector_id === "string" ? s.connector_id : null))
-        .filter((id): id is string => id !== null),
-    ),
-  );
-  const connectorId = connectorIds.length === 1 ? connectorIds[0]! : null;
-
-  const stepIds = def.steps
-    .map((s) => (typeof s.id === "string" ? s.id : null))
-    .filter((id): id is string => id !== null);
-  const stepKinds = def.steps.map((s) => (typeof s.kind === "string" ? s.kind : "?"));
-  const lastStepId = stepIds.length > 0 ? stepIds[stepIds.length - 1]! : null;
-  const lastScope = lastStepId ? scope_index[lastStepId] : undefined;
-
-  const inputSummary = describeInputSchema(def.input_schema);
-  const outputShape = def.output_schema
-    ? "declared output_schema"
-    : (lastScope?.shape_summary ?? "unknown");
-  const keyPaths = lastScope?.available_paths?.slice(0, 12) ?? [];
-  const exampleInvocation = args.draft_version_id
+  const { workflow_id, slug, name } = args;
+  const facts = workflowCapabilityFacts(args);
+  const exampleInvocation = facts.draft_version_id
     ? `GET /v1/workflows/${workflow_id}/draft — inspect only; activation and execution authority are required before a live run`
     : `POST /v1/workflows/${slug}/runs  body: { "input": { … } }`;
 
   const body = [
     `Workflow '${name}' (slug ${slug}) — what it does and how to invoke it.`,
-    ...(args.draft_version_id
+    ...(facts.draft_version_id
       ? [
-          `Saved draft version ${args.draft_version_id}. This note describes preparation, not an active capability; the workflow is neither activated nor authorized to run.`,
+          `Saved draft version ${facts.draft_version_id}. This note describes preparation, not an active capability; the workflow is neither activated nor authorized to run.`,
         ]
       : []),
-    `Inputs: ${inputSummary}.`,
-    `Output shape: ${outputShape}.`,
-    connectorIds.length > 0
-      ? `Connectors: ${connectorIds.join(", ")}.`
+    `Inputs: ${describeInputs(facts.inputs)}.`,
+    `Output fields: ${facts.output_fields ? facts.output_fields.join(", ") || "none declared" : "not declared"}.`,
+    facts.connector_ids.length > 0
+      ? `Connectors: ${facts.connector_ids.join(", ")}.`
       : "Connectors: none (transform/inline only).",
-    `Steps: ${stepKinds.join(" → ")}.`,
-    ...(keyPaths.length > 0 ? [`Key output paths: ${keyPaths.join(", ")}.`] : []),
+    `Steps: ${facts.steps.map((step) => step.kind).join(" → ")}.`,
+    ...(facts.key_paths.length > 0 ? [`Key output paths: ${facts.key_paths.join(", ")}.`] : []),
     `Example invocation: ${exampleInvocation}`,
   ].join("\n");
 
   const fingerprint = createHash("sha256")
     .update(
-      `authoring_capability:${workflow_id}:${canonicalJson(def.input_schema ?? null)}:${canonicalJson(
-        def.output_schema ?? null,
+      `authoring_capability:${workflow_id}:${canonicalJson(args.def.input_schema ?? null)}:${canonicalJson(
+        args.def.output_schema ?? null,
       )}`,
     )
     .digest("hex")
@@ -99,20 +113,21 @@ function buildAuthoringCapabilitySignal(args: {
     pattern_kind: "authoring_capability",
     scope: "workflow",
     workflow_id,
-    ...(connectorId ? { connector_id: connectorId } : {}),
+    ...(facts.connector_ids.length === 1 ? { connector_id: facts.connector_ids[0] } : {}),
     title: `Workflow '${slug}' capabilities`,
     body,
     examples: [exampleInvocation],
     best_practices: [],
     pitfalls: [],
     doc_refs: [],
+    facts,
     fingerprint,
     confidence: "high",
     evidence: [
       {
-        evidence_type: args.draft_version_id ? "workflow_draft_saved" : "workflow_committed",
-        summary: `${args.draft_version_id ? "Saved draft of" : "Committed"} workflow '${slug}' (${def.steps.length} step(s)${
-          connectorIds.length > 0 ? `, connectors: ${connectorIds.join(", ")}` : ""
+        evidence_type: facts.draft_version_id ? "workflow_draft_saved" : "workflow_committed",
+        summary: `${facts.draft_version_id ? "Saved draft of" : "Committed"} workflow '${slug}' (${facts.steps.length} step(s)${
+          facts.connector_ids.length > 0 ? `, connectors: ${facts.connector_ids.join(", ")}` : ""
         }).`,
       },
     ],
@@ -130,7 +145,7 @@ export async function proposeAuthoringCapabilityCandidate(args: {
 }): Promise<void> {
   const { db, tenant_id, conversation_id, workflow, def, scope_index } = args;
   try {
-    const signal = buildAuthoringCapabilitySignal({
+    const signal = authoringCapabilitySignal({
       workflow_id: workflow.id,
       slug: workflow.slug,
       name: workflow.name,

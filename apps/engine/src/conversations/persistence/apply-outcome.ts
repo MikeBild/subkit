@@ -18,6 +18,7 @@ export interface ApplyElicitationOutcomeInput {
     id: string;
     tool_name: string;
     input: unknown;
+    tool_call_id?: string | null;
   };
   output: unknown;
   surface?: "sk_headless" | "sk_interactive" | "mcp" | "web" | "chat";
@@ -53,6 +54,7 @@ export async function applyElicitationOutcome(
       id: p.elicitation.id,
       tool_name: p.elicitation.tool_name,
       input: p.elicitation.input,
+      tool_call_id: p.elicitation.tool_call_id ?? null,
     },
     db: p.db,
   });

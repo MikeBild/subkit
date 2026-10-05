@@ -70,8 +70,16 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
       workflow_step_id: "compose",
       step_id: "send_email",
       execution_id: runId,
+      environment: "prod",
       source: "gate_block",
-      drift_signal: { kind: "gate_block", step_id: "send_email", fixer: "use_utf8_encoder" },
+      classification_reasons: ["gate_repair_requires_review"],
+      drift_signal: {
+        kind: "gate_block",
+        code: "execution_authority_changed",
+        reason: "not_utf8",
+        step_id: "send_email",
+        fixer: "use_utf8_encoder",
+      },
       proposal: {
         kind: "gate_fix",
         classification: "unsafe",
@@ -91,6 +99,33 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
         },
       },
     },
+  };
+
+  const composeLines = [
+    "const lines = [",
+    '  "From: reports@example.test",',
+    '  "To: team@example.test",',
+    '  "Subject: Monatsreport",',
+    '  "Content-Type: text/plain; charset=utf-8",',
+    '  "",',
+    "  input.body,",
+    "];",
+    'const msg = lines.join("\\r\\n");',
+  ];
+  const compose = (encoder) => ({
+    id: "compose",
+    kind: "transform",
+    expression: [...composeLines, `return { raw: sk.${encoder}(msg) };`].join("\n"),
+  });
+  const preview = {
+    ...candidate,
+    candidate_id: candidateId,
+    fixture_available: false,
+    before_step: compose("base64UrlEncode"),
+    after_step: compose("base64UrlEncodeUtf8"),
+    changed_paths: ["expression"],
+    proposal: candidate.diff.proposal,
+    drift_summary: null,
   };
 
   const failedRun = {
@@ -148,6 +183,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
     }
     if (path === "/v1/executions" && url.searchParams.get("workflow_id") === workflowId)
       return reply(route, { items: [failedRun], total: 1, next_cursor: null });
+    if (path === `/v1/patch-candidates/${candidateId}/preview`) return reply(route, preview);
     if (path === "/v1/patch-candidates")
       return reply(route, {
         items: repaired ? [candidate] : [],
@@ -299,7 +335,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
         throw new Error(`The conversation does not name step ${step}: ${asked}`);
     }
 
-    await page.getByTestId("workflow-tabs-tab-verlauf").click();
+    await page.getByTestId("workflow-tabs-tab-history").click();
     const recent = page
       .getByTestId("workflow-recent-run-0-refusal-reason")
       .filter({ visible: true })
@@ -328,15 +364,59 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
       throw new Error(`The repair request is not exact: ${JSON.stringify(repairBodies)}`);
     const card = page.locator(`article[data-decision-key="patch:${candidateId}"]`);
     await card.waitFor();
+    const change = card.locator('[data-testid$="-change"]');
+    await change.waitFor();
+    const added = await change.locator('[data-diff-line="added"]').allInnerTexts();
+    const removed = await change.locator('[data-diff-line="removed"]').allInnerTexts();
     if (
-      !(await page
-        .getByTestId("attention-review-actions")
-        .locator('[data-testid$="-approve"]')
-        .isDisabled())
+      added.length !== 1 ||
+      !added[0].includes("sk.base64UrlEncodeUtf8(msg)") ||
+      removed.length !== 1 ||
+      !removed[0].includes("sk.base64UrlEncode(msg)")
     )
-      throw new Error("The filed repair can be approved before it was opened");
+      throw new Error(
+        `The repair diff does not show the one changed line: -${removed.join("|")} +${added.join("|")}`,
+      );
+    if ((await change.locator("[data-diff-gap]").count()) === 0)
+      throw new Error("The repair diff repeats the unchanged start instead of folding it");
+    const changeText = await change.innerText();
+    if (!changeText.includes(de ? "Ursache" : "Cause") || !changeText.includes(expected))
+      throw new Error(`The repair does not name the refused rule in words: ${changeText}`);
+    const header = page.getByTestId("attention-review-actions");
+    await header.getByTestId("authority-grant-open").waitFor();
+    const headerButtons = await header.locator("button").filter({ visible: true }).count();
+    if (headerButtons !== 2)
+      throw new Error(
+        `The repair sheet header offers ${headerButtons} buttons, not one act and a menu`,
+      );
+    const title = (await card.locator('[data-testid$="-title"]').innerText()).trim();
+    if (title !== (de ? "Nachricht als UTF-8 kodieren" : "Encode the message as UTF-8"))
+      throw new Error(`The repair card repeats the sheet title or is not worded: ${title}`);
+    await card.locator('[data-testid$="-toggle"]').click();
+    await card.locator('[data-testid$="-detail"]').waitFor();
+    const sheetText = await sheet.innerText();
+    for (const raw of [
+      "gate:",
+      "execution_authority_changed",
+      "gate_repair_requires_review",
+      "use_utf8_encoder",
+      "The approval gate refused",
+      "Encode the report message",
+    ])
+      if (sheetText.includes(raw)) throw new Error(`The repair sheet shows "${raw}"`);
     await assertNoVisibleUuids(sheet, `${locale}/gate-diagnosis-review`);
     await capture("repair-review");
+    await header.getByTestId("authority-grant-open").click();
+    const environment = page.getByTestId("authority-environment");
+    await environment.waitFor();
+    const chosen = (await environment.innerText()).trim();
+    if (chosen !== (de ? "Produktion" : "Production"))
+      throw new Error(`The repair of a production run opens its approval for ${chosen}`);
+    const grantText = await page.getByTestId("authority-grant-dialog").innerText();
+    if (grantText.includes('"before"') || grantText.includes('"after"'))
+      throw new Error("The repair approval shows its change as raw JSON");
+    await page.getByTestId("authority-grant-cancel").click();
+    await page.getByTestId("authority-grant-dialog").waitFor({ state: "hidden" });
     await page.goBack();
     await sheet.waitFor({ state: "hidden" });
 

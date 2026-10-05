@@ -3,7 +3,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionFixtures, type patchCandidates } from "../db/schema/index.ts";
+import { executionFixtures, executions, type patchCandidates } from "../db/schema/index.ts";
 import { MAX_REPAIR_ATTEMPTS } from "../execution/timeouts.ts";
 import { LlmQuotaExhausted } from "../llm/errors.ts";
 import {
@@ -84,6 +84,19 @@ export interface ProcessSignalResult {
   proposal: PatchProposal;
   created: boolean;
   policy: import("./policy.ts").AutohealPolicy;
+}
+
+async function failedRunEnvironment(
+  db: Executor,
+  tenant_id: string,
+  execution_id: string,
+): Promise<"dev" | "prod" | null> {
+  const [row] = await db
+    .select({ environment: executions.execution_mode })
+    .from(executions)
+    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .limit(1);
+  return row?.environment ?? null;
 }
 
 async function loadFixture(
@@ -490,6 +503,9 @@ async function processDriftSignalLocked(
     source: ctx.source,
   });
 
+  const environment = ctx.execution_id
+    ? await failedRunEnvironment(db, ctx.tenant_id, ctx.execution_id)
+    : null;
   let closed = false;
   const txOut = await db.transaction(async (tx) => {
     const gatedFixtureId = fixture && ctx.dry_run_step ? fixture.id : null;
@@ -516,6 +532,7 @@ async function processDriftSignalLocked(
         step_id: ctx.step_id,
         workflow_step_id: ctx.workflow_step_id ?? null,
         execution_id: ctx.execution_id,
+        ...(environment ? { environment } : {}),
         source: ctx.source,
         ...(ctx.scan_id ? { scan_id: ctx.scan_id } : {}),
         ...(rejectionChain.length > 0 ? { rejection_chain: rejectionChain } : {}),

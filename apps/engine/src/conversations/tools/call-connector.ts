@@ -152,6 +152,7 @@ export const callConnectorTool: ConversationTool = {
     "Reach for this when the connector is saved and the user (or you) needs to see the actual vendor response shape — for endpoint discovery, pagination probing, sampling rows, or field-name verification — without committing to a workflow draft.",
   important_notes: [
     "If a saved workflow already covers this connector + intent, run its `wf_<slug>` tool instead of re-deriving the query here — `call_connector` is for ad-hoc exploration, not for executing known tasks.",
+    "`connector_id` is the id of a saved connector that `find_connector` or `list_connectors` returned in this conversation. Never invent one or reuse an id from an example.",
     "Connector must be persisted; for drafts use `probe_connector_draft`.",
     "Auth/credential is injected from the saved row — additional `headers` are merged on top (HTTP).",
     "4xx/5xx responses still return `ok:true` with the upstream status — the LLM should inspect the body and decide.",
@@ -161,12 +162,6 @@ export const callConnectorTool: ConversationTool = {
     "S3: `method` is one of GET/PUT/HEAD/LIST/DELETE; `path` is the object key (or prefix for LIST).",
     "Audit row records actor + connector + method + URL host + status; bodies, headers, full SQL, and full request bodies are NEVER logged.",
   ],
-  example_input: {
-    connector_id: "00000000-0000-0000-0000-000000000000",
-    method: "GET",
-    path: "/v2/droplets",
-    query: { per_page: 10 },
-  },
   inputSchema: CallConnectorInput,
   category: "tenant_read",
   permission: {

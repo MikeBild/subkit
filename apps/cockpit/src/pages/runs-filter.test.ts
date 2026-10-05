@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   executionsQuery,
+  failedStatusesFor,
   filterFromUrl,
   isKnownRequestSource,
   REQUEST_SOURCES,
+  runsFilterSearch,
 } from "@/pages/runs-model";
 
 describe("the filter a link asks for", () => {
@@ -57,5 +59,45 @@ describe("the filter a link asks for", () => {
         "workflow_id",
       ),
     ).toBe(false);
+  });
+});
+
+describe("the filter the address keeps", () => {
+  test("status, source and search are written, the rest of the address stays", () => {
+    expect(
+      runsFilterSearch("?runs=all&workflow_id=abc", {
+        status: "failed",
+        source: "scheduler",
+        q: " Bericht ",
+      }),
+    ).toBe("?runs=all&workflow_id=abc&status=failed&source=scheduler&q=Bericht");
+  });
+
+  test("a filter set back to all leaves the address", () => {
+    expect(
+      runsFilterSearch("?runs=all&status=failed&source=api&q=x", {
+        status: "all",
+        source: "all",
+        q: "",
+      }),
+    ).toBe("?runs=all");
+  });
+
+  test("what the address keeps is what the page reads back", () => {
+    const search = runsFilterSearch("?runs=all", { status: "timed_out", source: "chat", q: "a" });
+    const read = filterFromUrl(search);
+    expect([read.status, read.source, read.q]).toEqual(["timed_out", "chat", "a"]);
+  });
+});
+
+describe("the failed count asks the engine", () => {
+  test("without a status filter it counts every failing status", () => {
+    expect(failedStatusesFor("all")).toBe("failed,timed_out,aborted");
+  });
+
+  test("a failing status counts itself, any other status counts none", () => {
+    expect(failedStatusesFor("timed_out")).toBe("timed_out");
+    expect(failedStatusesFor("succeeded")).toBeNull();
+    expect(failedStatusesFor("running")).toBeNull();
   });
 });

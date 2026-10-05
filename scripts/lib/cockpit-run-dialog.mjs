@@ -92,7 +92,13 @@ function runDialogApi(state) {
         schema: state.variant === "typed" ? TYPED_SCHEMA : null,
       });
     if (path === `/v1/workflows/${WORKFLOW_ID}/draft`)
-      return json(route, { version_id: DRAFT_VERSION_ID, version: 5 });
+      return json(route, {
+        workflow_id: WORKFLOW_ID,
+        version_id: DRAFT_VERSION_ID,
+        version: 5,
+        current_version_id: CURRENT_VERSION_ID,
+        definition: { name: RECORD.name, steps: RECORD.steps },
+      });
     if (path === `/v1/workflows/${WORKFLOW_ID}/execution-authorities`)
       return json(route, {
         items: state.variant === "live" ? [PROD_AUTHORITY] : [],
@@ -200,7 +206,7 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     if (!said.includes(expected))
       throw new Error(`${where} · refused: the dialog says "${said}", not "${expected}"`);
     const remedy = await page.getByTestId("workflow-run-error-remedy").getAttribute("href");
-    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=verbindung`)
+    if (remedy !== `/cockpit/connectors/${DEV_MAIL_ID}?tab=connection`)
       throw new Error(`${where} · refused: the refusal leads to ${remedy}, not Mail's sign-in`);
     if (!(await page.getByTestId("workflow-run-submit").isDisabled()))
       throw new Error(`${where} · refused: the refused run can be started again`);
@@ -223,7 +229,14 @@ export async function verifyRunDialog(page, stand, localeName, capture) {
     await page.waitForURL((url) => url.searchParams.get("run") === LIVE_RUN_ID, {
       timeout: 10_000,
     });
+    await page
+      .getByTestId("run-detail")
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .catch((error) => {
+        throw new Error(`${where} · live: the started run's sheet did not open`, { cause: error });
+      });
     await page.keyboard.press("Escape");
+    await page.getByTestId("run-detail").waitFor({ state: "hidden" });
 
     state.variant = "crashed";
     await openDialog(page, stand);

@@ -4,14 +4,14 @@ import { conversationMessages, conversations } from "../db/schema/index.ts";
 import { resolveModelRoute } from "../llm/core/invoke.ts";
 import { runSummarizeFlow } from "../llm/flows/summarize.ts";
 import { logger } from "../logging/logger.ts";
-import { stringifyConversationExcerpt, truncateExcerpt } from "./excerpt.ts";
+import { stringifyConversationExcerpt } from "./excerpt.ts";
 
 export const CONVERSATION_TITLE_MAX = 50;
 
 export function deriveConversationTitle(content: unknown): string | null {
   const text = stringifyConversationExcerpt(content);
   if (!text) return null;
-  const title = truncateExcerpt(text, CONVERSATION_TITLE_MAX);
+  const title = text.replace(/\s+/g, " ").trim();
   return title.length > 0 ? title : null;
 }
 
@@ -57,8 +57,7 @@ export function titleFromSummary(raw: string): string | null {
   if (UNFINISHED_ENDING.test(bare)) return null;
   const unquoted = bare.replace(/[.!]+$/g, "").trim();
   if (!unquoted) return null;
-  const words = unquoted.split(/\s+/).slice(0, TITLE_WORDS_MAX).join(" ");
-  const title = truncateExcerpt(words, CONVERSATION_TITLE_MAX);
+  const title = unquoted.split(/\s+/).slice(0, TITLE_WORDS_MAX).join(" ");
   return title.length > 0 ? title : null;
 }
 

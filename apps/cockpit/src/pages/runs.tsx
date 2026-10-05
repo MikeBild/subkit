@@ -26,6 +26,7 @@ import {
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
+import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
@@ -37,9 +38,10 @@ import { remedyFor } from "@/lib/remedy";
 import { refusedSignIn } from "@/lib/run-availability";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { useInfiniteList } from "@/lib/use-infinite-list";
+import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infinite-list";
 import { windowFilterLabel } from "@/lib/window-filter";
 import {
+  failedStatusesFor,
   filterFromUrl,
   formatRunDuration,
   isExecutionRecord,
@@ -58,8 +60,8 @@ import {
   runName,
   runOutcomeSentence,
   runOverlayFromUrl,
-  runOverlaySearch,
   runStatusSentence,
+  runsFilterSearch,
   runVerdict,
   SOURCE_KIND_KEYS,
   stepConnectorId,
@@ -264,8 +266,6 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
       ),
     ];
   }, [t, dateTime, locale]);
-  const stepError = step && step !== failing ? previewText(step.error) : null;
-  const stepOutput = step ? previewText(step.output_preview ?? step.result_preview) : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
@@ -374,17 +374,8 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
               emptyLine={t("runs.detail.noSteps")}
               onOpen={(item) => setOpenStep(stepItems.indexOf(item))}
             />
-            {step && (stepError || stepOutput) ? (
-              <Copyable>
-                <CodeBlock
-                  label={step.step_key}
-                  code={hideTechnicalIdentifiers(
-                    stepError ?? stepOutput ?? "",
-                    t("tool.referenceHiddenInline"),
-                  )}
-                  testId="run-detail-step-evidence"
-                />
-              </Copyable>
+            {step && openStep !== null ? (
+              <RunStepSheet step={step} index={openStep} onClose={() => setOpenStep(null)} />
             ) : null}
           </Section>
           <div className="flex flex-col gap-2">
@@ -411,6 +402,66 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   );
 }
 
+function RunStepSheet({
+  step,
+  index,
+  onClose,
+}: {
+  step: ExecutionStep;
+  index: number;
+  onClose(): void;
+}) {
+  const { t, locale } = useI18n();
+  const evidence = [
+    { key: "error", label: t("runs.step.error"), text: previewText(step.error) },
+    {
+      key: "output",
+      label: t("runs.step.output"),
+      text: previewText(step.output_preview ?? step.result_preview),
+    },
+  ].flatMap((entry) => (entry.text === null ? [] : [{ ...entry, text: entry.text }]));
+  return (
+    <RecordSheet
+      open
+      onOpenChange={(next) => !next && onClose()}
+      size="wide"
+      title={
+        <span className="font-mono">
+          {index + 1} {step.step_key}
+        </span>
+      }
+      badge={<StatusBadge state={step.status} />}
+      testId="run-step-sheet"
+      closeTestId="run-step-close"
+    >
+      <FactList
+        items={[
+          {
+            label: t("runs.column.duration"),
+            value:
+              step.duration_ms === null ? MISSING : formatRunDuration(locale, step.duration_ms),
+          },
+        ]}
+      />
+      {evidence.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="run-step-nothing">
+          {t("runs.step.nothingRecorded")}
+        </p>
+      ) : (
+        evidence.map(({ key, label, text }) => (
+          <Copyable key={key}>
+            <CodeBlock
+              label={label}
+              code={hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline"))}
+              testId={`run-step-${key}`}
+            />
+          </Copyable>
+        ))
+      )}
+    </RecordSheet>
+  );
+}
+
 function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
   const [initial] = useState(() => filterFromUrl(window.location.search));
@@ -424,25 +475,47 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   });
   const debouncedSearch = useDebouncedValue(search);
   const title = t("resource.runs.title");
+  const narrowing = {
+    request_source: sourceFilter === "all" ? null : sourceFilter,
+    workflow_id: workflowFilter,
+    q: debouncedSearch.trim() || null,
+    started_from: startedWindow.from,
+    started_to: startedWindow.to,
+  };
   const list = useInfiniteList<ExecutionListItem>(
     "/v1/executions",
-    {
-      status: statusFilter === "all" ? null : statusFilter,
-      request_source: sourceFilter === "all" ? null : sourceFilter,
-      workflow_id: workflowFilter,
-      q: debouncedSearch.trim() || null,
-      started_from: startedWindow.from,
-      started_to: startedWindow.to,
-    },
+    { ...narrowing, status: statusFilter === "all" ? null : statusFilter },
     { limit: PAGE_SIZE },
   );
+  const failedStatuses = failedStatusesFor(statusFilter);
+  const failedTotal = useQuery({
+    queryKey: ["runs", "failed-total", narrowing, failedStatuses],
+    enabled: failedStatuses !== null,
+    queryFn: ({ signal }) =>
+      apiRequest<CursorPage<unknown>>(
+        listPagePath("/v1/executions", { ...narrowing, status: failedStatuses }, 1, null),
+        { signal },
+      ),
+  });
+  const failedCount = failedStatuses === null ? 0 : (failedTotal.data?.total ?? null);
   const rows = useMemo(
     () => list.items.filter(isExecutionRecord) as ExecutionListItem[],
     [list.items],
   );
-  const failedCount = rows.filter((run) =>
-    ["failed", "timed_out", "aborted"].includes(run.status),
-  ).length;
+
+  useEffect(() => {
+    const search = runsFilterSearch(window.location.search, {
+      status: statusFilter,
+      source: sourceFilter,
+      q: debouncedSearch,
+    });
+    if (search === window.location.search) return;
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${search}${window.location.hash}`,
+    );
+  }, [statusFilter, sourceFilter, debouncedSearch]);
 
   const forgetInAddress = useCallback((keys: readonly string[]) => {
     const params = new URLSearchParams(window.location.search);
@@ -529,7 +602,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {list.query.data ? (
+      {list.query.data && failedCount !== null ? (
         <SummaryLine
           text={t((list.total ?? rows.length) === 1 ? "runs.summary.one" : "runs.summary.other", {
             count: list.total ?? rows.length,
@@ -663,22 +736,9 @@ export function RunOverlays() {
   const { t } = useI18n();
   const session = useSession();
   const allowed = session.permissions.includes("execution:read");
-  const href = useRouterState({ select: (state) => state.location.href });
-  const [overlay, setOverlay] = useState(() => runOverlayFromUrl(window.location.search));
-  useEffect(() => {
-    void href;
-    setOverlay(runOverlayFromUrl(window.location.search));
-  }, [href]);
-  useEffect(() => {
-    const onPopState = () => setOverlay(runOverlayFromUrl(window.location.search));
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-  const show = useCallback((next: { list: boolean; runId: string | null }) => {
-    const search = runOverlaySearch(window.location.search, next);
-    window.history.pushState({}, "", `${window.location.pathname}${search}${window.location.hash}`);
-    setOverlay(next);
-  }, []);
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
+  const overlay = useMemo(() => runOverlayFromUrl(searchStr), [searchStr]);
+  const { show } = useOpenRunSheet();
   const { run, failed, retry } = useRun(overlay.runId, allowed);
   if (!allowed) return null;
   const open = overlay.list || overlay.runId !== null;
@@ -698,7 +758,7 @@ export function RunOverlays() {
     <RecordSheet
       open={open}
       onOpenChange={(next) => !next && show({ list: false, runId: null })}
-      size={overlay.list ? "wide" : "default"}
+      size="wide"
       title={
         overlay.runId && run?.workflow_id ? (
           <a

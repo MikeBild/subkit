@@ -2,6 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@source "../node_modules/streamdown/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn's components read raw variables — `--background`, `--card`, `--sidebar`
@@ -348,42 +350,6 @@
     animation: none;
     background-image: none;
   }
-}
-
-/* Route changes (View Transitions): the content area crossfades and settles
-   4px; the sidebar and the top bar stand still. A change of the query alone —
-   a run sheet, a tab, a filter — is no route change and does not transition
-   (see `app/view-transition.ts`). */
-[data-testid="cockpit-sidebar"] {
-  view-transition-name: sk-sidebar;
-}
-
-[data-testid="cockpit-header"] {
-  view-transition-name: sk-header;
-}
-
-[data-testid="page-content"] {
-  view-transition-name: sk-content;
-}
-
-::view-transition-old(root),
-::view-transition-new(root),
-::view-transition-old(sk-sidebar),
-::view-transition-new(sk-sidebar),
-::view-transition-old(sk-header),
-::view-transition-new(sk-header),
-::view-transition-group(sk-sidebar),
-::view-transition-group(sk-header),
-::view-transition-group(sk-content) {
-  animation: none;
-}
-
-::view-transition-old(sk-content) {
-  animation: sk-fade-out var(--sk-dur-fast) var(--sk-ease-exit) both;
-}
-
-::view-transition-new(sk-content) {
-  animation: sk-settle-in var(--sk-dur-base) var(--sk-ease-standard) both;
 }
 
 /* Touch: every control is at least 40px high, an icon button 40px wide. */

@@ -464,6 +464,11 @@ export interface ConversationResumeSummary {
     environment: string | null;
   };
   stage: string;
+  focused_run: {
+    execution_id: string;
+    status: string;
+    recorded_at: string;
+  } | null;
   last_successful_probe: string | null;
   last_successful_preview: string | null;
   unsaved: boolean;

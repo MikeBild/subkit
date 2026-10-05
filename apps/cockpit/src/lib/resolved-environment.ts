@@ -21,8 +21,10 @@ const isEnvironment = (value: unknown): value is ReviewEnvironment =>
 export function environmentToCorrectTo(
   review: ReviewLike | null | undefined,
   current: ReviewEnvironment,
+  held: readonly ReviewEnvironment[],
 ): ReviewEnvironment | null {
   if (!review || review.eligible_for_repeated_runs) return null;
+  if (held.includes(current)) return null;
   const mismatched = new Set(
     (review.manifest?.issues ?? [])
       .filter((issue) => issue.code === "environment_mismatch")

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { PREVIEW_CLASSIFICATIONS } from "../execution/classify.ts";
 
 export const SkillCandidateStatusSchema = z.enum([
   "proposed",
@@ -22,6 +23,44 @@ export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
 export type SkillCandidateConfidence = z.infer<typeof SkillCandidateConfidenceSchema>;
 export type SkillCandidatePattern = z.infer<typeof SkillCandidatePatternSchema>;
 
+export const WorkflowCapabilityFactsSchema = z
+  .object({
+    kind: z.literal("workflow_capability"),
+    inputs: z.array(
+      z.object({ name: z.string(), type: z.string(), required: z.boolean() }).strict(),
+    ),
+    output_fields: z.array(z.string()).nullable(),
+    key_paths: z.array(z.string()),
+    connector_ids: z.array(z.string()),
+    steps: z.array(z.object({ id: z.string(), kind: z.string() }).strict()),
+    draft_version_id: z.string().nullable(),
+  })
+  .strict()
+  .openapi("WorkflowCapabilityFacts");
+
+export const RecurringFailureFactsSchema = z
+  .object({
+    kind: z.literal("recurring_failure"),
+    step_key: z.string(),
+    error_kind: z.string(),
+    cause_class: z.enum(PREVIEW_CLASSIFICATIONS),
+    count: z.number().int().nonnegative(),
+    lookback_days: z.number().int().positive(),
+  })
+  .strict()
+  .openapi("RecurringFailureFacts");
+
+export const SkillCandidateFactsSchema = z
+  .discriminatedUnion("kind", [WorkflowCapabilityFactsSchema, RecurringFailureFactsSchema])
+  .describe(
+    "What a drafting-context note states, as structured facts. Absent for candidates whose knowledge is prose only.",
+  )
+  .openapi("SkillCandidateFacts");
+
+export type WorkflowCapabilityFacts = z.infer<typeof WorkflowCapabilityFactsSchema>;
+export type RecurringFailureFacts = z.infer<typeof RecurringFailureFactsSchema>;
+export type SkillCandidateFacts = z.infer<typeof SkillCandidateFactsSchema>;
+
 export const SkillCandidateSchema = z
   .object({
     id: z.string(),
@@ -37,6 +76,7 @@ export const SkillCandidateSchema = z
     best_practices: z.array(z.string()).default([]),
     pitfalls: z.array(z.string()).default([]),
     doc_refs: z.array(z.string()).default([]),
+    facts: SkillCandidateFactsSchema.nullable(),
     evidence_count: z.number().int(),
     confidence: SkillCandidateConfidenceSchema,
     status: SkillCandidateStatusSchema,
@@ -79,6 +119,7 @@ export interface PatternSignal {
   best_practices: string[];
   pitfalls: string[];
   doc_refs: string[];
+  facts?: SkillCandidateFacts;
   fingerprint: string;
   confidence: SkillCandidateConfidence;
   tags?: string[];

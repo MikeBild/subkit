@@ -138,9 +138,11 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
 import {
+  approvalLine,
   type ChatApproval,
   chatApproval,
   conversationRefreshInterval,
+  pendingApprovalSubject,
   recordedDecisionKey,
   waitsForPerson,
 } from "./chat-approval";
@@ -785,12 +787,8 @@ function ModePill({
           </SelectContent>
         </Select>
       ) : (
-        <span
-          className="inline-flex h-6 items-center rounded-full border px-2.5 text-xs"
-          data-testid="chat-permission-mode"
-        >
-          <span className="sr-only">{t("chat.mode.label")}: </span>
-          {label}
+        <span className="text-xs text-muted-foreground" data-testid="chat-permission-mode">
+          {t("chat.mode.label")}: {label}
         </span>
       )}
       {mode ? (
@@ -1667,8 +1665,11 @@ export function ChatPage() {
   const hide = useMutation({
     mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
       setConversationHidden(id, hidden),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    onSuccess: async (_result, { id }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        queryClient.invalidateQueries({ queryKey: ["conversation", id] }),
+      ]);
     },
   });
   const remove = useMutation({
@@ -1690,8 +1691,12 @@ export function ChatPage() {
   const rename = useMutation({
     mutationFn: () => renameConversation(renameTarget?.id ?? "", renameTitle.trim()),
     onSuccess: async () => {
+      const renamed = renameTarget?.id;
       setRenameTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        renamed ? queryClient.invalidateQueries({ queryKey: ["conversation", renamed] }) : null,
+      ]);
     },
   });
   const current = detail.data?.conversation;
@@ -1856,9 +1861,7 @@ export function ChatPage() {
         ? { label: t("chat.outcome.awaiting_you"), state: "awaiting_input" }
         : resume?.stage === "workflow_saved"
           ? { label: t("chat.resume.stage.workflowSaved"), state: "committed" }
-          : activeRow?.outcome === "in_progress" || (!activeRow && current?.status === "active")
-            ? { label: t("chat.outcome.in_progress"), state: "running" }
-            : null;
+          : null;
   const listRows = useMemo(
     () =>
       ordered.map((conversation) => ({
@@ -1927,7 +1930,9 @@ export function ChatPage() {
     startedHere,
     loaded: Boolean(detail.data),
   });
-  const summaryLine = conversationFailed ? null : resumeSummaryLine(resume, t);
+  const summaryLine = conversationFailed
+    ? null
+    : resumeSummaryLine(resume, t, (iso) => formatDateTime(locale, iso));
   const showOptimistic = optimisticVisible(optimistic, sessionKey, messages);
   const canReadStats = session.permissions.includes("stats:read");
   const monthStatus = useQuery({
@@ -2156,7 +2161,11 @@ export function ChatPage() {
       ? [
           {
             label: t("chat.context.approval"),
-            value: resume.pending_approval.summary,
+            value: approvalLine(
+              pendingApprovalSubject(resume.pending_approval, resume.active_target.name),
+              t,
+              (text) => hideTechnicalIdentifiers(text, t("tool.referenceHiddenInline")),
+            ),
             testId: "chat-context-approval",
           },
         ]

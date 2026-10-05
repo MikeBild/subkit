@@ -83,9 +83,9 @@ export function useWorkflowAutomation(
   permissions: readonly string[],
 ): WorkflowAutomation {
   const client = useQueryClient();
-  const [now, setNow] = useState(() => Date.now());
+  const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), REFRESH_MS);
+    const timer = window.setInterval(() => setTick(Date.now()), REFRESH_MS);
     return () => window.clearInterval(timer);
   }, []);
   const [grantRequest, setGrantRequest] = useState(0);
@@ -130,6 +130,12 @@ export function useWorkflowAutomation(
       ),
   });
 
+  const now = Math.max(
+    tick,
+    authorities.dataUpdatedAt,
+    schedules.dataUpdatedAt,
+    status.dataUpdatedAt,
+  );
   const items = useMemo(() => {
     const pages = authorities.data?.pages;
     if (!pages || pages.some((page) => !Array.isArray(page?.items))) return null;
@@ -398,6 +404,7 @@ export function WorkflowStatus({
   lastRunAt,
   waitingConnector,
   permissions,
+  noSteps = false,
 }: {
   automation: WorkflowAutomation;
   workflow: AutomationWorkflow;
@@ -407,6 +414,7 @@ export function WorkflowStatus({
   lastRunAt: string | null;
   waitingConnector: WaitingConnector | null;
   permissions: readonly string[];
+  noSteps?: boolean;
 }) {
   const { t, locale } = useI18n();
   const environmentWord = useEnvironmentWord();
@@ -434,6 +442,7 @@ export function WorkflowStatus({
     automation: state,
     failed: automation.failed,
     disabled,
+    noSteps,
     health,
     failedRunId: runHealth.failedRun?.id ?? null,
     repairPrepared: runHealth.repairPrepared,
@@ -463,6 +472,8 @@ export function WorkflowStatus({
     switch (strip.kind) {
       case "loading":
         return null;
+      case "empty":
+        return t("workflowStrip.line.empty");
       case "failed":
         return t("authority.loadFailed");
       case "disabled":
@@ -523,7 +534,9 @@ export function WorkflowStatus({
         ]
       : []),
     ...(notice ? [t(OPENING_NOTICE_KEYS[notice])] : []),
-    ...(!automation.canWrite && strip.action === null && strip.tone !== "ok"
+    ...(!automation.canWrite &&
+    strip.action === null &&
+    (strip.tone === "warn" || strip.tone === "error")
       ? [t("automation.noRight")]
       : []),
   ];

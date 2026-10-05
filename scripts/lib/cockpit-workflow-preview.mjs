@@ -75,7 +75,7 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (scheduleText.includes("foreign-fixture"))
       throw new Error("Cockpit presents another workflow's schedule as this one's");
     if (!(await rhythm.count())) throw new Error("The schedule's rhythm is not stated");
-    await page.getByTestId("workflow-tabs-tab-aufbau").click();
+    await page.getByTestId("workflow-tabs-tab-structure").click();
     await page
       .locator(
         '[data-testid="workflow-step-list-row-link-0"], [data-testid="workflow-step-list-mobile-row-link-0"]',
@@ -103,7 +103,12 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
       throw new Error("The preview's explanation stands on the page as a paragraph again");
     await whole.focus();
     await whole.press("Enter");
-    await page.getByTestId("workflow-test-result").filter({ hasText: '"held": true' }).waitFor();
+    const card = page.getByTestId("workflow-test-result");
+    await page.getByTestId("workflow-test-result-held").waitFor();
+    const cardText = await card.innerText();
+    for (const internal of ["execution_id", "hold_writes", "preview-fixture", '"held"', "step_key"])
+      if (cardText.includes(internal))
+        throw new Error(`The preview result shows the internal field "${internal}"`);
     if (requests[0]?.source !== "draft") throw new Error("Whole preview lost its definition");
     const toggle = page
       .locator(
@@ -116,15 +121,25 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     const step = page.getByTestId("workflow-step-0-test");
     await step.focus();
     await step.press("Enter");
-    await page
-      .getByTestId("workflow-step-0-test-result")
-      .filter({ hasText: '"held": true' })
-      .waitFor();
+    await page.getByTestId("workflow-step-0-test-result-held").waitFor();
+    if (
+      (await page.getByTestId("workflow-step-0-test-result").innerText()).includes("execution_id")
+    )
+      throw new Error("The step preview result shows internal fields");
     if (requests.length !== 2 || requests[1]?.source !== "step") {
       throw new Error("Step preview lost its exact source or dispatched twice");
     }
     await page.keyboard.press("Escape");
     await page.getByTestId("workflow-step-0-sheet").waitFor({ state: "detached" });
+    await page.getByTestId("step-savebar-discard").click();
+    await page.getByTestId("step-savebar").waitFor({ state: "detached" });
+    if (await page.getByTestId("workflow-test-result").count())
+      throw new Error("A preview result stays after its draft was discarded");
+    await page.getByTestId("workflow-step-2-menu").filter({ visible: true }).first().click();
+    await page.getByTestId("workflow-step-2-up").click();
+    await page.getByTestId("step-savebar").waitFor();
+    if (await page.getByTestId("workflow-test-result").count())
+      throw new Error("A discarded preview result comes back with the next change");
     await page.getByTestId("step-savebar-discard").click();
     await page.getByTestId("step-savebar").waitFor({ state: "detached" });
     await page.reload();

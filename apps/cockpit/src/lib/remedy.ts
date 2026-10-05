@@ -46,7 +46,7 @@ export function remedyFor(input: RemedyInput): Remedy | null {
     return {
       kind: expired ? "reauth" : "check_auth",
       labelKey: expired ? (card ? "remedy.reconnect" : "remedy.reauth") : "remedy.checkAuth",
-      href: `${connectorHref(input.authState.connectorId)}${card ? "?tab=verbindung" : ""}`,
+      href: `${connectorHref(input.authState.connectorId)}${card ? "?tab=connection" : ""}`,
     };
   }
   if (input.canChat) {

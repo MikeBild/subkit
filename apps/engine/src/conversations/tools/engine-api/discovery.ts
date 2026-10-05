@@ -31,11 +31,6 @@ export const listDiscoveryArtifactsTool: ConversationTool = {
     "Status defaults to all — filter with {status:'proposed'} when looking for work items.",
     "Ordered newest-first; hard cap 200.",
   ],
-  example_input: {
-    run_id: "00000000-0000-0000-0000-000000000000",
-    status: "proposed",
-    limit: 20,
-  },
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>): Promise<ToolResult> {
@@ -79,7 +74,6 @@ export const getDiscoveryArtifactTool: ConversationTool = {
     "Evidence carries file_ids + excerpts — use them to cite the source to the operator before asking for approval.",
     "Returns null-equivalent (`artifact_not_found`) when the id is invalid for this tenant.",
   ],
-  example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: GetInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof GetInput>): Promise<ToolResult> {
@@ -114,7 +108,6 @@ export const approveDiscoveryArtifactTool: ConversationTool = {
     "Approval alone does NOT create the downstream row — a follow-up call (start_connector_from_description or start_connector_from_template / propose_skill / knowledge upsert) materialises the draft.",
     "Writes an audit entry under action=discovery.artifact_approved.",
   ],
-  example_input: { id: "00000000-0000-0000-0000-000000000000" },
   inputSchema: ApproveInput,
   category: "tenant_write",
   async execute(ctx, args: z.infer<typeof ApproveInput>): Promise<ToolResult> {
