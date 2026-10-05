@@ -2937,7 +2937,9 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["UserListResponse"];
+                        "application/json": components["schemas"]["UserListResponse"] & {
+                            total: number;
+                        };
                     };
                 };
                 /** @description Unauthorized */
@@ -18313,10 +18315,6 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
-        UserListResponse: {
-            items: components["schemas"]["User"][];
-            next_cursor?: string | null;
-        };
         User: {
             /** Format: uuid */
             id: string;
@@ -18329,6 +18327,10 @@ export interface components {
             oauth_connections: number;
             created_at: string;
             updated_at: string;
+        };
+        UserListResponse: {
+            items: components["schemas"]["User"][];
+            next_cursor?: string | null;
         };
         CreateUserBody: {
             /** Format: email */

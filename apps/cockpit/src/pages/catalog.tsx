@@ -32,6 +32,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import {
   humanizeCategory,
   MIN_CATEGORY_SIZE,
@@ -62,12 +63,15 @@ interface CatalogState {
   health: ConnectorHealthFilter | null;
   sort: string;
   order: "asc" | "desc";
-  page: number;
 }
 
 interface CategoryCount {
   category: string;
   count: number;
+}
+
+interface CatalogListPage extends CursorPage<CatalogRow> {
+  categories?: CategoryCount[];
 }
 
 interface CatalogConfig {
@@ -118,7 +122,6 @@ function parseState(config: CatalogConfig): CatalogState {
         : null,
     sort: params.get("sort") ?? config.defaultSort,
     order: order === "asc" ? "asc" : "desc",
-    page: Math.max(0, Number(params.get("page") ?? 0) || 0),
   };
 }
 
@@ -141,7 +144,6 @@ function useCatalogState(config: CatalogConfig) {
         if (next.health) params.set("health", next.health);
         if (next.sort !== config.defaultSort) params.set("sort", next.sort);
         if (next.order !== "desc") params.set("order", next.order);
-        if (next.page > 0) params.set("page", String(next.page));
         const suffix = params.size > 0 ? `?${params}` : "";
         window.history.pushState({}, "", `${window.location.pathname}${suffix}`);
         return next;
@@ -365,19 +367,16 @@ export function CatalogPage({
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
-    if (debouncedSearch !== state.q) setState({ q: debouncedSearch, page: 0 });
+    if (debouncedSearch !== state.q) setState({ q: debouncedSearch });
   }, [debouncedSearch, setState, state.q]);
 
-  const query = useQuery({
-    queryKey: ["catalog", resource, state],
+  const params = useMemo(() => catalogListParams(resource, state), [resource, state]);
+  const list = useInfiniteList<CatalogRow, CatalogListPage>(config.endpoint, params, {
+    limit: PAGE_SIZE,
     enabled: permissions.includes(config.permission),
-    queryFn: () =>
-      apiRequest<{
-        items: CatalogRow[];
-        total?: number;
-        categories?: CategoryCount[];
-      }>(`${config.endpoint}?${catalogListParams(resource, state, PAGE_SIZE)}`),
+    queryKey: ["catalog", resource, params],
   });
+  const query = list.query;
 
   const connectorIndex = useQuery({
     queryKey: ["catalog-connector-index"],
@@ -409,7 +408,7 @@ export function CatalogPage({
     [workflowIndex.data],
   );
 
-  const onCategory = useCallback((category: string) => setState({ category, page: 0 }), [setState]);
+  const onCategory = useCallback((category: string) => setState({ category }), [setState]);
   const columns = useMemo(
     () =>
       catalogColumns(resource, t, dateTime, {
@@ -429,9 +428,9 @@ export function CatalogPage({
     ],
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
-  const rows = query.data?.items ?? [];
-  const total = query.data?.total ?? rows.length;
-  const categories = query.data?.categories ?? [];
+  const rows = list.items;
+  const total = list.total ?? rows.length;
+  const categories = useMemo(() => list.first?.categories ?? [], [list.first]);
   const categoryCounts = useMemo(
     () => new Map(categories.map((entry) => [entry.category, entry.count])),
     [categories],
@@ -460,7 +459,6 @@ export function CatalogPage({
       category: "all",
       connector: "",
       health: null,
-      page: 0,
     });
   }, [setState]);
 
@@ -485,7 +483,7 @@ export function CatalogPage({
   const selects: FilterSelect[] = [
     {
       value: state.status,
-      onChange: (status) => setState({ status, page: 0 }),
+      onChange: (status) => setState({ status }),
       label: t("catalog.filterStatus"),
       testId: "catalog-status-filter",
       options: [
@@ -497,7 +495,7 @@ export function CatalogPage({
   if (categories.length > 0)
     selects.push({
       value: state.category,
-      onChange: (category) => setState({ category, page: 0 }),
+      onChange: (category) => setState({ category }),
       label: t("catalog.block"),
       testId: "catalog-category-filter",
       options: [
@@ -559,7 +557,7 @@ export function CatalogPage({
                 variant="secondary"
                 size="sm"
                 data-testid="catalog-health-filter"
-                onClick={() => setState({ health: null, page: 0 })}
+                onClick={() => setState({ health: null })}
               >
                 {t("catalog.healthNotOkFilter")}
               </Button>
@@ -576,9 +574,6 @@ export function CatalogPage({
             )}
           </>
         }
-        onRefresh={() => void query.refetch()}
-        refreshing={query.isFetching}
-        refreshLabel={t("common.refresh")}
         pending={query.isPending && !query.failureReason}
         error={
           query.error || query.failureReason
@@ -610,7 +605,6 @@ export function CatalogPage({
             setState({
               sort: first.id,
               order: first.desc ? "desc" : "asc",
-              page: 0,
             });
         }}
         onOpen={(row) => {
@@ -637,7 +631,7 @@ export function CatalogPage({
             }
           : {})}
         total={total}
-        onPageChange={(page) => setState({ page })}
+        infinite={list.infinite}
         columnsLabel={t("catalog.columns")}
         recordsLabel={t("catalog.records")}
         actionsLabel={t("common.actions")}

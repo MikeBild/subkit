@@ -2439,6 +2439,31 @@ async function checkActionLabels(page, where) {
   for (const label of generic) breach("§8.3", where, `Button beschriftet "${label}"`);
 }
 
+async function checkNoRefreshButton(page, where) {
+  const offered = await page.evaluate(() => {
+    const words = /^(aktualisieren|neu laden|refresh|reload)$/i;
+    return [...document.querySelectorAll('[data-family-slot="list-surface"]')].flatMap((list) =>
+      [...list.querySelectorAll('button, [role="button"]')]
+        .filter((control) => {
+          const name = (control.getAttribute("aria-label") ?? control.textContent ?? "").trim();
+          return (
+            words.test(name) ||
+            /-refresh$/.test(control.getAttribute("data-testid") ?? "") ||
+            control.querySelector("svg.lucide-refresh-cw") !== null
+          );
+        })
+        .map(
+          (control) =>
+            `${list.getAttribute("data-family-collection-id") ?? "list"}: ${
+              control.getAttribute("aria-label") ?? control.textContent?.trim() ?? "button"
+            }`,
+        ),
+    );
+  });
+  for (const control of offered)
+    breach("§10", where, `list offers a refresh button (${control}); lists refresh themselves`);
+}
+
 async function checkNoIdentifiers(page, where) {
   const text = await page.locator("body").evaluate(textOutsidePayloads);
   const match = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
@@ -3253,6 +3278,7 @@ try {
     }
     await checkNoUnknownState(page, `/${route}`);
     await checkActionLabels(page, `/${route}`);
+    await checkNoRefreshButton(page, `/${route}`);
     await checkNoIdentifiers(page, `/${route}`);
     await checkCuratedFieldLabels(page, `/${route}`);
     await checkNoRawTimestamps(page, `/${route}`);

@@ -3,7 +3,11 @@ import { and, eq, inArray, or, type SQL } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
 import { events } from "../../db/schema/index.ts";
-import { type OutboxChannel, RESOURCE_CHANGE_TYPES } from "../../pubsub/index.ts";
+import {
+  type OutboxChannel,
+  RESOURCE_CHANGE_TYPES,
+  type ResourceChangeType,
+} from "../../pubsub/index.ts";
 import { can } from "../../rbac/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../openapi.ts";
@@ -20,6 +24,15 @@ const RESOURCE_TYPES_BY_PERMISSION = {
   schedule: RESOURCE_CHANGE_TYPES.filter((type) => type === "workflow.automation_changed"),
   connector: RESOURCE_CHANGE_TYPES.filter((type) => type.startsWith("connector.")),
 };
+
+const LIST_CHANGE_FAMILIES = [
+  { permission: "knowledge:read", type: "knowledge_source.changed" },
+  { permission: "file:read", type: "file.changed" },
+  { permission: "identity:read", type: "identity.changed" },
+  { permission: "rbac:read", type: "rbac.changed" },
+  { permission: "api_key:read", type: "api_key.changed" },
+  { permission: "settings:read", type: "settings.changed" },
+] as const satisfies readonly { permission: string; type: ResourceChangeType }[];
 
 export const COCKPIT_STREAM_FAMILIES: readonly StreamFamily[] = [
   { permission: "execution:read", channel: "execution.status" },
@@ -51,6 +64,12 @@ export const COCKPIT_STREAM_FAMILIES: readonly StreamFamily[] = [
     channel: "resource.lifecycle",
     types: RESOURCE_TYPES_BY_PERMISSION.connector,
   },
+  ...LIST_CHANGE_FAMILIES.map(({ permission, type }) => ({
+    permission,
+    channel: "resource.lifecycle" as const,
+    types: [type],
+  })),
+  { permission: "audit:read", channel: "resource.lifecycle" },
 ];
 
 export const COCKPIT_STREAM_ID_KEYS = [
@@ -63,6 +82,7 @@ export const COCKPIT_STREAM_ID_KEYS = [
   "schedule_id",
   "hook_id",
   "authority_id",
+  "knowledge_source_id",
 ] as const;
 
 const ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/;

@@ -3,7 +3,7 @@ import type { Job, PgBoss } from "pg-boss";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
-import { ingestKnowledgeSource } from "../../knowledge/service.ts";
+import { ingestKnowledgeSource, knowledgeSourceChanged } from "../../knowledge/service.ts";
 import { refreshKnowledgeSource } from "../../knowledge/url-source.ts";
 import { log } from "../../logging/logger.ts";
 import { withJobContext } from "../job-context.ts";
@@ -124,6 +124,7 @@ async function markIngestFailed(
       },
       db,
     );
+    await knowledgeSourceChanged(db, tenant_id, knowledge_source_id);
   } catch (markErr) {
     log.queue.job.failed({
       msg: "knowledge.ingest failed to mark source row as error",

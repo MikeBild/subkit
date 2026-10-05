@@ -9,6 +9,12 @@ export const RESOURCE_CHANGE_TYPES = [
   "connector.updated",
   "connector.deleted",
   "connector.credential_changed",
+  "knowledge_source.changed",
+  "file.changed",
+  "identity.changed",
+  "rbac.changed",
+  "api_key.changed",
+  "settings.changed",
 ] as const;
 
 export type ResourceChangeType = (typeof RESOURCE_CHANGE_TYPES)[number];
@@ -20,6 +26,7 @@ export interface ResourceChangeIds {
   schedule_id?: string | null;
   hook_id?: string | null;
   connector_id?: string | null;
+  knowledge_source_id?: string | null;
 }
 
 export async function emitCredentialChange(

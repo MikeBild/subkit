@@ -42,21 +42,20 @@ describe("connectors that count against health", () => {
     health: "not_ok" as const,
     sort: "name",
     order: "asc" as const,
-    page: 2,
   };
 
-  test("the narrowing is the engine's, and the page is a page of the narrowed list", () => {
-    const params = catalogListParams("connectors", state, 25);
-    expect(params.get("health")).toBe("not_ok");
-    expect(params.get("limit")).toBe("25");
-    expect(params.get("offset")).toBe("50");
-    expect(params.has("enabled")).toBe(false);
+  test("the narrowing is the engine's; paging is left to the list", () => {
+    const params = catalogListParams("connectors", state);
+    expect(params.health).toBe("not_ok");
+    expect(params).not.toHaveProperty("limit");
+    expect(params).not.toHaveProperty("offset");
+    expect(params).not.toHaveProperty("enabled");
   });
 
   test("only the connector list carries it", () => {
-    expect(catalogListParams("workflows", state, 25).has("health")).toBe(false);
-    expect(catalogListParams("connectors", { ...state, health: null }, 25).has("health")).toBe(
-      false,
+    expect(catalogListParams("workflows", state)).not.toHaveProperty("health");
+    expect(catalogListParams("connectors", { ...state, health: null })).not.toHaveProperty(
+      "health",
     );
   });
 
