@@ -1,10 +1,19 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, eq, isNull } from "drizzle-orm";
 import { loadDraft } from "../../conversations/draft.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { inspectExecutionTool } from "../../conversations/tools/inspect-execution.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
-import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  executionSteps,
+  executions,
+  roles,
+  users,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { renderAuthoringContextBlock } from "../../llm/core/authoring-context-block.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -116,8 +125,13 @@ describe("POST /v1/conversations with the run it is about", () => {
     const fetched = await fetch(`${srv.baseUrl}/v1/conversations/${created.conversation.id}`, {
       headers: { authorization: `Bearer ${srv.apiKey}` },
     });
-    const detail = (await fetched.json()) as { conversation: { target_workflow_id: string } };
+    const detail = (await fetched.json()) as {
+      conversation: { target_workflow_id: string };
+      resume_summary?: { stage: string; focused_run: { execution_id: string } | null };
+    };
     expect(detail.conversation.target_workflow_id).toBe(growthId);
+    expect(detail.resume_summary?.stage).toBe("run_focus");
+    expect(detail.resume_summary?.focused_run?.execution_id).toBe(growthFailedRun);
 
     const { ctx, draft } = await toolContextFor(created.conversation.id, growthId);
     const block = renderAuthoringContextBlock({ draft: draft() });
@@ -165,5 +179,80 @@ describe("POST /v1/conversations with the run it is about", () => {
       execution_id: "00000000-0000-4000-8000-000000000000",
     });
     expect(missing.status).toBe(404);
+  });
+});
+
+describe("POST /v1/conversations · the run needs execution:read", () => {
+  async function keyWithoutExecutionRead(): Promise<string> {
+    const [role] = await srv.db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(and(isNull(roles.tenant_id), eq(roles.name, "portal_token_user")))
+      .limit(1);
+    if (!role) throw new Error("portal_token_user role not seeded");
+    const [user] = await srv.db
+      .insert(users)
+      .values({ tenant_id: srv.tenantId, email: "no-runs@run-focus.local", role_id: role.id })
+      .returning();
+    if (!user) throw new Error("seed user failed");
+    const token = "wf_live_runfocusnoexecutionread0000";
+    await srv.db.insert(apiKeys).values({
+      tenant_id: srv.tenantId,
+      user_id: user.id,
+      prefix: token.slice(0, 12),
+      token_sha256: createHash("sha256").update(token).digest("hex"),
+      scopes: ["*"],
+    });
+    return token;
+  }
+
+  test("a principal who may not read runs cannot open a chat about one, known or unknown", async () => {
+    const token = await keyWithoutExecutionRead();
+    const asLimited = (body: Record<string, unknown>) =>
+      fetch(`${srv.baseUrl}/v1/conversations`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await asLimited({ execution_id: growthFailedRun })).status).toBe(403);
+    expect((await asLimited({ execution_id: "00000000-0000-4000-8000-000000000000" })).status).toBe(
+      403,
+    );
+    expect((await asLimited({ workflow_id: growthId })).status).toBe(201);
+  });
+});
+
+describe("POST /v1/conversations · the run's warnings are counted", () => {
+  test("the focused run carries the warnings its steps recorded", async () => {
+    const run = await seedRun(growthId, "succeeded", "2026-09-04T08:00:00.000Z");
+    await srv.db.insert(executionSteps).values([
+      {
+        tenant_id: srv.tenantId,
+        execution_id: run,
+        step_key: "fetch",
+        step_index: 0,
+        kind: "request",
+        status: "succeeded",
+        output_preview: {
+          value: { ok: true },
+          warnings: [{ code: "unresolved_identifier", identifier: "input.date" }],
+        },
+      },
+      {
+        tenant_id: srv.tenantId,
+        execution_id: run,
+        step_key: "send",
+        step_index: 1,
+        kind: "request",
+        status: "succeeded",
+        output_preview: { value: null },
+        request_meta: { extras: { held: true } },
+      },
+    ]);
+    const res = await create({ execution_id: run });
+    expect(res.status).toBe(201);
+    const created = (await res.json()) as { conversation: { id: string } };
+    const draft = await loadDraft(srv.tenantId, created.conversation.id, srv.db);
+    expect(draft.state?.latest_execution?.warnings_count).toBe(2);
   });
 });

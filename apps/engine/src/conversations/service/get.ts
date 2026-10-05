@@ -31,6 +31,14 @@ function stripContentSentinels(content: unknown): unknown {
   return content;
 }
 
+function approvedCallOutcome(
+  tool: string,
+  stored: string | null,
+): ConversationToolCallRecord["outcome"] {
+  if (tool.startsWith("ask_user_")) return "ok";
+  return stored === "ok" || stored === "error" ? stored : null;
+}
+
 export async function getConversation(
   tenant_id: string,
   id: string,
@@ -261,7 +269,7 @@ export async function getConversation(
                 ? "denied"
                 : confirmations.has(c.id)
                   ? confirmations.get(c.id)?.accepted
-                    ? "ok"
+                    ? approvedCallOutcome(c.tool, c.outcome)
                     : "denied"
                   : ((c.outcome as ConversationToolCallRecord["outcome"]) ?? null),
       }),

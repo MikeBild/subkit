@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
+import { workflowVersions } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
 import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../../logging/logger.ts";
@@ -15,6 +15,7 @@ import type { WorkflowDef } from "../../../../workflows/types.ts";
 import {
   bindPersistedWorkflow,
   getWorkflowDraft,
+  WORKFLOW_BINDING_TOOL,
   withLatestPreview,
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
@@ -438,18 +439,6 @@ export const runWorkflowTool: ConversationTool = {
           ...(heldStepIds.length > 0 ? { held_step_ids: heldStepIds } : {}),
         },
       });
-      await ctx.db
-        .update(conversations)
-        .set({
-          target_workflow_id: workflowId,
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(conversations.tenant_id, ctx.tenant_id),
-            eq(conversations.id, ctx.conversation_id),
-          ),
-        );
       const hasWarnings = (result.warnings?.length ?? 0) > 0;
       const hasUnresolvedIdentifierWarning = (result.warnings ?? []).some(
         (w) => w.code === "unresolved_identifier",
@@ -615,16 +604,28 @@ export const runWorkflowTool: ConversationTool = {
           }
         }
       }
-      const boundDraft = bindPersistedWorkflow(previewedDraft, {
-        kind: "workflow",
-        id: workflowId,
-        slug: wf.slug,
-        name: wf.name,
-        version_id: wf.current_version_id,
-        version: wf.current_version,
-        environment: null,
-        saved_at: wf.updated_at.toISOString(),
-      });
+      const runsAuthoringTarget =
+        activeTarget?.kind === "workflow" && activeTarget.id === workflowId;
+      const boundDraft = runsAuthoringTarget
+        ? bindPersistedWorkflow(
+            previewedDraft,
+            {
+              kind: "workflow",
+              id: workflowId,
+              slug: wf.slug,
+              name: wf.name,
+              version_id: wf.current_version_id,
+              version: wf.current_version,
+              environment: null,
+              saved_at: wf.updated_at.toISOString(),
+            },
+            {
+              tool_name:
+                currentDraft.state?.checkpoints.workflow_persisted?.verified_by_tool ??
+                WORKFLOW_BINDING_TOOL,
+            },
+          )
+        : currentDraft;
       const nextDraft = withWorkflowExecution(boundDraft, {
         execution_id: result.execution_id,
         workflow_id: workflowId,

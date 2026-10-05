@@ -19,6 +19,7 @@ import {
   refreshDraftSummary,
 } from "./authoring-state.ts";
 import { canonicalJson } from "./text-line-diff.ts";
+import { stepWarningSources } from "./tools/execution-diagnosis.ts";
 import type {
   DraftDocument,
   LatestExecutionSummary,
@@ -288,13 +289,21 @@ export async function loadFocusExecution(
     .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
     .limit(1);
   if (!row) return null;
+  const stepRows = await exec
+    .select({
+      step_key: executionSteps.step_key,
+      output_preview: executionSteps.output_preview,
+      request_meta: executionSteps.request_meta,
+    })
+    .from(executionSteps)
+    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, row.id)));
   return {
     execution_id: row.id,
     workflow_id: row.workflow_id,
     workflow_version_id: row.workflow_version_id,
     status: row.status,
     environment: row.execution_mode,
-    warnings_count: 0,
+    warnings_count: stepWarningSources(stepRows).length,
     recorded_at: (row.finished_at ?? row.created_at).toISOString(),
     diagnosis_available: true,
   };
