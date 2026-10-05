@@ -301,7 +301,7 @@ function authorities(state) {
   });
   const dev = authority({ id: DEV_GRANT, execution_environment: "dev" });
   if (state.devPending) return [authority(), revoked];
-  const posted = state.granted?.visit === state.visit ? state.granted.body : null;
+  const posted = state.granted && state.granted.visit === state.visit ? state.granted.body : null;
   const granted = posted
     ? {
         valid_from: posted.valid_from,
@@ -579,6 +579,11 @@ export function api(state) {
       });
     if (path === "/v1/executions" && url.searchParams.get("workflow_id") === WORKFLOW) {
       const items = state.failedWith ? [failedRun(state.failedWith)] : [];
+      if (url.searchParams.get("started_from") && state.failedWith)
+        return json(route, {
+          items,
+          total: url.searchParams.get("status") === "failed,timed_out,aborted" ? 37 : 120,
+        });
       return json(route, { items, total: items.length });
     }
     if (path === "/v1/patch-candidates") return json(route, { items: [], total: 0 });
@@ -1260,6 +1265,14 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       !failedRow.includes(`run=${FAILED_RUN}`)
     )
       throw new Error(`${where}: the failed run's row leads to ${failedRow}`);
+    await page
+      .getByTestId("workflow-runs-summary")
+      .getByText(/120/)
+      .waitFor({ timeout: 10_000 })
+      .catch(() => {});
+    const week = (await text(page, "workflow-runs-summary")) ?? "";
+    if (!week.includes("120") || !week.includes("37"))
+      throw new Error(`${where}: the week counts only the rows it loaded: "${week}"`);
     await capture("workflow-page-unhealthy");
 
     where = at("unhealthy: upstream");
@@ -1334,7 +1347,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (!applying.includes("v10") || !applying.includes("v9"))
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
     await capture("workflow-page-apply");
-    await openTab(page, "aufbau");
+    await openTab(page, "structure");
     await page.getByTestId("workflow-build-saved").waitFor();
     if ((await text(page, "workflow-build-saved")) !== words.savedVersion)
       throw new Error(`${where}: the saved version is not marked as not active yet`);
