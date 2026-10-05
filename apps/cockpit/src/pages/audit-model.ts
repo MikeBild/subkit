@@ -233,6 +233,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "skill_candidate.rejected": "audit.action.skillRejected",
   "skill_candidate.proposed": "audit.action.skillProposed",
   "skill_candidate.superseded": "audit.action.skillSuperseded",
+  "skill_candidate.context_recorded": "audit.action.skillContextRecorded",
   "workflow.created": "audit.action.workflowCreated",
   "workflow.updated": "audit.action.workflowUpdated",
   "execution.started": "audit.action.executionStarted",
