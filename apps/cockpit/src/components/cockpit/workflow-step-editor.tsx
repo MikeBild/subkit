@@ -6,6 +6,7 @@ import type { components } from "@/api/schema";
 import { useDirtyGuard } from "@/app/version-notice";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import {
+  CheckListField,
   ChoiceField,
   SelectField,
   TextAreaField,
@@ -17,11 +18,13 @@ import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
   formFromStep,
-  isFormKind,
+  isFormStep,
+  STEP_FORM_ERROR_FIELDS,
   STEP_FORM_KINDS,
   STEP_METHODS,
   type StepForm,
   type StepFormError,
+  type StepFormField,
   type StepFormKind,
   type StepMethod,
   stepFromForm,
@@ -148,23 +151,29 @@ export function StepDialog({
   const { t } = useI18n();
   const connectors = useConnectorRecords(open);
   const editing = step !== null && step !== undefined;
-  const raw = editing && typeof step === "object" ? (step as RecordValue) : null;
-  const structured = !raw || isFormKind(raw.kind);
+  const structured = isFormStep(step);
   const firstConnector = connectors[0]?.id ?? "";
   const [form, setForm] = useState<StepForm>(() => formFromStep(step, firstConnector));
   const [text, setText] = useState(() => JSON.stringify(step, null, 2));
   const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<{ field: StepFormField; text: string } | null>(null);
   useEffect(() => {
     if (!open) return;
     setForm(formFromStep(step, ""));
     setText(JSON.stringify(step, null, 2));
     setError(null);
+    setFieldError(null);
   }, [open, step]);
   useEffect(() => {
     if (firstConnector && !form.connectorId)
       setForm((current) => ({ ...current, connectorId: firstConnector }));
   }, [firstConnector, form.connectorId]);
-  const set = (patch: Partial<StepForm>) => setForm((current) => ({ ...current, ...patch }));
+  const set = (patch: Partial<StepForm>) => {
+    setForm((current) => ({ ...current, ...patch }));
+    setFieldError(null);
+  };
+  const errorOf = (field: StepFormField) => (fieldError?.field === field ? fieldError.text : null);
+  const others = taken.map((id) => ({ value: id, label: id }));
   const apply = () => {
     if (!structured) {
       try {
@@ -179,7 +188,11 @@ export function StepDialog({
       return;
     }
     const result = stepFromForm(form, step, taken);
-    if ("error" in result) return setError(t(STEP_FORM_ERRORS[result.error]));
+    if ("error" in result)
+      return setFieldError({
+        field: STEP_FORM_ERROR_FIELDS[result.error],
+        text: t(STEP_FORM_ERRORS[result.error]),
+      });
     onApply(result.step);
     onOpenChange(false);
   };
@@ -203,6 +216,7 @@ export function StepDialog({
             help={t("stepEditor.idHelp")}
             value={form.name}
             onChange={(name) => set({ name })}
+            error={errorOf("name")}
             mono
           />
           <ChoiceField<StepFormKind>
@@ -222,6 +236,7 @@ export function StepDialog({
                 label={t("authority.connector")}
                 value={form.connectorId}
                 onChange={(connectorId) => set({ connectorId })}
+                error={errorOf("connectorId")}
                 options={connectors.map((connector) => ({
                   value: connector.id,
                   label: connector.display_name || connector.slug,
@@ -240,6 +255,39 @@ export function StepDialog({
                 placeholder="/messages/send"
                 value={form.path}
                 onChange={(path) => set({ path })}
+                error={errorOf("path")}
+                mono
+              />
+              <TextAreaField
+                id="step-query"
+                label={t("stepEditor.query")}
+                help={t("stepEditor.queryHelp")}
+                placeholder={'{ "limit": 10 }'}
+                value={form.query}
+                onChange={(query) => set({ query })}
+                error={errorOf("query")}
+                rows={3}
+                mono
+              />
+              <TextAreaField
+                id="step-headers"
+                label={t("stepEditor.headers")}
+                help={t("stepEditor.headersHelp")}
+                placeholder="Accept: application/json"
+                value={form.headers}
+                onChange={(headers) => set({ headers })}
+                error={errorOf("headers")}
+                rows={3}
+                mono
+              />
+              <TextAreaField
+                id="step-body"
+                label={t("stepEditor.body")}
+                help={t("stepEditor.bodyHelp")}
+                value={form.body}
+                onChange={(body) => set({ body })}
+                error={errorOf("body")}
+                rows={6}
                 mono
               />
             </>
@@ -250,7 +298,41 @@ export function StepDialog({
               placeholder={t("stepEditor.durationPlaceholder")}
               value={form.wait}
               onChange={(wait) => set({ wait })}
+              error={errorOf("wait")}
             />
+          ) : form.kind === "branch" ? (
+            <>
+              <TextField
+                id="step-when"
+                label={t("stepEditor.when")}
+                help={t("stepEditor.whenHelp")}
+                placeholder="fetch.data.count > 0"
+                value={form.when}
+                onChange={(when) => set({ when })}
+                error={errorOf("when")}
+                mono
+              />
+              <CheckListField
+                id="step-then"
+                label={t("stepEditor.then")}
+                help={t("stepEditor.thenHelp")}
+                values={form.thenSteps}
+                onChange={(thenSteps) => set({ thenSteps })}
+                options={others}
+                empty={t("stepEditor.branchNoSteps")}
+                error={errorOf("thenSteps")}
+              />
+              <CheckListField
+                id="step-else"
+                label={t("stepEditor.else")}
+                help={t("stepEditor.elseHelp")}
+                values={form.elseSteps}
+                onChange={(elseSteps) => set({ elseSteps })}
+                options={others}
+                empty={t("stepEditor.branchNoSteps")}
+                error={errorOf("elseSteps")}
+              />
+            </>
           ) : (
             <TextAreaField
               id="step-code"
@@ -258,6 +340,7 @@ export function StepDialog({
               help={t("stepEditor.codeHelp")}
               value={form.code}
               onChange={(code) => set({ code })}
+              error={errorOf("code")}
               rows={5}
               mono
             />
@@ -284,8 +367,15 @@ const STEP_FORM_ERRORS = {
   nameTaken: "stepEditor.idTaken",
   connectorMissing: "stepEditor.connectorMissing",
   pathInvalid: "stepEditor.pathInvalid",
+  queryInvalid: "stepEditor.queryInvalid",
+  headersInvalid: "stepEditor.headersInvalid",
+  bodyInvalid: "stepEditor.bodyInvalid",
   codeMissing: "stepEditor.codeMissing",
   waitInvalid: "stepEditor.waitInvalid",
+  whenMissing: "stepEditor.whenMissing",
+  thenMissing: "stepEditor.thenMissing",
+  branchUnknownStep: "stepEditor.branchUnknownStep",
+  branchOverlap: "stepEditor.branchOverlap",
 } as const satisfies Record<StepFormError, TranslationKey>;
 
 export function StepSaveBar({

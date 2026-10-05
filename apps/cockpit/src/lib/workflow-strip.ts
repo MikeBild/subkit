@@ -6,6 +6,7 @@ export type StripKind =
   | "failed"
   | "invalid"
   | "disabled"
+  | "empty"
   | "paused"
   | "stopped"
   | "repair"
@@ -31,7 +32,7 @@ export type StripAction =
   | { kind: "cause"; runId: string }
   | { kind: "review" };
 
-export type StripTone = "ok" | "warn" | "error";
+export type StripTone = "ok" | "info" | "warn" | "error";
 
 export interface WorkflowStrip {
   kind: StripKind;
@@ -50,6 +51,7 @@ export interface StripInput {
   automation: AutomationState | null;
   failed: boolean;
   disabled: boolean;
+  noSteps?: boolean;
   health: string | null;
   failedRunId: string | null;
   repairPrepared: boolean;
@@ -62,6 +64,7 @@ const TONES: Record<StripKind, StripTone> = {
   failed: "error",
   invalid: "error",
   disabled: "warn",
+  empty: "info",
   paused: "warn",
   stopped: "error",
   repair: "warn",
@@ -82,6 +85,7 @@ export const STRIP_STATE_KEYS: Record<StripKind, TranslationKey> = {
   failed: "workflowStrip.state.failed",
   invalid: "automation.state.invalid",
   disabled: "workflowStrip.state.disabled",
+  empty: "workflowStrip.state.empty",
   paused: "workflowStrip.state.paused",
   stopped: "workflowStrip.state.stopped",
   repair: "automation.state.repair",
@@ -127,6 +131,8 @@ function hasAction(state: AutomationState, kind: AutomationAction["kind"]): bool
 export function workflowStrip(input: StripInput): WorkflowStrip {
   const { automation, rights } = input;
   if (input.failed) return { kind: "failed", tone: "error", action: { kind: "retry" }, lower: [] };
+  if (input.noSteps && !input.disabled)
+    return { kind: "empty", tone: "info", action: null, lower: [] };
   if (!automation && !input.disabled)
     return { kind: "loading", tone: "ok", action: null, lower: [] };
 

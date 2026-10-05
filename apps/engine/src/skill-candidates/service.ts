@@ -358,6 +358,16 @@ export async function createCandidateFromAuthoring(
   return result;
 }
 
+function signalDetails(signal: PatternSignal) {
+  return {
+    examples: signal.examples,
+    best_practices: signal.best_practices,
+    pitfalls: signal.pitfalls,
+    doc_refs: signal.doc_refs,
+    ...(signal.facts ? { facts: signal.facts } : {}),
+  };
+}
+
 export async function upsertFromSignal(
   tenant_id: string,
   signal: PatternSignal,
@@ -409,24 +419,14 @@ export async function upsertFromSignal(
           evidence: signal.evidence,
           title: signal.title,
           body: signal.body,
-          examples: {
-            examples: signal.examples,
-            best_practices: signal.best_practices,
-            pitfalls: signal.pitfalls,
-            doc_refs: signal.doc_refs,
-          },
+          examples: signalDetails(signal),
           updated_at: sql`now()`,
           ...(signal.pattern_kind === "session_learning"
             ? {
                 status: "proposed" as const,
                 title: signal.title,
                 body: signal.body,
-                examples: {
-                  examples: signal.examples,
-                  best_practices: signal.best_practices,
-                  pitfalls: signal.pitfalls,
-                  doc_refs: signal.doc_refs,
-                },
+                examples: signalDetails(signal),
                 ...(signal.tags && signal.tags.length > 0 ? { tags: signal.tags } : {}),
               }
             : {}),
@@ -552,12 +552,7 @@ export async function upsertFromSignal(
         pattern_kind: signal.pattern_kind,
         title: signal.title,
         body: signal.body,
-        examples: {
-          examples: signal.examples,
-          best_practices: signal.best_practices,
-          pitfalls: signal.pitfalls,
-          doc_refs: signal.doc_refs,
-        },
+        examples: signalDetails(signal),
         evidence: signal.evidence,
         confidence: signal.confidence,
         status,

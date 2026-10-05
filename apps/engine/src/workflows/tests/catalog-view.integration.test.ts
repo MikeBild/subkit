@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { serializeOne } from "../../http/routes/workflow-representation.ts";
 import { buildNamingGroundingBlock, loadCategoryIndex } from "../catalog-view.ts";
 import { UNCATEGORIZED } from "../categorize.ts";
 import { listConnectorRefs, listWorkflowsUsingConnector } from "../connector-refs.ts";
-import { createWorkflow, listWorkflows } from "../service.ts";
+import { createWorkflow, getWorkflow, listWorkflows } from "../service.ts";
 
 let ctx: TestDb;
 let tenant_id = "";
@@ -93,6 +94,21 @@ describe("category derivation over a live catalog", () => {
     const index = await loadCategoryIndex(tenant_id, ctx.db);
     expect(index.get("notion-search-pages")).toBe("notion");
     expect(index.get("berlin-weather-by-date")).toBe(UNCATEGORIZED);
+  });
+
+  test("one workflow read on its own names the same block the list does", async () => {
+    const { rows } = await listWorkflows(tenant_id, {}, ctx.db);
+    const index = await loadCategoryIndex(tenant_id, ctx.db);
+    for (const slug of ["notion-search-pages", "berlin-weather-by-date"]) {
+      const row = rows.find((r) => r.slug === slug);
+      const workflow = row ? await getWorkflow(tenant_id, row.id, ctx.db) : null;
+      if (!workflow) throw new Error(`missing ${slug}`);
+      const detail = await serializeOne(workflow, tenant_id, ctx.db);
+      expect(detail.category).toBe(index.get(slug) ?? UNCATEGORIZED);
+    }
+    const notion = rows.find((r) => r.slug === "notion-search-pages");
+    const read = notion ? await getWorkflow(tenant_id, notion.id, ctx.db) : null;
+    expect(read ? (await serializeOne(read, tenant_id, ctx.db)).category : null).toBe("notion");
   });
 
   test("filtering by category returns that block and totals only matches", async () => {

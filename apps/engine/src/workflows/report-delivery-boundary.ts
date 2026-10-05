@@ -61,6 +61,12 @@ export function reportRefusalReason(error: unknown): ReportDeliveryRefusal | nul
     : null;
 }
 
+const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
+
+export function isReportMessageRefusal(reason: unknown): reason is ReportMessageRefusal {
+  return typeof reason === "string" && MESSAGE_REFUSALS.has(reason);
+}
+
 export type ReportMessageInspection =
   | { ok: true; boundary: ReportDeliveryBoundary; subject: string; text: string }
   | { ok: false; reason: ReportMessageRefusal };

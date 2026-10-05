@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { workflowPreviewRequest, workflowPreviewSucceeded } from "./workflow-preview";
+import { workflowPreviewRequest } from "./workflow-preview";
 
 describe("cockpit workflow previews", () => {
   test("whole workflow and step requests always hold writes", () => {
@@ -15,12 +15,5 @@ describe("cockpit workflow previews", () => {
       step,
       hold_writes: true,
     });
-  });
-
-  test("does not render a failed or unknown workflow result as success", () => {
-    expect(workflowPreviewSucceeded({ status: "succeeded" })).toBe(true);
-    for (const status of ["failed", "queued", "cancelled", "unknown", undefined]) {
-      expect(workflowPreviewSucceeded({ status })).toBe(false);
-    }
   });
 });

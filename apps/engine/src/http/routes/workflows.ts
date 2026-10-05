@@ -18,7 +18,6 @@ import {
   loadCategoryIndex,
   resolveWorkflowInputSchema,
   TriggerSchema,
-  UNCATEGORIZED,
   validateWorkflowDef,
 } from "../../workflows/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
@@ -448,8 +447,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       ),
     ]);
     const items = rows.map((w) => ({
-      ...serializeWorkflow(w, bindingFor(bindings, w.id)),
-      category: categories.get(w.slug) ?? UNCATEGORIZED,
+      ...serializeWorkflow(w, bindingFor(bindings, w.id), categories),
       connectors: connectorRefs.get(w.id) ?? [],
     }));
     const blocks = groupByCategory(

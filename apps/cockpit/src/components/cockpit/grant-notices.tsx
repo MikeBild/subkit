@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -27,6 +27,44 @@ import type { WorkflowAuthorityList, WorkflowAuthorityPreview } from "@/lib/work
 
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
+function grantScheduleQuery(workflowId: string) {
+  return {
+    queryKey: ["workflow", workflowId, "schedules"],
+    queryFn: () =>
+      apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${encodeURIComponent(workflowId)}`),
+  };
+}
+
+function grantWorkflowQuery(workflowId: string) {
+  return {
+    queryKey: ["workflow-grant-context", workflowId],
+    queryFn: () =>
+      apiRequest<{ current_version: number | null; webhooks_active?: number | null }>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}`,
+      ),
+  };
+}
+
+function ownSchedules(workflowId: string, list: ScheduleList | undefined) {
+  return Array.isArray(list?.schedules)
+    ? list.schedules.filter((entry) => entry.workflow_id === workflowId)
+    : null;
+}
+
+export async function loadGrantStartedIn(
+  client: QueryClient,
+  workflowId: string,
+  mayReadSchedules: boolean,
+): Promise<ReviewEnvironment[]> {
+  const [schedules, workflow] = await Promise.all([
+    mayReadSchedules
+      ? client.fetchQuery(grantScheduleQuery(workflowId)).catch(() => undefined)
+      : undefined,
+    client.fetchQuery(grantWorkflowQuery(workflowId)).catch(() => undefined),
+  ]);
+  return triggerEnvironments(ownSchedules(workflowId, schedules), workflow?.webhooks_active);
+}
+
 export function useGrantContext(workflowId: string, open: boolean) {
   const session = useSession();
   const id = encodeURIComponent(workflowId);
@@ -37,24 +75,16 @@ export function useGrantContext(workflowId: string, open: boolean) {
       apiRequest<WorkflowAuthorityList>(`/v1/workflows/${id}/execution-authorities?limit=20`),
   });
   const schedules = useQuery({
-    queryKey: ["workflow", workflowId, "schedules"],
+    ...grantScheduleQuery(workflowId),
     enabled: open && session.permissions.includes("schedule:read"),
-    queryFn: () => apiRequest<ScheduleList>(`/v1/schedules?workflow_id=${id}`),
   });
-  const workflow = useQuery({
-    queryKey: ["workflow-grant-context", workflowId],
-    enabled: open,
-    queryFn: () =>
-      apiRequest<{ current_version: number | null; webhooks_active?: number | null }>(
-        `/v1/workflows/${id}`,
-      ),
-  });
-  const own = Array.isArray(schedules.data?.schedules)
-    ? schedules.data.schedules.filter((entry) => entry.workflow_id === workflowId)
-    : null;
+  const workflow = useQuery({ ...grantWorkflowQuery(workflowId), enabled: open });
   return {
     authorities: Array.isArray(authorities.data?.items) ? authorities.data.items : null,
-    startedIn: triggerEnvironments(own, workflow.data?.webhooks_active),
+    startedIn: triggerEnvironments(
+      ownSchedules(workflowId, schedules.data),
+      workflow.data?.webhooks_active,
+    ),
     activeVersion: workflow.data?.current_version ?? null,
   };
 }

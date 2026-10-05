@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { translate } from "@/lib/i18n";
 import {
+  buildVersion,
   connectorNameOf,
   type ExecutionStep,
   formatDuration,
   joinStepsWithLastRun,
   maskIdentifiers,
+  previewSummary,
   readStepDefinition,
   type StepBlock,
   stepEssenceText,
@@ -493,5 +495,105 @@ describe("extractor transforms", () => {
         code: JSON.stringify({ heading_style: "atx", strip_images: true }, null, 2),
       },
     ]);
+  });
+});
+
+describe("the version the build tab shows", () => {
+  const saved = [{ id: "fetch", kind: "request" }];
+  const draft = { version_id: "v2", version: 2, definition: { steps: saved } };
+
+  test("a saved version that is not active yet is shown with its steps", () => {
+    const shown = buildVersion(
+      { current_version_id: "v1", current_version: 1, draft_version_id: "v2", steps: [] },
+      { data: draft, settled: true },
+    );
+    expect(shown).toEqual({
+      steps: saved,
+      versionId: "v2",
+      version: 2,
+      saved: true,
+      pending: false,
+    });
+  });
+
+  test("a new workflow without an active version shows its saved steps, never zero", () => {
+    const shown = buildVersion(
+      { current_version_id: null, current_version: null, draft_version_id: "v2", steps: [] },
+      { data: draft, settled: true },
+    );
+    expect(shown.steps).toHaveLength(1);
+    expect(shown.saved).toBe(true);
+  });
+
+  test("while the saved version loads, no step count is claimed", () => {
+    const shown = buildVersion(
+      { current_version_id: null, current_version: null, draft_version_id: "v2", steps: [] },
+      { data: undefined, settled: false },
+    );
+    expect(shown.pending).toBe(true);
+  });
+
+  test("an answer for another saved version is not taken for this one", () => {
+    const shown = buildVersion(
+      { current_version_id: "v1", current_version: 1, draft_version_id: "v3", steps: saved },
+      { data: draft, settled: true },
+    );
+    expect(shown).toMatchObject({ versionId: "v1", saved: false, pending: false });
+  });
+
+  test("when the active version is the newest, it is what the tab shows", () => {
+    const shown = buildVersion(
+      { current_version_id: "v2", current_version: 2, draft_version_id: "v2", steps: saved },
+      { data: undefined, settled: true },
+    );
+    expect(shown).toEqual({
+      steps: saved,
+      versionId: "v2",
+      version: 2,
+      saved: false,
+      pending: false,
+    });
+  });
+});
+
+describe("a preview result in words", () => {
+  test("counts ran and held steps without internal fields", () => {
+    const summary = previewSummary(
+      {
+        execution_id: "e",
+        hold_writes: true,
+        status: "succeeded",
+        output: { sent: 1 },
+        steps: [
+          { step_key: "fetch", status: "succeeded" },
+          { step_key: "send", status: "succeeded", held: true },
+        ],
+      },
+      3,
+    );
+    expect(summary).toEqual({
+      status: "succeeded",
+      ran: 2,
+      total: 3,
+      held: 1,
+      stoppedAt: null,
+      output: { sent: 1 },
+      error: null,
+    });
+    expect(JSON.stringify(summary)).not.toContain("execution_id");
+    expect(JSON.stringify(summary)).not.toContain("hold_writes");
+  });
+
+  test("a failed or unreadable result is never shown as a success", () => {
+    const failed = previewSummary(
+      {
+        status: "failed",
+        error: { code: "http_4xx", message: "404 Not Found" },
+        steps: [{ step_key: "fetch", status: "failed" }],
+      },
+      1,
+    );
+    expect(failed).toMatchObject({ status: "failed", stoppedAt: "fetch", error: "404 Not Found" });
+    expect(previewSummary({}, 2).status).toBe("failed");
   });
 });

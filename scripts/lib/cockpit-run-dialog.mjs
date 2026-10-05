@@ -92,7 +92,13 @@ function runDialogApi(state) {
         schema: state.variant === "typed" ? TYPED_SCHEMA : null,
       });
     if (path === `/v1/workflows/${WORKFLOW_ID}/draft`)
-      return json(route, { version_id: DRAFT_VERSION_ID, version: 5 });
+      return json(route, {
+        workflow_id: WORKFLOW_ID,
+        version_id: DRAFT_VERSION_ID,
+        version: 5,
+        current_version_id: CURRENT_VERSION_ID,
+        definition: { name: RECORD.name, steps: RECORD.steps },
+      });
     if (path === `/v1/workflows/${WORKFLOW_ID}/execution-authorities`)
       return json(route, {
         items: state.variant === "live" ? [PROD_AUTHORITY] : [],
