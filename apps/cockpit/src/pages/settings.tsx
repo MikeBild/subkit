@@ -1063,7 +1063,7 @@ function SystemSettings() {
       const field =
         document.getElementById(`setting-${index}`) ??
         item?.querySelector<HTMLElement>(
-          '[data-slot="setting-control"] :is(input, button, select, textarea)',
+          '[data-slot="setting-control"] :is(input, select, textarea, button:not([data-tooltip-trigger]))',
         ) ??
         null;
       (item ?? field)?.scrollIntoView({ block: "center", inline: "nearest" });

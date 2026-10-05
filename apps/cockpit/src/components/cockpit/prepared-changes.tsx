@@ -56,7 +56,11 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
           }),
         );
       } else {
-        toast.success(t("prepared.approved", { target: preparedChangeTarget(outcome.name) }));
+        toast.success(
+          t("prepared.approved", {
+            target: settingLabel(preparedChangeTarget(outcome.name), t).text,
+          }),
+        );
       }
       await refresh();
       await client.invalidateQueries({ queryKey: ["admin", "settings"] });
@@ -70,7 +74,9 @@ export function PreparedChanges({ canDecide }: { canDecide: boolean }) {
         { method: "POST" },
       ),
     onSuccess: async (_result, change) => {
-      toast.success(t("prepared.rejected", { target: preparedChangeTarget(change.name) }));
+      toast.success(
+        t("prepared.rejected", { target: settingLabel(preparedChangeTarget(change.name), t).text }),
+      );
       await refresh();
     },
     onError: () => toast.error(t("prepared.decisionFailed")),
