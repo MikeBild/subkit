@@ -363,7 +363,7 @@ function KeysSection({
         emptyAction={total === 0 ? emptyAction : undefined}
         rowActions={keyActions}
         onOpen={(key: ApiKeyItem) => setOpened(key)}
-        rowLabel={(key) => key.name || t("apiKeys.unnamed")}
+        rowLabel={(key) => t("apiKeys.openRow", { name: key.name || t("apiKeys.unnamed") })}
       />
       {groups.revoked.length > 0 ? (
         <CollapsibleSection
@@ -381,7 +381,7 @@ function KeysSection({
             onRetry={() => void query.refetch()}
             empty={t("apiKeys.emptyTitle")}
             onOpen={(key: ApiKeyItem) => setOpened(key)}
-            rowLabel={(key) => key.name || t("apiKeys.unnamed")}
+            rowLabel={(key) => t("apiKeys.openRow", { name: key.name || t("apiKeys.unnamed") })}
           />
         </CollapsibleSection>
       ) : null}
