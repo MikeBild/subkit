@@ -236,6 +236,35 @@ describe("runAuthoringPipeline — one-shot contract", () => {
     },
   );
 
+  tw("a later pass that comes back invalid never throws away an earlier valid draft", async () => {
+    try {
+      await setConfigKey(["llm", "critic", "enabled"], true);
+      await setConfigKey(["llm", "critic", "min_steps"], 2);
+      let calls = 0;
+      getMockProvider().generateOverrides.generate = () => {
+        calls += 1;
+        return calls === 1 ? VALID_DEF : NEVER_VALID_DEF;
+      };
+      getMockProvider().generateOverrides.critic_authoring = () => ({
+        passed: false,
+        repairs: ["Reorder shape_repos before fetch_repos consumes it"],
+        rationale: "step order drift",
+      });
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "digest the repos" });
+      expect(calls).toBe(2);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.definition.slug).toBe("top-repos-digest");
+      expect(result.validation.ok).toBe(true);
+      expect(toolCtx._draft.value?.workflow.slug).toBe("top-repos-digest");
+      expect(fetchCalls).toBe(0);
+    } finally {
+      await setConfigKey(["llm", "critic", "enabled"], false);
+      await setConfigKey(["llm", "critic", "min_steps"], 3);
+    }
+  });
+
   tw(
     "schema-unparseable output on every pass yields authoring_generation_failed with nothing stashed",
     async () => {

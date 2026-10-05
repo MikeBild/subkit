@@ -454,6 +454,7 @@ export async function runAuthoringPipeline(
     Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
 
   let definition: GeneratedWorkflow | null = null;
+  let lastValid: { definition: GeneratedWorkflow; errors: ValidationError[] } | null = null;
   let validationErrors: ValidationError[] = [];
   let attempts = 0;
   let priorFindings: string[] | null = null;
@@ -620,6 +621,7 @@ export async function runAuthoringPipeline(
       }
       definition = candidate;
       validationErrors = [...validation.errors, ...groundingErrors];
+      if (validation.ok) lastValid = { definition: candidate, errors: validationErrors };
       passErrors = validationErrors;
       ctx.onLog?.(
         validationErrors.length > 0 ? "warn" : "info",
@@ -647,6 +649,11 @@ export async function runAuthoringPipeline(
       validationErrors = passErrors;
     }
     priorFindings = renderValidationFindings(passErrors);
+  }
+
+  if (definition && lastValid && definition !== lastValid.definition) {
+    definition = lastValid.definition;
+    validationErrors = lastValid.errors;
   }
 
   if (!definition) {

@@ -173,6 +173,30 @@ describe("author_workflow never regenerates a saved workflow", () => {
   });
 });
 
+describe("author_workflow for a new slug in a bound conversation", () => {
+  test("the new draft no longer carries the saved workflow's identity", async () => {
+    const { conversationId, toolCtx, draft } = await openConversationFor(growthId);
+    getMockProvider().generateOverrides.generate = () => ({
+      name: "Brand new report",
+      slug: "brand-new-report",
+      steps: [
+        transform("collect", "return { n: 1 };"),
+        transform("shape", "return input.scope.collect;"),
+      ],
+    });
+    const result = await authorWorkflowTool.execute(toolCtx, {
+      goal: "a separate weekly brand report",
+      slug: "brand-new-report",
+    });
+    expect(result.ok).toBe(true);
+    expect(await targetOf(conversationId)).toBeNull();
+    expect(toolCtx.workflow_id).toBeNull();
+    expect(draft().summary?.persisted_resources.some((r) => r.id === growthId)).toBe(false);
+    expect(draft().workflow.slug).toBe("brand-new-report");
+    expect((draft().workflow as { goal?: string }).goal).toBe("a separate weekly brand report");
+  });
+});
+
 describe("open_workflow_draft switches the draft from the saved definition", () => {
   test("opens another saved workflow, rebinds the conversation, and patches land on it", async () => {
     const { conversationId, toolCtx, draft } = await openConversationFor(growthId);
