@@ -13,6 +13,7 @@ import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { runHereHref, useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
+import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
@@ -47,13 +48,25 @@ function useWeek(workflowId: string): string | null {
         `/v1/executions?${scope}&status=${encodeURIComponent(failedStatuses ?? "")}&limit=1`,
       ),
   });
-  const total = week.data?.total;
-  const failedTotal = failed.data?.total;
-  if (typeof total !== "number" || typeof failedTotal !== "number") return null;
-  return t(total === 1 ? "workflowRuns.week.one" : "workflowRuns.week.other", {
-    count: total,
-    failed: failedTotal,
-  });
+  const summary = weekSummary(week.data?.total, failed.data?.total);
+  return summary ? t(summary.key, summary.values) : null;
+}
+
+export function weekSummary(
+  total: number | undefined,
+  failed: number | undefined,
+): { key: TranslationKey; values: Record<string, number> } | null {
+  if (typeof total !== "number") return null;
+  const one = total === 1;
+  if (typeof failed !== "number")
+    return {
+      key: one ? "workflowRuns.weekTotal.one" : "workflowRuns.weekTotal.other",
+      values: { count: total },
+    };
+  return {
+    key: one ? "workflowRuns.week.one" : "workflowRuns.week.other",
+    values: { count: total, failed },
+  };
 }
 
 export function WorkflowRuns({ workflowId }: { workflowId: string }) {
