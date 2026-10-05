@@ -260,15 +260,13 @@ describe("the remaining addresses", () => {
   });
 
   test("the tab the address names opens, and one the reader may not read falls back", () => {
-    const all = readableSections({ clients: true, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), all)).toBe("clients");
+    const all = readableSections({ apps: true, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), all)).toBe("apps");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=keys"), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl(""), all)).toBe("keys");
     expect(openApiAccessSection(apiAccessSectionFromUrl("?section=grants"), all)).toBe("keys");
-    const keysOnly = readableSections({ clients: false, keys: true });
-    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=clients"), keysOnly)).toBe(
-      "keys",
-    );
+    const keysOnly = readableSections({ apps: false, keys: true });
+    expect(openApiAccessSection(apiAccessSectionFromUrl("?section=apps"), keysOnly)).toBe("keys");
   });
 });
 

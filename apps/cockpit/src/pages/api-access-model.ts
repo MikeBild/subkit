@@ -17,7 +17,7 @@ export const ROTATE_OVERLAP_MINUTES = 60;
 
 export const UNUSED_KEY_DAYS = 90;
 
-export const API_ACCESS_ORDER = ["keys", "clients"] as const satisfies readonly ApiAccessSection[];
+export const API_ACCESS_ORDER = ["keys", "apps"] as const satisfies readonly ApiAccessSection[];
 
 export function readableSections(can: Record<ApiAccessSection, boolean>): ApiAccessSection[] {
   return API_ACCESS_ORDER.filter((section) => can[section]);

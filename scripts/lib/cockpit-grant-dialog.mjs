@@ -155,7 +155,7 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       throw new Error(`${where}: the panel is in "${await standing.getAttribute("data-state")}"`);
     if (await page.getByTestId("workflow-automation-action").count())
       throw new Error(`${where}: an approval until revoked is offered for extension`);
-    await openTab(page, "freigaben");
+    await openTab(page, "approvals");
     const approvals = await text(page.getByTestId("workflow-approvals"));
     if (!approvals.includes(words.untilRevoked))
       throw new Error(`${where}: "Freigaben" does not say "${words.untilRevoked}": "${approvals}"`);
@@ -185,7 +185,7 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     await assertSingleTriggers(page, where, DIALOG);
     await capture("mixed-environments");
     await closeDialog(page);
-    await openTab(page, "freigaben");
+    await openTab(page, "approvals");
     await page.getByTestId("authority-valid-0").filter({ visible: true }).first().waitFor();
     if (!(await page.getByTestId("authority-valid-0-revoke").count()))
       throw new Error(`${where}: production's approval cannot be revoked from here`);

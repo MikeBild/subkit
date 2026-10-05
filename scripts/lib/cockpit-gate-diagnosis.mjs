@@ -299,7 +299,7 @@ export async function verifyGateDiagnosis(page, stand, workflowId, locale, captu
         throw new Error(`The conversation does not name step ${step}: ${asked}`);
     }
 
-    await page.getByTestId("workflow-tabs-tab-verlauf").click();
+    await page.getByTestId("workflow-tabs-tab-history").click();
     const recent = page
       .getByTestId("workflow-recent-run-0-refusal-reason")
       .filter({ visible: true })

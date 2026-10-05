@@ -177,7 +177,7 @@ export function chatSeedFromUrl(search: string): {
   };
 }
 
-export const API_ACCESS_SECTIONS = ["clients", "keys"] as const;
+export const API_ACCESS_SECTIONS = ["apps", "keys"] as const;
 export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
 
 export function apiAccessHref(section?: ApiAccessSection | null): string {

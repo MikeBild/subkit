@@ -213,7 +213,7 @@ const EN = {
   "runs.preparation": "Preparation",
   "runs.preparationDescription": "Writes held; this run grants no live execution authority.",
   "authority.noStoredBinding": "No execution-authority binding recorded",
-  "authority.version": "Exact workflow version",
+  "authority.version": "Version",
   "authority.environment": "Environment",
   "authority.production": "Production",
   "authority.development": "Development",
@@ -1828,6 +1828,9 @@ const EN = {
   "runs.detail.finished": "Finished",
   "runs.detail.steps": "Steps",
   "runs.detail.noSteps": "No step records were written for this run.",
+  "runs.step.error": "Error",
+  "runs.step.output": "Output",
+  "runs.step.nothingRecorded": "Nothing was recorded for this step.",
   "operational.description":
     "Decisions, reliability, connections and the data behind current operations.",
   "operational.updated": "Updated {value}",
@@ -4025,7 +4028,7 @@ const DE: Record<TranslationKey, string> = {
   "runs.preparationDescription":
     "Schreibzugriffe zurückgehalten; dieser Run erteilt keine Live-Ausführungsfreigabe.",
   "authority.noStoredBinding": "Keine Bindung an eine Ausführungsfreigabe gespeichert",
-  "authority.version": "Exakte Workflow-Version",
+  "authority.version": "Version",
   "authority.environment": "Umgebung",
   "authority.production": "Produktion",
   "authority.development": "Entwicklung",
@@ -5663,6 +5666,9 @@ const DE: Record<TranslationKey, string> = {
   "runs.detail.finished": "Beendet",
   "runs.detail.steps": "Schritte",
   "runs.detail.noSteps": "Für diese Ausführung wurden keine Schrittdaten geschrieben.",
+  "runs.step.error": "Fehler",
+  "runs.step.output": "Ausgabe",
+  "runs.step.nothingRecorded": "Für diesen Schritt wurde nichts aufgezeichnet.",
   "operational.description":
     "Entscheidungen, Zuverlässigkeit, Verbindungen und die Datengrundlage des aktuellen Betriebs.",
   "operational.updated": "Aktualisiert {value}",

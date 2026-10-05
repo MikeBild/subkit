@@ -26,7 +26,7 @@ export function CodeBlock({
       {label ? (
         <div className="border-b px-3 py-1.5 text-xs text-muted-foreground">{label}</div>
       ) : null}
-      <pre className="max-h-96 overflow-auto p-3 pr-10 font-mono text-xs leading-5 whitespace-pre">
+      <pre className="max-h-96 overflow-auto p-3 pr-10 font-mono text-xs leading-5 whitespace-pre-wrap [overflow-wrap:anywhere]">
         <code>{code}</code>
       </pre>
       <IconButton
