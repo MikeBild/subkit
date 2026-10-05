@@ -27,6 +27,7 @@ import {
   absolute,
   chatNewHref,
   chatSeedFromUrl,
+  chatTargetFromUrl,
   connectorHref,
   conversationHref,
   recordHref,
@@ -1394,11 +1395,7 @@ export function ChatPage() {
       setStreamedDiffs([]);
       setLiveCalls([]);
 
-      const { workflowId, connectorId } = chatSeedFromUrl(window.location.search);
-      const target = {
-        ...(workflowId ? { workflow_id: workflowId } : {}),
-        ...(connectorId ? { connector_id: connectorId } : {}),
-      };
+      const target = chatTargetFromUrl(window.location.search);
       startedConversationId.current = null;
       let targetId = conversationId;
       let text = message;
