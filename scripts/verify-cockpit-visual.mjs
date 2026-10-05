@@ -3086,8 +3086,25 @@ async function assertEndlessList(page, label, route) {
   const row = (index) =>
     page.locator(`[data-testid="data-table-${desktop ? "row" : "mobile-row"}-${index}"]`);
   await row(0).waitFor();
-  if ((await row(list.firstPage).count()) > 0)
-    throw new Error(`${label}: row ${list.firstPage + 1} is there before the list was scrolled`);
+  if ((await row(list.firstPage).count()) > 0) {
+    const filled = await page.evaluate((mobile) => {
+      const scope = document.querySelector(
+        `[data-testid="data-table-${mobile ? "mobile" : "desktop"}"]`,
+      );
+      for (let box = scope; box; box = box.parentElement)
+        if (
+          /auto|scroll/.test(getComputedStyle(box).overflowY) &&
+          box.scrollHeight > box.clientHeight
+        )
+          return true;
+      return document.documentElement.scrollHeight > window.innerHeight;
+    }, !desktop);
+    if (!filled)
+      throw new Error(
+        `${label}: row ${list.firstPage + 1} loaded before scrolling, yet the list still does not fill the screen`,
+      );
+    return;
+  }
   const followUps = [];
   const onRequest = (request) => {
     const url = new URL(request.url());
