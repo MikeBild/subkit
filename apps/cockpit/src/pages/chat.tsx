@@ -2229,13 +2229,13 @@ export function ChatPage() {
           className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
           data-testid="chat-list-panel"
         >
-          <div className="md:-mx-4 md:h-18 md:border-b md:px-4">{chatHeader}</div>
+          <div className="md:-mx-4 md:h-18 md:border-b md:px-2">{chatHeader}</div>
           {newConversation ? <div className="md:-mx-2 md:pt-2">{newConversation}</div> : null}
           <section
             id="chat-conversation-list"
             aria-label={t("chat.conversations")}
             className={cn(
-              "col-span-2 min-h-0 flex-1 flex-col pt-2 pb-4",
+              "col-span-2 -mx-2 min-h-0 flex-1 flex-col pt-2 pb-4",
               listOpen ? "flex max-h-[40vh] md:max-h-none" : "hidden md:flex",
             )}
           >
