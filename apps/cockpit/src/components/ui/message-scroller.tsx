@@ -70,7 +70,7 @@ function MessageScrollerItem({
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
       className={cn(
-        "min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
+        "-m-1 min-w-0 shrink-0 p-1 [contain-intrinsic-size:auto_10rem] [content-visibility:auto] empty:hidden",
         className,
       )}
       {...props}
