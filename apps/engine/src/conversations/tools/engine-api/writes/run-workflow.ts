@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
-import { workflowVersions } from "../../../../db/schema/index.ts";
+import { conversations, workflowVersions } from "../../../../db/schema/index.ts";
 import { runExecution } from "../../../../execution/engine.ts";
 import { admitWorkflowRun } from "../../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../../logging/logger.ts";
@@ -19,7 +19,9 @@ import {
   withLatestPreview,
   withWorkflowExecution,
 } from "../../../authoring-state.ts";
+import { hydrateBoundWorkflow } from "../../../draft.ts";
 import { stampStepTraceFingerprints } from "../../../step-fingerprint.ts";
+import type { DraftDocument } from "../../../types.ts";
 import { pauseForUserInput } from "../../ask-user/common.ts";
 import { buildGateError, buildLifecyclePayload } from "../../authoring-contract.ts";
 import type { ConversationTool } from "../../index.ts";
@@ -550,23 +552,20 @@ export const runWorkflowTool: ConversationTool = {
           (s): s is Record<string, unknown> => typeof s === "object" && s !== null,
         ),
       );
-      const previewedDraft = withLatestPreview(
-        currentDraft,
-        {
-          ok: payloadStatus === "succeeded",
-          step_id:
-            result.steps.find((s) => s.status !== "succeeded")?.step_key ??
-            result.steps[result.steps.length - 1]?.step_key ??
-            "(end)",
-          summary: `run_workflow finished with status ${payloadStatus}`,
-          ...(hasWarnings && result.warnings ? { warnings: result.warnings } : {}),
-          ...(requiresRepair ? { requires_repair: true } : {}),
-          step_traces: persistedStepTraces,
-          input: suppliedInput ?? null,
-        },
-        "run_workflow",
-        "workflow_executed",
-      );
+      const runPreview = {
+        ok: payloadStatus === "succeeded",
+        step_id:
+          result.steps.find((s) => s.status !== "succeeded")?.step_key ??
+          result.steps[result.steps.length - 1]?.step_key ??
+          "(end)",
+        summary: `run_workflow finished with status ${payloadStatus}`,
+        ...(hasWarnings && result.warnings ? { warnings: result.warnings } : {}),
+        ...(requiresRepair ? { requires_repair: true } : {}),
+        step_traces: persistedStepTraces,
+        input: suppliedInput ?? null,
+      };
+      const previewed = (draft: DraftDocument) =>
+        withLatestPreview(draft, runPreview, "run_workflow", "workflow_executed");
       if (result.status === "succeeded" && !isPartialSuccess && wf.current_version_id) {
         const persistedScopeIndex: Record<
           string,
@@ -606,9 +605,22 @@ export const runWorkflowTool: ConversationTool = {
       }
       const runsAuthoringTarget =
         activeTarget?.kind === "workflow" && activeTarget.id === workflowId;
+      const authorsNothing =
+        getWorkflowDraft(currentDraft).steps.length === 0 &&
+        !currentDraft.state?.persisted_resources.some((resource) => resource.kind === "workflow");
+      if (!runsAuthoringTarget && authorsNothing)
+        await ctx.db
+          .update(conversations)
+          .set({ target_workflow_id: workflowId, updated_at: new Date() })
+          .where(
+            and(
+              eq(conversations.tenant_id, ctx.tenant_id),
+              eq(conversations.id, ctx.conversation_id),
+            ),
+          );
       const boundDraft = runsAuthoringTarget
         ? bindPersistedWorkflow(
-            previewedDraft,
+            previewed(currentDraft),
             {
               kind: "workflow",
               id: workflowId,
@@ -625,7 +637,9 @@ export const runWorkflowTool: ConversationTool = {
                 WORKFLOW_BINDING_TOOL,
             },
           )
-        : currentDraft;
+        : authorsNothing
+          ? previewed(await hydrateBoundWorkflow(ctx.tenant_id, workflowId, currentDraft, ctx.db))
+          : currentDraft;
       const nextDraft = withWorkflowExecution(boundDraft, {
         execution_id: result.execution_id,
         workflow_id: workflowId,

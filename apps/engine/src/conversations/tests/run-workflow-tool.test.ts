@@ -305,7 +305,7 @@ describe("run_workflow tool", () => {
     });
   }
 
-  test("records the run without taking over the authoring target, and normalizes stringified input", async () => {
+  test("an empty conversation adopts the workflow it runs, definition included, and normalizes stringified input", async () => {
     const { workflow_id } = await seedWorkflow();
     const [conversation] = await ctx.testDb.db
       .insert(conversations)
@@ -348,9 +348,12 @@ describe("run_workflow tool", () => {
     expect(result.ok).toBe(true);
     if (!nextDraft) throw new Error("next draft was not captured");
     const capturedDraft = nextDraft as DraftDocument;
-    expect(capturedDraft.workflow.name).toBe("new-workflow");
-    expect(capturedDraft.summary?.persisted_resources ?? []).toEqual([]);
-    expect(capturedDraft.latest_preview ?? null).toBeNull();
+    expect(capturedDraft.workflow.name).toBe("Berlin Weather");
+    expect(capturedDraft.workflow.steps.map((step) => step.id)).toEqual(["shape"]);
+    expect(capturedDraft.summary?.persisted_resources).toEqual([
+      expect.objectContaining({ kind: "workflow", id: workflow_id, slug: "berlin-weather" }),
+    ]);
+    expect(capturedDraft.latest_preview?.summary).toContain("run_workflow finished");
     expect(capturedDraft.state?.latest_execution?.workflow_id).toBe(workflow_id);
 
     const conversationRows = await ctx.testDb.db
@@ -358,7 +361,7 @@ describe("run_workflow tool", () => {
       .from(conversations)
       .where(eq(conversations.id, conversation.id))
       .limit(1);
-    expect(conversationRows[0]?.target_workflow_id).toBeNull();
+    expect(conversationRows[0]?.target_workflow_id).toBe(workflow_id);
 
     const again = await runWorkflowTool.execute(
       buildToolCtx({

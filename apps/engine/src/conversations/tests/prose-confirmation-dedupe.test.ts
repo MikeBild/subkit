@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { conversationMessages, conversations } from "../../db/schema/index.ts";
+import { conversationMessages, conversations, workflows } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -12,9 +12,21 @@ import type { TurnEvent } from "../types.ts";
 const TEST_NOW_MS = getTestNow();
 
 let ctx: LlmTestCtx;
+let workflowId = "";
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("prose-conf-dedupe");
+  const [workflow] = await ctx.testDb.db
+    .insert(workflows)
+    .values({
+      tenant_id: ctx.tenant_id,
+      slug: "prose-dedupe-target",
+      name: "Delete target",
+      lifecycle: "active",
+    })
+    .returning({ id: workflows.id });
+  if (!workflow) throw new Error("seed workflow failed");
+  workflowId = workflow.id;
 });
 
 afterAll(async () => {
@@ -112,7 +124,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     expect(tool).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000abc" },
+      { id: workflowId },
       { toolCallId: "t-del-1", messages: [] },
     );
     expect(result.pause).toBeDefined();
@@ -136,7 +148,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     expect(tool).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000abc", __policy_confirmed: true },
+      { id: workflowId, __policy_confirmed: true },
       { toolCallId: "t-del-marker", messages: [] },
     );
     expect(result.pause).toBeDefined();
@@ -160,7 +172,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     expect(tool).toBeDefined();
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (tool!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000def", __policy_confirmed: true },
+      { id: ctx.connector_id, __policy_confirmed: true },
       { toolCallId: "t-del-c-marker", messages: [] },
     );
     expect(result.pause).toBeDefined();
@@ -187,7 +199,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (wrapped.delete_connector!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000fff" },
+      { id: ctx.connector_id },
       { toolCallId: "t-mismatch", messages: [] },
     );
     expect(result.pause).toBeDefined();
@@ -208,7 +220,7 @@ describe("policy gate · deterministic destructive-write confirm rule", () => {
     );
     // biome-ignore lint/suspicious/noExplicitAny: Tool.execute is generic
     const result = await (wrapped.delete_workflow!.execute as any)(
-      { id: "00000000-0000-0000-0000-000000000bbb" },
+      { id: workflowId },
       { toolCallId: "t-empty", messages: [] },
     );
     expect(result.pause).toBeDefined();
