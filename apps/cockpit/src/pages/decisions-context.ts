@@ -31,6 +31,12 @@ export interface PatchEvidence {
   connectorId: string | null;
   endpointKey: string | null;
   executionId: string | null;
+  environment: "dev" | "prod" | null;
+  workflowStepId: string | null;
+  gateCode: string | null;
+  gateReason: string | null;
+  gateStepId: string | null;
+  fixer: string | null;
   driftKind: string | null;
   driftSummary: string | null;
   reasoning: string | null;
@@ -58,6 +64,23 @@ const PROPOSAL_KIND_LABEL: Record<string, TranslationKey> = {
   other: "decisions.change.other",
   gate_fix: "decisions.change.gateFix",
 };
+
+const FIXER_LABEL: Record<string, TranslationKey> = {
+  use_utf8_encoder: "decisions.fixer.useUtf8Encoder",
+  declare_report_delivery: "decisions.fixer.declareReportDelivery",
+};
+
+const CLASSIFICATION_REASON_LABEL: Record<string, TranslationKey> = {
+  gate_repair_requires_review: "decisions.classificationReason.gateRepairRequiresReview",
+};
+
+export function fixerKey(fixer: string | null): TranslationKey | null {
+  return fixer ? (FIXER_LABEL[fixer] ?? null) : null;
+}
+
+export function classificationReasonKey(reason: string): TranslationKey | null {
+  return CLASSIFICATION_REASON_LABEL[reason] ?? null;
+}
 
 export function driftKindKey(kind: string | null): TranslationKey | null {
   return kind ? (DRIFT_KIND_LABEL[kind] ?? null) : null;
@@ -90,7 +113,7 @@ export function patchContext(
   if (evidence.executionId && canReadRuns) {
     sources.push({ href: href("run", evidence.executionId), label: labels.failedRun });
   }
-  if (evidence.endpointKey) {
+  if (evidence.endpointKey && evidence.driftKind !== "gate_block") {
     sources.push({
       href: href("connector", evidence.connectorId),
       label: resolveTargetName(index, "connector", evidence.connectorId) ?? labels.endpoint,
