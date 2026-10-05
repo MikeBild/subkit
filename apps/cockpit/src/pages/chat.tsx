@@ -1383,6 +1383,24 @@ export function ChatPage() {
     refetchOnWindowFocus: true,
     refetchInterval: (query) => conversationRefreshInterval(query.state.data),
   });
+  const clearStream = () => {
+    setStreamedText("");
+    setStreamedDiffs([]);
+    setLiveCalls([]);
+  };
+  const loadTranscript = (id: string | null): Promise<boolean> =>
+    id
+      ? queryClient
+          .fetchQuery({
+            queryKey: ["conversation", id],
+            queryFn: () => getConversation(id),
+            staleTime: 0,
+          })
+          .then(
+            () => true,
+            () => false,
+          )
+      : Promise.resolve(false);
   const onTurnEvent = (event: { type: string; [key: string]: unknown }) => {
     if (event.type === "text_delta" && typeof event.text === "string") {
       setStreamedText((currentText) => currentText + event.text);
@@ -1408,9 +1426,7 @@ export function ChatPage() {
       conversationId: string | null;
       attachments?: readonly PendingAttachment[];
     }) => {
-      setStreamedText("");
-      setStreamedDiffs([]);
-      setLiveCalls([]);
+      clearStream();
 
       const target = chatTargetFromUrl(window.location.search);
       startedConversationId.current = null;
@@ -1460,17 +1476,17 @@ export function ChatPage() {
       await queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
     },
     onSuccess: async (result) => {
-      setSelection({ kind: "existing", id: result.conversation.id });
-      setChatPath(result.conversation.id, true);
+      const id = result.conversation.id;
+      const loaded = await loadTranscript(id);
+      setSelection({ kind: "existing", id });
+      setChatPath(id, true);
       setSessionKey((key) => nextSessionKey(key, "firstSendSaved"));
-      setStreamedText("");
-      setStreamedDiffs([]);
-      setLiveCalls([]);
+      clearStream();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["conversations"] }),
         queryClient.invalidateQueries({ queryKey: ["decisions"] }),
         queryClient.invalidateQueries({ queryKey: ["attention"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversation", result.conversation.id] }),
+        loaded ? null : queryClient.invalidateQueries({ queryKey: ["conversation", id] }),
       ]);
     },
   });
@@ -1616,9 +1632,7 @@ export function ChatPage() {
       choiceValue?: string;
       formOutput?: Record<string, unknown>;
     }) => {
-      setStreamedText("");
-      setStreamedDiffs([]);
-      setLiveCalls([]);
+      clearStream();
       return elicitationId
         ? formOutput !== undefined
           ? respondToChatForm(activeId ?? "", elicitationId, formOutput, onTurnEvent)
@@ -1627,18 +1641,18 @@ export function ChatPage() {
             : respondToChatApproval(activeId ?? "", elicitationId, approved === true, onTurnEvent)
         : respondToToolCall(activeId ?? "", toolCallId ?? "", approved === true);
     },
-    onSuccess: () => {
-      setStreamedText("");
-      setStreamedDiffs([]);
-      setLiveCalls([]);
+    onSuccess: async () => {
+      const loaded = await loadTranscript(activeId);
+      clearStream();
+      if (!loaded) await queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
     },
+    onError: () => queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
     onSettled: async () => {
       try {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["conversations"] }),
           queryClient.invalidateQueries({ queryKey: ["decisions"] }),
           queryClient.invalidateQueries({ queryKey: ["attention"] }),
-          queryClient.invalidateQueries({ queryKey: ["conversation", activeId] }),
         ]);
       } finally {
         decisionLock.current = false;
