@@ -15,8 +15,7 @@ export type PageSurface =
   | "audit";
 
 export function pageColumn(kind: PageKind): string {
-  if (kind === "workspace") return "w-full";
-  return kind === "detail" ? "w-full max-w-[880px]" : "w-full max-w-[1280px]";
+  return kind === "workspace" ? "w-full" : "w-full max-w-[1280px]";
 }
 
 function gutter(kind: PageKind): string {
