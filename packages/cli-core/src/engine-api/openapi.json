@@ -8476,6 +8476,10 @@
           "slug": {
             "type": "string"
           },
+          "category": {
+            "type": "string",
+            "description": "The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none."
+          },
           "name": {
             "type": "string"
           },
@@ -8616,6 +8620,7 @@
           "id",
           "tenant_id",
           "slug",
+          "category",
           "name",
           "description",
           "lifecycle",
@@ -8809,9 +8814,6 @@
           {
             "type": "object",
             "properties": {
-              "category": {
-                "type": "string"
-              },
               "connectors": {
                 "type": "array",
                 "items": {
@@ -8820,7 +8822,6 @@
               }
             },
             "required": [
-              "category",
               "connectors"
             ]
           }
@@ -10125,6 +10126,7 @@
                       "connector_unavailable",
                       "refused_before_start",
                       "authority_mismatch",
+                      "payload_invalid",
                       "driver_error",
                       "preview_unsupported",
                       "unknown",
@@ -10354,6 +10356,7 @@
               "connector_unavailable",
               "refused_before_start",
               "authority_mismatch",
+              "payload_invalid",
               "driver_error",
               "preview_unsupported",
               "unknown",
@@ -13771,6 +13774,7 @@
                   "connector_unavailable",
                   "refused_before_start",
                   "authority_mismatch",
+                  "payload_invalid",
                   "driver_error",
                   "preview_unsupported",
                   "unknown"
@@ -15949,6 +15953,9 @@
             },
             "default": []
           },
+          "facts": {
+            "$ref": "#/components/schemas/SkillCandidateFacts"
+          },
           "evidence_count": {
             "type": "integer"
           },
@@ -16012,6 +16019,7 @@
           "pattern_kind",
           "title",
           "body",
+          "facts",
           "evidence_count",
           "confidence",
           "status",
@@ -16021,6 +16029,164 @@
           "created_at",
           "updated_at"
         ]
+      },
+      "SkillCandidateFacts": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WorkflowCapabilityFacts"
+          },
+          {
+            "$ref": "#/components/schemas/RecurringFailureFacts"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "What a drafting-context note states, as structured facts. Absent for candidates whose knowledge is prose only."
+      },
+      "WorkflowCapabilityFacts": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "workflow_capability"
+            ]
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "type",
+                "required"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "output_fields": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "key_paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "connector_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "draft_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "inputs",
+          "output_fields",
+          "key_paths",
+          "connector_ids",
+          "steps",
+          "draft_version_id"
+        ],
+        "additionalProperties": false
+      },
+      "RecurringFailureFacts": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "recurring_failure"
+            ]
+          },
+          "step_key": {
+            "type": "string"
+          },
+          "error_kind": {
+            "type": "string"
+          },
+          "cause_class": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "auth_failed",
+              "placeholder_unresolved",
+              "schema_mismatch",
+              "timeout",
+              "aborted",
+              "connector_missing",
+              "budget_exhausted",
+              "connector_unavailable",
+              "refused_before_start",
+              "authority_mismatch",
+              "payload_invalid",
+              "driver_error",
+              "preview_unsupported",
+              "unknown"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lookback_days": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "kind",
+          "step_key",
+          "error_kind",
+          "cause_class",
+          "count",
+          "lookback_days"
+        ],
+        "additionalProperties": false
       },
       "SkillCandidateEvidence": {
         "type": "object",
@@ -20081,6 +20247,7 @@
           "connector_unavailable",
           "refused_before_start",
           "authority_mismatch",
+          "payload_invalid",
           "driver_error",
           "preview_unsupported",
           "unknown"
@@ -20539,6 +20706,7 @@
               "connector_unavailable",
               "refused_before_start",
               "authority_mismatch",
+              "payload_invalid",
               "driver_error",
               "preview_unsupported",
               "unknown",
@@ -21509,6 +21677,7 @@
                             "connector_unavailable",
                             "refused_before_start",
                             "authority_mismatch",
+                            "payload_invalid",
                             "driver_error",
                             "preview_unsupported",
                             "unknown",

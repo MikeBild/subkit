@@ -20,7 +20,7 @@ import {
 } from "./gate-fix.ts";
 import {
   GMAIL_SEND_TARGET,
-  REPORT_MESSAGE_REFUSALS,
+  isReportMessageRefusal,
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
   type ReportDeliveryRefusal,
@@ -314,8 +314,6 @@ export function planForDiagnosis(
   return null;
 }
 
-const MESSAGE_REFUSALS: ReadonlySet<string> = new Set(REPORT_MESSAGE_REFUSALS);
-
 const ENCODER_REASONS: ReadonlySet<string> = new Set([
   "not_utf8",
   "header_control_byte",
@@ -344,7 +342,7 @@ async function reportRemedy(
     return planUtf8EncoderFix(input.definition, step_id)
       ? { evidence, remedy_kind: "patch", fixer: "use_utf8_encoder" }
       : { evidence, remedy_kind: "author" };
-  if (reason && MESSAGE_REFUSALS.has(reason)) return { evidence, remedy_kind: "author" };
+  if (isReportMessageRefusal(reason)) return { evidence, remedy_kind: "author" };
   const observation = await successfulObservation(db, input, step_id);
   const plan = observation
     ? planReportDeliveryDeclaration(input.definition, step_id, observation.observed)

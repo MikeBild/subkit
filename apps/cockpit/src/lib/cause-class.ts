@@ -18,6 +18,7 @@ const CAUSE_CLASS_KEYS = {
   connector_unavailable: "cause.connector_unavailable",
   refused_before_start: "cause.refused_before_start",
   authority_mismatch: "cause.authority_mismatch",
+  payload_invalid: "cause.payload_invalid",
   driver_error: "cause.driver_error",
   preview_unsupported: "cause.preview_unsupported",
   unknown: "cause.unknown",

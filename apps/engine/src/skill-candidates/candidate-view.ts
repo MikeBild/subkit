@@ -1,6 +1,6 @@
 import type { skillCandidates } from "../db/schema/skills.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
-import type { SkillCandidateView } from "./types.ts";
+import { SkillCandidateFactsSchema, type SkillCandidateView } from "./types.ts";
 
 const CONTEXT_PATTERN_KINDS: ReadonlySet<string> = new Set([
   "failure_pattern",
@@ -45,6 +45,7 @@ export function toView(
     best_practices: (blob.best_practices as string[]) ?? [],
     pitfalls: (blob.pitfalls as string[]) ?? [],
     doc_refs: (blob.doc_refs as string[]) ?? [],
+    facts: SkillCandidateFactsSchema.safeParse(blob.facts).data ?? null,
     evidence_count: evidenceCount,
     confidence: row.confidence,
     status: row.status,

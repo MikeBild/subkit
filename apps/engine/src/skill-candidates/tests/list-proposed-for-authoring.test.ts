@@ -78,6 +78,7 @@ async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
     best_practices: [],
     pitfalls: [],
     doc_refs: [],
+    facts: null,
     evidence_count: opts.evidence_count ?? 0,
     confidence: row.confidence,
     status: row.status,

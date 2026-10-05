@@ -408,7 +408,7 @@ export function WorkflowPage({
               <FactList items={technical} />
             </CollapsibleSection>
             {permissions.includes("skill:read") ? (
-              <WorkflowDraftingContext workflowId={id} />
+              <WorkflowDraftingContext workflowId={id} activeVersionId={versionId} />
             ) : null}
             {permissions.includes("conversation:read") ? (
               <ConversationsAbout target={{ workflow_id: id }} />
