@@ -18,6 +18,7 @@ import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
+import { verifyFirstClickOpens } from "./lib/cockpit-first-click.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
@@ -4203,6 +4204,8 @@ for (const locale of variants) {
       await verifyCreateConnector(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
+    if (standOn(verifyFirstClickOpens))
+      await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
     if (standOn(verifyRunDialog))
       await verifyRunDialog(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
