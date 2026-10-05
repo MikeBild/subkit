@@ -110,3 +110,28 @@ describe("listWorkflowSummaries — same contract, same numbers", () => {
     expect(page.total).toBe(20);
   });
 });
+
+describe("listWorkflows — sorted by name", () => {
+  test("names sort without regard to case, also across a page boundary", async () => {
+    const [tenant] = await ctx.db
+      .insert(tenants)
+      .values({ slug: "t-list-name-case", display_name: "C" })
+      .returning();
+    await ctx.db.insert(workflows).values(
+      ["cherry", "Banana", "apple"].map((name) => ({
+        tenant_id: tenant!.id,
+        slug: name.toLowerCase(),
+        name,
+        lifecycle: "active" as const,
+      })),
+    );
+    const all = await listWorkflows(tenant!.id, { sort: "name", order: "asc" }, ctx.db);
+    expect(all.rows.map((row) => row.name)).toEqual(["apple", "Banana", "cherry"]);
+    const second = await listWorkflows(
+      tenant!.id,
+      { sort: "name", order: "asc", limit: 1, offset: 1 },
+      ctx.db,
+    );
+    expect(second.rows.map((row) => row.name)).toEqual(["Banana"]);
+  });
+});

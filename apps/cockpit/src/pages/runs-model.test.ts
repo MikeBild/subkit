@@ -45,7 +45,7 @@ describe("run authority evidence", () => {
       ),
     ).toEqual([
       ["Authority recorded for this run", "historical-authority"],
-      ["Exact workflow version", "historical-version"],
+      ["Version", "historical-version"],
     ]);
   });
   test("does not reinterpret unbound runs as approved or unauthorized", () => {
@@ -62,7 +62,7 @@ describe("run authority evidence", () => {
     );
     expect(facts).toEqual([
       ["Authority recorded for this run", "018f4b4a…", authority],
-      ["Exact workflow version", "7c9e6679…", version],
+      ["Version", "7c9e6679…", version],
     ]);
     for (const [, shown] of facts) {
       expect(shown).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
@@ -85,7 +85,7 @@ describe("run authority evidence", () => {
         "Für diesen Run gespeicherte Freigabe",
         "Keine Bindung an eine Ausführungsfreigabe gespeichert",
       ],
-      ["Exakte Workflow-Version", "exact-id"],
+      ["Version", "exact-id"],
     ]);
   });
 });

@@ -2511,7 +2511,7 @@ async function checkRightsPage(page) {
   if (intro.includes(RIGHTS_INTRO)) breach("§5", where, "the page description is back");
   const badges = await page.evaluate(() =>
     Object.fromEntries(
-      ["clients", "keys"].map((section) => [
+      ["apps", "keys"].map((section) => [
         section,
         document
           .querySelector(`[data-testid="api-access-tab-${section}"] span`)
@@ -2528,7 +2528,7 @@ async function checkRightsPage(page) {
       );
 
   for (const [section, ready] of [
-    ["clients", '[data-testid="connected-clients"]'],
+    ["apps", '[data-testid="connected-clients"]'],
     ["keys", '[data-testid="api-keys"]'],
   ]) {
     await stand.visit(page, `api-access?section=${section}`);
@@ -2570,7 +2570,7 @@ async function checkRightsPage(page) {
 
 const RIGHTS_TABS = ["Schlüssel", "Apps"];
 const RIGHTS_INTRO = `Wer darf auf ${PRODUCT_NAME} zugreifen — und worauf greift ${PRODUCT_NAME} in deinem Namen zu.`;
-const RIGHTS_BADGES = { clients: null, keys: "2" };
+const RIGHTS_BADGES = { apps: null, keys: "2" };
 
 async function checkRightsKeys(page, where) {
   const scopeText = await page.evaluate(() =>
@@ -2681,7 +2681,7 @@ async function checkConnectorCallback(context) {
 }
 
 async function checkConnectorSignIn(page) {
-  const where = `/connectors/${ID}?tab=verbindung`;
+  const where = `/connectors/${ID}?tab=connection`;
   const state = await page.evaluate(() => {
     const read = (id) => {
       const element = document.querySelector(`[data-testid="${id}"]`);
@@ -3257,7 +3257,7 @@ try {
   await checkAccessRedirect(context);
 
   const connector = await context.newPage();
-  await stand.visit(connector, `connectors/${ID}?tab=verbindung`);
+  await stand.visit(connector, `connectors/${ID}?tab=connection`);
   await connector
     .locator('[data-testid="connector-credentials"]')
     .waitFor({ state: "visible", timeout: 15_000 });

@@ -336,7 +336,7 @@ async function signInAtProvider(page) {
   });
   await page.getByTestId("connector-strip-state").waitFor({ state: "visible", timeout: 10_000 });
   await page.waitForLoadState("networkidle");
-  await openTab(page, "verbindung");
+  await openTab(page, "connection");
   await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
 }
 
@@ -357,7 +357,7 @@ async function signInWord(page) {
 }
 
 async function openOauth(page, stand) {
-  await stand.visit(page, `connectors/${OAUTH_ID}?tab=verbindung`);
+  await stand.visit(page, `connectors/${OAUTH_ID}?tab=connection`);
   await page.getByTestId("connector-credentials").waitFor({ state: "visible", timeout: 10_000 });
   await page.waitForLoadState("networkidle");
 }
@@ -427,7 +427,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
 
   set({ enabled: true, needsReauth: false, conversations: "failed" });
   await openOauth(page, stand);
-  await openTab(page, "verwendung");
+  await openTab(page, "usage");
   await page.getByTestId("detail-conversations-toggle").click();
   await page
     .getByTestId("detail-conversation-retry")
@@ -439,7 +439,7 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   await capture("connector-conversations-failed");
   set({ enabled: true, needsReauth: false, conversations: "empty" });
   await openOauth(page, stand);
-  await openTab(page, "verwendung");
+  await openTab(page, "usage");
   await page.getByTestId("connector-usage-summary").waitFor();
   await page.waitForLoadState("networkidle");
   await page
@@ -588,7 +588,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
   await page.route(isConnectorApi, handler);
   const where = `/connectors/<mcp> (${localeName})`;
   const openConnection = async (id) => {
-    await stand.visit(page, `connectors/${id}?tab=verbindung`);
+    await stand.visit(page, `connectors/${id}?tab=connection`);
     await page.getByTestId("connector-connection-facts").waitFor({ timeout: 10_000 });
     await unfold(page, "connector-runtime-section");
     await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
@@ -672,7 +672,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await assertSingleTriggers(page, where);
     await capture("connector-mcp");
 
-    await openTab(page, "werkzeuge");
+    await openTab(page, "tools");
     const session = (await text(page, "connector-mcp-session")) ?? "";
     if (!session.includes(RUNTIME.mcp_session.protocol_version))
       throw new Error(`${where}: the negotiated session is not said — "${session}"`);
@@ -718,6 +718,10 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       .filter({ visible: true })
       .first()
       .click();
+    await page.getByTestId("connector-mcp-tool-1-sheet").waitFor({ state: "visible" });
+    await page.waitForTimeout(900);
+    if (await page.locator('[role="tooltip"]').count())
+      throw new Error(`${where}: opening the tool sheet opened a tooltip on its first button`);
     await page.getByTestId("connector-mcp-tool-1-trusted").click();
     for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
       await page.waitForTimeout(50);
@@ -745,7 +749,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await capture("connector-zero");
 
     variant = "failed";
-    await stand.visit(page, `connectors/${MCP_ID}?tab=verbindung`);
+    await stand.visit(page, `connectors/${MCP_ID}?tab=connection`);
     await unfold(page, "connector-runtime-section");
     await page.getByTestId("connector-runtime-failed").waitFor({ timeout: 10_000 });
     if (!(await page.getByTestId("connector-runtime-failed-retry").isVisible()))
@@ -772,7 +776,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     });
 
     await openConnection(PG_ID);
-    if (await page.getByTestId("connector-tabs-tab-werkzeuge").count())
+    if (await page.getByTestId("connector-tabs-tab-tools").count())
       throw new Error("/connectors/<postgres>: server tools on a database connector");
     const kind = await page.getByTestId("connector-fact-kind").textContent();
     if (!kind?.includes(de ? "PostgreSQL-Datenbank" : "PostgreSQL database"))

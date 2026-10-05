@@ -892,9 +892,9 @@ export function SettingsPage() {
     ...(session.permissions.includes("notification:read")
       ? [
           {
-            value: "benachrichtigungen",
+            value: "notifications",
             label: t("nav.notifications"),
-            testId: "settings-tab-benachrichtigungen",
+            testId: "settings-tab-notifications",
             content: (
               <NotificationSettings
                 createRule={createRule}
@@ -910,7 +910,7 @@ export function SettingsPage() {
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const values = tabs.map((tab) => tab.value);
   const active = tabFromSearch(searchStr, "tab", values, values[0] ?? "");
-  const onNotifications = active === "benachrichtigungen";
+  const onNotifications = active === "notifications";
   return (
     <Page
       kind="settings"

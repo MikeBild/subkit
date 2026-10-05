@@ -46,7 +46,7 @@ async function assertNoCommandLine(page, where) {
 export async function verifyApiAccess(page, stand, locale, fixture) {
   const where = `/api-access (${locale})`;
 
-  await openTab(page, stand, "clients", "connected-clients");
+  await openTab(page, stand, "apps", "connected-clients");
   const shape = await page.evaluate(() => {
     const tabs = [...document.querySelectorAll('[data-testid^="api-access-tab-"][role="tab"]')];
     return {
@@ -65,7 +65,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (shape.tabs.join("|") !== TAB_NAMES[locale].join("|"))
     throw new Error(`${where}: the tabs are "${shape.tabs.join(", ")}"`);
   if (!shape.tabListVisible) throw new Error(`${where}: the tab bar is not on screen`);
-  if (shape.counts.clients !== null || shape.counts.keys !== null)
+  if (shape.counts.apps !== null || shape.counts.keys !== null)
     throw new Error(`${where}: a tab counts what needs nobody — ${JSON.stringify(shape.counts)}`);
 
   let text = await assertNoCommandLine(page, `${where} · clients`);
