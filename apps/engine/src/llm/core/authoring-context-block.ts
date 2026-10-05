@@ -266,8 +266,16 @@ function renderExecutionSummary(summary: AuthoringSummary): string[] {
   const lines: string[] = [];
   if (summary.latest_execution) {
     const execution = summary.latest_execution;
+    const target = summary.active_target;
+    const workflowRef =
+      execution.workflow_id && target.kind === "workflow" && target.id === execution.workflow_id
+        ? `${target.slug ?? target.id} (${execution.workflow_id})`
+        : (execution.workflow_id ?? "(none)");
     lines.push(
       `- Latest execution: status=${execution.status} env=${execution.environment} warnings=${execution.warnings_count} diagnosis_available=${execution.diagnosis_available}`,
+    );
+    lines.push(
+      `- This run: execution ${execution.execution_id} of workflow ${workflowRef} — "this run" means this execution unless the user names another; inspect_execution without an id inspects it.`,
     );
   }
   if (summary.latest_diagnosis) {

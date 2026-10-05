@@ -132,6 +132,7 @@ const ACTION_TOOLS: Record<string, TranslationKey> = {
   dry_run_transform: "tool.name.dryRunTransform",
   author_workflow: "tool.name.authorWorkflow",
   edit_workflow_patch: "tool.name.editWorkflowPatch",
+  open_workflow_draft: "tool.name.openWorkflowDraft",
   save_workflow_draft: "tool.name.saveWorkflowDraft",
   update_workflow: "tool.name.updateWorkflow",
   delete_workflow: "tool.name.deleteWorkflow",

@@ -177,6 +177,19 @@ export function chatSeedFromUrl(search: string): {
   };
 }
 
+export function chatTargetFromUrl(search: string): {
+  workflow_id?: string;
+  connector_id?: string;
+  execution_id?: string;
+} {
+  const { workflowId, connectorId, executionId } = chatSeedFromUrl(search);
+  return {
+    ...(workflowId ? { workflow_id: workflowId } : {}),
+    ...(connectorId ? { connector_id: connectorId } : {}),
+    ...(executionId ? { execution_id: executionId } : {}),
+  };
+}
+
 export const API_ACCESS_SECTIONS = ["clients", "keys"] as const;
 export type ApiAccessSection = (typeof API_ACCESS_SECTIONS)[number];
 

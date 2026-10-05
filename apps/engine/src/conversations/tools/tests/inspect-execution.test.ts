@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { executionSteps, executions, tenants } from "../../../db/schema/index.ts";
+import { executionSteps, executions, tenants, workflows } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
-import { createEmptyDraftDocument } from "../../authoring-state.ts";
+import { createEmptyDraftDocument, withFocusedExecution } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import { diagnoseLatestExecutionTool } from "../diagnose-latest-execution.ts";
 import type { ToolContext } from "../index.ts";
@@ -171,15 +171,19 @@ describe("inspect_execution · whole-execution diagnosis", () => {
     ]);
   });
 
-  test("resolves the tenant's most recent execution when execution_id is omitted", async () => {
+  test("an unbound conversation resolves the tenant's most recent execution when execution_id is omitted", async () => {
     const latest = await seedExecution({
       tenant: tenant_id,
       steps: [{ step_key: "latest_step" }],
     });
     const result = await inspectExecutionTool.execute(makeCtx(), {});
     expect(result.ok).toBe(true);
-    const data = result.data as { execution: { execution_id: string } };
+    const data = result.data as {
+      execution: { execution_id: string };
+      inspected: { selected_by: string };
+    };
     expect(data.execution.execution_id).toBe(latest);
+    expect(data.inspected.selected_by).toBe("tenant_latest");
   });
 
   test("execution_not_found for a foreign-tenant execution id", async () => {
@@ -201,6 +205,76 @@ describe("inspect_execution · whole-execution diagnosis", () => {
     const result = await inspectExecutionTool.execute(emptyCtx, {});
     expect(result.ok).toBe(false);
     expect((result.data as { error_code: string }).error_code).toBe("no_executions");
+  });
+});
+
+describe("inspect_execution · a bound conversation never inspects another workflow's run", () => {
+  test("a bound workflow without runs is no_executions for that workflow, not the tenant's newest run", async () => {
+    await seedExecution({ tenant: tenant_id, status: "failed", steps: [{ step_key: "other" }] });
+    const [wf] = await ctx.db
+      .insert(workflows)
+      .values({ tenant_id, slug: "never-ran", name: "Never ran", lifecycle: "active" })
+      .returning();
+    const toolCtx = { ...makeCtx(), workflow_id: wf!.id } as ToolContext;
+    const result = await inspectExecutionTool.execute(toolCtx, {});
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({
+      error_code: "no_executions",
+      workflow_id: wf!.id,
+      workflow_slug: "never-ran",
+    });
+  });
+
+  test("a focused run of a different workflow than the bound one is ignored", async () => {
+    const [bound] = await ctx.db
+      .insert(workflows)
+      .values({ tenant_id, slug: "bound-one", name: "Bound", lifecycle: "active" })
+      .returning();
+    const [other] = await ctx.db
+      .insert(workflows)
+      .values({ tenant_id, slug: "other-one", name: "Other", lifecycle: "active" })
+      .returning();
+    const [boundRun] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id,
+        workflow_id: bound!.id,
+        status: "failed",
+        source_kind: "saved",
+        request_source: "test",
+        execution_mode: "dev",
+      })
+      .returning();
+    const [otherRun] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id,
+        workflow_id: other!.id,
+        status: "failed",
+        source_kind: "saved",
+        request_source: "test",
+        execution_mode: "dev",
+      })
+      .returning();
+    const base = makeCtx();
+    const draft = withFocusedExecution(createEmptyDraftDocument(), {
+      execution_id: otherRun!.id,
+      workflow_id: other!.id,
+      workflow_version_id: null,
+      status: "failed",
+      environment: "dev",
+      warnings_count: 0,
+      recorded_at: "2026-09-01T00:00:00.000Z",
+      diagnosis_available: true,
+    });
+    const toolCtx = { ...base, workflow_id: bound!.id, getDraft: () => draft } as ToolContext;
+    const result = await inspectExecutionTool.execute(toolCtx, {});
+    expect(result.ok).toBe(true);
+    expect((result.data as { inspected: unknown }).inspected).toMatchObject({
+      execution_id: boundRun!.id,
+      workflow_slug: "bound-one",
+      selected_by: "bound_workflow_latest",
+    });
   });
 });
 

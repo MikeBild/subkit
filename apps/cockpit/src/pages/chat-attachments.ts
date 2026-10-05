@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { apiRequest, type Conversation } from "@/api/client";
+import { apiRequest, type Conversation, type ConversationTarget } from "@/api/client";
 import { fileRefusal, formatBytes } from "@/components/cockpit/patterns";
 import type { TranslationKey } from "@/lib/i18n";
 
@@ -118,7 +118,7 @@ export async function linkAttachment(
 }
 
 export async function createEmptyConversation(input: {
-  target?: { workflow_id?: string; connector_id?: string };
+  target?: ConversationTarget;
   permissionMode?: "auto" | "ask" | "plan";
 }): Promise<Conversation> {
   const created = await apiRequest<{ conversation: Conversation }>("/v1/conversations", {

@@ -153,7 +153,10 @@ export type AuthoringPipelineResult =
     }
   | {
       ok: false;
-      error_code: "authoring_generation_failed" | "authoring_connectors_unresolved";
+      error_code:
+        | "authoring_generation_failed"
+        | "authoring_connectors_unresolved"
+        | "authoring_definition_invalid";
       message: string;
       deadline_exceeded?: true;
       errors: ValidationError[];
@@ -451,6 +454,7 @@ export async function runAuthoringPipeline(
     Math.max(0, PIPELINE_DEADLINE_MS - (Date.now() - deadlineStartedAt)); // allow-wall-clock
 
   let definition: GeneratedWorkflow | null = null;
+  let lastValid: { definition: GeneratedWorkflow; errors: ValidationError[] } | null = null;
   let validationErrors: ValidationError[] = [];
   let attempts = 0;
   let priorFindings: string[] | null = null;
@@ -617,6 +621,7 @@ export async function runAuthoringPipeline(
       }
       definition = candidate;
       validationErrors = [...validation.errors, ...groundingErrors];
+      if (validation.ok) lastValid = { definition: candidate, errors: validationErrors };
       passErrors = validationErrors;
       ctx.onLog?.(
         validationErrors.length > 0 ? "warn" : "info",
@@ -646,6 +651,11 @@ export async function runAuthoringPipeline(
     priorFindings = renderValidationFindings(passErrors);
   }
 
+  if (definition && lastValid && definition !== lastValid.definition) {
+    definition = lastValid.definition;
+    validationErrors = lastValid.errors;
+  }
+
   if (!definition) {
     return {
       ok: false,
@@ -660,12 +670,54 @@ export async function runAuthoringPipeline(
     };
   }
 
+  const currentDraft = ctx.getDraft();
+  const existingTrigger = currentDraft.workflow?.trigger;
+  const editingSameSlug =
+    existingTrigger !== undefined && currentDraft.workflow?.slug === definition.slug;
+  if (definition.trigger === undefined && editingSameSlug) {
+    logger.info({
+      module: "conversations",
+      action: "authoring_pipeline.trigger_preserved_on_edit",
+      msg: "regenerated draft omitted a trigger while editing an existing workflow — preserving the saved trigger to protect its reverse-bound binding",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      slug: definition.slug,
+      trigger_kind: existingTrigger?.kind ?? null,
+    });
+    definition.trigger = existingTrigger;
+  }
+
+  const workflowDraft = toWorkflowDraftDocument(definition);
+  const structural = validateWorkflowDef(workflowDraft);
+  if (!structural.ok) {
+    logger.warn({
+      module: "conversations",
+      action: "authoring_pipeline.definition_invalid",
+      msg: "generated definition fails workflow validation — refusing to stash it as the draft",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      attempts,
+      error_count: structural.errors.length,
+    });
+    return {
+      ok: false,
+      error_code: "authoring_definition_invalid",
+      message: `the generated definition is not a valid workflow after ${attempts} generation pass(es) (${structural.errors
+        .slice(0, 3)
+        .map((e) => `${e.path}: ${e.message}`)
+        .join("; ")}). It was not stored as the draft; the previous draft is unchanged.`,
+      ...(deadlineExceeded ? { deadline_exceeded: true } : {}),
+      errors: structural.errors,
+      attempts,
+      unresolved_connectors: unresolved,
+    };
+  }
+
   ctx.onLog?.(
     "info",
     `evaluate · compiling and evaluating ${definition.steps.length} step(s) against recorded evidence (bounded repair armed)`,
   );
   const probedConnectorSlugs = await collectProbedConnectorSlugs(ctx, definition.steps);
-  const currentDraft = ctx.getDraft();
   const lastPreview = getLastPreview({
     tenant_id: ctx.tenant_id,
     conversation_id: ctx.conversation_id,
@@ -687,23 +739,6 @@ export async function runAuthoringPipeline(
   );
   if (deadlineSignal.aborted) deadlineExceeded = true;
 
-  const existingTrigger = currentDraft.workflow?.trigger;
-  const editingSameSlug =
-    existingTrigger !== undefined && currentDraft.workflow?.slug === definition.slug;
-  if (definition.trigger === undefined && editingSameSlug) {
-    logger.info({
-      module: "conversations",
-      action: "authoring_pipeline.trigger_preserved_on_edit",
-      msg: "regenerated draft omitted a trigger while editing an existing workflow — preserving the saved trigger to protect its reverse-bound binding",
-      tenant_id: ctx.tenant_id,
-      conversation_id: ctx.conversation_id,
-      slug: definition.slug,
-      trigger_kind: existingTrigger?.kind ?? null,
-    });
-    definition.trigger = existingTrigger;
-  }
-
-  const workflowDraft = toWorkflowDraftDocument(definition);
   const extra: Record<string, unknown> = {
     goal,
     connector_ids: connectors.map((c) => c.id),
