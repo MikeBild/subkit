@@ -15,6 +15,7 @@ import type { PersistInlineUploadResult } from "../files/persist-inline-upload.t
 import { invoke } from "../llm/core/invoke.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
 import {
   assertTenantKnowledgeBudget,
@@ -46,6 +47,18 @@ function toSlug(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 100);
+}
+
+export async function knowledgeSourceChanged(
+  tx: Executor,
+  tenant_id: string,
+  knowledge_source_id: string,
+): Promise<void> {
+  await emitResourceChange(tx, {
+    tenant_id,
+    type: "knowledge_source.changed",
+    ids: { knowledge_source_id },
+  });
 }
 
 export async function kickSourceEmbeddingBackfill(
@@ -183,6 +196,7 @@ export async function createKnowledgeSource(
       },
       tx,
     );
+    await knowledgeSourceChanged(tx, p.tenant_id, row.id);
 
     invalidateKnowledgeCache(p.tenant_id);
     return knowledgeSourceRowToView(row);
@@ -273,6 +287,7 @@ export async function updateKnowledgeSource(
       },
       tx,
     );
+    await knowledgeSourceChanged(tx, p.tenant_id, p.id);
 
     return knowledgeSourceRowToView(updated);
   });
@@ -398,6 +413,7 @@ export async function analyzeKnowledgeSource(
       },
       tx,
     );
+    await knowledgeSourceChanged(tx, p.tenant_id, p.id);
 
     invalidateKnowledgeCache(p.tenant_id);
     return knowledgeSourceRowToView(updated);
@@ -445,6 +461,7 @@ export async function deleteKnowledgeSource(
       },
       tx,
     );
+    await knowledgeSourceChanged(tx, tenant_id, id);
 
     invalidateKnowledgeCache(tenant_id);
     return true;
@@ -597,6 +614,7 @@ export async function ingestKnowledgeSource(
       },
       tx,
     );
+    await knowledgeSourceChanged(tx, p.tenant_id, p.knowledge_source_id);
   });
 
   log.knowledge.ingested({

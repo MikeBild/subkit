@@ -3179,26 +3179,6 @@
           "updated_at"
         ]
       },
-      "UserListResponse": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/User"
-            }
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items"
-        ]
-      },
       "User": {
         "type": "object",
         "properties": {
@@ -3247,6 +3227,26 @@
           "oauth_connections",
           "created_at",
           "updated_at"
+        ]
+      },
+      "UserListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "CreateUserBody": {
@@ -28698,7 +28698,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserListResponse"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/UserListResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "total"
+                      ]
+                    }
+                  ]
                 }
               }
             }

@@ -21,6 +21,7 @@ import {
 } from "../queue/handlers/agent-session-analyze.ts";
 import { CHAT_EVENT_QUEUE, type ChatEventJob } from "../queue/queues.ts";
 import { registerCockpitRoutes } from "./cockpit.ts";
+import { registerChangeAnnouncements } from "./middleware/announce-change.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { errorMiddleware, mapKnownErrorResponse } from "./middleware/error.ts";
@@ -231,6 +232,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   app.use("*", authMiddleware(registry));
   app.use("*", rateLimitMiddleware(opts.rateLimit ?? {}));
   app.use("/v1/*", browserCsrfMiddleware());
+  registerChangeAnnouncements(app);
 
   registerHealthRoute(app, opts.db ? { db: opts.db } : {});
   registerInstallRoute(app);
