@@ -97,7 +97,7 @@ export function GrantWorkflowAuthority({
   withTrigger?: boolean;
   triggerSize?: "sm" | "default";
 }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, tn, dateTime, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const client = useQueryClient();
   const session = useSession();
@@ -654,9 +654,10 @@ export function GrantWorkflowAuthority({
           <Section
             key={index}
             testId="authority-content-boundary"
-            label={t("authority.content.members", {
-              count: publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
-            })}
+            label={tn(
+              "authority.content.members",
+              publication.sources.reduce((n, source) => n + source.item_ids.length, 0),
+            )}
             aside={
               <ContextHelp
                 label={t("authority.content.targets")}
@@ -820,18 +821,12 @@ export function GrantWorkflowAuthority({
           label={t("authority.repairTitle")}
           aside={
             <ContextHelp label={t("authority.repairTitle")} testId="authority-repair-help">
-              {t("authority.repairDescription", {
-                count: String(repairable.data?.proposals?.length ?? 0),
-              })}
+              {tn("authority.repairDescription", repairable.data?.proposals?.length ?? 0)}
             </ContextHelp>
           }
         >
           <div className="flex flex-col items-start gap-3 text-sm">
-            <p>
-              {t("authority.repairLine", {
-                count: String(repairable.data?.proposals?.length ?? 0),
-              })}
-            </p>
+            <p>{tn("authority.repairLine", repairable.data?.proposals?.length ?? 0)}</p>
             {(repairable.data?.unproposable?.length ?? 0) > 0 && (
               <p data-testid="authority-repair-remaining">
                 {t("authority.repairNone", {
@@ -846,9 +841,7 @@ export function GrantWorkflowAuthority({
             )}
             {repair.isSuccess && (
               <p data-testid="authority-repair-done">
-                {t("authority.repairDone", {
-                  count: String(repair.data?.applied_step_ids?.length ?? 0),
-                })}
+                {tn("authority.repairDone", repair.data?.applied_step_ids?.length ?? 0)}
               </p>
             )}
             <Button

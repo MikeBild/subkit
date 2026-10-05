@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
-import { type Locale, translate } from "@/lib/i18n";
+import { type Locale, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { EngineWording } from "@/lib/machine-label";
 
@@ -12,6 +12,7 @@ function render(locale: Locale): string {
     preference: locale,
     setPreference() {},
     t: (key, values) => translate(locale, key, values),
+    tn: (key, count, values) => translatePlural(locale, key, count, values),
     dateTime: (date) => String(date),
   } as I18nValue;
   return renderToStaticMarkup(

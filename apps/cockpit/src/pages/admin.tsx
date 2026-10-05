@@ -454,7 +454,7 @@ function PersonSheet({
   roles: readonly RoleItem[] | undefined;
   onClose(): void;
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canWrite = session.permissions.includes("identity:write");
@@ -683,7 +683,7 @@ function PersonSheet({
         verb={t("people.deactivate")}
         consequence={
           connections > 0
-            ? t("people.deactivateConnections", { count: String(connections) })
+            ? tn("people.deactivateConnections", connections)
             : t("people.deactivateConsequence")
         }
         destructive
@@ -698,7 +698,7 @@ function PersonSheet({
         onOpenChange={(open) => !open && setConfirm(null)}
         object={t("people.grantsObject", { email: user?.email ?? "" })}
         verb={t("people.revokeGrantsVerb")}
-        consequence={t("people.revokeGrantsConsequence", { count: String(ownGrants.length) })}
+        consequence={tn("people.revokeGrantsConsequence", ownGrants.length)}
         destructive
         pending={revokeGrants.isPending}
         onConfirm={async () => {
@@ -732,7 +732,7 @@ function PersonSheet({
 }
 
 function PeopleTab({ action }: { action: ReactNode }) {
-  const { t, dateTime } = useI18n();
+  const { t, tn, dateTime } = useI18n();
   const session = useSession();
   const people = usePeopleList();
   const roles = useRoles(session.permissions.includes("rbac:read"));
@@ -795,7 +795,7 @@ function PeopleTab({ action }: { action: ReactNode }) {
         emptyAction={action}
         summary={
           invited > 0
-            ? t("people.summaryInvited", { count, invited })
+            ? tn("people.summaryInvited", count, { invited })
             : t(count === 1 ? "people.summary.one" : "people.summary", { count })
         }
       >

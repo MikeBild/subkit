@@ -10,7 +10,8 @@ const EN = {
   "authority.content.title": "Allow scheduled publication?",
   "authority.content.description":
     "The content is updated and published on schedule; nothing is published now.",
-  "authority.content.members": "Update {count} fixed content items",
+  "authority.content.members.one": "Update 1 fixed content item",
+  "authority.content.members.other": "Update {count} fixed content items",
   "authority.content.scope":
     "Only new revisions of these items, up to 1 MB each, may be published to this site. Other items and removals are excluded.",
   "authority.content.targets": "Content and publication destination",
@@ -61,7 +62,6 @@ const EN = {
 
   "chat.resume.workflowSaved": "Saved {target}.",
   "chat.resume.stage.workflowSaved": "Workflow saved",
-  "chat.schedule.count": "The {count} blocked schedule(s) still count as open decisions.",
   "chat.preparation.title": "Preparation not yet complete",
   "chat.preparation.effect": "SubKit can finish checking your change and prepare it for use.",
   "chat.preparation.continue": "Continue preparing",
@@ -152,17 +152,25 @@ const EN = {
   "authority.scope.version.first":
     "No version is running yet. Approving puts this one into service.",
   "authority.suggestion.schedule": "Suggested: as many runs as the schedule starts in 30 days.",
-  "authority.suggestion.hook":
+  "authority.suggestion.hook.one":
+    "Suggested from 1 webhook call in the last {days} days, with headroom.",
+  "authority.suggestion.hook.other":
     "Suggested from {count} webhook calls in the last {days} days, with headroom.",
-  "authority.suggestion.hookMinimum":
+  "authority.suggestion.hookMinimum.one":
+    "Suggested minimum for a webhook: only 1 call arrived in the last {days} days.",
+  "authority.suggestion.hookMinimum.other":
     "Suggested minimum for a webhook: only {count} calls arrived in the last {days} days.",
   "authority.repairTitle": "SubKit can work this out itself",
-  "authority.repairDescription":
-    "{count} step(s) do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
+  "authority.repairDescription.one":
+    "1 step does not say where it may go, and SubKit has read what it really did. It can write that limit into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
+  "authority.repairDescription.other":
+    "{count} steps do not say where they may go, and SubKit has read what each of them really did. It can write those limits into a prepared version for you to review — nothing is activated and nothing is authorized by this.",
   "authority.repairAction": "Let SubKit set the limits",
   "authority.repairWorking": "Reading what these steps did\u2026",
-  "authority.repairDone":
-    "Limits written into a prepared version for {count} step(s). Review it below and put it into service when it is right.",
+  "authority.repairDone.one":
+    "Limit written into a prepared version for 1 step. Review it below and put it into service when it is right.",
+  "authority.repairDone.other":
+    "Limits written into a prepared version for {count} steps. Review it below and put it into service when it is right.",
   "authority.repairFailed":
     "Writing the limits did not go through, so nothing was changed. Try again; if it keeps failing, the workflow was edited elsewhere in the meantime.",
   "authority.repairNone":
@@ -220,7 +228,8 @@ const EN = {
   "authority.window": "Valid from — until (local time)",
   "authority.sameBoundary": "New versions with the same boundary stay approved.",
   "authority.requests": "Request contents",
-  "authority.repairLine": "{count} step(s) without a stated target",
+  "authority.repairLine.one": "1 step without a stated target",
+  "authority.repairLine.other": "{count} steps without a stated target",
   "authority.growth.newConnector": "New target: {name}",
   "authority.growth.newTarget": "New address: {target}",
   "authority.growth.writes": "New: writes to {name}",
@@ -238,10 +247,13 @@ const EN = {
   "authority.storage.folder": "Folder: {folder}",
   "authority.storage.writeScope":
     "File names and contents may change. Existing files in this folder may be replaced. Maximum {bytes} bytes per file.",
-  "authority.storage.listScope": "List up to {count} files per lookup within this folder.",
+  "authority.storage.listScope.one": "List 1 file per lookup within this folder.",
+  "authority.storage.listScope.other": "List up to {count} files per lookup within this folder.",
   "authority.storage.readScope": "Read files within this folder.",
   "authority.storage.delete": "Permanently delete report files",
-  "authority.storage.deleteScope":
+  "authority.storage.deleteScope.one":
+    "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: 1 file per run. Every deletion is checked to stay inside this folder; the number per run is a reviewed ceiling and is not yet counted by the system.",
+  "authority.storage.deleteScope.other":
     "Files inside this folder are deleted for good and cannot be restored. Reviewed ceiling: {count} files per run. Every deletion is checked to stay inside this folder; the number per run is a reviewed ceiling and is not yet counted by the system.",
   "authority.storage.unknown": "Unrecognised storage action",
   "authority.storage.unknownScope":
@@ -266,7 +278,9 @@ const EN = {
     "{name} may be any single file name — letters, digits, \u201c_\u201d and \u201c-\u201d, then one dot and a short extension. It cannot contain \u201c/\u201d, so it stays in this one folder.",
   "authority.boundary.class.path":
     "{name} may be any page on this one address \u2014 this approval does not limit which page. It cannot reach another address, and it cannot leave this address by any spelling.",
-  "authority.boundary.paging":
+  "authority.boundary.paging.one":
+    "This read is handed out one page at a time: SubKit sends 1 request to the address, moving only {params}. Nothing else about the request changes.",
+  "authority.boundary.paging.other":
     "This read is handed out one page at a time: SubKit sends up to {count} requests to the same address, moving only {params}. Nothing else about the request changes.",
   "authority.boundary.classNotice":
     "A value limited only by its form is chosen at run time. This approval does not limit which records are addressed, only what the value looks like.",
@@ -276,7 +290,9 @@ const EN = {
   "authority.boundary.noBody": "Sends no content.",
   "authority.boundary.declaredDestructive":
     "The author marked this request as one that removes or irreversibly changes data.",
-  "authority.boundary.calls":
+  "authority.boundary.calls.one":
+    "Reviewed ceiling: 1 request per run. This number is reviewed, but not yet counted by the system.",
+  "authority.boundary.calls.other":
     "Reviewed ceiling: {count} requests per run. This number is reviewed, but not yet counted by the system.",
   "authority.boundary.contentNotice":
     "The content is decided at run time. This approval limits where the request goes and how large it is — not what it contains, for example which records it changes or removes.",
@@ -351,7 +367,6 @@ const EN = {
   "app.cockpit": "Cockpit",
   "common.yes": "Yes",
   "common.no": "No",
-  "common.items": "{count} items",
   "common.details": "Details",
   "common.actions": "Actions",
   "common.open": "Open",
@@ -369,7 +384,8 @@ const EN = {
   "common.discard": "Discard",
   "common.member": "Member",
   "common.unknown": "Unknown",
-  "common.moreRelations": "{count} more relations",
+  "common.moreRelations.one": "1 more relation",
+  "common.moreRelations.other": "{count} more relations",
   "nav.label": "Cockpit navigation",
   "nav.toggle": "Toggle navigation",
   "nav.mobileDescription": "Displays the Cockpit navigation.",
@@ -406,7 +422,6 @@ const EN = {
   "connections.emptyDescription":
     "Connect the first system with Connect: its address, the rights, one approval on the other side.",
   "connections.loadFailed": "The systems SubKit may use on your behalf could not be loaded.",
-  "connections.rights": "{count} rights",
   "connections.rightsOne": "1 right",
   "connections.showRights": "Show details",
   "connections.hideRights": "Hide details",
@@ -418,8 +433,6 @@ const EN = {
   "connections.disconnectTitle": "Disconnect {name}?",
   "connections.disconnectDescription":
     "The stored access is revoked. Connecting again asks for a new approval on the other side.",
-  "connections.disconnectInUse":
-    "{count} connector(s) — {connectors} — use this account connection and will have no credentials afterwards. The stored access is revoked.",
   "connections.state.valid": "valid",
   "connections.state.expiring": "expires",
   "connections.state.expiringAt": "expires on {date}",
@@ -433,7 +446,6 @@ const EN = {
   "connections.noAutoRenew":
     "Does not renew itself — the service issued no refresh token. Renew before it expires.",
   "connections.usedByLabel": "Used by",
-  "connections.usedByWorkflows": "{count} workflow(s)",
   "connections.notUsed": "Not used by any connector",
   "connections.reason.refreshRefused":
     "The other side refused to renew the access. Renew repeats the approval.",
@@ -860,7 +872,8 @@ const EN = {
   "resource.usage.byModel": "By model",
   "resource.usage.cost": "Cost",
   "resource.usage.runs": "Runs",
-  "resource.usage.tokensAmount": "{count} tokens",
+  "resource.usage.tokensAmount.one": "1 token",
+  "resource.usage.tokensAmount.other": "{count} tokens",
   "resource.usage.capShare": "{percent} % of the monthly cap",
   "resource.usage.consumptionDescription":
     "What this workspace spent on model calls, and how much of the monthly cap is left.",
@@ -891,9 +904,9 @@ const EN = {
   "apiAccess.section.grants": "Access on your behalf",
   "apiAccess.total.clients": "{count} connected apps",
   "apiAccess.total.clientsOne": "1 connected app",
-  "apiAccess.total.grants": "{count} systems connected",
   "apiAccess.total.grantsOne": "1 system connected",
-  "apiAccess.total.keysSummary": "{count} keys · {active} active",
+  "apiAccess.total.keysSummary.one": "1 key · {active} active",
+  "apiAccess.total.keysSummary.other": "{count} keys · {active} active",
   "apiAccess.keysHelp":
     "A key lets a script call in over HTTP; it carries only the rights you give it.",
   "apiAccess.column.name": "Name",
@@ -908,7 +921,10 @@ const EN = {
   "resource.settings.empty": "No settings available.",
   "resource.notifications.title": "Notifications",
   "notifications.rules": "Rules",
-  "notifications.summary": "{rules} rules · {channels} channels",
+  "notifications.summary.rules.one": "1 rule",
+  "notifications.summary.rules.other": "{count} rules",
+  "notifications.summary.channels.one": "1 channel",
+  "notifications.summary.channels.other": "{count} channels",
   "notifications.noRules": "No rules yet.",
   "notifications.channels": "Channels",
   "notifications.noChannels": "No channels yet.",
@@ -956,7 +972,8 @@ const EN = {
   "people.invite": "Issue invite",
   "people.inviteReady": "Invite ready",
   "people.deactivate": "Deactivate",
-  "people.deactivateConnections": "Active access and {count} connected apps end at once.",
+  "people.deactivateConnections.one": "Active access and 1 connected app end at once.",
+  "people.deactivateConnections.other": "Active access and {count} connected apps end at once.",
   "people.created": "Person added",
   "people.roleUpdated": "Role updated",
   "people.deactivated": "Person deactivated",
@@ -1042,7 +1059,8 @@ const EN = {
   "people.revokeGrants": "Revoke access",
   "people.revokeGrantsVerb": "revoke",
   "people.grantsObject": "Access of {email}",
-  "people.revokeGrantsConsequence": "{count} individual workflow grants end at once.",
+  "people.revokeGrantsConsequence.one": "1 individual workflow grant ends at once.",
+  "people.revokeGrantsConsequence.other": "{count} individual workflow grants end at once.",
   "people.grantsRevoked": "Access revoked",
   "access.grantCreated": "Access granted",
   "access.grantDescription": "Choose a person or group, a workflow and the exact permission.",
@@ -1417,7 +1435,6 @@ const EN = {
   "pattern.retry": "Try again",
   "pattern.saveBar.unsaved": "{count} unsaved changes",
   "pattern.saveBar.unsaved.one": "1 unsaved change",
-  "pattern.more": "+{count} more",
   "pattern.help": "Explanation",
   "platform.newVersion": "A new version is available",
   "platform.reload": "Reload",
@@ -1435,7 +1452,8 @@ const EN = {
   "platform.file.tooLarge": "{name} is larger than {max}.",
   "platform.file.wrongType": "{name} is not a file type this place takes.",
   "platform.file.open": "Open",
-  "connectors.usedByCount": "{count} workflows",
+  "connectors.usedByCount.one": "1 workflow",
+  "connectors.usedByCount.other": "{count} workflows",
   "runs.childRun": "Child run",
   "audit.column.time": "When",
   "audit.column.event": "Event",
@@ -1444,7 +1462,8 @@ const EN = {
   "audit.countMore": "More than {count} entries",
   "people.summary": "{count} people",
   "people.summary.one": "1 person",
-  "people.summaryInvited": "{count} people · {invited} invited",
+  "people.summaryInvited.one": "1 person · {invited} invited",
+  "people.summaryInvited.other": "{count} people · {invited} invited",
   "people.search": "Search people",
   "people.allRoles": "All roles",
   "access.rolesSummary": "{count} roles",
@@ -2091,7 +2110,8 @@ const EN = {
   "decisions.confidence.low": "low",
   "decisions.confidence.medium": "medium",
   "decisions.confidence.high": "high",
-  "decisions.evidence": "from {count} observed cases",
+  "decisions.evidence.one": "from 1 observed case",
+  "decisions.evidence.other": "from {count} observed cases",
   "decisions.drift.httpStatusNewShape": "The system answered in a new shape",
   "decisions.drift.pathMiss": "A field the workflow reads is gone",
   "decisions.drift.schemaDiff": "The response structure changed",
@@ -2463,7 +2483,8 @@ const EN = {
   "tool.background.fetchConnectorDocs.past": "Fetched connector documentation",
   "tool.background.suggestConnectorTemplates.active": "Looking for a matching template…",
   "tool.background.suggestConnectorTemplates.past": "Looked for a matching template",
-  "tool.background.collapsed": "{count} background actions",
+  "tool.background.collapsed.one": "1 background action",
+  "tool.background.collapsed.other": "{count} background actions",
   "tool.name.runWorkflow": "Ran a workflow",
   "tool.name.runNamedWorkflow": "Ran the workflow “{name}”",
   "tool.name.runWorkflow.notRun": "Did not run a workflow",
@@ -2625,7 +2646,8 @@ const EN = {
   "runs.rerun.started": "New run started",
   "runs.rerun.whileRunning": "The run has not finished yet",
   "runs.strip.running": "step {step} in progress",
-  "runs.strip.done": "all {count} steps in {duration}",
+  "runs.strip.done.one": "1 step in {duration}",
+  "runs.strip.done.other": "all {count} steps in {duration}",
   "detail.recentRuns": "Latest runs",
   "detail.allRuns": "All runs",
   "detail.noRuns": "This workflow has not run yet.",
@@ -2745,7 +2767,8 @@ const EN = {
   "notifications.target.channel": "Delivers to {channel}.",
   "notifications.target.pending":
     "Its channel is created with the first delivery; nothing has been delivered yet.",
-  "notifications.suspendedCause": "Suspended after {count} failed deliveries in a row.",
+  "notifications.suspendedCause.one": "Suspended after 1 failed delivery.",
+  "notifications.suspendedCause.other": "Suspended after {count} failed deliveries in a row.",
   "notifications.suspendedUntil":
     "The engine tries again by itself from {time}; there is no manual reset.",
   "notifications.suspendedRetry":
@@ -2760,7 +2783,8 @@ const EN = {
   "notifications.deleteChannel": "Remove channel",
   "notifications.deleteRuleConsequence": "No message goes out for these events afterwards.",
   "notifications.deleteChannelConsequence": "SubKit sends nothing to this channel afterwards.",
-  "notifications.channelInUse": "Still used by {count} rules",
+  "notifications.channelInUse.one": "Still used by 1 rule",
+  "notifications.channelInUse.other": "Still used by {count} rules",
   "notifications.ruleDeleted": "Rule deleted",
   "notifications.channelDeleted": "Channel removed",
   "notifications.ruleDeleteFailed": "The rule was not deleted.",
@@ -3537,11 +3561,14 @@ const EN = {
   "overview.short.execution_authority_required": "Automatic starts wait for approval",
   "overview.short.execution_authority_unavailable": "The approval no longer fits",
   "overview.short.version_awaiting_approval": "New version for production",
-  "overview.short.version_needs_repair": "{count} step(s) blocked, first {step}",
+  "overview.short.version_needs_repair.one": "1 step blocked, first {step}",
+  "overview.short.version_needs_repair.other": "{count} steps blocked, first {step}",
   "overview.short.approval_expiring": "The approval runs out soon",
   "overview.short.scheduler_stale": "A background task stopped reporting",
-  "overview.short.failing": "{count} failures in a row",
-  "overview.short.patch_proposed": "{count} repair(s) proposed",
+  "overview.short.failing.one": "1 failure",
+  "overview.short.failing.other": "{count} failures in a row",
+  "overview.short.patch_proposed.one": "1 repair proposed",
+  "overview.short.patch_proposed.other": "{count} repairs proposed",
   "overview.short.needs_reauth": "Workflows cannot run until it signs in again",
   "overview.short.needs_update": "The endpoint no longer exists",
   "overview.short.degraded": "Calls fail repeatedly",
@@ -3551,7 +3578,8 @@ const EN = {
   "overview.short.expired_no_refresh": "Expired and cannot renew itself",
   "overview.short.secret_unreadable": "A stored secret cannot be read",
   "overview.short.secret_prepared": "A prepared secret waits to be put in place",
-  "overview.short.skills_proposed": "{count} skill(s) proposed",
+  "overview.short.skills_proposed.one": "1 skill proposed",
+  "overview.short.skills_proposed.other": "{count} skills proposed",
   "overview.short.budget_critical": "The monthly allowance is nearly used",
   "overview.short.risk_critical": "A critical operating signal",
   "overview.short.other": "Needs a look",
@@ -3697,9 +3725,12 @@ const EN = {
   "input.type.arrayOf": "{type} ({item})",
   "output.title": "Output",
   "output.none": "The result of the last step.",
-  "cron.everySeconds": "every {count} seconds",
-  "cron.everyMinutes": "every {count} minutes",
-  "cron.everyHours": "every {count} hours",
+  "cron.everySeconds.one": "every second",
+  "cron.everySeconds.other": "every {count} seconds",
+  "cron.everyMinutes.one": "every minute",
+  "cron.everyMinutes.other": "every {count} minutes",
+  "cron.everyHours.one": "every hour",
+  "cron.everyHours.other": "every {count} hours",
   "cron.hourly": "hourly at minute {minute}",
   "cron.daily": "daily at {time}",
   "cron.weekdays": "Monday to Friday at {time}",
@@ -3773,8 +3804,10 @@ const EN = {
   "files.uploadedMany": "{count} files uploaded",
   "files.replaced": "{name} replaced · reference unchanged",
   "files.failed": "{name} could not be uploaded.",
-  "files.summary": "{count} files · {size}",
-  "files.summaryCount": "{count} files",
+  "files.summary.one": "1 file · {size}",
+  "files.summary.other": "{count} files · {size}",
+  "files.summaryCount.one": "1 file",
+  "files.summaryCount.other": "{count} files",
   "files.summaryHelp":
     "You can also drop files onto this page. Workflows and the chat refer to a file with @attachment:<name>.",
   "files.search": "Search files",
@@ -3819,7 +3852,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.content.title": "Regelmäßige Veröffentlichung freigeben?",
   "authority.content.description":
     "Die Inhalte werden nach Zeitplan aktualisiert und veröffentlicht; jetzt noch nichts.",
-  "authority.content.members": "{count} festgelegte Inhalte aktualisieren",
+  "authority.content.members.one": "1 festgelegten Inhalt aktualisieren",
+  "authority.content.members.other": "{count} festgelegte Inhalte aktualisieren",
   "authority.content.scope":
     "Nur neue Fassungen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
   "authority.content.targets": "Betroffene Inhalte und Veröffentlichungsziel",
@@ -3871,8 +3905,6 @@ const DE: Record<TranslationKey, string> = {
 
   "chat.resume.workflowSaved": "Du hast {target} gespeichert.",
   "chat.resume.stage.workflowSaved": "Workflow gespeichert",
-  "chat.schedule.count":
-    "Die {count} blockierten Zeitpläne zählen weiterhin als offene Entscheidungen.",
   "chat.preparation.title": "Vorbereitung noch nicht abgeschlossen",
   "chat.preparation.effect":
     "SubKit kann deine Änderung fertig prüfen und für die Nutzung vorbereiten.",
@@ -3967,17 +3999,25 @@ const DE: Record<TranslationKey, string> = {
     "Noch läuft keine Fassung. Mit der Freigabe wird diese übernommen.",
   "authority.suggestion.schedule":
     "Vorschlag: so viele Läufe, wie der Zeitplan in 30 Tagen startet.",
-  "authority.suggestion.hook":
+  "authority.suggestion.hook.one":
+    "Vorschlag aus 1 Webhook-Aufruf der letzten {days} Tage, mit Reserve.",
+  "authority.suggestion.hook.other":
     "Vorschlag aus {count} Webhook-Aufrufen der letzten {days} Tage, mit Reserve.",
-  "authority.suggestion.hookMinimum":
+  "authority.suggestion.hookMinimum.one":
+    "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kam nur 1 Aufruf.",
+  "authority.suggestion.hookMinimum.other":
     "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kamen nur {count} Aufrufe.",
   "authority.repairTitle": "Das kann SubKit selbst herausfinden",
-  "authority.repairDescription":
-    "{count} Schritt(e) sagen nicht, wohin sie gehen d\u00fcrfen. SubKit hat gelesen, was jeder von ihnen tats\u00e4chlich getan hat, und kann diese Grenzen in eine vorbereitete Fassung schreiben, die du pr\u00fcfst \u2014 nichts wird dadurch aktiviert oder freigegeben.",
+  "authority.repairDescription.one":
+    "1 Schritt sagt nicht, wohin er gehen darf. SubKit hat gelesen, was er tatsächlich getan hat, und kann diese Grenze in eine vorbereitete Fassung schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
+  "authority.repairDescription.other":
+    "{count} Schritte sagen nicht, wohin sie gehen dürfen. SubKit hat gelesen, was jeder von ihnen tatsächlich getan hat, und kann diese Grenzen in eine vorbereitete Fassung schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
   "authority.repairAction": "SubKit die Grenzen setzen lassen",
   "authority.repairWorking": "Liest, was diese Schritte getan haben\u2026",
-  "authority.repairDone":
-    "Grenzen f\u00fcr {count} Schritt(e) in eine vorbereitete Fassung geschrieben. Unten pr\u00fcfen und in Betrieb nehmen, wenn es stimmt.",
+  "authority.repairDone.one":
+    "Grenze für 1 Schritt in eine vorbereitete Fassung geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
+  "authority.repairDone.other":
+    "Grenzen für {count} Schritte in eine vorbereitete Fassung geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
   "authority.repairFailed":
     "Das Schreiben der Grenzen ist nicht durchgegangen, ge\u00e4ndert wurde nichts. Noch einmal versuchen; bleibt es dabei, wurde der Ablauf zwischenzeitlich an anderer Stelle bearbeitet.",
   "authority.repairNone":
@@ -4037,7 +4077,8 @@ const DE: Record<TranslationKey, string> = {
   "authority.window": "Gültig von — bis (Ortszeit)",
   "authority.sameBoundary": "Neue Versionen mit gleicher Grenze bleiben freigegeben.",
   "authority.requests": "Anfrageinhalte",
-  "authority.repairLine": "{count} Schritt(e) ohne festgelegtes Ziel",
+  "authority.repairLine.one": "1 Schritt ohne festgelegtes Ziel",
+  "authority.repairLine.other": "{count} Schritte ohne festgelegtes Ziel",
   "authority.growth.newConnector": "Neues Ziel: {name}",
   "authority.growth.newTarget": "Neue Adresse: {target}",
   "authority.growth.writes": "Neu: schreibt an {name}",
@@ -4055,10 +4096,14 @@ const DE: Record<TranslationKey, string> = {
   "authority.storage.folder": "Ordner: {folder}",
   "authority.storage.writeScope":
     "Dateinamen und Inhalte dürfen wechseln. Vorhandene Dateien in diesem Ordner können ersetzt werden. Höchstens {bytes} Bytes je Datei.",
-  "authority.storage.listScope": "Bis zu {count} Dateien pro Listenabruf innerhalb dieses Ordners.",
+  "authority.storage.listScope.one": "1 Datei pro Listenabruf innerhalb dieses Ordners.",
+  "authority.storage.listScope.other":
+    "Bis zu {count} Dateien pro Listenabruf innerhalb dieses Ordners.",
   "authority.storage.readScope": "Dateien innerhalb dieses Ordners lesen.",
   "authority.storage.delete": "Berichtsdateien endgültig löschen",
-  "authority.storage.deleteScope":
+  "authority.storage.deleteScope.one":
+    "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: 1 Datei pro Lauf. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Lauf ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
+  "authority.storage.deleteScope.other":
     "Dateien in diesem Ordner werden endgültig gelöscht und lassen sich nicht wiederherstellen. Geprüfte Obergrenze: {count} Dateien pro Lauf. Jede Löschung wird darauf geprüft, in diesem Ordner zu bleiben; die Anzahl pro Lauf ist eine geprüfte Obergrenze und wird vom System noch nicht mitgezählt.",
   "authority.storage.unknown": "Unbekannte Speicher-Aktion",
   "authority.storage.unknownScope":
@@ -4083,7 +4128,9 @@ const DE: Record<TranslationKey, string> = {
     "{name} darf jeder einzelne Dateiname sein \u2014 Buchstaben, Ziffern, \u201e_\u201c und \u201e-\u201c, dann ein Punkt und eine kurze Endung. Ein \u201e/\u201c ist nicht m\u00f6glich, der Wert bleibt also in diesem einen Ordner.",
   "authority.boundary.class.path":
     "{name} darf jede Seite unter dieser einen Adresse sein \u2014 welche Seite, begrenzt diese Freigabe nicht. Eine andere Adresse ist nicht erreichbar, und diese Adresse l\u00e4sst sich auf keine Schreibweise verlassen.",
-  "authority.boundary.paging":
+  "authority.boundary.paging.one":
+    "Dieser Lesezugriff kommt seitenweise: SubKit sendet 1 Anfrage an die Adresse und bewegt dabei nur {params}. Sonst ändert sich an der Anfrage nichts.",
+  "authority.boundary.paging.other":
     "Dieser Lesezugriff kommt seitenweise: SubKit sendet bis zu {count} Anfragen an dieselbe Adresse und bewegt dabei nur {params}. Sonst \u00e4ndert sich an der Anfrage nichts.",
   "authority.boundary.classNotice":
     "Ein nur der Form nach begrenzter Wert entsteht erst zur Laufzeit. Diese Freigabe begrenzt nicht, welche Einträge angesprochen werden, sondern nur, wie der Wert aussieht.",
@@ -4093,7 +4140,9 @@ const DE: Record<TranslationKey, string> = {
   "authority.boundary.noBody": "Sendet keinen Inhalt.",
   "authority.boundary.declaredDestructive":
     "Der Autor hat diese Anfrage als eine markiert, die Daten entfernt oder unwiderruflich ändert.",
-  "authority.boundary.calls":
+  "authority.boundary.calls.one":
+    "Geprüfte Obergrenze: 1 Anfrage pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
+  "authority.boundary.calls.other":
     "Geprüfte Obergrenze: {count} Anfragen pro Lauf. Diese Zahl ist geprüft, wird vom System aber noch nicht mitgezählt.",
   "authority.boundary.contentNotice":
     "Der Inhalt entsteht erst zur Laufzeit. Diese Freigabe begrenzt, wohin die Anfrage geht und wie groß sie ist — nicht, was sie enthält, zum Beispiel welche Einträge sie ändert oder entfernt.",
@@ -4170,7 +4219,6 @@ const DE: Record<TranslationKey, string> = {
   "app.cockpit": "Cockpit",
   "common.yes": "Ja",
   "common.no": "Nein",
-  "common.items": "{count} Einträge",
   "common.details": "Details",
   "common.actions": "Aktionen",
   "common.open": "Öffnen",
@@ -4188,7 +4236,8 @@ const DE: Record<TranslationKey, string> = {
   "common.discard": "Verwerfen",
   "common.member": "Mitglied",
   "common.unknown": "Unbekannt",
-  "common.moreRelations": "{count} weitere Verknüpfungen",
+  "common.moreRelations.one": "1 weitere Verknüpfung",
+  "common.moreRelations.other": "{count} weitere Verknüpfungen",
   "nav.label": "Cockpit-Navigation",
   "nav.toggle": "Navigation ein- oder ausblenden",
   "nav.mobileDescription": "Zeigt die Cockpit-Navigation an.",
@@ -4226,7 +4275,6 @@ const DE: Record<TranslationKey, string> = {
     "Verbinde das erste System mit „Verbinden“: seine Adresse, die Rechte, eine Freigabe auf der anderen Seite.",
   "connections.loadFailed":
     "Die Systeme, die SubKit in deinem Namen nutzen darf, konnten nicht geladen werden.",
-  "connections.rights": "{count} Rechte",
   "connections.rightsOne": "1 Recht",
   "connections.showRights": "Details anzeigen",
   "connections.hideRights": "Details ausblenden",
@@ -4238,8 +4286,6 @@ const DE: Record<TranslationKey, string> = {
   "connections.disconnectTitle": "{name} trennen?",
   "connections.disconnectDescription":
     "Der gespeicherte Zugriff wird widerrufen. Ein erneutes Verbinden braucht eine neue Freigabe auf der anderen Seite.",
-  "connections.disconnectInUse":
-    "{count} Konnektor(en) — {connectors} — nutzen diese Verbindung und haben danach keine Zugangsdaten. Der gespeicherte Zugriff wird widerrufen.",
   "connections.state.valid": "gültig",
   "connections.state.expiring": "läuft ab",
   "connections.state.expiringAt": "läuft ab am {date}",
@@ -4253,7 +4299,6 @@ const DE: Record<TranslationKey, string> = {
   "connections.noAutoRenew":
     "Verlängert sich nicht automatisch — der Dienst hat kein Refresh-Token ausgestellt. Vor Ablauf erneuern.",
   "connections.usedByLabel": "Genutzt von",
-  "connections.usedByWorkflows": "{count} Workflow(s)",
   "connections.notUsed": "Von keinem Konnektor genutzt",
   "connections.reason.refreshRefused":
     "Die andere Seite hat die Erneuerung abgelehnt. „Erneuern“ wiederholt die Freigabe.",
@@ -4690,7 +4735,8 @@ const DE: Record<TranslationKey, string> = {
   "resource.usage.byModel": "Nach Modell",
   "resource.usage.cost": "Kosten",
   "resource.usage.runs": "Läufe",
-  "resource.usage.tokensAmount": "{count} Token",
+  "resource.usage.tokensAmount.one": "1 Token",
+  "resource.usage.tokensAmount.other": "{count} Token",
   "resource.usage.capShare": "{percent} % des Monatskontingents",
   "resource.usage.consumptionDescription":
     "Was dieser Arbeitsbereich für Modellaufrufe ausgegeben hat und wie viel vom Monatskontingent übrig ist.",
@@ -4721,9 +4767,9 @@ const DE: Record<TranslationKey, string> = {
   "apiAccess.section.grants": "Zugriff in deinem Namen",
   "apiAccess.total.clients": "{count} verbundene Apps",
   "apiAccess.total.clientsOne": "1 verbundene App",
-  "apiAccess.total.grants": "{count} Systeme verbunden",
   "apiAccess.total.grantsOne": "1 System verbunden",
-  "apiAccess.total.keysSummary": "{count} Schlüssel · {active} aktiv",
+  "apiAccess.total.keysSummary.one": "1 Schlüssel · {active} aktiv",
+  "apiAccess.total.keysSummary.other": "{count} Schlüssel · {active} aktiv",
   "apiAccess.keysHelp":
     "Ein Schlüssel erlaubt Aufrufe von außen per HTTP; er trägt nur die Rechte, die du ihm gibst.",
   "apiAccess.column.name": "Name",
@@ -4738,7 +4784,10 @@ const DE: Record<TranslationKey, string> = {
   "resource.settings.empty": "Keine Einstellungen verfügbar.",
   "resource.notifications.title": "Benachrichtigungen",
   "notifications.rules": "Regeln",
-  "notifications.summary": "{rules} Regeln · {channels} Kanäle",
+  "notifications.summary.rules.one": "1 Regel",
+  "notifications.summary.rules.other": "{count} Regeln",
+  "notifications.summary.channels.one": "1 Kanal",
+  "notifications.summary.channels.other": "{count} Kanäle",
   "notifications.noRules": "Noch keine Regeln.",
   "notifications.channels": "Kanäle",
   "notifications.noChannels": "Noch keine Kanäle.",
@@ -4786,7 +4835,8 @@ const DE: Record<TranslationKey, string> = {
   "people.invite": "Einladung ausstellen",
   "people.inviteReady": "Einladung bereit",
   "people.deactivate": "Deaktivieren",
-  "people.deactivateConnections": "Aktive Zugriffe und {count} verbundene Apps enden sofort.",
+  "people.deactivateConnections.one": "Aktive Zugriffe und 1 verbundene App enden sofort.",
+  "people.deactivateConnections.other": "Aktive Zugriffe und {count} verbundene Apps enden sofort.",
   "people.created": "Person angelegt",
   "people.roleUpdated": "Rolle aktualisiert",
   "people.deactivated": "Person deaktiviert",
@@ -4873,7 +4923,8 @@ const DE: Record<TranslationKey, string> = {
   "people.revokeGrants": "Zugriffe entziehen",
   "people.revokeGrantsVerb": "entziehen",
   "people.grantsObject": "Zugriffe von {email}",
-  "people.revokeGrantsConsequence": "{count} Einzelzugriffe auf Workflows enden sofort.",
+  "people.revokeGrantsConsequence.one": "1 Einzelzugriff auf einen Workflow endet sofort.",
+  "people.revokeGrantsConsequence.other": "{count} Einzelzugriffe auf Workflows enden sofort.",
   "people.grantsRevoked": "Zugriffe entzogen",
   "access.grantCreated": "Zugriff erteilt",
   "access.grantDescription": "Wähl Person oder Gruppe, Workflow und die genaue Berechtigung.",
@@ -5252,7 +5303,6 @@ const DE: Record<TranslationKey, string> = {
   "pattern.retry": "Erneut versuchen",
   "pattern.saveBar.unsaved": "{count} ungespeicherte Änderungen",
   "pattern.saveBar.unsaved.one": "1 ungespeicherte Änderung",
-  "pattern.more": "+{count} weitere",
   "pattern.help": "Erklärung",
   "platform.newVersion": "Neue Version verfügbar",
   "platform.reload": "Neu laden",
@@ -5270,7 +5320,8 @@ const DE: Record<TranslationKey, string> = {
   "platform.file.tooLarge": "{name} ist größer als {max}.",
   "platform.file.wrongType": "{name} hat einen Dateityp, der hier nicht angenommen wird.",
   "platform.file.open": "Öffnen",
-  "connectors.usedByCount": "{count} Workflows",
+  "connectors.usedByCount.one": "1 Workflow",
+  "connectors.usedByCount.other": "{count} Workflows",
   "runs.childRun": "Untergeordneter Lauf",
   "audit.column.time": "Wann",
   "audit.column.event": "Ereignis",
@@ -5279,7 +5330,8 @@ const DE: Record<TranslationKey, string> = {
   "audit.countMore": "Mehr als {count} Einträge",
   "people.summary": "{count} Personen",
   "people.summary.one": "1 Person",
-  "people.summaryInvited": "{count} Personen · {invited} eingeladen",
+  "people.summaryInvited.one": "1 Person · {invited} eingeladen",
+  "people.summaryInvited.other": "{count} Personen · {invited} eingeladen",
   "people.search": "Personen durchsuchen",
   "people.allRoles": "Alle Rollen",
   "access.rolesSummary": "{count} Rollen",
@@ -5944,7 +5996,8 @@ const DE: Record<TranslationKey, string> = {
   "decisions.confidence.low": "niedrig",
   "decisions.confidence.medium": "mittel",
   "decisions.confidence.high": "hoch",
-  "decisions.evidence": "aus {count} beobachteten Fällen",
+  "decisions.evidence.one": "aus 1 beobachteten Fall",
+  "decisions.evidence.other": "aus {count} beobachteten Fällen",
   "decisions.drift.httpStatusNewShape": "Das System antwortet in neuer Form",
   "decisions.drift.pathMiss": "Ein Feld, das der Workflow liest, gibt es nicht mehr",
   "decisions.drift.schemaDiff": "Die Struktur der Antwort hat sich geändert",
@@ -6328,7 +6381,8 @@ const DE: Record<TranslationKey, string> = {
   "tool.background.fetchConnectorDocs.past": "Konnektor-Doku geholt",
   "tool.background.suggestConnectorTemplates.active": "Passende Vorlage wird gesucht…",
   "tool.background.suggestConnectorTemplates.past": "Passende Vorlage gesucht",
-  "tool.background.collapsed": "{count} Aktionen im Hintergrund",
+  "tool.background.collapsed.one": "1 Aktion im Hintergrund",
+  "tool.background.collapsed.other": "{count} Aktionen im Hintergrund",
   "tool.name.runWorkflow": "Workflow ausgeführt",
   "tool.name.runNamedWorkflow": "Workflow „{name}“ ausgeführt",
   "tool.name.runWorkflow.notRun": "Workflow nicht ausgeführt",
@@ -6491,7 +6545,8 @@ const DE: Record<TranslationKey, string> = {
   "runs.rerun.started": "Neuer Lauf gestartet",
   "runs.rerun.whileRunning": "Der Lauf ist noch nicht beendet",
   "runs.strip.running": "Schritt {step} läuft",
-  "runs.strip.done": "alle {count} Schritte in {duration}",
+  "runs.strip.done.one": "1 Schritt in {duration}",
+  "runs.strip.done.other": "alle {count} Schritte in {duration}",
   "detail.recentRuns": "Letzte Läufe",
   "detail.allRuns": "Alle Läufe",
   "detail.noRuns": "Dieser Workflow ist noch nie gelaufen.",
@@ -6617,7 +6672,9 @@ const DE: Record<TranslationKey, string> = {
   "notifications.target.channel": "Stellt an {channel} zu.",
   "notifications.target.pending":
     "Der Kanal entsteht mit der ersten Zustellung; bisher wurde nichts zugestellt.",
-  "notifications.suspendedCause": "Nach {count} fehlgeschlagenen Zustellungen in Folge ausgesetzt.",
+  "notifications.suspendedCause.one": "Nach 1 fehlgeschlagenen Zustellung ausgesetzt.",
+  "notifications.suspendedCause.other":
+    "Nach {count} fehlgeschlagenen Zustellungen in Folge ausgesetzt.",
   "notifications.suspendedUntil":
     "Die Engine versucht es ab {time} von selbst erneut; zurücksetzen lässt es sich nicht von Hand.",
   "notifications.suspendedRetry":
@@ -6633,7 +6690,8 @@ const DE: Record<TranslationKey, string> = {
   "notifications.deleteRuleConsequence":
     "Für diese Ereignisse geht danach keine Nachricht mehr raus.",
   "notifications.deleteChannelConsequence": "SubKit sendet danach nichts mehr an diesen Kanal.",
-  "notifications.channelInUse": "Wird noch von {count} Regeln genutzt",
+  "notifications.channelInUse.one": "Wird noch von 1 Regel genutzt",
+  "notifications.channelInUse.other": "Wird noch von {count} Regeln genutzt",
   "notifications.ruleDeleted": "Regel gelöscht",
   "notifications.channelDeleted": "Kanal entfernt",
   "notifications.ruleDeleteFailed": "Die Regel wurde nicht gelöscht.",
@@ -7427,11 +7485,14 @@ const DE: Record<TranslationKey, string> = {
   "overview.short.execution_authority_required": "Automatische Starts warten auf Freigabe",
   "overview.short.execution_authority_unavailable": "Die Freigabe passt nicht mehr",
   "overview.short.version_awaiting_approval": "Neue Version für Produktion",
-  "overview.short.version_needs_repair": "{count} Schritt(e) blockiert, zuerst {step}",
+  "overview.short.version_needs_repair.one": "1 Schritt blockiert, zuerst {step}",
+  "overview.short.version_needs_repair.other": "{count} Schritte blockiert, zuerst {step}",
   "overview.short.approval_expiring": "Die Freigabe läuft bald ab",
   "overview.short.scheduler_stale": "Eine Hintergrundaufgabe meldet sich nicht mehr",
-  "overview.short.failing": "{count} Fehlschläge in Folge",
-  "overview.short.patch_proposed": "{count} Reparatur(en) vorgeschlagen",
+  "overview.short.failing.one": "1 Fehlschlag",
+  "overview.short.failing.other": "{count} Fehlschläge in Folge",
+  "overview.short.patch_proposed.one": "1 Reparatur vorgeschlagen",
+  "overview.short.patch_proposed.other": "{count} Reparaturen vorgeschlagen",
   "overview.short.needs_reauth": "Workflows laufen erst nach erneuter Anmeldung",
   "overview.short.needs_update": "Den Endpunkt gibt es nicht mehr",
   "overview.short.degraded": "Aufrufe scheitern wiederholt",
@@ -7441,7 +7502,8 @@ const DE: Record<TranslationKey, string> = {
   "overview.short.expired_no_refresh": "Abgelaufen und nicht selbst verlängerbar",
   "overview.short.secret_unreadable": "Ein gespeichertes Geheimnis ist nicht lesbar",
   "overview.short.secret_prepared": "Ein vorbereitetes Geheimnis wartet auf Übernahme",
-  "overview.short.skills_proposed": "{count} Skill(s) vorgeschlagen",
+  "overview.short.skills_proposed.one": "1 Skill vorgeschlagen",
+  "overview.short.skills_proposed.other": "{count} Skills vorgeschlagen",
   "overview.short.budget_critical": "Das Monatskontingent ist fast verbraucht",
   "overview.short.risk_critical": "Ein kritisches Betriebssignal",
   "overview.short.other": "Braucht einen Blick",
@@ -7590,9 +7652,12 @@ const DE: Record<TranslationKey, string> = {
   "input.type.arrayOf": "{type} ({item})",
   "output.title": "Ausgabe",
   "output.none": "Ergebnis des letzten Schritts.",
-  "cron.everySeconds": "alle {count} Sekunden",
-  "cron.everyMinutes": "alle {count} Minuten",
-  "cron.everyHours": "alle {count} Stunden",
+  "cron.everySeconds.one": "jede Sekunde",
+  "cron.everySeconds.other": "alle {count} Sekunden",
+  "cron.everyMinutes.one": "jede Minute",
+  "cron.everyMinutes.other": "alle {count} Minuten",
+  "cron.everyHours.one": "jede Stunde",
+  "cron.everyHours.other": "alle {count} Stunden",
   "cron.hourly": "stündlich zur Minute {minute}",
   "cron.daily": "täglich um {time}",
   "cron.weekdays": "montags bis freitags um {time}",
@@ -7666,8 +7731,10 @@ const DE: Record<TranslationKey, string> = {
   "files.uploadedMany": "{count} Dateien hochgeladen",
   "files.replaced": "{name} ersetzt · Verweis unverändert",
   "files.failed": "{name} konnte nicht hochgeladen werden.",
-  "files.summary": "{count} Dateien · {size}",
-  "files.summaryCount": "{count} Dateien",
+  "files.summary.one": "1 Datei · {size}",
+  "files.summary.other": "{count} Dateien · {size}",
+  "files.summaryCount.one": "1 Datei",
+  "files.summaryCount.other": "{count} Dateien",
   "files.summaryHelp":
     "Dateien ziehst du auch direkt auf diese Seite. Workflows und der Chat verweisen mit @attachment:<name> darauf.",
   "files.search": "Dateien durchsuchen",
@@ -7727,6 +7794,30 @@ export function translate(
   values?: Record<string, string | number>,
 ): string {
   return interpolate(CATALOGS[locale][key], values);
+}
+
+export type PluralKey = {
+  [K in TranslationKey]: K extends `${infer Base}.one`
+    ? `${Base}.other` extends TranslationKey
+      ? Base
+      : never
+    : never;
+}[TranslationKey];
+
+export function pluralKey(key: PluralKey, count: number): TranslationKey {
+  return `${key}.${count === 1 ? "one" : "other"}` as TranslationKey;
+}
+
+export function translatePlural(
+  locale: Locale,
+  key: PluralKey,
+  count: number,
+  values: Record<string, string | number> = {},
+): string {
+  return translate(locale, pluralKey(key, count), {
+    count: new Intl.NumberFormat(LOCALE_TAGS[locale]).format(count),
+    ...values,
+  });
 }
 
 export function formatDateTime(locale: Locale, value: string | Date | null | undefined): string {

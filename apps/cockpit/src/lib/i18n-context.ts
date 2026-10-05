@@ -1,10 +1,11 @@
 import { createContext, useContext } from "react";
-import type { TranslationKey } from "./i18n";
+import type { PluralKey, TranslationKey } from "./i18n";
 import type { LocalePreference, LocaleSnapshot } from "./locale-store";
 
 export interface I18nValue extends LocaleSnapshot {
   setPreference(preference: LocalePreference): void;
   t(key: TranslationKey, values?: Record<string, string | number>): string;
+  tn(key: PluralKey, count: number, values?: Record<string, string | number>): string;
   dateTime(value: string | Date): string;
 }
 

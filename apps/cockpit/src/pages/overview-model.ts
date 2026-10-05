@@ -1,7 +1,7 @@
 import type { components } from "@/api/schema";
 import { growthLine } from "@/lib/authority-growth";
 import { causeClassKey } from "@/lib/cause-class";
-import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import { CATALOGS, type PluralKey, pluralKey, type TranslationKey } from "@/lib/i18n";
 
 export type Attention = components["schemas"]["AttentionV1"];
 export type AttentionItem = components["schemas"]["AttentionItem"];
@@ -467,11 +467,8 @@ const SHORT_REASON_KEYS = {
   execution_authority_required: "overview.short.execution_authority_required",
   execution_authority_unavailable: "overview.short.execution_authority_unavailable",
   version_awaiting_approval: "overview.short.version_awaiting_approval",
-  version_needs_repair: "overview.short.version_needs_repair",
   approval_expiring: "overview.short.approval_expiring",
   scheduler_stale: "overview.short.scheduler_stale",
-  failing: "overview.short.failing",
-  patch_proposed: "overview.short.patch_proposed",
   needs_reauth: "overview.short.needs_reauth",
   needs_update: "overview.short.needs_update",
   degraded: "overview.short.degraded",
@@ -481,10 +478,16 @@ const SHORT_REASON_KEYS = {
   expired_no_refresh: "overview.short.expired_no_refresh",
   secret_unreadable: "overview.short.secret_unreadable",
   secret_prepared: "overview.short.secret_prepared",
-  skills_proposed: "overview.short.skills_proposed",
   budget_critical: "overview.short.budget_critical",
   risk_critical: "overview.short.risk_critical",
-} as const satisfies Record<AttentionItem["reason"], TranslationKey>;
+} as const satisfies Partial<Record<AttentionItem["reason"], TranslationKey>>;
+
+const COUNTED_SHORT_REASON_KEYS = {
+  version_needs_repair: "overview.short.version_needs_repair",
+  failing: "overview.short.failing",
+  patch_proposed: "overview.short.patch_proposed",
+  skills_proposed: "overview.short.skills_proposed",
+} as const satisfies Partial<Record<AttentionItem["reason"], PluralKey>>;
 
 const STATE_OF_REASON: Record<AttentionItem["reason"], { state: string; label: TranslationKey }> = {
   awaiting_answer: { state: "pending", label: "overview.state.answer" },
@@ -526,7 +529,7 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
         ? t("overview.object.budget")
         : t("overview.unnamed"));
   const version = item.approval ? ` v${item.approval.version}` : "";
-  const key = (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+
   const badge = (STATE_OF_REASON as Record<string, AttentionRow["badge"]>)[item.reason] ?? {
     state: "pending",
     label: "overview.state.decide",
@@ -539,6 +542,10 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
         : item.reason === "skills_proposed"
           ? (item.counts.skills ?? 1)
           : (item.repair?.steps ?? 1);
+  const counted = (COUNTED_SHORT_REASON_KEYS as Record<string, PluralKey>)[item.reason];
+  const key = counted
+    ? pluralKey(counted, count)
+    : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
   return {
     name: `${name}${version}`,
     reason: key ? t(key, { count, step: item.repair?.step_id ?? "" }) : t("overview.short.other"),

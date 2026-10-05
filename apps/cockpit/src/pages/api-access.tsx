@@ -202,7 +202,7 @@ function KeysSection({
   emptyAction: ReactNode;
   onIssued(plaintext: string): void;
 }) {
-  const { t, locale, dateTime } = useI18n();
+  const { t, tn, locale, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
   const canRotate = session.permissions.includes("api_key:rotate");
@@ -344,10 +344,7 @@ function KeysSection({
       {total > 0 ? (
         <SummaryLine
           testId="api-access-total-keys"
-          text={t("apiAccess.total.keysSummary", {
-            count: String(total),
-            active: String(activeCount),
-          })}
+          text={tn("apiAccess.total.keysSummary", total, { active: activeCount })}
           help={t("apiAccess.keysHelp")}
         />
       ) : null}

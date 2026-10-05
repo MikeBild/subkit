@@ -19,7 +19,7 @@ export interface BackgroundToolsProps {
 }
 
 export function BackgroundTools({ lines, testId, className }: BackgroundToolsProps) {
-  const { t } = useI18n();
+  const { tn } = useI18n();
   if (lines.length === 0) return null;
 
   const anyRunning = lines.some((line) => line.running);
@@ -45,7 +45,7 @@ export function BackgroundTools({ lines, testId, className }: BackgroundToolsPro
         className="group/bg flex items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
         data-testid={`${testId}-toggle`}
       >
-        {t("tool.background.collapsed", { count: String(total) })}
+        {tn("tool.background.collapsed", total)}
         <ChevronDownIcon className="size-3 transition-transform group-data-[state=open]/bg:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-1 flex flex-col gap-1">
