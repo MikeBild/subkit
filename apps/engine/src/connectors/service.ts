@@ -333,7 +333,7 @@ export async function listConnectors(
   const offset = opts.offset ?? 0;
   const sortColumn =
     opts.sort === "name"
-      ? connectors.display_name
+      ? sql`lower(${connectors.display_name})`
       : opts.sort === "driver"
         ? connectors.driver
         : opts.sort === "environment"

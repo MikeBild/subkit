@@ -192,3 +192,27 @@ describe("connectors/service", () => {
     expect(created.template_snapshot?.slug).toBe("stripe");
   });
 });
+
+describe("connectors/service — sorted by name", () => {
+  test("names sort without regard to case", async () => {
+    const tenant_id = await seedTenant();
+    for (const name of ["cherry", "Banana", "apple"])
+      await createConnector(
+        {
+          tenant_id,
+          input: {
+            name,
+            driver: "http",
+            environment: "dev",
+            base_url: `https://${name.toLowerCase()}.example.test`,
+            auth_type: "none",
+            config: {},
+          },
+          actor_id: null,
+        },
+        ctx.db,
+      );
+    const { rows } = await listConnectors(tenant_id, { sort: "name", order: "asc" }, ctx.db);
+    expect(rows.map((row) => row.display_name)).toEqual(["apple", "Banana", "cherry"]);
+  });
+});
