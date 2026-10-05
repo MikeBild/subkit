@@ -12,7 +12,6 @@ import {
   type CockpitColumn,
   CodeBlock,
   CollapsibleSection,
-  ConfirmDialog,
   DataState,
   DataTable,
   type Fact,
@@ -28,6 +27,7 @@ import {
 import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { MISSING, type Relation, tableColumns } from "@/components/cockpit/table-columns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { causeClassLabel } from "@/lib/cause-class";
 import { type ConnectorAuthInput, connectorAuthState } from "@/lib/connector-auth-state";
 import { useI18n } from "@/lib/i18n-context";
@@ -98,7 +98,6 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
 function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const rerun = useMutation({
     mutationFn: () =>
       apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
@@ -107,37 +106,38 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
       }),
     onSuccess: async (result) => {
       toast.success(t("runs.rerun.started"));
-      setOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["runs"] });
       onStarted(result.execution_id);
     },
     onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
   });
-  const running = run.status === "running" || run.status === "queued";
-  return (
-    <>
-      <ActionButton
-        variant="primary"
-        disabled={running}
-        onClick={() => setOpen(true)}
-        testId="run-rerun-open"
-      >
-        {t("runs.rerun.open")}
-      </ActionButton>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={(next) => !rerun.isPending && setOpen(next)}
-        object={runName(run, t)}
-        verb={t("runs.rerun.open")}
-        consequence={t("runs.rerun.consequence", { workflow: runName(run, t) })}
-        pending={rerun.isPending}
-        onConfirm={async () => {
-          await rerun.mutateAsync().catch(() => undefined);
-        }}
-        testId="run-rerun"
-      />
-    </>
+  const running = isLive(run.status);
+  const button = (
+    <ActionButton
+      variant="primary"
+      disabled={running}
+      pending={rerun.isPending}
+      onClick={() => rerun.mutate()}
+      testId="run-rerun-open"
+    >
+      {t("runs.rerun.open")}
+    </ActionButton>
   );
+  if (!running) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex" data-testid="run-rerun-blocked">
+          {button}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{t("runs.rerun.whileRunning")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function isLive(status: string): boolean {
+  return status === "running" || status === "queued";
 }
 
 function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
@@ -309,16 +309,40 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             }
           />
         </div>
-      ) : sentence ? (
+      ) : isLive(current.status) ? (
         <StatusStrip
-          tone="ok"
+          tone="info"
+          testId="run-detail-progress"
           line={
-            <span data-testid="run-detail-outcome">
-              <OutcomeText sentence={sentence} />
-            </span>
+            <>
+              <span className="font-medium">{verdict.label}</span>
+              {" · "}
+              {t("runs.strip.running", { step: String(Math.max(1, stepItems.length)) })}
+            </>
           }
         />
-      ) : null}
+      ) : (
+        <StatusStrip
+          tone="ok"
+          testId="run-detail-done"
+          line={
+            <>
+              <span className="font-medium">{verdict.label}</span>
+              {" · "}
+              <span data-testid="run-detail-outcome">
+                {sentence ? (
+                  <OutcomeText sentence={sentence} />
+                ) : (
+                  t("runs.strip.done", {
+                    count: String(stepItems.length),
+                    duration: duration ?? MISSING,
+                  })
+                )}
+              </span>
+            </>
+          }
+        />
+      )}
       <SummaryLine
         text={[
           current.started_at ? dateTime(current.started_at) : null,
