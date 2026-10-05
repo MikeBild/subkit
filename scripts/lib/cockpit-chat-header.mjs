@@ -144,7 +144,7 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
       throw new Error("a hidden conversation still offers to be hidden");
     await capture("hidden-menu");
     await page.getByTestId("chat-unhide").click();
-    await page.waitForFunction(() => !document.querySelector('[data-testid="chat-unhide"]'));
+    await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
     await page.getByTestId("chat-menu").click();
     await page.getByTestId("chat-hide").waitFor();
     if (state.hidden) throw new Error("showing the conversation again did not reach the engine");
