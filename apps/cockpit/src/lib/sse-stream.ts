@@ -37,10 +37,12 @@ export function createSseParser(): (chunk: string) => SseFrame[] {
 
 export class SseHttpError extends Error {
   readonly status: number;
-  constructor(status: number) {
+  readonly code: string | null;
+  constructor(status: number, code: string | null = null) {
     super(`Event stream refused (${status})`);
     this.name = "SseHttpError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -61,7 +63,10 @@ export async function readSseStream(
     headers,
     signal: options.signal,
   });
-  if (!response.ok || !response.body) throw new SseHttpError(response.status);
+  if (!response.ok || !response.body) {
+    const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+    throw new SseHttpError(response.status, typeof body?.code === "string" ? body.code : null);
+  }
   options.onOpen?.();
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   const parse = createSseParser();

@@ -27,6 +27,35 @@ export class ApiError extends Error {
   }
 }
 
+const sessionExpiryListeners = new Set<() => void>();
+
+export function isSessionExpiry(status: number, code: string | null): boolean {
+  return status === 401 && code === "unauthorized";
+}
+
+export function onSessionExpired(listener: () => void): () => void {
+  sessionExpiryListeners.add(listener);
+  return () => {
+    sessionExpiryListeners.delete(listener);
+  };
+}
+
+export function noticeSessionExpiry(status: number, code: string | null): void {
+  if (!isSessionExpiry(status, code)) return;
+  for (const listener of sessionExpiryListeners) listener();
+}
+
+export function retryQuery(failures: number, error: unknown): boolean {
+  if (error instanceof ApiError && isSessionExpiry(error.status, error.code)) return false;
+  return failures < 3;
+}
+
+function failure(status: number, body: unknown, traceId: string | null): ApiError {
+  const error = new ApiError(status, body, traceId);
+  noticeSessionExpiry(error.status, error.code);
+  return error;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -43,7 +72,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   }
   const response = await fetch(path, { ...init, credentials: "same-origin", headers });
   const body = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(response.status, body, response.headers.get("x-trace-id"));
+  if (!response.ok) throw failure(response.status, body, response.headers.get("x-trace-id"));
   return body as T;
 }
 
@@ -73,7 +102,7 @@ export function apiUpload<T>(
       if (request.status >= 200 && request.status < 300) {
         onProgress(1);
         resolve(parsed as T);
-      } else reject(new ApiError(request.status, parsed, request.getResponseHeader("x-trace-id")));
+      } else reject(failure(request.status, parsed, request.getResponseHeader("x-trace-id")));
     };
     request.onerror = () => reject(new ApiError(0, null, null));
     request.send(JSON.stringify(body));
@@ -85,7 +114,7 @@ export async function apiText(path: string): Promise<string> {
   const response = await fetch(path, { credentials: "same-origin", headers });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(response.status, body, response.headers.get("x-trace-id"));
+    throw failure(response.status, body, response.headers.get("x-trace-id"));
   }
   return response.text();
 }
@@ -158,7 +187,7 @@ async function streamConversation(
   });
   if (!response.ok || !response.body) {
     const errorBody = await response.json().catch(() => null);
-    throw new ApiError(response.status, errorBody, response.headers.get("x-trace-id"));
+    throw failure(response.status, errorBody, response.headers.get("x-trace-id"));
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

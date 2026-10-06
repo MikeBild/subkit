@@ -32,6 +32,7 @@ import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyRunSheet, verifyRunsOverCatalog } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
+import { verifySessionExpiry } from "./lib/cockpit-session-expiry.mjs";
 import {
   assertSingleTriggers,
   isSheetView,
@@ -4299,6 +4300,7 @@ for (const locale of variants) {
       await verifyWorkflowPage(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
+    if (standOn(verifySessionExpiry)) await verifySessionExpiry(page, stand, uuid, locale.name);
     if (standOn(verifyWorkflowAuthorities))
       await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {

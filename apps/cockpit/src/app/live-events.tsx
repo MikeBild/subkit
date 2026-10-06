@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { noticeSessionExpiry } from "@/api/client";
 import { readSseStream, SseHttpError } from "@/lib/sse-stream";
 import { keyId, keysForEvent } from "./live-invalidation";
 
@@ -105,6 +106,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
         .then(() => retry(current))
         .catch((error: unknown) => {
           if (error instanceof SseHttpError && (error.status === 401 || error.status === 403)) {
+            noticeSessionExpiry(error.status, error.code);
             if (controller === current) controller = null;
             setStatus("offline");
             return;
