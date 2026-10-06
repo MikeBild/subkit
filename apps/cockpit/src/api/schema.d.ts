@@ -9547,6 +9547,8 @@ export interface paths {
                     status?: "draft" | "active" | "archived";
                     connector_id?: string;
                     workflow_id?: string;
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "title" | "scope" | "status" | "version" | "updated_at";
                     order?: "asc" | "desc";
@@ -9976,8 +9978,8 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
-                    name: components["schemas"]["CatalogCategory"];
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    name: components["schemas"]["CatalogCategoryFilter"];
                 };
                 cookie?: never;
             };
@@ -10027,6 +10029,8 @@ export interface paths {
                     scope?: "global" | "workflow";
                     workflow_id?: string;
                     status?: "active" | "inactive" | "processing" | "error";
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
                     order?: "asc" | "desc";
@@ -13183,6 +13187,8 @@ export interface paths {
                 query?: {
                     status?: components["schemas"]["FileStatus"];
                     linked_to?: string;
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "filename" | "content_type" | "size_bytes" | "status" | "created_at";
                     order?: "asc" | "desc";
@@ -21451,6 +21457,8 @@ export interface components {
             items: components["schemas"]["Skill"][];
             next_cursor?: string | null;
         };
+        /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+        CatalogCategoryFilter: string;
         CreateSkillBody: {
             /** @enum {string} */
             scope: "global" | "connector" | "workflow";

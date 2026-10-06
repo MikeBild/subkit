@@ -7,7 +7,7 @@ const WEIGHTS: Record<RankField, { exact: number; variant: number }> = {
   detail: { exact: 2, variant: 1 },
 };
 
-export const MIN_RANK_SCORE = 4;
+export const MIN_RANK_SCORE = 2;
 
 function fold(text: string): string {
   return text

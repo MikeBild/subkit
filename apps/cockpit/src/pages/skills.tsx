@@ -10,6 +10,12 @@ import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
 import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+  CatalogNameCell,
+  useCategoryFilter,
+} from "@/components/cockpit/catalog-metadata";
+import {
   ActionMenu,
   Button,
   type CockpitColumn,
@@ -106,9 +112,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
+  const categoryFilter = useCategoryFilter("skill");
   const list = useInfiniteList<Skill>(
     ENDPOINT,
-    { q: q || undefined, sort: first?.id ?? "updated_at", order: first?.desc ? "desc" : "asc" },
+    {
+      q: q || undefined,
+      category: categoryFilter.category,
+      sort: first?.id ?? "updated_at",
+      order: first?.desc ? "desc" : "asc",
+    },
     { enabled: canRead },
   );
   const proposals = useQuery({
@@ -134,7 +146,12 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         "title",
         (row) => rowTitle(row),
         t("skills.column.name"),
-        (row) => rowTitle(row),
+        (row) =>
+          row.kind === "skill" ? (
+            <CatalogNameCell name={row.skill.title} record={row.skill} />
+          ) : (
+            rowTitle(row)
+          ),
         {
           sortable: true,
           width: "w-[36%]",
@@ -206,7 +223,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     ...list.items.map((skill) => ({ kind: "skill" as const, skill })),
   ];
   const { pending, failed } = skillsLoadState([list.query, proposals]);
-  const empty = !pending && !failed && rows.length === 0 && !q;
+  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
   const newButton = (testId: string) =>
     canWrite ? (
       <Button asChild>
@@ -267,6 +284,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                   placeholder: t("skills.search"),
                   testId: "skills-search",
                 }}
+                selects={categoryFilter.select ? [categoryFilter.select] : []}
               />
             }
             pending={pending}
@@ -358,6 +376,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   const canChat = permissions.includes("conversation:write");
   const query = useSkill(id, canRead);
   const [deleting, setDeleting] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const lifecycle = useOptimisticAction<"activate" | "archive", Skill, Skill>({
     queryKey: ["skill", id],
     mutationFn: (verb) =>
@@ -487,6 +506,12 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         <PageHeader
           back={back}
           title={skill.title}
+          purpose={
+            <CatalogMetadataSummary
+              record={skill}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           action={
             canWrite ? (
               <Button asChild>
@@ -535,6 +560,16 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           <FactList items={technical} />
         </CollapsibleSection>
       </div>
+      {canWrite ? (
+        <CatalogMetadataDialog
+          kind="skill"
+          id={skill.id}
+          record={skill}
+          open={describing}
+          onOpenChange={setDescribing}
+          queryKey={["skill", skill.id]}
+        />
+      ) : null}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

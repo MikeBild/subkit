@@ -159,7 +159,11 @@ async function resolveCreateTemplateBinding(
       : undefined,
   );
   return {
-    effective: enriched,
+    effective: {
+      ...enriched,
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+    },
     binding: buildTemplateBindingFields(resolved),
   };
 }

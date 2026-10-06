@@ -97,6 +97,15 @@ describe("normalizeDescribeResult", () => {
     ).toBe("billing");
   });
 
+  test("the reserved platform block is never handed to a tenant's own object", () => {
+    const vocabularyWithPlatform = [...vocabulary, { category: "platform", total: 41 }];
+    expect(buildDescribePrompt(workflow, vocabularyWithPlatform)).not.toContain("platform (41)");
+    expect(
+      normalizeDescribeResult({ description: "x", category: "Platform" }, vocabularyWithPlatform)
+        .category,
+    ).toBe("other");
+  });
+
   test("an unusable category lands in the catch-all", () => {
     expect(
       normalizeDescribeResult({ description: "x", category: "!!!" }, vocabulary).category,

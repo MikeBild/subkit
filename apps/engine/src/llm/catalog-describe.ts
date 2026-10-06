@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { type CatalogKind, normalizeCategory, UNCATEGORIZED } from "../api/catalog-metadata.ts";
+import {
+  type CatalogKind,
+  normalizeCategory,
+  PLATFORM_CATEGORY,
+  UNCATEGORIZED,
+} from "../api/catalog-metadata.ts";
 import type { Executor } from "../db/client.ts";
+import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { invoke } from "./core/invoke.ts";
 
@@ -70,7 +76,7 @@ export function buildDescribePrompt(
   const rendered = renderCatalogInput(input);
   const fence = fenceFor(rendered);
   const known = vocabulary
-    .filter((v) => v.category !== UNCATEGORIZED)
+    .filter((v) => v.category !== UNCATEGORIZED && v.category !== PLATFORM_CATEGORY)
     .slice(0, VOCABULARY_MAX_ENTRIES)
     .map((v) => `${v.category} (${v.total})`);
   return [
@@ -78,7 +84,7 @@ export function buildDescribePrompt(
     "",
     "Return two fields:",
     `- description: what it is for, in one or two plain sentences (at most ${GENERATED_DESCRIPTION_MAX_LENGTH} characters). Say what it does and when someone would use it. Describe only what the object below shows; never invent systems, endpoints, data or owners it does not name.`,
-    "- category: the catalog block it belongs to.",
+    "- category: the catalog block it belongs to — the product, project, customer or system it serves (a shared leading part of the slug, or the connectors it uses, usually names it), never a generic activity like reporting, research or automation.",
     known.length > 0
       ? `  Existing categories with their size: ${known.join(", ")}. Choose one of these whenever one fits; only when none fits, name a new short category (one to three lowercase words joined by dashes).`
       : "  No categories exist yet: name a short category (one to three lowercase words joined by dashes) that a related object would share.",
@@ -104,7 +110,8 @@ export function normalizeDescribeResult(
     scrubString(raw.description.replace(/\s+/g, " ")),
     GENERATED_DESCRIPTION_MAX_LENGTH,
   );
-  const normalized = normalizeCategory(raw.category) ?? UNCATEGORIZED;
+  const proposed = normalizeCategory(raw.category) ?? UNCATEGORIZED;
+  const normalized = proposed === PLATFORM_CATEGORY ? UNCATEGORIZED : proposed;
   const known = new Map(vocabulary.map((v) => [v.category.replace(/-/g, ""), v.category]));
   const category = known.get(normalized.replace(/-/g, "")) ?? normalized;
   return { description, category };
@@ -130,6 +137,20 @@ export async function describeCatalogObject(
     exec,
   );
   const parsed = DescribeResultSchema.safeParse(result.object);
-  if (!parsed.success) return null;
+  if (!parsed.success) {
+    logger.warn({
+      module: "catalog",
+      action: "catalog.describe_rejected",
+      msg: "the model answered in a shape the catalog does not accept; the object stays undescribed",
+      tenant_id: p.tenant_id,
+      kind: p.input.kind,
+      issues: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.code}`),
+      received_keys:
+        result.object && typeof result.object === "object"
+          ? Object.keys(result.object)
+          : typeof result.object,
+    });
+    return null;
+  }
   return { ...normalizeDescribeResult(parsed.data, p.vocabulary), model_used: result.model_used };
 }

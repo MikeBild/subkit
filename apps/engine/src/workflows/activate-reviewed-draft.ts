@@ -5,6 +5,7 @@ import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
 import { executableDefinition, readStoredDefinition } from "./stored-definition.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
+import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
 export async function activateReviewedDraft(
   tx: Executor,
@@ -60,6 +61,14 @@ export async function activateReviewedDraft(
       updated_at: new Date(),
     })
     .where(and(eq(workflows.tenant_id, workflow.tenant_id), eq(workflows.id, workflow.id)));
+  if (definition.description !== undefined) {
+    await writeWorkflowMetadata(
+      tx,
+      workflow,
+      { description: definition.description },
+      { actor_id: actorId },
+    );
+  }
   if (
     !oldDefinition ||
     JSON.stringify(triggerOf(oldDefinition)) !== JSON.stringify(triggerOf(definition))

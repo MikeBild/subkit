@@ -15028,6 +15028,13 @@
           "items"
         ]
       },
+      "CatalogCategoryFilter": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+        "description": "Only objects in this catalog block (see `GET /v1/categories`)."
+      },
       "CreateSkillBody": {
         "type": "object",
         "properties": {
@@ -37404,6 +37411,15 @@
           },
           {
             "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "minLength": 1,
               "maxLength": 200
@@ -37912,10 +37928,10 @@
         "parameters": [
           {
             "schema": {
-              "$ref": "#/components/schemas/CatalogCategory"
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
             },
             "required": true,
-            "description": "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it.",
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
             "name": "name",
             "in": "path"
           }
@@ -37998,6 +38014,15 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
             "in": "query"
           },
           {
@@ -41822,6 +41847,15 @@
             },
             "required": false,
             "name": "linked_to",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
             "in": "query"
           },
           {

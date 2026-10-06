@@ -144,7 +144,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
           result: "success",
           before: { description: row.description, category: row.category },
           after: {
-            description: metadata.description ?? row.description,
+            description:
+              metadata.description === undefined ? row.description : metadata.description,
             category: metadata.category ?? row.category,
           },
           metadata: {

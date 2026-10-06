@@ -1,9 +1,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { CATALOG_KINDS, type CatalogKind, CategorySchema } from "../../api/catalog-metadata.ts";
+import {
+  CATALOG_KINDS,
+  type CatalogKind,
+  CategoryFilterSchema,
+  CategorySchema,
+} from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { actorType } from "../../audit/index.ts";
 import { can } from "../../rbac/index.ts";
-import { loadCategoryVocabulary, renameCategory } from "../../workflows/index.ts";
+import {
+  CategoryRenameRefused,
+  loadCategoryVocabulary,
+  renameCategory,
+} from "../../workflows/index.ts";
 import { BadRequestError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission, requirePermission } from "../middleware/require-permission.ts";
@@ -74,7 +83,9 @@ const renameRoute = createRoute({
   summary: "Rename or merge a catalog category across every kind",
   security: [{ bearerAuth: [] }],
   request: {
-    params: z.object({ name: CategorySchema.openapi({ param: { name: "name", in: "path" } }) }),
+    params: z.object({
+      name: CategoryFilterSchema.openapi({ param: { name: "name", in: "path" } }),
+    }),
     body: { content: { "application/json": { schema: RenameCategoryBody } } },
   },
   responses: {
@@ -129,16 +140,21 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
     const { name } = c.req.valid("param");
     const { to } = c.req.valid("json");
     if (name === to) throw new BadRequestError("the category already has that name");
-    const result = await renameCategory(
-      {
-        tenant_id: principal.tenant_id,
-        from: name,
-        to,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-      },
-      db,
-    );
-    return c.json({ from: name, to, ...result }, 200);
+    try {
+      const result = await renameCategory(
+        {
+          tenant_id: principal.tenant_id,
+          from: name,
+          to,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+        },
+        db,
+      );
+      return c.json({ from: name, to, ...result }, 200);
+    } catch (err) {
+      if (err instanceof CategoryRenameRefused) throw new BadRequestError(err.message);
+      throw err;
+    }
   });
 }

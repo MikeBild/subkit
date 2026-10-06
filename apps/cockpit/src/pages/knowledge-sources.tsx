@@ -8,6 +8,12 @@ import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+  CatalogNameCell,
+  useCategoryFilter,
+} from "@/components/cockpit/catalog-metadata";
+import {
   ActionMenu,
   Button,
   type CockpitColumn,
@@ -135,9 +141,15 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
   const [adding, setAdding] = useState(false);
+  const categoryFilter = useCategoryFilter("knowledge_source");
   const list = useInfiniteList<KnowledgeSource>(
     ENDPOINT,
-    { q: q || undefined, sort: first?.id ?? "updated_at", order: first?.desc ? "desc" : "asc" },
+    {
+      q: q || undefined,
+      category: categoryFilter.category,
+      sort: first?.id ?? "updated_at",
+      order: first?.desc ? "desc" : "asc",
+    },
     { enabled: canRead },
   );
   const title = t("nav.knowledgeSources");
@@ -149,7 +161,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         "name",
         (row) => row.name,
         t("knowledge.column.name"),
-        (row) => row.name,
+        (row) => <CatalogNameCell name={row.name} record={row} />,
         {
           sortable: true,
           width: "w-[34%]",
@@ -208,7 +220,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const rows = list.items;
   const pending = list.query.isPending && !list.query.failureReason;
   const failed = Boolean(list.query.error || list.query.failureReason);
-  const empty = !pending && !failed && rows.length === 0 && !q;
+  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
   const addButton = (testId: string) =>
     canWrite ? (
       <Button onClick={() => setAdding(true)} data-testid={testId}>
@@ -260,6 +272,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
                 placeholder: t("knowledge.search"),
                 testId: "knowledge-search",
               }}
+              selects={categoryFilter.select ? [categoryFilter.select] : []}
             />
           }
           pending={pending}
@@ -491,6 +504,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     enabled: Boolean(query.data),
   });
   const [editing, setEditing] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [openSection, setOpenSection] = useState<SourceSection | null>(null);
 
@@ -680,11 +694,10 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           back={back}
           title={source.name}
           purpose={
-            kind === "file"
-              ? t("knowledge.purpose.file")
-              : kind === "text"
-                ? t("knowledge.purpose.text")
-                : undefined
+            <CatalogMetadataSummary
+              record={source}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
           }
           action={
             kind === "url" && canWrite ? (
@@ -751,7 +764,17 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         ) : null}
       </RecordSheet>
       {canWrite ? (
-        <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
+        <>
+          <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
+          <CatalogMetadataDialog
+            kind="knowledge_source"
+            id={source.id}
+            record={source}
+            open={describing}
+            onOpenChange={setDescribing}
+            queryKey={["knowledge-source", source.id]}
+          />
+        </>
       ) : null}
       <ConfirmDialog
         open={deleting}

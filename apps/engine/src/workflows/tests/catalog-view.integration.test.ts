@@ -178,6 +178,18 @@ describe("one vocabulary across every catalog kind", () => {
     expect(vocabulary.at(-1)?.category).toBe(UNCATEGORIZED);
   });
 
+  test("the reserved blocks can be neither renamed nor taken over", async () => {
+    await expect(
+      renameCategory({ tenant_id, from: "other", to: "reports" }, ctx.db),
+    ).rejects.toThrow("cannot be renamed");
+    await expect(
+      renameCategory({ tenant_id, from: "platform", to: "reports" }, ctx.db),
+    ).rejects.toThrow("cannot be renamed");
+    await expect(
+      renameCategory({ tenant_id, from: "notion", to: "platform" }, ctx.db),
+    ).rejects.toThrow("reserved");
+  });
+
   test("renaming moves every kind at once and leaves one audit row", async () => {
     const result = await renameCategory(
       { tenant_id, from: "notion", to: "knowledge-pages", actor_type: "system" },

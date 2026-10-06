@@ -894,9 +894,15 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
     if (q.status) tenantConds.push(eq(files.status, q.status));
+    if (q.category) tenantConds.push(eq(files.category, q.category));
     if (q.q) {
       const needle = `%${q.q}%`;
-      const search = or(ilike(files.filename, needle), ilike(files.content_type, needle));
+      const search = or(
+        ilike(files.filename, needle),
+        ilike(files.content_type, needle),
+        ilike(files.description, needle),
+        ilike(files.category, needle),
+      );
       if (search) tenantConds.push(search);
     }
     if (q.linked_to) {

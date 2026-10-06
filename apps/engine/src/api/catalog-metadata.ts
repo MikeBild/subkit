@@ -47,16 +47,23 @@ export function normalizeCategory(raw: string): string | null {
   return CATEGORY_PATTERN.test(slug) ? slug : null;
 }
 
-export const CategorySchema = z
+export const CategoryFilterSchema = z
   .string()
   .trim()
   .min(1)
   .max(CATEGORY_MAX_LENGTH)
   .regex(CATEGORY_PATTERN, "lowercase words joined by single dashes, e.g. `billing-reports`")
-  .openapi("CatalogCategory", {
-    description:
-      "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it.",
+  .openapi("CatalogCategoryFilter", {
+    description: "Only objects in this catalog block (see `GET /v1/categories`).",
   });
+
+export const CategorySchema = CategoryFilterSchema.refine(
+  (value) => value !== PLATFORM_CATEGORY,
+  `\`${PLATFORM_CATEGORY}\` is reserved for the engine's own guidance`,
+).openapi("CatalogCategory", {
+  description:
+    "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it.",
+});
 
 export const DescriptionSchema = z
   .string()

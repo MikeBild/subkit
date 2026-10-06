@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { CategoryFilterSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam, paginatedResponse } from "../../api/common-schemas.ts";
 import {
   activateSkill,
@@ -32,6 +33,7 @@ const ListQuery = z
     status: SkillLifecycleSchema.optional(),
     connector_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    category: CategoryFilterSchema.optional(),
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["title", "scope", "status", "version", "updated_at"]).optional(),
     order: z.enum(["asc", "desc"]).optional(),
@@ -232,6 +234,7 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.status ? { status: q.status } : {}),
       ...(q.connector_id ? { connector_id: q.connector_id } : {}),
       ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
+      ...(q.category ? { category: q.category } : {}),
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),

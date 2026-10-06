@@ -36,6 +36,7 @@ import type { WorkflowDef } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
 export async function emitWorkflowLifecycle(
   tx: Executor,
@@ -312,34 +313,15 @@ export async function updateWorkflow(
       def,
       scope_index: input.scope_index,
     });
-    const metadataPatch = metadataChange(wf, {
-      ...(def.description !== undefined ? { description: def.description } : {}),
-      ...input.metadata,
-    });
-    if (metadataPatch) {
-      await tx
-        .update(workflows)
-        .set({ ...metadataPatch, updated_at: new Date() })
-        .where(eq(workflows.id, wf.id));
-      await auditAwait(
-        {
-          tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
-          actor_id: input.actor_id,
-          action: AuditAction.CATALOG_METADATA_UPDATED,
-          resource_type: "workflow",
-          resource_id: wf.id,
-          result: "success",
-          before: { description: wf.description, category: wf.category },
-          after: {
-            description:
-              metadataPatch.description === undefined ? wf.description : metadataPatch.description,
-            category: metadataPatch.category ?? wf.category,
-          },
-        },
-        tx,
-      );
-    }
+    await writeWorkflowMetadata(
+      tx,
+      wf,
+      {
+        ...(def.description !== undefined ? { description: def.description } : {}),
+        ...input.metadata,
+      },
+      { actor_id: input.actor_id },
+    );
     if (dedup.unchanged) {
       return wf.id;
     }
