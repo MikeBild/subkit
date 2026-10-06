@@ -16,6 +16,15 @@ describe("counted copy", () => {
     expect(translatePlural("en", "files.summaryCount", 1200)).toBe("1,200 files");
   });
 
+  test("every number in counted copy reads in the reader's locale", () => {
+    expect(translatePlural("de", "runs.summary", 1041, { failed: 1041 })).toBe(
+      "1.041 Läufe · 1.041 fehlgeschlagen",
+    );
+    expect(translatePlural("en", "runs.summary", 1041, { failed: 1041 })).toBe(
+      "1,041 runs · 1,041 failed",
+    );
+  });
+
   test("the key of a count names its form", () => {
     expect(pluralKey("cron.everyHours", 1)).toBe("cron.everyHours.one");
     expect(pluralKey("cron.everyHours", 4)).toBe("cron.everyHours.other");
