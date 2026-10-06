@@ -2,7 +2,7 @@ const EXPIRED = { code: "unauthorized", message: "missing_or_invalid_credentials
 
 export async function verifySessionExpiry(page, stand, workflowId, localeName) {
   await stand.visit(page, `workflows/${workflowId}`);
-  await page.getByTestId("cockpit-navigation").waitFor();
+  await page.getByTestId("cockpit-shell").waitFor();
   let landed = null;
   const login = (route) => {
     landed = new URL(route.request().url());
@@ -17,10 +17,10 @@ export async function verifySessionExpiry(page, stand, workflowId, localeName) {
   await page.route("**/v1/identity/cockpit-login**", login);
   await page.route(engine, expired);
   try {
-    await page
-      .locator('[data-testid="cockpit-navigation"] a[href$="/cockpit/connectors"]')
-      .first()
-      .click();
+    await page.evaluate(() => {
+      window.history.pushState(window.history.state, "", "/cockpit/connectors");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+    });
     await page.waitForURL("**/v1/identity/cockpit-login**", { timeout: 10_000 }).catch(() => {});
     if (!landed) {
       const failure = localeName === "de" ? "konnte nicht geladen werden" : "could not be loaded";
