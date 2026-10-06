@@ -118,6 +118,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   knowledge_source: "nav.knowledge",
   skill: "nav.skills",
   file: "nav.files",
+  catalog_category: "catalogMeta.category",
   conversation: "nav.chat",
   session: "audit.resource.session",
   credential: "permission.resource.credentials",

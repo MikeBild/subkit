@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import { CATALOG_KINDS, type CatalogKind } from "../api/catalog-metadata.ts";
-import { audit } from "../audit/audit.ts";
+import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
@@ -125,6 +125,16 @@ function describeSteps(steps: unknown, depth = 0): string[] {
   return lines;
 }
 
+export function addressWithoutSecrets(address: string | null): string | null {
+  if (!address) return null;
+  try {
+    const url = new URL(address);
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return address.split(/[?#]/)[0] ?? null;
+  }
+}
+
 function ownedText(value: string | null, source: string): string | null {
   return source === "human" ? value : null;
 }
@@ -180,7 +190,7 @@ async function connectorInput(
       ["slug", row.slug],
       ["description", ownedText(row.description, row.description_source)],
       ["driver", row.driver],
-      ["base_url", row.base_url],
+      ["base_url", addressWithoutSecrets(row.base_url)],
       ["template", row.template_name ?? row.template_slug],
       [
         "template_description",
@@ -220,7 +230,7 @@ async function knowledgeSourceInput(
     fields: [
       ["slug", row.slug],
       ["description", ownedText(row.description, row.description_source)],
-      ["source", `${row.source_type} ${row.source_uri}`],
+      ["source", `${row.source_type} ${addressWithoutSecrets(row.source_uri) ?? ""}`],
       ["tags", row.tags.length > 0 ? row.tags.join(", ") : null],
       ["content_sample", sample],
     ],
@@ -311,6 +321,7 @@ async function loadOwnership(kind: CatalogKind, tenant_id: string, id: string, d
       description_source: table.description_source,
       category_source: table.category_source,
       catalog_input_hash: table.catalog_input_hash,
+      updated_at: table.updated_at,
     })
     .from(table)
     .where(and(eq(table.tenant_id, tenant_id), eq(table.id, id)))
@@ -354,7 +365,7 @@ export async function describeOne(
   if (!generated) {
     await db
       .update(table)
-      .set({ catalog_described_at: now })
+      .set({ catalog_described_at: now, catalog_input_hash: null })
       .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
     return "failed";
   }
@@ -371,44 +382,46 @@ export async function describeOne(
         category: table.category,
         description_source: table.description_source,
         category_source: table.category_source,
+        updated_at: table.updated_at,
       })
       .from(table)
       .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)))
       .for("update")
       .limit(1);
     if (!current) return null;
+    if (current.updated_at.getTime() !== owned.updated_at.getTime()) return null;
     if (current.description_source === "llm") set.description = generated.description;
     if (current.category_source === "llm") set.category = generated.category;
     await tx
       .update(table)
       .set(set)
       .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
+    const changed =
+      (set.description !== undefined && set.description !== current.description) ||
+      (set.category !== undefined && set.category !== current.category);
+    if (changed) {
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CATALOG_METADATA_GENERATED,
+          resource_type: p.kind,
+          resource_id: p.id,
+          result: "success",
+          before: { description: current.description, category: current.category },
+          after: {
+            description: set.description ?? current.description,
+            category: set.category ?? current.category,
+          },
+          metadata: { model_used: generated.model_used },
+        },
+        tx,
+      );
+    }
     return current;
   });
   if (!applied) return "skipped";
-  const changed =
-    (set.description !== undefined && set.description !== applied.description) ||
-    (set.category !== undefined && set.category !== applied.category);
-  if (changed) {
-    audit(
-      {
-        tenant_id: p.tenant_id,
-        actor_type: "system",
-        actor_id: null,
-        action: AuditAction.CATALOG_METADATA_GENERATED,
-        resource_type: p.kind,
-        resource_id: p.id,
-        result: "success",
-        before: { description: applied.description, category: applied.category },
-        after: {
-          description: set.description ?? applied.description,
-          category: set.category ?? applied.category,
-        },
-        metadata: { model_used: generated.model_used },
-      },
-      db,
-    );
-  }
   return "described";
 }
 
@@ -451,7 +464,7 @@ export async function describePendingCatalog(
       const table = TABLES[ref.kind];
       await db
         .update(table)
-        .set({ catalog_described_at: sql`now()` })
+        .set({ catalog_described_at: sql`now()`, catalog_input_hash: null })
         .where(and(eq(table.id, ref.id), eq(table.tenant_id, tenant_id)));
     }
   }

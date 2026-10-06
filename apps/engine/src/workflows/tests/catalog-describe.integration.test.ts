@@ -279,4 +279,41 @@ describe("catalog.describe", () => {
     expect(refilled?.category).toBe("sales-reporting");
     expect(refilled?.description).toBe("Mails the sales digest to finance.");
   });
+
+  test("a re-description that fails comes back after the back-off instead of never", async () => {
+    await ctx.db
+      .update(workflows)
+      .set({ name: "Weekly sales digest v3" })
+      .where(eq(workflows.id, ids.workflow));
+    answer = () => ({ wrong: "shape" });
+    mockModel();
+    expect(await describeOne({ tenant_id, kind: "workflow", id: ids.workflow }, ctx.db)).toBe(
+      "failed",
+    );
+    await ctx.db
+      .update(workflows)
+      .set({ catalog_described_at: sql`now() - interval '7 hours'` })
+      .where(eq(workflows.id, ids.workflow));
+    expect(await hasPendingCatalogDescriptions(tenant_id, ctx.db)).toBe(true);
+  });
+
+  test("an edit while the model is answering is not overwritten and stays pending", async () => {
+    await ctx.db
+      .update(workflows)
+      .set({ catalog_described_at: null, catalog_input_hash: null })
+      .where(eq(workflows.id, ids.workflow));
+    spy = spyOn(invokeModule, "invoke").mockImplementation((async () => {
+      await ctx.db
+        .update(workflows)
+        .set({ name: "Edited mid-call", updated_at: sql`now() + interval '5 seconds'` })
+        .where(eq(workflows.id, ids.workflow));
+      return result({ description: "Stale model text.", category: "stale" });
+    }) as never);
+    expect(await describeOne({ tenant_id, kind: "workflow", id: ids.workflow }, ctx.db)).toBe(
+      "skipped",
+    );
+    const [wf] = await ctx.db.select().from(workflows).where(eq(workflows.id, ids.workflow));
+    expect(wf?.category).not.toBe("stale");
+    expect(wf?.catalog_input_hash).toBeNull();
+  });
 });

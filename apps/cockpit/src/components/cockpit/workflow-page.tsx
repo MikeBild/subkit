@@ -9,6 +9,10 @@ import {
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
+import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+} from "@/components/cockpit/catalog-metadata";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
@@ -51,7 +55,6 @@ import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
-import { WorkflowRecategorize } from "@/pages/catalog";
 
 type RecordValue = Record<string, unknown>;
 
@@ -115,18 +118,16 @@ export function WorkflowPage({
   id,
   record,
   title,
-  purpose,
   permissions,
 }: {
   id: string;
   record: RecordValue;
   title: string;
-  purpose: string | null;
   permissions: readonly string[];
 }) {
   const { t } = useI18n();
   const [renaming, setRenaming] = useState(false);
-  const [moving, setMoving] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
   const navigate = useNavigate();
@@ -209,11 +210,6 @@ export function WorkflowPage({
             label: t("detail.editMetadata"),
             onSelect: () => setRenaming(true),
             testId: "workflow-menu-rename",
-          },
-          {
-            label: t("catalog.changeCategory"),
-            onSelect: () => setMoving(true),
-            testId: "workflow-menu-category",
           },
           disabled
             ? {
@@ -434,7 +430,12 @@ export function WorkflowPage({
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          purpose={purpose || undefined}
+          purpose={
+            <CatalogMetadataSummary
+              record={record}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           secondary={
             canChat ? (
               <ActionMenu
@@ -519,8 +520,15 @@ export function WorkflowPage({
         }}
         testId="workflow-delete-confirm"
       />
-      {canWrite && moving ? (
-        <WorkflowRecategorize record={{ ...record, id }} onClose={() => setMoving(false)} />
+      {canWrite ? (
+        <CatalogMetadataDialog
+          kind="workflow"
+          id={id}
+          record={record}
+          open={describing}
+          onOpenChange={setDescribing}
+          queryKey={["catalog-detail", "workflows", id]}
+        />
       ) : null}
     </Page>
   );

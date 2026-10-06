@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { CategoryFilterSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
@@ -70,6 +71,7 @@ const listRoute = createRoute({
         scope: z.enum(["global", "workflow"]).optional(),
         workflow_id: z.string().uuid().optional(),
         status: z.enum(["active", "inactive", "processing", "error"]).optional(),
+        category: CategoryFilterSchema.optional(),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "status", "source_type", "bytes_total", "updated_at"]).optional(),
         order: z.enum(["asc", "desc"]).optional(),
@@ -523,6 +525,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.scope ? { scope: q.scope } : {}),
       ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
       ...(q.status ? { status: q.status } : {}),
+      ...(q.category ? { category: q.category } : {}),
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),

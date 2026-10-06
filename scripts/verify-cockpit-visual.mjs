@@ -1063,6 +1063,29 @@ function workflowInvocation(workflowId) {
   };
 }
 
+const CATALOG_META = [
+  {
+    description:
+      "Sammelt jeden Monat die Zahlen aller Tochtergesellschaften, gleicht Nachbuchungen ab, konsolidiert Währungen und verschickt den Bericht an Finanzen, Controlling und die Geschäftsführung — inklusive Anhang mit allen Einzelposten und einer Abweichungsanalyse gegenüber dem Vormonat.",
+    description_source: "human",
+    category: "reporting",
+    category_source: "human",
+  },
+  {
+    description: "Liest neue Belege und legt sie im Archiv ab.",
+    description_source: "llm",
+    category: "betrieb",
+    category_source: "llm",
+  },
+  { description: null, description_source: "llm", category: "other", category_source: "llm" },
+  {
+    description: "Prüft Monatsabschlüsse vor dem Versand.",
+    description_source: "human",
+    category: "reporting",
+    category_source: "human",
+  },
+];
+
 async function mockApi(route) {
   const request = route.request();
   const url = new URL(request.url());
@@ -1272,6 +1295,7 @@ async function mockApi(route) {
 
   if (path === `/v1/workflows/${uuid}`)
     return json(route, {
+      ...CATALOG_META[0],
       id: uuid,
       name: "Monatsreport",
       slug: "monatsreport",
@@ -1331,6 +1355,7 @@ async function mockApi(route) {
     });
   if (path === `/v1/connectors/${uuid}`)
     return json(route, {
+      ...CATALOG_META[1],
       id: uuid,
       display_name: "Reporting API",
       slug: "reporting-api",
@@ -1346,7 +1371,7 @@ async function mockApi(route) {
       tenant_id: uuid,
       name: "Betriebshandbuch",
       slug: "betriebshandbuch",
-      description: null,
+      ...CATALOG_META[2],
       tags: [],
       scope: "global",
       workflow_id: null,
@@ -1404,6 +1429,7 @@ async function mockApi(route) {
     });
   if (path === `/v1/skills/${uuid}`)
     return json(route, {
+      ...CATALOG_META[3],
       id: uuid,
       title: "Sichere Reports",
       slug: "sichere-reports",
@@ -1419,6 +1445,7 @@ async function mockApi(route) {
     });
   if (path === `/v1/files/${uuid}`)
     return json(route, {
+      ...CATALOG_META[0],
       id: uuid,
       filename: "report-notes.md",
       slug: "report-notes",
@@ -1440,6 +1467,26 @@ async function mockApi(route) {
       contentType: "text/markdown",
       body: "# Report notes\n\nValidated input.",
     });
+  if (path === "/v1/categories")
+    return json(route, {
+      categories: [
+        {
+          category: "reporting",
+          total: 44,
+          counts: { workflow: 21, connector: 11, knowledge_source: 6, skill: 3, file: 3 },
+        },
+        {
+          category: "betrieb",
+          total: 30,
+          counts: { workflow: 10, connector: 10, knowledge_source: 5, skill: 3, file: 2 },
+        },
+        {
+          category: "other",
+          total: 40,
+          counts: { workflow: 11, connector: 10, knowledge_source: 10, skill: 5, file: 4 },
+        },
+      ],
+    });
   if (
     [
       "/v1/workflows",
@@ -1449,7 +1496,8 @@ async function mockApi(route) {
       "/v1/files",
     ].includes(path)
   ) {
-    const rowFor = (index) => {
+    const rowFor = (index) => ({ ...CATALOG_META[index % 4], ...catalogRowFor(index) });
+    const catalogRowFor = (index) => {
       const rotate = index % 4;
       if (path === "/v1/workflows")
         return {
@@ -1458,7 +1506,6 @@ async function mockApi(route) {
             index === 1
               ? "Monatsreport für alle Tochtergesellschaften inklusive Nachbuchungen und Konsolidierung"
               : `Monatsreport ${index + 1}`,
-          category: index % 2 === 0 ? "reporting" : "betrieb",
           lifecycle: ["active", "draft", "archived", "active"][rotate],
           current_version: 8,
           connectors: rotate === 2 ? [] : ["reporting-api", "mailer"].slice(0, rotate + 1),
@@ -1487,7 +1534,6 @@ async function mockApi(route) {
         return {
           slug: ["reporting-api", "mailer", "warehouse", "legacy-crm"][rotate],
           display_name: ["Reporting API", "Mailer", "Warehouse", "Legacy CRM"][rotate],
-          category: index % 2 === 0 ? "reporting" : "betrieb",
           driver: ["http", "graphql", "postgres", "s3"][rotate],
           environment: index % 2 === 0 ? "prod" : "dev",
           auth_type: rotate === 2 ? "none" : "oauth2",

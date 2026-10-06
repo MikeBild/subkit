@@ -1,6 +1,7 @@
 import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { CatalogKind } from "../api/catalog-metadata.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { listElicitationsForConversation } from "../conversations/elicitations.ts";
 import { registerNativeUrlElicitationCompletion } from "../conversations/native-url-elicitation.ts";
@@ -87,6 +88,29 @@ async function raceWithin<T>(work: Promise<T | null>, ms: number): Promise<T | n
   return result;
 }
 
+const CATALOG_READ_PERMISSIONS = [
+  ["workflow", "workflow:read"],
+  ["connector", "connector:read"],
+  ["knowledge_source", "knowledge:read"],
+] as const;
+
+async function readableCatalogKinds(
+  db: CreateMcpServerParams["db"],
+  principal: CreateMcpServerParams["principal"],
+): Promise<Set<CatalogKind>> {
+  const readable = new Set<CatalogKind>();
+  for (const [kind, permission] of CATALOG_READ_PERMISSIONS) {
+    const decision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission,
+      quiet: true,
+    });
+    if (decision.allow) readable.add(kind);
+  }
+  return readable;
+}
+
 async function connectHealthSummary(
   db: CreateMcpServerParams["db"],
   principal: CreateMcpServerParams["principal"],
@@ -142,7 +166,18 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
   const INSTRUCTIONS_TIMEOUT_MS = 400;
   const intro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;
   const catalogLine = raceWithin(
-    buildCatalogSummaryLine(principal.tenant_id, db).catch(() => null),
+    readableCatalogKinds(db, principal)
+      .then((readable) => buildCatalogSummaryLine(principal.tenant_id, readable, db))
+      .catch((err) => {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.instructions.catalog_skipped",
+          msg: "could not compute the catalog summary line — proceeding without it",
+          tenant_id: principal.tenant_id,
+          ...errorFields(err),
+        });
+        return null;
+      }),
     INSTRUCTIONS_TIMEOUT_MS,
   );
   const healthText = connectHealthSummary(db, principal, INSTRUCTIONS_TIMEOUT_MS);

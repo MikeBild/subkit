@@ -1,27 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import {
-  type CatalogMetadataPatch,
-  humanMetadataWrite,
-  metadataChange,
-} from "../api/catalog-metadata.ts";
+import { type CatalogMetadataPatch, humanMetadataWrite } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
-import {
-  canonicalWorkflowJson as canonical,
-  definitionWithoutDescription,
-  workflowJsonDigest,
-} from "./canonical-json.ts";
+import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canonical-json.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
 export interface WorkflowDraftView {
   workflow_id: string;
@@ -54,15 +47,16 @@ function draftView(
   wf: typeof workflows.$inferSelect,
   version: typeof workflowVersions.$inferSelect,
 ): WorkflowDraftView {
-  const stored = definitionWithoutDescription(WorkflowDefSchema.parse(version.dag));
-  const definition: WorkflowDef = wf.description
-    ? { ...stored, description: wf.description }
-    : stored;
+  const stored = WorkflowDefSchema.parse(version.dag);
+  const definition: WorkflowDef =
+    stored.description === undefined && wf.description
+      ? { ...stored, description: wf.description }
+      : stored;
   return {
     workflow_id: wf.id,
     version_id: version.id,
     version: version.version,
-    digest: workflowJsonDigest(definitionWithoutDescription(version.dag)),
+    digest: workflowJsonDigest(version.dag),
     current_version_id: wf.current_version_id,
     definition,
   };
@@ -114,7 +108,7 @@ export async function saveWorkflowDraft(
   const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, exec);
   if (!storageGate.ok) return { code: "invalid_definition", errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
-  const metadataPatch: CatalogMetadataPatch = {
+  const createMetadata: CatalogMetadataPatch = {
     ...(def.description !== undefined ? { description: def.description } : {}),
     ...input.metadata,
   };
@@ -138,10 +132,7 @@ export async function saveWorkflowDraft(
         }
         if (wf.draft_version_id) {
           const previous = await getWorkflowDraft(input.tenant_id, wf.id, tx);
-          if (
-            previous &&
-            previous.digest === workflowJsonDigest(definitionWithoutDescription(def))
-          ) {
+          if (previous && previous.digest === workflowJsonDigest(def)) {
             if (input.scope_index === undefined) return { draft: previous };
             const [stored] = await tx
               .select({ scope_index: workflowVersions.scope_index })
@@ -166,7 +157,7 @@ export async function saveWorkflowDraft(
             tenant_id: input.tenant_id,
             slug,
             name: def.name,
-            ...humanMetadataWrite(metadataPatch),
+            ...humanMetadataWrite(createMetadata),
             lifecycle: "draft",
           })
           .returning();
@@ -188,16 +179,21 @@ export async function saveWorkflowDraft(
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
           version: Number(latest?.max ?? 0) + 1,
-          dag: definitionWithoutDescription(def),
+          dag: def,
           scope_index: input.scope_index ?? null,
         })
         .returning();
       assertInsertRow(version, "workflow_versions");
-      const metadataUpdate = input.workflow_id ? metadataChange(wf, metadataPatch) : null;
       await tx
         .update(workflows)
-        .set({ ...metadataUpdate, draft_version_id: version.id, updated_at: new Date() })
+        .set({ draft_version_id: version.id, updated_at: new Date() })
         .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
+      if (input.workflow_id && input.metadata) {
+        await writeWorkflowMetadata(tx, wf, input.metadata, {
+          actor_id: input.actor_id,
+          ...(input.actor_type ? { actor_type: input.actor_type } : {}),
+        });
+      }
       await auditAwait(
         {
           tenant_id: input.tenant_id,

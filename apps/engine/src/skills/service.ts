@@ -184,6 +184,7 @@ export interface ListSkillsParams {
   connector_id?: string;
   workflow_id?: string;
   status?: SkillLifecycle;
+  category?: string;
   q?: string;
   sort?: "title" | "scope" | "status" | "version" | "updated_at";
   order?: "asc" | "desc";
@@ -198,11 +199,14 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.category) tenantConds.push(eq(skills.category, p.category));
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
       ilike(skills.title, needle),
       ilike(skills.slug, needle),
+      ilike(skills.description, needle),
+      ilike(skills.category, needle),
       ilike(skills.body, needle),
     );
     if (search) tenantConds.push(search);
@@ -238,11 +242,14 @@ export async function countSkills(
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.category) tenantConds.push(eq(skills.category, p.category));
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
       ilike(skills.title, needle),
       ilike(skills.slug, needle),
+      ilike(skills.description, needle),
+      ilike(skills.category, needle),
       ilike(skills.body, needle),
     );
     if (search) tenantConds.push(search);

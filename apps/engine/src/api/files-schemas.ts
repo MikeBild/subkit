@@ -1,6 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
-import { CatalogSourceSchema, CategorySchema, DescriptionSchema } from "./catalog-metadata.ts";
+import {
+  CatalogSourceSchema,
+  CategoryFilterSchema,
+  CategorySchema,
+  DescriptionSchema,
+} from "./catalog-metadata.ts";
 
 export const FileIdSchema = z
   .string()
@@ -155,6 +160,7 @@ export const ListFilesQuerySchema = z
   .object({
     status: FileStatusSchema.optional(),
     linked_to: z.string().regex(LINKED_TO_PATTERN).optional(),
+    category: CategoryFilterSchema.optional(),
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["filename", "content_type", "size_bytes", "status", "created_at"]).optional(),
     order: z.enum(["asc", "desc"]).optional(),

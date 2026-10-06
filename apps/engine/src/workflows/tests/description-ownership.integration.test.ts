@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { patchCandidates, tenants, workflows } from "../../db/schema/index.ts";
+import { auditLog, patchCandidates, tenants, workflows } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { approvePatchCandidate } from "../../self-healing/candidate-decision.ts";
 import { activateReviewedDraft } from "../activate-reviewed-draft.ts";
@@ -141,5 +141,58 @@ describe("a person's workflow description survives every version writer", () => 
       );
     });
     await expectPersonsText("draft activation");
+  });
+
+  test("a description in a draft goes live only when the draft is activated, with an audit row", async () => {
+    const [before] = await ctx.db
+      .select()
+      .from(workflows)
+      .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
+    const drafted = await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id,
+        expected_draft_version_id: before!.draft_version_id,
+        actor_id: null,
+        request_source: "api",
+        def: { ...definition("draft-2"), description: "Sends the weekly report to the board." },
+      },
+      ctx.db,
+    );
+    const versionId = "draft" in drafted ? drafted.draft?.version_id : undefined;
+    expect("draft" in drafted ? drafted.draft?.definition.description : null).toBe(
+      "Sends the weekly report to the board.",
+    );
+    await expectPersonsText("draft save");
+    await ctx.db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(workflows)
+        .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)));
+      await activateReviewedDraft(
+        tx,
+        locked!,
+        versionId!,
+        locked!.current_version_id,
+        "00000000-0000-4000-8000-000000000001",
+        false,
+      );
+    });
+    const live = await getWorkflow(tenant_id, workflow_id, ctx.db);
+    expect(live?.description).toBe("Sends the weekly report to the board.");
+    expect(live?.description_source).toBe("human");
+    const rows = await ctx.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.resource_id, workflow_id), eq(auditLog.action, "catalog_metadata.updated")),
+      );
+    expect(
+      rows.some(
+        (r) =>
+          (r.after as { description?: string }).description ===
+          "Sends the weekly report to the board.",
+      ),
+    ).toBe(true);
   });
 });

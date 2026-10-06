@@ -11,7 +11,7 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe(
-        'Free-text query. Matches skill id/title/description/category/scope. Use "*" to list all.',
+        'Free-text query. Ranked by category, title, description, then scope and body; each match says why it matched. Use "*" to list all.',
       ),
     scope: z
       .enum(["global", "connector", "workflow"])

@@ -147,6 +147,7 @@ export interface ListKnowledgeSourcesParams {
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
   status?: KnowledgeSourceStatus;
+  category?: string;
   q?: string;
   sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
   order?: "asc" | "desc";

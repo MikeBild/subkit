@@ -5,6 +5,10 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+} from "@/components/cockpit/catalog-metadata";
+import {
   ConnectorCredentials,
   useConnectorCredential,
 } from "@/components/cockpit/connector-credentials";
@@ -172,20 +176,19 @@ export function ConnectorPage({
   id,
   record,
   title,
-  purpose,
   permissions,
   returned,
 }: {
   id: string;
   record: RecordValue;
   title: string;
-  purpose: string | null;
   permissions: readonly string[];
   returned: boolean;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const canWrite = permissions.includes("connector:write");
   const canTest = permissions.includes("connector:test");
@@ -453,7 +456,12 @@ export function ConnectorPage({
         <PageHeader
           back={{ to: "/connectors", label: t("nav.connectors") }}
           title={title}
-          purpose={purpose || undefined}
+          purpose={
+            <CatalogMetadataSummary
+              record={record}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           secondary={
             canChat ? (
               <ActionMenu
@@ -530,6 +538,14 @@ export function ConnectorPage({
       </div>
       {canWrite ? (
         <>
+          <CatalogMetadataDialog
+            kind="connector"
+            id={id}
+            record={record}
+            open={describing}
+            onOpenChange={setDescribing}
+            queryKey={["catalog-detail", "connectors", id]}
+          />
           <ConnectorEditDialog
             open={editing}
             onOpenChange={setEditing}
