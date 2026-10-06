@@ -15,26 +15,34 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+export const NO_PAGE = Symbol("no-page");
+
 export function entersRoute(change: {
-  previous: string | null;
-  next: string;
+  previous: unknown;
+  next: unknown;
   reducedMotion: boolean;
 }): boolean {
-  return change.previous !== null && change.previous !== change.next && !change.reducedMotion;
+  return change.previous !== NO_PAGE && change.previous !== change.next && !change.reducedMotion;
 }
 
-export function useRouteEntrance(target: RefObject<HTMLElement | null>, pathname: string): void {
-  const previous = useRef<string | null>(null);
+export function useRouteEntrance(target: RefObject<HTMLElement | null>, page: unknown): void {
+  const previous = useRef<unknown>(NO_PAGE);
   useLayoutEffect(() => {
     const before = previous.current;
-    previous.current = pathname;
+    previous.current = page;
     const element = target.current;
     if (!element || typeof element.animate !== "function") return;
-    if (!entersRoute({ previous: before, next: pathname, reducedMotion: prefersReducedMotion() }))
+    if (!entersRoute({ previous: before, next: page, reducedMotion: prefersReducedMotion() }))
       return;
     element.animate(ENTRANCE, {
       duration: ROUTE_ENTRANCE_MS,
       easing: "cubic-bezier(0.2, 0, 0, 1)",
     });
-  }, [pathname, target]);
+  }, [page, target]);
+}
+
+const ONE_PAGE = [/^\/chat(?:\/|$)/];
+
+export function pageOf(pathname: string): string {
+  return ONE_PAGE.find((page) => page.test(pathname))?.source ?? pathname;
 }

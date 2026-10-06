@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
 import { LiveEventsProvider, type LiveStatus, useLiveStatus } from "./live-events";
 import { navigationItem, visibleNavigation } from "./navigation";
-import { useRouteEntrance } from "./route-entrance";
+import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
 import {
   CHAT_COLUMN,
@@ -208,9 +208,9 @@ export function AppShell() {
 
 function ShellContent() {
   const { isMobile } = useSidebar();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const page = useRouterState({ select: (state) => pageOf(state.location.pathname) });
   const content = useRef<HTMLDivElement>(null);
-  useRouteEntrance(content, pathname);
+  useRouteEntrance(content, page);
   const header = useShellHeaderState();
   const chat = header.chatHeaders > 0;
   const owner = triggerOwner({
