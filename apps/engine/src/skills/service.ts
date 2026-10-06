@@ -1,4 +1,9 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  catalogMetadataView,
+  humanMetadataWrite,
+  metadataChange,
+} from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -44,6 +49,7 @@ function rowToSkill(row: SkillRow): Skill {
     workflow_id: row.workflow_id ?? null,
     slug: row.slug ?? null,
     title: row.title,
+    ...catalogMetadataView(row),
     body: row.body,
     examples: fields.examples,
     best_practices: fields.best_practices,
@@ -111,6 +117,10 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         connector_id: p.input.connector_id ?? null,
         workflow_id: p.input.workflow_id ?? null,
         title: p.input.title,
+        ...humanMetadataWrite({
+          ...(p.input.description !== undefined ? { description: p.input.description } : {}),
+          ...(p.input.category !== undefined ? { category: p.input.category } : {}),
+        }),
         body: p.input.body,
         examples: blob,
         lifecycle: p.input.status ?? "active",
@@ -322,6 +332,13 @@ export async function updateSkill(
     if (patch.maturity !== undefined) set.maturity = patch.maturity;
     if (patch.tags !== undefined) set.tags = patch.tags;
     if (patch.applies_to !== undefined) set.applies_to = patch.applies_to;
+    Object.assign(
+      set,
+      metadataChange(prior, {
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.category !== undefined ? { category: patch.category } : {}),
+      }),
+    );
     const [row] = await tx.update(skills).set(set).where(eq(skills.id, id)).returning();
     if (!row) return null;
     const retired =

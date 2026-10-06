@@ -64,6 +64,7 @@ export interface IncludedKnowledgeChunk {
   knowledge_source_id: string;
   source_name: string;
   source_tags: string[];
+  source_description: string | null;
   title: string | null;
   path: string | null;
   snippet: string;

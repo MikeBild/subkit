@@ -33,6 +33,7 @@ import {
   readCalendarGates,
   stripCalendarGates,
 } from "./calendar-gates.ts";
+import { runCatalogDescribeSweep } from "./catalog-describe-runner.ts";
 import { runChatDedupCleanup } from "./chat-dedup-cleanup-runner.ts";
 import {
   runConnectorReauthScanForTenant,
@@ -268,6 +269,16 @@ export class SchedulerReconciler {
         module: "scheduler",
         action: "skill_candidate_analyze_failed",
         msg: "scheduler skill-candidate analysis pass failed",
+        ...errorFields(err),
+      });
+    });
+    await retryTransient(() => this.reconcileCatalogDescribe(), {
+      label: "catalog_describe",
+    }).catch((err) => {
+      logger.error({
+        module: "scheduler",
+        action: "catalog_describe_failed",
+        msg: "scheduler catalog description pass failed",
         ...errorFields(err),
       });
     });
@@ -715,6 +726,10 @@ export class SchedulerReconciler {
 
   async reconcileSkillCandidateAnalysis(now: Date = new Date()): Promise<void> {
     await runSkillCandidateAnalysisSweep(now, this.opts.db, this.opts.boss);
+  }
+
+  async reconcileCatalogDescribe(): Promise<void> {
+    await runCatalogDescribeSweep(this.opts.db, this.opts.boss);
   }
 
   async reconcileFilesCleanup(now: Date = new Date()): Promise<void> {

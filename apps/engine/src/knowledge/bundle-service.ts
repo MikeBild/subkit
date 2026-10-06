@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { type CatalogMetadataColumns, metadataChange } from "../api/catalog-metadata.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";
@@ -118,9 +119,8 @@ async function upsertKnowledgeBundleInner(
   const mergedTags = structuralFirst([...existing.tags, ...tags]);
   const tagsChanged =
     mergedTags.length !== existing.tags.length || mergedTags.some((t, i) => t !== existing.tags[i]);
-  const patch: {
+  const patch: CatalogMetadataColumns & {
     tags?: string[];
-    description?: string;
     name?: string;
     scope?: "global" | "workflow";
     workflow_id?: string | null;
@@ -128,9 +128,13 @@ async function upsertKnowledgeBundleInner(
     refresh_cron?: string | null;
   } = {};
   if (tagsChanged) patch.tags = mergedTags;
-  if (p.input.description !== undefined && p.input.description !== existing.description) {
-    patch.description = p.input.description;
-  }
+  Object.assign(
+    patch,
+    metadataChange(existing, {
+      ...(p.input.description !== undefined ? { description: p.input.description } : {}),
+      ...(p.input.category !== undefined ? { category: p.input.category } : {}),
+    }),
+  );
   if (p.input.name !== existing.name) patch.name = p.input.name;
   if (p.input.scope !== undefined && p.input.scope !== existing.scope) {
     patch.scope = p.input.scope;

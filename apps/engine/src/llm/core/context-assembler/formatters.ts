@@ -51,12 +51,14 @@ export function formatSkillIndex(
   if (skills.length === 0) return null;
   const lines = skills.map((s) => {
     const ref = s.slug ?? s.id;
-    const body = applyRuntimeTemplate(s.body, runtime_context);
+    const stated = s.description?.replace(/\s+/g, " ").trim();
     const firstLine =
-      body
+      stated ||
+      (applyRuntimeTemplate(s.body, runtime_context)
         .split("\n")
         .map((l) => l.trim())
-        .find((l) => l.length > 0 && !l.startsWith("#")) ?? "";
+        .find((l) => l.length > 0 && !l.startsWith("#")) ??
+        "");
     const desc = firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
     return `- \`${ref}\` — ${s.title}${desc.length > 0 ? `: ${desc}` : ""}`;
   });
@@ -192,7 +194,11 @@ export function formatKnowledgeChunk(chunk: IncludedKnowledgeChunk): string {
   const heading = locator
     ? `## Knowledge: ${chunk.source_name} — ${locator}`
     : `## Knowledge: ${chunk.source_name}`;
-  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}\n${chunk.snippet}`;
+  const about = chunk.source_description?.replace(/\s+/g, " ").trim();
+  const aboutLine = about
+    ? `\nSource is about: ${about.length > 160 ? `${about.slice(0, 159).trimEnd()}…` : about}`
+    : "";
+  return `${heading}${fetchedAtSuffix(chunk.fetched_at)}${aboutLine}\n${chunk.snippet}`;
 }
 
 export function formatFailure(f: PriorFailure): string {

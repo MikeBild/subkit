@@ -12,7 +12,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { bytea, tenantId, timestamps } from "./_common.ts";
+import {
+  bytea,
+  catalogMetadata,
+  catalogMetadataConstraints,
+  tenantId,
+  timestamps,
+} from "./_common.ts";
 import { outboundConnections } from "./connections.ts";
 import { tenants } from "./identity.ts";
 
@@ -42,6 +48,7 @@ export const connectors = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     slug: text("slug").notNull(),
     display_name: text("display_name").notNull(),
+    ...catalogMetadata(),
     driver: text("driver").notNull(),
     environment: environmentEnum("environment").notNull().default("dev"),
     auth_type: credentialModeEnum("auth_type").notNull().default("none"),
@@ -112,6 +119,7 @@ export const connectors = pgTable(
         ${t.config} -> 'mcp' -> 'auth' ? 'secret'
       )`,
     ),
+    ...catalogMetadataConstraints("connectors", t),
   ],
 );
 

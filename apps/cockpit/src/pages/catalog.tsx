@@ -4,14 +4,13 @@ import type { SortingState } from "@tanstack/react-table";
 import { Bot } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ApiError, apiRequest } from "@/api/client";
+import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
   type CockpitColumn,
-  ContextHelp,
   DataState,
   DataTable,
   Field,
@@ -35,13 +34,7 @@ import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
-import {
-  humanizeCategory,
-  MIN_CATEGORY_SIZE,
-  memberCountAfterMove,
-  recategorizedSlug,
-  UNCATEGORIZED,
-} from "@/lib/workflow-category";
+import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import { catalogListParams } from "@/pages/catalog-model";
 import { useConnectionCallback } from "@/pages/connection-callback";
 import { driverLabel } from "@/pages/connector-detail-model";
@@ -528,43 +521,32 @@ export function CatalogPage({
 function RecategorizeDialog({
   row,
   categories,
-  counts,
   onClose,
   onDone,
 }: {
   row: CatalogRow;
-  categories: CategoryCount[];
-  counts: ReadonlyMap<string, number>;
+  categories: string[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useI18n();
-  const slug = typeof row.slug === "string" ? row.slug : "";
   const currentCategory = typeof row.category === "string" ? row.category : UNCATEGORIZED;
   const id = typeof row.id === "string" ? row.id : "";
   const [target, setTarget] = useState(currentCategory);
-  const nextSlug = recategorizedSlug(slug, currentCategory, target);
-  const members = memberCountAfterMove(counts, currentCategory, target);
-  const options = [
-    ...new Set([...categories.map((entry) => entry.category), UNCATEGORIZED, currentCategory]),
-  ];
+  const options = [...new Set([...categories, UNCATEGORIZED, currentCategory])];
 
   const move = useMutation({
     mutationFn: () =>
       apiRequest(`/v1/workflows/${encodeURIComponent(id)}/metadata`, {
         method: "PATCH",
-        body: JSON.stringify({ slug: nextSlug }),
+        body: JSON.stringify({ category: target }),
       }),
     onSuccess: () => {
-      toast.success(t("catalog.recategorized", { slug: nextSlug }));
+      toast.success(t("catalog.recategorized"));
       onDone();
     },
-    onError: (error) => {
-      toast.error(
-        error instanceof ApiError && error.status === 409
-          ? t("catalog.slugTaken", { slug: nextSlug })
-          : t("catalog.recategorizeFailed"),
-      );
+    onError: () => {
+      toast.error(t("catalog.recategorizeFailed"));
     },
   });
 
@@ -576,7 +558,7 @@ function RecategorizeDialog({
       submit={{
         label: t("catalog.moveWorkflow"),
         pending: move.isPending,
-        disabled: nextSlug === slug,
+        disabled: target === currentCategory,
       }}
       onSubmit={() => move.mutate()}
       testId="catalog-recategorize-dialog"
@@ -602,22 +584,6 @@ function RecategorizeDialog({
           </SelectContent>
         </Select>
       </Field>
-      <p className="flex items-center gap-1 text-sm" data-testid="catalog-recategorize-slug">
-        {t("catalog.resultingSlug", { slug: nextSlug })}
-        <ContextHelp
-          label={t("catalog.resultingSlug", { slug: nextSlug })}
-          testId="catalog-recategorize-help"
-        >
-          {t("catalog.renameWarning")}
-        </ContextHelp>
-      </p>
-      {target !== UNCATEGORIZED && members < MIN_CATEGORY_SIZE && (
-        <p className="text-sm text-muted-foreground" data-testid="catalog-recategorize-hint">
-          {t("catalog.categoryTooSmall", {
-            count: String(MIN_CATEGORY_SIZE),
-          })}
-        </p>
-      )}
     </FormDialog>
   );
 }
@@ -631,19 +597,17 @@ export function WorkflowRecategorize({
 }) {
   const client = useQueryClient();
   const query = useQuery({
-    queryKey: ["workflow-categories"],
-    queryFn: () => apiRequest<{ categories?: CategoryCount[] }>("/v1/workflows?limit=1"),
+    queryKey: ["catalog-categories"],
+    queryFn: () => apiRequest<{ categories?: { category: string }[] }>("/v1/categories"),
   });
-  const categories = useMemo(() => query.data?.categories ?? [], [query.data]);
-  const counts = useMemo(
-    () => new Map(categories.map((entry) => [entry.category, entry.count])),
-    [categories],
+  const categories = useMemo(
+    () => (query.data?.categories ?? []).map((entry) => entry.category),
+    [query.data],
   );
   return (
     <RecategorizeDialog
       row={record}
       categories={categories}
-      counts={counts}
       onClose={onClose}
       onDone={() => {
         void client.invalidateQueries({ queryKey: ["catalog-detail", "workflows"] });

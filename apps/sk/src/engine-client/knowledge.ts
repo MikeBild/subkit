@@ -57,6 +57,7 @@ export const knowledgeMethods = {
       name: string;
       slug?: string;
       description?: string;
+      category?: string;
       tags?: string[];
       scope?: string;
       workflow_id?: string;

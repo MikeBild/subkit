@@ -7,6 +7,7 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
+import { definitionWithoutDescription } from "./canonical-json.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
 import {
   describeVersionIssues,
@@ -136,22 +137,14 @@ export async function restoreWorkflowVersion(
         tenant_id,
         workflow_id: id,
         version: next,
-        dag: target.dag,
+        dag: definitionWithoutDescription(target.dag),
         note: `restored from v${version}`,
       })
       .returning();
     assertInsertRow(v, "restore");
-    const restoredDescription =
-      target.dag && typeof target.dag === "object" && !Array.isArray(target.dag)
-        ? ((target.dag as { description?: unknown }).description ?? null)
-        : null;
     await tx
       .update(workflows)
-      .set({
-        current_version_id: v.id,
-        description: typeof restoredDescription === "string" ? restoredDescription : null,
-        updated_at: new Date(),
-      })
+      .set({ current_version_id: v.id, updated_at: new Date() })
       .where(eq(workflows.id, id));
     await carryApprovalsForward(tx, {
       tenant_id,

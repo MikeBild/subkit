@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CatalogSourceSchema, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
 export const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
@@ -16,6 +17,9 @@ export const KnowledgeSourceSchema = z
     name: z.string(),
     slug: z.string(),
     description: z.string().nullable(),
+    description_source: CatalogSourceSchema,
+    category: z.string(),
+    category_source: CatalogSourceSchema,
     tags: z.array(z.string()),
     scope: KnowledgeSourceScopeSchema,
     workflow_id: z.string().nullable(),
@@ -49,7 +53,8 @@ export const CreateKnowledgeSourceSchema = z
         "slug must be lowercase alphanumeric with hyphens/underscores",
       )
       .optional(),
-    description: z.string().max(2000).optional(),
+    description: DescriptionSchema.optional(),
+    category: CategorySchema.optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().optional(),
@@ -89,7 +94,8 @@ export type CreateKnowledgeSourceBundleInput = z.infer<typeof CreateKnowledgeSou
 export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
-    description: z.string().max(2000).optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().nullable().optional(),
@@ -106,6 +112,7 @@ export interface KnowledgeSearchHit {
   knowledge_source_id: string;
   source_name: string;
   source_tags: string[];
+  source_description: string | null;
   title: string | null;
   path: string | null;
   snippet: string;

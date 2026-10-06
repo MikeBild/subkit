@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
+import { listedDescription } from "../../../api/catalog-metadata.ts";
 import { bindingFor, workflowTriggerView } from "../../../scheduler/trigger-bindings.ts";
-import { UNCATEGORIZED } from "../../../workflows/categorize.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -12,7 +12,7 @@ const ListInput = z
       .string()
       .optional()
       .describe(
-        "Only workflows in this catalog block. Blocks are derived from the slug families already in the catalog and reported as `category` on every item — read one from a previous list rather than inventing one.",
+        "Only workflows in this catalog block (reported as `category` on every item). Categories are shared with connectors, knowledge sources, skills and files — read one from a previous list rather than inventing one.",
       ),
     connector: z
       .string()
@@ -34,7 +34,7 @@ const GetInput = z
 export const listWorkflowsTool: ConversationTool = {
   name: "list_workflows",
   description:
-    "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). Each item carries a `category` (the catalog block it belongs to) and the `connectors` it uses, and both are filterable. `effective_trigger` says what really starts the workflow (a bound schedule or webhook beats the definition's declared trigger; `declared_unbound` means declared but nothing fires it); `schedule` is the bound schedule, if any. `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
+    "List the tenant's workflows — returns the COMPLETE set by default (workflows are a bounded catalog). Each item carries what it is for (`description`), the catalog block it belongs to (`category`) and the `connectors` it uses; `category` and `connector` are filters. `effective_trigger` says what really starts the workflow (a bound schedule or webhook beats the definition's declared trigger; `declared_unbound` means declared but nothing fires it); `schedule` is the bound schedule, if any. `total` is the exact tenant count under the given filters; `has_more` is true only when an explicit limit/offset page was requested.",
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
@@ -46,8 +46,7 @@ export const listWorkflowsTool: ConversationTool = {
       ...(args.category !== undefined ? { category: args.category } : {}),
       ...(args.connector !== undefined ? { connector: args.connector } : {}),
     });
-    const [categories, connectorRefs, bindings] = await Promise.all([
-      ctx.engineClient.workflows.categories(),
+    const [connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.connectorRefs(),
       ctx.engineClient.workflows.triggerBindings(rows.map((w) => w.id)),
     ]);
@@ -58,8 +57,9 @@ export const listWorkflowsTool: ConversationTool = {
           id: w.id,
           name: w.name,
           slug: w.slug,
+          description: listedDescription(w.description),
           lifecycle: w.lifecycle,
-          category: categories.get(w.slug) ?? UNCATEGORIZED,
+          category: w.category,
           connectors: connectorRefs.get(w.id) ?? [],
           ...workflowTriggerView(w.definition.trigger, bindingFor(bindings, w.id)),
           created_at: w.created_at,

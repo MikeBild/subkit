@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../api/catalog-metadata.ts";
 import { buildTemplateBindingFields, parseTemplateSnapshot } from "./template-resolver.ts";
 import { loadBuiltinTemplates } from "./templates.ts";
 
@@ -69,6 +70,7 @@ describe("buildTemplateBindingFields", () => {
       tenant_id: "00000000-0000-0000-0000-000000000098",
       slug: "test-conn",
       display_name: "Test Connector",
+      ...UNDESCRIBED_METADATA,
       driver: aTemplate.driver,
       environment: "dev",
       auth_type: "bearer",

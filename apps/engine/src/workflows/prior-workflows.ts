@@ -99,7 +99,7 @@ function projectPriorWorkflowRef(view: WorkflowView): PriorWorkflowRef {
     id: view.id,
     slug: view.slug,
     name: view.name,
-    description: view.description ?? view.definition.description ?? null,
+    description: view.description,
     trigger_summary: summariseTrigger(view.definition.trigger),
     step_topology: buildStepTopology(view.definition),
     output_keys: deriveOutputKeys(view.definition),

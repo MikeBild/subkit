@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import type { ConnectorView } from "../../connectors/types.ts";
 import { hydrateDraftFromSavedConnector } from "./normalize.ts";
 
@@ -8,6 +9,7 @@ function makeView(overrides: Partial<ConnectorView> = {}): ConnectorView {
     tenant_id: "tenant-1",
     slug: "my-api",
     display_name: "My API",
+    ...UNDESCRIBED_METADATA,
     driver: "http",
     environment: "dev",
     auth_type: "basic",

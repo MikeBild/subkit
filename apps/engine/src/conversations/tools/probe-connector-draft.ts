@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
 import { classifyHttpSideEffect } from "@shared/index.ts";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { probeGraphQLConnector } from "../../connectors/drivers/graphql.ts";
@@ -225,6 +226,7 @@ export const probeConnectorDraftTool: ConversationTool = {
       tenant_id: ctx.tenant_id,
       slug: connector.slug ?? "draft-connector",
       display_name: connector.name ?? "Draft connector",
+      ...UNDESCRIBED_METADATA,
       driver: effectiveDriver,
       environment: args.environment ?? connector.environment ?? "dev",
       auth_type: connector.auth_type ?? "none",

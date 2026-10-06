@@ -1,9 +1,14 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { conversationToolCalls, executionSteps, executions } from "../db/schema/index.ts";
+import {
+  conversationToolCalls,
+  executionSteps,
+  executions,
+  workflows,
+} from "../db/schema/index.ts";
 import { runExecution } from "../execution/engine.ts";
 import { HELD_PREVIEW_WARNING_CODE } from "../execution/types.ts";
 import { admitWorkflowRun } from "../execution/workflow-run-admission.ts";
@@ -20,7 +25,6 @@ import {
 } from "../tools/approval.ts";
 import { policyDecide } from "../tools/policy.ts";
 import type { ToolSurface } from "../tools/types.ts";
-import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
@@ -496,15 +500,24 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
 
   const categoryCandidate = matchCategoryListIntent(text);
   if (categoryCandidate) {
-    const index = await loadCategoryIndex(p.tenant_id, p.db);
-    if ([...index.values()].includes(categoryCandidate)) {
+    const [known] = await p.db
+      .select({ id: workflows.id })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, p.tenant_id),
+          isNull(workflows.deleted_at),
+          eq(workflows.category, categoryCandidate),
+        ),
+      )
+      .limit(1);
+    if (known) {
       const input = { category: categoryCandidate };
       const denied = await denyCatalogRead(p, "workflow:read", "list_workflows", input);
       if (denied) return denied;
       const payload = await renderWorkflowCategoryList(
         p,
         categoryCandidate,
-        index,
         categoryListLanguage(text),
       );
       if (payload) return answerCatalogRead(p, "list_workflows", input, payload);

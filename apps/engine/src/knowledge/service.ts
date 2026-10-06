@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
+import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -17,6 +18,7 @@ import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
+import { describeOne } from "../workflows/catalog-describe.ts";
 import {
   assertTenantKnowledgeBudget,
   KNOWLEDGE_SOURCE_MAX_BYTES,
@@ -130,7 +132,10 @@ export async function createKnowledgeSource(
         tenant_id: p.tenant_id,
         name: p.input.name,
         slug,
-        description: p.input.description ?? null,
+        ...humanMetadataWrite({
+          ...(p.input.description !== undefined ? { description: p.input.description } : {}),
+          ...(p.input.category !== undefined ? { category: p.input.category } : {}),
+        }),
         tags: dedupeTags(p.input.tags ?? []),
         scope: p.input.scope ?? "global",
         workflow_id: p.input.workflow_id ?? null,
@@ -257,7 +262,13 @@ export async function updateKnowledgeSource(
 
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (p.patch.name !== undefined) updates.name = p.patch.name;
-    if (p.patch.description !== undefined) updates.description = p.patch.description;
+    Object.assign(
+      updates,
+      metadataChange(existing[0], {
+        ...(p.patch.description !== undefined ? { description: p.patch.description } : {}),
+        ...(p.patch.category !== undefined ? { category: p.patch.category } : {}),
+      }),
+    );
     if (p.patch.tags !== undefined) updates.tags = dedupeTags(p.patch.tags);
     if (p.patch.scope !== undefined) updates.scope = p.patch.scope;
     if (p.patch.workflow_id !== undefined) updates.workflow_id = p.patch.workflow_id;
@@ -297,7 +308,6 @@ export async function updateKnowledgeSource(
 const ANALYZE_SAMPLE_MAX_CHARS = 28_000;
 
 const AnalysisSchema = z.object({
-  description: z.string().min(1).max(2000),
   tags: z.array(z.string().min(1).max(40)).min(1).max(8),
 });
 
@@ -354,10 +364,8 @@ export async function analyzeKnowledgeSource(
 
   const prompt = [
     `You are cataloguing an enterprise Knowledge Source named "${source.name}".`,
-    "Write a concise description (1-3 sentences, max 2000 characters) summarising what",
-    "this source covers and when an operator or AI agent would consult it, plus 3-8 short",
-    "lowercase topical tags for routing and filtering (single words or short phrases, e.g.",
-    '"billing", "oauth", "compliance"). Do not restate the source name as a tag.',
+    "Return 3-8 short lowercase topical tags for routing and filtering (single words or",
+    'short phrases, e.g. "billing", "oauth", "compliance"). Do not restate the source name as a tag.',
     "",
     "Source content sample:",
     sample,
@@ -379,18 +387,15 @@ export async function analyzeKnowledgeSource(
   }
 
   const nextTags = mergeStructuralTags(source.tags ?? [], analysis.tags);
-  const overwriteDescription = source.description === null || p.force === true;
 
-  return await (db as Db).transaction(async (tx) => {
-    const updates: Record<string, unknown> = {
-      tags: nextTags,
-      updated_at: new Date(),
-    };
-    if (overwriteDescription) updates.description = analysis.description;
-
+  const tagged = await (db as Db).transaction(async (tx) => {
     const [updated] = await tx
       .update(knowledgeSources)
-      .set(updates)
+      .set({
+        tags: nextTags,
+        updated_at: new Date(),
+        ...(p.force === true ? { catalog_input_hash: null } : {}),
+      })
       .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), eq(knowledgeSources.id, p.id)))
       .returning();
 
@@ -407,7 +412,6 @@ export async function analyzeKnowledgeSource(
         result: "success",
         metadata: {
           tags: nextTags,
-          description_updated: overwriteDescription,
           model_used: result.model_used,
           force: p.force === true,
         },
@@ -415,10 +419,18 @@ export async function analyzeKnowledgeSource(
       tx,
     );
     await knowledgeSourceChanged(tx, p.tenant_id, p.id);
-
-    invalidateKnowledgeCache(p.tenant_id);
-    return knowledgeSourceRowToView(updated);
+    return updated;
   });
+  if (!tagged) return null;
+
+  await describeOne({ tenant_id: p.tenant_id, kind: "knowledge_source", id: p.id }, db);
+  invalidateKnowledgeCache(p.tenant_id);
+  const [fresh] = await db
+    .select()
+    .from(knowledgeSources)
+    .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), eq(knowledgeSources.id, p.id)))
+    .limit(1);
+  return knowledgeSourceRowToView(fresh ?? tagged);
 }
 
 export async function deleteKnowledgeSource(
@@ -704,6 +716,7 @@ export async function searchKnowledge(
       kc.knowledge_source_id::text AS knowledge_source_id,
       ks.name AS source_name,
       ks.tags AS source_tags,
+      ks.description AS source_description,
       kc.title,
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
@@ -728,6 +741,7 @@ export async function searchKnowledge(
     knowledge_source_id: string;
     source_name: string;
     source_tags: string[] | null;
+    source_description: string | null;
     title: string | null;
     path: string | null;
     snippet: string;
@@ -740,6 +754,7 @@ export async function searchKnowledge(
     knowledge_source_id: r.knowledge_source_id,
     source_name: r.source_name,
     source_tags: r.source_tags ?? [],
+    source_description: r.source_description,
     title: r.title,
     path: r.path,
     snippet: r.snippet,
@@ -784,6 +799,7 @@ async function fuseKnowledgeWithVectors(
       kc.knowledge_source_id::text AS knowledge_source_id,
       ks.name AS source_name,
       ks.tags AS source_tags,
+      ks.description AS source_description,
       kc.title,
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
@@ -802,6 +818,7 @@ async function fuseKnowledgeWithVectors(
     knowledge_source_id: string;
     source_name: string;
     source_tags: string[] | null;
+    source_description: string | null;
     title: string | null;
     path: string | null;
     fetched_at: Date | string | null;
@@ -822,6 +839,7 @@ async function fuseKnowledgeWithVectors(
       knowledge_source_id: s.item.knowledge_source_id,
       source_name: s.item.source_name,
       source_tags: s.item.source_tags ?? [],
+      source_description: s.item.source_description,
       title: s.item.title,
       path: s.item.path,
       snippet: s.item.content.slice(0, 200),

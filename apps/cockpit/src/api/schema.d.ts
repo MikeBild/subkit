@@ -6614,7 +6614,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch workflow metadata (slug/name/description/lifecycle) without rotating a version */
+        /** Patch workflow metadata (slug/name/description/category/lifecycle) without rotating a version */
         patch: {
             parameters: {
                 query?: never;
@@ -7825,6 +7825,8 @@ export interface paths {
                     offset?: number | null;
                     /** @description Only connectors in this catalog block (see the `category` field on each item) */
                     category?: string;
+                    /** @description Only connectors of this driver (http, graphql, postgres, s3, mcp, …) */
+                    driver?: string;
                 };
                 header?: never;
                 path?: never;
@@ -9908,6 +9910,94 @@ export interface paths {
                 };
                 /** @description Conflict */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tenant's catalog categories with how many objects of each kind use them */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CategoryListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/categories/{name}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename or merge a catalog category across every kind */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+                    name: components["schemas"]["CatalogCategory"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RenameCategoryBody"];
+                };
+            };
+            responses: {
+                /** @description Renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RenameCategoryResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -13242,11 +13332,11 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["RenameFile"];
+                    "application/json": components["schemas"]["UpdateFile"];
                 };
             };
             responses: {
-                /** @description Renamed */
+                /** @description Updated */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -19611,7 +19701,10 @@ export interface components {
         };
         CreateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
+            category?: components["schemas"]["CatalogCategory"];
         };
+        /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+        CatalogCategory: string;
         UpdateWorkflowDraft: components["schemas"]["CreateWorkflowDraft"] & {
             /** Format: uuid */
             expected_draft_version_id: string | null;
@@ -19667,10 +19760,12 @@ export interface components {
             id: string;
             tenant_id: string;
             slug: string;
-            /** @description The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none. */
+            /** @description The catalog block this workflow belongs to. One vocabulary is shared by every workflow, connector, knowledge source, skill and file of the tenant; `other` until one is assigned. */
             category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             name: string;
             description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
             lifecycle: string;
             current_version_id: string | null;
             draft_version_id: string | null;
@@ -19702,6 +19797,8 @@ export interface components {
             webhooks_active: number;
             effective_trigger: components["schemas"]["EffectiveTrigger"];
         };
+        /** @enum {string} */
+        CatalogMetadataSource: "human" | "llm";
         WorkflowScheduleBinding: {
             id: string;
             cron: string;
@@ -19796,7 +19893,8 @@ export interface components {
         CreateWorkflowBody: {
             name: string;
             slug?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"];
+            category?: components["schemas"]["CatalogCategory"];
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -19819,6 +19917,8 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description. */
+        CatalogDescription: string;
         ValidateWorkflowResponse: {
             ok: boolean;
             errors?: {
@@ -19851,7 +19951,8 @@ export interface components {
         WorkflowMetadataPatchBody: {
             slug?: string;
             name?: string;
-            description?: string | null;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             /** @enum {string} */
             lifecycle?: "active" | "archived";
         };
@@ -20738,6 +20839,8 @@ export interface components {
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         ProbeConnectorResponse: {
             ok: boolean;
@@ -20800,39 +20903,23 @@ export interface components {
             force_new?: boolean;
         };
         ConnectorListResponse: {
-            items: components["schemas"]["ConnectorListItem"][];
+            items: components["schemas"]["Connector"][];
             total: number;
             categories: {
                 category: string;
                 count: number;
             }[];
         };
-        ConnectorListItem: components["schemas"]["Connector"] & {
-            category: string;
-        };
-        /** @enum {string} */
-        ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
-        CredentialSummary: {
-            id: string;
-            mode: string;
-            environment: string;
-            has_oauth_refresh: boolean;
-            granted_scopes: string | null;
-            /** Format: date-time */
-            oauth2_expires_at: string | null;
-            connection: components["schemas"]["ConnectionSummary"];
-            created_at: string;
-        };
-        ConnectionSummary: {
-            id: string;
-            name: string;
-            state: components["schemas"]["ConnectionState"];
-        } | null;
         Connector: {
             id: string;
             tenant_id: string;
             slug: string;
             display_name: string;
+            description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            /** @description The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned. */
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             driver: string;
             environment: string;
             auth_type: string;
@@ -20883,6 +20970,24 @@ export interface components {
             updated_at: string;
             credentials?: components["schemas"]["CredentialSummary"][];
         };
+        /** @enum {string} */
+        ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
+        CredentialSummary: {
+            id: string;
+            mode: string;
+            environment: string;
+            has_oauth_refresh: boolean;
+            granted_scopes: string | null;
+            /** Format: date-time */
+            oauth2_expires_at: string | null;
+            connection: components["schemas"]["ConnectionSummary"];
+            created_at: string;
+        };
+        ConnectionSummary: {
+            id: string;
+            name: string;
+            state: components["schemas"]["ConnectionState"];
+        } | null;
         UpdateConnectorBody: {
             name?: string;
             /** Format: uri */
@@ -20902,6 +21007,8 @@ export interface components {
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
             clear_template_binding?: boolean;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         ConnectorProbeResult: {
             ok: boolean;
@@ -21209,6 +21316,12 @@ export interface components {
             /** @default null */
             slug: string | null;
             title: string;
+            /** @default null */
+            description: string | null;
+            description_source?: components["schemas"]["CatalogMetadataSource"];
+            /** @default other */
+            category: string;
+            category_source?: components["schemas"]["CatalogMetadataSource"];
             body: string;
             /** @default [] */
             examples: string[];
@@ -21346,6 +21459,8 @@ export interface components {
             /** Format: uuid */
             workflow_id?: string;
             title: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             body: string;
             examples?: string[];
             best_practices?: string[];
@@ -21376,6 +21491,8 @@ export interface components {
         UpdateSkillBody: {
             expected_version?: number;
             title?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             body?: string;
             examples?: string[];
             best_practices?: string[];
@@ -21419,6 +21536,31 @@ export interface components {
             /** Format: uuid */
             audit_entry_id: string;
         };
+        CategoryListResponse: {
+            categories: components["schemas"]["CategoryUsage"][];
+        };
+        CategoryUsage: {
+            category: string;
+            total: number;
+            counts: components["schemas"]["CategoryKindCounts"];
+        };
+        CategoryKindCounts: {
+            workflow: number;
+            connector: number;
+            knowledge_source: number;
+            skill: number;
+            file: number;
+        };
+        RenameCategoryResponse: {
+            from: string;
+            to: string;
+            total: number;
+            moved: components["schemas"]["CategoryKindCounts"];
+        };
+        /** @description Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two. */
+        RenameCategoryBody: {
+            to: components["schemas"]["CatalogCategory"];
+        };
         KnowledgeSourceListResponse: {
             items: components["schemas"]["KnowledgeSource"][];
             total: number;
@@ -21429,6 +21571,9 @@ export interface components {
             name: string;
             slug: string;
             description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             tags: string[];
             /** @enum {string} */
             scope: "global" | "workflow";
@@ -21496,7 +21641,8 @@ export interface components {
         CreateKnowledgeSourceBody: {
             name: string;
             slug?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"];
+            category?: components["schemas"]["CatalogCategory"];
             tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
@@ -21508,7 +21654,8 @@ export interface components {
         };
         UpdateKnowledgeSourceBody: {
             name?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
@@ -22229,6 +22376,10 @@ export interface components {
             deleted_at: string | null;
             slug: string | null;
             reference: string | null;
+            description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
         };
         ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
             filename: string;
@@ -22313,8 +22464,10 @@ export interface components {
         };
         /** @enum {string} */
         FileLinkResourceType: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
-        RenameFile: {
-            filename: string;
+        UpdateFile: {
+            filename?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         FileUsage: {
             workflows: {

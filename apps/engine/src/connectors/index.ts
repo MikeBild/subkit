@@ -1,4 +1,3 @@
-export * from "./categorize.ts";
 export * from "./circuit-breaker.ts";
 export * from "./config-schemas.ts";
 export * from "./credential-setup-grant.ts";

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { EMBEDDED_MIGRATIONS } from "../db/migrations/embedded.ts";
@@ -23,7 +23,6 @@ import { getMockProvider, resetMockProvider } from "../llm/mock-provider.ts";
 import { TEST_HUMAN_ANSWER } from "../test-helpers/answer-actor.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../test-helpers/mock-http.ts";
-import { loadCategoryIndex } from "../workflows/catalog-view.ts";
 import {
   type FastPathParams,
   matchCategoryListIntent,
@@ -597,13 +596,14 @@ describe("tryFastPath — ground-truth cardinality on list surfaces", () => {
   });
 });
 
-async function seedMinimalWorkflow(slug: string): Promise<{ id: string }> {
+async function seedMinimalWorkflow(slug: string, category = "other"): Promise<{ id: string }> {
   const [wf] = await tdb.db
     .insert(workflows)
     .values({
       tenant_id: tenantId,
       slug,
       name: slug,
+      category,
       lifecycle: "active",
       is_tool: true,
     })
@@ -665,25 +665,30 @@ async function workflowIdBySlug(slug: string): Promise<string> {
 }
 
 async function seedCategoryCatalog(): Promise<{ notion: string[] }> {
-  for (let i = 0; i < 41; i++) await seedMinimalWorkflow(`aa-filler-${String(i).padStart(2, "0")}`);
+  for (let i = 0; i < 41; i++)
+    await seedMinimalWorkflow(`aa-filler-${String(i).padStart(2, "0")}`, "aa-filler");
   const notion = ["notion-archive", "notion-digest", "notion-search", "notion-sync"];
-  for (const slug of notion) await seedMinimalWorkflow(slug);
+  for (const slug of notion) await seedMinimalWorkflow(slug, "notion");
   await tdb.db
     .update(workflows)
     .set({ description: "Copies new Notion pages\ninto the archive." })
     .where(eq(workflows.id, await workflowIdBySlug("notion-archive")));
   await tdb.db
+    .update(workflows)
+    .set({ description: "Mails a weekly digest of edited pages." })
+    .where(eq(workflows.id, await workflowIdBySlug("notion-digest")));
+  await tdb.db
     .update(workflowVersions)
     .set({
       dag: {
-        name: "notion-digest",
-        slug: "notion-digest",
-        description: "Mails a weekly digest of edited pages.",
+        name: "notion-sync",
+        slug: "notion-sync",
+        description: "Stale text a definition once carried.",
         steps: [{ id: "s1", kind: "request", method: "GET", url: remote.baseUrl }],
       },
     })
-    .where(eq(workflowVersions.workflow_id, await workflowIdBySlug("notion-digest")));
-  const gone = await seedMinimalWorkflow("notion-retired");
+    .where(eq(workflowVersions.workflow_id, await workflowIdBySlug("notion-sync")));
+  const gone = await seedMinimalWorkflow("notion-retired", "notion");
   await tdb.db
     .update(workflows)
     .set({ deleted_at: new Date(0) })
@@ -706,6 +711,7 @@ describe("tryFastPath — one catalog block", () => {
     expect(text).toContain("- notion-archive (aktiv) — Copies new Notion pages into the archive.");
     expect(text).toContain("- notion-digest (aktiv) — Mails a weekly digest of edited pages.");
     expect(text).toContain("- notion-search (aktiv)\n");
+    expect(text).not.toContain("Stale text a definition once carried.");
     const output = findToolResultOutput(result?.events);
     expect(output.category).toBe("notion");
     expect(output.total).toBe(4);
@@ -749,10 +755,13 @@ describe("tryFastPath — one catalog block", () => {
   test("every category the chip row shows answers with exactly its members", async () => {
     await seedCategoryCatalog();
     for (const slug of ["radar-collect", "radar-normalize", "radar-publish"])
-      await seedMinimalWorkflow(slug);
-    const index = await loadCategoryIndex(tenantId, tdb.db);
+      await seedMinimalWorkflow(slug, "radar");
+    const rows = await tdb.db
+      .select({ slug: workflows.slug, category: workflows.category })
+      .from(workflows)
+      .where(and(eq(workflows.tenant_id, tenantId), isNull(workflows.deleted_at)));
     const members = new Map<string, string[]>();
-    for (const [slug, category] of index)
+    for (const { slug, category } of rows)
       members.set(category, [...(members.get(category) ?? []), slug]);
     const categories = [...members.keys()];
     expect(categories.length).toBeGreaterThanOrEqual(3);

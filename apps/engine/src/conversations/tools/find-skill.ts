@@ -1,7 +1,8 @@
 import { z } from "@hono/zod-openapi";
+import { listedDescription } from "../../api/catalog-metadata.ts";
 import { listSkills } from "../../skills/service.ts";
+import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { keywordSearch } from "./keyword-search.ts";
 
 const inputSchema = z
   .object({
@@ -9,7 +10,9 @@ const inputSchema = z
       .string()
       .min(1)
       .optional()
-      .describe('Free-text query. Matches skill id/title/description/scope. Use "*" to list all.'),
+      .describe(
+        'Free-text query. Matches skill id/title/description/category/scope. Use "*" to list all.',
+      ),
     scope: z
       .enum(["global", "connector", "workflow"])
       .optional()
@@ -23,28 +26,39 @@ interface SkillSummary {
   title: string;
   scope: string;
   description: string | null;
+  category: string;
   body_preview: string;
 }
 
-function summarize(s: { id: string; title?: string; scope: string; body?: string }): SkillSummary {
-  const body = s.body ?? "";
-  const descMatch = body.match(/^description:\s*(.*?)$/m);
-  const description = descMatch?.[1]?.trim() ?? null;
-  const preview = body
+function summarize(s: {
+  id: string;
+  title: string;
+  scope: string;
+  body: string;
+  description: string | null;
+  category: string;
+}): SkillSummary {
+  const preview = s.body
     .replace(/^---[\s\S]*?---\s*/, "")
     .trim()
     .slice(0, 120);
   return {
     id: s.id,
-    title: s.title ?? s.id,
+    title: s.title,
     scope: s.scope,
-    description,
+    description: listedDescription(s.description),
+    category: s.category,
     body_preview: preview,
   };
 }
 
-function searchableText(s: SkillSummary): string {
-  return [s.id, s.title, s.scope, s.description ?? "", s.body_preview].filter(Boolean).join(" ");
+function rankFields(s: SkillSummary) {
+  return {
+    category: [s.category],
+    identity: [s.title],
+    description: [s.description],
+    detail: [s.scope, s.body_preview],
+  };
 }
 
 export const findSkillTool: ConversationTool = {
@@ -55,7 +69,7 @@ export const findSkillTool: ConversationTool = {
     'Operator asks "is there a skill for Stripe webhooks?" — find_skill returns the catalog entries that match, then load_skill fetches the body.',
   important_notes: [
     "Distinct from list_skill_suggestions (heuristic relevance against user message). find_skill is a direct keyword query.",
-    "When no query matches, returns the unfiltered list capped at `limit`.",
+    "When no query matches, returns no matches and a `hint` instead of the unfiltered list.",
   ],
   inputSchema,
   category: "tenant_read",
@@ -64,15 +78,9 @@ export const findSkillTool: ConversationTool = {
     const all = await listSkills({ tenant_id: ctx.tenant_id }, ctx.db);
     const filtered = args.scope ? all.filter((s) => s.scope === args.scope) : all;
     const summaries = filtered.map(summarize);
-    const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
-    const limited = ranked.slice(0, args.limit);
     return {
       ok: true,
-      data: {
-        matches: limited,
-        total: ranked.length,
-        ...(ranked.length > limited.length ? { truncated: true } : {}),
-      },
+      data: rankedPage(args.query, summaries, rankFields, args.limit, "list_skills"),
     };
   },
 };

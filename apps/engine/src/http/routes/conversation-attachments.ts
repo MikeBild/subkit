@@ -7,7 +7,6 @@ import {
   type FileWire,
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
-  toFileId,
 } from "../../api/files-schemas.ts";
 import {
   AuditAction,
@@ -29,6 +28,7 @@ import { fileReference, slugifyFilename } from "../../files/slug.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { toFileWire } from "./files.ts";
 
 const IdParam = z.object({ id: z.string().uuid() });
 const SlugParam = z.object({ id: z.string().uuid(), slug: z.string().min(1) });
@@ -58,21 +58,7 @@ function linkSlug(row: typeof files.$inferSelect): string {
 }
 
 function toAttachmentWire(row: typeof files.$inferSelect, slug: string): AttachmentWire {
-  return {
-    id: toFileId(row.id),
-    status: row.status,
-    filename: row.filename,
-    content_type: row.content_type,
-    size_bytes: row.size_bytes,
-    sha256: row.sha256,
-    scan_result: row.scan_result,
-    created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at.toISOString(),
-    replaced_at: row.replaced_at ? row.replaced_at.toISOString() : null,
-    deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
-    slug,
-    reference: fileReference(slug),
-  };
+  return { ...toFileWire(row), slug, reference: fileReference(slug) };
 }
 
 async function conversationExists(db: Db, tenant_id: string, id: string): Promise<boolean> {

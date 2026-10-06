@@ -8,6 +8,7 @@ export type QueueName =
   | "connector.ingest-docs"
   | "knowledge.ingest"
   | "skill-candidate.analyze"
+  | "catalog.describe"
   | "agent-session.analyze"
   | "workflow.repair"
   | "webhook.deliver"
@@ -21,6 +22,7 @@ export const QUEUE_NAMES: QueueName[] = [
   "connector.ingest-docs",
   "knowledge.ingest",
   "skill-candidate.analyze",
+  "catalog.describe",
   "agent-session.analyze",
   "workflow.repair",
   "webhook.deliver",
@@ -92,6 +94,14 @@ export const QUEUE_DEFINITIONS: Record<QueueName, QueueConfig> = {
     queue: {
       retryLimit: 3,
       retryDelay: 5,
+      retryBackoff: true,
+    },
+  },
+  "catalog.describe": {
+    name: "catalog.describe",
+    queue: {
+      retryLimit: 2,
+      retryDelay: 30,
       retryBackoff: true,
     },
   },

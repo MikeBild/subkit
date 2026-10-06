@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { catalogMetadataView } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -79,6 +80,7 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
     deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
     slug: row.slug,
     reference: fileReference(row.slug),
+    ...catalogMetadataView(row),
   };
 }
 

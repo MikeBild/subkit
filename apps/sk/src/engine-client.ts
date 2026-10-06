@@ -8,6 +8,7 @@ import {
   serializeDebugError,
 } from "./debug.ts";
 import { agentMethods } from "./engine-client/agent.ts";
+import { catalogMethods } from "./engine-client/catalog.ts";
 import { chatMethods } from "./engine-client/chat.ts";
 import { connectorsMethods } from "./engine-client/connectors.ts";
 import { conversationsMethods } from "./engine-client/conversations.ts";
@@ -557,6 +558,7 @@ type ApiMethods<T> = { [K in keyof T]: OmitThisParameter<T[K]> };
 
 export interface EngineClient
   extends ApiMethods<typeof agentMethods>,
+    ApiMethods<typeof catalogMethods>,
     ApiMethods<typeof chatMethods>,
     ApiMethods<typeof connectorsMethods>,
     ApiMethods<typeof conversationsMethods>,
@@ -577,6 +579,7 @@ export interface EngineClient
 Object.assign(
   EngineClient.prototype,
   agentMethods,
+  catalogMethods,
   chatMethods,
   connectorsMethods,
   conversationsMethods,

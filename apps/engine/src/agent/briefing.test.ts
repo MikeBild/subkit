@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../api/catalog-metadata.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
 import { countTokens } from "../llm/accounting/count.ts";
 import type { Skill } from "../skills/types.ts";
@@ -13,6 +14,7 @@ function makeSkill(n: number, bodyWords = 200): Skill {
     workflow_id: null,
     slug: `skill-${n}`,
     title: `Skill ${n}`,
+    ...UNDESCRIBED_METADATA,
     body: Array.from({ length: bodyWords }, (_, i) => `word${i}`).join(" "),
     examples: [],
     best_practices: [],
@@ -42,6 +44,9 @@ function makeKnowledge(n: number): KnowledgeSourceView {
     name: `Source ${n}`,
     slug: `source-${n}`,
     description: `Reference material number ${n} for the domain.`,
+    description_source: "human",
+    category: "other",
+    category_source: "llm",
     tags: ["domain:blog-de"],
     scope: "global",
     workflow_id: null,

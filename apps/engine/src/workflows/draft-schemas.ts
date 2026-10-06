@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CategorySchema } from "../api/catalog-metadata.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 export const WorkflowDraftSchema = z
@@ -15,6 +16,7 @@ export const WorkflowDraftSchema = z
 export const CreateWorkflowDraftSchema = z
   .object({
     definition: WorkflowDefSchema,
+    category: CategorySchema.optional(),
   })
   .strict()
   .openapi("CreateWorkflowDraft");

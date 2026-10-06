@@ -575,6 +575,13 @@
       "when": 1791211477919,
       "tag": "0081_file_replaced_at",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1791299317272,
+      "tag": "0082_catalog_metadata",
+      "breakpoints": true
     }
   ]
 }

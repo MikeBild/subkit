@@ -57,7 +57,6 @@ export async function activateReviewedDraft(
       draft_version_id: null,
       lifecycle: "active",
       name: definition.name,
-      description: definition.description ?? null,
       updated_at: new Date(),
     })
     .where(and(eq(workflows.tenant_id, workflow.tenant_id), eq(workflows.id, workflow.id)));
