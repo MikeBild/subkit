@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { retryQuery } from "@/api/client";
 import { router } from "@/app/router";
 import { SessionGate } from "@/app/session";
 import { I18nProvider } from "@/components/i18n-provider";
@@ -10,7 +11,11 @@ import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { refetchOnWindowFocus: false, staleTime: 15_000 },
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 15_000,
+      retry: retryQuery,
+    },
     mutations: { retry: false },
   },
 });

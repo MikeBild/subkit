@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, type ReactNode, useContext } from "react";
-import { ApiError, type Bootstrap, bootstrap } from "@/api/client";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { ApiError, type Bootstrap, bootstrap, onSessionExpired } from "@/api/client";
 import { BootstrapErrorPage, LoginRedirect } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
@@ -16,6 +16,10 @@ export function useSession(): Bootstrap {
 export function SessionGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const query = useQuery({ queryKey: ["bootstrap"], queryFn: bootstrap, retry: false });
+  const [expired, setExpired] = useState(false);
+  useEffect(() => onSessionExpired(() => setExpired(true)), []);
+  const signedOut = expired || (query.error instanceof ApiError && query.error.status === 401);
+  if (signedOut) return <LoginRedirect href={loginHref()} label={t("common.loading")} />;
   if (query.isPending) {
     return (
       <div
@@ -29,13 +33,15 @@ export function SessionGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (query.error instanceof ApiError && query.error.status === 401) {
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    const href = `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`;
-    return <LoginRedirect href={href} label={t("common.loading")} />;
-  }
   if (query.error || !query.data) {
     return <BootstrapErrorPage onRetry={() => void query.refetch()} />;
   }
   return <SessionContext.Provider value={query.data}>{children}</SessionContext.Provider>;
+}
+
+export function loginHref(
+  location: Pick<Location, "pathname" | "search"> = window.location,
+): string {
+  const returnTo = `${location.pathname}${location.search}`;
+  return `/v1/identity/cockpit-login?return_to=${encodeURIComponent(returnTo)}`;
 }
