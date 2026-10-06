@@ -81,12 +81,19 @@ async function startProbe(page, lead, userText) {
         const raw = getComputedStyle(viewport).getPropertyValue("--scroll-fade-b");
         const factor = raw.match(/\(([\d.e-]+) \*/);
         const fade = factor ? Number(factor[1]) > 0.05 : /min\(/.test(raw);
+        const content = document.querySelector('[data-testid="page-content"]');
+        if (content) {
+          const dimmed =
+            Number.parseFloat(getComputedStyle(content).opacity) < 0.99 ||
+            content.getAnimations().some((animation) => animation.playState === "running");
+          if (dimmed) probe.pageDimmed += 1;
+        }
         if (probe.lastFade !== undefined && fade !== probe.lastFade) probe.fadeFlips += 1;
         probe.lastFade = fade;
         if (fade) probe.fadeFrames += 1;
         requestAnimationFrame(sample);
       };
-      Object.assign(probe, { fadeFlips: 0, fadeFrames: 0, answerTwice: 0 });
+      Object.assign(probe, { fadeFlips: 0, fadeFrames: 0, answerTwice: 0, pageDimmed: 0 });
       requestAnimationFrame(sample);
       window.stabilityProbe = {
         stop: () => {
@@ -123,6 +130,8 @@ function judge(numbers, { answer, user, typing }) {
     failures.push(`the answer showed twice for ${numbers.answerTwice} frame(s)`);
   if (numbers.fadeFrames > 0)
     failures.push(`the bottom fade covered the newest line for ${numbers.fadeFrames} frame(s)`);
+  if (numbers.pageDimmed > 0)
+    failures.push(`the whole page faded for ${numbers.pageDimmed} frame(s)`);
   if (typing && numbers.refetches > 0)
     failures.push(`typing read the conversation ${numbers.refetches} time(s)`);
   return failures;
@@ -243,6 +252,21 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
     await composer().waitFor();
     await installStream(page);
     await turn("new", de ? "Lege einen neuen Bericht an" : "Create a new report");
+    const entered = await page.evaluate(async () => {
+      const content = document.querySelector('[data-testid="page-content"]');
+      const seen = { animated: false };
+      const watch = () => {
+        if (content?.getAnimations().length) seen.animated = true;
+        if (!seen.done) requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+      window.history.pushState(window.history.state, "", "/cockpit/workflows");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: window.history.state }));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      seen.done = true;
+      return seen.animated;
+    });
+    if (!entered) failures.push("moving to another page no longer eases the page in");
   } finally {
     await page.unroute(detailPattern, detail);
   }

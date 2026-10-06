@@ -6,7 +6,7 @@ import { listPagePath, listQueryKey, nextPageParam } from "@/lib/use-infinite-li
 import { loadingPhase, SKELETON_MIN_MS } from "@/lib/use-loading-phase";
 import { backoffDelay } from "./live-events";
 import { keyId, keysForEvent, LIVE_RULES } from "./live-invalidation";
-import { entersRoute } from "./route-entrance";
+import { entersRoute, NO_PAGE, pageOf } from "./route-entrance";
 import { isNewVersion } from "./version-notice";
 
 const SRC = join(import.meta.dir, "..");
@@ -160,10 +160,37 @@ describe("endless lists", () => {
 describe("route entrance", () => {
   test("only a change of page settles in, never the first page and never under reduced motion", () => {
     expect(entersRoute({ previous: "/", next: "/workflows", reducedMotion: false })).toBe(true);
-    expect(entersRoute({ previous: null, next: "/workflows", reducedMotion: false })).toBe(false);
+    expect(entersRoute({ previous: NO_PAGE, next: "/workflows", reducedMotion: false })).toBe(
+      false,
+    );
     expect(entersRoute({ previous: "/workflows", next: "/workflows", reducedMotion: false })).toBe(
       false,
     );
     expect(entersRoute({ previous: "/", next: "/workflows", reducedMotion: true })).toBe(false);
+  });
+
+  test("a page that only takes on its own address does not enter again", () => {
+    expect(
+      entersRoute({
+        previous: pageOf("/chat/new"),
+        next: pageOf("/chat/abc"),
+        reducedMotion: false,
+      }),
+    ).toBe(false);
+    expect(
+      entersRoute({
+        previous: pageOf("/chat/abc"),
+        next: pageOf("/workflows"),
+        reducedMotion: false,
+      }),
+    ).toBe(true);
+    expect(
+      entersRoute({
+        previous: pageOf("/workflows"),
+        next: pageOf("/workflows/abc"),
+        reducedMotion: false,
+      }),
+    ).toBe(true);
+    expect(pageOf("/chatter")).toBe("/chatter");
   });
 });
