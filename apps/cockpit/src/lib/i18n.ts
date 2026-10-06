@@ -8027,9 +8027,16 @@ export function translatePlural(
   count: number,
   values: Record<string, string | number> = {},
 ): string {
+  const number = new Intl.NumberFormat(LOCALE_TAGS[locale]);
+  const formatted = Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      typeof value === "number" ? number.format(value) : value,
+    ]),
+  );
   return translate(locale, pluralKey(key, count), {
-    count: new Intl.NumberFormat(LOCALE_TAGS[locale]).format(count),
-    ...values,
+    ...formatted,
+    count: number.format(count),
   });
 }
 
