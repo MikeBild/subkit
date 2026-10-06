@@ -1,7 +1,7 @@
 import { z } from "@hono/zod-openapi";
-import { categoryOfConnector } from "../../connectors/categorize.ts";
+import { listedDescription } from "../../api/catalog-metadata.ts";
+import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { keywordSearch } from "./keyword-search.ts";
 
 const inputSchema = z
   .object({
@@ -10,7 +10,7 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe(
-        'Free-text query. Matches id/slug/display_name/description/template_slug/driver/base_url. Use "*" or omit to list all.',
+        'Free-text query. Matches id/slug/display_name/description/category/template_slug/driver/base_url. Use "*" or omit to list all.',
       ),
     id: z.string().min(1).optional().describe("Exact connector id; takes precedence over query."),
     environment: z
@@ -21,7 +21,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Restrict the search to one catalog block. A connector's block is its driver (http, graphql, postgres, s3, mcp).",
+        "Restrict the search to one catalog block (see `category` on each match). Categories are shared with workflows, knowledge sources, skills and files.",
       ),
     limit: z.number().int().min(1).max(50).default(15),
   })
@@ -39,7 +39,7 @@ interface ConnectorSummary {
   example_paths: string[];
   needs_reauth: boolean;
   auth_failed_at: string | null;
-  category?: string;
+  category: string;
 }
 
 function summarize(c: {
@@ -50,7 +50,8 @@ function summarize(c: {
   environment: string;
   template_slug?: string | null;
   base_url?: string | null;
-  operator_quirks?: Record<string, string | undefined> | null;
+  description: string | null;
+  category: string;
   template_snapshot?: unknown;
   needs_reauth?: boolean;
   auth_failed_at?: Date | null;
@@ -60,7 +61,6 @@ function summarize(c: {
     snap && Array.isArray(snap.example_paths)
       ? snap.example_paths.filter((p): p is string => typeof p === "string")
       : [];
-  const description = c.operator_quirks?.general?.trim() || null;
   return {
     id: c.id,
     slug: c.slug,
@@ -69,32 +69,27 @@ function summarize(c: {
     environment: c.environment,
     template_slug: c.template_slug ?? null,
     base_url: c.base_url ?? null,
-    description,
+    description: listedDescription(c.description),
+    category: c.category,
     example_paths: examplePaths,
     needs_reauth: c.needs_reauth ?? false,
     auth_failed_at: c.auth_failed_at?.toISOString() ?? null,
   };
 }
 
-function searchableText(s: ConnectorSummary): string {
-  return [
-    s.id,
-    s.slug,
-    s.display_name,
-    s.driver,
-    s.environment,
-    s.template_slug ?? "",
-    s.base_url ?? "",
-    s.description ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+function rankFields(s: ConnectorSummary) {
+  return {
+    category: [s.category],
+    identity: [s.slug, s.display_name, s.template_slug],
+    description: [s.description],
+    detail: [s.driver, s.base_url, ...s.example_paths],
+  };
 }
 
 export const findConnectorTool: ConversationTool = {
   name: "find_connector",
   description:
-    "Look up saved connectors by exact id or free-text query. Keyword scoring across id/slug/name/description/template/driver/base_url. Use before list_connectors for tenants with many connectors.",
+    "Look up saved connectors by exact id or free-text query. Matches are ranked by category, slug and name, description, then driver and base URL, and each says why it matched (`reasons`). Use before list_connectors for tenants with many connectors.",
   use_case:
     'Operator says "do we already have a Stripe connector?" — find_connector returns ranked matches in one call.',
   important_notes: [
@@ -125,16 +120,10 @@ export const findConnectorTool: ConversationTool = {
     const filtered = args.environment
       ? list.filter((c) => c.environment === args.environment)
       : list;
-    const summaries = filtered.map((c) => ({ ...summarize(c), category: categoryOfConnector(c) }));
-    const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
-    const limited = ranked.slice(0, args.limit);
+    const summaries = filtered.map(summarize);
     return {
       ok: true,
-      data: {
-        matches: limited,
-        total: ranked.length,
-        ...(ranked.length > limited.length ? { truncated: true } : {}),
-      },
+      data: rankedPage(args.query, summaries, rankFields, args.limit, "list_connectors"),
     };
   },
 };

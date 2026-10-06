@@ -14,6 +14,11 @@ import {
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
 import {
   INVOCATION_LOOKUP_TIMEOUT_MS,
@@ -284,6 +289,7 @@ const listCommand = defineCommand({
         ? items
         : items.map((item) => ({
             ...item,
+            description: shortDescription((item as Record<string, unknown>).description),
             runs_on: effectiveTriggerLabel(item as TriggerFields),
           }));
       if (args.flat || !categories?.length) {
@@ -820,6 +826,35 @@ const updateCommand = defineCommand({
   },
 });
 
+const patchCommand = defineCommand({
+  meta: {
+    name: "patch",
+    description:
+      "Change a workflow's name, description or category without saving a new version (the slug and its wf_<slug> tool stay as they are).",
+  },
+  args: {
+    workflow: { type: "positional", required: true, description: "Workflow id or slug" },
+    name: { type: "string", description: "New display name" },
+    ...catalogMetadataArgs,
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    const jsonMode = Boolean(args.json);
+    try {
+      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+      if (args.name) body.name = args.name;
+      if (Object.keys(body).length === 0) {
+        throw new Error("pass at least one of --name, --description, --category");
+      }
+      const id = await resolveWorkflowIdOrSlug(client, String(args.workflow));
+      printJson(await client.patchWorkflowMetadata(id, body));
+    } catch (err) {
+      reportCommandError(err, { json: jsonMode });
+    }
+  },
+});
+
 export const workflowsCommand = defineCommand({
   meta: { name: "workflows", description: "Manage workflows" },
   subCommands: {
@@ -834,6 +869,7 @@ export const workflowsCommand = defineCommand({
     restore: restoreCommand,
     create: createCommand,
     update: updateCommand,
+    patch: patchCommand,
     "invoke-snippet": invokeSnippetCommand,
   },
 });

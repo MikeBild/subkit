@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
 import { errorFields, logger } from "../logging/logger.ts";
@@ -7,6 +8,7 @@ import {
   createKnowledgeSource,
   getKnowledgeSourceBySlug,
   ingestKnowledgeSource,
+  updateKnowledgeSource,
 } from "./service.ts";
 
 export interface SeededKnowledge {
@@ -82,6 +84,7 @@ export async function applyKnowledgeSeeds(
             name: s.name,
             slug: s.slug,
             description: s.description,
+            category: PLATFORM_CATEGORY,
             tags: s.tags,
             scope: "global",
           },
@@ -104,6 +107,12 @@ export async function applyKnowledgeSeeds(
       });
       unchanged++;
       continue;
+    }
+    if (existing.category !== PLATFORM_CATEGORY) {
+      await updateKnowledgeSource(
+        { tenant_id, id: existing.id, patch: { category: PLATFORM_CATEGORY }, actor_id: null },
+        db,
+      );
     }
     if (existing.version === version) {
       unchanged++;

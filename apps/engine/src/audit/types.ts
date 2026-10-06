@@ -200,6 +200,10 @@ export const AuditAction = {
   ELICITATION_DEMOTED_TO_PORTAL: "elicitation.demoted_to_portal",
   ELICITATION_EXPIRED: "elicitation.expired",
 
+  CATALOG_METADATA_UPDATED: "catalog_metadata.updated",
+  CATALOG_METADATA_GENERATED: "catalog_metadata.generated",
+  CATALOG_CATEGORY_RENAMED: "catalog_category.renamed",
+
   KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
   KNOWLEDGE_SOURCE_UPDATED: "knowledge_source.updated",
   KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",

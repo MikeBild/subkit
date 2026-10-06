@@ -2,7 +2,10 @@ import { and, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { canonicalWorkflowJson as stableStringify } from "./canonical-json.ts";
+import {
+  definitionWithoutDescription,
+  canonicalWorkflowJson as stableStringify,
+} from "./canonical-json.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 
 type ScopeIndex = Record<
@@ -37,7 +40,10 @@ export async function isUnchangedFromCurrentVersion(p: {
   const current = rows[0];
   if (!current) return { unchanged: false, current_def: null };
   const current_def = WorkflowDefSchema.parse(current.dag);
-  if (stableStringify(current.dag) !== stableStringify(p.def)) {
+  if (
+    stableStringify(definitionWithoutDescription(current.dag)) !==
+    stableStringify(definitionWithoutDescription(p.def))
+  ) {
     return { unchanged: false, current_def };
   }
   if (

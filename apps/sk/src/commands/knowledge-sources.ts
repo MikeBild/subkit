@@ -7,6 +7,11 @@ import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
 import { collectBundleFiles, defaultBundleName } from "../lib/bundle-import.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { sanitizePathInput } from "../lib/path-input.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { KnowledgeSourceIntent, KnowledgeSourceSummary, PlanStep } from "../render/types.ts";
@@ -30,9 +35,14 @@ const listCommand = defineCommand({
       }
       const rows = items.map((it) => ({
         ...it,
+        description: shortDescription(it.description),
         tags: Array.isArray(it.tags) ? (it.tags as string[]).join(", ") : (it.tags ?? ""),
       }));
-      emitList(false, ["id", "name", "tags", "chunk_count", "status"], rows);
+      emitList(
+        false,
+        ["id", "name", "category", "description", "tags", "chunk_count", "status"],
+        rows,
+      );
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }
@@ -83,15 +93,12 @@ const createCommand = defineCommand({
   meta: { name: "create", description: "Upload a file as a knowledge source" },
   args: {
     file: { type: "string", required: true, description: "Path to file" },
-    title: { type: "string", description: "Override title (defaults to filename)" },
-    description: {
-      type: "string",
-      description: "Description (omit to let the engine auto-generate one)",
-    },
+    name: { type: "string", description: "Source name (defaults to the filename)" },
+    ...catalogMetadataArgs,
     tags: {
       type: "string",
       description:
-        "Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit both --tags and --description to auto-generate them.",
+        "Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit --description and --category to let the engine describe the source.",
     },
     scope: { type: "string", description: "Scope: global | workflow" },
     "workflow-id": { type: "string", description: "Workflow id (required when scope=workflow)" },
@@ -106,7 +113,7 @@ const createCommand = defineCommand({
       const fileBuffer = readFileSync(filePath);
       const size_bytes = statSync(filePath).size;
       const mime_type = detectMime(filePath);
-      const title = args.title ?? basename(filePath);
+      const title = args.name ?? basename(filePath);
 
       const intent: KnowledgeSourceIntent = {
         kind: "knowledge_source",
@@ -135,8 +142,7 @@ const createCommand = defineCommand({
         await renderTaskList(phases, { jsonMode });
         throw err;
       }
-      const metadata: Record<string, unknown> = { name: title };
-      if (args.description) metadata.description = args.description;
+      const metadata: Record<string, unknown> = { name: title, ...catalogMetadataBody(args) };
       if (args.tags) {
         metadata.tags = args.tags
           .split(",")
@@ -212,7 +218,7 @@ const importCommand = defineCommand({
     dir: { type: "positional", required: true, description: "Directory to import" },
     name: { type: "string", description: "Source name (defaults to root index.md H1 or dirname)" },
     slug: { type: "string", description: "Stable slug (defaults to slugified name)" },
-    description: { type: "string", description: "Source description" },
+    ...catalogMetadataArgs,
     tags: { type: "string", description: "Comma-separated extra tags (frontmatter tags merge in)" },
     scope: { type: "string", description: "Scope: global | workflow" },
     "workflow-id": { type: "string", description: "Workflow id (required when scope=workflow)" },
@@ -229,7 +235,7 @@ const importCommand = defineCommand({
       const result = await client.importKnowledgeBundle({
         name,
         ...(args.slug ? { slug: args.slug } : {}),
-        ...(args.description ? { description: args.description } : {}),
+        ...catalogMetadataBody(args),
         ...(args.tags
           ? {
               tags: args.tags
@@ -267,17 +273,16 @@ const patchCommand = defineCommand({
   meta: { name: "patch", description: "Update a knowledge source" },
   args: {
     id: { type: "positional", required: true, description: "Knowledge source id" },
-    title: { type: "string", description: "New title" },
-    description: { type: "string", description: "New description" },
+    name: { type: "string", description: "New name" },
+    ...catalogMetadataArgs,
     tags: { type: "string", description: "Comma-separated tags (replaces existing)" },
     status: { type: "string", description: "Status: active | inactive" },
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
-    const body: Record<string, unknown> = {};
-    if (args.title) body.name = args.title;
-    if (args.description) body.description = args.description;
+    const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+    if (args.name) body.name = args.name;
     if (args.tags !== undefined) {
       body.tags = args.tags
         .split(",")
@@ -286,7 +291,7 @@ const patchCommand = defineCommand({
     }
     if (args.status) body.status = args.status;
     if (Object.keys(body).length === 0) {
-      const msg = "at least one of --title, --description, --tags, --status is required";
+      const msg = "at least one of --name, --description, --category, --tags, --status is required";
       process.stderr.write(`${pc.red("error")}: ${msg}\n`);
       throw new Error(msg);
     }

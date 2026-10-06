@@ -274,25 +274,26 @@ describe("listWorkflowToolsForTenant — descriptor shape", () => {
     expect(typeof item!.workflow_id).toBe("string");
     expect(typeof item!.slug).toBe("string");
     expect(typeof item!.name).toBe("string");
-    expect(typeof item!.description).toBe("string");
+    expect(item!.description).toBeNull();
+    expect(item!.category).toBe("other");
     expect(typeof item!.inputSchema).toBe("object");
     expect(item!.inputSchema.type).toBe("object");
   });
 
-  test("descriptor description falls back to workflow name when dag has no description field", async () => {
+  test("a description only the definition carries is not the workflow's description", async () => {
     await seedWorkflow({
       slug: "no-desc-wf",
       name: "My Workflow Name",
       dag: {
         name: "My Workflow Name",
         slug: "no-desc-wf",
+        description: "Text that only lived in an old definition.",
         steps: [{ id: "s1", kind: "request", url: "https://example.com" }],
       },
     });
     const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
     const item = results.find((r) => r.slug === "no-desc-wf");
-    expect(typeof item?.description).toBe("string");
-    expect(item?.description).toBe("My Workflow Name");
+    expect(item?.description).toBeNull();
   });
 });
 

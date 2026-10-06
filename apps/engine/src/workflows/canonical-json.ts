@@ -15,3 +15,10 @@ export function canonicalWorkflowJson(value: unknown): string {
 export function workflowJsonDigest(value: unknown): string {
   return createHash("sha256").update(canonicalWorkflowJson(value)).digest("hex");
 }
+
+export function definitionWithoutDescription<T>(def: T): T {
+  if (!def || typeof def !== "object" || Array.isArray(def)) return def;
+  if (!("description" in def)) return def;
+  const { description: _description, ...rest } = def as Record<string, unknown>;
+  return rest as T;
+}

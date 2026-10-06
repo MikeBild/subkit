@@ -13,6 +13,11 @@ import {
   type FileWire,
   MAX_INLINE_BYTES,
 } from "../engine-client.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { renderSuspiciousCodepoints, sanitizePathInput } from "../lib/path-input.ts";
 import { detectMime } from "../utils/mime.ts";
 import {
@@ -170,8 +175,11 @@ const listCommand = defineCommand({
       }
       emitList(
         false,
-        ["id", "status", "filename", "size_bytes", "content_type", "created_at"],
-        res.items as unknown as Record<string, unknown>[],
+        ["id", "status", "filename", "category", "description", "size_bytes", "created_at"],
+        (res.items as unknown as Record<string, unknown>[]).map((r) => ({
+          ...r,
+          description: shortDescription(r.description),
+        })),
       );
       if (res.next_cursor) {
         process.stdout.write(`\n${pc.dim(`next: --cursor ${res.next_cursor}`)}\n`);
@@ -418,6 +426,29 @@ const statsCommand = defineCommand({
   },
 });
 
+const patchCommand = defineCommand({
+  meta: { name: "patch", description: "Rename a file or change its description or category" },
+  args: {
+    id: { type: "positional", required: true, description: "File id (fid_…)" },
+    filename: { type: "string", description: "New filename" },
+    ...catalogMetadataArgs,
+    json: { type: "boolean", description: "JSON-only output" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    try {
+      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+      if (args.filename) body.filename = args.filename;
+      if (Object.keys(body).length === 0) {
+        throw new Error("pass at least one of --filename, --description, --category");
+      }
+      printJson(await client.patchFile(args.id, body));
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
 export const filesCommand = defineCommand({
   meta: { name: "files", description: "Manage files (upload, download, link, …)" },
   subCommands: {
@@ -427,6 +458,7 @@ export const filesCommand = defineCommand({
     download: downloadCommand,
     delete: deleteCommand,
     link: linkCommand,
+    patch: patchCommand,
     stats: statsCommand,
   },
 });

@@ -3,7 +3,6 @@ import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { loadTenantSummary, renderTenantSummaryBlock } from "../../llm/core/tenant-summary.ts";
 import { seedMcpConnector } from "../../mcp/client/test-fixtures.ts";
-import { categoryOfConnector } from "../categorize.ts";
 import { listConnectors } from "../service.ts";
 
 let ctx: TestDb;
@@ -32,17 +31,19 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30_000);
 
-test("listConnectors returns the mcp connector, blocked under its driver", async () => {
+test("listConnectors returns the mcp connector in the catch-all block until it is categorised", async () => {
   const { rows } = await listConnectors(tenant_id, {}, ctx.db);
   const found = rows.find((r) => r.id === mcpConnectorId);
   expect(found).toBeDefined();
   expect(found?.driver).toBe("mcp");
-  expect(categoryOfConnector(found!)).toBe("mcp");
+  expect(found?.category).toBe("other");
 });
 
-test("a category filter of 'mcp' selects it, exactly as 'http' selects an http connector", async () => {
-  const { rows } = await listConnectors(tenant_id, { category: "mcp" }, ctx.db);
-  expect(rows.map((r) => r.id)).toEqual([mcpConnectorId]);
+test("a driver filter of 'mcp' selects it; the category filter is a different axis", async () => {
+  const byDriver = await listConnectors(tenant_id, { driver: "mcp" }, ctx.db);
+  expect(byDriver.rows.map((r) => r.id)).toEqual([mcpConnectorId]);
+  const byCategory = await listConnectors(tenant_id, { category: "mcp" }, ctx.db);
+  expect(byCategory.rows).toHaveLength(0);
 });
 
 test("the tenant snapshot names it, so the model answers 'what do I have' without a list_ call", async () => {

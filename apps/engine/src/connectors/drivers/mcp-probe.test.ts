@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import { closeDb } from "../../db/client.ts";
 import { tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
@@ -58,6 +59,7 @@ function connectorView(p: {
     tenant_id: tenantId,
     slug: p.slug,
     display_name: p.slug,
+    ...UNDESCRIBED_METADATA,
     driver: "mcp",
     environment: "prod",
     auth_type: p.auth_type ?? "none",

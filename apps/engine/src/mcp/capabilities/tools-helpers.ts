@@ -1,5 +1,6 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { listedDescription, UNCATEGORIZED } from "../../api/catalog-metadata.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   normalizeWorkflowInput,
@@ -47,12 +48,15 @@ export async function listWorkflowTools({
   }));
 }
 
-function describeWorkflowTool(entry: { name: string; description: string }): string {
-  const summary =
-    entry.description && entry.description.trim() !== entry.name.trim()
-      ? ` — ${entry.description.trim()}`
-      : "";
-  return `Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
+export function describeWorkflowTool(entry: {
+  name: string;
+  description: string | null;
+  category: string;
+}): string {
+  const block = entry.category && entry.category !== UNCATEGORIZED ? `[${entry.category}] ` : "";
+  const text = listedDescription(entry.description);
+  const summary = text && text !== entry.name.trim() ? ` — ${text}` : "";
+  return `${block}Run the saved workflow "${entry.name}"${summary}. Executes its stored steps and connectors and returns the result. Prefer this over re-deriving the same query with call_connector.`;
 }
 
 export async function buildRunWorkflowNeedsInput(p: {

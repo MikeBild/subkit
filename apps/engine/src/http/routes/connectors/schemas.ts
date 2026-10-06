@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CatalogSourceSchema } from "../../../api/catalog-metadata.ts";
 import { ConnectionSummarySchema } from "../../../api/connection-schemas.ts";
 import {
   ConnectorTemplateSourceEnum,
@@ -36,6 +37,14 @@ export const ConnectorSchema = z
     tenant_id: z.string(),
     slug: z.string(),
     display_name: z.string(),
+    description: z.string().nullable(),
+    description_source: CatalogSourceSchema,
+    category: z
+      .string()
+      .describe(
+        "The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned.",
+      ),
+    category_source: CatalogSourceSchema,
     driver: z.string(),
     environment: z.string(),
     auth_type: z.string(),
@@ -85,13 +94,9 @@ export const ConnectorSchema = z
   })
   .openapi("Connector");
 
-export const ConnectorListItemSchema = ConnectorSchema.extend({
-  category: z.string(),
-}).openapi("ConnectorListItem");
-
 export const ConnectorListResponse = z
   .object({
-    items: z.array(ConnectorListItemSchema),
+    items: z.array(ConnectorSchema),
     total: z.number().int().nonnegative(),
     categories: z.array(z.object({ category: z.string(), count: z.number().int().nonnegative() })),
   })
@@ -164,6 +169,10 @@ export function serialize(view: ConnectorView) {
     tenant_id: c.tenant_id,
     slug: c.slug,
     display_name: c.display_name,
+    description: c.description,
+    description_source: c.description_source,
+    category: c.category,
+    category_source: c.category_source,
     driver: c.driver,
     environment: c.environment,
     auth_type: c.auth_type,

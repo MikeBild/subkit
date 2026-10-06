@@ -35,7 +35,7 @@ function propertiesOf(name: string, seen = new Set<string>()): Set<string> {
 describe("catalog list columns match the engine schema", () => {
   test("the list-item schemas resolve to real properties", () => {
     expect(propertiesOf("WorkflowListItem").size).toBeGreaterThan(5);
-    expect(propertiesOf("ConnectorListItem").size).toBeGreaterThan(5);
+    expect(propertiesOf("Connector").size).toBeGreaterThan(5);
   });
 
   test("every workflow column exists on WorkflowListItem, or is synthesised", () => {
@@ -54,8 +54,8 @@ describe("catalog list columns match the engine schema", () => {
     for (const c of WORKFLOW_SYNTHESISED_COLUMNS) expect(available.has(c)).toBe(false);
   });
 
-  test("every connector column exists on ConnectorListItem, or is synthesised", () => {
-    const available = propertiesOf("ConnectorListItem");
+  test("every connector column exists on Connector, or is synthesised", () => {
+    const available = propertiesOf("Connector");
     const missing = CONNECTOR_LIST_COLUMNS.filter(
       (c) => !available.has(c) && !CONNECTOR_SYNTHESISED_COLUMNS.includes(c),
     );
@@ -73,6 +73,6 @@ describe("catalog list columns match the engine schema", () => {
   test("the grouping columns are rendered", () => {
     expect(WORKFLOW_LIST_COLUMNS).toContain("connectors");
     expect(propertiesOf("WorkflowListItem").has("category")).toBe(true);
-    expect(propertiesOf("ConnectorListItem").has("category")).toBe(true);
+    expect(propertiesOf("Connector").has("category")).toBe(true);
   });
 });

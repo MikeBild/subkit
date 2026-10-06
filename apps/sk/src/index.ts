@@ -8,6 +8,7 @@ import { agentCommand } from "./commands/agent.ts";
 import { apiKeysCommand } from "./commands/apikeys.ts";
 import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
+import { categoriesCommand } from "./commands/categories.ts";
 import { chatCommand } from "./commands/chat.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
@@ -420,6 +421,7 @@ const mainCommand = defineCommand({
     learnings: learningsCommand,
     workflows: workflowsCommand,
     connectors: connectorsCommand,
+    categories: categoriesCommand,
     chat: chatCommand,
     "connector-templates": connectorTemplatesCommand,
     credentials: credentialsCommand,
@@ -585,6 +587,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   learnings: { command: learningsCommand, requires: "skill:read" },
   workflows: { command: workflowsCommand, requires: "workflow:read" },
   connectors: { command: connectorsCommand, requires: "connector:read" },
+  categories: { command: categoriesCommand, requires: "workflow:read" },
   chat: { command: chatCommand, requires: "chat_workspace:read" },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
   credentials: { command: credentialsCommand, requires: "credential:read" },

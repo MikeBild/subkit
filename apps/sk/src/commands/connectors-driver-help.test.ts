@@ -21,14 +21,14 @@ async function sub(name: string): Promise<CittySub> {
   return found;
 }
 
-describe("sk connectors --category help text", () => {
+describe("sk connectors list --driver help text", () => {
   test("the driver enum resolves — otherwise the assertions below pass vacuously", () => {
     expect(DRIVER_ENUM.length).toBeGreaterThan(1);
     expect(DRIVER_ENUM).toContain("mcp");
   });
 
   test("names every driver the engine ships", async () => {
-    const description = (await sub("list")).args?.category?.description ?? "";
+    const description = (await sub("list")).args?.driver?.description ?? "";
     const missing = DRIVER_ENUM.filter((d) => !description.includes(d));
     expect(missing).toEqual([]);
   });

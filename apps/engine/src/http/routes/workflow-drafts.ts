@@ -170,6 +170,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_type: principal.kind,
         def: body.definition,
         request_source: c.get("request_source") ?? "api",
+        ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
       },
       c.get("db"),
     );
@@ -186,6 +187,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         workflow_id: c.req.valid("param").id,
         expected_draft_version_id: body.expected_draft_version_id,
         def: body.definition,
+        ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
         request_source: c.get("request_source") ?? "api",
       },
       c.get("db"),

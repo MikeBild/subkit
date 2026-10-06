@@ -1,4 +1,10 @@
 import { z } from "@hono/zod-openapi";
+import {
+  CatalogSourceSchema,
+  CategorySchema,
+  DescriptionSchema,
+  UNCATEGORIZED,
+} from "../api/catalog-metadata.ts";
 
 export const SkillScopeSchema = z.enum(["global", "connector", "workflow"]);
 export const SkillLifecycleSchema = z.enum(["draft", "active", "archived"]);
@@ -81,6 +87,10 @@ export const SkillSchema = z
     workflow_id: z.string().uuid().nullable(),
     slug: z.string().nullable().default(null),
     title: z.string().min(1),
+    description: z.string().nullable().default(null),
+    description_source: CatalogSourceSchema.default("llm"),
+    category: z.string().default(UNCATEGORIZED),
+    category_source: CatalogSourceSchema.default("llm"),
     body: z.string().min(1),
     examples: z.array(z.string()).default([]),
     best_practices: z.array(z.string()).default([]),
@@ -109,6 +119,8 @@ export const CreateSkillSchema = z
     connector_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
     title: z.string().min(1),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
     body: z.string().min(1),
     examples: z.array(z.string()).optional(),
     best_practices: z.array(z.string()).optional(),
@@ -132,6 +144,8 @@ export const UpdateSkillSchema = z
   .object({
     expected_version: z.number().int().positive().optional(),
     title: z.string().min(1).optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
     body: z.string().min(1).optional(),
     examples: z.array(z.string()).optional(),
     best_practices: z.array(z.string()).optional(),

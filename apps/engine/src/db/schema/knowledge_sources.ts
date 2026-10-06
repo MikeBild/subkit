@@ -11,7 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { files } from "./files.ts";
 import { tenants } from "./identity.ts";
 import { workflows } from "./workflows.ts";
@@ -44,7 +44,7 @@ export const knowledgeSources = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
-    description: text("description"),
+    ...catalogMetadata(),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     scope: knowledgeSourceScopeEnum("scope").notNull().default("global"),
     workflow_id: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
@@ -72,6 +72,7 @@ export const knowledgeSources = pgTable(
     index("knowledge_sources_tenant_scope_idx").on(t.tenant_id, t.scope),
     index("knowledge_sources_tenant_workflow_idx").on(t.tenant_id, t.workflow_id),
     index("knowledge_sources_tenant_tags_idx").using("gin", t.tags),
+    ...catalogMetadataConstraints("knowledge_sources", t),
   ],
 );
 

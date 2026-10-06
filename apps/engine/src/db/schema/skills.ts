@@ -12,7 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
 export const skillScopeEnum = pgEnum("skill_scope", ["global", "connector", "workflow"]);
@@ -36,6 +36,7 @@ export const skills = pgTable(
     workflow_id: uuid("workflow_id"),
     title: text("title").notNull(),
     body: text("body").notNull(),
+    ...catalogMetadata(),
     examples: jsonb("examples"),
     arguments: jsonb("arguments"),
     lifecycle: skillLifecycleEnum("lifecycle").notNull(),
@@ -65,6 +66,7 @@ export const skills = pgTable(
       "skills_side_effects_chk",
       sql`${t.side_effects} IN ('none','read','write','destructive')`,
     ),
+    ...catalogMetadataConstraints("skills", t),
   ],
 );
 

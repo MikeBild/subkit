@@ -243,6 +243,7 @@ export async function startMcpTestSuite(
         tenant_id: http.tenantId,
         slug: def.slug,
         name: def.name,
+        ...(def.description ? { description: def.description, description_source: "human" } : {}),
         lifecycle: "active",
       })
       .returning();

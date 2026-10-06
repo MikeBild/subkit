@@ -191,11 +191,7 @@ function useManualWorkflow(
   };
   const create = useMutation({
     mutationFn: () => {
-      const base = slugify(name);
-      const slug =
-        category !== UNCATEGORIZED && !base.startsWith(`${category}-`)
-          ? `${category}-${base}`
-          : base;
+      const slug = slugify(name);
       const definition = {
         name: name.trim(),
         slug,
@@ -214,7 +210,10 @@ function useManualWorkflow(
       };
       return apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
         method: "POST",
-        body: JSON.stringify({ definition }),
+        body: JSON.stringify({
+          definition,
+          ...(category !== UNCATEGORIZED ? { category } : {}),
+        }),
       });
     },
     onSuccess: async (draft) => {

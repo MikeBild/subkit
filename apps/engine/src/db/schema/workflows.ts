@@ -13,7 +13,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
+import {
+  catalogMetadata,
+  catalogMetadataConstraints,
+  executionModeEnum,
+  tenantId,
+  timestamps,
+} from "./_common.ts";
 import { tenants } from "./identity.ts";
 
 export const autohealPolicyEnum = pgEnum("autoheal_policy", [
@@ -31,7 +37,7 @@ export const workflows = pgTable(
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
-    description: text("description"),
+    ...catalogMetadata(),
     current_version_id: uuid("current_version_id"),
     draft_version_id: uuid("draft_version_id"),
     lifecycle: workflowLifecycleEnum("lifecycle").notNull(),
@@ -51,6 +57,7 @@ export const workflows = pgTable(
     index("workflows_tool_catalog_lru_idx")
       .on(t.tenant_id, t.last_executed_at.desc(), t.created_at)
       .where(sql`${t.is_tool} = TRUE AND ${t.deleted_at} IS NULL`),
+    ...catalogMetadataConstraints("workflows", t),
   ],
 );
 

@@ -1,4 +1,12 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import {
+  type CatalogMetadataColumns,
+  type CatalogMetadataPatch,
+  type CatalogSource,
+  catalogMetadataView,
+  humanMetadataWrite,
+  metadataChange,
+} from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -11,6 +19,7 @@ import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from ".
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
+import { definitionWithoutDescription } from "./canonical-json.ts";
 import {
   buildWorkflowListConds,
   countWorkflows,
@@ -56,6 +65,9 @@ export interface WorkflowView {
   slug: string;
   name: string;
   description: string | null;
+  description_source: CatalogSource;
+  category: string;
+  category_source: CatalogSource;
   lifecycle: "draft" | "active" | "archived";
   current_version_id: string | null;
   draft_version_id?: string | null;
@@ -118,17 +130,25 @@ async function workflowViewsFromRows(
   return rows.map((wf) => {
     const v = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
     const stored = v ? readStoredDefinition(v.dag) : null;
-    const def: WorkflowDef = stored
+    const storedDef: WorkflowDef = stored
       ? stored.invalid
         ? invalidDefinitionForRead(v?.dag, wf.name)
         : stored.definition
       : ({ name: wf.name, steps: [] } as WorkflowDef);
+    const withoutDescription = definitionWithoutDescription(storedDef);
+    const def: WorkflowDef = wf.description
+      ? { ...withoutDescription, description: wf.description }
+      : withoutDescription;
+    const metadata = catalogMetadataView(wf);
     return {
       id: wf.id,
       tenant_id: wf.tenant_id,
       slug: wf.slug,
       name: wf.name,
-      description: wf.description ?? null,
+      description: metadata.description,
+      description_source: metadata.description_source,
+      category: metadata.category,
+      category_source: metadata.category_source,
       lifecycle: wf.lifecycle as "draft" | "active" | "archived",
       current_version_id: wf.current_version_id,
       draft_version_id: wf.draft_version_id,
@@ -150,6 +170,7 @@ export interface CreateWorkflowInput {
   tenant_id: string;
   def: unknown;
   actor_id: string | null;
+  metadata?: CatalogMetadataPatch;
   scope_index?: Record<
     string,
     { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -177,6 +198,10 @@ export async function createWorkflow(
   if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
   const slug = def.slug ?? slugify(def.name);
+  const metadata = humanMetadataWrite({
+    ...(def.description !== undefined ? { description: def.description } : {}),
+    ...input.metadata,
+  });
   let result: string;
   try {
     result = await db.transaction(async (tx) => {
@@ -186,7 +211,7 @@ export async function createWorkflow(
           tenant_id: input.tenant_id,
           slug,
           name: def.name,
-          ...(def.description ? { description: def.description } : {}),
+          ...metadata,
           lifecycle: "active",
         })
         .returning();
@@ -197,7 +222,7 @@ export async function createWorkflow(
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
           version: 1,
-          dag: def,
+          dag: definitionWithoutDescription(def),
           ...(input.scope_index ? { scope_index: input.scope_index } : {}),
         })
         .returning();
@@ -247,6 +272,7 @@ export interface UpdateWorkflowInput {
   id: string;
   def: unknown;
   actor_id: string | null;
+  metadata?: CatalogMetadataPatch;
   scope_index?: Record<
     string,
     { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -286,6 +312,34 @@ export async function updateWorkflow(
       def,
       scope_index: input.scope_index,
     });
+    const metadataPatch = metadataChange(wf, {
+      ...(def.description !== undefined ? { description: def.description } : {}),
+      ...input.metadata,
+    });
+    if (metadataPatch) {
+      await tx
+        .update(workflows)
+        .set({ ...metadataPatch, updated_at: new Date() })
+        .where(eq(workflows.id, wf.id));
+      await auditAwait(
+        {
+          tenant_id: input.tenant_id,
+          actor_type: input.actor_id ? "user" : "system",
+          actor_id: input.actor_id,
+          action: AuditAction.CATALOG_METADATA_UPDATED,
+          resource_type: "workflow",
+          resource_id: wf.id,
+          result: "success",
+          before: { description: wf.description, category: wf.category },
+          after: {
+            description:
+              metadataPatch.description === undefined ? wf.description : metadataPatch.description,
+            category: metadataPatch.category ?? wf.category,
+          },
+        },
+        tx,
+      );
+    }
     if (dedup.unchanged) {
       return wf.id;
     }
@@ -307,7 +361,7 @@ export async function updateWorkflow(
         tenant_id: input.tenant_id,
         workflow_id: wf.id,
         version: next,
-        dag: def,
+        dag: definitionWithoutDescription(def),
         ...(input.scope_index ? { scope_index: input.scope_index } : {}),
       })
       .returning();
@@ -316,7 +370,6 @@ export async function updateWorkflow(
       .update(workflows)
       .set({
         name: def.name,
-        description: def.description ?? null,
         current_version_id: v.id,
         updated_at: new Date(),
       })
@@ -379,6 +432,7 @@ export interface UpdateWorkflowMetadataInput {
   slug?: string;
   name?: string;
   description?: string | null;
+  category?: string | null;
   lifecycle?: "active" | "archived";
   actor_id: string | null;
 }
@@ -401,14 +455,15 @@ export async function updateWorkflowMetadata(
   const desiredName =
     typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
   const desiredLifecycle = input.lifecycle ?? null;
-  const descriptionProvided = typeof input.description === "string";
-  const desiredDescription = descriptionProvided
-    ? (input.description as string).trim() || null
-    : null;
-  if (!desiredSlug && !desiredName && !desiredLifecycle && !descriptionProvided) {
+  const metadataInput: CatalogMetadataPatch = {
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.category !== undefined ? { category: input.category } : {}),
+  };
+  const metadataProvided = Object.keys(metadataInput).length > 0;
+  if (!desiredSlug && !desiredName && !desiredLifecycle && !metadataProvided) {
     return {
       errors: [
-        "updateWorkflowMetadata requires at least one of slug, name, lifecycle, or description",
+        "updateWorkflowMetadata requires at least one of slug, name, lifecycle, description, or category",
       ],
     };
   }
@@ -448,24 +503,22 @@ export async function updateWorkflowMetadata(
       const patch: {
         slug?: string;
         name?: string;
-        description?: string | null;
         lifecycle?: "active" | "archived";
         updated_at: Date;
-      } = {
+      } & CatalogMetadataColumns = {
         updated_at: new Date(),
+        ...(metadataProvided ? metadataChange(wf, metadataInput) : null),
       };
       if (desiredSlug && desiredSlug !== wf.slug) patch.slug = desiredSlug;
       if (desiredName && desiredName !== wf.name) patch.name = desiredName;
-      if (descriptionProvided && desiredDescription !== (wf.description ?? null)) {
-        patch.description = desiredDescription;
-      }
       if (desiredLifecycle && desiredLifecycle !== wf.lifecycle) {
         patch.lifecycle = desiredLifecycle;
       }
       if (
         patch.slug === undefined &&
         patch.name === undefined &&
-        patch.description === undefined &&
+        patch.description_source === undefined &&
+        patch.category_source === undefined &&
         patch.lifecycle === undefined
       ) {
         return { id: wf.id, noop: true as const };
@@ -512,6 +565,7 @@ export async function updateWorkflowMetadata(
               slug: wf.slug,
               name: wf.name,
               description: wf.description ?? null,
+              category: wf.category,
               lifecycle: wf.lifecycle,
             },
             to: {
@@ -519,6 +573,7 @@ export async function updateWorkflowMetadata(
               name: patch.name ?? wf.name,
               description:
                 patch.description === undefined ? (wf.description ?? null) : patch.description,
+              category: patch.category ?? wf.category,
               lifecycle: patch.lifecycle ?? wf.lifecycle,
             },
           },
@@ -621,6 +676,8 @@ export interface WorkflowSummary {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
+  category: string;
   lifecycle: "draft" | "active" | "archived";
   current_version: number | null;
   step_count: number;
@@ -641,6 +698,8 @@ export async function listWorkflowSummaries(
       id: workflows.id,
       slug: workflows.slug,
       name: workflows.name,
+      description: workflows.description,
+      category: workflows.category,
       lifecycle: workflows.lifecycle,
       current_version: workflowVersions.version,
       step_count: sql<number>`coalesce(jsonb_array_length(${workflowVersions.dag} -> 'steps'), 0)::int`,
@@ -655,6 +714,8 @@ export async function listWorkflowSummaries(
     id: string;
     slug: string;
     name: string;
+    description: string | null;
+    category: string;
     lifecycle: string;
     current_version: number | null;
     step_count: number;
@@ -662,6 +723,8 @@ export async function listWorkflowSummaries(
     id: r.id,
     slug: r.slug,
     name: r.name,
+    description: r.description,
+    category: r.category,
     lifecycle: r.lifecycle as "draft" | "active" | "archived",
     current_version: r.current_version,
     step_count: Number(r.step_count ?? 0),

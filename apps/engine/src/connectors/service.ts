@@ -1,4 +1,10 @@
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import {
+  type CatalogMetadataPatch,
+  catalogMetadataView,
+  humanMetadataWrite,
+  metadataChange,
+} from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { storedScopes } from "../credentials/authority-scopes.ts";
@@ -61,12 +67,23 @@ function slugify(name: string): string {
   );
 }
 
+function metadataPatchOf(input: {
+  description?: string | null | undefined;
+  category?: string | null | undefined;
+}): CatalogMetadataPatch {
+  return {
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.category !== undefined ? { category: input.category } : {}),
+  };
+}
+
 function toView(row: typeof connectors.$inferSelect): ConnectorView {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
     slug: row.slug,
     display_name: row.display_name,
+    ...catalogMetadataView(row),
     driver: row.driver as DriverName,
     environment: row.environment as Environment,
     auth_type: row.auth_type as ConnectorView["auth_type"],
@@ -208,6 +225,7 @@ export async function createConnector(
           dsn: secrets.dsn ?? existing.dsn,
           config: config ?? existing.config,
           operator_quirks: effective.operator_quirks ?? existing.operator_quirks,
+          ...metadataChange(existing, metadataPatchOf(effective)),
           ...(resolved.binding ?? {}),
           updated_at: new Date(),
         })
@@ -255,6 +273,7 @@ export async function createConnector(
         dsn: secrets.dsn ?? null,
         config: config ?? {},
         operator_quirks: effective.operator_quirks ?? {},
+        ...humanMetadataWrite(metadataPatchOf(effective)),
         ...(resolved.binding ?? {
           template_slug: null,
           template_name: null,
@@ -302,6 +321,7 @@ export async function listConnectors(
   opts: {
     environment?: Environment;
     category?: string;
+    driver?: string;
     enabled?: boolean;
     health_state?: string;
     health?: "not_ok";
@@ -316,7 +336,8 @@ export async function listConnectors(
   const db = exec ?? getDb();
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
-  if (opts.category) tenantConds.push(eq(connectors.driver, opts.category));
+  if (opts.category) tenantConds.push(eq(connectors.category, opts.category));
+  if (opts.driver) tenantConds.push(eq(connectors.driver, opts.driver));
   if (opts.enabled !== undefined) tenantConds.push(eq(connectors.enabled, opts.enabled));
   if (opts.health_state) tenantConds.push(eq(connectors.health_state, opts.health_state));
   if (opts.health === "not_ok") tenantConds.push(connectorCountsAgainstHealth());
@@ -326,6 +347,8 @@ export async function listConnectors(
       ilike(connectors.display_name, needle),
       ilike(connectors.slug, needle),
       ilike(connectors.driver, needle),
+      ilike(connectors.category, needle),
+      ilike(connectors.description, needle),
       ilike(connectors.base_url, needle),
     );
     if (search) tenantConds.push(search);
@@ -367,11 +390,11 @@ export async function connectorCategoryCounts(
 ): Promise<Map<string, number>> {
   const db = exec ?? getDb();
   const rows = await db
-    .select({ driver: connectors.driver, count: sql<number>`count(*)::int` })
+    .select({ category: connectors.category, count: sql<number>`count(*)::int` })
     .from(connectors)
     .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
-    .groupBy(connectors.driver);
-  return new Map(rows.map((r) => [r.driver, Number(r.count)]));
+    .groupBy(connectors.category);
+  return new Map(rows.map((r) => [r.category, Number(r.count)]));
 }
 
 export async function getConnector(
@@ -541,6 +564,7 @@ export async function updateConnector(
     if (patch.auth_type !== undefined) set.auth_type = patch.auth_type;
     if (patch.config !== undefined) set.config = patch.config;
     if (patch.operator_quirks !== undefined) set.operator_quirks = patch.operator_quirks;
+    Object.assign(set, metadataChange(prior, metadataPatchOf(patch)));
     if (patch.clear_template_binding) {
       set.template_slug = null;
       set.template_name = null;

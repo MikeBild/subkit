@@ -88,6 +88,7 @@ every API call.
 | `sk attach` | `file:write` | Upload a file and link it to a conversation (shortcut) | — |
 | `sk audit` | `audit:read` | Query the append-only audit log | `export`, `query`, `show` |
 | `sk auth` | `connector:write` | Start a connector's browser sign-in and print the URL to open. Works for every connector that signs in with an account — a web service or an MCP server; the engine names the route. | — |
+| `sk categories` | `workflow:read` | Show and rename the catalog categories shared by every kind | `list`, `rename` |
 | `sk chat` | `chat_workspace:read` | Manage external chat spaces (Google Chat / Slack) | `install-space`, `remove-space`, `spaces` |
 | `sk connector-templates` | `connector:read` | Manage connector templates | `create`, `delete`, `list`, `recipe`, `recipe-pack`, `recipes`, `search`, `set-oauth` |
 | `sk connectors` | `connector:read` | Manage connectors | `create`, `delete`, `disable`, `docs-delete`, `docs-ingest`, `docs-list`, `docs-search`, `enable`, `get`, `import`, `inspect`, `list`, `mcp-authorize`, `mcp-inspect`, `patch`, `probe`, `promote`, `test`, `validate` |
@@ -98,7 +99,7 @@ every API call.
 | `sk events` | `audit:read` | Query audit events | `get`, `list` |
 | `sk executions` | `execution:read` | Manage workflow executions | `abort`, `get`, `list`, `rerun`, `result`, `steps`, `tail` |
 | `sk extract` | `conversation:write` | Extract structured data from a file (LLM for text, native parsers for binary) | — |
-| `sk files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `stats`, `upload` |
+| `sk files` | `file:read` | Manage files (upload, download, link, …) | `delete`, `download`, `get`, `link`, `list`, `patch`, `stats`, `upload` |
 | `sk health` | — | Runtime posture: liveness, token budget, failing runs, risk signals, schema drift, and process runtime. Use `sk doctor` for connectivity/setup. | — |
 | `sk hooks` | `inbound_hook:read` | Manage inbound webhook bindings | `create`, `delete`, `get`, `list` |
 | `sk init` | — | Complete first-run engine bootstrap (consumes the token printed at engine boot) | — |
@@ -135,7 +136,7 @@ every API call.
 | `sk tenants` | — | List tenants you belong to or switch the active one | — |
 | `sk update` | — | Update sk CLI to the latest version | — |
 | `sk users` | `identity:read` | Manage identity users | `create`, `delete`, `get`, `invite`, `list`, `patch` |
-| `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `preview`, `restore`, `run`, `update`, `validate` |
+| `sk workflows` | `workflow:read` | Manage workflows | `create`, `delete`, `dry-run`, `get`, `history`, `invoke-snippet`, `list`, `patch`, `preview`, `restore`, `run`, `update`, `validate` |
 
 ## Commands and arguments
 
@@ -256,6 +257,25 @@ Start a connector's browser sign-in and print the URL to open. Works for every c
 
 - `--connector-id` (string, required) — Connector to reauthenticate
 - `--json` — Emit the full response as JSON
+
+
+### `sk categories`
+
+Show and rename the catalog categories shared by every kind
+
+#### `sk categories list`
+
+List the catalog categories with how many workflows, connectors, knowledge sources, skills and files use each
+
+- `--json` — JSON output
+
+#### `sk categories rename`
+
+Rename a category for every kind at once; naming an existing category merges the two
+
+- `<from>` (positional, required) — Current category
+- `<to>` (positional, required) — New category
+- `--json` — JSON output
 
 
 ### `sk chat`
@@ -444,7 +464,8 @@ Inspect a connector resource (alias of `get`).
 List connectors, grouped into catalog blocks
 
 - `--limit` (string, default: 50) — Max rows
-- `--category` (string) — Only this catalog block. A connector's block is its driver: http, graphql, postgres, s3, mcp.
+- `--category` (string) — Only this catalog block
+- `--driver` (string) — Only this driver: http, graphql, postgres, s3, mcp
 - `--flat` — One flat table instead of grouped blocks
 - `--json` — JSON output
 
@@ -462,11 +483,13 @@ mcp driver: force one handshake and list the tools, capabilities and instruction
 
 #### `sk connectors patch`
 
-Update a connector, from --file (a partial definition: only the fields it names change) or from --name. --file runs validate first.
+Update a connector, from --file (a partial definition: only the fields it names change) or from --name, --description and --category. --file runs validate first.
 
 - `<id>` (positional, required) — Connector id
 - `--file` (string) — Path to a partial definition JSON file
 - `--name` (string) — New name
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 - `--skip-checks` — Skip validation (NOT recommended).
 - `--json` — JSON-only output (suppresses narration)
 
@@ -760,6 +783,16 @@ List files
 - `--limit` (string, default: 20) — Max rows (1-100)
 - `--json` (default: false) — JSON output
 
+#### `sk files patch`
+
+Rename a file or change its description or category
+
+- `<id>` (positional, required) — File id (fid_…)
+- `--filename` (string) — New filename
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
+- `--json` — JSON-only output
+
 #### `sk files stats`
 
 Aggregate file counters for this tenant
@@ -928,9 +961,10 @@ Generate a description + tags for a knowledge source via the engine LLM
 Upload a file as a knowledge source
 
 - `--file` (string, required) — Path to file
-- `--title` (string) — Override title (defaults to filename)
-- `--description` (string) — Description (omit to let the engine auto-generate one)
-- `--tags` (string) — Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit both --tags and --description to auto-generate them.
+- `--name` (string) — Source name (defaults to the filename)
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
+- `--tags` (string) — Comma-separated tags. When set, they are authoritative (no AI auto-tagging). Omit --description and --category to let the engine describe the source.
 - `--scope` (string) — Scope: global | workflow
 - `--workflow-id` (string) — Workflow id (required when scope=workflow)
 - `--json` — JSON-only output (suppresses narration)
@@ -954,7 +988,8 @@ Import a directory of markdown files as one knowledge source (upsert by slug; OK
 - `<dir>` (positional, required) — Directory to import
 - `--name` (string) — Source name (defaults to root index.md H1 or dirname)
 - `--slug` (string) — Stable slug (defaults to slugified name)
-- `--description` (string) — Source description
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 - `--tags` (string) — Comma-separated extra tags (frontmatter tags merge in)
 - `--scope` (string) — Scope: global | workflow
 - `--workflow-id` (string) — Workflow id (required when scope=workflow)
@@ -972,8 +1007,9 @@ List knowledge sources
 Update a knowledge source
 
 - `<id>` (positional, required) — Knowledge source id
-- `--title` (string) — New title
-- `--description` (string) — New description
+- `--name` (string) — New name
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 - `--tags` (string) — Comma-separated tags (replaces existing)
 - `--status` (string) — Status: active | inactive
 
@@ -1519,6 +1555,8 @@ Update a skill
 - `<id>` (positional, required) — Skill id
 - `--file` (string) — Path to JSON patch file
 - `--title` (string) — New title
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 
 #### `sk skills get`
 
@@ -1547,6 +1585,8 @@ Update a skill
 - `<id>` (positional, required) — Skill id
 - `--file` (string) — Path to JSON patch file
 - `--title` (string) — New title
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 
 #### `sk skills restore`
 
@@ -1934,6 +1974,16 @@ List workflows, grouped into catalog blocks
 - `--connector` (string) — Only workflows using this connector (id or slug)
 - `--flat` — One flat table instead of grouped blocks
 - `--json` — JSON output
+
+#### `sk workflows patch`
+
+Change a workflow's name, description or category without saving a new version (the slug and its wf_<slug> tool stay as they are).
+
+- `<workflow>` (positional, required) — Workflow id or slug
+- `--name` (string) — New display name
+- `--description` (string) — What it is for, in plain language — the assistant reads this to pick the right object. "" hands it back to automatic description.
+- `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
+- `--json` — JSON-only output (suppresses narration)
 
 #### `sk workflows preview`
 

@@ -64,6 +64,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
       makeInvokeResult({
         description: "Security and access policy.",
+        category: "security",
         tags: ["security", "oauth2", "logging"],
       }),
     );
@@ -76,6 +77,8 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
 
       expect(enriched).not.toBeNull();
       expect(enriched!.description).toBe("Security and access policy.");
+      expect(enriched!.description_source).toBe("llm");
+      expect(enriched!.category).toBe("security");
       expect(enriched!.tags).toEqual(["security", "oauth2", "logging"]);
       expect(enriched!.name).toBe(source.name);
       expect(enriched!.slug).toBe(source.slug);
@@ -235,13 +238,13 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
     }
   });
 
-  test("force:true overwrites an existing description", async () => {
+  test("force:true re-describes an automatic description but never a person's", async () => {
     const source = await createKnowledgeSource(
       {
         tenant_id: ctx.tenantId,
         input: {
           name: "Force Overwrite Doc",
-          description: "Stale description.",
+          description: "Written by the operator.",
           scope: "global",
         },
         upload: {
@@ -255,22 +258,35 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
       },
       ctx.testDb.db,
     );
+    expect(source.description_source).toBe("human");
 
     const spy = spyOn(invokeModule, "invoke").mockResolvedValue(
       makeInvokeResult({
         description: "GDPR and SOC2 compliance guide.",
+        category: "compliance",
         tags: ["compliance", "gdpr", "soc2"],
       }),
     );
 
     try {
-      const result = await analyzeKnowledgeSource(
+      const kept = await analyzeKnowledgeSource(
         { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
         ctx.testDb.db,
       );
+      expect(kept!.description).toBe("Written by the operator.");
+      expect(kept!.category).toBe("compliance");
+      expect(kept!.tags).toEqual(["compliance", "gdpr", "soc2"]);
 
-      expect(result!.description).toBe("GDPR and SOC2 compliance guide.");
-      expect(result!.tags).toEqual(["compliance", "gdpr", "soc2"]);
+      await updateKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, patch: { description: "" }, actor_id: null },
+        ctx.testDb.db,
+      );
+      const redescribed = await analyzeKnowledgeSource(
+        { tenant_id: ctx.tenantId, id: source.id, actor_id: null, force: true },
+        ctx.testDb.db,
+      );
+      expect(redescribed!.description).toBe("GDPR and SOC2 compliance guide.");
+      expect(redescribed!.description_source).toBe("llm");
     } finally {
       spy.mockRestore();
     }

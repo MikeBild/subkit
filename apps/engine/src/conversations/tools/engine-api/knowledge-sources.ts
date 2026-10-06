@@ -1,7 +1,15 @@
 import { z } from "@hono/zod-openapi";
+import { listedDescription } from "../../../api/catalog-metadata.ts";
 import type { ConversationTool } from "../index.ts";
 
-const ListInput = z.object({}).openapi("ListKnowledgeSourcesToolInput");
+const ListInput = z
+  .object({
+    category: z
+      .string()
+      .optional()
+      .describe("Only sources in this catalog block (see `category` on each source)."),
+  })
+  .openapi("ListKnowledgeSourcesToolInput");
 const GetInput = z.object({ id: z.string().uuid() }).openapi("GetKnowledgeSourceToolInput");
 const SearchInput = z
   .object({
@@ -17,12 +25,14 @@ const SEARCH_KNOWLEDGE_DEFAULT_LIMIT = 5;
 export const listKnowledgeSourcesTool: ConversationTool = {
   name: "list_knowledge_sources",
   description:
-    "List the tenant's Knowledge Sources with their description and tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
+    "List the tenant's Knowledge Sources with what each covers (`description`), its catalog block (`category`, also a filter) and its tags. Use this first to decide which source covers a topic, then call search_knowledge to pull the relevant chunks.",
   inputSchema: ListInput,
   category: "tenant_read",
   permission: { action: "knowledge:read", resourceType: "knowledge" },
-  async execute(ctx) {
-    const rows = await ctx.engineClient.knowledgeSources.list();
+  async execute(ctx, args: z.infer<typeof ListInput>) {
+    const rows = (await ctx.engineClient.knowledgeSources.list()).filter(
+      (k) => args?.category === undefined || k.category === args.category,
+    );
     return {
       ok: true,
       data: {
@@ -30,7 +40,8 @@ export const listKnowledgeSourcesTool: ConversationTool = {
           id: k.id,
           name: k.name,
           slug: k.slug,
-          description: k.description,
+          description: listedDescription(k.description),
+          category: k.category,
           tags: k.tags,
           scope: k.scope,
           status: k.status,

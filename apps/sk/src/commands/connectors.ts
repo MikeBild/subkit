@@ -5,6 +5,11 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { pickId } from "../lib/pick.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
 import type { ConnectorIntent, ConnectorSummary, PlanStep } from "../render/types.ts";
@@ -37,11 +42,8 @@ const listCommand = defineCommand({
   meta: { name: "list", description: "List connectors, grouped into catalog blocks" },
   args: {
     limit: { type: "string", description: "Max rows", default: "50" },
-    category: {
-      type: "string",
-      description:
-        "Only this catalog block. A connector's block is its driver: http, graphql, postgres, s3, mcp.",
-    },
+    category: { type: "string", description: "Only this catalog block" },
+    driver: { type: "string", description: "Only this driver: http, graphql, postgres, s3, mcp" },
     flat: { type: "boolean", description: "One flat table instead of grouped blocks" },
     json: { type: "boolean", description: "JSON output" },
   },
@@ -51,9 +53,11 @@ const listCommand = defineCommand({
       const { items, total, categories } = await client.listConnectors({
         limit: Number(args.limit),
         ...(args.category ? { category: args.category } : {}),
+        ...(args.driver ? { driver: args.driver } : {}),
       });
       const rows = (items as Record<string, unknown>[]).map((r) => ({
         ...r,
+        description: args.json ? r.description : shortDescription(r.description),
         name:
           typeof r.name === "string" && r.name
             ? r.name
@@ -653,12 +657,13 @@ const patchCommand = defineCommand({
   meta: {
     name: "patch",
     description:
-      "Update a connector, from --file (a partial definition: only the fields it names change) or from --name. --file runs validate first.",
+      "Update a connector, from --file (a partial definition: only the fields it names change) or from --name, --description and --category. --file runs validate first.",
   },
   args: {
     id: { type: "positional", required: true, description: "Connector id" },
     file: { type: "string", description: "Path to a partial definition JSON file" },
     name: { type: "string", description: "New name" },
+    ...catalogMetadataArgs,
     "skip-checks": { type: "boolean", description: "Skip validation (NOT recommended)." },
     json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
   },
@@ -667,7 +672,7 @@ const patchCommand = defineCommand({
     const client = makeClient();
     const jsonMode = Boolean(args.json);
     try {
-      const body: Record<string, unknown> = {};
+      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
       if (args.name) body.name = args.name;
       printJson(await client.patchConnector(args.id, body));
     } catch (err) {
