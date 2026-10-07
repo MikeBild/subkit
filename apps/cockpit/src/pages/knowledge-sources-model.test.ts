@@ -5,8 +5,18 @@ import {
   refreshFields,
   refreshRhythm,
   sourceKind,
+  sourcePrimaryAction,
   sourceSections,
 } from "./knowledge-sources-model";
+
+describe("sourcePrimaryAction", () => {
+  test("a text source is edited, an address is read again, the rest has no primary action", () => {
+    expect(sourcePrimaryAction(sourceKind("inline"))).toBe("edit");
+    expect(sourcePrimaryAction(sourceKind("url"))).toBe("refresh");
+    expect(sourcePrimaryAction(sourceKind("file"))).toBeNull();
+    expect(sourcePrimaryAction(sourceKind("bundle"))).toBeNull();
+  });
+});
 
 describe("refreshRhythm", () => {
   test("reads the offered rhythms back from the engine's fields", () => {

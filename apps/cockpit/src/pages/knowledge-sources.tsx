@@ -58,6 +58,7 @@ import {
   type SourceKind,
   type SourceSection,
   sourceKind,
+  sourcePrimaryAction,
   sourceSections,
 } from "@/pages/knowledge-sources-model";
 
@@ -573,6 +574,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     );
 
   const kind = sourceKind(source.source_type);
+  const primary = canWrite ? sourcePrimaryAction(kind) : null;
   const readAt = source.last_refreshed_at ?? source.updated_at;
   const strip =
     source.status === "error" ? (
@@ -648,7 +650,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
   ];
   const menu = [
-    ...(canWrite
+    ...(canWrite && primary !== "edit"
       ? [{ label: t("knowledge.edit"), onSelect: () => setEditing(true), testId: "knowledge-edit" }]
       : []),
     ...(canWrite && source.status === "active"
@@ -689,13 +691,17 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
             />
           }
           action={
-            kind === "url" && canWrite ? (
+            primary === "refresh" ? (
               <Button
                 onClick={() => refresh.mutate()}
                 pending={refresh.isPending}
                 data-testid="knowledge-refresh"
               >
                 {t("knowledge.refresh")}
+              </Button>
+            ) : primary === "edit" ? (
+              <Button onClick={() => setEditing(true)} data-testid="knowledge-edit">
+                {t("knowledge.edit")}
               </Button>
             ) : undefined
           }

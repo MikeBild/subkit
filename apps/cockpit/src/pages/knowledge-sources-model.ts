@@ -8,6 +8,14 @@ export function sourceKind(sourceType: string): SourceKind {
   return "file";
 }
 
+export type SourcePrimaryAction = "refresh" | "edit";
+
+export function sourcePrimaryAction(kind: SourceKind): SourcePrimaryAction | null {
+  if (kind === "url") return "refresh";
+  if (kind === "text") return "edit";
+  return null;
+}
+
 export type RefreshRhythm = "never" | "daily" | "weekly" | "custom";
 
 export const REFRESH_CRON = { daily: "0 6 * * *", weekly: "0 6 * * 1" } as const;
