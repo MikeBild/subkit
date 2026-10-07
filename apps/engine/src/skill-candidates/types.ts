@@ -170,6 +170,7 @@ export interface ApproveSkillCandidateParams {
   tenant_id: string;
   candidate_id: string;
   actor: Actor | null;
+  may_write_knowledge: boolean;
   overrides?:
     | {
         title?: string | undefined;

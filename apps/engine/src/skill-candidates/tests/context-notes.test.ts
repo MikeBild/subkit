@@ -91,7 +91,7 @@ describe.skipIf(skip)("drafting context notes", () => {
       const id = result.candidate_id!;
       expect(
         await approveSkillCandidate(
-          { tenant_id: tenantId, candidate_id: id, actor: null },
+          { tenant_id: tenantId, candidate_id: id, actor: null, may_write_knowledge: false },
           testDb.db,
         ),
       ).toBeNull();

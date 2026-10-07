@@ -44,3 +44,13 @@ export function proposalAddition(candidate: Pick<SkillCandidate, "title" | "body
 export function approvalActivatesSkill(candidate: Pick<SkillCandidate, "pattern_kind">): boolean {
   return !isKnowledgeFact(candidate);
 }
+
+export function mayApproveProposal(
+  candidate: Pick<SkillCandidate, "pattern_kind">,
+  permissions: readonly string[],
+): boolean {
+  if (!permissions.includes("skill:write")) return false;
+  return isKnowledgeFact(candidate)
+    ? permissions.includes("knowledge:write")
+    : permissions.includes("skill:activate");
+}

@@ -1,7 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
-import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
+import { approveSkillCandidate, getSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
+import { checkTenantPermission } from "../../permission-gate.ts";
 import { toolActor } from "../../tool-actor.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
@@ -15,8 +16,27 @@ export const approveSkillCandidateTool: ConversationTool = {
   visible_when_readonly: true,
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
+    const pending = await getSkillCandidate(ctx.tenant_id, args.candidate_id, ctx.db);
+    const fact = pending?.pattern_kind === "knowledge_learning";
+    if (fact) {
+      const gate = await checkTenantPermission(ctx, "knowledge:write", {
+        type: "skill_candidate",
+        id: args.candidate_id,
+      });
+      if (!gate.allow) {
+        return {
+          ok: false,
+          data: { error: "permission_denied", permission: gate.permission, reason: gate.reason },
+        };
+      }
+    }
     const out = await approveSkillCandidate(
-      { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor: toolActor(ctx) },
+      {
+        tenant_id: ctx.tenant_id,
+        candidate_id: args.candidate_id,
+        actor: toolActor(ctx),
+        may_write_knowledge: fact,
+      },
       ctx.db,
     );
     if (!out) {

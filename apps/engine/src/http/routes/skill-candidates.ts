@@ -5,6 +5,7 @@ import {
   KnowledgeSlugConflictError,
   KnowledgeVersionConflictError,
 } from "../../knowledge/index.ts";
+import { can } from "../../rbac/index.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
@@ -145,6 +146,10 @@ const approveRoute = createRoute({
         },
       },
     },
+    403: {
+      description: "A fact writes knowledge and needs knowledge:write as well",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -253,12 +258,34 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.title) overrides.title = body.title;
     if (body.body) overrides.body = body.body;
     if (body.status) overrides.status = body.status;
+    const pending = await svc.getSkillCandidate(principal.tenant_id, id, db);
+    const fact = pending?.pattern_kind === "knowledge_learning";
+    const mayWriteKnowledge = fact
+      ? (
+          await can(db, {
+            tenant_id: principal.tenant_id,
+            principal,
+            permission: "knowledge:write",
+          })
+        ).allow
+      : false;
+    if (fact && !mayWriteKnowledge) {
+      throw new HttpError(
+        403,
+        "forbidden",
+        "Approving a fact writes knowledge and needs knowledge:write",
+        {
+          details: { permission: "knowledge:write" },
+        },
+      );
+    }
     const result = await svc
       .approveSkillCandidate(
         {
           tenant_id: principal.tenant_id,
           candidate_id: id,
           actor: actorOf(principal),
+          may_write_knowledge: mayWriteKnowledge,
           ...(body.expected_review_digest
             ? { expected_review_digest: body.expected_review_digest }
             : {}),
@@ -269,6 +296,11 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         db,
       )
       .catch((error: unknown) => {
+        if (error instanceof svc.KnowledgeWriteNotAllowedError) {
+          throw new HttpError(403, "forbidden", error.message, {
+            details: { permission: "knowledge:write" },
+          });
+        }
         if (
           error instanceof KnowledgeVersionConflictError ||
           error instanceof KnowledgeSlugConflictError

@@ -11099,6 +11099,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApproveSkillCandidateResponse"];
                     };
                 };
+                /** @description A fact writes knowledge and needs knowledge:write as well */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {

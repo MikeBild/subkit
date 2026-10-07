@@ -25,6 +25,7 @@ import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import {
   approvalActivatesSkill,
   isKnowledgeFact,
+  mayApproveProposal,
   proposalAddition,
   proposalAuthor,
   proposalTarget,
@@ -45,7 +46,7 @@ export function SkillProposalSheet({
   const { t } = useI18n();
   const canWrite = permissions.includes("skill:write");
   const fact = candidate ? isKnowledgeFact(candidate) : false;
-  const canAdopt = canWrite && (fact || permissions.includes("skill:activate"));
+  const canAdopt = candidate ? mayApproveProposal(candidate, permissions) : false;
   const names = useNameIndex(permissions, Boolean(candidate));
   const directory = useActorDirectory(Boolean(candidate));
   const [rejecting, setRejecting] = useState(false);
