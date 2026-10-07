@@ -2370,12 +2370,30 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Redirect into the Cockpit */
-                302: {
+                /** @description Connected, and no single connector page to return to (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Back to the connector page that uses this connection */
+                303: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description Not connected, and no single connector page to return to (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
                 };
             };
         };

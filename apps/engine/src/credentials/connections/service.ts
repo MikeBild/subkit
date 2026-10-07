@@ -218,8 +218,15 @@ async function storeTokens(
 }
 
 export type CompleteConnectionResult =
-  | { ok: true; name: string; connection_id: string; renewed: boolean }
-  | { ok: false; name: string | null; code: ConnectionError["code"]; message: string };
+  | { ok: true; tenant_id: string; name: string; connection_id: string; renewed: boolean }
+  | {
+      ok: false;
+      tenant_id: string | null;
+      connection_id: string | null;
+      name: string | null;
+      code: ConnectionError["code"];
+      message: string;
+    };
 
 export async function completeConnection(
   db: Db,
@@ -240,6 +247,8 @@ export async function completeConnection(
   if (!start) {
     return {
       ok: false,
+      tenant_id: null,
+      connection_id: null,
       name: null,
       code: "state_invalid",
       message: "this connection attempt expired or was already used",
@@ -261,7 +270,14 @@ export async function completeConnection(
       },
       db,
     );
-    return { ok: false as const, name: start.name, code, message };
+    return {
+      ok: false as const,
+      tenant_id: start.tenant_id,
+      connection_id: start.connection_id,
+      name: start.name,
+      code,
+      message,
+    };
   };
 
   if (input.error || !input.code) {
@@ -399,10 +415,20 @@ export async function completeConnection(
 
   return {
     ok: true,
+    tenant_id: start.tenant_id,
     name: start.name,
     connection_id: connectionId,
     renewed: Boolean(start.connection_id),
   };
+}
+
+export async function connectorsUsingConnection(
+  db: Db,
+  tenantId: string,
+  connectionId: string,
+): Promise<string[]> {
+  const users = await usersOfConnections(db, tenantId, [connectionId]);
+  return (users.get(connectionId) ?? []).map((user) => user.connector_id);
 }
 
 async function findConnection(db: Db, tenantId: string, id: string): Promise<ConnectionRow | null> {

@@ -20,11 +20,13 @@ import {
   offersKeyReplacement,
   presentAddress,
   renewalWay,
-  returnedFromSignIn,
   SECRET_MASK,
   SIGNED_IN_PARAM,
+  SIGNIN_FAILED_PARAM,
   signInActionLabel,
+  signInFailureKey,
   signInLine,
+  signInReturn,
   toolsWithoutConfirmation,
   transportLabel,
   withoutSignInReturn,
@@ -219,13 +221,42 @@ describe("a connector address with a kept secret", () => {
 
 describe("coming back from a sign-in", () => {
   test("the flag is read off the address and dropped from it, alone", () => {
-    expect(returnedFromSignIn("?signed_in=1")).toBe(true);
-    expect(returnedFromSignIn("?tab=x&signed_in=1")).toBe(true);
-    expect(returnedFromSignIn("")).toBe(false);
-    expect(returnedFromSignIn("?signed=1")).toBe(false);
+    expect(signInReturn("?signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("?tab=x&signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("")).toBeNull();
+    expect(signInReturn("?signed=1")).toBeNull();
     expect(withoutSignInReturn("?signed_in=1")).toBe("");
     expect(withoutSignInReturn("?tab=x&signed_in=1&q=y")).toBe("?tab=x&q=y");
     expect(withoutSignInReturn("?tab=x")).toBe("?tab=x");
+  });
+
+  test("a failed sign-in comes back with its reason, and leaves the address with it", () => {
+    expect(signInReturn("?signin_failed=provider_declined")).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+    });
+    expect(signInReturn("?tab=x&signin_failed=exchange_failed&signed_in=1")).toEqual({
+      kind: "signin_failed",
+      failure: "exchange_failed",
+    });
+    expect(withoutSignInReturn("?tab=x&signin_failed=exchange_failed")).toBe("?tab=x");
+  });
+
+  test("every failure the engine sends has its own reason in both languages", () => {
+    const engine = readFileSync(
+      resolve(import.meta.dir, "../../../engine/src/connectors/oauth-origin.ts"),
+      "utf8",
+    );
+    expect(engine).toContain(`export const SIGNIN_FAILED_MARKER = "${SIGNIN_FAILED_PARAM}";`);
+    const start = engine.indexOf("SIGN_IN_FAILURES = [");
+    const list = engine.slice(start, engine.indexOf("] as const", start));
+    const failures = [...list.matchAll(/"([a-z_]+)"/g)].map((match) => match[1] ?? "");
+    expect(failures.length).toBeGreaterThan(5);
+    const keys = failures.map(signInFailureKey);
+    expect(new Set(keys).size).toBe(failures.length);
+    expect(keys).not.toContain("connectorStrip.signInFailure.other");
+    for (const key of keys) expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
+    expect(signInFailureKey("<script>")).toBe("connectorStrip.signInFailure.other");
   });
 
   test("the flag and the address are the ones the engine's callback sends", () => {

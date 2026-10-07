@@ -8,7 +8,7 @@ import { WorkflowPage } from "@/components/cockpit/workflow-page";
 import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { type RecordValue, recordTitle } from "@/pages/catalog-model";
-import { returnedFromSignIn, withoutSignInReturn } from "@/pages/connector-detail-model";
+import { signInReturn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors";
 
@@ -31,8 +31,8 @@ export function CatalogDetailPage({
 }) {
   const { t } = useI18n();
   const id = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).at(-1) ?? "");
-  const [returned] = useState(
-    () => resource === "connectors" && returnedFromSignIn(window.location.search),
+  const [returned] = useState(() =>
+    resource === "connectors" ? signInReturn(window.location.search) : null,
   );
   useEffect(() => {
     if (!returned) return;

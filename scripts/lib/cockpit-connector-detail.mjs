@@ -376,6 +376,8 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         off: "Abgeschaltet",
         signedIn: "Angemeldet",
         signedInOff: "Angemeldet, aber abgeschaltet",
+        signInFailed: "Anmeldung fehlgeschlagen",
+        declined: "Der Anbieter hat die Anmeldung nicht bestätigt",
         renew: "Neu anmelden",
         enable: "Einschalten",
         whatRenewDoes: "führt zum Anbieter und wieder hierher",
@@ -390,6 +392,8 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
         off: "Switched off",
         signedIn: "Signed in",
         signedInOff: "Signed in, but switched off",
+        signInFailed: "Sign-in failed",
+        declined: "The provider did not confirm the sign-in",
         renew: "Sign in again",
         enable: "Switch on",
         whatRenewDoes: "takes you to the provider and back here",
@@ -476,6 +480,23 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   if (await noticeKind()) throw new Error(`${where}: a typed flag made the page confirm a sign-in`);
   if (new URL(page.url()).searchParams.has("signed_in"))
     throw new Error(`${where}: the flag stays in the address`);
+
+  const failedWhere = "/connectors/<oauth> · sign-in failed";
+  await stand.visit(page, `connectors/${OAUTH_ID}?signin_failed=provider_declined`);
+  await page.getByTestId("connector-strip-state").waitFor({ state: "visible", timeout: 10_000 });
+  if ((await text(page, "connector-strip-state")) !== words.signInFailed)
+    throw new Error(
+      `${failedWhere}: the strip reads "${await text(page, "connector-strip-state")}"`,
+    );
+  if (!((await text(page, "connector-probe-result")) ?? "").includes(words.declined))
+    throw new Error(`${failedWhere}: the strip does not say why the sign-in failed`);
+  if (!(await stripOffers("connector-signin-again")))
+    throw new Error(`${failedWhere}: signing in again is not the strip's one action`);
+  if (await page.locator("[data-sonner-toast]").count())
+    throw new Error(`${failedWhere}: the failure is told twice, as a message too`);
+  if (new URL(page.url()).searchParams.has("signin_failed"))
+    throw new Error(`${failedWhere}: the failure stays in the address`);
+  await assertOnce(failedWhere);
 
   await withBootstrap(page, "connector:write", async () => {
     await openOauth(page, stand);

@@ -28832,8 +28832,28 @@
           }
         ],
         "responses": {
-          "302": {
-            "description": "Redirect into the Cockpit"
+          "200": {
+            "description": "Connected, and no single connector page to return to (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Back to the connector page that uses this connection"
+          },
+          "400": {
+            "description": "Not connected, and no single connector page to return to (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }

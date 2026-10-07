@@ -142,14 +142,4 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
     .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')
     .count();
   if (taskLists > 0) throw new Error(`${where}: a second task list stands above the sections`);
-
-  await stand.visit(page, "connectors?failed=denied&name=Postfach");
-  const toast = page.locator("[data-sonner-toast]").filter({ hasText: "Postfach" });
-  try {
-    await toast.first().waitFor({ state: "visible", timeout: 10_000 });
-  } catch {
-    throw new Error(`/connectors?failed=… (${locale}): the callback sentence lost its name`);
-  }
-  if (new URL(page.url()).searchParams.has("failed"))
-    throw new Error(`/connectors?failed=… (${locale}): the callback's words stay in the address`);
 }

@@ -54,6 +54,8 @@ import {
   connectorNotice,
   type McpInspect,
   renewalWay,
+  type SignInReturn,
+  signInFailureKey,
 } from "@/pages/connector-detail-model";
 
 type RecordValue = Record<string, unknown>;
@@ -183,7 +185,7 @@ export function ConnectorPage({
   record: RecordValue;
   title: string;
   permissions: readonly string[];
-  returned: boolean;
+  returned: SignInReturn | null;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
@@ -286,7 +288,12 @@ export function ConnectorPage({
     canWrite,
   });
   const enabled = record.enabled !== false;
-  const notice = connectorNotice({ enabled, authState: auth, returned });
+  const notice = connectorNotice({
+    enabled,
+    authState: auth,
+    returned: returned?.kind === "signed_in",
+  });
+  const failedSignIn = returned?.kind === "signin_failed" ? returned.failure : null;
   const strip = connectorStrip({
     auth,
     way,
@@ -295,6 +302,7 @@ export function ConnectorPage({
     probe: probe.data ? { ok: probe.data.ok } : null,
     missingScopes: credential.data?.missing_scopes?.length ?? 0,
     returned: notice === "signed_in" || notice === "signed_in_off",
+    signInFailed: failedSignIn !== null,
     rights: { write: canWrite, test: canTest },
   });
   const toConnection = () => setEditing(true);
@@ -304,6 +312,7 @@ export function ConnectorPage({
         return enable.mutate(undefined);
       case "recheck":
         return runTest();
+      case "retry":
       case "renew":
       case "complete":
         if (action.way === "provider") return oauthStart.mutate();
@@ -315,20 +324,22 @@ export function ConnectorPage({
   const busy =
     enable.isPending || probe.isPending || oauthStart.isPending || connectionRenew.isPending;
   const stripLine =
-    strip.kind === "tested" && probe.data
-      ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
-      : strip.kind === "unreachable" && probe.data && !probe.data.ok
-        ? (probe.data.detail ?? t("connectors.probeFailed"))
-        : strip.kind === "expired" && users.data
-          ? t(
-              userCount === 1
-                ? "connectorStrip.line.expired.one"
-                : "connectorStrip.line.expired.other",
-              { count: userCount },
-            )
-          : strip.kind === "notSignedIn"
-            ? t("connectorStrip.line.notSignedIn")
-            : null;
+    strip.kind === "signInFailed" && failedSignIn !== null
+      ? t(signInFailureKey(failedSignIn))
+      : strip.kind === "tested" && probe.data
+        ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
+        : strip.kind === "unreachable" && probe.data && !probe.data.ok
+          ? (probe.data.detail ?? t("connectors.probeFailed"))
+          : strip.kind === "expired" && users.data
+            ? t(
+                userCount === 1
+                  ? "connectorStrip.line.expired.one"
+                  : "connectorStrip.line.expired.other",
+                { count: userCount },
+              )
+            : strip.kind === "notSignedIn"
+              ? t("connectorStrip.line.notSignedIn")
+              : null;
 
   const menu: ActionMenuItem[] = [
     ...(canTest
@@ -528,7 +539,9 @@ export function ConnectorPage({
                         ? "connector-enable"
                         : strip.action.kind === "recheck"
                           ? "connector-recheck"
-                          : "connector-renew-signin",
+                          : strip.action.kind === "retry"
+                            ? "connector-signin-again"
+                            : "connector-renew-signin",
                   }
                 : undefined
             }
