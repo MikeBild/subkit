@@ -88,7 +88,7 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     t,
   );
   return (
-    <div className="grid gap-3" data-testid="chat-starters">
+    <div className="grid w-full content-start gap-3" data-testid="chat-starters">
       <p className="text-sm text-muted-foreground">{t("chat.start.label")}</p>
       <ChoiceCards
         items={starters.map((starter) => ({
