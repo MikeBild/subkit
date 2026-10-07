@@ -14,6 +14,7 @@ export interface LocaleEnvironment {
   remove(key: string): void;
   languages(): readonly string[];
   apply(locale: Locale): void;
+  share(locale: Locale | null): void;
   watch?(listener: () => void): void;
 }
 
@@ -41,12 +42,15 @@ export function createLocaleStore(env: LocaleEnvironment) {
   }
   let current = read();
   env.apply(current.locale);
+  env.share(current.preference === "auto" ? null : current.preference);
 
   function publish(): void {
     const next = read();
     if (next.preference === current.preference && next.locale === current.locale) return;
+    const chosen = next.preference !== current.preference;
     current = next;
     env.apply(current.locale);
+    if (chosen) env.share(current.preference === "auto" ? null : current.preference);
     for (const listener of listeners) listener();
   }
   env.watch?.(publish);
