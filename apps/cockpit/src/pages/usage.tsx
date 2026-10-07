@@ -276,7 +276,7 @@ export function UsagePage() {
             {number.format(runCounts.get(row.key) ?? 0)}
           </span>
         ),
-        { width: "w-[16%]" },
+        { width: "w-[16%]", cardLabel: true },
       ),
     ];
   }, [t, dateTime, workflowName, costCell, number, runCounts]);

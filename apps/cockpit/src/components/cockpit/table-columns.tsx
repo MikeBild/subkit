@@ -31,6 +31,7 @@ interface ColumnOptions {
   width?: string;
   ownsRowLink?: boolean;
   interactive?: boolean;
+  cardLabel?: boolean;
 }
 
 export function tableColumns<TRow extends RowData>({
@@ -50,6 +51,7 @@ export function tableColumns<TRow extends RowData>({
       width: options?.width,
       ownsRowLink: options?.ownsRowLink,
       interactive: options?.interactive,
+      cardLabel: options?.cardLabel,
     },
   });
 
@@ -100,7 +102,7 @@ export function tableColumns<TRow extends RowData>({
       options?: ColumnOptions,
     ): CockpitColumn<TRow> {
       return helper.accessor(get, {
-        ...base(id, label, options),
+        ...base(id, label, { cardLabel: true, ...options }),
         cell: ({ getValue }) => {
           const value = getValue();
           return typeof value === "string" && value ? dateTime(value) : MISSING;

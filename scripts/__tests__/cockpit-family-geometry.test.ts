@@ -12,6 +12,8 @@ const onSpec = {
   gutter: expected.gutterDesktop,
   buttons: [expected.controlHeight],
   rows: [expected.rowMinHeight, expected.rowMinHeight + 20],
+  cardGaps: [expected.cardGap],
+  labelledCards: 0,
 };
 
 describe("family geometry read from FAMILY-UI.json", () => {
@@ -21,6 +23,19 @@ describe("family geometry read from FAMILY-UI.json", () => {
     expect(expected.gutterDesktop).toBe(24);
     expect(expected.controlHeight).toBe(32);
     expect(expected.rowMinHeight).toBe(44);
+    expect(expected.cardGap).toBe(2);
+  });
+
+  test("a phone card that still stacks label and value is a breach", () => {
+    expect(
+      geometryBreaches(
+        { ...onSpec, gutter: expected.gutterMobile, cardGaps: [12], labelledCards: 3 },
+        390,
+      ),
+    ).toEqual([
+      "phone cards 12px apart inside instead of 2px",
+      "3 phone card(s) still label their name instead of reading as a row",
+    ]);
   });
 
   test("a type scale that is not size/line weight is refused, not guessed", () => {
