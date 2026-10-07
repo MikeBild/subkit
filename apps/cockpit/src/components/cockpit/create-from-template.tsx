@@ -1,12 +1,12 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { connectorHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
-import { TextField } from "@/components/cockpit/form-field";
+import { SelectField, TextField } from "@/components/cockpit/form-field";
 import { ListTable } from "@/components/cockpit/list-table";
 import { FactList, RowName, StatusBadge } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
@@ -17,8 +17,11 @@ import { credentialBody } from "@/pages/connector-detail-model";
 import {
   addressedConnectors,
   type ConnectorTemplate,
+  choiceOf,
   joinNames,
   missingConnectors,
+  NEW_CONNECTOR,
+  planSolution,
   SIGN_IN_LABEL,
   type SolutionEntry,
   type SolutionTrigger,
@@ -70,6 +73,13 @@ const TEMPLATES_KEY = ["connector-templates"] as const;
 const fetchSolutions = () => apiRequest<RecipePack>("/v1/recipe-packs/solutions");
 const fetchTemplates = () => apiRequest<TemplateList>("/v1/connector-templates");
 
+async function takenWorkflowSlugs(base: string): Promise<Set<string>> {
+  const { items } = await apiRequest<{ items: { slug: string }[] }>(
+    `/v1/workflows?limit=200&q=${encodeURIComponent(base)}`,
+  );
+  return new Set(items.map((item) => item.slug));
+}
+
 async function takenConnectorSlugs(): Promise<Set<string>> {
   const { items } = await apiRequest<{ items: { slug: string }[] }>("/v1/connectors?limit=1000");
   return new Set(items.map((item) => item.slug));
@@ -116,9 +126,18 @@ export function useSolutionFlow(
   const client = useQueryClient();
   const [query, setQuery] = useState("");
   const [addresses, setAddresses] = useState<Record<string, string>>({});
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  const created = useRef<Record<string, string>>({});
   const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
   const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
-  const addressed = (entry: SolutionEntry) => addressedConnectors(entry, catalog.data?.items ?? []);
+  const addressed = (entry: SolutionEntry) =>
+    addressedConnectors(entry, catalog.data?.items ?? [], choices);
+  const clear = () => {
+    setQuery("");
+    setAddresses({});
+    setChoices({});
+    created.current = {};
+  };
   const entries = pack.data?.recipes ?? [];
   const tag = LOCALE_TAGS[locale];
   const find = (slug: string) => entries.find((entry) => entry.recipe_slug === slug) ?? null;
@@ -150,11 +169,15 @@ export function useSolutionFlow(
     mutationFn: async (slug: string) => {
       const entry = find(slug);
       if (!entry) throw new Error(t("create.template.loadFailed"));
-      const created: Record<string, string> = {};
-      const missing = missingConnectors(entry);
-      if (missing.length > 0) {
+      const plan = planSolution(entry, {
+        choices,
+        created: created.current,
+        takenSlugs: await takenWorkflowSlugs(entry.recipe_slug),
+      });
+      const mapping = { ...plan.mapping };
+      if (plan.create.length > 0) {
         const [templates, taken] = await Promise.all([fetchTemplates(), takenConnectorSlugs()]);
-        for (const binding of missing) {
+        for (const binding of plan.create) {
           const template = templates.items.find((item) => item.slug === binding.template);
           if (!template) throw new Error(t("create.template.loadFailed"));
           const connector = await createTemplateConnector(
@@ -162,31 +185,33 @@ export function useSolutionFlow(
             taken,
             template.base_url ? undefined : addresses[binding.placeholder],
           );
-          created[binding.placeholder] = connector.id;
+          created.current = { ...created.current, [binding.placeholder]: connector.id };
+          mapping[binding.placeholder] = connector.id;
         }
       }
       const draft = await apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
         method: "POST",
-        body: JSON.stringify(solutionDraftBody(entry, created)),
+        body: JSON.stringify(solutionDraftBody(entry, plan, mapping)),
       });
       return { draft, title: solutionText(entry, t).title };
     },
     onSuccess: async ({ draft, title }) => {
       toast.success(t("create.solution.created", { name: title }));
       done();
-      setQuery("");
-      setAddresses({});
+      clear();
       await refreshLookups(client);
+      await client.invalidateQueries({ queryKey: SOLUTIONS_KEY });
       void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=structure` });
     },
-    onError: (failure) => fail(refusal(failure)),
+    onError: (failure) => {
+      fail(refusal(failure));
+      void client.invalidateQueries({ queryKey: SOLUTIONS_KEY });
+      void client.invalidateQueries({ queryKey: ["connectors"] });
+    },
   });
   return {
     pending: create.isPending,
-    reset: () => {
-      setQuery("");
-      setAddresses({});
-    },
+    reset: clear,
     submit: (slug) => {
       const entry = find(slug);
       const problem = entry ? solutionAddressProblem(addressed(entry), addresses) : null;
@@ -270,6 +295,29 @@ export function useSolutionFlow(
                 },
               ]}
             />
+            {missingConnectors(entry)
+              .filter((connector) => connector.candidates.length > 0)
+              .map((connector) => (
+                <SelectField
+                  key={`pick-${connector.placeholder}`}
+                  id={`create-solution-pick-${connector.placeholder}`}
+                  label={t("create.solution.pick", { name: connector.template_name })}
+                  value={(() => {
+                    const choice = choiceOf(connector, choices);
+                    return choice.kind === "existing" ? choice.id : NEW_CONNECTOR;
+                  })()}
+                  onChange={(value) =>
+                    setChoices((current) => ({ ...current, [connector.placeholder]: value }))
+                  }
+                  options={[
+                    ...connector.candidates.map((candidate) => ({
+                      value: candidate.id,
+                      label: candidate.name,
+                    })),
+                    { value: NEW_CONNECTOR, label: t("create.solution.pickNew") },
+                  ]}
+                />
+              ))}
             {addressed(entry).map((connector) => (
               <TextField
                 key={connector.placeholder}
