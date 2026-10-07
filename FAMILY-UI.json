@@ -87,10 +87,12 @@
     "workbenchColumnPx": 1280,
     "cardRadiusPx": 16,
     "cardGapPx": 16,
-    "sectionGapPx": 24
+    "sectionGapPx": 24,
+    "controlHeightPx": 32,
+    "tableRowMinPx": 44
   },
   "typography": {
-    "pageTitle": "24px/32px 650",
+    "pageTitle": "24px/32px 600",
     "sectionTitle": "16px/24px 600",
     "body": "14px/20px 400",
     "meta": "12px/16px 400"
