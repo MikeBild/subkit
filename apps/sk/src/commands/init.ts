@@ -40,6 +40,7 @@ interface SetupPayload {
   tenant_name: string;
   llm_provider: LlmProvider;
   llm_api_key: string;
+  llm_model?: string;
 }
 
 export interface RunInitOptions {
@@ -192,6 +193,7 @@ async function promptForMissing(
     tenant_name: fields.tenant_name,
     llm_provider: fields.llm_provider as LlmProvider,
     llm_api_key: fields.llm_api_key,
+    ...(partial.llm_model ? { llm_model: partial.llm_model } : {}),
   };
 }
 
@@ -232,6 +234,11 @@ export const initCommand = defineCommand({
       description: `LLM provider: ${LLM_PROVIDERS.join("|")} (skip prompt)`,
     },
     "llm-api-key": { type: "string", description: "LLM API key (skip prompt)" },
+    "llm-model": {
+      type: "string",
+      description:
+        "Model id the key is checked with and saved as llm.model (Azure: deployment name; needed for azure and bedrock)",
+    },
     defaults: {
       type: "boolean",
       description:
@@ -283,6 +290,8 @@ export const initCommand = defineCommand({
       partial.llm_provider = llmProvider as LlmProvider;
     }
     if (llmApiKey) partial.llm_api_key = llmApiKey;
+    const llmModel = args["llm-model"] as string | undefined;
+    if (llmModel) partial.llm_model = llmModel;
 
     if (args.defaults) {
       partial.admin_email ??= gitConfigEmail() ?? LOCAL_DEFAULT_ADMIN_EMAIL;

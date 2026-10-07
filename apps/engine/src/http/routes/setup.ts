@@ -19,6 +19,15 @@ const SetupRequestBody = z
     tenant_name: z.string().min(1).max(120),
     llm_provider: z.enum(BOOTSTRAP_LLM_PROVIDERS),
     llm_api_key: z.string().min(1).max(4096),
+    llm_model: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe(
+        "Model id (Azure: deployment name) the key is checked with and saved as llm.model; without it the provider's configured or default model is used",
+      ),
   })
   .openapi("SetupRequestBody");
 
@@ -155,6 +164,7 @@ export function registerSetupRoute(
         tenant_name: body.tenant_name,
         llm_provider: body.llm_provider,
         llm_api_key: body.llm_api_key,
+        ...(body.llm_model ? { llm_model: body.llm_model } : {}),
       },
       {
         token: body.token,
@@ -224,6 +234,7 @@ export function registerSetupRoute(
         tenant_name: body.tenant_name,
         llm_provider: body.llm_provider,
         llm_api_key: body.llm_api_key,
+        ...(body.llm_model ? { llm_model: body.llm_model } : {}),
       },
       {
         token: body.token,

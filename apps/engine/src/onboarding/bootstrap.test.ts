@@ -412,6 +412,26 @@ describe("consume() — the LLM key is checked live before anything is saved", (
     expect(seen).toEqual([{ provider: "anthropic", api_key: "sk-ant-wrong" }]);
   });
 
+  test("a model passed to the first start reaches the probe", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const seen: unknown[] = [];
+    await consume(
+      tdb.db,
+      rbacIds,
+      { ...payload, llm_provider: "azure", llm_model: "prod-deployment" },
+      {
+        token: minted.plaintext_token!,
+        probe: async (p) => {
+          seen.push(p);
+          return { ok: true, model: p.model ?? null };
+        },
+      },
+    );
+    expect(seen).toEqual([
+      { provider: "azure", api_key: "sk-ant-wrong", model: "prod-deployment" },
+    ]);
+  });
+
   test("the mock provider passes without a probe call", async () => {
     const minted = await run(tdb.db, { stdout: { write: () => undefined } });
     const outcome = await consume(

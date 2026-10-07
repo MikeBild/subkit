@@ -93,10 +93,25 @@ export interface ResolvedModel {
 }
 
 export class ProviderMisconfiguredError extends Error {
-  constructor(providerKind: ProviderKind | "gateway", detail: string) {
+  readonly setting: string | null;
+  constructor(providerKind: ProviderKind | "gateway", detail: string, setting?: string) {
     super(`LLM provider '${providerKind}' is misconfigured: ${detail}`);
     this.name = "ProviderMisconfiguredError";
+    this.setting = setting ?? null;
   }
+}
+
+export const PROVIDER_MODEL_SETTING: Record<DirectProviderKind, string> = {
+  anthropic: "ANTHROPIC_MODEL",
+  openai: "OPENAI_MODEL",
+  gemini: "GEMINI_MODEL",
+  azure: "AZURE_MODEL",
+  bedrock: "BEDROCK_MODEL",
+  vertex: "VERTEX_MODEL",
+};
+
+export function configuredProviderModel(provider: DirectProviderKind): string | undefined {
+  return readEnv(PROVIDER_MODEL_SETTING[provider]);
 }
 
 function readEnv(name: string, tenantId?: string): string | undefined {
@@ -120,6 +135,7 @@ function requireEnv(name: string, provider: ProviderKind, tenantId?: string): st
     throw new ProviderMisconfiguredError(
       provider,
       `${name} is not set. Configure it in the Cockpit, settings API, or with \`sk settings configure\`.`,
+      name,
     );
   }
   return value;
@@ -329,6 +345,7 @@ function resolveAzure(
     throw new ProviderMisconfiguredError(
       "azure",
       "Either AZURE_RESOURCE_NAME or AZURE_BASE_URL needs to be set.",
+      "AZURE_RESOURCE_NAME or AZURE_BASE_URL",
     );
   }
   if (resourceName) azureOptions.resourceName = resourceName;
