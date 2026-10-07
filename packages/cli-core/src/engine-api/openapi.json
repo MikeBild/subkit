@@ -30613,6 +30613,11 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -46840,6 +46845,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46871,6 +46881,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46900,6 +46915,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46942,6 +46962,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46982,6 +47007,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"

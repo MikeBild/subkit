@@ -7,6 +7,12 @@ import type { Context } from "hono";
 import { logger } from "../logging/logger.ts";
 import { EMBEDDED_COCKPIT } from "./cockpit-embedded.ts";
 import type { AppEnv } from "./openapi.ts";
+import {
+  authHtmlResponse,
+  renderUnavailablePage,
+  resolvePageLook,
+  wantsHtmlPage,
+} from "./routes/oauth/ui.ts";
 
 const COCKPIT_PREFIX = "/cockpit";
 const COCKPIT_DIR = fileURLToPath(new URL("../../../../assets/cockpit", import.meta.url));
@@ -34,7 +40,7 @@ const cockpitAssetResponses = {
   304: { description: "Asset unchanged" },
   503: {
     description: "Cockpit bundle was not included in this deployment",
-    content: { "text/plain": { schema: z.string() } },
+    content: { "text/html": { schema: z.string() }, "text/plain": { schema: z.string() } },
   },
 } as const;
 const cockpitCanonicalShellRoute = createRoute({
@@ -151,6 +157,11 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
 
   const serve = (c: Context<AppEnv>) => {
     if (!shell) {
+      if (wantsHtmlPage(c.req.header("accept")))
+        return authHtmlResponse(
+          renderUnavailablePage(resolvePageLook(c.req.raw.headers), "cockpit"),
+          503,
+        );
       return c.text("the SubKit Cockpit was not built into this deployment\n", 503, {
         ...securityHeaders,
         "cache-control": NEVER,
