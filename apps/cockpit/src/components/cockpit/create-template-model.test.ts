@@ -3,9 +3,12 @@ import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   addressedConnectors,
   type ConnectorTemplate,
+  choiceOf,
   freeSlug,
   joinNames,
   missingConnectors,
+  NEW_CONNECTOR,
+  planSolution,
   SIGN_IN_LABEL,
   type SolutionEntry,
   solutionAddressProblem,
@@ -176,20 +179,26 @@ describe("solution templates: list, detail, create", () => {
     expect(missingConnectors(report(false))).toHaveLength(2);
   });
 
-  test("the draft keeps the bound workflow, takes the recipe slug and records its origin", () => {
-    const body = solutionDraftBody(report(true));
-    expect(body.recipe).toEqual({ vertical: "solutions", slug: "daily-analytics-report" });
-    const definition = body.definition as { slug: string; steps: Array<{ connector_id?: string }> };
-    expect(definition.slug).toBe("daily-analytics-report");
-    expect(definition.steps[0]?.connector_id).toBe(BOUND_GA);
-  });
-
-  test("connectors created on Anlegen replace their placeholders in the draft", () => {
-    const body = solutionDraftBody(report(true), {
+  test("the draft takes the planned slug, the bound connectors and records its origin", () => {
+    const entry = report(true);
+    const plan = planSolution(entry, { choices: {}, created: {}, takenSlugs: new Set() });
+    expect(plan).toEqual({
+      slug: "daily-analytics-report",
+      name: "daily-analytics-report",
+      create: entry.connectors.slice(1),
+      mapping: {},
+    });
+    const body = solutionDraftBody(entry, plan, {
       [GMAIL]: "gggggggg-gggg-4ggg-8ggg-gggggggggggg",
     });
-    const steps = (body.definition as { steps: Array<{ connector_id?: string }> }).steps;
-    expect(steps.map((step) => step.connector_id)).toEqual([
+    expect(body.recipe).toEqual({ vertical: "solutions", slug: "daily-analytics-report" });
+    const definition = body.definition as {
+      slug: string;
+      name: string;
+      steps: Array<{ connector_id?: string }>;
+    };
+    expect(definition.slug).toBe("daily-analytics-report");
+    expect(definition.steps.map((step) => step.connector_id)).toEqual([
       BOUND_GA,
       BOUND_GA,
       undefined,
@@ -197,14 +206,85 @@ describe("solution templates: list, detail, create", () => {
     ]);
   });
 
-  test("only a missing connector whose template has no address asks for one", () => {
+  test("the same solution twice gives two workflows and reuses the connector made the first time", () => {
+    const first = report(true);
+    const firstPlan = planSolution(first, { choices: {}, created: {}, takenSlugs: new Set() });
+    expect(firstPlan.create.map((c) => c.template)).toEqual(["google-gmail"]);
+    const made = "gggggggg-gggg-4ggg-8ggg-gggggggggggg";
+    const refreshed = report(true);
+    const gmail = refreshed.connectors[1];
+    if (!gmail) throw new Error("gmail binding missing");
+    gmail.candidates = [{ id: made, slug: "google-gmail", name: "Gmail" }];
+    const secondPlan = planSolution(refreshed, {
+      choices: {},
+      created: {},
+      takenSlugs: new Set(["daily-analytics-report"]),
+    });
+    expect(secondPlan).toEqual({
+      slug: "daily-analytics-report-2",
+      name: "daily-analytics-report-2",
+      create: [],
+      mapping: { [GMAIL]: made },
+    });
+  });
+
+  test("a retry after a refused draft reuses what the first try created", () => {
+    const made = "gggggggg-gggg-4ggg-8ggg-gggggggggggg";
+    const plan = planSolution(report(true), {
+      choices: {},
+      created: { [GMAIL]: made },
+      takenSlugs: new Set(["daily-analytics-report", "daily-analytics-report-2"]),
+    });
+    expect(plan.create).toEqual([]);
+    expect(plan.mapping).toEqual({ [GMAIL]: made });
+    expect(plan.slug).toBe("daily-analytics-report-3");
+  });
+
+  test("a person picks between candidates or asks for a new connector", () => {
+    const entry = report(false);
+    const ga = entry.connectors[0];
+    if (!ga) throw new Error("ga binding missing");
+    ga.candidates = [
+      { id: "aaaaaaaa-0000-4000-8000-000000000001", slug: "ga-a", name: "GA A" },
+      { id: "aaaaaaaa-0000-4000-8000-000000000002", slug: "ga-b", name: "GA B" },
+    ];
+    expect(choiceOf(ga, {})).toEqual({
+      kind: "existing",
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+    });
+    expect(choiceOf(ga, { [GA]: "aaaaaaaa-0000-4000-8000-000000000002" })).toEqual({
+      kind: "existing",
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+    });
+    expect(choiceOf(ga, { [GA]: NEW_CONNECTOR })).toEqual({ kind: "new" });
+    expect(choiceOf(ga, { [GA]: "not-a-candidate" })).toEqual({
+      kind: "existing",
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+    });
+    const plan = planSolution(entry, {
+      choices: { [GA]: NEW_CONNECTOR },
+      created: {},
+      takenSlugs: new Set(),
+    });
+    expect(plan.create.map((c) => c.template)).toEqual(["google-analytics", "google-gmail"]);
+  });
+
+  test("only a new connector whose template has no address asks for one", () => {
     const templates = [
       { slug: "google-analytics", base_url: "https://analyticsdata.googleapis.com" },
       { slug: "google-gmail", base_url: null },
     ];
-    const needed = addressedConnectors(report(true), templates);
+    const needed = addressedConnectors(report(true), templates, {});
     expect(needed.map((c) => c.template)).toEqual(["google-gmail"]);
-    expect(addressedConnectors(report(true), [])).toEqual([]);
+    expect(addressedConnectors(report(true), [], {})).toEqual([]);
+    const withCandidate = report(true);
+    const gmail = withCandidate.connectors[1];
+    if (!gmail) throw new Error("gmail binding missing");
+    gmail.candidates = [{ id: "gggggggg-gggg-4ggg-8ggg-gggggggggggg", slug: "mail", name: "Mail" }];
+    expect(addressedConnectors(withCandidate, templates, {})).toEqual([]);
+    expect(addressedConnectors(withCandidate, templates, { [GMAIL]: NEW_CONNECTOR })).toHaveLength(
+      1,
+    );
     expect(solutionAddressProblem(needed, {})).toBe("create.connector.addressInvalid");
     expect(solutionAddressProblem(needed, { [GMAIL]: "http://insecure.example" })).toBe(
       "create.connector.addressInvalid",

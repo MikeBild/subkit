@@ -3736,6 +3736,8 @@ const EN = {
   "create.solution.missingLine.other": "{names} still need a sign-in; the workflow waits for them.",
   "create.solution.allConnected": "All connectors are connected.",
   "create.solution.created": "{name} created · start a test run in Build",
+  "create.solution.pick": "{name} connector",
+  "create.solution.pickNew": "Add a new connector",
   "create.solution.address": "Address of {name}",
   "create.solution.addressHelp":
     "This connector points at a system of your own; SubKit adds it with this address.",
@@ -7920,6 +7922,8 @@ const DE: Record<TranslationKey, string> = {
     "{names} brauchen noch eine Anmeldung; der Workflow wartet darauf.",
   "create.solution.allConnected": "Alle Konnektoren sind verbunden.",
   "create.solution.created": "{name} angelegt · im Aufbau einen Testlauf starten",
+  "create.solution.pick": "Konnektor für {name}",
+  "create.solution.pickNew": "Neuen Konnektor anlegen",
   "create.solution.address": "Adresse von {name}",
   "create.solution.addressHelp":
     "Dieser Konnektor zeigt auf ein eigenes System; SubKit legt ihn mit dieser Adresse an.",

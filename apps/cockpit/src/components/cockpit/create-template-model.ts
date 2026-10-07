@@ -153,12 +153,76 @@ function swapConnectorIds(value: unknown, mapping: Readonly<Record<string, strin
   );
 }
 
+export type ConnectorChoice = { kind: "existing"; id: string } | { kind: "new" };
+
+export const NEW_CONNECTOR = "new";
+
+export function defaultChoice(connector: SolutionConnector): ConnectorChoice {
+  const first = connector.candidates[0];
+  return first ? { kind: "existing", id: first.id } : { kind: "new" };
+}
+
+export function choiceOf(
+  connector: SolutionConnector,
+  choices: Readonly<Record<string, string>>,
+): ConnectorChoice {
+  const picked = choices[connector.placeholder];
+  if (picked === NEW_CONNECTOR) return { kind: "new" };
+  if (picked && connector.candidates.some((candidate) => candidate.id === picked)) {
+    return { kind: "existing", id: picked };
+  }
+  return defaultChoice(connector);
+}
+
+export interface SolutionPlan {
+  slug: string;
+  name: string;
+  create: SolutionConnector[];
+  mapping: Record<string, string>;
+}
+
+export function planSolution(
+  entry: SolutionEntry,
+  p: {
+    choices: Readonly<Record<string, string>>;
+    created: Readonly<Record<string, string>>;
+    takenSlugs: ReadonlySet<string>;
+  },
+): SolutionPlan {
+  const mapping: Record<string, string> = {};
+  const create: SolutionConnector[] = [];
+  for (const connector of missingConnectors(entry)) {
+    const reused = p.created[connector.placeholder];
+    if (reused) {
+      mapping[connector.placeholder] = reused;
+      continue;
+    }
+    const choice = choiceOf(connector, p.choices);
+    if (choice.kind === "existing") mapping[connector.placeholder] = choice.id;
+    else create.push(connector);
+  }
+  const slug = freeSlug(entry.recipe_slug, p.takenSlugs);
+  const base = record(entry.workflow).name;
+  const name = typeof base === "string" && base ? base : entry.recipe_slug;
+  return {
+    slug,
+    name: slug === entry.recipe_slug ? name : `${name}${slug.slice(entry.recipe_slug.length)}`,
+    create,
+    mapping,
+  };
+}
+
 export function solutionDraftBody(
   entry: SolutionEntry,
-  created: Readonly<Record<string, string>> = {},
+  plan: Pick<SolutionPlan, "slug" | "name">,
+  mapping: Readonly<Record<string, string>>,
 ): Record<string, unknown> {
   return {
-    definition: { ...record(swapConnectorIds(entry.workflow, created)), slug: entry.recipe_slug },
+    definition: {
+      ...record(swapConnectorIds(entry.workflow, mapping)),
+      name: plan.name,
+      slug: plan.slug,
+    },
     recipe: { vertical: SOLUTIONS_VERTICAL, slug: entry.recipe_slug },
   };
 }
@@ -166,10 +230,11 @@ export function solutionDraftBody(
 export function addressedConnectors(
   entry: SolutionEntry,
   templates: readonly Pick<ConnectorTemplate, "slug" | "base_url">[],
+  choices: Readonly<Record<string, string>>,
 ): SolutionConnector[] {
   return missingConnectors(entry).filter((connector) => {
     const template = templates.find((item) => item.slug === connector.template);
-    return Boolean(template) && !template?.base_url;
+    return Boolean(template) && !template?.base_url && choiceOf(connector, choices).kind === "new";
   });
 }
 
