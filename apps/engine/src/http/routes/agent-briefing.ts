@@ -55,22 +55,29 @@ const AgentDomainsResponse = z
   .openapi("AgentDomainsResponse");
 
 const domainsRoute = createRoute({
-  method: "get",
+  method: "post",
   path: "/v1/agent/domains",
   tags: ["agent"],
   summary: "Resolve which known domains a prompt or repository is about",
   description:
     "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge " +
     "source) matches when every part of its slug appears as a word in the prompt or the " +
-    "repository hint. Coding-agent hooks use it to brief only what a turn is about.",
+    "repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads " +
+    "only; the prompt travels in the body so it stays out of URLs and access logs.",
   security: [{ bearerAuth: [] }],
   request: {
-    query: z
-      .object({
-        prompt: z.string().max(DOMAIN_PROMPT_MAX_CHARS).optional(),
-        repo: z.string().max(DOMAIN_REPO_MAX_CHARS).optional(),
-      })
-      .openapi("AgentDomainsQuery"),
+    body: {
+      content: {
+        "application/json": {
+          schema: z
+            .object({
+              prompt: z.string().max(DOMAIN_PROMPT_MAX_CHARS).optional(),
+              repo: z.string().max(DOMAIN_REPO_MAX_CHARS).optional(),
+            })
+            .openapi("AgentDomainsBody"),
+        },
+      },
+    },
   },
   responses: {
     200: { description: "OK", content: { "application/json": { schema: AgentDomainsResponse } } },
@@ -146,13 +153,13 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(domainsRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const q = c.req.valid("query");
+    const body = c.req.valid("json");
     const known = await listKnownDomains(
       principal.tenant_id,
       { include_knowledge: await canReadKnowledge(db, principal) },
       db,
     );
-    return c.json(resolveDomains({ prompt: q.prompt, repo_hint: q.repo, known }), 200);
+    return c.json(resolveDomains({ prompt: body.prompt, repo_hint: body.repo, known }), 200);
   });
 
   app.openapi(briefingRoute, async (c) => {

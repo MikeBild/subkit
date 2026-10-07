@@ -38,7 +38,7 @@ export const agentMethods = {
     this: EngineClient,
     params: { prompt?: string; repo?: string },
   ): Promise<AgentDomains> {
-    return this.request("GET", "/v1/agent/domains", undefined, {
+    return this.request("POST", "/v1/agent/domains", {
       ...(params.prompt ? { prompt: params.prompt } : {}),
       ...(params.repo ? { repo: params.repo } : {}),
     });

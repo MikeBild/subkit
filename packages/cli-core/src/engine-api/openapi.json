@@ -16803,6 +16803,19 @@
           "from_repo"
         ]
       },
+      "AgentDomainsBody": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "repo": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
       "AgentBriefingResponse": {
         "type": "object",
         "properties": {
@@ -39691,37 +39704,26 @@
       }
     },
     "/v1/agent/domains": {
-      "get": {
+      "post": {
         "tags": [
           "agent"
         ],
         "summary": "Resolve which known domains a prompt or repository is about",
-        "description": "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about.",
+        "description": "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 2000
-            },
-            "required": false,
-            "name": "prompt",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            },
-            "required": false,
-            "name": "repo",
-            "in": "query"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDomainsBody"
+              }
+            }
           }
-        ],
+        },
         "responses": {
           "200": {
             "description": "OK",

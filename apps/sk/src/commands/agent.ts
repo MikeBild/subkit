@@ -15,7 +15,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { configDir, resolveProfile } from "../config.ts";
 import { debugLog } from "../debug.ts";
-import { EngineClient } from "../engine-client.ts";
+import { EngineClient, type FetchLike } from "../engine-client.ts";
 
 export const AGENT_FILE_RELPATH = join(".sk", "agent.json");
 const HOOK_COMMAND = "sk agent briefing --hook";
@@ -25,6 +25,7 @@ const PROMPT_HOOK_TIMEOUT_SECONDS = 10;
 const CAPTURE_HOOK_TIMEOUT_SECONDS = 60;
 const TRANSCRIPT_MAX_CHARS = 1_000_000;
 const PROMPT_MAX_CHARS = 2_000;
+const HOOK_REQUEST_TIMEOUT_MS = 4_000;
 const BRIEFED_DIR = "agent-sessions";
 const BRIEFED_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -90,6 +91,10 @@ function readHookPayload(): HookPayload {
   } catch {
     return parseHookPayload("");
   }
+}
+
+export function boundedFetch(timeout_ms: number, fetchImpl: FetchLike = fetch): FetchLike {
+  return (input, init) => fetchImpl(input, { ...init, signal: AbortSignal.timeout(timeout_ms) });
 }
 
 export function sessionDomains(declared: readonly string[], fromRepo: readonly string[]): string[] {
@@ -167,7 +172,13 @@ const briefingCommand = defineCommand({
       const declared = fromFile?.config.domains ?? [];
       const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
       const { engine_url, api_key, active_tenant_id } = resolveProfile();
-      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      if (args.hook && !api_key) return;
+      const client = new EngineClient({
+        engine_url,
+        api_key,
+        tenant: active_tenant_id,
+        ...(args.hook ? { fetchImpl: boundedFetch(HOOK_REQUEST_TIMEOUT_MS) } : {}),
+      });
       const repo = basename(startDir);
       let domains: string[];
       if (args.domains) {
