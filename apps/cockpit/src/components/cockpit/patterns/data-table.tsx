@@ -282,6 +282,7 @@ export function DataTable<TData extends RowData>({
   rowActions,
   collectionId = "data-table",
   collectionTier = "primary",
+  layout = "responsive",
   pickColumns = true,
   searchLabel = "Tabelle durchsuchen",
   searchText = (row) => JSON.stringify(row) ?? "",
@@ -310,6 +311,7 @@ export function DataTable<TData extends RowData>({
   actionsLabel: string;
   collectionId?: string;
   collectionTier?: "primary" | "embedded";
+  layout?: "responsive" | "rows";
   pickColumns?: boolean;
   searchLabel?: string;
   searchText?: (row: TData) => string;
@@ -373,6 +375,19 @@ export function DataTable<TData extends RowData>({
   const empty = !showSkeleton && !error && rows.length === 0;
   const emptyCopy = hasActiveFilters ? emptyState.filtered : emptyState.zero;
   const usesDefaultSearch = collectionTier === "primary" && (showDefaultSearch ?? !toolbar);
+  const toolbarShown = usesDefaultSearch || Boolean(toolbar) || showColumnPicker;
+  const cards = layout === "responsive";
+  const resultCountLabel = (
+    <span
+      className="sr-only"
+      aria-live="polite"
+      data-family-slot="collection-meta"
+      data-family-result-count
+      data-testid={`${collectionId}-count`}
+    >
+      {showSkeleton ? "" : `${recordsLabel ?? t("platform.results")}: ${resultCount}`}
+    </span>
+  );
 
   const stateBlock = pending ? null : error ? (
     <DataState
@@ -423,75 +438,73 @@ export function DataTable<TData extends RowData>({
       data-family-collection-capability={
         collectionTier === "primary"
           ? "search relevant-filters sort column-visibility result-count pagination url-state responsive-cards loading-state empty-state error-state"
-          : "sort responsive-cards loading-state empty-state error-state"
+          : cards
+            ? "sort responsive-cards loading-state empty-state error-state"
+            : "sort loading-state empty-state error-state"
       }
       data-family-state={pending ? "loading" : error ? "error" : empty ? "empty" : "ready"}
       aria-busy={pending ? true : undefined}
     >
-      <div
-        className="flex flex-wrap items-center gap-2 border-b px-3 py-2 max-sm:px-0"
-        data-family-slot="list-toolbar"
-      >
-        {usesDefaultSearch && (
-          <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
-            <span className="sr-only">{searchLabel}</span>
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id={searchInputId}
-              type="search"
-              value={queryText}
-              onChange={(event) => setQueryText(event.target.value)}
-              placeholder={searchLabel}
-              className="pl-8"
-              data-family-action="search"
-              data-testid={`${collectionId}-search`}
-            />
-          </label>
-        )}
-        {toolbar}
-        <span
-          className="sr-only"
-          aria-live="polite"
-          data-family-slot="collection-meta"
-          data-family-result-count
-          data-testid={`${collectionId}-count`}
+      {toolbarShown ? (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b px-3 py-2 max-sm:px-0"
+          data-family-slot="list-toolbar"
         >
-          {showSkeleton ? "" : `${recordsLabel ?? t("platform.results")}: ${resultCount}`}
-        </span>
-        {showColumnPicker ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="ms-auto hidden @2xl:inline-flex"
-                data-testid={`${collectionId}-columns`}
-              >
-                <Columns3 data-icon="inline-start" />
-                {columnsLabel}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
-              <DropdownMenuGroup>
-                {hideableColumns.map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(checked) => column.toggleVisibility(Boolean(checked))}
-                  >
-                    {typeof column.columnDef.header === "string"
-                      ? column.columnDef.header
-                      : column.id}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
+          {usesDefaultSearch && (
+            <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
+              <span className="sr-only">{searchLabel}</span>
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id={searchInputId}
+                type="search"
+                value={queryText}
+                onChange={(event) => setQueryText(event.target.value)}
+                placeholder={searchLabel}
+                className="pl-8"
+                data-family-action="search"
+                data-testid={`${collectionId}-search`}
+              />
+            </label>
+          )}
+          {toolbar}
+          {resultCountLabel}
+          {showColumnPicker ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ms-auto hidden @2xl:inline-flex"
+                  data-testid={`${collectionId}-columns`}
+                >
+                  <Columns3 data-icon="inline-start" />
+                  {columnsLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{columnsLabel}</DropdownMenuLabel>
+                <DropdownMenuGroup>
+                  {hideableColumns.map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(checked) => column.toggleVisibility(Boolean(checked))}
+                    >
+                      {typeof column.columnDef.header === "string"
+                        ? column.columnDef.header
+                        : column.id}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
+      ) : (
+        resultCountLabel
+      )}
       <div
-        className="hidden min-h-0 flex-1 overflow-auto @2xl:block"
+        className={cn("min-h-0 flex-1 overflow-auto", cards ? "hidden @2xl:block" : "block")}
         data-testid={`${collectionId}-desktop`}
       >
         <Table>
@@ -646,111 +659,114 @@ export function DataTable<TData extends RowData>({
           <InfiniteSentinel infinite={infinite} testId={`${collectionId}-more`} />
         ) : null}
       </div>
-      <div
-        className="min-h-0 flex-1 overflow-y-auto @2xl:hidden"
-        data-testid={`${collectionId}-mobile`}
-      >
-        {showSkeleton ? (
-          <div
-            className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
-            data-family-slot="data-state"
-            data-family-state="loading"
-            aria-busy="true"
-          >
-            {Array.from({ length: skeletonRows }, (_, cardIndex) => (
-              <div key={cardIndex} className="flex flex-col gap-3 p-4">
-                {[0, 1, 2].map((line) => (
-                  <span key={line} className="flex h-5 items-center justify-between gap-4">
-                    <Skeleton className="h-3 w-16" />
-                    <Skeleton
-                      className={cn(
-                        "h-3.5",
-                        SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
-                      )}
-                    />
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
-        ) : error || empty ? (
-          <div className="px-4">{stateBlock}</div>
-        ) : (
-          <div className={cn("grid divide-y", arrivedContent && "sk-fade-in")}>
-            {rows.map((row, index) => {
-              const leaving = leavingAt(index);
-              const open = onOpen && !leaving ? () => onOpen(row.original) : null;
-              const all = row.getVisibleCells();
-              const named = open ? all.find((cell) => cell.column.id === linkColumnId) : undefined;
-              const cells = (named ? [named, ...all.filter((cell) => cell !== named)] : all).slice(
-                0,
-                3,
-              );
-              const card = cells.map((cell, cellIndex) => (
-                <span key={cell.id} className="flex min-w-0 items-start justify-between gap-4">
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {typeof cell.column.columnDef.header === "string"
-                      ? cell.column.columnDef.header
-                      : cell.column.id}
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 break-words text-right",
-                      cellIndex === 0 ? "font-medium" : "text-sm",
-                    )}
-                  >
-                    {open && cell === named ? (
-                      <LinkedCell
-                        owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
-                        target={{
-                          href: rowHref?.(row.original) ?? null,
-                          onOpen: open,
-                          testId: `${collectionId}-mobile-row-link-${index}`,
-                          label: rowLabel?.(row.original),
-                        }}
-                      >
-                        <table.FlexRender cell={cell} />
-                      </LinkedCell>
-                    ) : (
-                      <table.FlexRender cell={cell} />
-                    )}
-                  </span>
-                </span>
-              ));
-              const actions = rowActions?.(row.original, index);
-              return (
-                <div
-                  key={row.id}
-                  className={cn(
-                    "flex min-w-0 flex-col gap-3 p-4 text-left",
-                    open && "cursor-pointer",
-                    rowMotionClass(row.original, index),
-                  )}
-                  onClick={
-                    open
-                      ? (event) => {
-                          if (opensRow(event)) open();
-                        }
-                      : undefined
-                  }
-                  aria-hidden={leaving ? true : undefined}
-                  data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
-                  data-family-slot={leaving ? undefined : "list-row"}
-                  data-family-collection-row={leaving ? undefined : "true"}
-                  data-family-collection-mobile-card="true"
-                  data-action-scope="row"
-                >
-                  {card}
-                  {actions ? <span className="flex justify-end gap-1">{actions}</span> : null}
+      {cards ? (
+        <div
+          className="min-h-0 flex-1 overflow-y-auto @2xl:hidden"
+          data-testid={`${collectionId}-mobile`}
+        >
+          {showSkeleton ? (
+            <div
+              className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
+              data-family-slot="data-state"
+              data-family-state="loading"
+              aria-busy="true"
+            >
+              {Array.from({ length: skeletonRows }, (_, cardIndex) => (
+                <div key={cardIndex} className="flex flex-col gap-3 p-4">
+                  {[0, 1, 2].map((line) => (
+                    <span key={line} className="flex h-5 items-center justify-between gap-4">
+                      <Skeleton className="h-3 w-16" />
+                      <Skeleton
+                        className={cn(
+                          "h-3.5",
+                          SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
+                        )}
+                      />
+                    </span>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        )}
-        {infinite && !showSkeleton && !error ? (
-          <InfiniteSentinel infinite={infinite} testId={`${collectionId}-mobile-more`} />
-        ) : null}
-      </div>
+              ))}
+            </div>
+          ) : error || empty ? (
+            <div className="px-4">{stateBlock}</div>
+          ) : (
+            <div className={cn("grid divide-y", arrivedContent && "sk-fade-in")}>
+              {rows.map((row, index) => {
+                const leaving = leavingAt(index);
+                const open = onOpen && !leaving ? () => onOpen(row.original) : null;
+                const all = row.getVisibleCells();
+                const named = open
+                  ? all.find((cell) => cell.column.id === linkColumnId)
+                  : undefined;
+                const cells = (
+                  named ? [named, ...all.filter((cell) => cell !== named)] : all
+                ).slice(0, 3);
+                const card = cells.map((cell, cellIndex) => (
+                  <span key={cell.id} className="flex min-w-0 items-start justify-between gap-4">
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {typeof cell.column.columnDef.header === "string"
+                        ? cell.column.columnDef.header
+                        : cell.column.id}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 break-words text-right",
+                        cellIndex === 0 ? "font-medium" : "text-sm",
+                      )}
+                    >
+                      {open && cell === named ? (
+                        <LinkedCell
+                          owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
+                          target={{
+                            href: rowHref?.(row.original) ?? null,
+                            onOpen: open,
+                            testId: `${collectionId}-mobile-row-link-${index}`,
+                            label: rowLabel?.(row.original),
+                          }}
+                        >
+                          <table.FlexRender cell={cell} />
+                        </LinkedCell>
+                      ) : (
+                        <table.FlexRender cell={cell} />
+                      )}
+                    </span>
+                  </span>
+                ));
+                const actions = rowActions?.(row.original, index);
+                return (
+                  <div
+                    key={row.id}
+                    className={cn(
+                      "flex min-w-0 flex-col gap-3 p-4 text-left",
+                      open && "cursor-pointer",
+                      rowMotionClass(row.original, index),
+                    )}
+                    onClick={
+                      open
+                        ? (event) => {
+                            if (opensRow(event)) open();
+                          }
+                        : undefined
+                    }
+                    aria-hidden={leaving ? true : undefined}
+                    data-testid={leaving ? undefined : `${collectionId}-mobile-row-${index}`}
+                    data-family-slot={leaving ? undefined : "list-row"}
+                    data-family-collection-row={leaving ? undefined : "true"}
+                    data-family-collection-mobile-card="true"
+                    data-action-scope="row"
+                  >
+                    {card}
+                    {actions ? <span className="flex justify-end gap-1">{actions}</span> : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {infinite && !showSkeleton && !error ? (
+            <InfiniteSentinel infinite={infinite} testId={`${collectionId}-mobile-more`} />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

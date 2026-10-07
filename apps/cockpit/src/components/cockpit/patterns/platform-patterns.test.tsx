@@ -81,6 +81,22 @@ describe("DataTable", () => {
     expect(html).toContain("@2xl:block");
     expect(html).toContain("@2xl:hidden");
   });
+
+  test("a pick list keeps its rows at every width and never turns into cards", () => {
+    const html = table({ collectionTier: "embedded", layout: "rows" });
+    expect(html).toContain('data-testid="t-desktop"');
+    expect(html).not.toContain('data-testid="t-mobile"');
+    expect(html).not.toContain("@2xl:block");
+    expect(html).not.toContain("data-family-collection-mobile-card");
+    expect(html).not.toContain("responsive-cards");
+  });
+
+  test("a list without search, toolbar or column picker draws no toolbar strip, only the count", () => {
+    const embedded = table({ collectionTier: "embedded" });
+    expect(embedded).not.toContain('data-family-slot="list-toolbar"');
+    expect(embedded).toContain('data-testid="t-count"');
+    expect(table()).toContain('data-family-slot="list-toolbar"');
+  });
 });
 
 describe("row motion", () => {

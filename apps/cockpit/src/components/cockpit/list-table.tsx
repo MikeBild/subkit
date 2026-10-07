@@ -16,6 +16,7 @@ export function ListTable<TData extends RowData>({
   onOpen,
   rowLabel,
   rowActions,
+  layout,
 }: {
   id: string;
   columns: CockpitColumn<TData>[];
@@ -29,6 +30,7 @@ export function ListTable<TData extends RowData>({
   onOpen?(row: TData): void;
   rowLabel?(row: TData): string;
   rowActions?: (row: TData, index: number) => ReactNode;
+  layout?: "responsive" | "rows";
 }) {
   const { t } = useI18n();
   return (
@@ -36,6 +38,7 @@ export function ListTable<TData extends RowData>({
       <DataTable
         collectionId={id}
         collectionTier="embedded"
+        layout={layout}
         columns={columns}
         data={rows}
         onOpen={onOpen}
