@@ -42,6 +42,8 @@ docker compose exec engine sk init \
 ```
 
 Use `--llm-provider mock --llm-api-key mock` to try it without an LLM account.
+`sk init` checks the key with one minimal call before it saves anything; a refused key stops
+the setup, nothing is stored, and the same token works for the next try.
 
 Open the Cockpit at `http://localhost:3000/cockpit`.
 
@@ -1942,6 +1944,7 @@ Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe 
 
 - `--file` (string) — Path to WorkflowDef JSON
 - `--from-recipe` (string) — Slug of a solution recipe; its connectors are bound to the ones you already have
+- `--bind` (string) — With --from-recipe: bind connectors yourself, as <template or placeholder>=<connector id or slug>[,…]; needed for templates without a fixed address such as http
 - `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
 - `--input` (string) — Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.
 - `--json` — JSON-only output (suppresses narration)
