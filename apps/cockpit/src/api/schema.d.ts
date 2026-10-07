@@ -4173,6 +4173,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Error"];
+                        "text/html": string;
                     };
                 };
             };
@@ -24417,6 +24418,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24453,6 +24455,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24489,6 +24492,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24527,6 +24531,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24565,6 +24570,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };

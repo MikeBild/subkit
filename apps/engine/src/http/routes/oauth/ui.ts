@@ -270,24 +270,18 @@ export function renderResultPage(result: ResultPage, look: PageLook): string {
   });
 }
 
-export function authHtmlResponse(
-  html: string,
-  status = 200,
-  extraHeaders: Record<string, string> = {},
-): Response {
-  return new Response(html, {
-    status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "private,no-store",
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
-      "x-content-type-options": "nosniff",
-      "x-frame-options": "DENY",
-      "referrer-policy": "no-referrer",
-      ...extraHeaders,
-    },
-  });
+export const HTML_PAGE_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+  "cache-control": "private,no-store",
+  "content-security-policy":
+    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+} as const;
+
+export function authHtmlResponse(html: string, status = 200): Response {
+  return new Response(html, { status, headers: HTML_PAGE_HEADERS });
 }
 
 export type SignInError =

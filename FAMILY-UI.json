@@ -306,7 +306,7 @@
       "technicalDetails": false,
       "productionCrashRoute": false
     },
-    "outsideCockpit": "existing-api-envelope"
+    "outsideCockpit": "html-page-for-browsers-api-envelope-otherwise"
   },
   "integration": {
     "rest": {
