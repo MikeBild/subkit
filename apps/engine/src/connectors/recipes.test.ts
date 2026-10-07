@@ -458,6 +458,29 @@ describe("solution recipes — several connectors per recipe", () => {
     expect(offenders).toEqual([]);
   });
 
+  test("no solution takes webhooks without a signature check", () => {
+    for (const recipe of solutions) {
+      const trigger = recipe.workflow.trigger;
+      if (trigger?.kind !== "webhook") continue;
+      expect({ slug: recipe.slug, verify: trigger.verify }).not.toEqual({
+        slug: recipe.slug,
+        verify: "none",
+      });
+      expect(recipe.description).toMatch(/sign/i);
+    }
+  });
+
+  test("the Drive solution keeps the drive.file scope and works in a folder it creates", () => {
+    expect(getBuiltinTemplate("google-drive")?.oauth?.scopes).toBe(
+      "https://www.googleapis.com/auth/drive.file",
+    );
+    const recipe = getSolutionRecipe("invoice-attachments-to-drive");
+    const ids = (recipe?.workflow.steps ?? []).map((step) => step.id);
+    expect(ids.indexOf("create_folder")).toBeGreaterThan(ids.indexOf("find_folder"));
+    expect(ids.indexOf("upload_file")).toBeGreaterThan(ids.indexOf("folder"));
+    expect(recipe?.workflow.input_schema?.required).toEqual(["query", "folder_name"]);
+  });
+
   test("a recipe origin resolves only inside its own pack", () => {
     const finance = { categories: ["payments"], tags: ["finance"] };
     expect(recipeForOrigin({ vertical: "solutions", slug: "weekly-run-digest" }, null)?.slug).toBe(

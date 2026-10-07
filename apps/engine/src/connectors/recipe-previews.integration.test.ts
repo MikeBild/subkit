@@ -151,21 +151,51 @@ const unexpected = (call: Call): never => {
 };
 
 describe.skipIf(skip)("solution recipes preview against their expected output", () => {
-  test("invoice attachments land in the Drive folder under a date and sender name", async () => {
-    const { calls } = await preview(solution("invoice-attachments-to-drive"), (call) => {
+  const invoiceReply =
+    (folders: Array<{ id: string; name: string }>) =>
+    (call: Call): unknown => {
       const { method, url } = call;
       if (url.pathname.endsWith("/users/me/messages")) return { messages: [{ id: "m1" }] };
       if (url.pathname.endsWith("/users/me/messages/m1")) return gmailMessage;
       if (url.pathname.endsWith("/attachments/att1")) return { size: 9, data: "JVBERi0xLjQK" };
+      if (method === "GET" && url.pathname === "/drive/v3/files") return { files: folders };
+      if (method === "POST" && url.pathname === "/drive/v3/files") {
+        return { id: "folder-1", name: "Invoices" };
+      }
       if (method === "POST" && url.pathname === "/upload/drive/v3/files") {
         return { id: "file-1", name: "2026-09-30_example.com_invoice-1042.pdf" };
       }
       return unexpected(call);
+    };
+
+  test("the first run creates its own Drive folder and files the invoice in it", async () => {
+    const { calls } = await preview(solution("invoice-attachments-to-drive"), invoiceReply([]));
+    const find = calls.find((c) => c.method === "GET" && c.url.pathname === "/drive/v3/files");
+    expect(find?.url.searchParams.get("q")).toBe(
+      "mimeType='application/vnd.google-apps.folder' and name='Invoices' and trashed=false",
+    );
+    const create = calls.find((c) => c.method === "POST" && c.url.pathname === "/drive/v3/files");
+    expect(JSON.parse(create?.body ?? "{}")).toEqual({
+      name: "Invoices",
+      mimeType: "application/vnd.google-apps.folder",
     });
     const upload = calls.find((c) => c.url.pathname === "/upload/drive/v3/files");
     expect(upload?.url.hostname).toBe("www.googleapis.com");
-    expect(upload?.body).toContain('"parents":["folder-accounting-inbox"]');
+    expect(upload?.body).toContain('"parents":["folder-1"]');
     expect(upload?.body).toContain("JVBERi0xLjQK");
+  });
+
+  test("later runs find the folder they created and do not create another", async () => {
+    const { calls } = await preview(
+      solution("invoice-attachments-to-drive"),
+      invoiceReply([{ id: "folder-1", name: "Invoices" }]),
+    );
+    expect(calls.some((c) => c.method === "POST" && c.url.pathname === "/drive/v3/files")).toBe(
+      false,
+    );
+    expect(calls.find((c) => c.url.pathname === "/upload/drive/v3/files")?.body).toContain(
+      '"parents":["folder-1"]',
+    );
   });
 
   test("the daily analytics report reads two reports and mails one summary", async () => {
