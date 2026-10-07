@@ -281,7 +281,7 @@ export const HTML_PAGE_HEADERS = {
 } as const;
 
 export function authHtmlResponse(html: string, status = 200): Response {
-  return new Response(html, { status, headers: HTML_PAGE_HEADERS });
+  return new Response(html, { status, headers: { ...HTML_PAGE_HEADERS } });
 }
 
 export type SignInError =
