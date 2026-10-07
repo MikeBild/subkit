@@ -22,6 +22,7 @@ import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyEdgeStates } from "./lib/cockpit-edge-states.mjs";
+import { verifyEnginePages } from "./lib/cockpit-engine-pages.mjs";
 import { assertFamilyGeometry } from "./lib/cockpit-family-geometry.mjs";
 import { verifyFirstClickOpens } from "./lib/cockpit-first-click.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
@@ -4352,6 +4353,14 @@ for (const locale of variants) {
     if (standOn(verifyWorkflowPage))
       await verifyWorkflowPage(page, stand, locale.name, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyEnginePages))
+      await verifyEnginePages(
+        page,
+        { locale: locale.name, scheme: locale.theme },
+        `${locale.artifact}/${viewport.name}`,
+        (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-engine-${state}`, { fullPage: false }),
       );
     if (standOn(verifyEdgeStates))
       await verifyEdgeStates(page, stand, (state) =>
