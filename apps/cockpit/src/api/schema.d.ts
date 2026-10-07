@@ -22093,6 +22093,8 @@ export interface components {
             /** @description Slugs of the domain's connectors the caller may read, as listed in the briefing. */
             connectors: string[];
             connectors_omitted: number;
+            /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
+            guides: string[];
             proposed_candidates: number;
         };
         AgentSessionCaptureResponse: {

@@ -89,6 +89,7 @@ function input(overrides: Partial<AssembleInput> = {}): AssembleInput {
     includeKnowledgeIndex: true,
     workflows: [makeEntry("wf", 1), makeEntry("wf", 2)],
     connectors: [makeEntry("conn", 1), makeEntry("conn", 2)],
+    guides: [],
     proposedCandidates: 2,
     ...overrides,
   };
@@ -151,6 +152,20 @@ describe("trimToBudget", () => {
     expect(oneLess.state.knowledgeCount).toBe(1);
     expect(oneLess.state.fullBodyCount).toBe(3);
     expect(oneLess.markdown).toContain("…and 1 more — call `list_knowledge_sources`");
+  });
+
+  test("lists the guides for working with sk as load pointers that are never trimmed", () => {
+    const guide = {
+      ...makeSkill(4, 2000),
+      slug: "workflow-find-run-check",
+      title: "Find a Workflow",
+    };
+    const { markdown } = trimToBudget(input({ guides: [guide] }), 1);
+    expect(markdown).toContain("## Working with sk");
+    expect(markdown).toContain(
+      "- Find a Workflow — load via `get_skill`/`find_skill` (`workflow-find-run-check`).",
+    );
+    expect(markdown).not.toContain("word1999");
   });
 
   test("the same input renders the same briefing", () => {

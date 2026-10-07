@@ -39,6 +39,9 @@ const AgentBriefingResponse = z
       .array(z.string())
       .describe("Slugs of the domain's connectors the caller may read, as listed in the briefing."),
     connectors_omitted: z.number().int(),
+    guides: z
+      .array(z.string())
+      .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
     proposed_candidates: z.number().int(),
   })
   .openapi("AgentBriefingResponse");
