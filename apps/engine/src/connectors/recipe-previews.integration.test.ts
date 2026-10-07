@@ -94,14 +94,20 @@ async function preview(
       headers: { "content-type": "application/json" },
     });
   }) as typeof fetch;
-  const result = await withDriverFetchForTests(fake, () =>
-    runExecution({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      source: { kind: "draft", definition: definition as WorkflowDef },
-      input: recipe.sample_input,
-    }),
-  );
+  const run = (hold_writes: boolean) =>
+    withDriverFetchForTests(fake, () =>
+      runExecution({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        source: { kind: "draft", definition: definition as WorkflowDef },
+        input: recipe.sample_input,
+        options: { hold_writes },
+      }),
+    );
+  const held = await run(true);
+  expect({ held: held.status, error: held.error }).toEqual({ held: "succeeded", error: null });
+  calls.length = 0;
+  const result = await run(false);
   expect({ status: result.status, error: result.error }).toEqual({
     status: "succeeded",
     error: null,
