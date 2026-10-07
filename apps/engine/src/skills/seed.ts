@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
 import { EMBEDDED_SKILL_SEEDS } from "./embedded-seeds.ts";
@@ -111,6 +112,10 @@ export async function applySkillSeeds(
         slug: s.slug,
         scope: s.scope,
         title: s.title,
+        description: s.description,
+        description_source: "human",
+        category: PLATFORM_CATEGORY,
+        category_source: "human",
         body: s.body,
         examples: {
           examples: [],
@@ -146,6 +151,17 @@ export async function applySkillSeeds(
       sameRecord(row.input_schema, s.input_schema) &&
       sameRecord(row.output_schema, s.output_schema)
     ) {
+      if (row.description !== s.description || row.category !== PLATFORM_CATEGORY) {
+        await db
+          .update(skills)
+          .set({
+            description: s.description,
+            description_source: "human",
+            category: PLATFORM_CATEGORY,
+            category_source: "human",
+          })
+          .where(and(eq(skills.tenant_id, tenant_id), eq(skills.id, row.id)));
+      }
       unchanged++;
       continue;
     }
@@ -153,6 +169,10 @@ export async function applySkillSeeds(
       .update(skills)
       .set({
         title: s.title,
+        description: s.description,
+        description_source: "human",
+        category: PLATFORM_CATEGORY,
+        category_source: "human",
         body: s.body,
         seed_source: s.body_hash,
         gates_tools: s.gates_tools,

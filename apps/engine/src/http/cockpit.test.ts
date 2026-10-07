@@ -6,7 +6,12 @@ import {
   signBrowserSession,
   verifyBrowserCsrf,
 } from "../auth/browser-session.ts";
-import { cockpitCsp, inlineScriptHashes, registerCockpitRoutes } from "./cockpit.ts";
+import {
+  cockpitBundleMissing,
+  cockpitCsp,
+  inlineScriptHashes,
+  registerCockpitRoutes,
+} from "./cockpit.ts";
 import { browserCsrfMiddleware } from "./middleware/browser-csrf.ts";
 import { createOpenApiApp } from "./openapi.ts";
 import { registerCockpitIdentityRoutes } from "./routes/identity/cockpit.ts";
@@ -218,5 +223,34 @@ describe("cockpit browser boundary", () => {
       `http://subkit.test/v1/identity/cockpit-login?return_to=${encodeURIComponent("/cockpit?run=abc")}`,
     );
     expect(overlay.status).toBe(302);
+  });
+});
+
+describe("an installation built without the cockpit", () => {
+  const missing = () => {
+    const app = createOpenApiApp();
+    app.get("/cockpit", cockpitBundleMissing);
+    return app;
+  };
+
+  test("an API client keeps the plain-text answer", async () => {
+    const response = await missing().request("http://subkit.test/cockpit", {
+      headers: { accept: "*/*" },
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("content-type")).toStartWith("text/plain");
+    expect(await response.text()).toBe("the SubKit Cockpit was not built into this deployment\n");
+    expect(response.headers.get("vary")).toBe("Accept, Cookie");
+  });
+
+  test("a browser gets the designed page, and caches know it depends on Accept and cookies", async () => {
+    const response = await missing().request("http://subkit.test/cockpit", {
+      headers: { accept: "text/html", cookie: "sk_locale=de" },
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("vary")).toBe("Accept, Cookie");
+    const html = await response.text();
+    expect(html).toContain("Das Cockpit fehlt");
+    expect(html.match(/<a\s/g)?.length).toBe(1);
   });
 });

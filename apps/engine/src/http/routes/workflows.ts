@@ -1,4 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import {
+  CategorySchema,
+  compareCategoryCounts,
+  DescriptionSchema,
+} from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import {
@@ -13,9 +18,8 @@ import {
 } from "../../scheduler/index.ts";
 import * as svc from "../../workflows/index.ts";
 import {
-  groupByCategory,
   listConnectorRefs,
-  loadCategoryIndex,
+  loadCategoryVocabulary,
   resolveWorkflowInputSchema,
   TriggerSchema,
   validateWorkflowDef,
@@ -24,6 +28,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { assertRecipeOrigin } from "./recipe-origin.ts";
 import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
 import { registerWorkflowDiagnosisRoutes } from "./workflow-diagnosis.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
@@ -41,7 +46,8 @@ const CreateBody = z
   .object({
     name: z.string(),
     slug: z.string().optional(),
-    description: z.string().optional(),
+    description: DescriptionSchema.optional(),
+    category: CategorySchema.optional(),
     input_schema: z.record(z.string(), z.unknown()).optional(),
     output_schema: z.record(z.string(), z.unknown()).optional(),
     steps: z.array(z.record(z.string(), z.unknown())),
@@ -56,6 +62,10 @@ const CreateBody = z
   })
   .passthrough()
   .openapi("CreateWorkflowBody");
+
+const CreateRequestBody = CreateBody.extend({
+  recipe: svc.RecipeOriginSchema.optional(),
+}).openapi("CreateWorkflowRequest");
 
 type WorkflowBody = z.infer<typeof CreateBody>;
 
@@ -102,10 +112,15 @@ const createRouteSpec = createRoute({
   tags: ["workflows"],
   summary: "Create a workflow",
   security: [{ bearerAuth: [] }],
-  request: { body: { content: { "application/json": { schema: CreateBody } } } },
+  request: { body: { content: { "application/json": { schema: CreateRequestBody } } } },
   responses: {
     201: { description: "Created", content: { "application/json": { schema: WorkflowSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description:
+        "The recipe origin names no shipped recipe, or the definition was not built from it",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -143,7 +158,8 @@ const WorkflowMetadataPatchBody = z
   .object({
     slug: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
-    description: z.string().nullable().optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
     lifecycle: z.enum(["active", "archived"]).optional(),
   })
   .openapi("WorkflowMetadataPatchBody");
@@ -152,7 +168,8 @@ const metadataRoute = createRoute({
   method: "patch",
   path: "/v1/workflows/{id}/metadata",
   tags: ["workflows"],
-  summary: "Patch workflow metadata (slug/name/description/lifecycle) without rotating a version",
+  summary:
+    "Patch workflow metadata (slug/name/description/category/lifecycle) without rotating a version",
   security: [{ bearerAuth: [] }],
   request: {
     params: IdParam,
@@ -437,8 +454,8 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.category !== undefined) opts.category = q.category;
     if (q.connector !== undefined) opts.connector = q.connector;
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
-    const [categories, connectorRefs, bindings] = await Promise.all([
-      loadCategoryIndex(principal.tenant_id, db),
+    const [vocabulary, connectorRefs, bindings] = await Promise.all([
+      loadCategoryVocabulary(principal.tenant_id, db),
       listConnectorRefs(principal.tenant_id, db),
       loadTriggerBindings(
         principal.tenant_id,
@@ -447,13 +464,13 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       ),
     ]);
     const items = rows.map((w) => ({
-      ...serializeWorkflow(w, bindingFor(bindings, w.id), categories),
+      ...serializeWorkflow(w, bindingFor(bindings, w.id)),
       connectors: connectorRefs.get(w.id) ?? [],
     }));
-    const blocks = groupByCategory(
-      [...categories.values()].map((category) => ({ category })),
-      (i) => i.category,
-    ).map((b) => ({ category: b.category, count: b.items.length }));
+    const blocks = vocabulary
+      .filter((usage) => usage.counts.workflow > 0)
+      .map((usage) => ({ category: usage.category, count: usage.counts.workflow }))
+      .sort(compareCategoryCounts);
     return c.json({ items, total, categories: blocks }, 200);
   });
 
@@ -645,9 +662,16 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const body = c.req.valid("json");
+    const { category, recipe, ...def } = c.req.valid("json");
+    if (recipe) assertRecipeOrigin(recipe, def);
     const result = await svc.createWorkflow(
-      { tenant_id: principal.tenant_id, def: body, actor_id: principal.id },
+      {
+        tenant_id: principal.tenant_id,
+        def,
+        actor_id: principal.id,
+        ...(category !== undefined ? { metadata: { category } } : {}),
+        ...(recipe ? { audit_metadata: svc.recipeAuditMetadata(recipe) } : {}),
+      },
       db,
     );
     if ("errors" in result) {
@@ -687,7 +711,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
-    const body = c.req.valid("json");
+    const { category, ...body } = c.req.valid("json");
     const existing = await svc.getWorkflow(principal.tenant_id, id, db);
     if (!existing) throw new NotFoundError("workflow");
     const result = await svc.updateWorkflow(
@@ -696,6 +720,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         id,
         def: preserveOmittedTrigger(body, existing),
         actor_id: principal.id,
+        ...(category !== undefined ? { metadata: { category } } : {}),
       },
       db,
     );
@@ -721,6 +746,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.slug !== undefined ? { slug: body.slug } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.category !== undefined ? { category: body.category } : {}),
         ...(body.lifecycle !== undefined ? { lifecycle: body.lifecycle } : {}),
       },
       db,

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { type CatalogMetadataPatch, humanMetadataWrite } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -13,6 +14,7 @@ import { slugConflictResult } from "./slug-conflict.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
 import { validateWorkflowDef } from "./validator.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
+import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
 export interface WorkflowDraftView {
   workflow_id: string;
@@ -38,13 +40,18 @@ export interface SaveWorkflowDraftInput {
   actor_type?: "user" | "system_account" | "system";
   request_source: RequestSource;
   audit_metadata?: Record<string, unknown>;
+  metadata?: CatalogMetadataPatch;
 }
 
 function draftView(
   wf: typeof workflows.$inferSelect,
   version: typeof workflowVersions.$inferSelect,
 ): WorkflowDraftView {
-  const definition = WorkflowDefSchema.parse(version.dag);
+  const stored = WorkflowDefSchema.parse(version.dag);
+  const definition: WorkflowDef =
+    stored.description === undefined && wf.description
+      ? { ...stored, description: wf.description }
+      : stored;
   return {
     workflow_id: wf.id,
     version_id: version.id,
@@ -101,6 +108,10 @@ export async function saveWorkflowDraft(
   const storageGate = await applyStorageBindingGate(input.tenant_id, validation.workflow, exec);
   if (!storageGate.ok) return { code: "invalid_definition", errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
+  const createMetadata: CatalogMetadataPatch = {
+    ...(def.description !== undefined ? { description: def.description } : {}),
+    ...input.metadata,
+  };
   const slug =
     def.slug ??
     (def.name
@@ -146,7 +157,7 @@ export async function saveWorkflowDraft(
             tenant_id: input.tenant_id,
             slug,
             name: def.name,
-            description: def.description ?? null,
+            ...humanMetadataWrite(createMetadata),
             lifecycle: "draft",
           })
           .returning();
@@ -177,6 +188,12 @@ export async function saveWorkflowDraft(
         .update(workflows)
         .set({ draft_version_id: version.id, updated_at: new Date() })
         .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)));
+      if (input.workflow_id && input.metadata) {
+        await writeWorkflowMetadata(tx, wf, input.metadata, {
+          actor_id: input.actor_id,
+          ...(input.actor_type ? { actor_type: input.actor_type } : {}),
+        });
+      }
       await auditAwait(
         {
           tenant_id: input.tenant_id,

@@ -23,6 +23,11 @@ describe("sk init — citty surface", () => {
     expect(cmd.args["llm-api-key"]).toBeDefined();
   });
 
+  test("declares --llm-model for providers that need a model or deployment name", () => {
+    expect(cmd.args["llm-model"]).toBeDefined();
+    expect(cmd.args["llm-model"]?.description).toContain("azure");
+  });
+
   test("declares --engine-url and --profile", () => {
     expect(cmd.args["engine-url"]).toBeDefined();
     expect(cmd.args.profile).toBeDefined();
@@ -200,6 +205,112 @@ describe("runInit — failure modes", () => {
     const all = errLines.join("");
     expect(all).toContain("hint:");
     expect(all).toContain("15 minutes");
+  });
+
+  test("422 llm_unreachable names the refused key, saves no profile and keeps the token usable", async () => {
+    const errLines: string[] = [];
+    let saved = false;
+    const result = await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "anthropic",
+        llm_api_key: "sk-ant-wrong",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              code: "llm_unreachable",
+              message: "the LLM access check failed: anthropic rejected the API key (HTTP 401)",
+              hint: "nothing was saved — no tenant, no key; fix the key or the provider and run `sk init` again with the same token",
+            }),
+            { status: 422, headers: { "content-type": "application/json" } },
+          ),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => {
+        saved = true;
+      },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        exitCode: 2,
+        error: expect.objectContaining({ code: "llm_unreachable", httpStatus: 422 }),
+      }),
+    );
+    expect(saved).toBe(false);
+    const all = errLines.join("");
+    expect(all).toContain("anthropic rejected the API key (HTTP 401)");
+    expect(all).toContain("hint: nothing was saved");
+    expect(all).toContain("same token");
+    expect(all).not.toContain("sk-ant-wrong");
+  });
+
+  test("422 llm_unreachable without an engine hint still says nothing was saved", async () => {
+    const errLines: string[] = [];
+    await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "openai",
+        llm_api_key: "x",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: "llm_unreachable", message: "probe failed" }), {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          }),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => undefined,
+    });
+    const all = errLines.join("");
+    expect(all).toContain("hint: nothing was saved");
+    expect(all).toContain("--llm-api-key");
+  });
+
+  test("409 in_progress says another first start is running", async () => {
+    const errLines: string[] = [];
+    const result = await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "mock",
+        llm_api_key: "x",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ code: "in_progress", message: "another first start is running" }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => undefined,
+    });
+    expect(result.error?.code).toBe("in_progress");
+    expect(errLines.join("")).toContain("retry with the same token");
   });
 
   test("network error returns engine_unreachable", async () => {

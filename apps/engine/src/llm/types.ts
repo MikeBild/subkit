@@ -12,6 +12,7 @@ import type { ProviderKind } from "./core/model-init.ts";
 export type LlmFlow =
   | "generate"
   | "extract"
+  | "catalog_describe"
   | "repair"
   | "tool_repair"
   | "converse"
@@ -64,6 +65,7 @@ export interface IncludedKnowledgeChunk {
   knowledge_source_id: string;
   source_name: string;
   source_tags: string[];
+  source_description: string | null;
   title: string | null;
   path: string | null;
   snippet: string;

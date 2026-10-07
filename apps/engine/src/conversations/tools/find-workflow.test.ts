@@ -6,31 +6,23 @@ const base = {
   slug: "example-site-daily-report",
   name: "Example-Site Status Report",
   current_version: 3,
+  category: "reports",
 };
 
-describe("find_workflow description precedence", () => {
-  test("row description wins over a stale definition description", () => {
+describe("find_workflow summary", () => {
+  test("carries the stored description and category", () => {
     const out = summarize({
       ...base,
       description: "Manueller Statusreport für https://www.example.com.",
-      definition: {
-        description: "STALE: GitHub-Repo-Status + Sitemap via browserless + E-Mail.",
-        steps: [{ id: "site_ready", kind: "request", connector_id: "c1" }],
-      },
+      definition: { steps: [{ id: "site_ready", kind: "request", connector_id: "c1" }] },
     });
     expect(out.description).toBe("Manueller Statusreport für https://www.example.com.");
+    expect(out.category).toBe("reports");
+    expect(out.steps).toEqual([{ id: "site_ready", kind: "request", connector_id: "c1" }]);
   });
 
-  test("falls back to the definition description when the row description is absent", () => {
-    const out = summarize({
-      ...base,
-      definition: { description: "Authoring-time description", steps: [] },
-    });
-    expect(out.description).toBe("Authoring-time description");
-  });
-
-  test("null when neither is present", () => {
-    const out = summarize({ ...base, definition: { steps: [] } });
+  test("null when the workflow has no description yet", () => {
+    const out = summarize({ ...base, description: null, definition: { steps: [] } });
     expect(out.description).toBeNull();
   });
 });

@@ -346,14 +346,23 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
     const failed = async (
       failure: Parameters<typeof signInFailedPage>[2],
       provider_code?: string,
-    ): Promise<Response> =>
-      resultResponse(
+    ): Promise<Response> => {
+      if (origin === "cockpit") {
+        const back = cockpitReturn(stateRow, {
+          kind: "signin_failed",
+          failure,
+          provider_code: provider_code ?? null,
+        });
+        if (back) return back;
+      }
+      return resultResponse(
         c,
         signInFailedPage(requestLocale(c), origin, failure, {
           provider_code: provider_code ?? null,
           backlink: await connectorBacklink(c, db, { ...stateRow, origin }),
         }),
       );
+    };
 
     const failAudit = async (
       reason:
@@ -500,7 +509,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       });
 
       if (origin === "cockpit") {
-        const back = cockpitReturn(stateRow);
+        const back = cockpitReturn(stateRow, { kind: "signed_in" });
         if (back) return back;
       }
       return resultResponse(

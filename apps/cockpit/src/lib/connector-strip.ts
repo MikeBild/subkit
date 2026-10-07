@@ -3,6 +3,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import type { RenewalWay } from "@/pages/connector-detail-model";
 
 export type ConnectorStripKind =
+  | "signInFailed"
   | "expired"
   | "off"
   | "unreachable"
@@ -15,6 +16,7 @@ export type ConnectorStripKind =
   | "unproven";
 
 export type ConnectorStripAction =
+  | { kind: "retry"; way: Exclude<RenewalWay, null> }
   | { kind: "renew"; way: Exclude<RenewalWay, null> }
   | { kind: "enable" }
   | { kind: "recheck" }
@@ -35,10 +37,12 @@ export interface ConnectorStripInput {
   probe: { ok: boolean } | null;
   missingScopes: number;
   returned: boolean;
+  signInFailed: boolean;
   rights: { write: boolean; test: boolean };
 }
 
 export const CONNECTOR_STRIP_KEYS: Record<ConnectorStripKind, TranslationKey> = {
+  signInFailed: "connectorStrip.state.signInFailed",
   expired: "connectorStrip.state.expired",
   off: "connectorStrip.state.off",
   unreachable: "connectorStrip.state.unreachable",
@@ -53,6 +57,8 @@ export const CONNECTOR_STRIP_KEYS: Record<ConnectorStripKind, TranslationKey> = 
 
 export function connectorStripActionKey(action: ConnectorStripAction): TranslationKey {
   switch (action.kind) {
+    case "retry":
+      return "connectorStrip.action.signInAgain";
     case "renew":
       return "connectorCredentials.renew";
     case "enable":
@@ -70,6 +76,11 @@ export function connectorStripActionKey(action: ConnectorStripAction): Translati
 
 export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
   const candidates: { kind: ConnectorStripKind; action: ConnectorStripAction | null }[] = [];
+  if (input.signInFailed)
+    candidates.push({
+      kind: "signInFailed",
+      action: input.way ? { kind: "retry", way: input.way } : null,
+    });
   if (input.auth === "expired")
     candidates.push({
       kind: "expired",
@@ -94,7 +105,10 @@ export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
     });
   const [top, ...rest] = candidates;
   if (top) {
-    const tone = top.kind === "expired" || top.kind === "unreachable" ? "error" : "warn";
+    const tone =
+      top.kind === "signInFailed" || top.kind === "expired" || top.kind === "unreachable"
+        ? "error"
+        : "warn";
     return { kind: top.kind, tone, action: top.action, lower: rest.map((entry) => entry.kind) };
   }
   const calm: ConnectorStripKind = input.returned

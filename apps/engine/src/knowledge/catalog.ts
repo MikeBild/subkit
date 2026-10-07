@@ -14,12 +14,14 @@ function catalogConditions(
   if (p.scope) tenantConds.push(eq(knowledgeSources.scope, p.scope));
   if (p.workflow_id) tenantConds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(knowledgeSources.status, p.status));
+  if (p.category) tenantConds.push(eq(knowledgeSources.category, p.category));
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
       ilike(knowledgeSources.name, needle),
       ilike(knowledgeSources.slug, needle),
       ilike(knowledgeSources.description, needle),
+      ilike(knowledgeSources.category, needle),
       ilike(knowledgeSources.source_uri, needle),
     );
     if (search) tenantConds.push(search);

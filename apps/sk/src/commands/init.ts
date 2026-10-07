@@ -40,6 +40,7 @@ interface SetupPayload {
   tenant_name: string;
   llm_provider: LlmProvider;
   llm_api_key: string;
+  llm_model?: string;
 }
 
 export interface RunInitOptions {
@@ -116,6 +117,12 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
     err(
       "  hint: the bootstrap token expires 15 minutes after engine boot — the engine reprints a fresh banner on an expired attempt; copy the new `sk init --token <token>` command from the engine logs and re-run it.\n",
     );
+  } else if (code === "in_progress") {
+    err("  hint: another `sk init` is running; wait for it, then retry with the same token.\n");
+  } else if (code === "llm_unreachable") {
+    err(
+      "  hint: nothing was saved; check --llm-provider and --llm-api-key and run `sk init` again with the same token.\n",
+    );
   }
   if (res.status === 410) {
     err("sk init: this engine has already been bootstrapped — run 'sk login' instead.\n");
@@ -188,6 +195,7 @@ async function promptForMissing(
     tenant_name: fields.tenant_name,
     llm_provider: fields.llm_provider as LlmProvider,
     llm_api_key: fields.llm_api_key,
+    ...(partial.llm_model ? { llm_model: partial.llm_model } : {}),
   };
 }
 
@@ -228,6 +236,11 @@ export const initCommand = defineCommand({
       description: `LLM provider: ${LLM_PROVIDERS.join("|")} (skip prompt)`,
     },
     "llm-api-key": { type: "string", description: "LLM API key (skip prompt)" },
+    "llm-model": {
+      type: "string",
+      description:
+        "Model id the key is checked with and saved as llm.model (Azure: deployment name; needed for azure and bedrock)",
+    },
     defaults: {
       type: "boolean",
       description:
@@ -279,6 +292,8 @@ export const initCommand = defineCommand({
       partial.llm_provider = llmProvider as LlmProvider;
     }
     if (llmApiKey) partial.llm_api_key = llmApiKey;
+    const llmModel = args["llm-model"] as string | undefined;
+    if (llmModel) partial.llm_model = llmModel;
 
     if (args.defaults) {
       partial.admin_email ??= gitConfigEmail() ?? LOCAL_DEFAULT_ADMIN_EMAIL;

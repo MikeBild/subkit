@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import type { Db } from "../../db/client.ts";
 import { withDriverFetchForTests } from "../../test-helpers/driver-fetch.ts";
 import type { ConnectorView, DriverName } from "../types.ts";
@@ -21,6 +22,7 @@ function disabledConnector(driver: DriverName): ConnectorView {
     tenant_id: TENANT_ID,
     slug: `disabled-${driver}`,
     display_name: `disabled ${driver}`,
+    ...UNDESCRIBED_METADATA,
     driver,
     environment: "dev",
     auth_type: "none",

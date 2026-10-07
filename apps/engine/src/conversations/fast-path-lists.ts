@@ -1,16 +1,8 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { categoryOfConnector } from "../connectors/categorize.ts";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { groupByCategory } from "../api/catalog-metadata.ts";
 import { totalOverWindow } from "../db/list-result.ts";
-import {
-  connectors,
-  knowledgeSources,
-  workflows,
-  workflowsSchedules,
-  workflowVersions,
-} from "../db/schema/index.ts";
+import { connectors, knowledgeSources, workflows, workflowsSchedules } from "../db/schema/index.ts";
 import { listExecutions } from "../execution/list.ts";
-import { loadCategoryIndex } from "../workflows/catalog-view.ts";
-import { deriveCategories, groupByCategory, UNCATEGORIZED } from "../workflows/categorize.ts";
 import type { FastPathParams } from "./fast-path.ts";
 
 const CATALOG_SAFETY_LIMIT = 1000;
@@ -34,6 +26,7 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
       slug: workflows.slug,
       name: workflows.name,
       lifecycle: workflows.lifecycle,
+      category: workflows.category,
       total: totalOverWindow(),
     })
     .from(workflows)
@@ -48,11 +41,7 @@ export async function renderWorkflowsList(p: FastPathParams): Promise<RenderPayl
       data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
     };
   }
-  const categories = deriveCategories(rows.map((r) => r.slug));
-  const items = rows.map(({ total: _t, ...r }) => ({
-    ...r,
-    category: categories.get(r.slug) ?? UNCATEGORIZED,
-  }));
+  const items = rows.map(({ total: _t, ...r }) => r);
   const blocks = groupByCategory(items, (r) => r.category);
   const lines = blocks.flatMap((b) => [
     `\n**${b.category}** (${b.items.length})`,
@@ -107,12 +96,8 @@ export function categoryListLine(
 export async function renderWorkflowCategoryList(
   p: FastPathParams,
   category: string,
-  categoryIndex?: ReadonlyMap<string, string>,
   language: ReplyLanguage = "en",
 ): Promise<RenderPayload | null> {
-  const index = categoryIndex ?? (await loadCategoryIndex(p.tenant_id, p.db));
-  const members = [...index.entries()].filter(([, c]) => c === category).map(([slug]) => slug);
-  if (members.length === 0) return null;
   const rows = await p.db
     .select({
       id: workflows.id,
@@ -120,26 +105,19 @@ export async function renderWorkflowCategoryList(
       name: workflows.name,
       lifecycle: workflows.lifecycle,
       description: workflows.description,
-      definition_description: sql<string | null>`${workflowVersions.dag}->>'description'`,
     })
     .from(workflows)
-    .leftJoin(
-      workflowVersions,
-      and(
-        eq(workflowVersions.tenant_id, p.tenant_id),
-        eq(workflowVersions.id, workflows.current_version_id),
-      ),
-    )
     .where(
       and(
         eq(workflows.tenant_id, p.tenant_id),
         isNull(workflows.deleted_at),
-        inArray(workflows.slug, members),
+        eq(workflows.category, category),
       ),
     )
     .orderBy(asc(workflows.slug));
-  const items = rows.map(({ definition_description, ...r }) => {
-    const described = r.description?.trim() || definition_description?.trim() || "";
+  if (rows.length === 0) return null;
+  const items = rows.map((r) => {
+    const described = r.description?.trim() ?? "";
     return { ...r, category, description: described ? oneLine(described) : null };
   });
   const lines = items.map((r) => categoryListLine(r, language));
@@ -173,6 +151,7 @@ export async function renderConnectorsList(p: FastPathParams): Promise<RenderPay
       display_name: connectors.display_name,
       driver: connectors.driver,
       environment: connectors.environment,
+      category: connectors.category,
       total: totalOverWindow(),
     })
     .from(connectors)
@@ -187,7 +166,7 @@ export async function renderConnectorsList(p: FastPathParams): Promise<RenderPay
       data: { items: [], total: 0, returned: 0, offset: 0, has_more: false },
     };
   }
-  const items = rows.map(({ total: _t, ...r }) => ({ ...r, category: categoryOfConnector(r) }));
+  const items = rows.map(({ total: _t, ...r }) => r);
   const blocks = groupByCategory(items, (r) => r.category);
   const lines = blocks.flatMap((b) => [
     `\n**${b.category}** (${b.items.length})`,

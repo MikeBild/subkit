@@ -1,3 +1,4 @@
+import type { Actor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
 import {
@@ -18,7 +19,7 @@ export async function persistKnowledgeFile(
   db: Executor,
   p: {
     tenant_id: string;
-    actor_id: string | null;
+    actor: Actor | null;
     upload: { buffer: Buffer | Uint8Array | string; filename: string; mime?: string };
   },
 ): Promise<PersistInlineUploadResult> {
@@ -26,7 +27,7 @@ export async function persistKnowledgeFile(
     typeof p.upload.buffer === "string" ? Buffer.from(p.upload.buffer, "utf8") : p.upload.buffer;
   const persisted = await persistInlineUpload(db as Db, {
     tenant_id: p.tenant_id,
-    actor_id: p.actor_id,
+    actor_id: p.actor?.id ?? null,
     filename: p.upload.filename,
     content_type: p.upload.mime ?? null,
     bytes,

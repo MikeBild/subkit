@@ -22,6 +22,12 @@ const BASE_SYSTEM_PROMPTS: Record<
     "Respect the optional target hint when provided; otherwise infer the tightest schema that fits the sample.",
     "Return one JSON object with a `schema` field describing field names and types, and a `data` field with the extracted values.",
   ].join(" "),
+  catalog_describe: [
+    "You are the subkit workflow engine's catalog flow.",
+    "You are given one object of a business's automation catalog, fenced as data in the user's message.",
+    "Answer the instructions in the user's message about that object.",
+    "Return one JSON object with exactly the fields the user's message asks for and nothing else.",
+  ].join(" "),
   repair: [
     "You are the subkit workflow engine's repair flow.",
     "A step has failed and you are given the diff between the captured response and the last known schema.",

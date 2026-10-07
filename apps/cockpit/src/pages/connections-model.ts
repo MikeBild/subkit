@@ -37,35 +37,6 @@ export function connectionNeedsRenewal(item: Pick<ConnectionItem, "state">): boo
   return item.state === "expired" || item.state === "unreadable";
 }
 
-export function connectionFailureKey(code: string | null): TranslationKey {
-  switch (code) {
-    case "denied":
-      return "connections.failure.denied";
-    case "state_invalid":
-      return "connections.failure.stateInvalid";
-    case "token_exchange_failed":
-      return "connections.failure.tokenExchange";
-    case "discovery_missing":
-      return "connections.failure.discoveryMissing";
-    case "discovery_failed":
-      return "connections.failure.discoveryFailed";
-    case "registration_missing":
-      return "connections.failure.registrationMissing";
-    case "registration_failed":
-      return "connections.failure.registrationFailed";
-    case "pkce_unsupported":
-      return "connections.failure.pkceUnsupported";
-    case "base_url_invalid":
-      return "connections.failure.baseUrlInvalid";
-    case "name_taken":
-      return "connections.failure.nameTaken";
-    case "name_invalid":
-      return "connections.failure.nameInvalid";
-    default:
-      return "connections.failure.other";
-  }
-}
-
 export function suggestConnectionName(serviceName: string | null, baseUrl: string): string {
   return slugOf(serviceName ?? "") || slugOf(hostOf(baseUrl)) || "konto";
 }
@@ -86,30 +57,6 @@ function hostOf(baseUrl: string): string {
   } catch {
     return "";
   }
-}
-
-export const CALLBACK_PARAMS = ["connected", "renewed", "failed", "name"] as const;
-
-export function withoutCallbackParams(search: string): string {
-  const params = new URLSearchParams(search);
-  for (const key of CALLBACK_PARAMS) params.delete(key);
-  const query = params.toString();
-  return query ? `?${query}` : "";
-}
-
-export type CallbackOutcome =
-  | { kind: "connected"; name: string; renewed: boolean }
-  | { kind: "failed"; code: string; name: string | null }
-  | null;
-
-export function readCallbackOutcome(search: string): CallbackOutcome {
-  const params = new URLSearchParams(search);
-  const connected = params.get("connected");
-  if (connected)
-    return { kind: "connected", name: connected, renewed: params.get("renewed") === "1" };
-  const failed = params.get("failed");
-  if (failed) return { kind: "failed", code: failed, name: params.get("name") };
-  return null;
 }
 
 export function parseTypedScopes(raw: string): string[] {

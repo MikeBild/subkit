@@ -9,10 +9,9 @@ import { type Db, getDb } from "../../db/client.ts";
 import { oidcLoginStates, roles, sessions, tenants, users } from "../../db/schema/index.ts";
 import {
   authHtmlResponse,
-  GRANT_DENIED_MESSAGE,
   renderErrorPage,
-  SIGN_IN_FAILED_TITLE,
-  STATE_ERROR_MESSAGE,
+  resolvePageLook,
+  type SignInError,
 } from "../../http/routes/oauth/ui.ts";
 import { logger } from "../../logging/logger.ts";
 import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
@@ -159,11 +158,14 @@ function browserError(
   status: number,
   code: string,
   message: string,
-  pageMessage: string,
+  pageError: SignInError,
   retryHref: string,
 ): Response {
   if (wantsJson(req)) return httpError(status, code, message);
-  return authHtmlResponse(renderErrorPage(SIGN_IN_FAILED_TITLE, pageMessage, retryHref), status);
+  return authHtmlResponse(
+    renderErrorPage(pageError, retryHref, resolvePageLook(req.headers)),
+    status,
+  );
 }
 
 async function redirectDenialToClient(
@@ -276,7 +278,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           500,
           "oidc_not_configured",
           "oidc provider not configured",
-          "This sign-in provider is not configured. Contact the operator.",
+          "provider_not_configured",
           LOGIN_START_PATH,
         );
       }
@@ -292,7 +294,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           400,
           "unknown_tenant",
           "tenant not found",
-          "This sign-in provider is not available for this tenant. Please sign in again.",
+          "tenant_unavailable",
           LOGIN_START_PATH,
         );
       }
@@ -312,7 +314,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           502,
           "oidc_discovery_failed",
           "issuer discovery failed",
-          "The sign-in provider is temporarily unavailable. Please try again.",
+          "provider_unavailable",
           LOGIN_START_PATH,
         );
       }
@@ -350,7 +352,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           500,
           "oidc_not_configured",
           "oidc provider not configured",
-          "This sign-in provider is not configured. Contact the operator.",
+          "provider_not_configured",
           LOGIN_START_PATH,
         );
       }
@@ -362,7 +364,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           400,
           "missing_state",
           "state parameter missing",
-          STATE_ERROR_MESSAGE,
+          "state_expired",
           LOGIN_START_PATH,
         );
       }
@@ -392,7 +394,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           400,
           "unknown_state",
           "state not recognised",
-          STATE_ERROR_MESSAGE,
+          "state_expired",
           LOGIN_START_PATH,
         );
       }
@@ -406,7 +408,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           400,
           "expired_state",
           "login state expired",
-          STATE_ERROR_MESSAGE,
+          "state_expired",
           retryHref,
         );
       }
@@ -427,7 +429,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             403,
             "access_denied",
             "the identity provider denied the grant",
-            GRANT_DENIED_MESSAGE,
+            "grant_denied",
             retryHref,
           );
         }
@@ -436,7 +438,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           502,
           "oidc_provider_error",
           `identity provider returned ${idpError}`,
-          STATE_ERROR_MESSAGE,
+          "state_expired",
           retryHref,
         );
       }
@@ -461,7 +463,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           502,
           "oidc_discovery_failed",
           "issuer discovery failed",
-          "The sign-in provider is temporarily unavailable. Please try again.",
+          "provider_unavailable",
           retryHref,
         );
       }
@@ -487,7 +489,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           401,
           "oidc_code_exchange_failed",
           "token exchange failed",
-          STATE_ERROR_MESSAGE,
+          "state_expired",
           retryHref,
         );
       }
@@ -539,7 +541,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             403,
             "access_denied",
             "signups are disabled and this identity matches no existing account",
-            GRANT_DENIED_MESSAGE,
+            "grant_denied",
             retryHref,
           );
         }
@@ -551,7 +553,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             403,
             "access_denied",
             "identity binding does not match the configured provider",
-            GRANT_DENIED_MESSAGE,
+            "grant_denied",
             retryHref,
           );
         }
@@ -563,7 +565,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           403,
           "user_inactive",
           "user is not active",
-          GRANT_DENIED_MESSAGE,
+          "grant_denied",
           retryHref,
         );
       }

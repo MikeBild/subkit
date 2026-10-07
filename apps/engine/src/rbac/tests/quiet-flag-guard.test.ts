@@ -40,6 +40,7 @@ const ALLOWED = new Set<string>([
   "apps/engine/src/conversations/automation-context.ts",
   "apps/engine/src/conversations/tools/review-workflow-automation.ts",
   "apps/engine/src/http/routes/cockpit-events.ts",
+  "apps/engine/src/http/routes/categories.ts",
   "apps/engine/src/rbac/evaluator.ts",
   "apps/engine/src/rbac/tests/evaluator.test.ts",
   "apps/engine/src/rbac/tests/resource-access.test.ts",

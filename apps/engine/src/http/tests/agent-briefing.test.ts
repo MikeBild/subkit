@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-
+import { createHash, randomBytes } from "node:crypto";
+import { apiKeys, connectors, users, workflows } from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -52,7 +54,43 @@ beforeAll(async () => {
   if (ksRes.status !== 201) {
     throw new Error(`seed knowledge failed: ${ksRes.status} ${await ksRes.text()}`);
   }
+
+  await ctx.db.insert(workflows).values([
+    {
+      tenant_id: ctx.tenantId,
+      slug: "blog-de-publish",
+      name: "Artikel veröffentlichen",
+      description: "Publishes a reviewed article.",
+      lifecycle: "active",
+    },
+    { tenant_id: ctx.tenantId, slug: "infra-backup", name: "Backup", lifecycle: "active" },
+    { tenant_id: ctx.tenantId, slug: "blog-de-draft", name: "Entwurf", lifecycle: "draft" },
+  ]);
+  await ctx.db.insert(connectors).values([
+    { tenant_id: ctx.tenantId, slug: "blog-de-cms", display_name: "Blog CMS", driver: "http" },
+    { tenant_id: ctx.tenantId, slug: "infra-dns", display_name: "DNS", driver: "http" },
+  ]);
 });
+
+async function memberKey(role: string): Promise<string> {
+  const [user] = await ctx.db
+    .insert(users)
+    .values({
+      tenant_id: ctx.tenantId,
+      email: `${role}-briefing@test.local`,
+      role_id: await builtinRoleId(ctx.db, role),
+    })
+    .returning();
+  const key = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`; // allow-random: test only
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: user?.id,
+    prefix: key.slice(0, 12),
+    token_sha256: createHash("sha256").update(key).digest("hex"),
+    scopes: ["*"],
+  });
+  return key;
+}
 
 afterAll(async () => {
   await ctx.cleanup();
@@ -133,5 +171,71 @@ describe("GET /v1/agent/briefing — happy path", () => {
     const briefing = await get("domains=blog-de", ctx.apiKey);
     const body = (await briefing.json()) as { markdown: string };
     expect(body.markdown).not.toContain("Draft rule");
+  });
+});
+
+describe("GET /v1/agent/briefing — the domain's catalog", () => {
+  test("lists the domain's active workflows and connectors, nothing else", async () => {
+    const res = await get("domains=blog-de", ctx.apiKey);
+    const body = (await res.json()) as {
+      markdown: string;
+      workflows: string[];
+      connectors: string[];
+      workflows_omitted: number;
+      connectors_omitted: number;
+    };
+    expect(body.workflows).toEqual(["blog-de-publish"]);
+    expect(body.connectors).toEqual(["blog-de-cms"]);
+    expect(body.workflows_omitted).toBe(0);
+    expect(body.markdown).toContain("**Artikel veröffentlichen** (`blog-de-publish`, other)");
+    expect(body.markdown).toContain("**Blog CMS** (`blog-de-cms`, other)");
+    expect(body.markdown).not.toContain("infra-backup");
+    expect(body.markdown).not.toContain("blog-de-draft");
+  });
+
+  test("the same request returns the same JSON", async () => {
+    const first = await (await get("domains=blog-de", ctx.apiKey)).json();
+    const second = await (await get("domains=blog-de", ctx.apiKey)).json();
+    expect(second).toEqual(first);
+  });
+});
+
+function postDomains(body: unknown): Promise<Response> {
+  return fetch(`${ctx.baseUrl}/v1/agent/domains`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("POST /v1/agent/domains", () => {
+  test("resolves known domains from the prompt and the repository hint", async () => {
+    const res = await postDomains({ prompt: "Neuer Blog Artikel, DE", repo: "infra-tools" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      domains: ["blog-de", "infra"],
+      from_prompt: ["blog-de"],
+      from_repo: ["infra"],
+    });
+  });
+
+  test("a prompt over the limit is a validation error, not a silent cut", async () => {
+    const res = await postDomains({ prompt: "x".repeat(2_001) });
+    expect([400, 422]).toContain(res.status);
+  });
+});
+
+describe("GET /v1/agent/briefing — catalog follows the caller's read rights", () => {
+  test("a caller without connector:read sees the workflows but no connectors", async () => {
+    const res = await get("domains=blog-de", await memberKey("enduser"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      markdown: string;
+      workflows: string[];
+      connectors: string[];
+    };
+    expect(body.workflows).toEqual(["blog-de-publish"]);
+    expect(body.connectors).toEqual([]);
+    expect(body.markdown).not.toContain("## Connectors");
   });
 });

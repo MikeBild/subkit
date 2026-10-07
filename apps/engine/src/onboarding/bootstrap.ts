@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import pc from "picocolors";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
@@ -8,6 +8,7 @@ import { setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
+import { type LlmAccessProbe, probeLlmAccess } from "../llm/core/access-probe.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
 import {
@@ -44,6 +45,7 @@ export const BootstrapSetupPayloadSchema = z.object({
   tenant_name: z.string().min(1).max(120),
   llm_provider: z.enum(BOOTSTRAP_LLM_PROVIDERS),
   llm_api_key: z.string().min(1).max(4096),
+  llm_model: z.string().trim().min(1).max(200).optional(),
 });
 
 export type BootstrapSetupPayload = z.infer<typeof BootstrapSetupPayloadSchema>;
@@ -179,7 +181,11 @@ export type ConsumeFailureCode =
   | "gone"
   | "invalid_token"
   | "token_expired"
-  | "validation_failed";
+  | "validation_failed"
+  | "llm_unreachable"
+  | "in_progress";
+
+const BOOTSTRAP_LOCK = "subkit:bootstrap";
 
 export type ConsumeOutcome =
   | {
@@ -200,7 +206,11 @@ export interface ConsumeOptions {
   ip?: string;
   user_agent?: string | null;
   stdout?: { write: (chunk: string) => unknown };
+  probe?: LlmAccessProbe;
 }
+
+export const LLM_UNREACHABLE_HINT =
+  "nothing was saved — no tenant, no key; fix the key or the provider and run `sk init` again with the same token";
 
 export async function consume(
   db: Db,
@@ -217,7 +227,29 @@ export async function consume(
       message: "too many bootstrap attempts from this IP — wait 15 minutes",
     };
   }
+  return await db.transaction(async (tx) => {
+    const claim = (await tx.execute(
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${BOOTSTRAP_LOCK}, 0)) as claimed`,
+    )) as unknown as { rows: Array<{ claimed: boolean }> };
+    if (claim.rows[0]?.claimed !== true) {
+      await emitFailure(db, "in_progress", "another first start holds the bootstrap", opts);
+      return {
+        status: "failed",
+        code: "in_progress",
+        message: "another first start is running right now",
+        hint: "wait until it finishes; if it fails, run `sk init` again with the same token",
+      } as const;
+    }
+    return consumeClaimed(db, rbacIds, rawPayload, opts);
+  });
+}
 
+async function consumeClaimed(
+  db: Db,
+  rbacIds: SeededRoleIds,
+  rawPayload: unknown,
+  opts: ConsumeOptions & { token: string },
+): Promise<ConsumeOutcome> {
   const sentinel = await readSetting<boolean>(db, BOOTSTRAP_COMPLETED_KEY);
   if (sentinel === true || (await tenantsCount(db)) > 0) {
     await emitFailure(db, "gone", "bootstrap already completed", opts);
@@ -281,6 +313,24 @@ export async function consume(
   }
   const payload = parsed.data;
 
+  const access = await (opts.probe ?? probeLlmAccess)({
+    provider: payload.llm_provider,
+    api_key: payload.llm_api_key,
+    ...(payload.llm_model ? { model: payload.llm_model } : {}),
+  });
+  if (!access.ok) {
+    await emitFailure(db, "llm_unreachable", access.reason, opts, {
+      llm_provider: payload.llm_provider,
+      model: access.model,
+    });
+    return {
+      status: "failed",
+      code: "llm_unreachable",
+      message: `the LLM access check failed: ${access.reason}`,
+      hint: LLM_UNREACHABLE_HINT,
+    };
+  }
+
   const result = await seedTenantBootstrap(db, rbacIds, {
     admin_email: payload.admin_email,
     tenant_name: payload.tenant_name,
@@ -310,6 +360,7 @@ export async function consume(
       changes: {
         "llm.provider": payload.llm_provider,
         "llm.api_key": secret.reference,
+        ...(payload.llm_model ? { "llm.model": payload.llm_model } : {}),
       },
       scope: "tenant",
       tenant_id: result.tenant_id,
@@ -344,6 +395,9 @@ export async function consume(
         await setConfigKey(["llm", "api_key"], payload.llm_api_key, {
           force: true,
         });
+        if (payload.llm_model) {
+          await setConfigKey(["llm", "model"], payload.llm_model, { force: true });
+        }
       } catch (fallbackError) {
         logger.warn({
           module: "onboarding.bootstrap",
@@ -507,4 +561,4 @@ export const _internal = {
   sha256Hex,
 };
 
-export type { TenantBootstrapPayload };
+export type { LlmAccessProbe, TenantBootstrapPayload };

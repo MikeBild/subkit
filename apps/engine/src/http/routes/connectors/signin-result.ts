@@ -1,27 +1,21 @@
 import type { Context } from "hono";
-import { cockpitConnectorUrl, type OAuthFlowOrigin } from "../../../connectors/index.ts";
+import {
+  cockpitConnectorUrl,
+  type OAuthFlowOrigin,
+  type SignInFailure,
+  type SignInReturn,
+} from "../../../connectors/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { resolveSession, sessionIsLive } from "../oauth/shared.ts";
 import {
   type AuthLocale,
   authHtmlResponse,
+  COCKPIT_HOME,
+  type PageLook,
   type ResultPage,
   renderResultPage,
-  resolveAuthLocale,
+  resolvePageLook,
 } from "../oauth/ui.ts";
-
-export type SignInFailure =
-  | "link_expired"
-  | "provider_declined"
-  | "no_authorization"
-  | "exchange_failed"
-  | "issuer_mismatch"
-  | "connector_gone"
-  | "not_startable"
-  | "no_public_address"
-  | "unsupported_credential"
-  | "missing_field"
-  | "not_saved";
 
 interface Copy {
   context: string;
@@ -36,8 +30,6 @@ interface Copy {
   partial: (scopes: string) => string;
   next: Record<OAuthFlowOrigin, string | null>;
   restart: Record<OAuthFlowOrigin | "unknown", string>;
-  back: string;
-  open: string;
   failureTitle: Record<SignInFailure, string>;
   failure: Record<SignInFailure, string>;
   providerCode: (code: string) => string;
@@ -70,8 +62,6 @@ const COPY: Record<AuthLocale, Copy> = {
       cockpit: "Start the sign-in again on the connector's page.",
       unknown: "Start the sign-in again where you began it.",
     },
-    back: "Back to the connector",
-    open: "Open the connector",
     failureTitle: {
       link_expired: "Link expired",
       provider_declined: "Sign-in not completed",
@@ -131,8 +121,6 @@ const COPY: Record<AuthLocale, Copy> = {
       cockpit: "Starte die Anmeldung auf der Seite des Konnektors neu.",
       unknown: "Starte die Anmeldung dort neu, wo du sie begonnen hast.",
     },
-    back: "Zurück zum Konnektor",
-    open: "Konnektor öffnen",
     failureTitle: {
       link_expired: "Link abgelaufen",
       provider_declined: "Anmeldung nicht abgeschlossen",
@@ -185,15 +173,6 @@ const RESTARTABLE: ReadonlySet<SignInFailure> = new Set([
 
 const PROVIDER_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
-function connectorLink(
-  copy: Copy,
-  origin: OAuthFlowOrigin | null,
-  backlink: string | null,
-): { href: string; label: string } | null {
-  if (!backlink) return null;
-  return { href: backlink, label: origin === "cockpit" ? copy.back : copy.open };
-}
-
 export interface SignedInFacts {
   stored: "signed_in" | "credential_saved" | "credential_received";
   name: string;
@@ -224,7 +203,7 @@ export function signedInPage(
     title,
     lines,
     command: !facts.enabled && origin === "cli" ? copy.switchOnCommand : null,
-    link: connectorLink(copy, origin, backlink),
+    cockpitHref: backlink ?? COCKPIT_HOME,
     context: copy.context,
   };
 }
@@ -245,20 +224,24 @@ export function signInFailedPage(
     kind: "error",
     title: copy.failureTitle[failure],
     lines,
-    link: connectorLink(copy, origin, opts.backlink ?? null),
+    cockpitHref: opts.backlink ?? COCKPIT_HOME,
     context: copy.context,
   };
 }
 
 type RouteContext = Pick<Context, "req">;
 
+export function requestLook(c: RouteContext): PageLook {
+  return resolvePageLook(c.req.raw.headers);
+}
+
 export function requestLocale(c: RouteContext): AuthLocale {
-  return resolveAuthLocale(c.req.header("accept-language"));
+  return requestLook(c).locale;
 }
 
 export function resultResponse(c: RouteContext, page: ResultPage): Response {
   return authHtmlResponse(
-    renderResultPage(page, requestLocale(c)),
+    renderResultPage(page, requestLook(c)),
     page.kind === "success" ? 200 : 400,
   );
 }
@@ -279,11 +262,11 @@ export async function connectorBacklink(
   return (await sessionIsLive(db, session.session_id, session.tenant_id)) ? url : null;
 }
 
-export function cockpitReturn(flow: {
-  connector_id: string;
-  redirect_uri: string;
-}): Response | null {
-  const location = cockpitConnectorUrl({ ...flow, signed_in: true });
+export function cockpitReturn(
+  flow: { connector_id: string; redirect_uri: string },
+  outcome: SignInReturn,
+): Response | null {
+  const location = cockpitConnectorUrl({ ...flow, outcome });
   if (!location) return null;
   return new Response(null, {
     status: 303,

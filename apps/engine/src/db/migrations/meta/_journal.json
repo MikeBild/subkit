@@ -575,6 +575,48 @@
       "when": 1791211477919,
       "tag": "0081_file_replaced_at",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1791299317272,
+      "tag": "0082_catalog_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791355794751,
+      "tag": "0083_catalog_describe_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1791363403891,
+      "tag": "0084_knowledge_source_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1791363440180,
+      "tag": "0085_knowledge_learning_proposer",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1791363515256,
+      "tag": "0086_inbound_hook_slug_global_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791372840263,
+      "tag": "0087_exotic_maelstrom",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { UNDESCRIBED_METADATA } from "../../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
   type ConnectorView,
@@ -141,6 +142,7 @@ function draftConnectorView(input: z.infer<typeof CreateConnectorSchema>): Conne
     tenant_id: "",
     slug: input.slug ?? "unsaved",
     display_name: input.name,
+    ...UNDESCRIBED_METADATA,
     driver: input.driver as DriverName,
     environment: input.environment ?? "dev",
     auth_type: input.auth_type ?? "none",

@@ -123,6 +123,7 @@ export const AuditAction = {
   WEBHOOK_INBOUND_DELETED: "webhook.inbound.deleted",
   WEBHOOK_INBOUND_RECEIVED: "webhook.inbound.received",
   WEBHOOK_INBOUND_DENIED: "webhook.inbound.denied",
+  WEBHOOK_INBOUND_SLUG_REASSIGNED: "webhook.inbound.slug_reassigned",
   WEBHOOK_OUTBOUND_DELIVERED: "webhook.outbound.delivered",
   WEBHOOK_OUTBOUND_FAILED: "webhook.outbound.failed",
   WEBHOOK_OUTBOUND_REPLAYED: "webhook.outbound.replayed",
@@ -200,12 +201,17 @@ export const AuditAction = {
   ELICITATION_DEMOTED_TO_PORTAL: "elicitation.demoted_to_portal",
   ELICITATION_EXPIRED: "elicitation.expired",
 
+  CATALOG_METADATA_UPDATED: "catalog_metadata.updated",
+  CATALOG_METADATA_GENERATED: "catalog_metadata.generated",
+  CATALOG_CATEGORY_RENAMED: "catalog_category.renamed",
+
   KNOWLEDGE_SOURCE_CREATED: "knowledge_source.created",
   KNOWLEDGE_SOURCE_UPDATED: "knowledge_source.updated",
   KNOWLEDGE_SOURCE_DELETED: "knowledge_source.deleted",
   KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
   KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
   KNOWLEDGE_SOURCE_ANALYZED: "knowledge_source.analyzed",
+  KNOWLEDGE_SOURCE_RESTORED: "knowledge_source.restored",
   KNOWLEDGE_SOURCE_CANDIDATES_SYNTHESIZED: "knowledge_source.candidates_synthesized",
 
   DISCOVERY_RUN_CREATED: "discovery.run_created",

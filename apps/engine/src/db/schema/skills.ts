@@ -12,7 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
 export const skillScopeEnum = pgEnum("skill_scope", ["global", "connector", "workflow"]);
@@ -36,6 +36,7 @@ export const skills = pgTable(
     workflow_id: uuid("workflow_id"),
     title: text("title").notNull(),
     body: text("body").notNull(),
+    ...catalogMetadata(),
     examples: jsonb("examples"),
     arguments: jsonb("arguments"),
     lifecycle: skillLifecycleEnum("lifecycle").notNull(),
@@ -65,6 +66,7 @@ export const skills = pgTable(
       "skills_side_effects_chk",
       sql`${t.side_effects} IN ('none','read','write','destructive')`,
     ),
+    ...catalogMetadataConstraints("skills", t),
   ],
 );
 
@@ -102,6 +104,7 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   "authoring_capability",
   "session_learning",
   "connector_capability",
+  "knowledge_learning",
 ]);
 
 export const skillCandidates = pgTable(
@@ -126,6 +129,8 @@ export const skillCandidates = pgTable(
     fingerprint: text("fingerprint").notNull(),
     version: integer("version").notNull().default(1),
     tags: text("tags").array().notNull().default([]),
+    proposed_by_user_id: uuid("proposed_by_user_id"),
+    proposed_by_system_account_id: uuid("proposed_by_system_account_id"),
     ...timestamps,
   },
   (t) => [

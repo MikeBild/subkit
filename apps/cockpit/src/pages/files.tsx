@@ -8,6 +8,12 @@ import type { components } from "@/api/schema";
 import { absolute, conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+  CatalogNameCell,
+  useCategoryFilter,
+} from "@/components/cockpit/catalog-metadata";
 import { IconButton } from "@/components/cockpit/icon-button";
 import {
   ActionMenu,
@@ -152,13 +158,15 @@ export function FilesPage() {
   const canDelete = session.permissions.includes("file:delete");
   const [search, setSearch] = useState("");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
+  const categoryFilter = useCategoryFilter("file");
   const list = useInfiniteList<ListedFile>(LIST_PATH, {
     ...LIST_PARAMS,
     q: search.trim() || undefined,
+    category: categoryFilter.category,
   });
   const { query, items } = list;
   const total = list.total ?? items.length;
-  const unfiltered = search.trim() === "";
+  const unfiltered = search.trim() === "" && !categoryFilter.category;
   const hasFiles = items.length > 0 || !unfiltered;
 
   const dropOnPage = useMemo(() => (files: File[]) => setUpload({ files, replace: null }), []);
@@ -175,7 +183,7 @@ export function FilesPage() {
           const used = fileUsageLine(t, row.usage);
           return (
             <span className="block min-w-0">
-              <span className="block truncate">{row.filename}</span>
+              <CatalogNameCell name={row.filename} record={row} />
               {used ? (
                 <span
                   className="block truncate text-xs text-muted-foreground"
@@ -267,6 +275,7 @@ export function FilesPage() {
                   placeholder: t("files.search"),
                   testId: "files-search",
                 }}
+                selects={categoryFilter.select ? [categoryFilter.select] : []}
               />
             ) : undefined
           }
@@ -522,6 +531,7 @@ function FileSheet({
   const client = useQueryClient();
   const live = useLiveQueryOptions();
   const [renaming, setRenaming] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileQuery = useQuery({
     queryKey: ["file", id],
@@ -654,6 +664,12 @@ function FileSheet({
           />
         ) : file ? (
           <>
+            <p className="text-sm text-muted-foreground" data-testid="file-metadata">
+              <CatalogMetadataSummary
+                record={file}
+                {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+              />
+            </p>
             <FilePreview
               name={file.filename}
               mimeType={file.content_type}
@@ -694,6 +710,16 @@ function FileSheet({
         ) : null}
       </RecordSheet>
       {file && renaming ? <RenameDialog file={file} onClose={() => setRenaming(false)} /> : null}
+      {file && canWrite ? (
+        <CatalogMetadataDialog
+          kind="file"
+          id={file.id}
+          record={file}
+          open={describing}
+          onOpenChange={setDescribing}
+          queryKey={["file", id]}
+        />
+      ) : null}
       {file ? (
         <ConfirmDialog
           open={deleting}

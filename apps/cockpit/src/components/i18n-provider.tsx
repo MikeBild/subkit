@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useSyncExternalStore } from "react";
 import { formatDateTime, translate, translatePlural } from "@/lib/i18n";
 import { I18nContext, type I18nValue } from "@/lib/i18n-context";
 import { createLocaleStore } from "@/lib/locale-store";
+import { LOCALE_COOKIE, sharePreference } from "@/lib/preference-cookie";
 
 const localeStore = createLocaleStore({
   read: (key) => {
@@ -23,6 +24,7 @@ const localeStore = createLocaleStore({
   },
   languages: () => navigator.languages,
   apply: (locale) => document.documentElement.setAttribute("lang", locale),
+  share: (locale) => sharePreference(LOCALE_COOKIE, locale),
   watch: (listener) => {
     window.addEventListener("languagechange", listener);
     window.addEventListener("storage", listener);

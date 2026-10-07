@@ -245,7 +245,7 @@ describe("mcp resources", () => {
     const { knowledge_source } = await upsertKnowledgeBundle(
       {
         tenant_id: suite.http.tenantId,
-        actor_id: null,
+        actor: null,
         input: { name: "Resource Wiki", slug: "resource-wiki" },
         files: [
           {
@@ -280,7 +280,7 @@ describe("mcp resources", () => {
     const { knowledge_source } = await upsertKnowledgeBundle(
       {
         tenant_id: suite.http.tenantId,
-        actor_id: null,
+        actor: null,
         input: { name: "Many Notes Wiki", slug: "many-notes-wiki" },
         files,
       },
@@ -307,7 +307,7 @@ describe("mcp resources", () => {
     const { knowledge_source } = await upsertKnowledgeBundle(
       {
         tenant_id: suite.http.tenantId,
-        actor_id: null,
+        actor: null,
         input: { name: "Big Wiki", slug: "big-wiki" },
         files: [
           { path: "a.md", content: big("alpha") },

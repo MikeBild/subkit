@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { CategorySchema } from "../api/catalog-metadata.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
 export const WorkflowDraftSchema = z
@@ -12,13 +13,33 @@ export const WorkflowDraftSchema = z
   })
   .openapi("WorkflowDraft");
 
-export const CreateWorkflowDraftSchema = z
+export const RecipeOriginSchema = z
   .object({
-    definition: WorkflowDefSchema,
+    vertical: z.string().min(1).max(64),
+    slug: z.string().min(1).max(128),
   })
+  .strict()
+  .describe("The recipe pack entry this workflow was created from; recorded in the audit trail.")
+  .openapi("RecipeOrigin");
+export type RecipeOrigin = z.infer<typeof RecipeOriginSchema>;
+
+export function recipeAuditMetadata(origin: RecipeOrigin): Record<string, string> {
+  return { source: "recipe", recipe_vertical: origin.vertical, recipe_slug: origin.slug };
+}
+
+const DraftBodySchema = z.object({
+  definition: WorkflowDefSchema,
+  category: CategorySchema.optional(),
+});
+
+export const CreateWorkflowDraftSchema = DraftBodySchema.extend({
+  recipe: RecipeOriginSchema.optional(),
+})
   .strict()
   .openapi("CreateWorkflowDraft");
 
-export const UpdateWorkflowDraftSchema = CreateWorkflowDraftSchema.extend({
+export const UpdateWorkflowDraftSchema = DraftBodySchema.extend({
   expected_draft_version_id: z.string().uuid().nullable(),
-}).openapi("UpdateWorkflowDraft");
+})
+  .strict()
+  .openapi("UpdateWorkflowDraft");

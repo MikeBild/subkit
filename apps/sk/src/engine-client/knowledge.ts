@@ -57,6 +57,7 @@ export const knowledgeMethods = {
       name: string;
       slug?: string;
       description?: string;
+      category?: string;
       tags?: string[];
       scope?: string;
       workflow_id?: string;
@@ -64,6 +65,28 @@ export const knowledgeMethods = {
     },
   ): Promise<Record<string, unknown>> {
     return this.request("POST", "/v1/knowledge-sources/bundle", body);
+  },
+  knowledgeHistory(
+    this: EngineClient,
+    id: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<{ items: Record<string, unknown>[]; total: number }> {
+    return this.request(
+      "GET",
+      `/v1/knowledge-sources/${encodeURIComponent(id)}/history`,
+      undefined,
+      query,
+    );
+  },
+  restoreKnowledgeVersion(
+    this: EngineClient,
+    id: string,
+    version: number,
+  ): Promise<{ knowledge_source: Record<string, unknown>; version: number }> {
+    return this.request(
+      "POST",
+      `/v1/knowledge-sources/${encodeURIComponent(id)}/restore/${version}`,
+    );
   },
   listKnowledgeChunks(
     this: EngineClient,

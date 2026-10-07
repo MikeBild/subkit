@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, chatNewHref, connectorHref } from "@/app/links";
@@ -9,6 +9,10 @@ import {
   useWorkflowAutomation,
   WorkflowStatus,
 } from "@/components/cockpit/automation-panel";
+import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+} from "@/components/cockpit/catalog-metadata";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
 import { MetadataDialog } from "@/components/cockpit/metadata-dialog";
@@ -47,11 +51,11 @@ import {
   WorkflowTestResult,
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
+import { WorkflowVersions } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
-import { WorkflowRecategorize } from "@/pages/catalog";
 
 type RecordValue = Record<string, unknown>;
 
@@ -115,18 +119,16 @@ export function WorkflowPage({
   id,
   record,
   title,
-  purpose,
   permissions,
 }: {
   id: string;
   record: RecordValue;
   title: string;
-  purpose: string | null;
   permissions: readonly string[];
 }) {
   const { t } = useI18n();
   const [renaming, setRenaming] = useState(false);
-  const [moving, setMoving] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<"disable" | "delete" | null>(null);
   const navigate = useNavigate();
@@ -135,6 +137,7 @@ export function WorkflowPage({
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
   const versionId = text(record, "current_version_id");
+  const draftVersionId = text(record, "draft_version_id");
   const legacy = record.invalid === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
   const trigger =
@@ -149,13 +152,17 @@ export function WorkflowPage({
   const workflow = {
     lifecycle: text(record, "lifecycle"),
     current_version_id: versionId,
-    draft_version_id: text(record, "draft_version_id"),
+    draft_version_id: draftVersionId,
     current_version: version,
     webhooks_active: webhooksActive,
     invalid: legacy,
   };
   const health = text(record, "health_state");
   const disabled = record.lifecycle === "archived";
+  const versionIds = useMemo(
+    () => ({ current: versionId, draft: draftVersionId }),
+    [versionId, draftVersionId],
+  );
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
   const build = useBuildVersion(id, { ...workflow, steps: stepRecords });
@@ -209,11 +216,6 @@ export function WorkflowPage({
             label: t("detail.editMetadata"),
             onSelect: () => setRenaming(true),
             testId: "workflow-menu-rename",
-          },
-          {
-            label: t("catalog.changeCategory"),
-            onSelect: () => setMoving(true),
-            testId: "workflow-menu-category",
           },
           disabled
             ? {
@@ -401,6 +403,13 @@ export function WorkflowPage({
             />
           ) : null}
           <div className="flex flex-col gap-2">
+            <WorkflowVersions
+              workflowId={id}
+              workflowName={title}
+              ids={versionIds}
+              access={{ canRestore: permissions.includes("workflow:restore"), archived: disabled }}
+              onRestored={automation.refresh}
+            />
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
               testId="workflow-technical"
@@ -434,7 +443,12 @@ export function WorkflowPage({
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          purpose={purpose || undefined}
+          purpose={
+            <CatalogMetadataSummary
+              record={record}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           secondary={
             canChat ? (
               <ActionMenu
@@ -519,8 +533,15 @@ export function WorkflowPage({
         }}
         testId="workflow-delete-confirm"
       />
-      {canWrite && moving ? (
-        <WorkflowRecategorize record={{ ...record, id }} onClose={() => setMoving(false)} />
+      {canWrite ? (
+        <CatalogMetadataDialog
+          kind="workflow"
+          id={id}
+          record={record}
+          open={describing}
+          onOpenChange={setDescribing}
+          queryKey={["catalog-detail", "workflows", id]}
+        />
       ) : null}
     </Page>
   );

@@ -11,7 +11,6 @@ export { isOpenEnded, remainingRuns } from "./authority-live.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export * from "./boundary-proposal.ts";
 export * from "./catalog-view.ts";
-export * from "./categorize.ts";
 export * from "./connector-refs.ts";
 export {
   contentBoundariesFromManifest,

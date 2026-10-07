@@ -83,7 +83,7 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain('data-auth-contract="mcp-auth"');
   });
 
@@ -117,7 +117,7 @@ describe("GET /v1/oauth/authorize", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
   });
 
   test("unregistered redirect_uri keeps the 400 JSON contract for Accept: application/json", async () => {

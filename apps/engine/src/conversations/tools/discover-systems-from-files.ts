@@ -4,9 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
 import { invoke } from "../../llm/core/invoke.ts";
 import { logger } from "../../logging/logger.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
+import { toolActor } from "./tool-actor.ts";
 
 export const CANDIDATES_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -347,36 +349,90 @@ async function persistCandidates(
     potential_connections: p.potential_connections,
   };
   const json = JSON.stringify(envelope);
-  const version = createHash("sha256").update(json).digest("hex").slice(0, 32);
+  const version = knowledgeContentHash(json);
   const bytes = Buffer.byteLength(json, "utf8");
   const now = new Date();
-  const db = ctx.db;
+  const content = {
+    kind: "document" as const,
+    filename: p.source_knowledge_source_id,
+    mime: "application/json",
+    text: json,
+  };
+  return ctx.db.transaction(async (db) => {
+    const existing = await db
+      .select()
+      .from(knowledgeSources)
+      .where(and(eq(knowledgeSources.tenant_id, ctx.tenant_id), eq(knowledgeSources.slug, p.slug)))
+      .limit(1);
+    const prior = existing[0];
 
-  const existing = await db
-    .select()
-    .from(knowledgeSources)
-    .where(and(eq(knowledgeSources.tenant_id, ctx.tenant_id), eq(knowledgeSources.slug, p.slug)))
-    .limit(1);
-  const prior = existing[0];
+    if (prior) {
+      await db
+        .update(knowledgeSources)
+        .set({
+          source_type: SOURCE_TYPE,
+          source_uri: p.source_knowledge_source_id,
+          version,
+          bytes_total: bytes,
+          chunk_count: 1,
+          last_refreshed_at: now,
+          status: "active",
+          updated_at: now,
+        })
+        .where(eq(knowledgeSources.id, prior.id));
+      await db
+        .delete(knowledgeChunks)
+        .where(
+          and(
+            eq(knowledgeChunks.tenant_id, ctx.tenant_id),
+            eq(knowledgeChunks.knowledge_source_id, prior.id),
+          ),
+        );
+      await db.insert(knowledgeChunks).values({
+        tenant_id: ctx.tenant_id,
+        knowledge_source_id: prior.id,
+        ordinal: 0,
+        title: `Connector candidates for ${p.source_uri}`,
+        path: p.source_knowledge_source_id,
+        content: json,
+        byte_size: bytes,
+        fingerprint: version,
+      });
+      await recordKnowledgeVersion(db, {
+        tenant_id: ctx.tenant_id,
+        knowledge_source_id: prior.id,
+        content,
+        content_hash: version,
+        actor: toolActor(ctx),
+        note: null,
+      });
+      return { row_id: prior.id, cached_at: now.toISOString(), created: false };
+    }
 
-  if (prior) {
-    await db
-      .update(knowledgeSources)
-      .set({
+    const [inserted] = await db
+      .insert(knowledgeSources)
+      .values({
+        tenant_id: ctx.tenant_id,
+        name: `Endpoint candidates for ${p.source_uri}`,
+        slug: p.slug,
+        description: `Connector endpoint candidates synthesised from knowledge source ${p.source_knowledge_source_id}.`,
+        scope: "global",
+        workflow_id: null,
+        status: "active",
         source_type: SOURCE_TYPE,
         source_uri: p.source_knowledge_source_id,
+        mime_type: "application/json",
         version,
         bytes_total: bytes,
         chunk_count: 1,
+        refresh_strategy: "manual",
         last_refreshed_at: now,
-        status: "active",
-        updated_at: now,
       })
-      .where(eq(knowledgeSources.id, prior.id));
-    await db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledge_source_id, prior.id));
+      .returning();
+    assertInsertRow(inserted, "knowledge_sources");
     await db.insert(knowledgeChunks).values({
       tenant_id: ctx.tenant_id,
-      knowledge_source_id: prior.id,
+      knowledge_source_id: inserted.id,
       ordinal: 0,
       title: `Connector candidates for ${p.source_uri}`,
       path: p.source_knowledge_source_id,
@@ -384,39 +440,14 @@ async function persistCandidates(
       byte_size: bytes,
       fingerprint: version,
     });
-    return { row_id: prior.id, cached_at: now.toISOString(), created: false };
-  }
-
-  const [inserted] = await db
-    .insert(knowledgeSources)
-    .values({
+    await recordKnowledgeVersion(db, {
       tenant_id: ctx.tenant_id,
-      name: `Endpoint candidates for ${p.source_uri}`,
-      slug: p.slug,
-      description: `Connector endpoint candidates synthesised from knowledge source ${p.source_knowledge_source_id}.`,
-      scope: "global",
-      workflow_id: null,
-      status: "active",
-      source_type: SOURCE_TYPE,
-      source_uri: p.source_knowledge_source_id,
-      mime_type: "application/json",
-      version,
-      bytes_total: bytes,
-      chunk_count: 1,
-      refresh_strategy: "manual",
-      last_refreshed_at: now,
-    })
-    .returning();
-  assertInsertRow(inserted, "knowledge_sources");
-  await db.insert(knowledgeChunks).values({
-    tenant_id: ctx.tenant_id,
-    knowledge_source_id: inserted.id,
-    ordinal: 0,
-    title: `Connector candidates for ${p.source_uri}`,
-    path: p.source_knowledge_source_id,
-    content: json,
-    byte_size: bytes,
-    fingerprint: version,
+      knowledge_source_id: inserted.id,
+      content,
+      content_hash: version,
+      actor: toolActor(ctx),
+      note: null,
+    });
+    return { row_id: inserted.id, cached_at: now.toISOString(), created: true };
   });
-  return { row_id: inserted.id, cached_at: now.toISOString(), created: true };
 }

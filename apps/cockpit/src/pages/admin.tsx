@@ -47,7 +47,7 @@ import {
   Textarea,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
-import { queryView } from "@/components/failure-state";
+import { ForbiddenState, queryView } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -1741,11 +1741,7 @@ export function PeopleAndAccessPage() {
       header={<PageHeader title={t("resource.people.title")} action={headerAction} />}
     >
       {section === null ? (
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       ) : (
         <PageTabs
           param="section"

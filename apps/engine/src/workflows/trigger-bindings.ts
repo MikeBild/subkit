@@ -1,5 +1,7 @@
+import { and, eq } from "drizzle-orm";
 import { recordWorkflowScheduleNotBound as recordWorkflowScheduleNotBoundAudit } from "../audit/recorders/index.ts";
 import type { Executor } from "../db/client.ts";
+import { workflows } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import {
   recordWorkflowScheduleNotBound,
@@ -50,9 +52,14 @@ export async function applyTriggerBindings(
   }
   await inboundService.unbindFromWorkflow(tenant_id, workflow_id, actor_id, exec);
   await scheduleRepo.unbindFromWorkflow(exec, tenant_id, workflow_id, actor_id);
+  const [row] = await exec
+    .select({ description: workflows.description })
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, workflow_id)))
+    .limit(1);
   const phrase = detectSchedulePhrases({
     name: def.name,
-    description: def.description ?? null,
+    description: row?.description ?? def.description ?? null,
   });
   if (phrase.matched) {
     logger.warn({

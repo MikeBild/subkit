@@ -11,6 +11,7 @@ import {
   UnsubscribeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { and, eq, isNull } from "drizzle-orm";
+import { UNCATEGORIZED } from "../../api/catalog-metadata.ts";
 import {
   AuditAction,
   auditAwait,
@@ -39,6 +40,15 @@ import { readOffloadedExecutionResource } from "./offloaded-resource.ts";
 import { paginate } from "./pagination.ts";
 
 const RESOURCE_NOT_FOUND = -32002 as ErrorCode;
+
+function catalogResourceDescription(
+  category: string,
+  description: string | null,
+  fallback: string,
+): string {
+  const text = description?.trim() || fallback;
+  return category && category !== UNCATEGORIZED ? `[${category}] ${text}` : text;
+}
 
 export interface RegisterResourcesParams {
   server: Server;
@@ -209,7 +219,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: connectorUri(cn.id),
         name: cn.display_name,
         title: cn.display_name,
-        description: `${cn.driver} (${cn.environment})`,
+        description: catalogResourceDescription(
+          cn.category,
+          cn.description,
+          `${cn.driver} (${cn.environment})`,
+        ),
         mimeType: "application/json",
       });
     }
@@ -230,7 +244,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: knowledgeUri(ks.id),
         name: ks.name,
         title: ks.name,
-        description: `Knowledge (${ks.scope})${ks.tags.length > 0 ? ` [${ks.tags.join(", ")}]` : ""}: ${ks.description ?? ks.source_uri}`,
+        description: catalogResourceDescription(
+          ks.category,
+          ks.description,
+          `Knowledge (${ks.scope}): ${ks.source_uri}`,
+        ),
         mimeType: "text/markdown",
       });
     }
@@ -278,7 +296,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: workflowUri(wf.id),
         name: wf.name,
         title: wf.name,
-        description: `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.step_count} steps`,
+        description: catalogResourceDescription(
+          wf.category,
+          wf.description,
+          `Workflow (${wf.slug}) — v${wf.current_version ?? 0}, ${wf.step_count} steps`,
+        ),
         mimeType: "application/json",
       });
     }
@@ -289,6 +311,8 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         filename: files.filename,
         content_type: files.content_type,
         size_bytes: files.size_bytes,
+        description: files.description,
+        category: files.category,
       })
       .from(files)
       .where(
@@ -311,7 +335,11 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         uri: fileUri(f.id),
         name: f.filename,
         title: f.filename,
-        description: `File (${f.content_type ?? "application/octet-stream"}, ${f.size_bytes} bytes)`,
+        description: catalogResourceDescription(
+          f.category,
+          f.description,
+          `File (${f.content_type ?? "application/octet-stream"}, ${f.size_bytes} bytes)`,
+        ),
         mimeType: f.content_type ?? "application/octet-stream",
         size: f.size_bytes,
       });
@@ -601,7 +629,8 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
                 id: wf.id,
                 slug: wf.slug,
                 name: wf.name,
-                description: wf.description ?? wf.definition.description ?? null,
+                description: wf.description,
+                category: wf.category,
                 lifecycle: wf.lifecycle,
                 current_version: wf.current_version,
                 definition: wf.definition,

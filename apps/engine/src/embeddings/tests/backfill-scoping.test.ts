@@ -168,7 +168,7 @@ describe.skipIf(skipEmbeddingE2E)(
             filename: "reconciliation.md",
             mime: "text/markdown",
           },
-          actor_id: null,
+          actor: null,
         },
         e2eTestDb.db,
       );

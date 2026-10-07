@@ -1,3 +1,4 @@
+import { catalogMetadataView } from "../api/catalog-metadata.ts";
 import type { knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import type { KnowledgeSourceView } from "./types.ts";
 
@@ -9,7 +10,7 @@ export function knowledgeSourceRowToView(
     tenant_id: row.tenant_id,
     name: row.name,
     slug: row.slug,
-    description: row.description,
+    ...catalogMetadataView(row),
     tags: row.tags,
     scope: row.scope,
     workflow_id: row.workflow_id,

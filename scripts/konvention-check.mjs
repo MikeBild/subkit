@@ -2661,20 +2661,27 @@ async function checkAccessRedirect(context) {
 }
 
 async function checkConnectorCallback(context) {
-  const where = "/connectors?failed=denied";
+  const where = `/connectors/${ID}?signin_failed=provider_declined`;
   const page = await context.newPage();
   try {
-    await stand.visit(page, "connectors?failed=denied&name=wiki");
-    const toast = page.locator("[data-sonner-toast]").filter({ hasText: "wiki" });
-    await toast.first().waitFor({ state: "visible", timeout: 15_000 });
+    await stand.visit(page, `connectors/${ID}?signin_failed=provider_declined`);
+    const state = page.getByTestId("connector-strip-state");
+    await state.waitFor({ state: "visible", timeout: 15_000 });
+    const word = (await state.innerText()).trim();
+    if (word !== "Anmeldung fehlgeschlagen")
+      breach("§11", where, `the strip reads "${word}" instead of the failed sign-in`);
+    if ((await page.getByTestId("connector-signin-again").count()) !== 1)
+      breach("§11", where, "the failed sign-in offers no single way to sign in again");
+    if (await page.locator("[data-sonner-toast]").count())
+      breach("§0.1", where, "the failed sign-in is told twice, as a message too");
     const url = new URL(page.url());
-    if (url.pathname !== "/cockpit/connectors")
-      breach("§6", where, `lands on ${url.pathname} instead of /cockpit/connectors`);
-    if (url.searchParams.has("failed") || url.searchParams.has("name"))
+    if (url.pathname !== `/cockpit/connectors/${ID}`)
+      breach("§6", where, `lands on ${url.pathname} instead of the connector's page`);
+    if (url.searchParams.has("signin_failed"))
       breach("§6", where, "the callback's words stay in the address and repeat on reload");
   } catch (error) {
     if (error instanceof NichtGemessen) throw error;
-    breach("§6", where, `the callback sentence is not shown: ${error.message}`);
+    breach("§11", where, `the failed sign-in is not shown in the strip: ${error.message}`);
   } finally {
     await page.close();
   }

@@ -66,6 +66,7 @@ export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
   authoringPattern: "decisions.origin.authoringPattern",
   connectorPattern: "decisions.origin.connectorPattern",
   sessionPattern: "decisions.origin.sessionPattern",
+  knowledgeLearning: "decisions.origin.knowledgeLearning",
   chainedPattern: "decisions.origin.chainedPattern",
   recurringPattern: "decisions.origin.recurringPattern",
   conversation: "decisions.origin.conversation",
@@ -747,7 +748,9 @@ export function DecisionCard({
             data-testid={`${testId}-note`}
             aria-label={t("decisions.note")}
           />
-          <p className="mt-1 text-xs text-muted-foreground">{t("decisions.noteScope")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t(item.kind === "skill" ? "decisions.noteScopeFinal" : "decisions.noteScope")}
+          </p>
         </div>
       )}
 

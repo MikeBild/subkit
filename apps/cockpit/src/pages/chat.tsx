@@ -116,11 +116,11 @@ import {
   useMessageScroller,
 } from "@/components/cockpit/patterns";
 import { queryView } from "@/components/failure-state";
-import { formatDateTime, formatRelativeTime, LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
+import { formatDateTime, formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
-import { categoryMentionToken, reconcileReferences } from "@/lib/mentions";
+import { reconcileReferences } from "@/lib/mentions";
 import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { patchCandidateId, toolNameOf, toolPartVerdict } from "@/lib/tool-parts";
@@ -136,7 +136,7 @@ import {
 } from "@/lib/tool-presentation";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
-import { useMentionCandidates, useWorkflowCategories } from "@/queries/mention-sources";
+import { useMentionCandidates } from "@/queries/mention-sources";
 import {
   approvalLine,
   type ChatApproval,
@@ -204,6 +204,7 @@ import {
   turnFailureCause,
   userMessageCount,
 } from "./chat-session";
+import { ChatStart } from "./chat-start";
 import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
 import { budgetPressure, budgetSummary } from "./usage-model";
@@ -360,65 +361,6 @@ function PatchProposalDiff({ candidateId, testId }: { candidateId: string; testI
       dryRun={dryRun.data ?? null}
       dryRunPending={preview.data.fixture_available === true && dryRun.isPending}
     />
-  );
-}
-
-const STARTERS: TranslationKey[] = ["chat.starter.capabilities", "chat.starter.lastRun"];
-
-function StarterCards({
-  onPick,
-  disabled,
-}: {
-  onPick: (prompt: string) => void;
-  disabled: boolean;
-}) {
-  const { t } = useI18n();
-  const session = useSession();
-  const { categories } = useWorkflowCategories(session.permissions.includes("workflow:read"));
-
-  return (
-    <div className="mt-6 grid gap-3" data-testid="chat-starters">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {STARTERS.map((key, index) => (
-          <Button
-            key={key}
-            variant="outline"
-            className="h-auto justify-start py-3 text-left whitespace-normal"
-            disabled={disabled}
-            data-testid={`chat-starter-${index}`}
-            onClick={() => onPick(t(key))}
-          >
-            {t(key)}
-          </Button>
-        ))}
-      </div>
-      {categories.length > 0 && (
-        <div className="grid gap-2" data-testid="chat-starter-catalog">
-          <p className="text-xs text-muted-foreground">{t("chat.starter.catalog")}</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {categories.slice(0, 6).map((entry, index) => (
-              <Button
-                key={entry.category}
-                variant="ghost"
-                size="sm"
-                disabled={disabled}
-                data-testid={`chat-starter-category-${index}`}
-                onClick={() =>
-                  onPick(
-                    t("chat.starter.categoryPrompt", {
-                      token: categoryMentionToken(entry.category),
-                    }),
-                  )
-                }
-              >
-                {entry.category}
-                <span className="ml-1.5 text-muted-foreground tabular-nums">{entry.count}</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1608,6 +1550,17 @@ export function ChatPage() {
       return false;
     }
   };
+  const fillComposer = (prompt: string) => {
+    restoreComposer.current?.(prompt, []);
+    requestAnimationFrame(() => {
+      const input = document.querySelector<HTMLTextAreaElement>(
+        '[data-testid="chat-composer-input"]',
+      );
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
   const retryTurn = async () => {
     send.reset();
     await Promise.all([
@@ -2380,13 +2333,11 @@ export function ChatPage() {
                     />
                   ) : messages.length === 0 && !send.isPending && !showOptimistic ? (
                     <div className="flex flex-1 py-6" data-testid="chat-empty">
-                      <div>
+                      {selection.kind === "new" && initialPrompt ? (
                         <p className="text-sm text-muted-foreground">{t("chat.empty.title")}</p>
-                        <StarterCards
-                          onPick={(prompt) => void submitTurn(prompt)}
-                          disabled={send.isPending}
-                        />
-                      </div>
+                      ) : (
+                        <ChatStart onPick={fillComposer} />
+                      )}
                     </div>
                   ) : (
                     messages.map((message, index) => (

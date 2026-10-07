@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import { UnprocessableEntityError } from "../../http/errors.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { authorityConnectorDigest } from "../../workflows/authority-configuration.ts";
@@ -24,6 +25,7 @@ function view(overrides: Partial<ConnectorView> = {}): ConnectorView {
     tenant_id: "00000000-0000-4000-8000-000000000002",
     slug: "acme",
     display_name: "Acme",
+    ...UNDESCRIBED_METADATA,
     driver: "http",
     environment: "prod",
     auth_type: "oauth2",

@@ -34,6 +34,19 @@ describe("P22 ChoiceCards", () => {
     expect(html).toContain("aria-labelledby=");
     expect(html).toContain("aria-describedby=");
   });
+
+  test("three ways sit side by side from 640px, two or more than three keep two columns", () => {
+    const third = {
+      ...items[0],
+      title: "Aus Vorlage",
+      testId: "way-template",
+    } as (typeof items)[0];
+    const three = render(<ChoiceCards items={[items[0], third, items[1]] as typeof items} />);
+    expect(three).toContain("sm:grid-cols-3");
+    expect(three).not.toContain("sm:grid-cols-2");
+    const four = render(<ChoiceCards items={[...items, third, { ...third, testId: "way-4" }]} />);
+    expect(four).toContain("sm:grid-cols-2");
+  });
 });
 
 describe("P13/P14 dialog anatomy", () => {

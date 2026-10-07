@@ -117,3 +117,17 @@ export async function checkToolPermission(
   await recordPolicyDenied(ctx, descriptor.action, resource, reason, approval);
   return { allow: false, reason, permission: descriptor.action };
 }
+
+export async function checkTenantPermission(
+  ctx: ToolContext,
+  permission: string,
+  audited: { type: string; id: string },
+): Promise<ToolPermissionResult> {
+  const principal = ctx.principal ?? (await resolveConversationPrincipal(ctx));
+  if (!principal) return { allow: true };
+  const decision = await can(ctx.db, { tenant_id: ctx.tenant_id, principal, permission });
+  if (decision.allow) return { allow: true };
+  const reason = decision.reason ?? `permission_denied:${permission}`;
+  await recordPolicyDenied(ctx, permission, audited, reason, undefined);
+  return { allow: false, reason, permission };
+}

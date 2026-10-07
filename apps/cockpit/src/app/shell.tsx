@@ -52,7 +52,8 @@ import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { RunOverlays } from "@/pages/runs";
-import { LiveEventsProvider, type LiveStatus, useLiveStatus } from "./live-events";
+import { LiveEventsProvider, useLiveStatus } from "./live-events";
+import { LiveIndicator } from "./live-indicator";
 import { navigationItem, visibleNavigation } from "./navigation";
 import { pageOf, useRouteEntrance } from "./route-entrance";
 import { useSession } from "./session";
@@ -182,10 +183,10 @@ export function AppShell() {
           </SidebarContent>
 
           <SidebarFooter data-testid="cockpit-sidebar-footer">
+            <ShellLiveIndicator />
             <SidebarMenu>
-              <SidebarMenuItem className="relative">
+              <SidebarMenuItem>
                 <AccountMenu />
-                <LiveIndicator />
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarFooter>
@@ -272,35 +273,9 @@ function AttentionCounter() {
   );
 }
 
-const LIVE_DOT: Record<LiveStatus, string> = {
-  live: "bg-success",
-  connecting: "bg-muted-foreground/40",
-  reconnecting: "bg-warning animate-pulse motion-reduce:animate-none",
-  offline: "bg-muted-foreground/40",
-};
-
-const LIVE_LABEL = {
-  live: "platform.live.live",
-  connecting: "platform.live.connecting",
-  reconnecting: "platform.live.reconnecting",
-  offline: "platform.live.offline",
-} as const satisfies Record<LiveStatus, TranslationKey>;
-
-function LiveIndicator() {
+function ShellLiveIndicator() {
   const { status } = useLiveStatus();
-  const { t } = useI18n();
-  const label = t(LIVE_LABEL[status]);
-  return (
-    <span
-      role="status"
-      data-testid="cockpit-live-indicator"
-      data-live-status={status}
-      className="pointer-events-none absolute top-1.5 left-7 flex size-2.5 items-center justify-center rounded-full bg-sidebar"
-    >
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", LIVE_DOT[status])} />
-      <span className="sr-only">{label}</span>
-    </span>
-  );
+  return <LiveIndicator status={status} />;
 }
 
 function AccountMenu() {

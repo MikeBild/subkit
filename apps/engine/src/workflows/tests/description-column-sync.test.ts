@@ -32,7 +32,7 @@ function defWith(slug: string, description?: string) {
   };
 }
 
-describe("workflows.description column sync from DAG", () => {
+describe("the workflow description column owns the text a definition brings", () => {
   test("createWorkflow seeds the column from def.description", async () => {
     const res = await createWorkflow(
       { tenant_id, def: defWith("desc-create", DESC), actor_id: null },
@@ -70,15 +70,18 @@ describe("workflows.description column sync from DAG", () => {
     expect((await getWorkflow(tenant_id, id, ctx.db))?.description).toBe(DESC);
   });
 
-  test("updateWorkflow clears the column when the def drops its description", async () => {
+  test("updateWorkflow keeps the column when the def carries no description", async () => {
     const created = await createWorkflow(
-      { tenant_id, def: defWith("desc-clear", DESC), actor_id: null },
+      { tenant_id, def: defWith("desc-keep", DESC), actor_id: null },
       ctx.db,
     );
     const id = (created as { workflow: { id: string } }).workflow.id;
     expect((await getWorkflow(tenant_id, id, ctx.db))?.description).toBe(DESC);
 
-    await updateWorkflow({ tenant_id, id, def: defWith("desc-clear"), actor_id: null }, ctx.db);
-    expect((await getWorkflow(tenant_id, id, ctx.db))?.description ?? null).toBeNull();
+    await updateWorkflow({ tenant_id, id, def: defWith("desc-keep"), actor_id: null }, ctx.db);
+    const view = await getWorkflow(tenant_id, id, ctx.db);
+    expect(view?.description).toBe(DESC);
+    expect(view?.description_source).toBe("human");
+    expect(view?.definition.description).toBe(DESC);
   });
 });

@@ -18,12 +18,14 @@ import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody } from "../oauth/shared.ts";
 import {
   authHtmlResponse,
+  NEGOTIATED_VARY,
+  negotiatedPageResponse,
   renderApiKeyLogin,
   renderErrorPage,
   renderProviderChoice,
-  resolveAuthLocale,
-  SIGN_IN_FAILED_TITLE,
-  STATE_ERROR_MESSAGE,
+  renderUnavailablePage,
+  resolvePageLook,
+  wantsHtmlPage,
 } from "../oauth/ui.ts";
 
 const ApiKeyFormSchema = z.object({
@@ -72,7 +74,7 @@ function browserStateError(
 ): Response {
   if (wantsJson(c)) return c.json({ code }, status);
   return authHtmlResponse(
-    renderErrorPage(SIGN_IN_FAILED_TITLE, STATE_ERROR_MESSAGE, retryHref),
+    renderErrorPage("state_expired", retryHref, resolvePageLook(c.req.raw.headers)),
     status,
   );
 }
@@ -108,13 +110,17 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
         protocol: provider.protocol,
         href: `${base}/v1/identity/login/start?provider=${encodeURIComponent(provider.id)}&login_state=${encodeURIComponent(state)}`,
       }));
-      return choices.length
-        ? authHtmlResponse(
-            renderProviderChoice(choices, resolveAuthLocale(c.req.header("accept-language"))),
+      if (choices.length > 0)
+        return authHtmlResponse(renderProviderChoice(choices, resolvePageLook(c.req.raw.headers)));
+      return wantsHtmlPage(c.req.header("accept"))
+        ? negotiatedPageResponse(
+            renderUnavailablePage(resolvePageLook(c.req.raw.headers), "login"),
+            503,
           )
         : c.json(
             { code: "login_not_configured", message: "no MCP login provider configured" },
             503,
+            { vary: NEGOTIATED_VARY },
           );
     }
 
@@ -138,7 +144,7 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
           selected.id,
           state,
           undefined,
-          resolveAuthLocale(c.req.header("accept-language")),
+          resolvePageLook(c.req.raw.headers),
         ),
       );
     }
@@ -166,14 +172,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       new Request(c.req.url, { headers: { authorization: `Bearer ${parsed.data.api_key}` } }),
     );
     if (principal?.kind !== "user") {
-      const locale = resolveAuthLocale(c.req.header("accept-language"));
+      const look = resolvePageLook(c.req.raw.headers);
       return authHtmlResponse(
         renderApiKeyLogin(
           "/v1/identity/login/start",
           selected.id,
           parsed.data.login_state,
-          apiKeyLoginRefusal(locale),
-          locale,
+          apiKeyLoginRefusal(look.locale),
+          look,
         ),
         401,
       );

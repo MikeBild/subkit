@@ -454,7 +454,8 @@ describe("GET /v1/oauth/callback", () => {
     const anonymous = await (await callback("state=state-chat-anonymous&code=c")).text();
     expect(anonymous).toContain("return to the conversation");
     expect(anonymous).not.toContain("terminal");
-    expect(anonymous).not.toContain("auth-result-link");
+    expect(anonymous).toContain('href="/cockpit"');
+    expect(anonymous.match(/<a\s/g)?.length).toBe(1);
 
     const { cookie } = await cockpitSession();
     await seedStateRow("state-chat-session", { origin: "chat" });
@@ -462,7 +463,8 @@ describe("GET /v1/oauth/callback", () => {
       await callback("state=state-chat-session&code=c", { headers: { cookie } })
     ).text();
     expect(signedIn).toContain(`href="${connectorPage()}"`);
-    expect(signedIn).toContain("Open the connector");
+    expect(signedIn).toContain("Back to Cockpit");
+    expect(signedIn.match(/<a\s/g)?.length).toBe(1);
   });
 
   test("a Cockpit flow is redirected to the connector's page, never to an address from the query", async () => {
@@ -486,19 +488,27 @@ describe("GET /v1/oauth/callback", () => {
     await server.db.update(connectors).set({ enabled: true }).where(eq(connectors.id, connectorId));
   });
 
-  test("a failed Cockpit flow gets a page with the way back, and no redirect", async () => {
+  test("a failed Cockpit flow returns to the connector's page with the failure, not the provider's words", async () => {
     const state = "state-cockpit-denied";
     await seedStateRow(state, { origin: "cockpit" });
-    const res = await callback(`state=${state}&error=access_denied`, {
-      headers: { "accept-language": "de" },
-    });
-    expect(res.status).toBe(400);
-    const body = await res.text();
-    expect(body).toContain("Anmeldung nicht abgeschlossen");
-    expect(body).toContain("Starte die Anmeldung auf der Seite des Konnektors neu.");
-    expect(body).toContain(`href="${connectorPage()}"`);
-    expect(body).toContain("Zurück zum Konnektor");
-    expect(body).not.toContain("signed_in");
+    const res = await callback(
+      `state=${state}&error=access_denied&error_description=call+this+number`,
+      { headers: { host: "evil.example", "x-forwarded-host": "evil.example" } },
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(
+      `${connectorPage()}?signin_failed=provider_declined&signin_code=access_denied`,
+    );
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await getStateRow(state)).toBeNull();
+  });
+
+  test("a Cockpit flow that comes back without an authorization returns as no_authorization", async () => {
+    const state = "state-cockpit-no-code";
+    await seedStateRow(state, { origin: "cockpit" });
+    const res = await callback(`state=${state}`);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`${connectorPage()}?signin_failed=no_authorization`);
   });
 
   test("provider error returns an HTML error page and deletes the state row", async () => {

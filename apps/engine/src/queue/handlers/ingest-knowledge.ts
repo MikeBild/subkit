@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import type { Actor } from "../../audit/actor.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
 import type { Db } from "../../db/client.ts";
 import { knowledgeSources } from "../../db/schema/index.ts";
@@ -16,7 +17,7 @@ export interface IngestKnowledgeJob {
   filename: string;
   content: string;
   mime?: string;
-  actor_id?: string | null;
+  actor?: Actor | null;
   read_address_again?: boolean;
 }
 
@@ -43,7 +44,7 @@ export async function processIngestKnowledgeJob(
       const refreshed = await refreshKnowledgeSource(
         {
           tenant_id: data.tenant_id,
-          actor_id: data.actor_id ?? null,
+          actor: data.actor ?? null,
           id: data.knowledge_source_id,
         },
         db,
@@ -66,7 +67,7 @@ export async function processIngestKnowledgeJob(
           filename: data.filename,
           ...(data.mime ? { mime: data.mime } : {}),
         },
-        actor_id: data.actor_id ?? null,
+        actor: data.actor ?? null,
       },
       db,
     );

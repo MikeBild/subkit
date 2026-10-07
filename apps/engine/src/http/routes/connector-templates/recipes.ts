@@ -1,16 +1,21 @@
 import { createRoute, type OpenAPIHono, type z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import {
+  bindRecipe,
+  type ConnectorRecipe,
   ConnectorRecipeSchema,
   listResolvedConnectorTemplates,
+  listTemplateConnectors,
+  loadSolutionRecipes,
   resolveConnectorTemplate,
+  SOLUTIONS_OUTCOME,
+  SOLUTIONS_VERTICAL,
 } from "../../../connectors/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../openapi.ts";
 import {
   RECIPE_PACK_PREDICATES,
-  RECIPE_PACK_VERTICALS,
   RecipeListResponseSchema,
   type RecipePackEntrySchema,
   RecipePackResponseSchema,
@@ -55,7 +60,8 @@ const recipePackRoute = createRoute({
   method: "get",
   path: "/v1/recipe-packs/{vertical}",
   tags: ["connectors"],
-  summary: "Get a vertical recipe pack (computed from category + tags)",
+  summary:
+    "Get a vertical recipe pack (computed from category + tags; `solutions` spans several connectors)",
   security: [{ bearerAuth: [] }],
   request: { params: RecipePackVerticalParam },
   responses: {
@@ -106,36 +112,52 @@ export function registerRecipeRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { vertical } = c.req.valid("param");
-    const predicate = RECIPE_PACK_PREDICATES[vertical];
     const allTemplates = await listResolvedConnectorTemplates(db, principal.tenant_id);
-    const matchedCategories = new Set(predicate.match_categories);
-    const matchedTags = new Set(predicate.match_tags);
-    const entries: z.infer<typeof RecipePackEntrySchema>[] = [];
-    for (const { template } of allTemplates) {
-      for (const r of template.recipes) {
-        const categoryHit = matchedCategories.has(r.category);
-        const tagHit = r.tags.some((t) => matchedTags.has(t));
-        if (categoryHit || tagHit) {
-          entries.push({
-            template_slug: template.slug,
-            recipe_slug: r.slug,
-            title: r.title,
-            category: r.category,
-            tags: r.tags,
-            difficulty: r.difficulty,
-          });
+    const templates = new Map(
+      allTemplates.map(({ template }) => [
+        template.slug,
+        { name: template.name, base_url: template.base_url },
+      ]),
+    );
+    const picked: { template_slug: string | null; recipe: ConnectorRecipe }[] = [];
+    let outcome: string;
+    if (vertical === SOLUTIONS_VERTICAL) {
+      outcome = SOLUTIONS_OUTCOME;
+      for (const recipe of loadSolutionRecipes()) picked.push({ template_slug: null, recipe });
+    } else {
+      const predicate = RECIPE_PACK_PREDICATES[vertical];
+      outcome = predicate.outcome;
+      const matchedCategories = new Set(predicate.match_categories);
+      const matchedTags = new Set(predicate.match_tags);
+      for (const { template } of allTemplates) {
+        for (const recipe of template.recipes) {
+          const categoryHit = matchedCategories.has(recipe.category);
+          const tagHit = recipe.tags.some((t) => matchedTags.has(t));
+          if (categoryHit || tagHit) picked.push({ template_slug: template.slug, recipe });
         }
       }
     }
-    return c.json(
-      {
-        vertical,
-        outcome: predicate.outcome,
-        recipes: entries,
-      },
-      200,
+    const needed = new Set(
+      picked.flatMap(({ recipe }) => recipe.required_connectors.map((r) => r.template)),
     );
+    const available = await listTemplateConnectors(principal.tenant_id, [...needed], db);
+    const entries: z.infer<typeof RecipePackEntrySchema>[] = picked.map(
+      ({ template_slug, recipe }) => {
+        const bound = bindRecipe(recipe, available, templates);
+        return {
+          template_slug,
+          recipe_slug: recipe.slug,
+          title: recipe.title,
+          description: recipe.description,
+          category: recipe.category,
+          tags: recipe.tags,
+          difficulty: recipe.difficulty,
+          connectors: bound.connectors,
+          sample_input: recipe.sample_input ?? null,
+          workflow: bound.workflow as unknown as Record<string, unknown>,
+        };
+      },
+    );
+    return c.json({ vertical, outcome, recipes: entries }, 200);
   });
-
-  void RECIPE_PACK_VERTICALS;
 }

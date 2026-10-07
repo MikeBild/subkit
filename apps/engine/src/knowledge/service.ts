@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
+import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
+import { auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -8,6 +9,7 @@ import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
+import type { FingerprintedChunk } from "../docs-ingestion/types.ts";
 import { backfillEmbeddings } from "../embeddings/backfill.ts";
 import { embeddingsAvailable } from "../embeddings/local-provider.ts";
 import { fuseVectorFirst, vectorScoreCandidates } from "../embeddings/vector-rerank.ts";
@@ -17,12 +19,13 @@ import { errorFields, log, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { TtlCache } from "../utils/ttl-cache.ts";
+import { describeOne } from "../workflows/catalog-describe.ts";
 import {
   assertTenantKnowledgeBudget,
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
-import { KnowledgeVersionConflictError } from "./errors.ts";
+import { KnowledgeVersionAlreadyCurrentError, KnowledgeVersionConflictError } from "./errors.ts";
 import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { dedupeTags, mergeStructuralTags } from "./tags.ts";
@@ -36,6 +39,15 @@ import type {
   SearchKnowledgeParams,
   UpdateKnowledgeSourceParams,
 } from "./types.ts";
+import {
+  forgetKnowledgeVersions,
+  type KnowledgeVersionContent,
+  knowledgeContentHash,
+  knowledgeVersionContent,
+  latestKnowledgeVersion,
+  recordKnowledgeVersion,
+  restoredNote,
+} from "./version-record.ts";
 import { knowledgeSourceRowToView } from "./view.ts";
 
 export { countKnowledgeSources, getKnowledgeSource, listKnowledgeSources } from "./catalog.ts";
@@ -82,21 +94,11 @@ export async function kickSourceEmbeddingBackfill(
   }
 }
 
-export async function createKnowledgeSource(
-  p: CreateKnowledgeSourceParams,
-  exec?: Executor,
-): Promise<KnowledgeSourceView> {
-  const db = exec ?? getDb();
+function decodeUpload(buffer: Buffer | Uint8Array | string): string {
+  return typeof buffer === "string" ? buffer : new TextDecoder().decode(buffer);
+}
 
-  if (p.input.scope === "workflow" && !p.input.workflow_id) {
-    throw new Error("workflow_id is required when scope is 'workflow'");
-  }
-
-  const content =
-    typeof p.upload.buffer === "string"
-      ? p.upload.buffer
-      : new TextDecoder().decode(p.upload.buffer);
-
+function assertSourceSize(content: string): void {
   const byteSize = Buffer.byteLength(content, "utf8");
   if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
     throw new KnowledgeBudgetExceededError(
@@ -105,104 +107,165 @@ export async function createKnowledgeSource(
       KNOWLEDGE_SOURCE_MAX_BYTES,
     );
   }
+}
 
-  const slug = p.input.slug ?? toSlug(p.input.name);
-  const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
+export interface PreparedKnowledgeCreate {
+  slug: string;
+  hash: string;
+  source_type: NonNullable<CreateKnowledgeSourceParams["source_type_override"]>;
+  accepted: FingerprintedChunk[];
+  skipped: number;
+  total_bytes: number;
+  persisted: PersistInlineUploadResult | null;
+  content: KnowledgeVersionContent;
+}
+
+export async function prepareKnowledgeCreate(
+  p: CreateKnowledgeSourceParams,
+  db: Executor,
+): Promise<PreparedKnowledgeCreate> {
+  if (p.input.scope === "workflow" && !p.input.workflow_id) {
+    throw new Error("workflow_id is required when scope is 'workflow'");
+  }
+  const content = decodeUpload(p.upload.buffer);
+  assertSourceSize(content);
   const format = detectFormat(p.upload.filename, p.upload.mime);
-
   const rawChunks = p.parsed_chunks ?? parseFileToChunks(content, p.upload.filename, format);
   const fingerprinted = fingerprintChunks(rawChunks);
   const { accepted, skipped } = p.parsed_chunks
     ? { accepted: fingerprinted, skipped: 0 }
     : dedupChunks(fingerprinted);
+  const source_type = p.source_type_override ?? "file_upload";
+  return {
+    slug: p.input.slug ?? toSlug(p.input.name),
+    hash: knowledgeContentHash(content),
+    source_type,
+    accepted,
+    skipped,
+    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    persisted: source_type === "url" ? null : await persistKnowledgeFile(db, p),
+    content: knowledgeVersionContent({
+      source_type,
+      upload: p.upload,
+      text: content,
+      parsed_chunks: p.parsed_chunks,
+    }),
+  };
+}
 
-  const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
+export async function applyKnowledgeCreate(
+  tx: Executor,
+  p: CreateKnowledgeSourceParams,
+  prepared: PreparedKnowledgeCreate,
+): Promise<KnowledgeSourceView> {
+  const { slug, accepted } = prepared;
+  await assertTenantKnowledgeBudget(tx, p.tenant_id, prepared.total_bytes);
 
-  const sourceType = p.source_type_override ?? "file_upload";
-  const persisted = sourceType === "url" ? null : await persistKnowledgeFile(db, p);
+  const [row] = await tx
+    .insert(knowledgeSources)
+    .values({
+      tenant_id: p.tenant_id,
+      name: p.input.name,
+      slug,
+      ...humanMetadataWrite({
+        ...(p.input.description !== undefined ? { description: p.input.description } : {}),
+        ...(p.input.category !== undefined ? { category: p.input.category } : {}),
+      }),
+      tags: dedupeTags(p.input.tags ?? []),
+      scope: p.input.scope ?? "global",
+      workflow_id: p.input.workflow_id ?? null,
+      status: "active",
+      source_type: prepared.source_type,
+      source_uri: p.source_uri_override ?? p.upload.filename,
+      mime_type: p.upload.mime ?? null,
+      file_id: prepared.persisted ? prepared.persisted.row.id : null,
+      version: prepared.hash,
+      bytes_total: prepared.total_bytes,
+      chunk_count: accepted.length,
+      refresh_strategy: p.input.refresh_strategy ?? "manual",
+      refresh_cron: p.input.refresh_cron ?? null,
+      last_refreshed_at: new Date(),
+    })
+    .returning();
 
-  const created = await (db as Db).transaction(async (tx) => {
-    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes);
+  assertInsertRow(row, "knowledge_sources");
 
-    const [row] = await tx
-      .insert(knowledgeSources)
-      .values({
+  if (prepared.persisted) {
+    await linkKnowledgeFile(tx, {
+      tenant_id: p.tenant_id,
+      actor_id: p.actor?.id ?? null,
+      knowledge_source_id: row.id,
+      slug,
+      filename: p.upload.filename,
+      mime: p.upload.mime ?? null,
+      persisted: prepared.persisted,
+    });
+  }
+
+  if (accepted.length > 0) {
+    await tx.insert(knowledgeChunks).values(
+      accepted.map((c, i) => ({
         tenant_id: p.tenant_id,
-        name: p.input.name,
-        slug,
-        description: p.input.description ?? null,
-        tags: dedupeTags(p.input.tags ?? []),
-        scope: p.input.scope ?? "global",
-        workflow_id: p.input.workflow_id ?? null,
-        status: "active",
-        source_type: sourceType,
-        source_uri: p.source_uri_override ?? p.upload.filename,
-        mime_type: p.upload.mime ?? null,
-        file_id: persisted ? persisted.row.id : null,
-        version,
-        bytes_total: totalBytes,
-        chunk_count: accepted.length,
-        refresh_strategy: p.input.refresh_strategy ?? "manual",
-        refresh_cron: p.input.refresh_cron ?? null,
-        last_refreshed_at: new Date(),
-      })
-      .returning();
-
-    assertInsertRow(row, "knowledge_sources");
-
-    if (persisted) {
-      await linkKnowledgeFile(tx, {
-        tenant_id: p.tenant_id,
-        actor_id: p.actor_id,
         knowledge_source_id: row.id,
-        slug,
-        filename: p.upload.filename,
-        mime: p.upload.mime ?? null,
-        persisted,
-      });
-    }
-
-    if (accepted.length > 0) {
-      await tx.insert(knowledgeChunks).values(
-        accepted.map((c, i) => ({
-          tenant_id: p.tenant_id,
-          knowledge_source_id: row.id,
-          ordinal: i,
-          title: c.title ?? null,
-          path: c.path ?? null,
-          content: c.content,
-          byte_size: c.byte_size,
-          fingerprint: c.fingerprint,
-        })),
-      );
-    }
-
-    await auditAwait(
-      {
-        tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
-        action: AuditAction.KNOWLEDGE_SOURCE_CREATED,
-        resource_type: "knowledge_source",
-        resource_id: row.id,
-        result: "success",
-        metadata: {
-          slug,
-          scope: p.input.scope ?? "global",
-          chunk_count: accepted.length,
-          skipped_count: skipped,
-          bytes_total: totalBytes,
-          source_uri: p.source_uri_override ?? p.upload.filename,
-        },
-      },
-      tx,
+        ordinal: i,
+        title: c.title ?? null,
+        path: c.path ?? null,
+        content: c.content,
+        byte_size: c.byte_size,
+        fingerprint: c.fingerprint,
+      })),
     );
-    await knowledgeSourceChanged(tx, p.tenant_id, row.id);
+  }
 
-    invalidateKnowledgeCache(p.tenant_id);
-    return knowledgeSourceRowToView(row);
+  await recordKnowledgeVersion(tx, {
+    tenant_id: p.tenant_id,
+    knowledge_source_id: row.id,
+    content: prepared.content,
+    content_hash: prepared.hash,
+    actor: p.actor,
+    note: p.note ?? null,
   });
-  void kickSourceEmbeddingBackfill(p.tenant_id, created.id, db);
+
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      ...auditActor(p.actor),
+      action: AuditAction.KNOWLEDGE_SOURCE_CREATED,
+      resource_type: "knowledge_source",
+      resource_id: row.id,
+      result: "success",
+      metadata: {
+        slug,
+        scope: p.input.scope ?? "global",
+        chunk_count: accepted.length,
+        skipped_count: prepared.skipped,
+        bytes_total: prepared.total_bytes,
+        source_uri: p.source_uri_override ?? p.upload.filename,
+      },
+    },
+    tx,
+  );
+  await knowledgeSourceChanged(tx, p.tenant_id, row.id);
+  return knowledgeSourceRowToView(row);
+}
+
+export function finishKnowledgeWrite(
+  tenant_id: string,
+  knowledge_source_id: string,
+  db: Executor,
+): void {
+  invalidateKnowledgeCache(tenant_id);
+  void kickSourceEmbeddingBackfill(tenant_id, knowledge_source_id, db);
+}
+
+export async function createKnowledgeSource(
+  p: CreateKnowledgeSourceParams,
+  exec?: Executor,
+): Promise<KnowledgeSourceView> {
+  const db = exec ?? getDb();
+  const prepared = await prepareKnowledgeCreate(p, db);
+  const created = await (db as Db).transaction((tx) => applyKnowledgeCreate(tx, p, prepared));
+  finishKnowledgeWrite(p.tenant_id, created.id, db);
   return created;
 }
 
@@ -257,7 +320,13 @@ export async function updateKnowledgeSource(
 
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (p.patch.name !== undefined) updates.name = p.patch.name;
-    if (p.patch.description !== undefined) updates.description = p.patch.description;
+    Object.assign(
+      updates,
+      metadataChange(existing[0], {
+        ...(p.patch.description !== undefined ? { description: p.patch.description } : {}),
+        ...(p.patch.category !== undefined ? { category: p.patch.category } : {}),
+      }),
+    );
     if (p.patch.tags !== undefined) updates.tags = dedupeTags(p.patch.tags);
     if (p.patch.scope !== undefined) updates.scope = p.patch.scope;
     if (p.patch.workflow_id !== undefined) updates.workflow_id = p.patch.workflow_id;
@@ -297,7 +366,6 @@ export async function updateKnowledgeSource(
 const ANALYZE_SAMPLE_MAX_CHARS = 28_000;
 
 const AnalysisSchema = z.object({
-  description: z.string().min(1).max(2000),
   tags: z.array(z.string().min(1).max(40)).min(1).max(8),
 });
 
@@ -354,10 +422,8 @@ export async function analyzeKnowledgeSource(
 
   const prompt = [
     `You are cataloguing an enterprise Knowledge Source named "${source.name}".`,
-    "Write a concise description (1-3 sentences, max 2000 characters) summarising what",
-    "this source covers and when an operator or AI agent would consult it, plus 3-8 short",
-    "lowercase topical tags for routing and filtering (single words or short phrases, e.g.",
-    '"billing", "oauth", "compliance"). Do not restate the source name as a tag.',
+    "Return 3-8 short lowercase topical tags for routing and filtering (single words or",
+    'short phrases, e.g. "billing", "oauth", "compliance"). Do not restate the source name as a tag.',
     "",
     "Source content sample:",
     sample,
@@ -379,18 +445,15 @@ export async function analyzeKnowledgeSource(
   }
 
   const nextTags = mergeStructuralTags(source.tags ?? [], analysis.tags);
-  const overwriteDescription = source.description === null || p.force === true;
 
-  return await (db as Db).transaction(async (tx) => {
-    const updates: Record<string, unknown> = {
-      tags: nextTags,
-      updated_at: new Date(),
-    };
-    if (overwriteDescription) updates.description = analysis.description;
-
+  const tagged = await (db as Db).transaction(async (tx) => {
     const [updated] = await tx
       .update(knowledgeSources)
-      .set(updates)
+      .set({
+        tags: nextTags,
+        updated_at: new Date(),
+        ...(p.force === true ? { catalog_input_hash: null } : {}),
+      })
       .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), eq(knowledgeSources.id, p.id)))
       .returning();
 
@@ -407,7 +470,6 @@ export async function analyzeKnowledgeSource(
         result: "success",
         metadata: {
           tags: nextTags,
-          description_updated: overwriteDescription,
           model_used: result.model_used,
           force: p.force === true,
         },
@@ -415,10 +477,18 @@ export async function analyzeKnowledgeSource(
       tx,
     );
     await knowledgeSourceChanged(tx, p.tenant_id, p.id);
-
-    invalidateKnowledgeCache(p.tenant_id);
-    return knowledgeSourceRowToView(updated);
+    return updated;
   });
+  if (!tagged) return null;
+
+  await describeOne({ tenant_id: p.tenant_id, kind: "knowledge_source", id: p.id }, db);
+  invalidateKnowledgeCache(p.tenant_id);
+  const [fresh] = await db
+    .select()
+    .from(knowledgeSources)
+    .where(and(eq(knowledgeSources.tenant_id, p.tenant_id), eq(knowledgeSources.id, p.id)))
+    .limit(1);
+  return knowledgeSourceRowToView(fresh ?? tagged);
 }
 
 export async function deleteKnowledgeSource(
@@ -448,6 +518,7 @@ export async function deleteKnowledgeSource(
       .update(knowledgeSources)
       .set({ deleted_at: new Date(), updated_at: new Date() })
       .where(eq(knowledgeSources.id, id));
+    await forgetKnowledgeVersions(tx, tenant_id, id);
 
     await auditAwait(
       {
@@ -469,25 +540,28 @@ export async function deleteKnowledgeSource(
   });
 }
 
-export async function ingestKnowledgeSource(
+export interface PreparedKnowledgeIngest {
+  format: ReturnType<typeof detectFormat>;
+  hash: string;
+  accepted: FingerprintedChunk[];
+  skipped: number;
+  total_bytes: number;
+  persisted: PersistInlineUploadResult | null;
+  source_slug: string;
+  content: KnowledgeVersionContent;
+}
+
+export interface AppliedKnowledgeIngest {
+  version: number | null;
+}
+
+export async function prepareKnowledgeIngest(
   p: IngestKnowledgeSourceParams,
-  exec?: Executor,
-): Promise<KnowledgeIngestResult> {
-  const db = exec ?? getDb();
-
-  const content =
-    typeof p.upload.buffer === "string"
-      ? p.upload.buffer
-      : new TextDecoder().decode(p.upload.buffer);
-
+  db: Executor,
+): Promise<PreparedKnowledgeIngest> {
+  const content = decodeUpload(p.upload.buffer);
+  assertSourceSize(content);
   const byteSize = Buffer.byteLength(content, "utf8");
-  if (byteSize > KNOWLEDGE_SOURCE_MAX_BYTES) {
-    throw new KnowledgeBudgetExceededError(
-      `File exceeds maximum size of ${KNOWLEDGE_SOURCE_MAX_BYTES} bytes`,
-      byteSize,
-      KNOWLEDGE_SOURCE_MAX_BYTES,
-    );
-  }
 
   const format = detectFormat(p.upload.filename, p.upload.mime);
   const rawChunks = await instrument({
@@ -507,9 +581,6 @@ export async function ingestKnowledgeSource(
     ? { accepted: fingerprinted, skipped: 0 }
     : dedupChunks(fingerprinted);
 
-  const totalBytes = accepted.reduce((s, c) => s + c.byte_size, 0);
-  const version = createHash("sha256").update(content).digest("hex").slice(0, 32);
-
   const sourceRows = await db
     .select({ source_type: knowledgeSources.source_type, slug: knowledgeSources.slug })
     .from(knowledgeSources)
@@ -522,121 +593,188 @@ export async function ingestKnowledgeSource(
     )
     .limit(1);
   const sourceRow = sourceRows[0];
-  let persisted: PersistInlineUploadResult | null = null;
-  let sourceSlug = p.upload.filename;
-  if (sourceRow && sourceRow.source_type !== "url") {
-    persisted = await persistKnowledgeFile(db, p);
-    sourceSlug = sourceRow.slug;
+  const keepsFile = sourceRow !== undefined && sourceRow.source_type !== "url";
+  return {
+    format,
+    hash: knowledgeContentHash(content),
+    accepted,
+    skipped,
+    total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
+    persisted: keepsFile ? await persistKnowledgeFile(db, p) : null,
+    source_slug: keepsFile ? sourceRow.slug : p.upload.filename,
+    content: knowledgeVersionContent({
+      source_type: sourceRow?.source_type ?? "file_upload",
+      upload: p.upload,
+      text: content,
+      parsed_chunks: p.parsed_chunks,
+    }),
+  };
+}
+
+export async function applyKnowledgeIngest(
+  tx: Executor,
+  p: IngestKnowledgeSourceParams,
+  prepared: PreparedKnowledgeIngest,
+): Promise<AppliedKnowledgeIngest | null> {
+  const { accepted } = prepared;
+  const [lockedSource] = await tx
+    .select({ version: knowledgeSources.version, slug: knowledgeSources.slug })
+    .from(knowledgeSources)
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        eq(knowledgeSources.id, p.knowledge_source_id),
+        isNull(knowledgeSources.deleted_at),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!lockedSource) return null;
+  if (p.expected_version !== undefined && lockedSource.version !== p.expected_version) {
+    throw new KnowledgeVersionConflictError(p.expected_version, lockedSource.version);
+  }
+  if (p.restored_from !== undefined) {
+    const latest = await latestKnowledgeVersion(tx, p.tenant_id, p.knowledge_source_id);
+    if (latest?.content_hash === prepared.hash) {
+      throw new KnowledgeVersionAlreadyCurrentError(p.restored_from);
+    }
+  }
+  await assertTenantKnowledgeBudget(tx, p.tenant_id, prepared.total_bytes, p.knowledge_source_id);
+
+  await tx
+    .delete(knowledgeChunks)
+    .where(
+      and(
+        eq(knowledgeChunks.tenant_id, p.tenant_id),
+        eq(knowledgeChunks.knowledge_source_id, p.knowledge_source_id),
+      ),
+    );
+
+  if (accepted.length > 0) {
+    await tx.insert(knowledgeChunks).values(
+      accepted.map((c, i) => ({
+        tenant_id: p.tenant_id,
+        knowledge_source_id: p.knowledge_source_id,
+        ordinal: i,
+        title: c.title ?? null,
+        path: c.path ?? null,
+        content: c.content,
+        byte_size: c.byte_size,
+        fingerprint: c.fingerprint,
+      })),
+    );
   }
 
-  await (db as Db).transaction(async (tx) => {
-    const [lockedSource] = await tx
-      .select({ version: knowledgeSources.version, slug: knowledgeSources.slug })
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.tenant_id, p.tenant_id),
-          eq(knowledgeSources.id, p.knowledge_source_id),
-          isNull(knowledgeSources.deleted_at),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!lockedSource) return;
-    if (p.expected_version !== undefined && lockedSource.version !== p.expected_version) {
-      throw new KnowledgeVersionConflictError(p.expected_version, lockedSource.version);
-    }
-    await assertTenantKnowledgeBudget(tx, p.tenant_id, totalBytes, p.knowledge_source_id);
+  await tx
+    .update(knowledgeSources)
+    .set({
+      version: prepared.hash,
+      bytes_total: prepared.total_bytes,
+      chunk_count: accepted.length,
+      source_uri: p.upload.filename,
+      mime_type: p.upload.mime ?? null,
+      ...(prepared.persisted ? { file_id: prepared.persisted.row.id } : {}),
+      last_refreshed_at: new Date(),
+      status: "active",
+      last_error: null,
+      updated_at: new Date(),
+    })
+    .where(
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        eq(knowledgeSources.id, p.knowledge_source_id),
+      ),
+    );
 
-    await tx
-      .delete(knowledgeChunks)
-      .where(eq(knowledgeChunks.knowledge_source_id, p.knowledge_source_id));
+  if (prepared.persisted) {
+    await linkKnowledgeFile(tx, {
+      tenant_id: p.tenant_id,
+      actor_id: p.actor?.id ?? null,
+      knowledge_source_id: p.knowledge_source_id,
+      slug: prepared.source_slug,
+      filename: p.upload.filename,
+      mime: p.upload.mime ?? null,
+      persisted: prepared.persisted,
+    });
+  }
 
-    if (accepted.length > 0) {
-      await tx.insert(knowledgeChunks).values(
-        accepted.map((c, i) => ({
-          tenant_id: p.tenant_id,
-          knowledge_source_id: p.knowledge_source_id,
-          ordinal: i,
-          title: c.title ?? null,
-          path: c.path ?? null,
-          content: c.content,
-          byte_size: c.byte_size,
-          fingerprint: c.fingerprint,
-        })),
-      );
-    }
+  const version = await recordKnowledgeVersion(tx, {
+    tenant_id: p.tenant_id,
+    knowledge_source_id: p.knowledge_source_id,
+    content: prepared.content,
+    content_hash: prepared.hash,
+    actor: p.actor,
+    note: p.restored_from !== undefined ? restoredNote(p.restored_from) : (p.note ?? null),
+  });
 
-    await tx
-      .update(knowledgeSources)
-      .set({
-        version,
-        bytes_total: totalBytes,
+  await auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      ...auditActor(p.actor),
+      action: AuditAction.KNOWLEDGE_SOURCE_INGESTED,
+      resource_type: "knowledge_source",
+      resource_id: p.knowledge_source_id,
+      result: "success",
+      before: { version: lockedSource.version },
+      after: { version: prepared.hash },
+      metadata: {
+        slug: lockedSource.slug,
         chunk_count: accepted.length,
-        source_uri: p.upload.filename,
-        mime_type: p.upload.mime ?? null,
-        ...(persisted ? { file_id: persisted.row.id } : {}),
-        last_refreshed_at: new Date(),
-        status: "active",
-        last_error: null,
-        updated_at: new Date(),
-      })
-      .where(eq(knowledgeSources.id, p.knowledge_source_id));
-
-    if (persisted) {
-      await linkKnowledgeFile(tx, {
-        tenant_id: p.tenant_id,
-        actor_id: p.actor_id,
-        knowledge_source_id: p.knowledge_source_id,
-        slug: sourceSlug,
-        filename: p.upload.filename,
-        mime: p.upload.mime ?? null,
-        persisted,
-      });
-    }
-
+        skipped_count: prepared.skipped,
+        bytes_total: prepared.total_bytes,
+        ...(version !== null ? { content_version: version } : {}),
+      },
+    },
+    tx,
+  );
+  if (p.restored_from !== undefined) {
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
-        action: AuditAction.KNOWLEDGE_SOURCE_INGESTED,
+        ...auditActor(p.actor),
+        action: AuditAction.KNOWLEDGE_SOURCE_RESTORED,
         resource_type: "knowledge_source",
         resource_id: p.knowledge_source_id,
         result: "success",
-        before: { version: lockedSource.version },
-        after: { version },
         metadata: {
-          ...(sourceRow ? { slug: sourceRow.slug } : {}),
-          chunk_count: accepted.length,
-          skipped_count: skipped,
-          bytes_total: totalBytes,
+          slug: lockedSource.slug,
+          restored_from: p.restored_from,
+          new_version: version,
         },
       },
       tx,
     );
-    await knowledgeSourceChanged(tx, p.tenant_id, p.knowledge_source_id);
-  });
+  }
+  await knowledgeSourceChanged(tx, p.tenant_id, p.knowledge_source_id);
+  return { version };
+}
+
+export async function ingestKnowledgeSource(
+  p: IngestKnowledgeSourceParams,
+  exec?: Executor,
+): Promise<KnowledgeIngestResult> {
+  const db = exec ?? getDb();
+  const prepared = await prepareKnowledgeIngest(p, db);
+  const applied = await (db as Db).transaction((tx) => applyKnowledgeIngest(tx, p, prepared));
 
   log.knowledge.ingested({
     knowledge_source_id: p.knowledge_source_id,
     tenant_id: p.tenant_id,
-    actor_id: p.actor_id,
-    format,
-    chunk_count: accepted.length,
-    skipped_count: skipped,
-    bytes_total: totalBytes,
+    actor_id: p.actor?.id ?? null,
+    format: prepared.format,
+    chunk_count: prepared.accepted.length,
+    skipped_count: prepared.skipped,
+    bytes_total: prepared.total_bytes,
   });
-
-  invalidateKnowledgeCache(p.tenant_id);
-  void kickSourceEmbeddingBackfill(p.tenant_id, p.knowledge_source_id, db);
+  finishKnowledgeWrite(p.tenant_id, p.knowledge_source_id, db);
 
   return {
     knowledge_source_id: p.knowledge_source_id,
-    ingested_count: accepted.length,
-    skipped_count: skipped,
-    total_bytes: totalBytes,
+    ingested_count: prepared.accepted.length,
+    skipped_count: prepared.skipped,
+    total_bytes: prepared.total_bytes,
     budget_exceeded: false,
+    content_version: applied?.version ?? null,
   };
 }
 
@@ -704,6 +842,7 @@ export async function searchKnowledge(
       kc.knowledge_source_id::text AS knowledge_source_id,
       ks.name AS source_name,
       ks.tags AS source_tags,
+      ks.description AS source_description,
       kc.title,
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
@@ -728,6 +867,7 @@ export async function searchKnowledge(
     knowledge_source_id: string;
     source_name: string;
     source_tags: string[] | null;
+    source_description: string | null;
     title: string | null;
     path: string | null;
     snippet: string;
@@ -740,6 +880,7 @@ export async function searchKnowledge(
     knowledge_source_id: r.knowledge_source_id,
     source_name: r.source_name,
     source_tags: r.source_tags ?? [],
+    source_description: r.source_description,
     title: r.title,
     path: r.path,
     snippet: r.snippet,
@@ -784,6 +925,7 @@ async function fuseKnowledgeWithVectors(
       kc.knowledge_source_id::text AS knowledge_source_id,
       ks.name AS source_name,
       ks.tags AS source_tags,
+      ks.description AS source_description,
       kc.title,
       kc.path,
       COALESCE(ks.last_refreshed_at, ks.updated_at) AS fetched_at,
@@ -802,6 +944,7 @@ async function fuseKnowledgeWithVectors(
     knowledge_source_id: string;
     source_name: string;
     source_tags: string[] | null;
+    source_description: string | null;
     title: string | null;
     path: string | null;
     fetched_at: Date | string | null;
@@ -822,6 +965,7 @@ async function fuseKnowledgeWithVectors(
       knowledge_source_id: s.item.knowledge_source_id,
       source_name: s.item.source_name,
       source_tags: s.item.source_tags ?? [],
+      source_description: s.item.source_description,
       title: s.item.title,
       path: s.item.path,
       snippet: s.item.content.slice(0, 200),

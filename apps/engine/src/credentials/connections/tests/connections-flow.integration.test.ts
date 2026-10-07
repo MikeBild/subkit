@@ -39,14 +39,14 @@ function api(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${server.baseUrl}${path}`, { ...init, headers });
 }
 
-async function approveInBrowser(authorizationUrl: string): Promise<URL> {
+async function approveInBrowser(authorizationUrl: string): Promise<Response> {
   const consent = await fetch(authorizationUrl, { redirect: "manual" });
   expect(consent.status).toBe(302);
   const callback = consent.headers.get("location") ?? "";
   expect(callback.startsWith(`${server.baseUrl}/v1/connections/callback?`)).toBe(true);
   const landed = await fetch(callback, { redirect: "manual" });
-  expect(landed.status).toBe(302);
-  return new URL(landed.headers.get("location") ?? "");
+  expect([200, 303]).toContain(landed.status);
+  return landed;
 }
 
 function accessTokenOf(resolved: Awaited<ReturnType<typeof getCredentialForConnector>>): string {
@@ -140,10 +140,11 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     ]);
 
     const landed = await approveInBrowser(body.authorization_url);
-    expect(landed.pathname).toBe("/cockpit/connectors");
-    expect(landed.searchParams.get("section")).toBeNull();
-    expect(landed.searchParams.get("connected")).toBe("probe");
-    expect(landed.searchParams.get("renewed")).toBeNull();
+    expect(landed.status).toBe(200);
+    const page = await landed.text();
+    expect(page).toContain("“probe” is signed in.");
+    expect(page.match(/<a\s/g)?.length).toBe(1);
+    expect(page).toContain('href="/cockpit"');
   });
 
   test("the connection is listed as valid, renewing itself, with what was granted", async () => {
@@ -370,8 +371,10 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     const body = (await res.json()) as { authorization_url: string; name: string };
     expect(body.name).toBe("probe");
     const landed = await approveInBrowser(body.authorization_url);
-    expect(landed.searchParams.get("connected")).toBe("probe");
-    expect(landed.searchParams.get("renewed")).toBe("1");
+    expect(landed.status).toBe(303);
+    expect(landed.headers.get("location")).toBe(
+      `${server.baseUrl}/cockpit/connectors/${connectorId}?signed_in=1`,
+    );
     const items = await listConnections();
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
@@ -521,7 +524,23 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
     expect((await listConnections())[0]).toMatchObject({ state: "valid", state_reason: null });
   });
 
-  test("a denial on the other side lands in the Cockpit as failed=denied, and a state is spent once", async () => {
+  test("a denied renewal returns to the connector that uses the connection, as a failed sign-in", async () => {
+    fake.decision = "deny";
+    try {
+      const res = await api(`/v1/connections/${connectionId}/renew`, { method: "POST" });
+      const body = (await res.json()) as { authorization_url: string };
+      const consent = await fetch(body.authorization_url, { redirect: "manual" });
+      const landed = await fetch(consent.headers.get("location") ?? "", { redirect: "manual" });
+      expect(landed.status).toBe(303);
+      expect(landed.headers.get("location")).toBe(
+        `${server.baseUrl}/cockpit/connectors/${connectorId}?signin_failed=provider_declined`,
+      );
+    } finally {
+      fake.decision = "approve";
+    }
+  });
+
+  test("a denial of a connection no connector uses ends on a page with one way back, and a state is spent once", async () => {
     fake.decision = "deny";
     try {
       const res = await api("/v1/connections/start", {
@@ -532,29 +551,29 @@ describe("Kontoverbindungen → Verbinden against a foreign OAuth 2.1 server", (
       const consent = await fetch(body.authorization_url, { redirect: "manual" });
       const callback = consent.headers.get("location") ?? "";
       expect(new URL(callback).searchParams.get("error")).toBe("access_denied");
-      const landed = await fetch(callback, { redirect: "manual" });
-      const where = new URL(landed.headers.get("location") ?? "");
-      expect(where.pathname).toBe("/cockpit/connectors");
-      expect(where.searchParams.get("failed")).toBe("denied");
-      expect(where.searchParams.get("name")).toBe("refused");
+      const landed = await fetch(callback, {
+        redirect: "manual",
+        headers: { cookie: "sk_locale=de" },
+      });
+      expect(landed.status).toBe(400);
+      const page = await landed.text();
+      expect(page).toContain("Der Anbieter hat die Anmeldung nicht bestätigt.");
+      expect(page.match(/<a\s/g)?.length).toBe(1);
       const replay = await fetch(callback, { redirect: "manual" });
-      expect(new URL(replay.headers.get("location") ?? "").searchParams.get("failed")).toBe(
-        "state_invalid",
-      );
+      expect(replay.status).toBe(400);
+      expect(await replay.text()).toContain("This link has expired or was already used.");
       expect((await listConnections()).map((c) => c.name)).toEqual(["probe"]);
     } finally {
       fake.decision = "approve";
     }
   });
 
-  test("a callback without a state still lands on the Cockpit with a sentence", async () => {
+  test("a callback without a state still ends on a page with a sentence", async () => {
     const landed = await fetch(`${server.baseUrl}/v1/connections/callback?code=x`, {
       redirect: "manual",
     });
-    expect(landed.status).toBe(302);
-    const where = new URL(landed.headers.get("location") ?? "");
-    expect(where.pathname).toBe("/cockpit/connectors");
-    expect(where.searchParams.get("failed")).toBe("state_invalid");
+    expect(landed.status).toBe(400);
+    expect(await landed.text()).toContain("This link has expired or was already used.");
   });
 
   test("a second connection may not take a taken name", async () => {

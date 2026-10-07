@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "9.3.2",
+    "version": "9.5.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -511,6 +511,12 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4096
+          },
+          "llm_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Model id (Azure: deployment name) the key is checked with and saved as llm.model; without it the provider's configured or default model is used"
           }
         },
         "required": [
@@ -3287,6 +3293,47 @@
           "role"
         ]
       },
+      "ProviderIdentityBinding": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "issuer_url": {
+            "type": "string"
+          },
+          "product_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "provider_id",
+          "issuer_url",
+          "product_id",
+          "subject",
+          "replayed"
+        ],
+        "additionalProperties": false
+      },
       "UserInviteIssued": {
         "allOf": [
           {
@@ -5209,6 +5256,9 @@
                       "type": "integer",
                       "exclusiveMinimum": 0,
                       "maximum": 10000
+                    },
+                    "principal_bound": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -6697,6 +6747,23 @@
             "type": "string",
             "minLength": 1
           },
+          "product_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "required_caller_kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          },
+          "execution_privacy": {
+            "type": "string",
+            "enum": [
+              "sensitive"
+            ]
+          },
           "slug": {
             "type": "string",
             "minLength": 1
@@ -7248,6 +7315,9 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 10000
+                  },
+                  "principal_bound": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -8243,6 +8313,12 @@
         "properties": {
           "definition": {
             "$ref": "#/components/schemas/WorkflowDef"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/RecipeOrigin"
           }
         },
         "required": [
@@ -8250,28 +8326,56 @@
         ],
         "additionalProperties": false
       },
-      "UpdateWorkflowDraft": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/CreateWorkflowDraft"
+      "CatalogCategory": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+        "description": "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it."
+      },
+      "RecipeOrigin": {
+        "type": "object",
+        "properties": {
+          "vertical": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
           },
-          {
-            "type": "object",
-            "properties": {
-              "expected_draft_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "uuid"
-              }
-            },
-            "required": [
-              "expected_draft_version_id"
-            ],
-            "additionalProperties": false
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
           }
-        ]
+        },
+        "required": [
+          "vertical",
+          "slug"
+        ],
+        "additionalProperties": false,
+        "description": "The recipe pack entry this workflow was created from; recorded in the audit trail."
+      },
+      "UpdateWorkflowDraft": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDef"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "expected_draft_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "definition",
+          "expected_draft_version_id"
+        ],
+        "additionalProperties": false
       },
       "WorkflowBoundaryProposals": {
         "type": "object",
@@ -8478,7 +8582,10 @@
           },
           "category": {
             "type": "string",
-            "description": "The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none."
+            "description": "The catalog block this workflow belongs to. One vocabulary is shared by every workflow, connector, knowledge source, skill and file of the tenant; `other` until one is assigned."
+          },
+          "category_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
           },
           "name": {
             "type": "string"
@@ -8488,6 +8595,9 @@
               "string",
               "null"
             ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
           },
           "lifecycle": {
             "type": "string"
@@ -8621,8 +8731,10 @@
           "tenant_id",
           "slug",
           "category",
+          "category_source",
           "name",
           "description",
+          "description_source",
           "lifecycle",
           "current_version_id",
           "draft_version_id",
@@ -8648,6 +8760,13 @@
           "schedule",
           "webhooks_active",
           "effective_trigger"
+        ]
+      },
+      "CatalogMetadataSource": {
+        "type": "string",
+        "enum": [
+          "human",
+          "llm"
         ]
       },
       "WorkflowScheduleBinding": {
@@ -9070,6 +9189,27 @@
           "deleted"
         ]
       },
+      "CreateWorkflowRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateWorkflowBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "recipe": {
+                "$ref": "#/components/schemas/RecipeOrigin"
+              }
+            },
+            "additionalProperties": {}
+          }
+        ]
+      },
+      "CatalogDescription": {
+        "type": "string",
+        "maxLength": 2000,
+        "description": "What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description."
+      },
       "CreateWorkflowBody": {
         "type": "object",
         "properties": {
@@ -9080,7 +9220,10 @@
             "type": "string"
           },
           "description": {
-            "type": "string"
+            "$ref": "#/components/schemas/CatalogDescription"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
           },
           "input_schema": {
             "type": "object",
@@ -9235,9 +9378,29 @@
             "minLength": 1
           },
           "description": {
-            "type": [
-              "string",
-              "null"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
             ]
           },
           "lifecycle": {
@@ -11498,6 +11661,10 @@
           },
           "secret": {
             "type": "boolean"
+          },
+          "header_name": {
+            "type": "string",
+            "pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
           }
         },
         "required": [
@@ -12304,7 +12471,8 @@
               "devops",
               "security",
               "marketing",
-              "hr"
+              "hr",
+              "solutions"
             ]
           },
           "outcome": {
@@ -12327,12 +12495,18 @@
         "type": "object",
         "properties": {
           "template_slug": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "recipe_slug": {
             "type": "string"
           },
           "title": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "category": {
@@ -12346,15 +12520,89 @@
           },
           "difficulty": {
             "type": "string"
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeConnectorBinding"
+            }
+          },
+          "sample_input": {},
+          "workflow": {
+            "type": "object",
+            "additionalProperties": {}
           }
         },
         "required": [
           "template_slug",
           "recipe_slug",
           "title",
+          "description",
           "category",
           "tags",
-          "difficulty"
+          "difficulty",
+          "connectors",
+          "workflow"
+        ]
+      },
+      "RecipeConnectorBinding": {
+        "type": "object",
+        "properties": {
+          "placeholder": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeConnectorCandidate"
+            },
+            "description": "Enabled connectors of this template. Bound automatically only when the template has a fixed address and exactly one candidate exists; otherwise the caller picks one."
+          }
+        },
+        "required": [
+          "placeholder",
+          "template",
+          "template_name",
+          "connector_id",
+          "connector_name",
+          "candidates"
+        ]
+      },
+      "RecipeConnectorCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
         ]
       },
       "TemplateOAuthCredentialResponse": {
@@ -12617,6 +12865,32 @@
           "template_base_url_environment": {
             "type": "string",
             "minLength": 1
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           }
         },
         "required": [
@@ -12809,7 +13083,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ConnectorListItem"
+              "$ref": "#/components/schemas/Connector"
             }
           },
           "total": {
@@ -12842,101 +13116,6 @@
           "categories"
         ]
       },
-      "ConnectorListItem": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Connector"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "category"
-            ]
-          }
-        ]
-      },
-      "ConnectorHealthState": {
-        "type": "string",
-        "enum": [
-          "ok",
-          "degraded",
-          "needs_update",
-          "needs_reauth"
-        ]
-      },
-      "CredentialSummary": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "mode": {
-            "type": "string"
-          },
-          "environment": {
-            "type": "string"
-          },
-          "has_oauth_refresh": {
-            "type": "boolean"
-          },
-          "granted_scopes": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "oauth2_expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "connection": {
-            "$ref": "#/components/schemas/ConnectionSummary"
-          },
-          "created_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "mode",
-          "environment",
-          "has_oauth_refresh",
-          "granted_scopes",
-          "oauth2_expires_at",
-          "connection",
-          "created_at"
-        ]
-      },
-      "ConnectionSummary": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ConnectionState"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "state"
-        ]
-      },
       "Connector": {
         "type": "object",
         "properties": {
@@ -12951,6 +13130,22 @@
           },
           "display_name": {
             "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
+          },
+          "category": {
+            "type": "string",
+            "description": "The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned."
+          },
+          "category_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
           },
           "driver": {
             "type": "string"
@@ -13157,6 +13352,10 @@
           "tenant_id",
           "slug",
           "display_name",
+          "description",
+          "description_source",
+          "category",
+          "category_source",
           "driver",
           "environment",
           "auth_type",
@@ -13183,6 +13382,83 @@
           "sign_in",
           "created_at",
           "updated_at"
+        ]
+      },
+      "ConnectorHealthState": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "degraded",
+          "needs_update",
+          "needs_reauth"
+        ]
+      },
+      "CredentialSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "has_oauth_refresh": {
+            "type": "boolean"
+          },
+          "granted_scopes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "oauth2_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "connection": {
+            "$ref": "#/components/schemas/ConnectionSummary"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "environment",
+          "has_oauth_refresh",
+          "granted_scopes",
+          "oauth2_expires_at",
+          "connection",
+          "created_at"
+        ]
+      },
+      "ConnectionSummary": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state"
         ]
       },
       "UpdateConnectorBody": {
@@ -13238,6 +13514,32 @@
           },
           "clear_template_binding": {
             "type": "boolean"
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           }
         }
       },
@@ -14486,6 +14788,23 @@
             "type": "string",
             "minLength": 1
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
+          },
+          "category": {
+            "type": "string",
+            "default": "other"
+          },
+          "category_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
+          },
           "body": {
             "type": "string",
             "minLength": 1
@@ -14904,6 +15223,13 @@
           "items"
         ]
       },
+      "CatalogCategoryFilter": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40,
+        "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+        "description": "Only objects in this catalog block (see `GET /v1/categories`)."
+      },
       "CreateSkillBody": {
         "type": "object",
         "properties": {
@@ -14926,6 +15252,32 @@
           "title": {
             "type": "string",
             "minLength": 1
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           },
           "body": {
             "type": "string",
@@ -15055,6 +15407,32 @@
           "title": {
             "type": "string",
             "minLength": 1
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           },
           "body": {
             "type": "string",
@@ -15235,13 +15613,114 @@
           "audit_entry_id"
         ]
       },
-      "KnowledgeSourceListResponse": {
+      "CategoryListResponse": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryUsage"
+            }
+          }
+        },
+        "required": [
+          "categories"
+        ]
+      },
+      "CategoryUsage": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CategoryKindCounts"
+          }
+        },
+        "required": [
+          "category",
+          "total",
+          "counts"
+        ]
+      },
+      "CategoryKindCounts": {
+        "type": "object",
+        "properties": {
+          "workflow": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "connector": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knowledge_source": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skill": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "file": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "workflow",
+          "connector",
+          "knowledge_source",
+          "skill",
+          "file"
+        ]
+      },
+      "RenameCategoryResponse": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "moved": {
+            "$ref": "#/components/schemas/CategoryKindCounts"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "total",
+          "moved"
+        ]
+      },
+      "RenameCategoryBody": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          }
+        },
+        "required": [
+          "to"
+        ],
+        "description": "Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two."
+      },
+      "KnowledgeSourceVersionListResponse": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/KnowledgeSource"
+              "$ref": "#/components/schemas/KnowledgeSourceVersion"
             }
           },
           "total": {
@@ -15252,6 +15731,112 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "KnowledgeSourceVersion": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "author": {
+            "$ref": "#/components/schemas/KnowledgeSourceVersionAuthor"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "content_hash",
+          "author",
+          "note",
+          "created_at",
+          "current"
+        ]
+      },
+      "KnowledgeSourceVersionAuthor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "KnowledgeSourceVersionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/KnowledgeSourceVersion"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "documents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "documents"
+            ]
+          }
+        ]
+      },
+      "RestoreKnowledgeSourceVersionResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source": {
+            "$ref": "#/components/schemas/KnowledgeSource"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "knowledge_source",
+          "version"
         ]
       },
       "KnowledgeSource": {
@@ -15274,6 +15859,15 @@
               "string",
               "null"
             ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
+          },
+          "category": {
+            "type": "string"
+          },
+          "category_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
           },
           "tags": {
             "type": "array",
@@ -15363,6 +15957,9 @@
           "name",
           "slug",
           "description",
+          "description_source",
+          "category",
+          "category_source",
           "tags",
           "scope",
           "workflow_id",
@@ -15379,6 +15976,25 @@
           "last_refreshed_at",
           "created_at",
           "updated_at"
+        ]
+      },
+      "KnowledgeSourceListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSource"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       },
       "KnowledgeSearchResult": {
@@ -15600,8 +16216,10 @@
             "pattern": "^[a-z0-9][a-z0-9_-]*$"
           },
           "description": {
-            "type": "string",
-            "maxLength": 2000
+            "$ref": "#/components/schemas/CatalogDescription"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
           },
           "tags": {
             "type": "array",
@@ -15647,8 +16265,30 @@
             "maxLength": 200
           },
           "description": {
-            "type": "string",
-            "maxLength": 2000
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           },
           "tags": {
             "type": "array",
@@ -15916,7 +16556,8 @@
               "chained_workflow_pattern",
               "authoring_capability",
               "session_learning",
-              "connector_capability"
+              "connector_capability",
+              "knowledge_learning"
             ]
           },
           "title": {
@@ -16002,6 +16643,29 @@
             },
             "default": []
           },
+          "proposed_by": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "description": "Who proposed this candidate; null for proposals the engine detected itself."
+          },
           "created_at": {
             "type": "string"
           },
@@ -16026,6 +16690,7 @@
           "promoted_skill_id",
           "fingerprint",
           "version",
+          "proposed_by",
           "created_at",
           "updated_at"
         ]
@@ -16236,12 +16901,43 @@
             "$ref": "#/components/schemas/SkillCandidate"
           },
           "skill_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The skill a practice or pattern became; null for a fact."
+          },
+          "knowledge": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "knowledge_source_id": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "knowledge_source_id",
+              "slug",
+              "version"
+            ],
+            "description": "The knowledge source and version a fact was appended to."
           }
         },
         "required": [
           "candidate",
-          "skill_id"
+          "skill_id",
+          "knowledge"
         ]
       },
       "ApproveSkillCandidateBody": {
@@ -16271,6 +16967,47 @@
         "properties": {
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "AgentDomainsResponse": {
+        "type": "object",
+        "properties": {
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from_prompt": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from_repo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "domains",
+          "from_prompt",
+          "from_repo"
+        ]
+      },
+      "AgentDomainsBody": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "repo": {
+            "type": "string",
+            "maxLength": 200
           }
         }
       },
@@ -16313,6 +17050,33 @@
           "knowledge_sources_omitted": {
             "type": "integer"
           },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the domain's workflows the caller may read, as listed in the briefing."
+          },
+          "workflows_omitted": {
+            "type": "integer"
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the domain's connectors the caller may read, as listed in the briefing."
+          },
+          "connectors_omitted": {
+            "type": "integer"
+          },
+          "guides": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the skills that teach how to work with sk, listed for every domain."
+          },
           "proposed_candidates": {
             "type": "integer"
           }
@@ -16326,6 +17090,11 @@
           "skills_title_only",
           "knowledge_sources",
           "knowledge_sources_omitted",
+          "workflows",
+          "workflows_omitted",
+          "connectors",
+          "connectors_omitted",
+          "guides",
           "proposed_candidates"
         ]
       },
@@ -18867,6 +19636,21 @@
               "string",
               "null"
             ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
+          },
+          "category": {
+            "type": "string"
+          },
+          "category_source": {
+            "$ref": "#/components/schemas/CatalogMetadataSource"
           }
         },
         "required": [
@@ -18882,7 +19666,11 @@
           "replaced_at",
           "deleted_at",
           "slug",
-          "reference"
+          "reference",
+          "description",
+          "description_source",
+          "category",
+          "category_source"
         ]
       },
       "ConversationAttachmentUpload": {
@@ -19230,18 +20018,41 @@
           "discovery_run"
         ]
       },
-      "RenameFile": {
+      "UpdateFile": {
         "type": "object",
         "properties": {
           "filename": {
             "type": "string",
             "minLength": 1,
             "maxLength": 255
+          },
+          "description": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDescription"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
           }
-        },
-        "required": [
-          "filename"
-        ]
+        }
       },
       "FileUsage": {
         "type": "object",
@@ -20781,6 +21592,10 @@
               },
               "skills": {
                 "type": "integer"
+              },
+              "knowledge": {
+                "type": "integer",
+                "description": "Of the proposals in `skills`, how many are facts for a knowledge source."
               }
             }
           },
@@ -25250,7 +26065,7 @@
           "setup"
         ],
         "summary": "Redeem the first-run bootstrap token and materialise tenant + admin",
-        "description": "Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.",
+        "description": "Consumes the one-time token printed to engine stdout on a fresh install. Checks the LLM key with one live probe call first (provider `mock` passes without a call); a refused key answers 422 `llm_unreachable` and saves nothing. Then creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -25291,8 +26106,28 @@
               }
             }
           },
+          "409": {
+            "description": "Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "410": {
             "description": "Bootstrap already completed; route is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid",
             "content": {
               "application/json": {
                 "schema": {
@@ -25380,8 +26215,28 @@
               }
             }
           },
+          "409": {
+            "description": "Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "410": {
             "description": "Bootstrap already completed; route is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid",
             "content": {
               "application/json": {
                 "schema": {
@@ -28470,8 +29325,28 @@
           }
         ],
         "responses": {
-          "302": {
-            "description": "Redirect into the Cockpit"
+          "200": {
+            "description": "Connected, and no single connector page to return to (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "303": {
+            "description": "Back to the connector page that uses this connection"
+          },
+          "400": {
+            "description": "Not connected, and no single connector page to return to (HTML)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
@@ -29236,6 +30111,128 @@
           },
           "409": {
             "description": "last_admin — the workspace's last administrator cannot be deactivated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/identity/users/{id}/provider-identities": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Bind a configured OIDC subject to an existing user",
+        "description": "Operator-only. Issuer, product and tenant derive from trusted provider configuration. Does not change roles or grants, reassign identities, or revoke existing sessions.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  }
+                },
+                "required": [
+                  "provider_id",
+                  "subject"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Existing exact binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderIdentityBinding"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Binding created or legacy binding pinned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderIdentityBinding"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unavailable provider",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden or provider tenant mismatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Active user unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Subject, owner, issuer or product conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -30250,6 +31247,11 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -32525,6 +33527,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -33153,7 +34165,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateWorkflowBody"
+                "$ref": "#/components/schemas/CreateWorkflowRequest"
               }
             }
           }
@@ -33171,6 +34183,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
             "content": {
               "application/json": {
                 "schema": {
@@ -33631,7 +34653,7 @@
         "tags": [
           "workflows"
         ],
-        "summary": "Patch workflow metadata (slug/name/description/lifecycle) without rotating a version",
+        "summary": "Patch workflow metadata (slug/name/description/category/lifecycle) without rotating a version",
         "security": [
           {
             "bearerAuth": []
@@ -33784,6 +34806,16 @@
               }
             }
           },
+          "403": {
+            "description": "Caller identity or workflow permission does not allow this run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Workflow not found",
             "content": {
@@ -33795,7 +34827,7 @@
             }
           },
           "409": {
-            "description": "Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
+            "description": "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -34030,6 +35062,26 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request or unsupported asynchronous authentication source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not authorized to rerun this execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -34128,6 +35180,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExecutionStepListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/executions/{id}/result": {
+      "get": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "Get the result of a sensitive execution for its original caller",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {}
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The authenticated caller does not match the original sensitive execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -34274,6 +35385,16 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sensitive executions do not accept persistent signals",
             "content": {
               "application/json": {
                 "schema": {
@@ -34619,7 +35740,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "Get a vertical recipe pack (computed from category + tags)",
+        "summary": "Get a vertical recipe pack (computed from category + tags; `solutions` spans several connectors)",
         "security": [
           {
             "bearerAuth": []
@@ -34637,7 +35758,8 @@
                 "devops",
                 "security",
                 "marketing",
-                "hr"
+                "hr",
+                "solutions"
               ]
             },
             "required": true,
@@ -35065,6 +36187,16 @@
             "required": false,
             "description": "Only connectors in this catalog block (see the `category` field on each item)",
             "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Only connectors of this driver (http, graphql, postgres, s3, mcp, …)"
+            },
+            "required": false,
+            "description": "Only connectors of this driver (http, graphql, postgres, s3, mcp, …)",
+            "name": "driver",
             "in": "query"
           }
         ],
@@ -37039,6 +38171,15 @@
           },
           {
             "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "minLength": 1,
               "maxLength": 200
@@ -37508,6 +38649,278 @@
         }
       }
     },
+    "/v1/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List the tenant's catalog categories with how many objects of each kind use them",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/categories/{name}/rename": {
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Rename or merge a catalog category across every kind",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": true,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "name",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameCategoryBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameCategoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/history": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "List knowledge source versions, newest first",
+        "description": "One page of the source's content versions, newest first, each with its author and note. `current` marks the version agents and workflows read now. `total` is the size of the whole history: page with `limit` and `offset`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "description": "Page size. Defaults to 50, at most 200."
+            },
+            "required": false,
+            "description": "Page size. Defaults to 50, at most 200.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceVersionListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/history/{version}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read one stored knowledge source version with its documents",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceVersionDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/restore/{version}": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Restore a previous knowledge source version as a new version",
+        "description": "Reads the stored content of `version` in again. The result is always a new version whose note names the restored one; the history keeps every earlier version.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreKnowledgeSourceVersionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is already current, or the source changed meanwhile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/knowledge-sources": {
       "get": {
         "tags": [
@@ -37553,6 +38966,15 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
             "in": "query"
           },
           {
@@ -38478,7 +39900,8 @@
                 "chained_workflow_pattern",
                 "authoring_capability",
                 "session_learning",
-                "connector_capability"
+                "connector_capability",
+                "knowledge_learning"
               ]
             },
             "required": false,
@@ -38681,6 +40104,16 @@
               }
             }
           },
+          "403": {
+            "description": "A fact writes knowledge and needs knowledge:write as well",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -38757,13 +40190,48 @@
         }
       }
     },
+    "/v1/agent/domains": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Resolve which known domains a prompt or repository is about",
+        "description": "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDomainsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDomainsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agent/briefing": {
       "get": {
         "tags": [
           "agent"
         ],
         "summary": "Domain-scoped session briefing for external coding agents",
-        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.",
         "security": [
           {
             "bearerAuth": []
@@ -38823,7 +40291,7 @@
           "agent"
         ],
         "summary": "Capture a coding-agent session transcript for learning distillation",
-        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.",
+        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.",
         "security": [
           {
             "bearerAuth": []
@@ -41381,6 +42849,15 @@
           },
           {
             "schema": {
+              "$ref": "#/components/schemas/CatalogCategoryFilter"
+            },
+            "required": false,
+            "description": "Only objects in this catalog block (see `GET /v1/categories`).",
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string",
               "minLength": 1,
               "maxLength": 200
@@ -41586,14 +43063,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RenameFile"
+                "$ref": "#/components/schemas/UpdateFile"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Renamed",
+            "description": "Updated",
             "content": {
               "application/json": {
                 "schema": {
@@ -42970,6 +44447,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WebhookInbound"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The slug is already in use; inbound hook slugs are unique across the engine",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -46361,6 +47848,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46392,6 +47884,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46421,6 +47918,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46463,6 +47965,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"
@@ -46503,6 +48010,11 @@
           "503": {
             "description": "Cockpit bundle was not included in this deployment",
             "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
               "text/plain": {
                 "schema": {
                   "type": "string"

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { catalogMetadataView } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   BatchCreateRequestSchema,
@@ -79,6 +80,7 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
     deleted_at: row.deleted_at ? row.deleted_at.toISOString() : null,
     slug: row.slug,
     reference: fileReference(row.slug),
+    ...catalogMetadataView(row),
   };
 }
 
@@ -892,9 +894,15 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
 
     const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
     if (q.status) tenantConds.push(eq(files.status, q.status));
+    if (q.category) tenantConds.push(eq(files.category, q.category));
     if (q.q) {
       const needle = `%${q.q}%`;
-      const search = or(ilike(files.filename, needle), ilike(files.content_type, needle));
+      const search = or(
+        ilike(files.filename, needle),
+        ilike(files.content_type, needle),
+        ilike(files.description, needle),
+        ilike(files.category, needle),
+      );
       if (search) tenantConds.push(search);
     }
     if (q.linked_to) {

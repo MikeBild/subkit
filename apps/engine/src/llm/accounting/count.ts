@@ -121,6 +121,8 @@ export function completionBudgetFor(flow: LlmFlow): number {
       return 2_000;
     case "extract":
       return 4_000;
+    case "catalog_describe":
+      return 512;
     case "repair":
       return 1_200;
     case "judge":

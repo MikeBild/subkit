@@ -544,7 +544,7 @@ describe("seed sweep never overwrites a non-seed source occupying a seed slug", 
     const userBundle = await upsertKnowledgeBundle(
       {
         tenant_id: tenantA,
-        actor_id: null,
+        actor: null,
         input: { name: "User owned", slug: "sweep-collision" },
         files: [{ path: "mine.md", content: "user knowledge — must survive" }],
       },

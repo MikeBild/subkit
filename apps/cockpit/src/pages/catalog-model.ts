@@ -22,11 +22,6 @@ export function catalogListParams(resource: string, state: CatalogQueryState): L
 
 export type RecordValue = Record<string, unknown>;
 
-export function recordPurpose(record: RecordValue | undefined): string | null {
-  const value = record?.description;
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
 export function recordTitle(record: RecordValue | undefined): string {
   for (const key of ["name", "display_name", "title", "filename", "slug"]) {
     const value = record?.[key];

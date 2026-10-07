@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { absolute, connectorHref } from "@/app/links";
-import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
 import {
   asInspect,
@@ -20,11 +20,14 @@ import {
   offersKeyReplacement,
   presentAddress,
   renewalWay,
-  returnedFromSignIn,
   SECRET_MASK,
   SIGNED_IN_PARAM,
+  SIGNIN_FAILED_PARAM,
   signInActionLabel,
+  signInFailureKey,
+  signInFailureLine,
   signInLine,
+  signInReturn,
   toolsWithoutConfirmation,
   transportLabel,
   withoutSignInReturn,
@@ -219,13 +222,72 @@ describe("a connector address with a kept secret", () => {
 
 describe("coming back from a sign-in", () => {
   test("the flag is read off the address and dropped from it, alone", () => {
-    expect(returnedFromSignIn("?signed_in=1")).toBe(true);
-    expect(returnedFromSignIn("?tab=x&signed_in=1")).toBe(true);
-    expect(returnedFromSignIn("")).toBe(false);
-    expect(returnedFromSignIn("?signed=1")).toBe(false);
+    expect(signInReturn("?signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("?tab=x&signed_in=1")).toEqual({ kind: "signed_in" });
+    expect(signInReturn("")).toBeNull();
+    expect(signInReturn("?signed=1")).toBeNull();
     expect(withoutSignInReturn("?signed_in=1")).toBe("");
     expect(withoutSignInReturn("?tab=x&signed_in=1&q=y")).toBe("?tab=x&q=y");
     expect(withoutSignInReturn("?tab=x")).toBe("?tab=x");
+  });
+
+  test("a failed sign-in comes back with its reason, and leaves the address with it", () => {
+    expect(signInReturn("?signin_failed=provider_declined")).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+      code: null,
+    });
+    expect(signInReturn("?tab=x&signin_failed=exchange_failed&signed_in=1")).toEqual({
+      kind: "signin_failed",
+      failure: "exchange_failed",
+      code: null,
+    });
+    expect(withoutSignInReturn("?tab=x&signin_failed=exchange_failed&signin_code=x")).toBe(
+      "?tab=x",
+    );
+  });
+
+  test("the provider's code comes along when it is a code, and is named in the strip", () => {
+    const failed = signInReturn("?signin_failed=provider_declined&signin_code=invalid_scope");
+    expect(failed).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+      code: "invalid_scope",
+    });
+    for (const hostile of ["<script>", "call+me+now", "a".repeat(65), ""])
+      expect(signInReturn(`?signin_failed=provider_declined&signin_code=${hostile}`)).toMatchObject(
+        { code: null },
+      );
+    const line = (locale: "de" | "en", code: string | null) =>
+      signInFailureLine({ failure: "provider_declined", code }, (key, values) =>
+        translate(locale, key, values),
+      );
+    expect(line("de", "invalid_scope")).toBe(
+      "Der Anbieter hat die Anmeldung nicht bestätigt · Anbietercode: invalid_scope",
+    );
+    expect(line("en", "invalid_scope")).toBe(
+      "The provider did not confirm the sign-in · Provider code: invalid_scope",
+    );
+    expect(line("de", null)).toBe("Der Anbieter hat die Anmeldung nicht bestätigt");
+  });
+
+  test("every failure the engine sends has its own reason in both languages", () => {
+    const engine = readFileSync(
+      resolve(import.meta.dir, "../../../engine/src/connectors/oauth-origin.ts"),
+      "utf8",
+    );
+    expect(engine).toContain(`export const SIGNIN_FAILED_MARKER = "${SIGNIN_FAILED_PARAM}";`);
+    const start = engine.indexOf("SIGN_IN_FAILURES = [");
+    const list = engine.slice(start, engine.indexOf("] as const", start));
+    const failures = [...list.matchAll(/"([a-z_]+)"/g)].map((match) => match[1] ?? "");
+    expect(failures.length).toBeGreaterThan(5);
+    const keys = failures.map(signInFailureKey);
+    expect(new Set(keys).size).toBe(failures.length);
+    expect(keys).not.toContain("connectorStrip.signInFailure.other");
+    for (const key of keys) expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
+    expect(signInFailureKey("<script>")).toBe("connectorStrip.signInFailure.other");
+    for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"])
+      expect(signInFailureKey(inherited)).toBe("connectorStrip.signInFailure.other");
   });
 
   test("the flag and the address are the ones the engine's callback sends", () => {

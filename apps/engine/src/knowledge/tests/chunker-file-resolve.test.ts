@@ -28,7 +28,7 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
           filename: "c19-test.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -67,7 +67,7 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
         },
         source_type_override: "url",
         source_uri_override: "https://example.com/docs.md",
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -95,7 +95,7 @@ describe.skipIf(skip)("C19 — knowledge chunker file resolve", () => {
           filename: "isolation.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

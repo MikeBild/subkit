@@ -2,9 +2,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "b
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { tenants } from "../../db/schema/identity.ts";
-import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import {
+  knowledgeChunks,
+  knowledgeSources,
+  knowledgeSourceVersions,
+} from "../../db/schema/knowledge_sources.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
 import {
   discoverSystemsFromFilesTool,
@@ -36,6 +41,7 @@ afterAll(async () => {
 
 afterEach(async () => {
   await ctx.db.delete(auditLog);
+  await ctx.db.delete(knowledgeSourceVersions);
   await ctx.db.delete(knowledgeChunks);
   await ctx.db.delete(knowledgeSources);
 });
@@ -211,6 +217,22 @@ describe("discover_systems_from_files — fresh call", () => {
       expect(candChunks).toHaveLength(1);
       const stored = JSON.parse(candChunks[0]!.content) as typeof CANDIDATES_RESPONSE;
       expect(stored.candidates[0]?.name).toBe("DigitalOcean");
+
+      const versions = await ctx.db
+        .select()
+        .from(knowledgeSourceVersions)
+        .where(
+          and(
+            eq(knowledgeSourceVersions.tenant_id, tenant_id),
+            eq(knowledgeSourceVersions.knowledge_source_id, candRows[0]!.id),
+          ),
+        );
+      expect(versions).toHaveLength(1);
+      expect(versions[0]?.content).toMatchObject({
+        kind: "document",
+        text: candChunks[0]!.content,
+      });
+      expect(versions[0]?.content_hash).toBe(knowledgeContentHash(candChunks[0]!.content));
 
       const audits = await ctx.db
         .select()

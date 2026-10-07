@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { rebindConnectorIds } from "../../connectors/recipe-binding.ts";
 import { getBuiltinTemplate } from "../../connectors/templates.ts";
 import { conversations } from "../../db/schema/index.ts";
 import { withWorkflowDraft } from "../authoring-state.ts";
@@ -48,22 +49,6 @@ const inputSchema = z
   .openapi("StartWorkflowFromRecipeToolInput");
 
 const PLACEHOLDER_CONNECTOR_ID = "00000000-0000-0000-0000-000000000000";
-
-function rebindConnectorIds(workflow: unknown, bindings: Record<string, string>): unknown {
-  if (Array.isArray(workflow)) {
-    return workflow.map((v) => rebindConnectorIds(v, bindings));
-  }
-  if (workflow === null || typeof workflow !== "object") return workflow;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(workflow as Record<string, unknown>)) {
-    if (k === "connector_id" && typeof v === "string" && v in bindings) {
-      out[k] = bindings[v];
-    } else {
-      out[k] = rebindConnectorIds(v, bindings);
-    }
-  }
-  return out;
-}
 
 export const startWorkflowFromRecipeTool: ConversationTool = {
   name: "start_workflow_from_recipe",

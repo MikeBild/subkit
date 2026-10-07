@@ -1,5 +1,5 @@
 import type { ErrorComponentProps } from "@tanstack/react-router";
-import { RouteOff, TriangleAlert } from "lucide-react";
+import { Lock, RouteOff, TriangleAlert } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { absolute } from "@/app/links";
 import { FAMILY_UI_VERSION, FamilyFailureState } from "@/components/family-ui";
@@ -71,6 +71,20 @@ export function LoginRedirect({ href, label }: { href: string; label: string }) 
     >
       <span className="sr-only">{label}</span>
     </main>
+  );
+}
+
+export function ForbiddenState({ className }: { className?: string }) {
+  const { t } = useI18n();
+  return (
+    <FamilyFailureState
+      kind="forbidden"
+      title={t("resource.permission.title")}
+      description={t("resource.permission.description")}
+      icon={<Lock className="size-4" />}
+      data-testid="resource-permission-alert"
+      className={className}
+    />
   );
 }
 

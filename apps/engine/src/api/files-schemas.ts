@@ -1,5 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
+import {
+  CatalogSourceSchema,
+  CategoryFilterSchema,
+  CategorySchema,
+  DescriptionSchema,
+} from "./catalog-metadata.ts";
 
 export const FileIdSchema = z
   .string()
@@ -44,6 +50,10 @@ export const FileSchema = z
     deleted_at: z.string().nullable(),
     slug: z.string().nullable(),
     reference: z.string().nullable(),
+    description: z.string().nullable(),
+    description_source: CatalogSourceSchema,
+    category: z.string(),
+    category_source: CatalogSourceSchema,
   })
   .openapi("File");
 
@@ -150,6 +160,7 @@ export const ListFilesQuerySchema = z
   .object({
     status: FileStatusSchema.optional(),
     linked_to: z.string().regex(LINKED_TO_PATTERN).optional(),
+    category: CategoryFilterSchema.optional(),
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["filename", "content_type", "size_bytes", "status", "created_at"]).optional(),
     order: z.enum(["asc", "desc"]).optional(),
@@ -174,9 +185,18 @@ export const FileListResponseSchema = z
   })
   .openapi("FileList");
 
-export const RenameFileSchema = z
-  .object({ filename: z.string().trim().min(1).max(255) })
-  .openapi("RenameFile");
+export const UpdateFileSchema = z
+  .object({
+    filename: z.string().trim().min(1).max(255).optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.filename !== undefined || body.description !== undefined || body.category !== undefined,
+    { message: "send at least one of filename, description, category" },
+  )
+  .openapi("UpdateFile");
 
 export const FileUsageSchema = z
   .object({

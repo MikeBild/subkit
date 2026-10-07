@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { Actor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import type { AuditEntry } from "../audit/types.ts";
@@ -46,7 +47,7 @@ import type { CreateSkillInput, UpdateSkillInput } from "../skills/types.ts";
 import { readLlmWindowCost, statsBucketFor } from "../stats/llm-cost.ts";
 import * as inboundSvc from "../webhooks/inbound/service.ts";
 import * as subscriptionsSvc from "../webhooks/outbound/service.ts";
-import { loadCategoryIndex } from "../workflows/catalog-view.ts";
+import { loadCategoryVocabulary } from "../workflows/catalog-view.ts";
 import { listConnectorRefs } from "../workflows/connector-refs.ts";
 import {
   deleteWorkflow,
@@ -79,6 +80,11 @@ export class EngineClient {
     this.db = ctx.db ?? getDb();
   }
 
+  private get actor(): Actor | null {
+    if (!this.actor_id || this.actor_type === "system") return null;
+    return { kind: this.actor_type, id: this.actor_id };
+  }
+
   get context(): EngineClientCtx {
     return {
       tenant_id: this.tenant_id,
@@ -96,7 +102,7 @@ export class EngineClient {
       category?: string;
       connector?: string;
     }) => listWorkflows(this.tenant_id, opts ?? {}, this.db),
-    categories: () => loadCategoryIndex(this.tenant_id, this.db),
+    categories: () => loadCategoryVocabulary(this.tenant_id, this.db),
     connectorRefs: () => listConnectorRefs(this.tenant_id, this.db),
     triggerBindings: (ids: readonly string[]) => loadTriggerBindings(this.tenant_id, ids, this.db),
     get: (id: string) => getWorkflow(this.tenant_id, id, this.db),
@@ -105,7 +111,7 @@ export class EngineClient {
     update: (
       params: Pick<
         UpdateWorkflowMetadataInput,
-        "id" | "slug" | "name" | "description" | "lifecycle"
+        "id" | "slug" | "name" | "description" | "category" | "lifecycle"
       >,
     ) =>
       updateWorkflowMetadata(
@@ -115,6 +121,7 @@ export class EngineClient {
           ...(params.slug !== undefined ? { slug: params.slug } : {}),
           ...(params.name !== undefined ? { name: params.name } : {}),
           ...(params.description !== undefined ? { description: params.description } : {}),
+          ...(params.category !== undefined ? { category: params.category } : {}),
           ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
           actor_id: this.actor_id,
         },
@@ -132,7 +139,7 @@ export class EngineClient {
   };
 
   connectors = {
-    list: (opts?: { environment?: "dev" | "prod"; category?: string }) =>
+    list: (opts?: { environment?: "dev" | "prod"; category?: string; driver?: string }) =>
       listConnectors(this.tenant_id, opts ?? {}, this.db),
     get: (id: string) => getConnector(this.tenant_id, id, this.db),
     delete: (id: string, opts?: { orphaned_workflow_ids?: string[] }) =>
@@ -255,7 +262,7 @@ export class EngineClient {
           tenant_id: this.tenant_id,
           input: params.input,
           upload: params.upload,
-          actor_id: this.actor_id,
+          actor: this.actor,
           ...(params.source_type_override
             ? { source_type_override: params.source_type_override }
             : {}),

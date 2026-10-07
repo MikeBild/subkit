@@ -99,6 +99,12 @@ import sql0078UsersRoleIdOnly from "./0078_users_role_id_only.sql" with { type: 
 import sql0079SkillCandidateContextStatus from "./0079_skill_candidate_context_status.sql" with { type: "text" };
 import sql0080SkillCandidateContextBackfill from "./0080_skill_candidate_context_backfill.sql" with { type: "text" };
 import sql0081FileReplacedAt from "./0081_file_replaced_at.sql" with { type: "text" };
+import sql0082CatalogMetadata from "./0082_catalog_metadata.sql" with { type: "text" };
+import sql0083CatalogDescribeRefresh from "./0083_catalog_describe_refresh.sql" with { type: "text" };
+import sql0084KnowledgeSourceVersions from "./0084_knowledge_source_versions.sql" with { type: "text" };
+import sql0085KnowledgeLearningProposer from "./0085_knowledge_learning_proposer.sql" with { type: "text" };
+import sql0086InboundHookSlugGlobalUnique from "./0086_inbound_hook_slug_global_unique.sql" with { type: "text" };
+import sql0087ExoticMaelstrom from "./0087_exotic_maelstrom.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -205,6 +211,12 @@ const SQL_BY_TAG: Record<string, string> = {
   "0079_skill_candidate_context_status": sql0079SkillCandidateContextStatus,
   "0080_skill_candidate_context_backfill": sql0080SkillCandidateContextBackfill,
   "0081_file_replaced_at": sql0081FileReplacedAt,
+  "0082_catalog_metadata": sql0082CatalogMetadata,
+  "0083_catalog_describe_refresh": sql0083CatalogDescribeRefresh,
+  "0084_knowledge_source_versions": sql0084KnowledgeSourceVersions,
+  "0085_knowledge_learning_proposer": sql0085KnowledgeLearningProposer,
+  "0086_inbound_hook_slug_global_unique": sql0086InboundHookSlugGlobalUnique,
+  "0087_exotic_maelstrom": sql0087ExoticMaelstrom,
 };
 
 const journal = journalMeta as unknown as Journal;

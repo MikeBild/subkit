@@ -10,7 +10,7 @@ describe("connector-template catalog — structural", () => {
   });
 
   test("ships the expected number of templates", () => {
-    expect(templates.length).toBe(58);
+    expect(templates.length).toBe(60);
   });
 
   test("supabase-graphql url_pattern matches a real host, not the literal [^/]+", () => {
@@ -497,5 +497,49 @@ describe("connector-template catalog — browserless query-auth hardening", () =
     const transformStep = recipe?.workflow.steps.find((s) => s.id === "normalise");
     expect(transformStep?.kind).toBe("transform");
     expect(recipe?.workflow.trigger?.kind).toBe("schedule");
+  });
+});
+
+describe("connector-template catalog — Anthropic and Google Analytics 4", () => {
+  const find = (slug: string) => {
+    const template = templates.find((t) => t.slug === slug);
+    if (!template) throw new Error(`template ${slug} missing`);
+    return template;
+  };
+
+  test("anthropic sends its key in x-api-key and the version header on the probe", () => {
+    const anthropic = find("anthropic");
+    expect(anthropic.auth_type).toBe("header");
+    expect(anthropic.credential_hints.map((h) => h.header_name)).toEqual(["x-api-key"]);
+    expect(anthropic.probe_endpoint?.headers).toEqual({ "anthropic-version": "2023-06-01" });
+  });
+
+  test("every anthropic recipe sets the version header and every messages call carries a run budget", () => {
+    const anthropic = find("anthropic");
+    expect(anthropic.recipes.length).toBe(3);
+    for (const recipe of anthropic.recipes) {
+      const steps = (
+        recipe.workflow.steps as Array<{
+          kind: string;
+          url?: string;
+          headers?: Record<string, string>;
+        }>
+      ).filter((step) => step.kind === "request");
+      for (const step of steps) expect(step.headers?.["anthropic-version"]).toBe("2023-06-01");
+      if (steps.some((step) => step.url?.endsWith("/messages")))
+        expect(recipe.workflow.max_llm_tokens_per_run).toBeGreaterThan(0);
+    }
+  });
+
+  test("google analytics reads with the analytics.readonly scope and probes the shared metadata", () => {
+    const ga4 = find("google-analytics");
+    expect(ga4.oauth?.scopes).toBe("https://www.googleapis.com/auth/analytics.readonly");
+    expect(ga4.probe_endpoint?.path).toBe("/v1beta/properties/0/metadata");
+    expect(ga4.recipes.length).toBeGreaterThanOrEqual(3);
+    for (const recipe of ga4.recipes) {
+      expect(recipe.workflow.input_schema?.required).toContain("property_id");
+      for (const step of recipe.workflow.steps as Array<{ kind: string; side_effects?: string }>)
+        if (step.kind === "request") expect(step.side_effects).toBe("read");
+    }
   });
 });

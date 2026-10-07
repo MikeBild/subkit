@@ -83,6 +83,7 @@ export interface ModelInitOptions {
   providerOverride?: ProviderKind;
   defaultModel?: string;
   modelOverride?: string;
+  apiKeyOverride?: string;
 }
 
 export interface ResolvedModel {
@@ -92,10 +93,25 @@ export interface ResolvedModel {
 }
 
 export class ProviderMisconfiguredError extends Error {
-  constructor(providerKind: ProviderKind | "gateway", detail: string) {
+  readonly setting: string | null;
+  constructor(providerKind: ProviderKind | "gateway", detail: string, setting?: string) {
     super(`LLM provider '${providerKind}' is misconfigured: ${detail}`);
     this.name = "ProviderMisconfiguredError";
+    this.setting = setting ?? null;
   }
+}
+
+export const PROVIDER_MODEL_SETTING: Record<DirectProviderKind, string> = {
+  anthropic: "ANTHROPIC_MODEL",
+  openai: "OPENAI_MODEL",
+  gemini: "GEMINI_MODEL",
+  azure: "AZURE_MODEL",
+  bedrock: "BEDROCK_MODEL",
+  vertex: "VERTEX_MODEL",
+};
+
+export function configuredProviderModel(provider: DirectProviderKind): string | undefined {
+  return readEnv(PROVIDER_MODEL_SETTING[provider]);
 }
 
 function readEnv(name: string, tenantId?: string): string | undefined {
@@ -119,6 +135,7 @@ function requireEnv(name: string, provider: ProviderKind, tenantId?: string): st
     throw new ProviderMisconfiguredError(
       provider,
       `${name} is not set. Configure it in the Cockpit, settings API, or with \`sk settings configure\`.`,
+      name,
     );
   }
   return value;
@@ -229,9 +246,9 @@ function resolveGatewayModel(
   };
 }
 
-function anthropicOptions(tenantId?: string): Record<string, unknown> {
+function anthropicOptions(tenantId?: string, apiKeyOverride?: string): Record<string, unknown> {
   const options: Record<string, unknown> = {
-    apiKey: requireEnv("ANTHROPIC_API_KEY", "anthropic", tenantId),
+    apiKey: apiKeyOverride ?? requireEnv("ANTHROPIC_API_KEY", "anthropic", tenantId),
     headers: { "anthropic-beta": "context-1m-2025-08-07" },
   };
   const baseURL = readEnv("ANTHROPIC_BASE_URL", tenantId);
@@ -243,9 +260,10 @@ function resolveAnthropic(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("ANTHROPIC_MODEL", tenantId) ?? defaultModel;
-  const provider = createAnthropic(anthropicOptions(tenantId));
+  const provider = createAnthropic(anthropicOptions(tenantId, apiKeyOverride));
   return {
     provider: "anthropic",
     modelId,
@@ -274,10 +292,11 @@ function resolveOpenAi(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("OPENAI_MODEL", tenantId) ?? defaultModel;
   const openaiOptions: Record<string, unknown> = {
-    apiKey: requireEnv("OPENAI_API_KEY", "openai", tenantId),
+    apiKey: apiKeyOverride ?? requireEnv("OPENAI_API_KEY", "openai", tenantId),
   };
   const baseURL = readOpenAiBaseUrl(tenantId);
   if (baseURL) openaiOptions.baseURL = baseURL;
@@ -294,10 +313,11 @@ function resolveGemini(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("GEMINI_MODEL", tenantId) ?? defaultModel;
   const geminiOptions: Record<string, unknown> = {
-    apiKey: requireEnv("GEMINI_API_KEY", "gemini", tenantId),
+    apiKey: apiKeyOverride ?? requireEnv("GEMINI_API_KEY", "gemini", tenantId),
   };
   const baseURL = readEnv("GEMINI_BASE_URL", tenantId);
   if (baseURL) geminiOptions.baseURL = baseURL;
@@ -313,10 +333,11 @@ function resolveAzure(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("AZURE_MODEL", tenantId) ?? defaultModel;
   const azureOptions: Record<string, unknown> = {
-    apiKey: requireEnv("AZURE_API_KEY", "azure", tenantId),
+    apiKey: apiKeyOverride ?? requireEnv("AZURE_API_KEY", "azure", tenantId),
   };
   const resourceName = readEnv("AZURE_RESOURCE_NAME", tenantId);
   const baseURL = readEnv("AZURE_BASE_URL", tenantId);
@@ -324,6 +345,7 @@ function resolveAzure(
     throw new ProviderMisconfiguredError(
       "azure",
       "Either AZURE_RESOURCE_NAME or AZURE_BASE_URL needs to be set.",
+      "AZURE_RESOURCE_NAME or AZURE_BASE_URL",
     );
   }
   if (resourceName) azureOptions.resourceName = resourceName;
@@ -346,13 +368,17 @@ function resolveBedrock(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("BEDROCK_MODEL", tenantId) ?? defaultModel;
-  const bedrockOptions: Record<string, unknown> = {
-    region: requireEnv("AWS_REGION", "bedrock", tenantId),
-    accessKeyId: requireEnv("AWS_ACCESS_KEY_ID", "bedrock", tenantId),
-    secretAccessKey: requireEnv("AWS_SECRET_ACCESS_KEY", "bedrock", tenantId),
-  };
+  const region = requireEnv("AWS_REGION", "bedrock", tenantId);
+  const bedrockOptions: Record<string, unknown> = apiKeyOverride
+    ? { region, apiKey: apiKeyOverride }
+    : {
+        region,
+        accessKeyId: requireEnv("AWS_ACCESS_KEY_ID", "bedrock", tenantId),
+        secretAccessKey: requireEnv("AWS_SECRET_ACCESS_KEY", "bedrock", tenantId),
+      };
   const sessionToken = readEnv("AWS_SESSION_TOKEN", tenantId);
   if (sessionToken) bedrockOptions.sessionToken = sessionToken;
   const baseURL = readEnv("AWS_BASE_URL", tenantId);
@@ -369,9 +395,10 @@ function resolveVertex(
   defaultModel: string,
   modelOverride?: string,
   tenantId?: string,
+  apiKeyOverride?: string,
 ): ResolvedModel {
   const modelId = modelOverride ?? readEnv("VERTEX_MODEL", tenantId) ?? defaultModel;
-  const vertexApiKey = readEnv("VERTEX_API_KEY", tenantId);
+  const vertexApiKey = apiKeyOverride ?? readEnv("VERTEX_API_KEY", tenantId);
   const vertexClientEmail = readEnv("VERTEX_CLIENT_EMAIL", tenantId);
   const vertexPrivateKey = readEnv("VERTEX_PRIVATE_KEY", tenantId);
   const googleCredentials = readEnv("GOOGLE_APPLICATION_CREDENTIALS", tenantId);
@@ -429,6 +456,7 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
   const defaultModel = options?.defaultModel ?? DEFAULT_INIT_MODEL;
   const modelOverride = options?.modelOverride;
   const tenantId = options?.tenantId;
+  const apiKey = options?.apiKeyOverride;
 
   const provider = detectConfiguredProvider({
     providerEnvVar,
@@ -455,16 +483,16 @@ export async function initializeModel(options?: ModelInitOptions): Promise<Resol
     case "gateway":
       return resolveGatewayModel(defaultModel, modelOverride, tenantId);
     case "anthropic":
-      return resolveAnthropic(defaultModel, modelOverride, tenantId);
+      return resolveAnthropic(defaultModel, modelOverride, tenantId, apiKey);
     case "openai":
-      return resolveOpenAi(defaultModel, modelOverride, tenantId);
+      return resolveOpenAi(defaultModel, modelOverride, tenantId, apiKey);
     case "gemini":
-      return resolveGemini(defaultModel, modelOverride, tenantId);
+      return resolveGemini(defaultModel, modelOverride, tenantId, apiKey);
     case "azure":
-      return resolveAzure(defaultModel, modelOverride, tenantId);
+      return resolveAzure(defaultModel, modelOverride, tenantId, apiKey);
     case "bedrock":
-      return resolveBedrock(defaultModel, modelOverride, tenantId);
+      return resolveBedrock(defaultModel, modelOverride, tenantId, apiKey);
     case "vertex":
-      return resolveVertex(defaultModel, modelOverride, tenantId);
+      return resolveVertex(defaultModel, modelOverride, tenantId, apiKey);
   }
 }
