@@ -8,6 +8,7 @@ import { setConfigKey } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
 import { seedTenantBootstrap, type TenantBootstrapPayload } from "../db/seed.ts";
+import { type LlmAccessProbe, probeLlmAccess } from "../llm/core/access-probe.ts";
 import { logger } from "../logging/logger.ts";
 import type { SeededRoleIds } from "../rbac/seed.ts";
 import {
@@ -179,7 +180,8 @@ export type ConsumeFailureCode =
   | "gone"
   | "invalid_token"
   | "token_expired"
-  | "validation_failed";
+  | "validation_failed"
+  | "llm_unreachable";
 
 export type ConsumeOutcome =
   | {
@@ -200,7 +202,11 @@ export interface ConsumeOptions {
   ip?: string;
   user_agent?: string | null;
   stdout?: { write: (chunk: string) => unknown };
+  probe?: LlmAccessProbe;
 }
+
+export const LLM_UNREACHABLE_HINT =
+  "nothing was saved — no tenant, no key; fix the key or the provider and run `sk init` again with the same token";
 
 export async function consume(
   db: Db,
@@ -280,6 +286,23 @@ export async function consume(
     };
   }
   const payload = parsed.data;
+
+  const access = await (opts.probe ?? probeLlmAccess)({
+    provider: payload.llm_provider,
+    api_key: payload.llm_api_key,
+  });
+  if (!access.ok) {
+    await emitFailure(db, "llm_unreachable", access.reason, opts, {
+      llm_provider: payload.llm_provider,
+      model: access.model,
+    });
+    return {
+      status: "failed",
+      code: "llm_unreachable",
+      message: `the LLM access check failed: ${access.reason}`,
+      hint: LLM_UNREACHABLE_HINT,
+    };
+  }
 
   const result = await seedTenantBootstrap(db, rbacIds, {
     admin_email: payload.admin_email,

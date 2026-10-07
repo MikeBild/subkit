@@ -339,7 +339,7 @@ export interface paths {
         put?: never;
         /**
          * Redeem the first-run bootstrap token and materialise tenant + admin
-         * @description Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.
+         * @description Consumes the one-time token printed to engine stdout on a fresh install. Checks the LLM key with one live probe call first (provider `mock` passes without a call); a refused key answers 422 `llm_unreachable` and saves nothing. Then creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.
          */
         post: {
             parameters: {
@@ -383,6 +383,15 @@ export interface paths {
                 };
                 /** @description Bootstrap already completed; route is gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -495,6 +504,15 @@ export interface paths {
                 };
                 /** @description Bootstrap already completed; route is gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

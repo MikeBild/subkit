@@ -2,6 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getDb } from "../../db/client.ts";
+import type { LlmAccessProbe } from "../../llm/core/access-probe.ts";
 import {
   BOOTSTRAP_LLM_PROVIDERS,
   consume,
@@ -58,7 +59,7 @@ const postRoute = createRoute({
   tags: ["setup"],
   summary: "Redeem the first-run bootstrap token and materialise tenant + admin",
   description:
-    "Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.",
+    "Consumes the one-time token printed to engine stdout on a fresh install. Checks the LLM key with one live probe call first (provider `mock` passes without a call); a refused key answers 422 `llm_unreachable` and saves nothing. Then creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.",
   request: {
     body: { content: { "application/json": { schema: SetupRequestBody } } },
   },
@@ -77,6 +78,11 @@ const postRoute = createRoute({
     },
     410: {
       description: "Bootstrap already completed; route is gone",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    422: {
+      description:
+        "The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid",
       content: { "application/json": { schema: ErrorSchema } },
     },
     429: {
@@ -122,7 +128,10 @@ function clientIp(headers: Headers): string {
   return headers.get("x-real-ip") ?? "unknown";
 }
 
-export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
+export function registerSetupRoute(
+  app: OpenAPIHono<AppEnv>,
+  deps: { probe?: LlmAccessProbe } = {},
+): void {
   app.openapi(statusRoute, async (c) => {
     const db = c.get("db") ?? getDb();
     const pending = await isBootstrapPending(db);
@@ -147,7 +156,12 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
         llm_provider: body.llm_provider,
         llm_api_key: body.llm_api_key,
       },
-      { token: body.token, ip, user_agent: userAgent },
+      {
+        token: body.token,
+        ip,
+        user_agent: userAgent,
+        ...(deps.probe ? { probe: deps.probe } : {}),
+      },
     );
 
     if (outcome.status === "ok") {
@@ -179,6 +193,15 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
         );
       case "validation_failed":
         return c.json({ code: "validation_failed", message: outcome.message }, 400);
+      case "llm_unreachable":
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          422,
+        );
     }
   });
 
@@ -206,6 +229,7 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
         token: body.token,
         ip: clientIp(c.req.raw.headers),
         user_agent: c.req.raw.headers.get("user-agent"),
+        ...(deps.probe ? { probe: deps.probe } : {}),
       },
     );
     if (outcome.status === "ok") {
@@ -236,6 +260,15 @@ export function registerSetupRoute(app: OpenAPIHono<AppEnv>): void {
         );
       case "validation_failed":
         return c.json({ code: "validation_failed", message: outcome.message }, 400);
+      case "llm_unreachable":
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          422,
+        );
     }
   });
 }
