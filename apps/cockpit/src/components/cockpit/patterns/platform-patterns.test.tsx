@@ -82,6 +82,44 @@ describe("DataTable", () => {
     expect(html).toContain("@2xl:hidden");
   });
 
+  test("a phone card reads like a row: the name as link, then up to two facts without labels", () => {
+    type Run = { id: string; name: string; kind: string; size: string; started: string };
+    const html = render(
+      <DataTable<Run>
+        columns={[
+          { id: "name", header: "Name", accessorKey: "name" },
+          { id: "kind", header: "Kind", accessorKey: "kind" },
+          { id: "started", header: "Started", accessorKey: "started", meta: { cardLabel: true } },
+          { id: "size", header: "Size", accessorKey: "size" },
+        ]}
+        data={[{ id: "a", name: "Alpha", kind: "Web API", size: "12 KB", started: "today" }]}
+        sorting={[] as SortingState}
+        onSortingChange={() => {}}
+        onOpen={() => {}}
+        rowActions={() => <button type="button">Menu</button>}
+        emptyState={{
+          zero: { title: "none" },
+          filtered: { title: "no match", description: "", resetLabel: "reset", onReset() {} },
+        }}
+        hasActiveFilters={false}
+        columnsLabel="Columns"
+        actionsLabel="Actions"
+        collectionId="r"
+      />,
+    );
+    const card = html.slice(html.indexOf('data-testid="r-mobile-row-0"'));
+    expect(card).toContain('data-family-slot="card-title"');
+    expect(card).toContain('data-testid="r-mobile-row-link-0"');
+    expect(card.match(/data-family-slot="card-fact"/g)).toHaveLength(2);
+    expect(card).toContain("Web API");
+    expect(card).toContain("Started today");
+    expect(card).not.toContain("12 KB");
+    expect(card).not.toContain(">Kind<");
+    expect(card).not.toContain(">Name<");
+    expect(card).toContain("span 3");
+    expect(card).toContain("text-sm");
+  });
+
   test("a pick list keeps its rows at every width and never turns into cards", () => {
     const html = table({ collectionTier: "embedded", layout: "rows" });
     expect(html).toContain('data-testid="t-desktop"');

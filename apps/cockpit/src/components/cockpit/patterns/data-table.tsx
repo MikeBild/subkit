@@ -61,7 +61,10 @@ export interface CockpitColumnMeta {
   ownsRowLink?: boolean;
   interactive?: boolean;
   priority?: "high" | "low";
+  cardLabel?: boolean;
 }
+
+export const MOBILE_CARD_FACTS = 2;
 
 export function priorityClass(priority: CockpitColumnMeta["priority"]): string | undefined {
   return priority === "low" ? "hidden @4xl:table-cell" : undefined;
@@ -672,13 +675,12 @@ export function DataTable<TData extends RowData>({
               aria-busy="true"
             >
               {Array.from({ length: skeletonRows }, (_, cardIndex) => (
-                <div key={cardIndex} className="flex flex-col gap-3 p-4">
-                  {[0, 1, 2].map((line) => (
-                    <span key={line} className="flex h-5 items-center justify-between gap-4">
-                      <Skeleton className="h-3 w-16" />
+                <div key={cardIndex} className="grid gap-y-0.5 px-3 py-2.5">
+                  {Array.from({ length: 1 + MOBILE_CARD_FACTS }, (_, line) => (
+                    <span key={line} className="flex h-5 items-center">
                       <Skeleton
                         className={cn(
-                          "h-3.5",
+                          line === 0 ? "h-3.5" : "h-3",
                           SKELETON_WIDTHS[(cardIndex + line) % SKELETON_WIDTHS.length],
                         )}
                       />
@@ -698,47 +700,19 @@ export function DataTable<TData extends RowData>({
                 const named = open
                   ? all.find((cell) => cell.column.id === linkColumnId)
                   : undefined;
-                const cells = (
-                  named ? [named, ...all.filter((cell) => cell !== named)] : all
-                ).slice(0, 3);
-                const card = cells.map((cell, cellIndex) => (
-                  <span key={cell.id} className="flex min-w-0 items-start justify-between gap-4">
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {typeof cell.column.columnDef.header === "string"
-                        ? cell.column.columnDef.header
-                        : cell.column.id}
-                    </span>
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 break-words text-right",
-                        cellIndex === 0 ? "font-medium" : "text-sm",
-                      )}
-                    >
-                      {open && cell === named ? (
-                        <LinkedCell
-                          owns={Boolean(cell.column.columnDef.meta?.ownsRowLink)}
-                          target={{
-                            href: rowHref?.(row.original) ?? null,
-                            onOpen: open,
-                            testId: `${collectionId}-mobile-row-link-${index}`,
-                            label: rowLabel?.(row.original),
-                          }}
-                        >
-                          <table.FlexRender cell={cell} />
-                        </LinkedCell>
-                      ) : (
-                        <table.FlexRender cell={cell} />
-                      )}
-                    </span>
-                  </span>
-                ));
+                const title = named ?? all[0];
+                const facts = all
+                  .filter(
+                    (cell) => cell !== title && cell.column.columnDef.meta?.priority !== "low",
+                  )
+                  .slice(0, MOBILE_CARD_FACTS);
                 const actions = rowActions?.(row.original, index);
                 return (
                   <div
                     key={row.id}
                     className={cn(
-                      "flex min-w-0 flex-col gap-3 p-4 text-left",
-                      open && "cursor-pointer",
+                      "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-left text-sm",
+                      open && "cursor-pointer transition-colors hover:bg-muted/50",
                       rowMotionClass(row.original, index),
                     )}
                     onClick={
@@ -755,8 +729,49 @@ export function DataTable<TData extends RowData>({
                     data-family-collection-mobile-card="true"
                     data-action-scope="row"
                   >
-                    {card}
-                    {actions ? <span className="flex justify-end gap-1">{actions}</span> : null}
+                    {title ? (
+                      <span
+                        className="col-start-1 min-w-0 break-words font-medium"
+                        data-family-slot="card-title"
+                      >
+                        {open && title === named ? (
+                          <LinkedCell
+                            owns={Boolean(title.column.columnDef.meta?.ownsRowLink)}
+                            target={{
+                              href: rowHref?.(row.original) ?? null,
+                              onOpen: open,
+                              testId: `${collectionId}-mobile-row-link-${index}`,
+                              label: rowLabel?.(row.original),
+                            }}
+                          >
+                            <table.FlexRender cell={title} />
+                          </LinkedCell>
+                        ) : (
+                          <table.FlexRender cell={title} />
+                        )}
+                      </span>
+                    ) : null}
+                    {facts.map((cell) => (
+                      <span
+                        key={cell.id}
+                        className="col-start-1 min-w-0 break-words text-[13px] leading-5 text-muted-foreground"
+                        data-family-slot="card-fact"
+                      >
+                        {cell.column.columnDef.meta?.cardLabel &&
+                        typeof cell.column.columnDef.header === "string"
+                          ? `${cell.column.columnDef.header} `
+                          : null}
+                        <table.FlexRender cell={cell} />
+                      </span>
+                    ))}
+                    {actions ? (
+                      <span
+                        className="col-start-2 row-start-1 flex items-center gap-1 self-center"
+                        style={{ gridRowEnd: `span ${1 + facts.length}` }}
+                      >
+                        {actions}
+                      </span>
+                    ) : null}
                   </div>
                 );
               })}
