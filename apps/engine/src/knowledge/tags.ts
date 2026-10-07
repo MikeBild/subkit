@@ -1,3 +1,5 @@
+export const DOMAIN_TAG_PREFIX = "domain:";
+
 export function dedupeTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

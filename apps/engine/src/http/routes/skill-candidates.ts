@@ -1,5 +1,10 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/index.ts";
+import {
+  KnowledgeSlugConflictError,
+  KnowledgeVersionConflictError,
+} from "../../knowledge/index.ts";
 import * as svc from "../../skill-candidates/index.ts";
 import {
   type ApproveSkillCandidateParams,
@@ -123,7 +128,18 @@ const approveRoute = createRoute({
           schema: z
             .object({
               candidate: SkillCandidateSchema,
-              skill_id: z.string(),
+              skill_id: z
+                .string()
+                .nullable()
+                .describe("The skill a practice or pattern became; null for a fact."),
+              knowledge: z
+                .object({
+                  knowledge_source_id: z.string(),
+                  slug: z.string(),
+                  version: z.number().int().nullable(),
+                })
+                .nullable()
+                .describe("The knowledge source and version a fact was appended to."),
             })
             .openapi("ApproveSkillCandidateResponse"),
         },
@@ -237,20 +253,32 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.title) overrides.title = body.title;
     if (body.body) overrides.body = body.body;
     if (body.status) overrides.status = body.status;
-    const result = await svc.approveSkillCandidate(
-      {
-        tenant_id: principal.tenant_id,
-        candidate_id: id,
-        actor_id: principal.id,
-        ...(body.expected_review_digest
-          ? { expected_review_digest: body.expected_review_digest }
-          : {}),
-        ...(Object.keys(overrides).length > 0
-          ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
-          : {}),
-      },
-      db,
-    );
+    const result = await svc
+      .approveSkillCandidate(
+        {
+          tenant_id: principal.tenant_id,
+          candidate_id: id,
+          actor: actorOf(principal),
+          ...(body.expected_review_digest
+            ? { expected_review_digest: body.expected_review_digest }
+            : {}),
+          ...(Object.keys(overrides).length > 0
+            ? { overrides: overrides as ApproveSkillCandidateParams["overrides"] }
+            : {}),
+        },
+        db,
+      )
+      .catch((error: unknown) => {
+        if (
+          error instanceof KnowledgeVersionConflictError ||
+          error instanceof KnowledgeSlugConflictError
+        ) {
+          throw new HttpError(409, "knowledge_target_conflict", error.message, {
+            hint: "The knowledge source this fact lands in changed or is not a text source; review again.",
+          });
+        }
+        throw error;
+      });
     if (!result) {
       const candidate = await svc.getSkillCandidate(principal.tenant_id, id, db);
       if (candidate && candidate.status !== "context")

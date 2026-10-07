@@ -15,6 +15,10 @@ export function restoredNote(version: number): string {
   return `${RESTORED_NOTE_PREFIX}${version}`;
 }
 
+export function learningNote(proposer: Actor | null): string {
+  return proposer ? `proposed by ${proposer.kind}:${proposer.id}` : "proposed by an agent";
+}
+
 export function knowledgeVersionContent(p: {
   source_type: string;
   upload: { filename: string; mime?: string | undefined };

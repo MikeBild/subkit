@@ -668,7 +668,11 @@ function ReviewBody({
           : rejectPatchCandidate(input.item.id, input.reason);
       }
       return input.approve
-        ? approveSkillCandidate(input.item.id, input.item.reviewDigest ?? "")
+        ? approveSkillCandidate(
+            input.item.id,
+            input.item.reviewDigest ?? "",
+            input.item.origin !== "knowledgeLearning",
+          )
         : rejectSkillCandidate(input.item.id, input.reason);
     },
     onMutate: (input) => {

@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { Actor } from "../audit/actor.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../execution/classify.ts";
 
 export const SkillCandidateStatusSchema = z.enum([
@@ -17,11 +18,17 @@ export const SkillCandidatePatternSchema = z.enum([
   "authoring_capability",
   "session_learning",
   "connector_capability",
+  "knowledge_learning",
 ]);
 
 export type SkillCandidateStatus = z.infer<typeof SkillCandidateStatusSchema>;
 export type SkillCandidateConfidence = z.infer<typeof SkillCandidateConfidenceSchema>;
 export type SkillCandidatePattern = z.infer<typeof SkillCandidatePatternSchema>;
+
+export const LEARNING_PATTERN_KINDS: ReadonlySet<SkillCandidatePattern> = new Set([
+  "session_learning",
+  "knowledge_learning",
+]);
 
 export const WorkflowCapabilityFactsSchema = z
   .object({
@@ -86,6 +93,10 @@ export const SkillCandidateSchema = z
     fingerprint: z.string(),
     version: z.number().int(),
     tags: z.array(z.string()).default([]),
+    proposed_by: z
+      .object({ kind: z.enum(["user", "system_account"]), id: z.string() })
+      .nullable()
+      .describe("Who proposed this candidate; null for proposals the engine detected itself."),
     created_at: z.string(),
     updated_at: z.string(),
   })
@@ -123,6 +134,7 @@ export interface PatternSignal {
   fingerprint: string;
   confidence: SkillCandidateConfidence;
   tags?: string[];
+  proposer?: Actor | null;
   evidence: Array<{
     execution_id?: string;
     patch_candidate_id?: string;
@@ -157,7 +169,7 @@ export interface ApproveSkillCandidateParams {
   expected_review_digest?: string;
   tenant_id: string;
   candidate_id: string;
-  actor_id: string | null;
+  actor: Actor | null;
   overrides?:
     | {
         title?: string | undefined;

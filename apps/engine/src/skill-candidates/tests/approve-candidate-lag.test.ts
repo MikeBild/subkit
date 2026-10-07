@@ -154,7 +154,7 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
     ]);
 
     const result = await approveSkillCandidate(
-      { tenant_id: tenantId, candidate_id: candidateId, actor_id: null },
+      { tenant_id: tenantId, candidate_id: candidateId, actor: null },
       testDb.db,
     );
     expect(result).not.toBeNull();
@@ -188,7 +188,7 @@ describe.skipIf(skip)("approveSkillCandidate — drift→skill lag telemetry", (
     });
 
     const result = await approveSkillCandidate(
-      { tenant_id: tenantId, candidate_id: candidateId, actor_id: null },
+      { tenant_id: tenantId, candidate_id: candidateId, actor: null },
       testDb.db,
     );
     expect(result).not.toBeNull();

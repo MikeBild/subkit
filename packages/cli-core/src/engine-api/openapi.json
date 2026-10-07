@@ -16361,7 +16361,8 @@
               "chained_workflow_pattern",
               "authoring_capability",
               "session_learning",
-              "connector_capability"
+              "connector_capability",
+              "knowledge_learning"
             ]
           },
           "title": {
@@ -16447,6 +16448,29 @@
             },
             "default": []
           },
+          "proposed_by": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "description": "Who proposed this candidate; null for proposals the engine detected itself."
+          },
           "created_at": {
             "type": "string"
           },
@@ -16471,6 +16495,7 @@
           "promoted_skill_id",
           "fingerprint",
           "version",
+          "proposed_by",
           "created_at",
           "updated_at"
         ]
@@ -16681,12 +16706,43 @@
             "$ref": "#/components/schemas/SkillCandidate"
           },
           "skill_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The skill a practice or pattern became; null for a fact."
+          },
+          "knowledge": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "knowledge_source_id": {
+                "type": "string"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "knowledge_source_id",
+              "slug",
+              "version"
+            ],
+            "description": "The knowledge source and version a fact was appended to."
           }
         },
         "required": [
           "candidate",
-          "skill_id"
+          "skill_id",
+          "knowledge"
         ]
       },
       "ApproveSkillCandidateBody": {
@@ -21268,6 +21324,10 @@
               },
               "skills": {
                 "type": "integer"
+              },
+              "knowledge": {
+                "type": "integer",
+                "description": "Of the proposals in `skills`, how many are facts for a knowledge source."
               }
             }
           },
@@ -39290,7 +39350,8 @@
                 "chained_workflow_pattern",
                 "authoring_capability",
                 "session_learning",
-                "connector_capability"
+                "connector_capability",
+                "knowledge_learning"
               ]
             },
             "required": false,
@@ -39635,7 +39696,7 @@
           "agent"
         ],
         "summary": "Capture a coding-agent session transcript for learning distillation",
-        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.",
+        "description": "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.",
         "security": [
           {
             "bearerAuth": []

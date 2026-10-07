@@ -10918,7 +10918,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
+                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
                     offset?: number | null;
@@ -11214,7 +11214,7 @@ export interface paths {
         put?: never;
         /**
          * Capture a coding-agent session transcript for learning distillation
-         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.
+         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.
          */
         post: {
             parameters: {
@@ -21939,7 +21939,7 @@ export interface components {
             endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
             title: string;
             body: string;
             /** @default [] */
@@ -21963,6 +21963,12 @@ export interface components {
             version: number;
             /** @default [] */
             tags: string[];
+            /** @description Who proposed this candidate; null for proposals the engine detected itself. */
+            proposed_by: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                id: string;
+            } | null;
             created_at: string;
             updated_at: string;
         };
@@ -22006,7 +22012,14 @@ export interface components {
         };
         ApproveSkillCandidateResponse: {
             candidate: components["schemas"]["SkillCandidate"];
-            skill_id: string;
+            /** @description The skill a practice or pattern became; null for a fact. */
+            skill_id: string | null;
+            /** @description The knowledge source and version a fact was appended to. */
+            knowledge: {
+                knowledge_source_id: string;
+                slug: string;
+                version: number | null;
+            } | null;
         };
         ApproveSkillCandidateBody: {
             title?: string;
@@ -23044,6 +23057,8 @@ export interface components {
                 patches?: number;
                 failures?: number;
                 skills?: number;
+                /** @description Of the proposals in `skills`, how many are facts for a knowledge source. */
+                knowledge?: number;
             };
             since: string | null;
             deadline: string | null;

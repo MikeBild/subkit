@@ -1,5 +1,6 @@
 import type { Job, PgBoss } from "pg-boss";
 import { analyzeAgentSession } from "../../agent/sessions.ts";
+import type { Actor } from "../../audit/actor.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { withJobContext } from "../job-context.ts";
@@ -13,6 +14,7 @@ export interface AgentSessionAnalyzeJob {
   repo?: string;
   domains: string[];
   transcript: string;
+  actor?: Actor | null;
 }
 
 export interface RegisterAgentSessionAnalyzeOptions {
@@ -44,6 +46,7 @@ export async function processAgentSessionAnalyzeJob(
         ...(data.repo ? { repo: data.repo } : {}),
         domains: data.domains,
       },
+      actor: data.actor ?? null,
       db,
     });
     log.queue.job.completed({

@@ -1,15 +1,23 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
+import type { Actor } from "../audit/actor.ts";
 import type { Db } from "../db/client.ts";
+import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { upsertFromSignal } from "../skill-candidates/service.ts";
 import type { PatternSignal, SkillCandidateConfidence } from "../skill-candidates/types.ts";
-import { DOMAIN_TAG_PREFIX } from "./briefing.ts";
 
 const SAMPLE_HEAD_CHARS = 4_000;
 const SAMPLE_TAIL_CHARS = 24_000;
 export const TRANSCRIPT_MAX_CHARS = 1_000_000;
 export const MAX_LEARNINGS_PER_SESSION = 8;
+
+export const LearningKindSchema = z
+  .enum(["practice", "fact"])
+  .describe(
+    "practice = how to work (a rule, convention or gotcha) and becomes a skill; fact = what is true in the domain (a name, number, owner, policy) and becomes part of the domain's knowledge source.",
+  );
+export type LearningKind = z.infer<typeof LearningKindSchema>;
 
 export interface AgentSessionMeta {
   agent: string;
@@ -24,17 +32,23 @@ export interface ProposeLearningParams {
   body: string;
   pitfalls?: string[];
   domains: string[];
+  kind: LearningKind;
+  actor: Actor | null;
   confidence: SkillCandidateConfidence;
   evidence_summary: string;
   db: Db;
 }
 
-export function learningFingerprint(domains: string[], title: string): string {
+export function learningFingerprint(domains: string[], title: string, kind: LearningKind): string {
   const normalizedTitle = title.toLowerCase().replace(/\s+/g, " ").trim();
   const domainKey = [...domains].sort().join(",");
   return createHash("sha256")
-    .update(`session_learning:${domainKey}:${normalizedTitle}`)
+    .update(`${learningPattern(kind)}:${domainKey}:${normalizedTitle}`)
     .digest("hex");
+}
+
+export function learningPattern(kind: LearningKind): "session_learning" | "knowledge_learning" {
+  return kind === "fact" ? "knowledge_learning" : "session_learning";
 }
 
 function domainTags(domains: string[]): string[] {
@@ -45,7 +59,7 @@ export async function proposeLearning(
   p: ProposeLearningParams,
 ): Promise<{ action: "proposed" | "updated" | "skipped"; candidate_id: string | null }> {
   const signal: PatternSignal = {
-    pattern_kind: "session_learning",
+    pattern_kind: learningPattern(p.kind),
     scope: "global",
     title: p.title,
     body: p.body,
@@ -53,9 +67,10 @@ export async function proposeLearning(
     best_practices: [],
     pitfalls: p.pitfalls ?? [],
     doc_refs: [],
-    fingerprint: learningFingerprint(p.domains, p.title),
+    fingerprint: learningFingerprint(p.domains, p.title, p.kind),
     confidence: p.confidence,
     tags: domainTags(p.domains),
+    proposer: p.actor,
     evidence: [{ evidence_type: "agent_session", summary: p.evidence_summary.slice(0, 2_000) }],
   };
   const result = await upsertFromSignal(p.tenant_id, signal, p.db);
@@ -64,7 +79,8 @@ export async function proposeLearning(
   return { action: result.action, candidate_id: result.candidate_id };
 }
 
-const LearningSchema = z.object({
+export const LearningSchema = z.object({
+  kind: LearningKindSchema,
   title: z.string().min(1).max(120),
   body: z.string().min(1).max(4_000),
   pitfalls: z.array(z.string().min(1).max(500)).max(5).default([]),
@@ -124,6 +140,7 @@ export interface AnalyzeAgentSessionParams {
   tenant_id: string;
   transcript: string;
   meta: AgentSessionMeta;
+  actor: Actor | null;
   db: Db;
 }
 
@@ -152,6 +169,9 @@ export async function analyzeAgentSession(
     "used. Do NOT extract: task-specific details, one-off values, restatements of what",
     "the agent already knew, or anything the human did not sanction. When in doubt, leave",
     "it out — an empty list is the correct answer for a routine session.",
+    "Classify each learning: kind=practice when it says HOW to work (a rule, convention,",
+    "gotcha) and kind=fact when it says WHAT is true in the domain (a name, number, owner,",
+    "address, policy). Practices become skills; facts become part of the domain knowledge.",
     "",
     "Transcript sample:",
     sample,
@@ -185,6 +205,8 @@ export async function analyzeAgentSession(
       body: learning.body,
       pitfalls: learning.pitfalls,
       domains: p.meta.domains,
+      kind: learning.kind,
+      actor: p.actor,
       confidence: learning.confidence,
       evidence_summary,
       db: p.db,

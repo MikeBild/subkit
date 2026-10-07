@@ -4,6 +4,7 @@ export * from "./bundle-service.ts";
 export * from "./catalog.ts";
 export * from "./content.ts";
 export * from "./errors.ts";
+export * from "./learnings.ts";
 export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";

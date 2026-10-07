@@ -2,20 +2,21 @@ import { z } from "@hono/zod-openapi";
 import { approvePatchCandidate } from "../../../../self-healing/candidate-decision.ts";
 import { approveSkillCandidate } from "../../../../skill-candidates/service.ts";
 import type { ConversationTool } from "../../index.ts";
+import { toolActor } from "../../tool-actor.ts";
 
 const IdInput = z.object({ candidate_id: z.string().uuid() }).openapi("CandidateIdInput");
 
 export const approveSkillCandidateTool: ConversationTool = {
   name: "approve_skill_candidate",
   description:
-    "Approve a skill candidate and create a draft tenant skill. Activation is a separate permissioned action. Writes audit. Idempotent — already-approved candidates return ok=false.",
+    "Approve a skill candidate. A practice or detected pattern becomes a draft tenant skill (activation is a separate permissioned action); a fact (`knowledge_learning`) is appended to the domain's knowledge source as a new version. Writes audit. Idempotent — already-approved candidates return ok=false.",
   inputSchema: IdInput,
   category: "tenant_write",
   visible_when_readonly: true,
   authoring_only: true,
   async execute(ctx, args: z.infer<typeof IdInput>) {
     const out = await approveSkillCandidate(
-      { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor_id: ctx.actor_id },
+      { tenant_id: ctx.tenant_id, candidate_id: args.candidate_id, actor: toolActor(ctx) },
       ctx.db,
     );
     if (!out) {
@@ -34,11 +35,17 @@ export const approveSkillCandidateTool: ConversationTool = {
       resource_id: args.candidate_id,
       action: "conversation.approve_skill_candidate",
       result: "success",
-      metadata: { conversation_id: ctx.conversation_id, skill_id: out.skill_id },
+      metadata: {
+        conversation_id: ctx.conversation_id,
+        ...(out.skill_id ? { skill_id: out.skill_id } : {}),
+        ...(out.knowledge ? { knowledge_source_id: out.knowledge.knowledge_source_id } : {}),
+      },
     });
     return {
       ok: true,
-      data: { candidate: out.candidate, skill_id: out.skill_id, skill_status: "draft" },
+      data: out.knowledge
+        ? { candidate: out.candidate, knowledge: out.knowledge }
+        : { candidate: out.candidate, skill_id: out.skill_id, skill_status: "draft" },
     };
   },
 };

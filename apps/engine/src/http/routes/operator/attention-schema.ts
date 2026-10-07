@@ -78,6 +78,11 @@ const AttentionItem = z
       patches: z.number().int().optional(),
       failures: z.number().int().optional(),
       skills: z.number().int().optional(),
+      knowledge: z
+        .number()
+        .int()
+        .optional()
+        .describe("Of the proposals in `skills`, how many are facts for a knowledge source."),
     }),
     since: z.string().nullable(),
     deadline: z.string().nullable(),

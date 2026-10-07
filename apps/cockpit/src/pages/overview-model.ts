@@ -565,9 +565,20 @@ export function attentionRow(item: AttentionItem, t: Translate): AttentionRow {
   const key = counted
     ? pluralKey(counted, count)
     : (SHORT_REASON_KEYS as Record<string, TranslationKey>)[item.reason];
+  const short = key
+    ? t(key, { count, step: item.repair?.step_id ?? "" })
+    : t("overview.short.other");
+  const knowledge = item.reason === "skills_proposed" ? (item.counts.knowledge ?? 0) : 0;
   return {
     name: `${name}${version}`,
-    reason: key ? t(key, { count, step: item.repair?.step_id ?? "" }) : t("overview.short.other"),
+    reason:
+      knowledge > 0
+        ? t("overview.short.skills_proposedSplit", {
+            proposals: short,
+            knowledge,
+            skills: count - knowledge,
+          })
+        : short,
     machine: key ? null : item.reason,
     badge,
   };

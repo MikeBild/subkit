@@ -57,7 +57,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
       {
         tenant_id: tenantId,
         candidate_id: crypto.randomUUID(), // allow-random: legacy; review before changing
-        actor_id: null,
+        actor: null,
       },
       testDb.db,
     );
@@ -73,7 +73,7 @@ describe.skipIf(skip)("skill-candidates/edge-cases (db)", () => {
       {
         tenant_id: other!.id,
         candidate_id: crypto.randomUUID(), // allow-random: legacy; review before changing
-        actor_id: null,
+        actor: null,
       },
       testDb.db,
     );

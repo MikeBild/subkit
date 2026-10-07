@@ -66,6 +66,7 @@ export const ORIGIN_LABEL: Record<DecisionOrigin, TranslationKey> = {
   authoringPattern: "decisions.origin.authoringPattern",
   connectorPattern: "decisions.origin.connectorPattern",
   sessionPattern: "decisions.origin.sessionPattern",
+  knowledgeLearning: "decisions.origin.knowledgeLearning",
   chainedPattern: "decisions.origin.chainedPattern",
   recurringPattern: "decisions.origin.recurringPattern",
   conversation: "decisions.origin.conversation",

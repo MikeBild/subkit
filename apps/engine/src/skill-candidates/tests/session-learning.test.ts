@@ -24,6 +24,8 @@ function propose(title: string, overrides: { domains?: string[]; body?: string }
     title,
     body: overrides.body ?? `Body of ${title}`,
     domains: overrides.domains ?? ["blog-de"],
+    kind: "practice",
+    actor: null,
     confidence: "high",
     evidence_summary: "agent=claude-code session=test",
     db,
@@ -92,11 +94,11 @@ describe.skipIf(skip)("session_learning capture loop", () => {
   test("deleting a promoted skill nulls the candidate reference instead of failing", async () => {
     const proposal = await propose("Löschbare Regel");
     const approved = await approveSkillCandidate(
-      { tenant_id: tenantId, candidate_id: proposal.candidate_id ?? "", actor_id: null },
+      { tenant_id: tenantId, candidate_id: proposal.candidate_id ?? "", actor: null },
       db,
     );
     if (!approved) throw new Error("approve failed");
-    const deleted = await deleteSkill(tenantId, approved.skill_id, null, db);
+    const deleted = await deleteSkill(tenantId, approved.skill_id ?? "", null, db);
     expect(deleted).toBe(true);
     const candidate = await getSkillCandidate(tenantId, proposal.candidate_id ?? "", db);
     expect(candidate?.status).toBe("approved");
@@ -109,7 +111,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
       {
         tenant_id: tenantId,
         candidate_id: proposal.candidate_id ?? "",
-        actor_id: null,
+        actor: null,
         overrides: { status: "active" },
       },
       db,
@@ -131,7 +133,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
     const params = {
       tenant_id: tenantId,
       candidate_id: candidateId,
-      actor_id: null,
+      actor: null,
       expected_review_digest: candidate.review_digest,
       overrides: { status: "active" as const },
     };
