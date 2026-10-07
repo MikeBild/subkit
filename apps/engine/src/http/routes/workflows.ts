@@ -6,6 +6,7 @@ import {
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { isKnownRecipe } from "../../connectors/index.ts";
 import {
   bindingFor,
   createSchedule,
@@ -62,6 +63,10 @@ const CreateBody = z
   .passthrough()
   .openapi("CreateWorkflowBody");
 
+const CreateRequestBody = CreateBody.extend({
+  recipe: svc.RecipeOriginSchema.optional(),
+}).openapi("CreateWorkflowRequest");
+
 type WorkflowBody = z.infer<typeof CreateBody>;
 
 function preserveOmittedTrigger(body: WorkflowBody, existing: svc.WorkflowView): WorkflowBody {
@@ -107,7 +112,7 @@ const createRouteSpec = createRoute({
   tags: ["workflows"],
   summary: "Create a workflow",
   security: [{ bearerAuth: [] }],
-  request: { body: { content: { "application/json": { schema: CreateBody } } } },
+  request: { body: { content: { "application/json": { schema: CreateRequestBody } } } },
   responses: {
     201: { description: "Created", content: { "application/json": { schema: WorkflowSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
@@ -652,13 +657,17 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(createRouteSpec, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const { category, ...def } = c.req.valid("json");
+    const { category, recipe, ...def } = c.req.valid("json");
+    if (recipe && !isKnownRecipe(recipe.vertical, recipe.slug)) {
+      throw new BadRequestError(`unknown recipe ${recipe.vertical}/${recipe.slug}`);
+    }
     const result = await svc.createWorkflow(
       {
         tenant_id: principal.tenant_id,
         def,
         actor_id: principal.id,
         ...(category !== undefined ? { metadata: { category } } : {}),
+        ...(recipe ? { audit_metadata: svc.recipeAuditMetadata(recipe) } : {}),
       },
       db,
     );

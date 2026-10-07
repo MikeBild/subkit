@@ -345,7 +345,7 @@ Show one recipe by slug (template slug + recipe slug)
 
 Show the recipes in a vertical pack
 
-- `<vertical>` (positional) — Vertical (revops | customer-success | finance | data | devops | security | marketing | hr)
+- `<vertical>` (positional) — Vertical (revops | customer-success | finance | data | devops | security | marketing | hr | solutions)
 - `--json` — JSON output
 
 #### `sk connector-templates recipes`
@@ -1938,11 +1938,12 @@ Manage workflows
 
 #### `sk workflows create`
 
-Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.
+Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe <slug>, see `sk connector-templates recipe-pack solutions`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.
 
-- `--file` (string, required) — Path to WorkflowDef JSON
+- `--file` (string) — Path to WorkflowDef JSON
+- `--from-recipe` (string) — Slug of a solution recipe; its connectors are bound to the ones you already have
 - `--skip-checks` — Skip the validate+preview pre-flight entirely (NOT recommended). Preview warnings never block; only validation errors and preview failures do.
-- `--input` (string) — Input JSON string passed to the preview dry-run.
+- `--input` (string) — Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.
 - `--json` — JSON-only output (suppresses narration)
 
 #### `sk workflows delete`

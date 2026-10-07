@@ -1,0 +1,50 @@
+import { z } from "@hono/zod-openapi";
+import solutionsJson from "./solutions.json" with { type: "json" };
+import { type ConnectorRecipe, ConnectorRecipeSchema, loadBuiltinTemplates } from "./templates.ts";
+
+export const SOLUTIONS_VERTICAL = "solutions";
+
+export const SOLUTIONS_OUTCOME =
+  "Start from a finished flow across several connectors: each solution names the connectors it needs, previews against a sample input and lands as a draft you approve before it runs.";
+
+let cached: ConnectorRecipe[] | null = null;
+
+export function loadSolutionRecipes(): ConnectorRecipe[] {
+  if (cached) return cached;
+  const parsed = z.array(ConnectorRecipeSchema).safeParse(solutionsJson);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    throw new Error(`solutions.json validation failed: ${issues}`);
+  }
+  const templates = new Set(loadBuiltinTemplates().map((t) => t.slug));
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const recipe of parsed.data) {
+    if (seen.has(recipe.slug)) problems.push(`${recipe.slug}: duplicate slug`);
+    seen.add(recipe.slug);
+    if (recipe.required_connectors.length === 0) {
+      problems.push(`${recipe.slug}: declares no required_connectors`);
+    }
+    for (const required of recipe.required_connectors) {
+      if (!templates.has(required.template)) {
+        problems.push(`${recipe.slug}: unknown template ${required.template}`);
+      }
+    }
+  }
+  if (problems.length > 0) {
+    throw new Error(`solutions.json is inconsistent: ${problems.join("; ")}`);
+  }
+  cached = Object.freeze([...parsed.data]) as ConnectorRecipe[];
+  return cached;
+}
+
+export function getSolutionRecipe(slug: string): ConnectorRecipe | null {
+  return loadSolutionRecipes().find((recipe) => recipe.slug === slug) ?? null;
+}
+
+export function isKnownRecipe(vertical: string, slug: string): boolean {
+  if (vertical === SOLUTIONS_VERTICAL) return getSolutionRecipe(slug) !== null;
+  return loadBuiltinTemplates().some((template) =>
+    template.recipes.some((recipe) => recipe.slug === slug),
+  );
+}

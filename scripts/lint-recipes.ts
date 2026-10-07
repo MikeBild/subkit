@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const TEMPLATES_PATH = resolve(import.meta.dir, "..", "apps/engine/src/connectors/templates.json");
+const SOLUTIONS_PATH = resolve(import.meta.dir, "..", "apps/engine/src/connectors/solutions.json");
+const SOLUTIONS = "<solutions>";
 
 type Recipe = {
   slug: string;
@@ -9,6 +11,7 @@ type Recipe = {
   intent_keywords?: string[];
   category?: string;
   sample_input?: unknown;
+  expected_output_preview?: unknown;
   required_connectors?: Array<{ placeholder: string; template: string }>;
   workflow: {
     name?: string;
@@ -187,6 +190,29 @@ function lintRequiredConnectors(template: string, recipe: Recipe): Violation[] {
   return out;
 }
 
+function lintSolution(recipe: Recipe, templateSlugs: ReadonlySet<string>): Violation[] {
+  const out: Violation[] = [];
+  const violation = (rule: string, message: string) =>
+    out.push({ template: SOLUTIONS, recipe: recipe.slug, rule, message });
+  if (recipe.sample_input == null) violation("solution_sample_input", "sample_input is required");
+  if (recipe.expected_output_preview == null) {
+    violation("solution_expected_output", "expected_output_preview is required");
+  }
+  const required = recipe.required_connectors ?? [];
+  if (required.length === 0) {
+    violation("solution_required_connectors", "a solution declares its required_connectors");
+  }
+  for (const req of required) {
+    if (!templateSlugs.has(req.template)) {
+      violation(
+        "solution_unknown_template",
+        `template \`${req.template}\` is not in templates.json`,
+      );
+    }
+  }
+  return out;
+}
+
 function buildPrimitiveCoverage(templates: Template[]): Record<string, number> {
   const counts: Record<string, number> = Object.fromEntries([
     ...STEP_KINDS.map((k) => [k, 0] as const),
@@ -261,9 +287,20 @@ function main() {
       violations.push(...lintRequiredConnectors(t.slug, r));
     }
   }
+  const solutions = JSON.parse(readFileSync(SOLUTIONS_PATH, "utf8")) as Recipe[];
+  const templateSlugs = new Set(templates.map((t) => t.slug));
+  for (const r of solutions) {
+    violations.push(...lintIntentKeywords(SOLUTIONS, r));
+    violations.push(...lintCategory(SOLUTIONS, r));
+    violations.push(...lintSampleInputAlignment(SOLUTIONS, r));
+    violations.push(...lintRequiredConnectors(SOLUTIONS, r));
+    violations.push(...lintSolution(r, templateSlugs));
+  }
   violations.push(...lintPrimitiveCoverage(templates));
   if (violations.length === 0) {
-    console.log(`recipe-lint: OK (${templates.length} templates scanned)`);
+    console.log(
+      `recipe-lint: OK (${templates.length} templates, ${solutions.length} solutions scanned)`,
+    );
     return;
   }
   for (const v of violations) {

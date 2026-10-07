@@ -6191,7 +6191,7 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["CreateWorkflowBody"];
+                    "application/json": components["schemas"]["CreateWorkflowRequest"];
                 };
             };
             responses: {
@@ -7505,13 +7505,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a vertical recipe pack (computed from category + tags) */
+        /** Get a vertical recipe pack (computed from category + tags; `solutions` spans several connectors) */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+                    vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr" | "solutions";
                 };
                 cookie?: never;
             };
@@ -19932,10 +19932,18 @@ export interface components {
         CreateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
             category?: components["schemas"]["CatalogCategory"];
+            recipe?: components["schemas"]["RecipeOrigin"];
         };
         /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
         CatalogCategory: string;
-        UpdateWorkflowDraft: components["schemas"]["CreateWorkflowDraft"] & {
+        /** @description The recipe pack entry this workflow was created from; recorded in the audit trail. */
+        RecipeOrigin: {
+            vertical: string;
+            slug: string;
+        };
+        UpdateWorkflowDraft: {
+            definition: components["schemas"]["WorkflowDef"];
+            category?: components["schemas"]["CatalogCategory"];
             /** Format: uuid */
             expected_draft_version_id: string | null;
         };
@@ -20120,6 +20128,13 @@ export interface components {
             id: string;
             deleted: boolean;
         };
+        CreateWorkflowRequest: components["schemas"]["CreateWorkflowBody"] & ({
+            recipe?: components["schemas"]["RecipeOrigin"];
+        } & {
+            [key: string]: unknown;
+        });
+        /** @description What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description. */
+        CatalogDescription: string;
         CreateWorkflowBody: {
             name: string;
             slug?: string;
@@ -20147,8 +20162,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** @description What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description. */
-        CatalogDescription: string;
         ValidateWorkflowResponse: {
             ok: boolean;
             errors?: {
@@ -20984,17 +20997,30 @@ export interface components {
         };
         RecipePackResponse: {
             /** @enum {string} */
-            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr" | "solutions";
             outcome: string;
             recipes: components["schemas"]["RecipePackEntry"][];
         };
         RecipePackEntry: {
-            template_slug: string;
+            template_slug: string | null;
             recipe_slug: string;
             title: string;
+            description: string;
             category: string;
             tags: string[];
             difficulty: string;
+            connectors: components["schemas"]["RecipeConnectorBinding"][];
+            sample_input?: unknown;
+            workflow: {
+                [key: string]: unknown;
+            };
+        };
+        RecipeConnectorBinding: {
+            placeholder: string;
+            template: string;
+            template_name: string;
+            connector_id: string | null;
+            connector_name: string | null;
         };
         TemplateOAuthCredentialResponse: {
             id: string;

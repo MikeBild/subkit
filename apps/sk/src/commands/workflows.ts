@@ -26,6 +26,12 @@ import {
   resolveInvokeSnippet,
 } from "../lib/invoke-snippet-source.ts";
 import { pickId } from "../lib/pick.ts";
+import {
+  createBodyFor,
+  recipeWorkflowSource,
+  SOLUTIONS_VERTICAL,
+  type WorkflowSource,
+} from "../lib/recipe-source.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
@@ -649,16 +655,32 @@ const restoreCommand = defineCommand({
   },
 });
 
-async function saveWorkflowFromFile(
+async function loadWorkflowSource(
+  client: EngineClient,
+  args: Record<string, unknown>,
+): Promise<WorkflowSource> {
+  if (args["from-recipe"]) {
+    const pack = await client.getRecipePack(SOLUTIONS_VERTICAL);
+    return recipeWorkflowSource(pack, String(args["from-recipe"]));
+  }
+  const { readFileSync } = await import("node:fs");
+  return {
+    body: JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>,
+    previewInput: null,
+    recipe: null,
+  };
+}
+
+async function saveWorkflow(
   target: { kind: "create" } | { kind: "update"; id: string },
   args: Record<string, unknown>,
 ): Promise<void> {
-  const { readFileSync } = await import("node:fs");
   const client = makeClient();
   const jsonMode = Boolean(args.json);
   try {
     {
-      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const source = await loadWorkflowSource(client, args);
+      const body = source.body;
       const skip = Boolean(args["skip-checks"]);
       const intent = intentFromBody(body);
       intent.action = target.kind === "create" ? "Create" : "Update";
@@ -680,7 +702,7 @@ async function saveWorkflowFromFile(
           process.exit(1);
         }
 
-        let input: unknown = null;
+        let input: unknown = source.previewInput;
         if (args.input) {
           try {
             input = JSON.parse(args.input as string);
@@ -744,7 +766,7 @@ async function saveWorkflowFromFile(
       }
 
       const created = (await (target.kind === "create"
-        ? client.createWorkflow(body)
+        ? client.createWorkflow(createBodyFor(source))
         : client.updateWorkflow(target.id, body))) as Record<string, unknown> & {
         id?: string;
         version?: number;
@@ -783,7 +805,6 @@ async function saveWorkflowFromFile(
 }
 
 const SAVE_ARGS = {
-  file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
   "skip-checks": {
     type: "boolean",
     description:
@@ -800,11 +821,28 @@ const createCommand = defineCommand({
   meta: {
     name: "create",
     description:
-      "Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
+      "Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe <slug>, see `sk connector-templates recipe-pack solutions`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
   },
-  args: { ...SAVE_ARGS },
+  args: {
+    file: { type: "string", description: "Path to WorkflowDef JSON" },
+    "from-recipe": {
+      type: "string",
+      description:
+        "Slug of a solution recipe; its connectors are bound to the ones you already have",
+    },
+    ...SAVE_ARGS,
+    input: {
+      type: "string",
+      description:
+        "Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.",
+    },
+  },
   async run({ args }) {
-    await saveWorkflowFromFile({ kind: "create" }, args as Record<string, unknown>);
+    if (Boolean(args.file) === Boolean(args["from-recipe"])) {
+      process.stderr.write("error: pass exactly one of --file or --from-recipe\n");
+      process.exit(1);
+    }
+    await saveWorkflow({ kind: "create" }, args as Record<string, unknown>);
   },
 });
 
@@ -816,10 +854,11 @@ const updateCommand = defineCommand({
   },
   args: {
     id: { type: "positional", required: true, description: "Workflow id" },
+    file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
     ...SAVE_ARGS,
   },
   async run({ args }) {
-    await saveWorkflowFromFile(
+    await saveWorkflow(
       { kind: "update", id: String((args as Record<string, unknown>).id) },
       args as Record<string, unknown>,
     );

@@ -8246,6 +8246,9 @@
           },
           "category": {
             "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/RecipeOrigin"
           }
         },
         "required": [
@@ -8260,28 +8263,49 @@
         "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
         "description": "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it."
       },
-      "UpdateWorkflowDraft": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/CreateWorkflowDraft"
+      "RecipeOrigin": {
+        "type": "object",
+        "properties": {
+          "vertical": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
           },
-          {
-            "type": "object",
-            "properties": {
-              "expected_draft_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "uuid"
-              }
-            },
-            "required": [
-              "expected_draft_version_id"
-            ],
-            "additionalProperties": false
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
           }
-        ]
+        },
+        "required": [
+          "vertical",
+          "slug"
+        ],
+        "additionalProperties": false,
+        "description": "The recipe pack entry this workflow was created from; recorded in the audit trail."
+      },
+      "UpdateWorkflowDraft": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDef"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "expected_draft_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "definition",
+          "expected_draft_version_id"
+        ],
+        "additionalProperties": false
       },
       "WorkflowBoundaryProposals": {
         "type": "object",
@@ -9095,6 +9119,27 @@
           "deleted"
         ]
       },
+      "CreateWorkflowRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateWorkflowBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "recipe": {
+                "$ref": "#/components/schemas/RecipeOrigin"
+              }
+            },
+            "additionalProperties": {}
+          }
+        ]
+      },
+      "CatalogDescription": {
+        "type": "string",
+        "maxLength": 2000,
+        "description": "What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description."
+      },
       "CreateWorkflowBody": {
         "type": "object",
         "properties": {
@@ -9161,11 +9206,6 @@
           "steps"
         ],
         "additionalProperties": {}
-      },
-      "CatalogDescription": {
-        "type": "string",
-        "maxLength": 2000,
-        "description": "What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description."
       },
       "ValidateWorkflowResponse": {
         "type": "object",
@@ -12361,7 +12401,8 @@
               "devops",
               "security",
               "marketing",
-              "hr"
+              "hr",
+              "solutions"
             ]
           },
           "outcome": {
@@ -12384,12 +12425,18 @@
         "type": "object",
         "properties": {
           "template_slug": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "recipe_slug": {
             "type": "string"
           },
           "title": {
+            "type": "string"
+          },
+          "description": {
             "type": "string"
           },
           "category": {
@@ -12403,15 +12450,62 @@
           },
           "difficulty": {
             "type": "string"
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeConnectorBinding"
+            }
+          },
+          "sample_input": {},
+          "workflow": {
+            "type": "object",
+            "additionalProperties": {}
           }
         },
         "required": [
           "template_slug",
           "recipe_slug",
           "title",
+          "description",
           "category",
           "tags",
-          "difficulty"
+          "difficulty",
+          "connectors",
+          "workflow"
+        ]
+      },
+      "RecipeConnectorBinding": {
+        "type": "object",
+        "properties": {
+          "placeholder": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          },
+          "template_name": {
+            "type": "string"
+          },
+          "connector_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "placeholder",
+          "template",
+          "template_name",
+          "connector_id",
+          "connector_name"
         ]
       },
       "TemplateOAuthCredentialResponse": {
@@ -33802,7 +33896,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateWorkflowBody"
+                "$ref": "#/components/schemas/CreateWorkflowRequest"
               }
             }
           }
@@ -35268,7 +35362,7 @@
         "tags": [
           "connectors"
         ],
-        "summary": "Get a vertical recipe pack (computed from category + tags)",
+        "summary": "Get a vertical recipe pack (computed from category + tags; `solutions` spans several connectors)",
         "security": [
           {
             "bearerAuth": []
@@ -35286,7 +35380,8 @@
                 "devops",
                 "security",
                 "marketing",
-                "hr"
+                "hr",
+                "solutions"
               ]
             },
             "required": true,
