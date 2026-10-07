@@ -10,8 +10,9 @@ import {
   getKnowledgeSourceBySlug,
   prepareKnowledgeCreate,
   prepareKnowledgeIngest,
+  updateKnowledgeSource,
 } from "./service.ts";
-import { DOMAIN_TAG_PREFIX } from "./tags.ts";
+import { DOMAIN_TAG_PREFIX, dedupeTags } from "./tags.ts";
 import type { CreateKnowledgeSourceParams, IngestKnowledgeSourceParams } from "./types.ts";
 import { learningNote } from "./version-record.ts";
 
@@ -25,16 +26,17 @@ export interface LearningsTarget {
 }
 
 export function learningsTarget(tags: readonly string[]): LearningsTarget {
-  const tag = tags.find(
-    (t) => t.startsWith(DOMAIN_TAG_PREFIX) && t.length > DOMAIN_TAG_PREFIX.length,
+  const domainTags = dedupeTags(
+    tags.filter((t) => t.startsWith(DOMAIN_TAG_PREFIX) && t.length > DOMAIN_TAG_PREFIX.length),
   );
-  const domain = tag ? tag.slice(DOMAIN_TAG_PREFIX.length) : null;
+  const first = domainTags[0];
+  const domain = first ? first.slice(DOMAIN_TAG_PREFIX.length) : null;
   return domain
     ? {
         slug: `${LEARNINGS_SLUG}-${domain}`,
         name: `Learnings · ${domain}`,
         domain,
-        tags: [`${DOMAIN_TAG_PREFIX}${domain}`],
+        tags: domainTags,
       }
     : { slug: LEARNINGS_SLUG, name: "Learnings", domain: null, tags: [] };
 }
@@ -133,6 +135,18 @@ export async function appendLearningToKnowledge(
     note,
   };
   const applied = await applyKnowledgeIngest(tx, params, await prepareKnowledgeIngest(params, tx));
+  const tags = dedupeTags([...existing.tags, ...target.tags]);
+  if (tags.length !== existing.tags.length) {
+    await updateKnowledgeSource(
+      {
+        tenant_id: p.tenant_id,
+        id: existing.id,
+        patch: { tags },
+        actor_id: p.approver?.id ?? null,
+      },
+      tx,
+    );
+  }
   return {
     knowledge_source_id: existing.id,
     slug: existing.slug,
