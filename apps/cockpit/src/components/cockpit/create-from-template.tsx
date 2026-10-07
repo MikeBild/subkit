@@ -153,10 +153,10 @@ export function useSolutionFlow(
       const created: Record<string, string> = {};
       const missing = missingConnectors(entry);
       if (missing.length > 0) {
-        const [catalog, taken] = await Promise.all([fetchTemplates(), takenConnectorSlugs()]);
+        const [templates, taken] = await Promise.all([fetchTemplates(), takenConnectorSlugs()]);
         for (const binding of missing) {
-          const template = catalog.items.find((item) => item.slug === binding.template);
-          if (!template) continue;
+          const template = templates.items.find((item) => item.slug === binding.template);
+          if (!template) throw new Error(t("create.template.loadFailed"));
           const connector = await createTemplateConnector(
             template,
             taken,
