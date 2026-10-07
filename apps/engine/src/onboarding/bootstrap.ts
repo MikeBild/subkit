@@ -530,4 +530,4 @@ export const _internal = {
   sha256Hex,
 };
 
-export type { TenantBootstrapPayload };
+export type { LlmAccessProbe, TenantBootstrapPayload };
