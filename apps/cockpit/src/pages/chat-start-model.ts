@@ -3,6 +3,28 @@ import { categoryMentionToken } from "@/lib/mentions";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
+export interface StarterGates {
+  workflows: boolean;
+  solutions: boolean;
+  knowledge: boolean;
+  usage: boolean;
+}
+
+export function starterGates(permissions: readonly string[]): StarterGates {
+  return {
+    workflows: permissions.includes("workflow:read"),
+    solutions: permissions.includes("connector:read"),
+    knowledge: permissions.includes("knowledge:read"),
+    usage: permissions.includes("stats:read"),
+  };
+}
+
+export function retryStarterQuery(failures: number, error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  if (typeof status === "number" && status >= 400 && status < 500) return false;
+  return failures < 1;
+}
+
 export const MIN_STARTERS = 4;
 export const MAX_STARTERS = 6;
 

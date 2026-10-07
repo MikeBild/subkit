@@ -5,7 +5,9 @@ import {
   chatStarters,
   MAX_STARTERS,
   MIN_STARTERS,
+  retryStarterQuery,
   type StarterSources,
+  starterGates,
 } from "./chat-start-model";
 
 const de = (key: TranslationKey, values?: Record<string, string | number>) =>
@@ -122,5 +124,37 @@ describe("chat start: example cards drawn from the installation", () => {
       categories: [{ category: "empty", count: 0 }],
     };
     expect(ids(chatStarters(sources, de))).toEqual(["capabilities", "create", "connect", "run"]);
+  });
+});
+
+describe("chat start: what each person's cards may read", () => {
+  test("solutions need connector:read, so a person without it never asks for them", () => {
+    expect(starterGates(["workflow:read", "conversation:write"])).toEqual({
+      workflows: true,
+      solutions: false,
+      knowledge: false,
+      usage: false,
+    });
+    expect(
+      starterGates(["workflow:read", "connector:read", "knowledge:read", "stats:read"]),
+    ).toEqual({ workflows: true, solutions: true, knowledge: true, usage: true });
+  });
+
+  test("a refused read is never retried; an outage is retried once", () => {
+    expect(retryStarterQuery(0, { status: 403 })).toBe(false);
+    expect(retryStarterQuery(0, { status: 404 })).toBe(false);
+    expect(retryStarterQuery(0, { status: 503 })).toBe(true);
+    expect(retryStarterQuery(1, { status: 503 })).toBe(false);
+    expect(retryStarterQuery(0, new Error("network"))).toBe(true);
+  });
+
+  test("without solutions the cards still come from the catalog", () => {
+    const starters = chatStarters({ ...FULL, solutions: [] }, de);
+    expect(starters.map((starter) => starter.id)).toEqual([
+      "failing-w1",
+      "usage",
+      "knowledge-handbook",
+      "catalog-billing",
+    ]);
   });
 });
