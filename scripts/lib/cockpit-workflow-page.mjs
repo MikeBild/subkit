@@ -1102,6 +1102,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (await page.getByTestId("workflow-menu-ask").count())
       throw new Error(`${where}: the menu offers the chat a second time`);
     await page.keyboard.press("Escape");
+    await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
     await page.getByTestId("catalog-metadata-edit").click();
     await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "visible" });
     const current = await page.getByTestId("catalog-metadata-category-input").inputValue();
