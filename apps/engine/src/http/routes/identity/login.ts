@@ -18,6 +18,8 @@ import type { AppEnv } from "../../openapi.ts";
 import { parseFormBody } from "../oauth/shared.ts";
 import {
   authHtmlResponse,
+  NEGOTIATED_VARY,
+  negotiatedPageResponse,
   renderApiKeyLogin,
   renderErrorPage,
   renderProviderChoice,
@@ -107,10 +109,14 @@ export function registerLoginRoutes(app: OpenAPIHono<AppEnv>): void {
       if (choices.length > 0)
         return authHtmlResponse(renderProviderChoice(choices, resolvePageLook(c.req.raw.headers)));
       return wantsHtmlPage(c.req.header("accept"))
-        ? authHtmlResponse(renderUnavailablePage(resolvePageLook(c.req.raw.headers), "login"), 503)
+        ? negotiatedPageResponse(
+            renderUnavailablePage(resolvePageLook(c.req.raw.headers), "login"),
+            503,
+          )
         : c.json(
             { code: "login_not_configured", message: "no MCP login provider configured" },
             503,
+            { vary: NEGOTIATED_VARY },
           );
     }
 

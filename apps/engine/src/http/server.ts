@@ -83,6 +83,7 @@ import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications/index.ts";
 import {
   HTML_PAGE_HEADERS,
+  NEGOTIATED_VARY,
   renderNotFoundPage,
   renderServerErrorPage,
   resolvePageLook,
@@ -209,11 +210,10 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       bucket: "unhandled",
     });
     if (wantsHtmlPage(c.req.header("accept")))
-      return c.body(
-        renderServerErrorPage(resolvePageLook(c.req.raw.headers), traceId),
-        500,
-        HTML_PAGE_HEADERS,
-      );
+      return c.body(renderServerErrorPage(resolvePageLook(c.req.raw.headers), traceId), 500, {
+        ...HTML_PAGE_HEADERS,
+        vary: NEGOTIATED_VARY,
+      });
     return c.json(
       {
         code: "internal_error",
@@ -221,12 +221,16 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         trace_id: traceId,
       },
       500,
+      { vary: NEGOTIATED_VARY },
     );
   });
   app.notFound((c) =>
     wantsHtmlPage(c.req.header("accept"))
-      ? c.body(renderNotFoundPage(resolvePageLook(c.req.raw.headers)), 404, HTML_PAGE_HEADERS)
-      : c.text("404 Not Found", 404),
+      ? c.body(renderNotFoundPage(resolvePageLook(c.req.raw.headers)), 404, {
+          ...HTML_PAGE_HEADERS,
+          vary: NEGOTIATED_VARY,
+        })
+      : c.text("404 Not Found", 404, { vary: NEGOTIATED_VARY }),
   );
   if (opts.db) {
     const boundDb = opts.db;

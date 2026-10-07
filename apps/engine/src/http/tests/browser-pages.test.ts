@@ -34,6 +34,7 @@ describe("an address nobody serves", () => {
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
     expect(html).toContain('<html lang="de" class="dark">');
+    expect(res.headers.get("vary")).toBe("Accept, Cookie");
     expect(html).toContain("<title>SubKit Cockpit</title>");
     expect(html).toContain("Diese Seite gibt es nicht");
     expect(html).toContain('data-family-surface="not-found"');
@@ -45,6 +46,7 @@ describe("an address nobody serves", () => {
     for (const accept of ["application/json", "*/*", ""]) {
       const res = await fetch(`${ctx.baseUrl}/no/such/page`, { headers: { accept } });
       expect(res.status).toBe(404);
+      expect(res.headers.get("vary")).toBe("Accept, Cookie");
       expect(await res.text()).toBe("404 Not Found");
     }
   });
@@ -56,6 +58,7 @@ describe("an unhandled failure", () => {
       headers: { accept: BROWSER, "accept-language": "en-US,en;q=0.9" },
     });
     expect(res.status).toBe(500);
+    expect(res.headers.get("vary")).toBe("Accept, Cookie");
     const html = await res.text();
     const trace = res.headers.get("x-trace-id") ?? "";
     expect(trace.length).toBeGreaterThan(0);
@@ -71,6 +74,7 @@ describe("an unhandled failure", () => {
       headers: { accept: "application/json" },
     });
     expect(res.status).toBe(500);
+    expect(res.headers.get("vary")).toBe("Accept, Cookie");
     const body = (await res.json()) as { code: string; trace_id: string | null };
     expect(body.code).toBe("internal_error");
     expect(body.trace_id).toBe(res.headers.get("x-trace-id"));
@@ -84,6 +88,7 @@ describe("a cockpit sign-in that wants to leave the cockpit", () => {
   test("a browser is told why and led back into the cockpit", async () => {
     const res = await fetch(url(), { headers: { accept: BROWSER, cookie: "sk_locale=de" } });
     expect(res.status).toBe(400);
+    expect(res.headers.get("vary")).toBe("Accept, Cookie");
     const html = await res.text();
     expect(html).toContain("Dieser Anmeldelink ist ungültig");
     expect(html.match(/<a\s/g)?.length).toBe(1);
@@ -106,6 +111,7 @@ describe("a cockpit sign-in that wants to leave the cockpit", () => {
   test("an API client keeps the error envelope", async () => {
     const res = await fetch(url(), { headers: { accept: "application/json" } });
     expect(res.status).toBe(400);
+    expect(res.headers.get("vary")).toBe("Accept, Cookie");
     expect(((await res.json()) as { code: string }).code).toBe("invalid_return_to");
   });
 });
