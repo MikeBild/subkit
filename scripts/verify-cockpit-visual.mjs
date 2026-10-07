@@ -21,6 +21,7 @@ import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
+import { assertFamilyGeometry } from "./lib/cockpit-family-geometry.mjs";
 import { verifyFirstClickOpens } from "./lib/cockpit-first-click.mjs";
 import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
@@ -4105,6 +4106,11 @@ for (const locale of variants) {
         `${locale.artifact}/${viewport.name}/${route}`,
         route,
         viewport.width >= 1024,
+      );
+      await assertFamilyGeometry(
+        page,
+        `${locale.artifact}/${viewport.name}/${route}`,
+        viewport.width,
       );
       const migrated = patternMigratedView(route);
       if (migrated !== null)
