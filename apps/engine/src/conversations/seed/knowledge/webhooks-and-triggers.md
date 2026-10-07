@@ -107,7 +107,7 @@ The signing secret is stored AES-GCM encrypted with a row-scoped AAD; it is writ
 
 Saving a workflow with `trigger: { kind: "webhook" }` upserts a single `webhooks_inbound` row, idempotent on `(tenant_id, workflow_id)`:
 
-- Public slug is derived from the workflow slug: `wf-<workflow_slug>` (truncated to 64 chars). This keeps the ingress URL stable across workflow edits/renames.
+- Public slug is derived from the workflow slug: `wf-<workflow_slug>` (truncated to 64 chars). Slugs are unique across the whole engine, so when that slug is already taken a short suffix is appended. The binding keeps its slug across workflow edits/renames; read the actual slug from the binding (`GET /v1/webhooks/inbound`) instead of assuming it.
 - Verifier maps from the trigger's `verify`: `stripe-signature → stripe`, `github-hmac → github`, `none → standard` with `{ skip: true }`.
 - `native_verifier_config` is written as `{ source, events }` (plus `skip: true` when `verify: "none"`).
 - The signing secret is NOT carried on the trigger. On first bind a random placeholder ciphertext is written; the operator provisions the real secret out-of-band (via the CRUD create flow or secret rotation). With a placeholder secret a `standard`/`github`/`stripe` verifier will reject real traffic until the secret is rotated in.
@@ -162,7 +162,7 @@ To run a workflow on demand over MCP use `run_workflow` (or the per-workflow `wf
 
 # Quick answers
 
-- "URL to give a provider?" → `POST https://<engine-host>/v1/hooks/<slug>`. For a trigger-bound workflow the slug is `wf-<workflow_slug>`.
+- "URL to give a provider?" → `POST https://<engine-host>/v1/hooks/<slug>`. For a trigger-bound workflow the slug is usually `wf-<workflow_slug>`; read the exact one from `GET /v1/webhooks/inbound`.
 - "Does the ingress need an API key?" → No. The signature is the auth. The CRUD `/v1/webhooks/inbound` routes do need a bearer token.
 - "Why am I getting 401?" → `inactive` binding, bad/missing signature, unknown verifier, `event_not_subscribed`, or `workflow_unresolved`. Check the binding's `active`, `verifier`, secret, and the workflow's current version.
 - "Why did a repeated event not run twice?" → replay dedup on the provider event id; the duplicate returns `{ deduped: true }`.
