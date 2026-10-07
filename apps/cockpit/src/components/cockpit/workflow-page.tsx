@@ -407,7 +407,7 @@ export function WorkflowPage({
               workflowId={id}
               workflowName={title}
               ids={versionIds}
-              canRestore={permissions.includes("workflow:restore")}
+              access={{ canRestore: permissions.includes("workflow:restore"), archived: disabled }}
               onRestored={automation.refresh}
             />
             <CollapsibleSection
