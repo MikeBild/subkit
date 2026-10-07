@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { sharePreference, THEME_COOKIE } from "./preference-cookie";
 import { createThemeStore, type Theme } from "./theme-store";
 
 const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -22,6 +23,7 @@ const store = createThemeStore({
   },
   prefersDark: () => media.matches,
   apply: (resolved) => document.documentElement.classList.toggle("dark", resolved === "dark"),
+  share: (theme) => sharePreference(THEME_COOKIE, theme),
   watchSystem: (listener) => media.addEventListener("change", listener),
 });
 

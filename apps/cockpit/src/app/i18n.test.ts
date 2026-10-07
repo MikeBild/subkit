@@ -13,14 +13,16 @@ function environment(stored: string | null, languages: string[]) {
   const storage = new Map<string, string>();
   if (stored) storage.set(LOCALE_STORAGE_KEY, stored);
   const applied: string[] = [];
+  const shared: (string | null)[] = [];
   const env: LocaleEnvironment = {
     read: (key) => storage.get(key) ?? null,
     write: (key, value) => storage.set(key, value),
     remove: (key) => storage.delete(key),
     languages: () => languages,
     apply: (locale) => applied.push(locale),
+    share: (locale) => shared.push(locale),
   };
-  return { env, storage, applied };
+  return { env, storage, applied, shared };
 }
 
 describe("cockpit i18n", () => {
@@ -153,6 +155,17 @@ describe("cockpit i18n", () => {
     store.set("auto");
     expect(fake.storage.has(LOCALE_STORAGE_KEY)).toBe(false);
     expect(store.snapshot()).toEqual({ preference: "auto", locale: "de" });
+  });
+
+  test("tells engine pages the chosen language on boot and on change, and nothing for automatic", () => {
+    const fake = environment("de", ["en-US"]);
+    const store = createLocaleStore(fake.env);
+    store.set("en");
+    store.set("auto");
+    expect(fake.shared).toEqual(["de", "en", null]);
+    const automatic = environment(null, ["de-DE"]);
+    createLocaleStore(automatic.env);
+    expect(automatic.shared).toEqual([null]);
   });
 
   test("invalid stored preferences safely return to automatic mode", () => {
