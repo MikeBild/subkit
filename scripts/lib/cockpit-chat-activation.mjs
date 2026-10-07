@@ -511,7 +511,12 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
     await page.getByTestId("chat-automation-ready").waitFor();
-    const after = await decisionCount();
+    const deadline = Date.now() + 5_000;
+    let after = await decisionCount();
+    while (after === before && Date.now() < deadline) {
+      await page.waitForTimeout(250);
+      after = await decisionCount();
+    }
     if (after !== before - 1)
       throw new Error(`Decision count did not decrease once: ${before} -> ${after}`);
     await page.reload();
