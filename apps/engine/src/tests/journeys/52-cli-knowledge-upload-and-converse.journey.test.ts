@@ -181,7 +181,7 @@ describe("journey 52: sk CLI knowledge upload → search → converse", () => {
       "create",
       "--file",
       tmpFile,
-      "--title",
+      "--name",
       "Acme Charges API Docs",
       "--json",
     ]);

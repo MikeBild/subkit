@@ -80,7 +80,7 @@ describe("knowledge-sources CLI: error-path discipline", () => {
   });
 
   test("patch: handler throws on transport error", async () => {
-    await expectThrowsNotExits(["patch", "00000000-0000-0000-0000-000000000000", "--title", "new"]);
+    await expectThrowsNotExits(["patch", "00000000-0000-0000-0000-000000000000", "--name", "new"]);
   });
 
   test("delete: handler throws on transport error", async () => {
