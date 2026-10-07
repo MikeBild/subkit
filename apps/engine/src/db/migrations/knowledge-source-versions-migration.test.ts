@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { asc, eq, sql } from "drizzle-orm";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   knowledgeChunks,
   knowledgeSources,
@@ -38,7 +39,7 @@ async function seedSource(
       source_uri: source_type === "bundle" ? `${slug}.bundle.json` : `${slug}.md`,
       mime_type: source_type === "bundle" ? "application/json" : "text/markdown",
       version: `hash-${slug}`,
-      ...(deleted ? { deleted_at: new Date() } : {}),
+      ...(deleted ? { deleted_at: new Date(getTestNow()) } : {}),
     })
     .returning();
   if (!row) throw new Error(`seed ${slug} failed`);
