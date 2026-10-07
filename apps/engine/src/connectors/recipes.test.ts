@@ -6,7 +6,12 @@ import {
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import { validateWorkflowDef } from "../workflows/validator.ts";
 import { bindRecipe } from "./recipe-binding.ts";
-import { getSolutionRecipe, isKnownRecipe, loadSolutionRecipes } from "./solutions.ts";
+import {
+  builtFromRecipe,
+  getSolutionRecipe,
+  loadSolutionRecipes,
+  recipeForOrigin,
+} from "./solutions.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import { ConnectorRecipeSchema, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
@@ -453,10 +458,28 @@ describe("solution recipes — several connectors per recipe", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("a recipe origin is known only for shipped recipes", () => {
-    expect(isKnownRecipe("solutions", "weekly-run-digest")).toBe(true);
-    expect(isKnownRecipe("solutions", "made-up")).toBe(false);
-    expect(isKnownRecipe("finance", "list-customers")).toBe(true);
-    expect(isKnownRecipe("finance", "made-up")).toBe(false);
+  test("a recipe origin resolves only inside its own pack", () => {
+    const finance = { categories: ["payments"], tags: ["finance"] };
+    expect(recipeForOrigin({ vertical: "solutions", slug: "weekly-run-digest" }, null)?.slug).toBe(
+      "weekly-run-digest",
+    );
+    expect(recipeForOrigin({ vertical: "solutions", slug: "made-up" }, null)).toBeNull();
+    expect(recipeForOrigin({ vertical: "finance", slug: "list-customers" }, finance)?.slug).toBe(
+      "list-customers",
+    );
+    expect(recipeForOrigin({ vertical: "finance", slug: "list-customers" }, null)).toBeNull();
+    expect(
+      recipeForOrigin({ vertical: "hr", slug: "list-customers" }, { categories: [], tags: [] }),
+    ).toBeNull();
+  });
+
+  test("a definition counts as built from a recipe only with the recipe's steps in order", () => {
+    const recipe = getSolutionRecipe("webhook-to-slack");
+    if (!recipe) throw new Error("webhook-to-slack missing");
+    const copy = JSON.parse(JSON.stringify(recipe.workflow));
+    expect(builtFromRecipe(copy, recipe)).toBe(true);
+    expect(builtFromRecipe({ ...copy, steps: copy.steps.slice(1) }, recipe)).toBe(false);
+    expect(builtFromRecipe({ ...copy, steps: [...copy.steps].reverse() }, recipe)).toBe(false);
+    expect(builtFromRecipe({ name: "x" }, recipe)).toBe(false);
   });
 });

@@ -42,9 +42,40 @@ export function getSolutionRecipe(slug: string): ConnectorRecipe | null {
   return loadSolutionRecipes().find((recipe) => recipe.slug === slug) ?? null;
 }
 
-export function isKnownRecipe(vertical: string, slug: string): boolean {
-  if (vertical === SOLUTIONS_VERTICAL) return getSolutionRecipe(slug) !== null;
-  return loadBuiltinTemplates().some((template) =>
-    template.recipes.some((recipe) => recipe.slug === slug),
+export interface RecipePackMembership {
+  categories: readonly string[];
+  tags: readonly string[];
+}
+
+export function recipeForOrigin(
+  origin: { vertical: string; slug: string },
+  pack: RecipePackMembership | null,
+): ConnectorRecipe | null {
+  if (origin.vertical === SOLUTIONS_VERTICAL) return getSolutionRecipe(origin.slug);
+  if (!pack) return null;
+  for (const template of loadBuiltinTemplates()) {
+    for (const recipe of template.recipes) {
+      if (recipe.slug !== origin.slug) continue;
+      const inPack =
+        pack.categories.includes(recipe.category) ||
+        recipe.tags.some((tag) => pack.tags.includes(tag));
+      if (inPack) return recipe;
+    }
+  }
+  return null;
+}
+
+function stepIds(definition: unknown): string[] {
+  const steps = (definition as { steps?: unknown } | null)?.steps;
+  return Array.isArray(steps)
+    ? steps.map((step) => String((step as { id?: unknown } | null)?.id ?? ""))
+    : [];
+}
+
+export function builtFromRecipe(definition: unknown, recipe: ConnectorRecipe): boolean {
+  const submitted = stepIds(definition);
+  const expected = stepIds(recipe.workflow);
+  return (
+    submitted.length === expected.length && submitted.every((id, index) => id === expected[index])
   );
 }
