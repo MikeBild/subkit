@@ -2,7 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
-import { BadRequestError, NotFoundError } from "../errors.ts";
+import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -77,6 +77,10 @@ const createRouteSpec = createRoute({
   request: { body: { content: { "application/json": { schema: CreateBody } } } },
   responses: {
     201: { description: "Created", content: { "application/json": { schema: InboundSchema } } },
+    409: {
+      description: "The slug is already in use; inbound hook slugs are unique across the engine",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -148,19 +152,27 @@ export function registerHooksInboundRoutes(app: OpenAPIHono<AppEnv>): void {
       }
       nativeConfig = { ...nativeConfig, hmac: parsed.data };
     }
-    const row = await svc.createInbound(
-      {
-        tenant_id: principal.tenant_id,
-        actor_id: principal.id,
-        slug: body.slug,
-        workflow_id: body.workflow_id,
-        verifier: body.verifier === "custom" ? "standard" : body.verifier,
-        secret: body.secret,
-        native_verifier_config: nativeConfig,
-        ...(body.active !== undefined ? { active: body.active } : {}),
-      },
-      db,
-    );
+    const row = await svc
+      .createInbound(
+        {
+          tenant_id: principal.tenant_id,
+          actor_id: principal.id,
+          slug: body.slug,
+          workflow_id: body.workflow_id,
+          verifier: body.verifier === "custom" ? "standard" : body.verifier,
+          secret: body.secret,
+          native_verifier_config: nativeConfig,
+          ...(body.active !== undefined ? { active: body.active } : {}),
+        },
+        db,
+      )
+      .catch((err: unknown) => {
+        if (err instanceof svc.InboundSlugTakenError)
+          throw new ConflictError(
+            `slug "${body.slug}" is already in use; choose a different slug for this hook`,
+          );
+        throw err;
+      });
     return c.json(serialize(row), 201);
   });
 

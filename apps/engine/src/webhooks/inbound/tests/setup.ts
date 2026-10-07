@@ -26,6 +26,42 @@ export interface InboundTestCtx {
   }) => Promise<InboundRow>;
 }
 
+export async function seedTenantWorkflow(
+  db: Db,
+  label: string,
+  workflowSlug: string,
+): Promise<{ tenantId: string; workflowId: string }> {
+  const [tenant] = await db
+    .insert(tenants)
+    .values({ slug: `tenant-${label}`, display_name: `Tenant ${label.toUpperCase()}` })
+    .returning();
+  if (!tenant) throw new Error(`tenant seed failed: ${label}`);
+  const [wf] = await db
+    .insert(workflows)
+    .values({ tenant_id: tenant.id, slug: workflowSlug, name: workflowSlug, lifecycle: "active" })
+    .returning();
+  if (!wf) throw new Error(`workflow seed failed: ${label}`);
+  const [version] = await db
+    .insert(workflowVersions)
+    .values({
+      tenant_id: tenant.id,
+      workflow_id: wf.id,
+      version: 1,
+      dag: {
+        name: workflowSlug,
+        version: 1,
+        steps: [
+          { id: "noop", kind: "transform", language: "javascript", expression: "return input;" },
+        ],
+      },
+    })
+    .returning();
+  if (!version) throw new Error(`version seed failed: ${label}`);
+  await db.update(workflows).set({ current_version_id: version.id }).where(eq(workflows.id, wf.id));
+  await grantScheduleAuthorityFixture(db, tenant.id, wf.id);
+  return { tenantId: tenant.id, workflowId: wf.id };
+}
+
 export async function createInboundCtx(label: string): Promise<InboundTestCtx> {
   const testDb = await createTestDb(`wh-inbound-${label}`);
   const boss = await createBoss({ connectionString: testDb.url });

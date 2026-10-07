@@ -79,10 +79,54 @@ export interface CreateInboundInput {
   active?: boolean;
 }
 
+export const INBOUND_SLUG_MAX_LENGTH = 64;
+
+const INBOUND_SLUG_INDEX = "webhooks_inbound_slug_key";
+
+const INBOUND_SLUG_CLAIM_ATTEMPTS = 50;
+
+export class InboundSlugTakenError extends Error {
+  readonly code = "inbound_slug_taken";
+
+  constructor(readonly slug: string) {
+    super(`inbound hook slug "${slug}" is already in use`);
+  }
+}
+
+export function isInboundSlugTaken(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 5; depth += 1) {
+    const e = cur as {
+      code?: string;
+      constraint?: string;
+      constraint_name?: string;
+      message?: string;
+      cause?: unknown;
+    };
+    const named = e.constraint ?? e.constraint_name ?? "";
+    if (
+      e.code === "23505" &&
+      (named === INBOUND_SLUG_INDEX || (e.message ?? "").includes(INBOUND_SLUG_INDEX))
+    )
+      return true;
+    cur = e.cause;
+  }
+  return false;
+}
+
 export async function createInbound(
   input: CreateInboundInput,
   exec?: Executor,
 ): Promise<InboundRow> {
+  try {
+    return await insertInbound(input, exec);
+  } catch (err) {
+    if (isInboundSlugTaken(err)) throw new InboundSlugTakenError(input.slug);
+    throw err;
+  }
+}
+
+async function insertInbound(input: CreateInboundInput, exec?: Executor): Promise<InboundRow> {
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
     const placeholder = encryptSecret("__placeholder__");
@@ -207,7 +251,54 @@ function canonicalJson(value: unknown): string {
 }
 
 function slugFromWorkflow(wfSlug: string): string {
-  return `wf-${wfSlug}`.slice(0, 64);
+  return `wf-${wfSlug}`.slice(0, INBOUND_SLUG_MAX_LENGTH);
+}
+
+function tenantSlugMark(tenant_id: string): string {
+  return createHash("md5").update(tenant_id).digest("hex").slice(0, 6);
+}
+
+function withSlugSuffix(slug: string, suffix: string): string {
+  return `${slug.slice(0, INBOUND_SLUG_MAX_LENGTH - suffix.length - 1)}-${suffix}`;
+}
+
+export function inboundSlugCandidate(desired: string, tenant_id: string, attempt: number): string {
+  if (attempt === 0) return desired;
+  const marked = withSlugSuffix(desired, tenantSlugMark(tenant_id));
+  return attempt === 1 ? marked : withSlugSuffix(marked, String(attempt));
+}
+
+function isInboundSlugCandidate(slug: string, desired: string, tenant_id: string): boolean {
+  if (slug === desired) return true;
+  const marked = inboundSlugCandidate(desired, tenant_id, 1);
+  if (slug === marked) return true;
+  const counter = /-([2-9]|[1-9]\d+)$/.exec(slug)?.[1];
+  return counter !== undefined && withSlugSuffix(marked, counter) === slug;
+}
+
+async function inboundSlugInUse(exec: Executor, slug: string): Promise<boolean> {
+  // tenant-filter:exempt — a hook slug is a public path shared by all tenants; only whether it is taken is read, never the holder
+  const rows = await exec
+    .select({ id: webhooksInbound.id })
+    .from(webhooksInbound)
+    .where(eq(webhooksInbound.slug, slug))
+    .limit(1);
+  return rows.length > 0;
+}
+
+async function claimInboundSlug<T>(
+  exec: Executor,
+  desired: string,
+  tenant_id: string,
+  write: (slug: string) => Promise<T | null>,
+): Promise<{ slug: string; written: T }> {
+  for (let attempt = 0; attempt < INBOUND_SLUG_CLAIM_ATTEMPTS; attempt += 1) {
+    const slug = inboundSlugCandidate(desired, tenant_id, attempt);
+    if (await inboundSlugInUse(exec, slug)) continue;
+    const written = await write(slug);
+    if (written !== null) return { slug, written };
+  }
+  throw new InboundSlugTakenError(desired);
 }
 
 export interface BindFromWorkflowInput {
@@ -229,7 +320,7 @@ export async function bindFromWorkflow(
 ): Promise<BindFromWorkflowOutcome> {
   const db = exec ?? getDb();
   const verifier = VERIFY_TO_VERIFIER[input.trigger.verify];
-  const slug = slugFromWorkflow(input.workflow_slug);
+  const desiredSlug = slugFromWorkflow(input.workflow_slug);
   const nativeConfig: Record<string, unknown> = {
     source: input.trigger.source,
     events: input.trigger.events,
@@ -250,24 +341,38 @@ export async function bindFromWorkflow(
     const prior = existing[0];
 
     if (prior) {
-      const sameSlug = prior.slug === slug;
+      const keepsSlug = isInboundSlugCandidate(prior.slug, desiredSlug, input.tenant_id);
       const sameVerifier = prior.verifier === verifier;
       const samePayload =
         canonicalJson(prior.native_verifier_config ?? {}) === canonicalJson(nativeConfig);
-      if (sameSlug && sameVerifier && samePayload) {
+      if (keepsSlug && sameVerifier && samePayload) {
         return { status: "noop", row: serialize(prior) } as const;
       }
-      const updated = await tx
-        .update(webhooksInbound)
-        .set({
-          slug,
-          verifier,
-          native_verifier_config: nativeConfig,
-          updated_at: new Date(),
-        })
-        .where(eq(webhooksInbound.id, prior.id))
-        .returning();
-      const final = updated[0] ?? prior;
+      const rebind = (target: Executor, nextSlug: string) =>
+        target
+          .update(webhooksInbound)
+          .set({
+            slug: nextSlug,
+            verifier,
+            native_verifier_config: nativeConfig,
+            updated_at: new Date(),
+          })
+          .where(
+            and(eq(webhooksInbound.tenant_id, input.tenant_id), eq(webhooksInbound.id, prior.id)),
+          )
+          .returning();
+      const claimed = keepsSlug
+        ? { slug: prior.slug, written: await rebind(tx, prior.slug) }
+        : await claimInboundSlug(tx, desiredSlug, input.tenant_id, async (nextSlug) => {
+            try {
+              return await tx.transaction(async (savepoint) => await rebind(savepoint, nextSlug));
+            } catch (err) {
+              if (isInboundSlugTaken(err)) return null;
+              throw err;
+            }
+          });
+      const slug = claimed.slug;
+      const final = claimed.written[0] ?? prior;
       await auditAwait(
         {
           tenant_id: input.tenant_id,
@@ -293,23 +398,30 @@ export async function bindFromWorkflow(
 
     const placeholderSecret = randomBytes(32).toString("hex");
     const placeholder = encryptSecret(placeholderSecret);
-    const inserted = await tx
-      .insert(webhooksInbound)
-      .values({
-        tenant_id: input.tenant_id,
-        slug,
-        workflow_id: input.workflow_id,
-        verifier,
-        native_verifier_config: nativeConfig,
-        secret_ciphertext: toBuf(placeholder.ciphertext),
-        secret_iv: toBuf(placeholder.iv),
-        secret_auth_tag: toBuf(placeholder.auth_tag),
-        active: true,
-        origin: "trigger",
-      })
-      .returning();
-    const row = inserted[0];
-    assertInsertRow(row, "webhooks_inbound");
+    const { slug, written: row } = await claimInboundSlug(
+      tx,
+      desiredSlug,
+      input.tenant_id,
+      async (nextSlug) => {
+        const inserted = await tx
+          .insert(webhooksInbound)
+          .values({
+            tenant_id: input.tenant_id,
+            slug: nextSlug,
+            workflow_id: input.workflow_id,
+            verifier,
+            native_verifier_config: nativeConfig,
+            secret_ciphertext: toBuf(placeholder.ciphertext),
+            secret_iv: toBuf(placeholder.iv),
+            secret_auth_tag: toBuf(placeholder.auth_tag),
+            active: true,
+            origin: "trigger",
+          })
+          .onConflictDoNothing({ target: webhooksInbound.slug })
+          .returning();
+        return inserted[0] ?? null;
+      },
+    );
     const aadBound = encryptSecret(placeholderSecret, aadFor(input.tenant_id, row.id));
     const finalRows = await tx
       .update(webhooksInbound)
@@ -462,12 +574,21 @@ export async function handleInbound(
   input: HandleInboundInput,
 ): Promise<HandleOutcome> {
   const { db, boss } = opts;
-  // tenant-filter:exempt — slug-based routing pre-tenant; (slug) is globally unique
+  // tenant-filter:exempt — a public hook path names no tenant; webhooks_inbound_slug_key makes the slug resolve to at most one hook
   const rows = await db
     .select()
     .from(webhooksInbound)
     .where(eq(webhooksInbound.slug, input.slug))
-    .limit(1);
+    .limit(2);
+  if (rows.length > 1) {
+    logger.error({
+      module: "webhooks",
+      action: "inbound.slug_ambiguous",
+      msg: "an inbound hook slug resolved to more than one hook; the delivery was refused",
+      slug: input.slug,
+    });
+    return { status: "not_found" };
+  }
   const row = rows[0];
   if (!row) return { status: "not_found" };
   const origin: InboundOrigin = (row.origin as InboundOrigin | undefined) ?? "crud";

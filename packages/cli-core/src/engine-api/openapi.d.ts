@@ -14878,6 +14878,15 @@ export interface paths {
                         "application/json": components["schemas"]["WebhookInbound"];
                     };
                 };
+                /** @description The slug is already in use; inbound hook slugs are unique across the engine */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;

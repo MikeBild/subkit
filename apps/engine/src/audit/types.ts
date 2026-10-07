@@ -123,6 +123,7 @@ export const AuditAction = {
   WEBHOOK_INBOUND_DELETED: "webhook.inbound.deleted",
   WEBHOOK_INBOUND_RECEIVED: "webhook.inbound.received",
   WEBHOOK_INBOUND_DENIED: "webhook.inbound.denied",
+  WEBHOOK_INBOUND_SLUG_REASSIGNED: "webhook.inbound.slug_reassigned",
   WEBHOOK_OUTBOUND_DELIVERED: "webhook.outbound.delivered",
   WEBHOOK_OUTBOUND_FAILED: "webhook.outbound.failed",
   WEBHOOK_OUTBOUND_REPLAYED: "webhook.outbound.replayed",
