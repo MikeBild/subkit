@@ -511,6 +511,12 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4096
+          },
+          "llm_model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Model id (Azure: deployment name) the key is checked with and saved as llm.model; without it the provider's configured or default model is used"
           }
         },
         "required": [

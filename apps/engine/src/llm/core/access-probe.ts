@@ -2,6 +2,7 @@ import { APICallError, generateText } from "ai";
 import { getConfig } from "../../config/loader.ts";
 import { classifyProviderError } from "../provider-errors.ts";
 import {
+  configuredProviderModel,
   type DirectProviderKind,
   initializeModel,
   ProviderMisconfiguredError,
@@ -13,10 +14,13 @@ export type LlmAccessResult =
   | { ok: true; model: string | null }
   | { ok: false; model: string | null; reason: string };
 
-export type LlmAccessProbe = (p: {
+export interface LlmAccessRequest {
   provider: LlmAccessProvider;
   api_key: string;
-}) => Promise<LlmAccessResult>;
+  model?: string;
+}
+
+export type LlmAccessProbe = (p: LlmAccessRequest) => Promise<LlmAccessResult>;
 
 const PROBE_MODELS: Partial<Record<DirectProviderKind, string>> = {
   anthropic: "claude-haiku-4-5",
@@ -27,12 +31,28 @@ const PROBE_MODELS: Partial<Record<DirectProviderKind, string>> = {
 
 export const LLM_PROBE_TIMEOUT_MS = 20_000;
 
-function configuredModel(): string | undefined {
+function primaryModelFor(provider: DirectProviderKind): string | undefined {
   try {
-    return getConfig().llm.model || undefined;
+    const llm = getConfig().llm;
+    return llm.provider === provider && llm.model ? llm.model : undefined;
   } catch {
     return undefined;
   }
+}
+
+export function probeModel(provider: DirectProviderKind, requested?: string): string | undefined {
+  return (
+    requested?.trim() ||
+    configuredProviderModel(provider) ||
+    primaryModelFor(provider) ||
+    PROBE_MODELS[provider]
+  );
+}
+
+function missingSetting(provider: DirectProviderKind, setting: string | null): string {
+  return setting
+    ? `${provider} needs ${setting} in the engine environment before the first start; set it and run sk init again`
+    : `${provider} is not fully configured in the engine environment; set its settings and run sk init again`;
 }
 
 function statusOf(err: unknown): number | null {
@@ -69,17 +89,17 @@ export function probeVerdict(
 }
 
 export async function probeLlmAccess(
-  p: { provider: LlmAccessProvider; api_key: string },
+  p: LlmAccessRequest,
   deps: { timeoutMs?: number; generate?: typeof generateText } = {},
 ): Promise<LlmAccessResult> {
   if (p.provider === "mock") return { ok: true, model: null };
   const provider = p.provider;
-  const defaultModel = configuredModel() ?? PROBE_MODELS[provider];
-  if (!defaultModel) {
+  const model = probeModel(provider, p.model);
+  if (!model) {
     return {
       ok: false,
       model: null,
-      reason: `${provider} needs its model or deployment configured (llm.model) before the first start`,
+      reason: `${provider} needs a model before the first start; pass it with sk init --llm-model <${provider === "azure" ? "deployment name" : "model id"}>`,
     };
   }
   const timeoutMs = deps.timeoutMs ?? LLM_PROBE_TIMEOUT_MS;
@@ -88,11 +108,12 @@ export async function probeLlmAccess(
     resolved = await initializeModel({
       providerOverride: provider,
       apiKeyOverride: p.api_key,
-      defaultModel,
+      defaultModel: model,
+      modelOverride: model,
     });
   } catch (err) {
     if (err instanceof ProviderMisconfiguredError) {
-      return { ok: false, model: defaultModel, reason: err.message };
+      return { ok: false, model, reason: missingSetting(provider, err.setting) };
     }
     throw err;
   }

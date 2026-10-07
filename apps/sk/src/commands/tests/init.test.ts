@@ -23,6 +23,11 @@ describe("sk init — citty surface", () => {
     expect(cmd.args["llm-api-key"]).toBeDefined();
   });
 
+  test("declares --llm-model for providers that need a model or deployment name", () => {
+    expect(cmd.args["llm-model"]).toBeDefined();
+    expect(cmd.args["llm-model"]?.description).toContain("azure");
+  });
+
   test("declares --engine-url and --profile", () => {
     expect(cmd.args["engine-url"]).toBeDefined();
     expect(cmd.args.profile).toBeDefined();

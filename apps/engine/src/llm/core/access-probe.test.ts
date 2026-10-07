@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { APICallError } from "ai";
-import { probeLlmAccess, probeVerdict } from "./access-probe.ts";
+import { _resetConfigForTests, loadConfig } from "../../config/loader.ts";
+import { probeLlmAccess, probeModel, probeVerdict } from "./access-probe.ts";
 
 function apiError(statusCode: number, message = "request failed"): APICallError {
   return new APICallError({
@@ -110,5 +114,75 @@ describe("probeLlmAccess — one minimal call through the model client", () => {
     expect(result).toEqual(
       expect.objectContaining({ ok: false, reason: "openai rejected the API key (HTTP 401)" }),
     );
+  });
+});
+
+describe("probeModel — which model the first-start check uses", () => {
+  beforeAll(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-probe-model-"));
+    const file = join(dir, "subkit.config.json");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        llm: {
+          provider: "openai",
+          model: "gpt-primary",
+          providers: { anthropic: { model: "claude-configured" } },
+        },
+      }),
+    );
+    _resetConfigForTests();
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://placeholder/probe-model", NODE_ENV: "test" },
+      configPathOverride: file,
+    });
+  });
+
+  afterAll(() => {
+    _resetConfigForTests();
+  });
+
+  test("a model passed to sk init wins", () => {
+    expect(probeModel("anthropic", "claude-chosen")).toBe("claude-chosen");
+    expect(probeModel("azure", " my-deployment ")).toBe("my-deployment");
+  });
+
+  test("then the provider's own configured model", () => {
+    expect(probeModel("anthropic")).toBe("claude-configured");
+  });
+
+  test("llm.model counts only for the provider it belongs to", () => {
+    expect(probeModel("openai")).toBe("gpt-primary");
+    expect(probeModel("gemini")).toBe("gemini-2.5-flash");
+  });
+
+  test("azure and bedrock have no default and say which sk init flag to pass", async () => {
+    expect(probeModel("azure")).toBeUndefined();
+    expect(probeModel("bedrock")).toBeUndefined();
+    const generate = (async () => ({})) as never;
+    const azure = await probeLlmAccess({ provider: "azure", api_key: "k" }, { generate });
+    expect(azure).toEqual({
+      ok: false,
+      model: null,
+      reason:
+        "azure needs a model before the first start; pass it with sk init --llm-model <deployment name>",
+    });
+    const bedrock = await probeLlmAccess({ provider: "bedrock", api_key: "k" }, { generate });
+    expect(bedrock.ok).toBe(false);
+    if (!bedrock.ok) expect(bedrock.reason).toContain("sk init --llm-model <model id>");
+  });
+
+  test("a missing provider setting is named without pointing at the Cockpit", async () => {
+    const result = await probeLlmAccess(
+      { provider: "bedrock", api_key: "k", model: "anthropic.claude" },
+      { generate: (async () => ({})) as never },
+    );
+    expect(result).toEqual({
+      ok: false,
+      model: "anthropic.claude",
+      reason:
+        "bedrock needs AWS_REGION in the engine environment before the first start; set it and run sk init again",
+    });
+    expect(JSON.stringify(result)).not.toContain("Cockpit");
   });
 });

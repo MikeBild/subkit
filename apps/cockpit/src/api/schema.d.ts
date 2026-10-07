@@ -18043,6 +18043,8 @@ export interface components {
             /** @enum {string} */
             llm_provider: "mock" | "anthropic" | "openai" | "gemini" | "azure" | "bedrock" | "vertex";
             llm_api_key: string;
+            /** @description Model id (Azure: deployment name) the key is checked with and saved as llm.model; without it the provider's configured or default model is used */
+            llm_model?: string;
         };
         BootstrapStatusResponse: components["schemas"]["SetupStatusResponse"] & {
             completed: boolean;

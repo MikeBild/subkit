@@ -45,6 +45,7 @@ export const BootstrapSetupPayloadSchema = z.object({
   tenant_name: z.string().min(1).max(120),
   llm_provider: z.enum(BOOTSTRAP_LLM_PROVIDERS),
   llm_api_key: z.string().min(1).max(4096),
+  llm_model: z.string().trim().min(1).max(200).optional(),
 });
 
 export type BootstrapSetupPayload = z.infer<typeof BootstrapSetupPayloadSchema>;
@@ -290,6 +291,7 @@ export async function consume(
   const access = await (opts.probe ?? probeLlmAccess)({
     provider: payload.llm_provider,
     api_key: payload.llm_api_key,
+    ...(payload.llm_model ? { model: payload.llm_model } : {}),
   });
   if (!access.ok) {
     await emitFailure(db, "llm_unreachable", access.reason, opts, {
@@ -333,6 +335,7 @@ export async function consume(
       changes: {
         "llm.provider": payload.llm_provider,
         "llm.api_key": secret.reference,
+        ...(payload.llm_model ? { "llm.model": payload.llm_model } : {}),
       },
       scope: "tenant",
       tenant_id: result.tenant_id,
@@ -367,6 +370,9 @@ export async function consume(
         await setConfigKey(["llm", "api_key"], payload.llm_api_key, {
           force: true,
         });
+        if (payload.llm_model) {
+          await setConfigKey(["llm", "model"], payload.llm_model, { force: true });
+        }
       } catch (fallbackError) {
         logger.warn({
           module: "onboarding.bootstrap",
