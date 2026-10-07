@@ -150,9 +150,9 @@ Coding-agent integration: session briefings and hook setup
 
 Print the domain-scoped session briefing for coding agents
 
-- `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo)
+- `--domains` (string) — Comma-separated domain slugs (default: .sk/agent.json of the repo, else the known domains the repository name names)
 - `--budget` (string) — Token budget for the briefing
-- `--hook` (default: false) — SessionStart-hook mode: read hook JSON from stdin, never fail
+- `--hook` (default: false) — Hook mode (SessionStart or UserPromptSubmit): read hook JSON from stdin, never fail; with a prompt, brief only the domains the prompt adds
 - `--json` (default: false) — JSON output
 
 #### `sk agent capture`

@@ -16775,6 +16775,34 @@
           }
         }
       },
+      "AgentDomainsResponse": {
+        "type": "object",
+        "properties": {
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from_prompt": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "from_repo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "domains",
+          "from_prompt",
+          "from_repo"
+        ]
+      },
       "AgentBriefingResponse": {
         "type": "object",
         "properties": {
@@ -16814,6 +16842,26 @@
           "knowledge_sources_omitted": {
             "type": "integer"
           },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the domain's workflows the caller may read, as listed in the briefing."
+          },
+          "workflows_omitted": {
+            "type": "integer"
+          },
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the domain's connectors the caller may read, as listed in the briefing."
+          },
+          "connectors_omitted": {
+            "type": "integer"
+          },
           "proposed_candidates": {
             "type": "integer"
           }
@@ -16827,6 +16875,10 @@
           "skills_title_only",
           "knowledge_sources",
           "knowledge_sources_omitted",
+          "workflows",
+          "workflows_omitted",
+          "connectors",
+          "connectors_omitted",
           "proposed_candidates"
         ]
       },
@@ -39630,13 +39682,59 @@
         }
       }
     },
+    "/v1/agent/domains": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Resolve which known domains a prompt or repository is about",
+        "description": "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "required": false,
+            "name": "prompt",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "repo",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDomainsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agent/briefing": {
       "get": {
         "tags": [
           "agent"
         ],
         "summary": "Domain-scoped session briefing for external coding agents",
-        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.",
         "security": [
           {
             "bearerAuth": []

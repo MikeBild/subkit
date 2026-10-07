@@ -1,11 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
-import { resolveProfile } from "../config.ts";
+import { configDir, resolveProfile } from "../config.ts";
 import { debugLog } from "../debug.ts";
 import { EngineClient } from "../engine-client.ts";
 
@@ -13,8 +21,12 @@ export const AGENT_FILE_RELPATH = join(".sk", "agent.json");
 const HOOK_COMMAND = "sk agent briefing --hook";
 const CAPTURE_HOOK_COMMAND = "sk agent capture --hook";
 const HOOK_TIMEOUT_SECONDS = 30;
+const PROMPT_HOOK_TIMEOUT_SECONDS = 10;
 const CAPTURE_HOOK_TIMEOUT_SECONDS = 60;
 const TRANSCRIPT_MAX_CHARS = 1_000_000;
+const PROMPT_MAX_CHARS = 2_000;
+const BRIEFED_DIR = "agent-sessions";
+const BRIEFED_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 
 interface AgentFile {
   domains: string[];
@@ -47,27 +59,84 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
   }
 }
 
-interface HookPayload {
+export interface HookPayload {
   cwd: string | null;
   session_id: string | null;
   transcript_path: string | null;
+  prompt: string | null;
 }
 
-function readHookPayload(): HookPayload {
-  const empty: HookPayload = { cwd: null, session_id: null, transcript_path: null };
+export function parseHookPayload(raw: string): HookPayload {
+  const empty: HookPayload = { cwd: null, session_id: null, transcript_path: null, prompt: null };
   try {
-    const raw = readFileSync(0, "utf8");
     if (!raw.trim()) return empty;
     const payload = JSON.parse(raw) as Record<string, unknown>;
-    const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+    const str = (v: unknown): string | null =>
+      typeof v === "string" && v.trim().length > 0 ? v : null;
     return {
       cwd: str(payload.cwd),
       session_id: str(payload.session_id),
       transcript_path: str(payload.transcript_path),
+      prompt: str(payload.prompt),
     };
   } catch {
     return empty;
   }
+}
+
+function readHookPayload(): HookPayload {
+  try {
+    return parseHookPayload(readFileSync(0, "utf8"));
+  } catch {
+    return parseHookPayload("");
+  }
+}
+
+export function sessionDomains(declared: readonly string[], fromRepo: readonly string[]): string[] {
+  return [...(declared.length > 0 ? declared : fromRepo)];
+}
+
+export function newPromptDomains(
+  fromPrompt: readonly string[],
+  alreadyBriefed: readonly string[],
+): string[] {
+  return fromPrompt.filter((domain) => !alreadyBriefed.includes(domain));
+}
+
+export function briefedDir(): string {
+  return join(configDir(), BRIEFED_DIR);
+}
+
+function briefedPath(dir: string, session_id: string): string {
+  return join(dir, `${session_id.replace(/[^A-Za-z0-9_-]/g, "_")}.json`);
+}
+
+export function readBriefed(dir: string, session_id: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(briefedPath(dir, session_id), "utf8"));
+    return Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function forgetBriefed(dir: string, session_id: string): void {
+  rmSync(briefedPath(dir, session_id), { force: true });
+}
+
+export function recordBriefed(
+  dir: string,
+  session_id: string,
+  domains: readonly string[],
+  now = Date.now(),
+): void {
+  mkdirSync(dir, { recursive: true });
+  for (const name of readdirSync(dir)) {
+    const file = join(dir, name);
+    if (now - statSync(file).mtimeMs > BRIEFED_TTL_MS) rmSync(file, { force: true });
+  }
+  const merged = [...new Set([...readBriefed(dir, session_id), ...domains])].sort();
+  writeFileSync(briefedPath(dir, session_id), JSON.stringify(merged));
 }
 
 const briefingCommand = defineCommand({
@@ -78,26 +147,50 @@ const briefingCommand = defineCommand({
   args: {
     domains: {
       type: "string",
-      description: "Comma-separated domain slugs (default: .sk/agent.json of the repo)",
+      description:
+        "Comma-separated domain slugs (default: .sk/agent.json of the repo, else the known domains the repository name names)",
     },
     budget: { type: "string", description: "Token budget for the briefing" },
     hook: {
       type: "boolean",
-      description: "SessionStart-hook mode: read hook JSON from stdin, never fail",
+      description:
+        "Hook mode (SessionStart or UserPromptSubmit): read hook JSON from stdin, never fail; with a prompt, brief only the domains the prompt adds",
       default: false,
     },
     json: { type: "boolean", description: "JSON output", default: false },
   },
   async run({ args }) {
     try {
-      const startDir = (args.hook ? readHookPayload().cwd : null) ?? process.cwd();
+      const payload = args.hook ? readHookPayload() : null;
+      const startDir = payload?.cwd ?? process.cwd();
       const fromFile = args.domains ? null : findAgentFile(startDir);
-      const domains = args.domains
-        ? args.domains
-            .split(",")
-            .map((d) => d.trim())
-            .filter(Boolean)
-        : (fromFile?.config.domains ?? []);
+      const declared = fromFile?.config.domains ?? [];
+      const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
+      const { engine_url, api_key, active_tenant_id } = resolveProfile();
+      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      const repo = basename(startDir);
+      let domains: string[];
+      if (args.domains) {
+        domains = args.domains
+          .split(",")
+          .map((d) => d.trim())
+          .filter(Boolean);
+      } else if (payload?.prompt) {
+        const resolved = await client.resolveAgentDomains({
+          prompt: payload.prompt.slice(0, PROMPT_MAX_CHARS),
+          repo,
+        });
+        const briefed = payload.session_id ? readBriefed(briefedDir(), payload.session_id) : [];
+        domains = newPromptDomains(resolved.from_prompt, [
+          ...sessionDomains(declared, resolved.from_repo),
+          ...briefed,
+        ]);
+        if (domains.length === 0) return;
+      } else {
+        if (payload?.session_id) forgetBriefed(briefedDir(), payload.session_id);
+        domains =
+          declared.length > 0 ? declared : (await client.resolveAgentDomains({ repo })).from_repo;
+      }
       if (domains.length === 0) {
         if (!args.hook) {
           process.stdout.write(
@@ -107,13 +200,13 @@ const briefingCommand = defineCommand({
         }
         return;
       }
-      const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
-      const { engine_url, api_key, active_tenant_id } = resolveProfile();
-      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
       const briefing = await client.getAgentBriefing({
         domains,
         ...(budget !== undefined && Number.isFinite(budget) ? { budget_tokens: budget } : {}),
       });
+      if (payload?.prompt && payload.session_id) {
+        recordBriefed(briefedDir(), payload.session_id, domains);
+      }
       if (args.json) {
         printJson(briefing);
         return;
@@ -231,15 +324,19 @@ function appendHookEntry(
   return { ...hooks, [event]: [...entries, entry] };
 }
 
-export function wireClaudeSessionStartHook(
-  settings: Record<string, unknown>,
-): Record<string, unknown> | null {
+export function wireClaudeHooks(settings: Record<string, unknown>): Record<string, unknown> | null {
   let hooks = (settings.hooks ?? {}) as Record<string, unknown>;
   let changed = false;
   if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
     hooks = appendHookEntry(hooks, "SessionStart", {
       matcher: "startup|resume|compact",
       hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
+    });
+    changed = true;
+  }
+  if (!eventWired(hooks, "UserPromptSubmit", HOOK_COMMAND)) {
+    hooks = appendHookEntry(hooks, "UserPromptSubmit", {
+      hooks: [{ type: "command", command: HOOK_COMMAND, timeout: PROMPT_HOOK_TIMEOUT_SECONDS }],
     });
     changed = true;
   }
@@ -255,7 +352,7 @@ export function wireClaudeSessionStartHook(
   return { ...settings, hooks };
 }
 
-function codexHookSnippet(): string {
+export function codexHookSnippet(): string {
   return [
     "# ~/.codex/config.toml — enable hooks, then add the hooks below:",
     "[features]",
@@ -270,6 +367,13 @@ function codexHookSnippet(): string {
             {
               matcher: "startup|resume|compact",
               hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
+            },
+          ],
+          UserPromptSubmit: [
+            {
+              hooks: [
+                { type: "command", command: HOOK_COMMAND, timeout: PROMPT_HOOK_TIMEOUT_SECONDS },
+              ],
             },
           ],
           Stop: [
@@ -288,6 +392,16 @@ function codexHookSnippet(): string {
       null,
       2,
     ),
+  ].join("\n");
+}
+
+export function hermesSnippet(engine_url: string): string {
+  return [
+    "# Hermes — no session hook is wired here; register sk as an MCP server and",
+    "# hand Hermes the briefing as context when a session starts:",
+    `#   MCP server (streamable HTTP): ${engine_url}/mcp`,
+    `#   Header: Authorization: Bearer \${SK_API_KEY}`,
+    "#   Briefing command (run in the repository): sk agent briefing",
   ].join("\n");
 }
 
@@ -337,11 +451,13 @@ const initCommand = defineCommand({
         const existing: Record<string, unknown> = existsSync(settingsPath)
           ? (JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>)
           : {};
-        const updated = wireClaudeSessionStartHook(existing);
+        const updated = wireClaudeHooks(existing);
         if (updated) {
           mkdirSync(dirname(settingsPath), { recursive: true });
           writeFileSync(settingsPath, `${JSON.stringify(updated, null, 2)}\n`);
-          out(`${pc.green("✓")} wired SessionStart + SessionEnd hooks in ${settingsPath}`);
+          out(
+            `${pc.green("✓")} wired SessionStart + UserPromptSubmit + SessionEnd hooks in ${settingsPath}`,
+          );
         } else {
           out(`${pc.dim("•")} Claude Code hooks already wired`);
         }
@@ -351,6 +467,9 @@ const initCommand = defineCommand({
       out("");
       out(pc.bold("Codex (manual, feature-gated):"));
       out(codexHookSnippet());
+      out("");
+      out(pc.bold("Hermes (manual):"));
+      out(hermesSnippet(engine_url));
       out("");
       out(pc.bold("MCP registration (once per machine):"));
       out(

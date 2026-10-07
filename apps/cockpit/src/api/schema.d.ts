@@ -11151,6 +11151,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve which known domains a prompt or repository is about
+         * @description Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    prompt?: string;
+                    repo?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgentDomainsResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent/briefing": {
         parameters: {
             query?: never;
@@ -11160,7 +11202,7 @@ export interface paths {
         };
         /**
          * Domain-scoped session briefing for external coding agents
-         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.
          */
         get: {
             parameters: {
@@ -22031,6 +22073,11 @@ export interface components {
         RejectSkillCandidateBody: {
             reason?: string;
         };
+        AgentDomainsResponse: {
+            domains: string[];
+            from_prompt: string[];
+            from_repo: string[];
+        };
         AgentBriefingResponse: {
             markdown: string;
             domains: string[];
@@ -22040,6 +22087,12 @@ export interface components {
             skills_title_only: string[];
             knowledge_sources: string[];
             knowledge_sources_omitted: number;
+            /** @description Slugs of the domain's workflows the caller may read, as listed in the briefing. */
+            workflows: string[];
+            workflows_omitted: number;
+            /** @description Slugs of the domain's connectors the caller may read, as listed in the briefing. */
+            connectors: string[];
+            connectors_omitted: number;
             proposed_candidates: number;
         };
         AgentSessionCaptureResponse: {
