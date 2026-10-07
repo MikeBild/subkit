@@ -442,6 +442,287 @@
   },
   {
     "version": 1,
+    "slug": "anthropic",
+    "name": "Anthropic",
+    "driver": "http",
+    "base_url": "https://api.anthropic.com/v1",
+    "auth_type": "header",
+    "oauth": null,
+    "default_skill": "anthropic-basics",
+    "ingestion_source": "unsupported",
+    "ingestion_url": null,
+    "icon": "anthropic.svg",
+    "description": "Anthropic Claude API: call Claude from a workflow step through a connector, with the same boundary and per-run token budget as every other connector call.",
+    "category": "ai",
+    "tags": ["rest", "llm", "structured-output"],
+    "aliases": ["claude", "claude api"],
+    "setup_instructions": "Create an API key in the Claude Console (Settings > API keys) and store it as a header credential named x-api-key. Every request also sends the anthropic-version header; the recipes set it per step.",
+    "auth_options": [
+      {
+        "auth_type": "header",
+        "label": "API key header",
+        "description": "Authenticate with the API key sent in the x-api-key request header."
+      }
+    ],
+    "url_pattern": "^https:\\/\\/api\\.anthropic\\.com\\/v1(\\/|$)",
+    "keywords": [
+      "messages",
+      "claude",
+      "models",
+      "structured outputs",
+      "summarization",
+      "classification"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/models",
+      "expected_status": [200, 200],
+      "description": "List models to validate the key",
+      "headers": {
+        "anthropic-version": "2023-06-01"
+      }
+    },
+    "credential_hints": [
+      {
+        "field": "value",
+        "label": "API key (x-api-key header value)",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true,
+        "header_name": "x-api-key"
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "operator_quirks": {
+      "auth": "The key travels in the x-api-key header, never as a bearer token. Every request also needs anthropic-version: 2023-06-01.",
+      "schema": "POST /messages takes model, max_tokens and messages. For JSON results set output_config.format to a json_schema and parse the first text block of content.",
+      "error_handling": "Errors are JSON envelopes {type: error, error: {type, message}}. 429 and 529 (overloaded) are retryable; 400 means the request body is wrong. Check stop_reason before reading content.",
+      "rate_limit": "Workflow steps that call api.anthropic.com count against the workflow's max_llm_tokens_per_run budget; set it on every workflow that calls Claude."
+    },
+    "recipes": [
+      {
+        "slug": "list-models",
+        "title": "List available Claude models",
+        "description": "Lists the Claude models this API key can call, with their ids and display names. Use it to validate the key and to pick a model id for a messages step.",
+        "intent_keywords": ["anthropic model ids", "which claude models", "validate anthropic key"],
+        "derived_from_skill": null,
+        "category": "ai",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": null,
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "anthropic-list-models",
+          "description": "List the Claude models available to this key.",
+          "steps": [
+            {
+              "kind": "request",
+              "id": "list_models",
+              "method": "GET",
+              "url": "${connector.anthropic.base_url}/models",
+              "headers": {
+                "anthropic-version": "2023-06-01"
+              },
+              "side_effects": "read"
+            }
+          ],
+          "output_transform_function": "const models = (input.scope.list_models.data && input.scope.list_models.data.data) || []; return { models: models.map((m) => ({ id: m.id, display_name: m.display_name })) };"
+        }
+      },
+      {
+        "slug": "summarize-text",
+        "title": "Summarize text with Claude",
+        "description": "Sends a text to Claude and returns a short summary. The workflow carries a per-run token budget, so one run can never spend more than the cap.",
+        "intent_keywords": ["claude summary", "summarise document", "condense text", "tl;dr"],
+        "derived_from_skill": null,
+        "category": "ai",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "text": "The quarterly review covered three topics: hiring, the new billing system and the office move."
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "anthropic-summarize-text",
+          "description": "Summarize a text with Claude within a per-run token budget.",
+          "max_llm_tokens_per_run": 20000,
+          "input_schema": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The text to summarize"
+              }
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "required": ["summary"],
+            "properties": {
+              "summary": {
+                "type": "string"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "summarize",
+              "method": "POST",
+              "url": "${connector.anthropic.base_url}/messages",
+              "headers": {
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01"
+              },
+              "side_effects": "read",
+              "body": {
+                "model": "claude-opus-5-5",
+                "max_tokens": 4096,
+                "output_config": {
+                  "effort": "low"
+                },
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Summarize the following text in at most five sentences. Answer with the summary only.\n\n${input.text}"
+                  }
+                ]
+              }
+            }
+          ],
+          "output_transform_function": "const blocks = (input.scope.summarize.data && input.scope.summarize.data.content) || []; const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join(''); return { summary: text };"
+        }
+      },
+      {
+        "slug": "classify-text",
+        "title": "Classify text into one of your categories",
+        "description": "Asks Claude to put a text into exactly one of the categories you list and returns the category with a one-sentence reason as structured JSON. Bounded by a per-run token budget.",
+        "intent_keywords": [
+          "ticket triage",
+          "categorize message",
+          "label support request",
+          "route by topic"
+        ],
+        "derived_from_skill": null,
+        "category": "ai",
+        "tags": [],
+        "difficulty": "intermediate",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "text": "I was charged twice for my subscription this month.",
+          "categories": "billing, technical, sales"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "anthropic-classify-text",
+          "description": "Classify a text into one of the given categories with structured output.",
+          "max_llm_tokens_per_run": 20000,
+          "input_schema": {
+            "type": "object",
+            "required": ["text", "categories"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The text to classify"
+              },
+              "categories": {
+                "type": "string",
+                "description": "Comma-separated list of allowed categories"
+              }
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "required": ["category", "reason"],
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "classify",
+              "method": "POST",
+              "url": "${connector.anthropic.base_url}/messages",
+              "headers": {
+                "Content-Type": "application/json",
+                "anthropic-version": "2023-06-01"
+              },
+              "side_effects": "read",
+              "body": {
+                "model": "claude-opus-5-5",
+                "max_tokens": 4096,
+                "output_config": {
+                  "effort": "low",
+                  "format": {
+                    "type": "json_schema",
+                    "schema": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["category", "reason"],
+                      "properties": {
+                        "category": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Put the text into exactly one of these categories: ${input.categories}. Give the category and a one-sentence reason.\n\n${input.text}"
+                  }
+                ]
+              }
+            }
+          ],
+          "output_transform_function": "const blocks = (input.scope.classify.data && input.scope.classify.data.content) || []; const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join(''); const parsed = JSON.parse(text || '{}'); return { category: String(parsed.category || ''), reason: String(parsed.reason || '') };"
+        }
+      }
+    ],
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
     "slug": "appsync-cognito",
     "name": "AWS AppSync (Cognito User-Password)",
     "driver": "graphql",
@@ -6747,6 +7028,420 @@
       "schema": "The step output is the GraphQL data payload — read it directly via $scope.<step>.data.<field>, like the REST driver. GraphQL errors fail the step and surface on $scope.<step>.error.",
       "error_handling": "The driver classifies a non-empty GraphQL errors array as a failed step even when HTTP status is 200."
     },
+    "aws_service": null,
+    "aws_region": null,
+    "verified_at": null
+  },
+  {
+    "version": 1,
+    "slug": "google-analytics",
+    "name": "Google Analytics 4",
+    "driver": "http",
+    "base_url": "https://analyticsdata.googleapis.com",
+    "auth_type": "oauth2",
+    "oauth": {
+      "issuer_url": "https://accounts.google.com",
+      "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_endpoint": "https://oauth2.googleapis.com/token",
+      "scopes": "https://www.googleapis.com/auth/analytics.readonly",
+      "grant_type": "authorization_code",
+      "token_auth_method": "body",
+      "token_content_type": "form",
+      "use_pkce": false,
+      "client_id": null,
+      "extra_headers": {}
+    },
+    "default_skill": "google-analytics-basics",
+    "ingestion_source": "openapi",
+    "ingestion_url": "https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta",
+    "icon": "google-analytics.svg",
+    "description": "Google Analytics 4 Data API: users, sessions, page views, traffic sources and key events of a GA4 property.",
+    "category": "analytics",
+    "tags": ["rest", "google", "ga4", "reporting", "web-analytics"],
+    "aliases": ["ga4", "google analytics"],
+    "setup_instructions": "Create a Google Cloud project, enable the Google Analytics Data API, configure the OAuth consent screen and create OAuth 2.0 credentials. Sign in with a Google account that has at least Viewer access to the GA4 property; recipes take the numeric property id as input.",
+    "auth_options": [
+      {
+        "auth_type": "oauth2",
+        "label": "OAuth 2.0 (Auth Code)",
+        "description": "Standard OAuth 2.0 Authorization Code flow for read-only Analytics access.",
+        "oauth": {
+          "issuer_url": "https://accounts.google.com",
+          "authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+          "token_endpoint": "https://oauth2.googleapis.com/token",
+          "scopes": "https://www.googleapis.com/auth/analytics.readonly",
+          "grant_type": "authorization_code",
+          "token_auth_method": "body",
+          "token_content_type": "form",
+          "use_pkce": false,
+          "client_id": null,
+          "extra_headers": {}
+        }
+      }
+    ],
+    "url_pattern": "^https://analyticsdata\\.googleapis\\.com(\\/|$)",
+    "keywords": [
+      "runreport",
+      "active users",
+      "sessions",
+      "page views",
+      "traffic sources",
+      "key events",
+      "realtime"
+    ],
+    "inline_schema": null,
+    "probe_endpoint": {
+      "method": "GET",
+      "path": "/v1beta/properties/0/metadata",
+      "expected_status": [200, 200],
+      "description": "Read the dimensions and metrics every property shares (property 0) to validate the token"
+    },
+    "credential_hints": [
+      {
+        "field": "client_id",
+        "label": "OAuth2 Client ID",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": false
+      },
+      {
+        "field": "client_secret",
+        "label": "OAuth2 Client Secret",
+        "placeholder": "",
+        "doc_url": null,
+        "secret": true
+      }
+    ],
+    "base_url_options": [],
+    "pagination_defaults": null,
+    "capabilities": {
+      "webhooks": false,
+      "webhook_events": [],
+      "rate_limits": null
+    },
+    "operator_quirks": {
+      "schema": "runReport is a POST to /v1beta/properties/{property_id}:runReport with dateRanges, dimensions and metrics. Rows carry dimensionValues and metricValues as strings in header order; read the index from dimensionHeaders and metricHeaders.",
+      "auth": "The signed-in Google account needs at least Viewer access to the property. A 403 names a missing property permission, not a broken sign-in.",
+      "general": "Dates accept YYYY-MM-DD, today, yesterday and NdaysAgo. Data for today is incomplete; reports usually end yesterday."
+    },
+    "recipes": [
+      {
+        "slug": "run-report",
+        "title": "Report users, sessions and page views for a date range",
+        "description": "Runs one GA4 report with the core totals (active users, sessions, page views, key events) for the given date range.",
+        "intent_keywords": ["ga4 totals", "website traffic", "visitor numbers", "analytics kpis"],
+        "derived_from_skill": null,
+        "category": "analytics",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "property_id": "123456789",
+          "start_date": "7daysAgo",
+          "end_date": "yesterday"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "google-analytics-run-report",
+          "description": "Core GA4 totals for a date range.",
+          "input_schema": {
+            "type": "object",
+            "required": ["property_id", "start_date", "end_date"],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "description": "GA4 property id (digits only, from Admin > Property settings)"
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Start date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              },
+              "end_date": {
+                "type": "string",
+                "description": "End date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "totals",
+              "method": "POST",
+              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "side_effects": "read",
+              "body": {
+                "dateRanges": [
+                  {
+                    "startDate": "${input.start_date}",
+                    "endDate": "${input.end_date}"
+                  }
+                ],
+                "metrics": [
+                  {
+                    "name": "activeUsers"
+                  },
+                  {
+                    "name": "sessions"
+                  },
+                  {
+                    "name": "screenPageViews"
+                  },
+                  {
+                    "name": "keyEvents"
+                  }
+                ]
+              }
+            }
+          ],
+          "output_transform_function": "const r = input.scope.totals.data || {}; const rows = Array.isArray(r.rows) ? r.rows : []; const headers = Array.isArray(r.metricHeaders) ? r.metricHeaders : []; const values = rows.length ? rows[0].metricValues : []; const out = {}; headers.forEach((h, i) => { out[h.name] = Number((values[i] && values[i].value) || 0); }); return out;"
+        }
+      },
+      {
+        "slug": "top-pages",
+        "title": "List the most viewed pages",
+        "description": "Returns the pages with the most page views in the date range, ordered by views.",
+        "intent_keywords": ["most visited pages", "popular content", "page ranking", "top urls"],
+        "derived_from_skill": null,
+        "category": "analytics",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "property_id": "123456789",
+          "start_date": "yesterday",
+          "end_date": "yesterday"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "google-analytics-top-pages",
+          "description": "Most viewed pages for a date range.",
+          "input_schema": {
+            "type": "object",
+            "required": ["property_id", "start_date", "end_date"],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "description": "GA4 property id (digits only, from Admin > Property settings)"
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Start date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              },
+              "end_date": {
+                "type": "string",
+                "description": "End date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "pages",
+              "method": "POST",
+              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "side_effects": "read",
+              "body": {
+                "dateRanges": [
+                  {
+                    "startDate": "${input.start_date}",
+                    "endDate": "${input.end_date}"
+                  }
+                ],
+                "dimensions": [
+                  {
+                    "name": "pagePath"
+                  }
+                ],
+                "metrics": [
+                  {
+                    "name": "screenPageViews"
+                  }
+                ],
+                "orderBys": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "screenPageViews"
+                    }
+                  }
+                ],
+                "limit": 10
+              }
+            }
+          ],
+          "output_transform_function": "const r = input.scope.pages.data || {}; const rows = Array.isArray(r.rows) ? r.rows : []; return { pages: rows.map((row) => ({ path: row.dimensionValues[0].value, views: Number(row.metricValues[0].value) })) };"
+        }
+      },
+      {
+        "slug": "traffic-sources",
+        "title": "Break down sessions by traffic source",
+        "description": "Returns the traffic sources that brought the most sessions in the date range.",
+        "intent_keywords": [
+          "where visitors come from",
+          "referrers",
+          "acquisition channels",
+          "session source"
+        ],
+        "derived_from_skill": null,
+        "category": "analytics",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "property_id": "123456789",
+          "start_date": "7daysAgo",
+          "end_date": "yesterday"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "google-analytics-traffic-sources",
+          "description": "Sessions per traffic source for a date range.",
+          "input_schema": {
+            "type": "object",
+            "required": ["property_id", "start_date", "end_date"],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "description": "GA4 property id (digits only, from Admin > Property settings)"
+              },
+              "start_date": {
+                "type": "string",
+                "description": "Start date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              },
+              "end_date": {
+                "type": "string",
+                "description": "End date: YYYY-MM-DD, today, yesterday or NdaysAgo"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "sources",
+              "method": "POST",
+              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runReport",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "side_effects": "read",
+              "body": {
+                "dateRanges": [
+                  {
+                    "startDate": "${input.start_date}",
+                    "endDate": "${input.end_date}"
+                  }
+                ],
+                "dimensions": [
+                  {
+                    "name": "sessionSource"
+                  }
+                ],
+                "metrics": [
+                  {
+                    "name": "sessions"
+                  }
+                ],
+                "orderBys": [
+                  {
+                    "desc": true,
+                    "metric": {
+                      "metricName": "sessions"
+                    }
+                  }
+                ],
+                "limit": 10
+              }
+            }
+          ],
+          "output_transform_function": "const r = input.scope.sources.data || {}; const rows = Array.isArray(r.rows) ? r.rows : []; return { sources: rows.map((row) => ({ source: row.dimensionValues[0].value, sessions: Number(row.metricValues[0].value) })) };"
+        }
+      },
+      {
+        "slug": "realtime-active-users",
+        "title": "Show who is on the site right now",
+        "description": "Reads the realtime report: active users in the last 30 minutes per country.",
+        "intent_keywords": ["live visitors", "current users", "realtime report"],
+        "derived_from_skill": null,
+        "category": "analytics",
+        "tags": [],
+        "difficulty": "beginner",
+        "estimated_setup_minutes": 5,
+        "prerequisites": [],
+        "sample_input": {
+          "property_id": "123456789"
+        },
+        "expected_output_preview": null,
+        "required_connectors": [],
+        "version": "1.0.0",
+        "author": "subkit-builtin",
+        "last_validated_at": null,
+        "deprecated": null,
+        "workflow": {
+          "name": "google-analytics-realtime-active-users",
+          "description": "Active users in the last 30 minutes per country.",
+          "input_schema": {
+            "type": "object",
+            "required": ["property_id"],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "description": "GA4 property id (digits only, from Admin > Property settings)"
+              }
+            }
+          },
+          "steps": [
+            {
+              "kind": "request",
+              "id": "realtime",
+              "method": "POST",
+              "url": "${connector.google-analytics.base_url}/v1beta/properties/${input.property_id}:runRealtimeReport",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "side_effects": "read",
+              "body": {
+                "dimensions": [
+                  {
+                    "name": "country"
+                  }
+                ],
+                "metrics": [
+                  {
+                    "name": "activeUsers"
+                  }
+                ],
+                "limit": 10
+              }
+            }
+          ],
+          "output_transform_function": "const r = input.scope.realtime.data || {}; const rows = Array.isArray(r.rows) ? r.rows : []; const countries = rows.map((row) => ({ country: row.dimensionValues[0].value, active_users: Number(row.metricValues[0].value) })); return { active_users: countries.reduce((n, c) => n + c.active_users, 0), countries };"
+        }
+      }
+    ],
     "aws_service": null,
     "aws_region": null,
     "verified_at": null
