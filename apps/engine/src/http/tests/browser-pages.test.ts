@@ -91,6 +91,18 @@ describe("a cockpit sign-in that wants to leave the cockpit", () => {
     expect(html).not.toContain("evil.example");
   });
 
+  test("pages of different lengths, one after the other, each arrive whole", async () => {
+    for (const cookie of ["sk_locale=de", "sk_locale=en", "sk_locale=de"]) {
+      const res = await fetch(url(), {
+        headers: { accept: BROWSER, cookie },
+        signal: AbortSignal.timeout(5_000),
+      });
+      const html = await res.text();
+      expect(Number(res.headers.get("content-length"))).toBe(Buffer.byteLength(html));
+      expect(html.trimEnd().endsWith("</html>")).toBe(true);
+    }
+  });
+
   test("an API client keeps the error envelope", async () => {
     const res = await fetch(url(), { headers: { accept: "application/json" } });
     expect(res.status).toBe(400);
