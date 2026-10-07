@@ -257,6 +257,8 @@ describe("coming back from a sign-in", () => {
     expect(keys).not.toContain("connectorStrip.signInFailure.other");
     for (const key of keys) expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
     expect(signInFailureKey("<script>")).toBe("connectorStrip.signInFailure.other");
+    for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"])
+      expect(signInFailureKey(inherited)).toBe("connectorStrip.signInFailure.other");
   });
 
   test("the flag and the address are the ones the engine's callback sends", () => {

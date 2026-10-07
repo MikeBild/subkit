@@ -235,22 +235,24 @@ export function withoutSignInReturn(search: string): string {
   return query ? `?${query}` : "";
 }
 
-const SIGN_IN_FAILURE_KEYS: Record<string, TranslationKey> = {
-  link_expired: "connectorStrip.signInFailure.linkExpired",
-  provider_declined: "connectorStrip.signInFailure.providerDeclined",
-  no_authorization: "connectorStrip.signInFailure.noAuthorization",
-  exchange_failed: "connectorStrip.signInFailure.exchangeFailed",
-  issuer_mismatch: "connectorStrip.signInFailure.issuerMismatch",
-  connector_gone: "connectorStrip.signInFailure.connectorGone",
-  not_startable: "connectorStrip.signInFailure.notStartable",
-  no_public_address: "connectorStrip.signInFailure.noPublicAddress",
-  unsupported_credential: "connectorStrip.signInFailure.unsupportedCredential",
-  missing_field: "connectorStrip.signInFailure.missingField",
-  not_saved: "connectorStrip.signInFailure.notSaved",
-};
+const SIGN_IN_FAILURE_KEYS = new Map<string, TranslationKey>(
+  Object.entries({
+    link_expired: "connectorStrip.signInFailure.linkExpired",
+    provider_declined: "connectorStrip.signInFailure.providerDeclined",
+    no_authorization: "connectorStrip.signInFailure.noAuthorization",
+    exchange_failed: "connectorStrip.signInFailure.exchangeFailed",
+    issuer_mismatch: "connectorStrip.signInFailure.issuerMismatch",
+    connector_gone: "connectorStrip.signInFailure.connectorGone",
+    not_startable: "connectorStrip.signInFailure.notStartable",
+    no_public_address: "connectorStrip.signInFailure.noPublicAddress",
+    unsupported_credential: "connectorStrip.signInFailure.unsupportedCredential",
+    missing_field: "connectorStrip.signInFailure.missingField",
+    not_saved: "connectorStrip.signInFailure.notSaved",
+  } satisfies Record<string, TranslationKey>),
+);
 
 export function signInFailureKey(failure: string): TranslationKey {
-  return SIGN_IN_FAILURE_KEYS[failure] ?? "connectorStrip.signInFailure.other";
+  return SIGN_IN_FAILURE_KEYS.get(failure) ?? "connectorStrip.signInFailure.other";
 }
 
 export type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;
