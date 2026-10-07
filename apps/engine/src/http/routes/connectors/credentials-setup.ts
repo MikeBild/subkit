@@ -4,6 +4,7 @@ import { AuditAction, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   consumeSetupGrant,
+  type SignInFailure,
   settleConnectorReauthorization,
   validateSetupGrant,
 } from "../../../connectors/index.ts";
@@ -20,11 +21,18 @@ import * as credsvc from "../../../credentials/index.ts";
 import { logger } from "../../../logging/index.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { escapeHtml, parseFormBody } from "../oauth/shared.ts";
-import { type AuthLocale, authHtmlResponse, renderShellPage } from "../oauth/ui.ts";
+import {
+  type AuthLocale,
+  authHtmlResponse,
+  type PageLook,
+  pageActions,
+  pageHead,
+  renderSinglePage,
+} from "../oauth/ui.ts";
 import {
   requestLocale,
+  requestLook,
   resultResponse,
-  type SignInFailure,
   signedInPage,
   signInFailedPage,
 } from "./signin-result.ts";
@@ -241,9 +249,9 @@ function buildCredentialSetupFormHtml(opts: {
   auth_type: string;
   grant: string;
   mode: "connect" | "reconnect";
-  locale: AuthLocale;
+  look: PageLook;
 }): string {
-  const copy = FORM_COPY[opts.locale];
+  const copy = FORM_COPY[opts.look.locale];
   const heading = copy.heading[opts.mode](opts.label);
   const fields = (copy.fields[opts.auth_type] ?? [])
     .map(
@@ -251,12 +259,12 @@ function buildCredentialSetupFormHtml(opts: {
         `<label class="field">${escapeHtml(f.label(opts.label))}<input type="${f.secret ? "password" : "text"}" name="${f.name}"${f.required ? " required" : ""} autocomplete="off"${index === 0 ? " autofocus" : ""}></label>`,
     )
     .join("");
-  return renderShellPage(
-    heading,
-    `<h1 data-family-slot="auth-heading">${escapeHtml(heading)}</h1><p class="muted">${escapeHtml(copy.intro(opts.label))}</p><form method="POST" action="${escapeHtml(opts.action)}"><input type="hidden" name="grant" value="${escapeHtml(opts.grant)}">${fields}<div class="actions"><button class="approve" type="submit">${copy.submit}</button></div></form>`,
-    opts.locale,
-    copy.context,
-  );
+  return renderSinglePage({
+    look: opts.look,
+    surface: "auth",
+    context: copy.context,
+    body: `${pageHead({ title: heading, slot: "auth-heading", line: copy.intro(opts.label) })}<form method="POST" action="${escapeHtml(opts.action)}"><input type="hidden" name="grant" value="${escapeHtml(opts.grant)}">${fields}${pageActions(`<button class="button primary" type="submit">${copy.submit}</button>`)}</form>`,
+  });
 }
 
 type RouteContext = Parameters<typeof requestLocale>[0];
@@ -296,7 +304,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       auth_type: validated.auth_type,
       grant,
       mode: "connect",
-      locale: requestLocale(c),
+      look: requestLook(c),
     });
     return authHtmlResponse(html);
   });
@@ -457,7 +465,7 @@ export function registerCredentialsSetupRoutes(app: OpenAPIHono<AppEnv>): void {
       auth_type: connector.auth_type,
       grant,
       mode: "reconnect",
-      locale: requestLocale(c),
+      look: requestLook(c),
     });
     return authHtmlResponse(html);
   });

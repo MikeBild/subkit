@@ -71,7 +71,7 @@ for (const locale of ["de", "en"] as const) {
       "grant",
       { email: "operator@example.test" },
       "csrf",
-      locale,
+      { locale, scheme: null },
     );
     expect(html).toContain(copy.prod);
     expect(html).toContain(copy.directBoundHelp);
@@ -116,7 +116,7 @@ for (const locale of ["de", "en"] as const) {
       "grant",
       { email: "operator@example.test" },
       "csrf",
-      locale,
+      { locale, scheme: null },
     );
     expect(html).toContain(version);
     expect(html).toContain(copy.attemptsValue.replace("{count}", "5"));
@@ -126,12 +126,12 @@ for (const locale of ["de", "en"] as const) {
     expect(html).toContain("reviewed@example.test");
     expect(html).not.toContain("wrong.example.test");
     expect(html).not.toContain("<script>");
-    expect(html).not.toContain("<img");
+    expect(html.match(/<img/g)).toEqual(["<img"]);
   });
 
   test(`${locale} does not invent successful execution from a consumed approval`, () => {
     const copy = approvalCopy(locale);
-    const page = alreadyDecidedPage({ ...view, state: "consumed" }, locale);
+    const page = alreadyDecidedPage({ ...view, state: "consumed" }, { locale, scheme: null });
     expect(page.html).toContain(copy.consumedTitle);
     expect(page.html).not.toContain("has already been carried out");
     expect(page.html).not.toContain("<form");
@@ -148,7 +148,7 @@ for (const locale of ["de", "en"] as const) {
       "grant",
       { email: "operator@example.test" },
       "csrf",
-      locale,
+      { locale, scheme: null },
     );
     expect(html).toContain(copy.missing);
     expect(html).toContain(copy.changesHelp);
@@ -172,11 +172,67 @@ test("all untrusted preview fields and status copy are escaped", () => {
     "hidden-grant",
     { email: "<operator>" },
     "csrf",
-    "en",
+    { locale: "en", scheme: null },
   );
   expect(html).not.toContain("<script>");
   expect(html).not.toContain("<img src=x>");
   expect(html).not.toContain("secret=short");
   expect(html).toContain("&lt;operator&gt;");
-  expect(approvalStatusPage("de", "<title>", "<message>").html).toContain("&lt;message&gt;");
+  expect(approvalStatusPage({ locale: "de", scheme: null }, "<title>", "<message>").html).toContain(
+    "&lt;message&gt;",
+  );
+});
+
+const PENDING_HTML = (locale: "de" | "en") =>
+  buildApprovalDecisionHtml(view, "grant", { email: "operator@example.test" }, "csrf", {
+    locale,
+    scheme: null,
+  });
+
+test("the decision page is one wide single page with a status chip and the §8.4 verbs", () => {
+  const html = PENDING_HTML("de");
+  expect(html.match(/<h1[\s>]/g)?.length).toBe(1);
+  expect(html).toContain('data-family-surface="auth"');
+  expect(html).toContain('<main class="card wide"');
+  expect(html).toContain("<title>SubKit Cockpit</title>");
+  expect(html).toContain('<span class="dot warning"></span>Freigabe ausstehend</span>');
+  expect(html).toContain('value="approve">Freigeben</button>');
+  expect(html).toContain('value="decline">Ablehnen</button>');
+  expect(html.match(/SubKit · Einzelfreigabe/g)?.length).toBe(1);
+  expect(html).not.toContain("<a ");
+});
+
+test("every status page ends with exactly one way back to the cockpit", () => {
+  for (const locale of ["de", "en"] as const) {
+    const copy = approvalCopy(locale);
+    const look = { locale, scheme: null };
+    const pages = [
+      approvalStatusPage(look, copy.deadTitle, copy.deadMessage).html,
+      approvalStatusPage(look, copy.invalidTitle, copy.invalidMessage).html,
+      approvalStatusPage(look, copy.signTitle, copy.signMessage).html,
+      approvalStatusPage(look, copy.csrfTitle, copy.csrfMessage).html,
+      approvalStatusPage(look, copy.refusedTitle, copy.unchanged).html,
+      ...(["granted", "declined", "consumed"] as const).map(
+        (state) => alreadyDecidedPage({ ...view, state }, look).html,
+      ),
+    ];
+    for (const html of pages) {
+      expect(html.match(/<a\s/g)?.length).toBe(1);
+      expect(html).toContain('href="/cockpit"');
+      expect(html).toContain(locale === "de" ? ">Zum Cockpit</a>" : ">Back to Cockpit</a>");
+      expect(html).not.toContain("<form");
+    }
+  }
+});
+
+test("the German portal carries none of the English copy", () => {
+  const english = approvalCopy("en");
+  const german = [
+    PENDING_HTML("de"),
+    alreadyDecidedPage({ ...view, state: "declined" }, { locale: "de", scheme: null }).html,
+  ].join("");
+  const leaks = Object.entries(english)
+    .filter(([key]) => !["tool", "workflow", "method", "language"].includes(key))
+    .filter(([, text]) => german.includes(text.split("{")[0] ?? text));
+  expect(leaks).toEqual([]);
 });

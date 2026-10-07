@@ -190,14 +190,14 @@ for (const locale of ["de", "en"] as const) {
         await page.keyboard.press("Enter");
         expect(await page.locator("details").getAttribute("open")).not.toBeNull();
         const action = page.getByRole("button", {
-          name: locale === "de" ? "Diese Aktion einmalig freigeben" : "Authorize this action once",
+          name: locale === "de" ? "Freigeben" : "Approve",
           exact: true,
         });
         await action.focus();
         expect(await action.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
           "none",
         );
-        expect((await action.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+        expect((await action.boundingBox())?.height).toBe(32);
         await page.screenshot({
           path: `.artifacts/approval-portal/${locale}-${width}-pending.png`,
           fullPage: true,

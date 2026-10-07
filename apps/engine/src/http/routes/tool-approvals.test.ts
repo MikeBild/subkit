@@ -108,6 +108,19 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     });
   }
 
+  test("the cockpit's language and theme cookies win over the browser's language", async () => {
+    const { approval_url } = await seedApproval();
+    const response = await fetch(approval_url, {
+      headers: {
+        cookie: `${browserCookie}; sk_locale=de; sk_theme=dark`,
+        "accept-language": "en-US,en;q=0.9",
+      },
+    });
+    const html = await response.text();
+    expect(html).toContain('<html lang="de" class="dark">');
+    expect(response.headers.get("content-security-policy")).toContain("img-src 'self'");
+  });
+
   test("language switching preserves the pending decision and its expiry", async () => {
     const { approval_id, approval_url } = await seedApproval();
     const page = await fetch(approval_url, { headers: { cookie: browserCookie } });
@@ -121,6 +134,10 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       });
       expect(response.status).toBe(200);
       expect(await response.text()).toContain(`<html lang="${language}">`);
+      expect(response.headers.get("set-cookie")).toMatch(
+        new RegExp(`^sk_locale=${language}; Path=/; Max-Age=\\d+; SameSite=Lax`),
+      );
+      expect(response.headers.get("set-cookie")).not.toContain("HttpOnly");
     }
     const after = await approvalRow(approval_id);
     expect(after?.expires_at).toEqual(before?.expires_at);

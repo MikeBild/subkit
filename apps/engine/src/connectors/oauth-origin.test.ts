@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig, setConfigKey } from "../config/loader.ts";
-import { cockpitConnectorUrl, oauthFlowOrigin } from "./oauth-origin.ts";
+import { cockpitConnectorUrl, oauthFlowOrigin, SIGN_IN_FAILURES } from "./oauth-origin.ts";
 
 const ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
 const STORED = "https://engine.example.org/v1/oauth/callback";
@@ -48,9 +48,24 @@ describe("cockpitConnectorUrl", () => {
     expect(cockpitConnectorUrl({ connector_id: ID, redirect_uri: STORED })).toBe(
       `https://engine.example.org/cockpit/connectors/${ID}`,
     );
-    expect(cockpitConnectorUrl({ connector_id: ID, redirect_uri: STORED, signed_in: true })).toBe(
-      `https://engine.example.org/cockpit/connectors/${ID}?signed_in=1`,
-    );
+    expect(
+      cockpitConnectorUrl({
+        connector_id: ID,
+        redirect_uri: STORED,
+        outcome: { kind: "signed_in" },
+      }),
+    ).toBe(`https://engine.example.org/cockpit/connectors/${ID}?signed_in=1`);
+  });
+
+  test("a failed sign-in returns with its failure code and nothing else", () => {
+    for (const failure of SIGN_IN_FAILURES)
+      expect(
+        cockpitConnectorUrl({
+          connector_id: ID,
+          redirect_uri: STORED,
+          outcome: { kind: "signin_failed", failure },
+        }),
+      ).toBe(`https://engine.example.org/cockpit/connectors/${ID}?signin_failed=${failure}`);
   });
 
   test("the configured public address wins over the stored redirect_uri", async () => {
