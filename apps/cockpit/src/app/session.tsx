@@ -1,11 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
-import { ApiError, type Bootstrap, bootstrap, onSessionExpired } from "@/api/client";
+import {
+  ApiError,
+  type Bootstrap,
+  bootstrap,
+  bootstrapLimits,
+  onSessionExpired,
+} from "@/api/client";
 import { BootstrapErrorPage, LoginRedirect } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 
 const SessionContext = createContext<Bootstrap | null>(null);
+
+const BOOTSTRAP_KEY = ["bootstrap"] as const;
 
 export function useSession(): Bootstrap {
   const session = useContext(SessionContext);
@@ -15,7 +23,12 @@ export function useSession(): Bootstrap {
 
 export function SessionGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const query = useQuery({ queryKey: ["bootstrap"], queryFn: bootstrap, retry: false });
+  const client = useQueryClient();
+  const query = useQuery({
+    queryKey: BOOTSTRAP_KEY,
+    queryFn: () => bootstrap(bootstrapLimits(client.getQueryData<Bootstrap>(BOOTSTRAP_KEY))),
+    retry: false,
+  });
   const [expired, setExpired] = useState(false);
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
   const view = sessionView(query, expired);
@@ -36,9 +49,9 @@ export function sessionView(
 ): SessionView {
   if (expired || (query.error instanceof ApiError && query.error.status === 401))
     return "signed-out";
+  if (query.data) return "ready";
   if (query.isPending) return "loading";
-  if (query.error || !query.data) return "failed";
-  return "ready";
+  return "failed";
 }
 
 const SKELETON_NAVIGATION = 9;
