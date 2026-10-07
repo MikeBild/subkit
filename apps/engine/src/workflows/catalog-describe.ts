@@ -1,5 +1,10 @@
 import { and, asc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
-import { CATALOG_KINDS, type CatalogKind } from "../api/catalog-metadata.ts";
+import {
+  CATALOG_KINDS,
+  type CatalogKind,
+  PLATFORM_CATEGORY,
+  UNCATEGORIZED,
+} from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
@@ -13,6 +18,7 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { type FileRow, resolvedFromRow } from "../files/resolver.ts";
 import {
   type CatalogDescribeInput,
   type CategoryCount,
@@ -29,6 +35,26 @@ const TABLES = {
   skill: skills,
   file: files,
 } as const;
+
+const FILE_EXCERPT_BYTES = 4096;
+
+const THIN_FILE_EXCERPT_CHARS = 160;
+
+const TEXT_FILE_EXTENSIONS = new Set([
+  "md",
+  "markdown",
+  "txt",
+  "csv",
+  "tsv",
+  "json",
+  "yaml",
+  "yml",
+  "xml",
+  "toml",
+  "log",
+  "html",
+  "sql",
+]);
 
 const KNOWLEDGE_SAMPLE_CHUNKS = 4;
 
@@ -170,6 +196,28 @@ async function workflowInput(
   };
 }
 
+async function familyCategory(
+  tenant_id: string,
+  row: { id: string; slug: string },
+  db: Executor,
+): Promise<string | null> {
+  const [oldest] = await db
+    .select({ id: connectors.id, category: connectors.category })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        eq(connectors.slug, row.slug),
+        isNull(connectors.deleted_at),
+      ),
+    )
+    .orderBy(asc(connectors.created_at), asc(connectors.id))
+    .limit(1);
+  if (!oldest || oldest.id === row.id) return null;
+  if (oldest.category === UNCATEGORIZED || oldest.category === PLATFORM_CATEGORY) return null;
+  return oldest.category;
+}
+
 async function connectorInput(
   tenant_id: string,
   id: string,
@@ -183,9 +231,11 @@ async function connectorInput(
   if (!row) return null;
   const quirks = (row.operator_quirks ?? {}) as Record<string, string | undefined>;
   const snapshot = (row.template_snapshot ?? {}) as { description?: unknown };
+  const pinned = await familyCategory(tenant_id, row, db);
   return {
     kind: "connector",
     name: row.display_name,
+    ...(pinned ? { pinned_category: pinned } : {}),
     fields: [
       ["slug", row.slug],
       ["description", ownedText(row.description, row.description_source)],
@@ -262,6 +312,45 @@ async function skillInput(
   };
 }
 
+function isTextLike(content_type: string | null, filename: string): boolean {
+  const type = (content_type ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (type.startsWith("text/")) return true;
+  if (/^application\/(json|x-ndjson|yaml|x-yaml|xml|toml|sql)$/.test(type)) return true;
+  if (/\+(json|xml)$/.test(type)) return true;
+  const generic = type === "" || type === "application/octet-stream";
+  const extension = filename.includes(".") ? (filename.split(".").pop() ?? "").toLowerCase() : "";
+  return generic && TEXT_FILE_EXTENSIONS.has(extension);
+}
+
+export function thinEvidenceNote(excerpt: string): string | null {
+  if (excerpt.startsWith("(") || excerpt.length >= THIN_FILE_EXCERPT_CHARS) return null;
+  return `very little text (${excerpt.length} characters): say only what the name and these lines state, and nothing about what the file is used for beyond the links shown`;
+}
+
+export async function fileExcerpt(row: FileRow): Promise<string> {
+  if (!isTextLike(row.content_type, row.filename)) {
+    return "(binary file — its content is not shown)";
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for await (const chunk of await resolvedFromRow(row).openRead()) {
+    chunks.push(chunk);
+    total += chunk.length;
+    if (total >= FILE_EXCERPT_BYTES) break;
+  }
+  if (total === 0) return "(empty file)";
+  const bytes = new Uint8Array(Math.min(total, FILE_EXCERPT_BYTES));
+  let offset = 0;
+  for (const chunk of chunks) {
+    if (offset >= bytes.length) break;
+    const part = chunk.subarray(0, bytes.length - offset);
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  const text = new TextDecoder("utf-8").decode(bytes).replace(/\0/g, "").trim();
+  return text.length > 0 ? text : "(no readable text)";
+}
+
 async function fileInput(
   tenant_id: string,
   id: string,
@@ -278,6 +367,7 @@ async function fileInput(
     .from(fileLinks)
     .where(and(eq(fileLinks.tenant_id, tenant_id), eq(fileLinks.file_id, id)))
     .limit(10);
+  const excerpt = await fileExcerpt(row);
   return {
     kind: "file",
     name: row.filename,
@@ -286,6 +376,8 @@ async function fileInput(
       ["description", ownedText(row.description, row.description_source)],
       ["content_type", row.content_type],
       ["size_bytes", String(row.size_bytes)],
+      ["content_excerpt", excerpt],
+      ["evidence", thinEvidenceNote(excerpt)],
       [
         "used_by",
         links.length > 0
