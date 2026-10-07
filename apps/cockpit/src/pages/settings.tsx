@@ -33,7 +33,7 @@ import {
   useCopy,
 } from "@/components/cockpit/patterns";
 import { PreparedChanges } from "@/components/cockpit/prepared-changes";
-import { LoadFailed, queryView } from "@/components/failure-state";
+import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { cn } from "@/lib/utils";
@@ -960,7 +960,7 @@ export function SettingsPage() {
       {tabs.length > 1 ? (
         <PageTabs tabs={tabs} param="tab" testId="settings-tabs" />
       ) : (
-        tabs[0]?.content
+        (tabs[0]?.content ?? <ForbiddenState />)
       )}
     </Page>
   );

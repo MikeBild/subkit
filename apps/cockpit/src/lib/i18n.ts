@@ -1226,8 +1226,9 @@ const EN = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "tokens",
   "settings.unit.chars": "characters",
-  "resource.permission.title": "Permission required",
-  "resource.permission.description": "Your current role does not include access to this area.",
+  "resource.permission.title": "No permission",
+  "resource.permission.description":
+    "Your role has no access to this area. A person with the Administrator role can grant it.",
   "resource.search": "Search {resource}",
   "resource.noMatches": "No matching records",
   "resource.broaderSearch": "Try a broader search.",
@@ -5201,8 +5202,9 @@ const DE: Record<TranslationKey, string> = {
   "settings.unit.percent": "%",
   "settings.unit.tokens": "Tokens",
   "settings.unit.chars": "Zeichen",
-  "resource.permission.title": "Berechtigung erforderlich",
-  "resource.permission.description": "Deine aktuelle Rolle hat keinen Zugriff auf diesen Bereich.",
+  "resource.permission.title": "Keine Berechtigung",
+  "resource.permission.description":
+    "Deine Rolle hat keinen Zugriff auf diesen Bereich. Zugriff erteilt dir eine Person mit der Rolle Administrator.",
   "resource.search": "{resource} durchsuchen",
   "resource.noMatches": "Keine passenden Datensätze",
   "resource.broaderSearch": "Versuch eine allgemeinere Suche.",

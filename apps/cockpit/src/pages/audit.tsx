@@ -25,6 +25,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { ForbiddenState } from "@/components/failure-state";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
@@ -346,11 +347,7 @@ export function AuditPage() {
   if (!allowed)
     return (
       <Page kind="list" surface="audit" testId="resource-audit" scroll="page" header={header}>
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 

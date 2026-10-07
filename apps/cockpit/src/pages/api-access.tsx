@@ -17,7 +17,6 @@ import {
   ConfirmDialog,
   ContextHelp,
   CopyField,
-  DataState,
   FactList,
   Field,
   FieldGroup,
@@ -34,6 +33,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { ForbiddenState } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -153,11 +153,7 @@ export function ApiAccessPage() {
       header={<PageHeader title={t("resource.apiAccess.title")} action={action} />}
     >
       {readable.length === 0 ? (
-        <DataState
-          state="empty"
-          line={t("resource.permission.title")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       ) : readable.length === 1 ? (
         tabs[0]?.content
       ) : (
