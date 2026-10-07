@@ -68,19 +68,31 @@ export async function listTemplateConnectors(
   );
 }
 
+export interface BindableTemplate {
+  name: string;
+  base_url: string | null;
+}
+
+export function bindsByTemplate(template: BindableTemplate | undefined): boolean {
+  return Boolean(template?.base_url);
+}
+
 export function bindRecipe(
   recipe: ConnectorRecipe,
   available: readonly TemplateConnector[],
-  templateNames: ReadonlyMap<string, string>,
+  templates: ReadonlyMap<string, BindableTemplate>,
 ): BoundRecipe {
   const bindings: Record<string, string> = {};
   const bound = recipe.required_connectors.map((required): RecipeConnectorBinding => {
-    const connector = available.find((c) => c.template_slug === required.template) ?? null;
+    const template = templates.get(required.template);
+    const connector = bindsByTemplate(template)
+      ? (available.find((c) => c.template_slug === required.template) ?? null)
+      : null;
     if (connector) bindings[required.placeholder] = connector.id;
     return {
       placeholder: required.placeholder,
       template: required.template,
-      template_name: templateNames.get(required.template) ?? required.template,
+      template_name: template?.name ?? required.template,
       connector_id: connector?.id ?? null,
       connector_name: connector?.display_name ?? null,
     };

@@ -518,10 +518,13 @@ describe("connector-template catalog — Anthropic and Google Analytics 4", () =
     const anthropic = find("anthropic");
     expect(anthropic.recipes.length).toBe(3);
     for (const recipe of anthropic.recipes) {
-      const steps = recipe.workflow.steps as Array<{
-        url?: string;
-        headers?: Record<string, string>;
-      }>;
+      const steps = (
+        recipe.workflow.steps as Array<{
+          kind: string;
+          url?: string;
+          headers?: Record<string, string>;
+        }>
+      ).filter((step) => step.kind === "request");
       for (const step of steps) expect(step.headers?.["anthropic-version"]).toBe("2023-06-01");
       if (steps.some((step) => step.url?.endsWith("/messages")))
         expect(recipe.workflow.max_llm_tokens_per_run).toBeGreaterThan(0);
@@ -535,8 +538,8 @@ describe("connector-template catalog — Anthropic and Google Analytics 4", () =
     expect(ga4.recipes.length).toBeGreaterThanOrEqual(3);
     for (const recipe of ga4.recipes) {
       expect(recipe.workflow.input_schema?.required).toContain("property_id");
-      for (const step of recipe.workflow.steps as Array<{ side_effects?: string }>)
-        expect(step.side_effects).toBe("read");
+      for (const step of recipe.workflow.steps as Array<{ kind: string; side_effects?: string }>)
+        if (step.kind === "request") expect(step.side_effects).toBe("read");
     }
   });
 });

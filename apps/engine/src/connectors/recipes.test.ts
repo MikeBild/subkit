@@ -358,8 +358,11 @@ describe("solution recipes — several connectors per recipe", () => {
     const recipe = getSolutionRecipe("daily-analytics-report");
     if (!recipe) throw new Error("daily-analytics-report missing");
     const names = new Map([
-      ["google-analytics", "Google Analytics 4"],
-      ["google-gmail", "Gmail"],
+      [
+        "google-analytics",
+        { name: "Google Analytics 4", base_url: "https://analyticsdata.example" },
+      ],
+      ["google-gmail", { name: "Gmail", base_url: "https://gmail.example" }],
     ]);
     const analytics = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const bound = bindRecipe(
@@ -382,6 +385,54 @@ describe("solution recipes — several connectors per recipe", () => {
     expect(ids).toContain(analytics);
     expect(ids).toContain(recipe.required_connectors[1]?.placeholder ?? "missing");
     expect(connectorIdsOf(recipe.workflow)).not.toContain(analytics);
+  });
+
+  test("a placeholder whose template has no fixed address is never bound by template alone", () => {
+    const recipe = getSolutionRecipe("payment-grants-access");
+    if (!recipe) throw new Error("payment-grants-access missing");
+    const templates = new Map([
+      ["stripe", { name: "Stripe", base_url: "https://api.stripe.com/v1" }],
+      ["http", { name: "HTTP", base_url: null }],
+      ["google-gmail", { name: "Gmail", base_url: "https://gmail.googleapis.com/gmail/v1" }],
+    ]);
+    const bound = bindRecipe(
+      recipe,
+      [
+        {
+          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          display_name: "Stripe",
+          template_slug: "stripe",
+        },
+        {
+          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          display_name: "Some API",
+          template_slug: "http",
+        },
+      ],
+      templates,
+    );
+    expect(bound.connectors.map((c) => [c.template, c.connector_id])).toEqual([
+      ["stripe", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+      ["http", null],
+      ["google-gmail", null],
+    ]);
+  });
+
+  test("no recipe reads input.scope in its output_transform_function, where only the last output arrives", () => {
+    const offenders: string[] = [];
+    for (const t of loadBuiltinTemplates()) {
+      for (const r of t.recipes) {
+        if (r.workflow.output_transform_function?.includes("input.scope")) {
+          offenders.push(`${t.slug}/${r.slug}`);
+        }
+      }
+    }
+    for (const r of solutions) {
+      if (r.workflow.output_transform_function?.includes("input.scope")) {
+        offenders.push(`solutions/${r.slug}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   test("a recipe origin is known only for shipped recipes", () => {
