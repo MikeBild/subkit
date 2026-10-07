@@ -4,6 +4,9 @@ import {
   validateUnsupportedPlaceholders,
 } from "../workflows/reference-validator.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
+import { validateWorkflowDef } from "../workflows/validator.ts";
+import { bindRecipe } from "./recipe-binding.ts";
+import { getSolutionRecipe, isKnownRecipe, loadSolutionRecipes } from "./solutions.ts";
 import templateSkillsJson from "./template-skills.json" with { type: "json" };
 import { ConnectorRecipeSchema, getBuiltinTemplate, loadBuiltinTemplates } from "./templates.ts";
 
@@ -286,5 +289,105 @@ describe("all builtin recipes — placeholder resolvability (regression for the 
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("solution recipes — several connectors per recipe", () => {
+  const solutions = loadSolutionRecipes();
+
+  const connectorIdsOf = (workflow: unknown): string[] =>
+    (JSON.stringify(workflow).match(/"connector_id":"[^"]+"/g) ?? []).map((m) =>
+      m.slice('"connector_id":"'.length, -1),
+    );
+
+  test("ships the five solutions", () => {
+    expect(solutions.map((r) => r.slug)).toEqual([
+      "invoice-attachments-to-drive",
+      "daily-analytics-report",
+      "payment-grants-access",
+      "webhook-to-slack",
+      "weekly-run-digest",
+    ]);
+  });
+
+  test("every solution validates the way the validate endpoint does", () => {
+    for (const recipe of solutions) {
+      const result = validateWorkflowDef(JSON.parse(JSON.stringify(recipe.workflow)));
+      expect({ slug: recipe.slug, errors: result.errors }).toEqual({
+        slug: recipe.slug,
+        errors: [],
+      });
+    }
+  });
+
+  test("every solution has resolvable placeholders and step references", () => {
+    const offenders: string[] = [];
+    for (const recipe of solutions) {
+      const parsed = WorkflowDefSchema.parse(JSON.parse(JSON.stringify(recipe.workflow)));
+      for (const e of validateUnsupportedPlaceholders(parsed)) {
+        offenders.push(`${recipe.slug}: ${JSON.stringify(e)}`);
+      }
+      for (const e of validateStepReferences(parsed)) {
+        offenders.push(`${recipe.slug}: ${JSON.stringify(e)}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("every solution previews: sample input, expected output and at least one real template", () => {
+    const templates = new Set(loadBuiltinTemplates().map((t) => t.slug));
+    for (const recipe of solutions) {
+      expect(recipe.sample_input).not.toBeNull();
+      expect(recipe.expected_output_preview).not.toBeNull();
+      expect(recipe.required_connectors.length).toBeGreaterThan(0);
+      for (const required of recipe.required_connectors) {
+        expect(templates.has(required.template)).toBe(true);
+      }
+    }
+  });
+
+  test("every declared placeholder is used and no step uses an undeclared one", () => {
+    for (const recipe of solutions) {
+      const declared = recipe.required_connectors.map((r) => r.placeholder).sort();
+      const used = [...new Set(connectorIdsOf(recipe.workflow))].sort();
+      expect({ slug: recipe.slug, used }).toEqual({ slug: recipe.slug, used: declared });
+    }
+  });
+
+  test("binding replaces each placeholder with the oldest connector of its template and names the missing ones", () => {
+    const recipe = getSolutionRecipe("daily-analytics-report");
+    if (!recipe) throw new Error("daily-analytics-report missing");
+    const names = new Map([
+      ["google-analytics", "Google Analytics 4"],
+      ["google-gmail", "Gmail"],
+    ]);
+    const analytics = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const bound = bindRecipe(
+      recipe,
+      [
+        { id: analytics, display_name: "GA4 marketing", template_slug: "google-analytics" },
+        {
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          display_name: "GA4 second",
+          template_slug: "google-analytics",
+        },
+      ],
+      names,
+    );
+    expect(bound.connectors.map((c) => [c.template, c.connector_id, c.template_name])).toEqual([
+      ["google-analytics", analytics, "Google Analytics 4"],
+      ["google-gmail", null, "Gmail"],
+    ]);
+    const ids = connectorIdsOf(bound.workflow);
+    expect(ids).toContain(analytics);
+    expect(ids).toContain(recipe.required_connectors[1]?.placeholder ?? "missing");
+    expect(connectorIdsOf(recipe.workflow)).not.toContain(analytics);
+  });
+
+  test("a recipe origin is known only for shipped recipes", () => {
+    expect(isKnownRecipe("solutions", "weekly-run-digest")).toBe(true);
+    expect(isKnownRecipe("solutions", "made-up")).toBe(false);
+    expect(isKnownRecipe("finance", "list-customers")).toBe(true);
+    expect(isKnownRecipe("finance", "made-up")).toBe(false);
   });
 });

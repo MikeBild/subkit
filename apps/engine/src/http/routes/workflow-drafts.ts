@@ -1,11 +1,13 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { isKnownRecipe } from "../../connectors/index.ts";
 import {
   applyBoundaryProposals,
   CreateWorkflowDraftSchema,
   currentOrDraftDefinition,
   getWorkflowDraft,
   proposeBoundaries,
+  recipeAuditMetadata,
   type SaveWorkflowDraftResult,
   saveWorkflowDraft,
   UpdateWorkflowDraftSchema,
@@ -163,6 +165,9 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(create, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
+    if (body.recipe && !isKnownRecipe(body.recipe.vertical, body.recipe.slug)) {
+      throw new BadRequestError(`unknown recipe ${body.recipe.vertical}/${body.recipe.slug}`);
+    }
     const result = await saveWorkflowDraft(
       {
         tenant_id: principal.tenant_id,
@@ -171,6 +176,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         def: body.definition,
         request_source: c.get("request_source") ?? "api",
         ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
+        ...(body.recipe ? { audit_metadata: recipeAuditMetadata(body.recipe) } : {}),
       },
       c.get("db"),
     );

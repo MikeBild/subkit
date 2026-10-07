@@ -172,6 +172,7 @@ export interface CreateWorkflowInput {
   def: unknown;
   actor_id: string | null;
   metadata?: CatalogMetadataPatch;
+  audit_metadata?: Record<string, unknown>;
   scope_index?: Record<
     string,
     { available_paths: string[]; shape_summary: string; primary_data_path: string | null }
@@ -238,7 +239,7 @@ export async function createWorkflow(
           resource_type: "workflow",
           resource_id: wf.id,
           result: "success",
-          metadata: { slug, version: 1 },
+          metadata: { ...input.audit_metadata, slug, version: 1 },
         },
         tx,
       );

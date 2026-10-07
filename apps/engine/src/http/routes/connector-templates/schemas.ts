@@ -9,6 +9,7 @@ import {
   ConnectorRecipeSchema,
   type ConnectorTemplate,
   ConnectorTemplateSchema,
+  RecipeConnectorBindingSchema,
   toPublicConnector,
 } from "../../../connectors/index.ts";
 import { ForbiddenError } from "../../errors.ts";
@@ -146,8 +147,10 @@ export const RECIPE_PACK_VERTICALS = [
   "security",
   "marketing",
   "hr",
+  "solutions",
 ] as const;
 export type RecipePackVertical = (typeof RECIPE_PACK_VERTICALS)[number];
+export type PredicateRecipePackVertical = Exclude<RecipePackVertical, "solutions">;
 
 export interface PackPredicate {
   outcome: string;
@@ -155,7 +158,7 @@ export interface PackPredicate {
   match_tags: string[];
 }
 
-export const RECIPE_PACK_PREDICATES: Record<RecipePackVertical, PackPredicate> = {
+export const RECIPE_PACK_PREDICATES: Record<PredicateRecipePackVertical, PackPredicate> = {
   revops: {
     outcome:
       "Stand up the lead → opportunity → close loop with the LLM doing routing, enrichment, and Slack hand-off in real time.",
@@ -212,12 +215,16 @@ export const RecipePackVerticalParam = z.object({
 
 export const RecipePackEntrySchema = z
   .object({
-    template_slug: z.string(),
+    template_slug: z.string().nullable(),
     recipe_slug: z.string(),
     title: z.string(),
+    description: z.string(),
     category: z.string(),
     tags: z.array(z.string()),
     difficulty: z.string(),
+    connectors: z.array(RecipeConnectorBindingSchema),
+    sample_input: z.unknown().nullable(),
+    workflow: z.record(z.string(), z.unknown()),
   })
   .openapi("RecipePackEntry");
 
