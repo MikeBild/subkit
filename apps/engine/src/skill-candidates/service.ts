@@ -716,7 +716,7 @@ export async function approveSkillCandidate(
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
     let skill_id: string | null = null;
-    let retired_skill_ids: string[] = [];
+    let promoted_active = false;
     let knowledge: (ApprovedKnowledge & { finish(db: Executor): void }) | null = null;
     if (row.pattern_kind === "knowledge_learning") {
       if (!p.may_write_knowledge) throw new KnowledgeWriteNotAllowedError();
@@ -751,10 +751,7 @@ export async function approveSkillCandidate(
         tx,
       );
       skill_id = skill.id;
-      retired_skill_ids =
-        skill.status === "active"
-          ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill.id, actor_id)
-          : [];
+      promoted_active = skill.status === "active";
     }
 
     const [updated] = await tx
@@ -768,6 +765,11 @@ export async function approveSkillCandidate(
         and(eq(skillCandidates.tenant_id, p.tenant_id), eq(skillCandidates.id, p.candidate_id)),
       )
       .returning();
+
+    const retired_skill_ids =
+      skill_id && promoted_active
+        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill_id, actor_id)
+        : [];
 
     await auditAwait(
       {
