@@ -96,7 +96,11 @@ describe("DataTable", () => {
         sorting={[] as SortingState}
         onSortingChange={() => {}}
         onOpen={() => {}}
-        rowActions={() => <button type="button">Menu</button>}
+        rowActions={() => (
+          <button type="button" data-testid="r-row-menu">
+            Menu
+          </button>
+        )}
         emptyState={{
           zero: { title: "none" },
           filtered: { title: "no match", description: "", resetLabel: "reset", onReset() {} },
@@ -107,7 +111,7 @@ describe("DataTable", () => {
         collectionId="r"
       />,
     );
-    const card = html.slice(html.indexOf('data-testid="r-mobile-row-0"'));
+    const card = html.slice(html.lastIndexOf("<div", html.indexOf('data-testid="r-mobile-row-0"')));
     expect(card).toContain('data-family-slot="card-title"');
     expect(card).toContain('data-testid="r-mobile-row-link-0"');
     expect(card.match(/data-family-slot="card-fact"/g)).toHaveLength(2);
