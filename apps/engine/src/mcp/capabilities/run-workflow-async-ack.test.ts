@@ -9,6 +9,16 @@ import {
 
 let suite: McpTestSuite;
 
+function principal() {
+  return {
+    provider: "test",
+    kind: "user" as const,
+    id: suite.http.userId,
+    tenant_id: suite.http.tenantId,
+    roles: ["admin"],
+  };
+}
+
 beforeAll(async () => {
   suite = await startMcpTestSuite("run-workflow-async-ack");
 });
@@ -53,10 +63,58 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: wf.slug,
       since,
     });
     expect(found).toBe(newer);
+  });
+
+  test("a product caller never receives another owner's background handle", async () => {
+    const wf = await suite.seedWorkflow({
+      slug: "async-ack-product-owner",
+      name: "Async Ack Product Owner",
+      steps: [],
+    });
+    const caller = {
+      tenantId: suite.http.tenantId,
+      principalId: suite.http.userId,
+      principalKind: "user" as const,
+      provider: "test",
+      productId: "harmoniqs",
+    };
+    const owned = await suite.http.db
+      .insert(executions)
+      .values({
+        tenant_id: suite.http.tenantId,
+        workflow_id: wf.id,
+        source_kind: "saved",
+        status: "running",
+        request_source: "chat",
+        execution_mode: "dev",
+        caller_context: caller,
+        created_at: new Date(FROZEN_NOW + 10),
+      })
+      .returning({ id: executions.id });
+    if (!owned[0]) throw new Error("owned execution missing");
+    await suite.http.db.insert(executions).values({
+      tenant_id: suite.http.tenantId,
+      workflow_id: wf.id,
+      source_kind: "saved",
+      status: "running",
+      request_source: "chat",
+      execution_mode: "dev",
+      caller_context: { ...caller, principalId: "00000000-0000-4000-8000-000000000091" },
+      created_at: new Date(FROZEN_NOW + 20),
+    });
+    const found = await findBackgroundExecutionId({
+      db: suite.http.db,
+      tenant_id: suite.http.tenantId,
+      principal: { ...principal(), product_id: "harmoniqs" },
+      workflowRef: wf.slug,
+      since: FROZEN_NOW,
+    });
+    expect(found).toBe(owned[0].id);
   });
 
   test("does not return a newer child execution of the same workflow", async () => {
@@ -72,6 +130,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: wf.slug,
       since,
     });
@@ -90,6 +149,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: wf.id,
       since,
     });
@@ -108,6 +168,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: wf.slug,
       since: start,
     });
@@ -118,6 +179,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: undefined,
       since: FROZEN_NOW,
     });
@@ -128,6 +190,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: "does-not-exist-slug",
       since: FROZEN_NOW,
     });
@@ -151,6 +214,7 @@ describe("findBackgroundExecutionId", () => {
     const found = await findBackgroundExecutionId({
       db: suite.http.db,
       tenant_id: suite.http.tenantId,
+      principal: principal(),
       workflowRef: wf.slug,
       since,
     });

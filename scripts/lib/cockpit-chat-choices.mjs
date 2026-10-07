@@ -1,5 +1,9 @@
 export async function verifyChatChoices(page, stand, conversation, locale, capture) {
-  await stand.visit(page, `chat/${conversation.id}`);
+  async function visitConversation() {
+    await stand.visit(page, `chat/${conversation.id}`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("chat-transcript").waitFor({ state: "visible" });
+  }
+  await visitConversation();
   const original = await page.evaluate(
     async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
     conversation.id,
@@ -103,7 +107,7 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     for (const surface of ["inline", "inline-cancel"]) {
       waiting = true;
       expected = surface === "inline" ? "preview" : "cancel";
-      await stand.visit(page, `chat/${conversation.id}`);
+      await visitConversation();
       const inline = page.getByTestId("chat-message-0-choice");
       await inline.waitFor();
       if (/Freigabe|approval/i.test(await page.getByTestId("chat-summary").innerText()))
@@ -133,10 +137,14 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       if (!(await page.getByTestId("chat-composer-input").isDisabled()))
         throw new Error("Unanswerable free-text composer remains active");
       for (const option of input.options) {
+        await page.getByTestId(`${prefix}-option-${option.value}`).scrollIntoViewIfNeeded();
         if (!(await page.getByTestId(`${prefix}-option-${option.value}`).isVisible()))
           throw new Error("Business options are hidden behind another control");
-        if (!(await card.innerText()).includes(option.description))
-          throw new Error("Option effect is hidden before selection");
+        const cardText = await card.innerText();
+        if (!cardText.includes(option.description))
+          throw new Error(
+            `Option effect is hidden before selection: ${JSON.stringify({ surface, expected: option.description, actual: cardText })}`,
+          );
       }
       await page.getByTestId(`${prefix}-option-${expected}`).focus();
       await page.keyboard.press("Space");
@@ -167,20 +175,20 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
       await card.waitFor({ state: "hidden" });
       if (queueReads <= queueBefore)
         throw new Error("Decision queue was not refreshed after answering");
-      await stand.visit(page, `chat/${conversation.id}`);
-      if ((await page.getByTestId("chat-transcript").innerText()).includes("commit_intent"))
-        throw new Error("Completed decision exposes technical parameters by default");
+      await visitConversation();
       await page
         .getByTestId("chat-transcript")
         .getByText(locale === "de" ? "Beantwortet" : "Answered", { exact: true })
         .waitFor();
+      if ((await page.getByTestId("chat-transcript").innerText()).includes("commit_intent"))
+        throw new Error("Completed decision exposes technical parameters by default");
       if (await inline.count())
         throw new Error("Completed decision still has active buttons after reload");
     }
     for (const state of ["timeout", "cancelled"]) {
       waiting = false;
       terminalStatus = state;
-      await stand.visit(page, `chat/${conversation.id}`);
+      await visitConversation();
       await page
         .getByTestId("chat-transcript")
         .getByText(
@@ -201,7 +209,7 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     terminalStatus = "resolved";
     waiting = true;
     expired = true;
-    await stand.visit(page, `chat/${conversation.id}`);
+    await visitConversation();
     await page.getByTestId("chat-message-0-choice").waitFor();
     if (!(await page.getByTestId("chat-message-0-choice-submit").isDisabled()))
       throw new Error("Expired request is actionable");
@@ -209,7 +217,7 @@ export async function verifyChatChoices(page, stand, conversation, locale, captu
     expired = false;
     fail = true;
     expected = "preview";
-    await stand.visit(page, `chat/${conversation.id}`);
+    await visitConversation();
     await page.getByTestId("chat-message-0-choice-option-preview").click();
     release = null;
     await page.getByTestId("chat-message-0-choice-submit").click();

@@ -117,7 +117,7 @@ async function refusedGrantedRun(workflow_id: string, version_id: string, max_ru
       db,
       source: { kind: "saved", workflow_id },
       input: {},
-      options: { existing_execution_id: admitted.execution_id, principal },
+      options: { existing_execution_id: admitted.execution_id },
     });
   });
 }

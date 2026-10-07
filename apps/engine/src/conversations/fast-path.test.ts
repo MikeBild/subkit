@@ -46,7 +46,7 @@ function makePrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrin
   return {
     provider: "test",
     kind: "user",
-    id: "00000000-0000-0000-0000-0000000000fb",
+    id: "00000000-0000-4000-8000-0000000000fb",
     tenant_id: tenantId,
     roles: ["admin"],
     ...overrides,
@@ -334,6 +334,7 @@ describe("tryFastPath — read-only run <slug>", () => {
     const result = await tryFastPath(makeParams("run read-only-wf"));
     expect(getMockProvider().calls.length).toBe(0);
     expect(result?.status).toBe("active");
+    expect(result?.assistant_text).not.toContain("failed");
     expect(remote.callCount() - before).toBe(1);
     const rows = await tdb.db
       .select()

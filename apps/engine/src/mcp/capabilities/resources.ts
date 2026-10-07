@@ -20,7 +20,9 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import * as connectorSvc from "../../connectors/service.ts";
 import type { Db } from "../../db/client.ts";
-import { executionFixtures, files } from "../../db/schema/index.ts";
+import { executionFixtures, executions, files } from "../../db/schema/index.ts";
+import { executionVisibleToPrincipal } from "../../execution/execution-owner.ts";
+import { isSensitivePayload } from "../../execution/sensitive-payload.ts";
 import { isTextLike } from "../../files/content-type.ts";
 import { FileNotFoundError, requireFileForTenant, storageKey } from "../../files/resolver.ts";
 import * as knowledgeSvc from "../../knowledge/service.ts";
@@ -63,13 +65,20 @@ function fileUri(id: string): string {
 
 const OPERATOR_HEALTH_DIGEST_URI = "subkit://operator/health-digest";
 
-const SUBSCRIBE_URI_PREFIXES: readonly string[] = [
-  "connector://",
-  "knowledge://",
-  "skill-candidate://",
-  "workflow://",
-  "file://",
-];
+const subscriptionResources = [
+  { prefix: "connector://", permission: "connector:read", type: "connector" },
+  { prefix: "knowledge://", permission: "knowledge:read", type: "knowledge" },
+  { prefix: "skill-candidate://", permission: "skill:read", type: "skill_candidate" },
+  { prefix: "workflow://", permission: "workflow:read", type: "workflow" },
+  { prefix: "file://", permission: "file:read", type: "file" },
+] as const;
+
+function subscriptionResource(uri: string) {
+  const resource = subscriptionResources.find((entry) => uri.startsWith(entry.prefix));
+  if (!resource) return null;
+  const id = uri.slice(resource.prefix.length);
+  return id ? { permission: resource.permission, resource: { type: resource.type, id } } : null;
+}
 
 const SUBSCRIBE_CAP = 256;
 const RESOURCE_LIST_CHANGED_DEBOUNCE_MS = 250;
@@ -99,25 +108,19 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
   async function forwardIfSubscribed(args: {
     event: EventEnvelope<unknown>;
     uri: string;
-    rbacCheck?: () => Promise<boolean>;
   }): Promise<void> {
-    if (args.event.tenant_id !== principal.tenant_id) return;
+    if (args.event.tenant_id !== principal.tenant_id || principal.product_id) return;
+    const access = subscriptionResource(args.uri);
+    if (!access) return;
+    const decision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      ...access,
+      quiet: true,
+    });
+    if (!decision.allow) return;
+    scheduleResourceListChanged();
     if (!subscribed.has(args.uri)) return;
-    if (args.rbacCheck) {
-      const allow = await args.rbacCheck();
-      if (!allow) {
-        logger.info({
-          module: "mcp",
-          action: "mcp.resource.updated.rbac_denied",
-          msg: "lifecycle forward suppressed by rbac re-check",
-          uri: args.uri,
-          event_type: args.event.type,
-          principal_id: principal.id,
-          principal_provider: principal.provider,
-        });
-        return;
-      }
-    }
     try {
       await server.sendResourceUpdated({ uri: args.uri });
       logger.debug({
@@ -140,32 +143,16 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
 
   const offConnectorOauth = emitter.on("connector.oauth", async (event: EventEnvelope<unknown>) => {
     const payload = (event.payload ?? {}) as { connector_id?: string };
-    const connectorId = payload.connector_id;
-    if (!connectorId) return;
-    scheduleResourceListChanged();
-    await forwardIfSubscribed({ event, uri: connectorUri(connectorId) });
+    if (payload.connector_id)
+      await forwardIfSubscribed({ event, uri: connectorUri(payload.connector_id) });
   });
 
   const offWorkflowLifecycle = emitter.on(
     "workflow.lifecycle",
     async (event: EventEnvelope<unknown>) => {
       const payload = (event.payload ?? {}) as { workflow_id?: string };
-      const workflowId = payload.workflow_id;
-      if (!workflowId) return;
-      scheduleResourceListChanged();
-      await forwardIfSubscribed({
-        event,
-        uri: workflowUri(workflowId),
-        rbacCheck: async () => {
-          const decision = await can(db, {
-            tenant_id: principal.tenant_id,
-            principal,
-            permission: "workflow:read",
-            resource: { type: "workflow", id: workflowId },
-          });
-          return decision.allow;
-        },
-      });
+      if (payload.workflow_id)
+        await forwardIfSubscribed({ event, uri: workflowUri(payload.workflow_id) });
     },
   );
 
@@ -173,36 +160,12 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
     "notification.emitted",
     async (event: EventEnvelope<unknown>) => {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
-
-      const ksId = payload.knowledge_source_id as string | undefined;
-      if (ksId) {
-        scheduleResourceListChanged();
-        await forwardIfSubscribed({ event, uri: knowledgeUri(ksId) });
-      }
-
-      const scId = payload.skill_candidate_id as string | undefined;
-      if (scId) {
-        scheduleResourceListChanged();
-        await forwardIfSubscribed({ event, uri: skillCandidateUri(scId) });
-      }
-
-      const fileId = payload.file_id as string | undefined;
-      if (fileId) {
-        scheduleResourceListChanged();
-        await forwardIfSubscribed({
-          event,
-          uri: fileUri(fileId),
-          rbacCheck: async () => {
-            const decision = await can(db, {
-              tenant_id: principal.tenant_id,
-              principal,
-              permission: "file:read",
-              resource: { type: "file", id: fileId },
-            });
-            return decision.allow;
-          },
-        });
-      }
+      if (typeof payload.knowledge_source_id === "string")
+        await forwardIfSubscribed({ event, uri: knowledgeUri(payload.knowledge_source_id) });
+      if (typeof payload.skill_candidate_id === "string")
+        await forwardIfSubscribed({ event, uri: skillCandidateUri(payload.skill_candidate_id) });
+      if (typeof payload.file_id === "string")
+        await forwardIfSubscribed({ event, uri: fileUri(payload.file_id) });
     },
   );
 
@@ -690,7 +653,31 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
         .limit(1);
       const row = rows[0];
       if (!row) throw new McpError(RESOURCE_NOT_FOUND, `fixture not found: ${id}`);
+      if (row.kind === "offload" && !row.execution_id) {
+        const { body } = await readOffloadedExecutionResource(db, principal, uri);
+        return { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(body) }] };
+      }
+      if (!row.execution_id && principal.product_id)
+        throw new McpError(RESOURCE_NOT_FOUND, "fixture not found");
       if (row.execution_id) {
+        const [owner] = await db
+          .select({
+            caller: executions.caller_context,
+            input: executions.input,
+            result: executions.sensitive_result,
+          })
+          .from(executions)
+          .where(
+            and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, row.execution_id)),
+          )
+          .limit(1);
+        if (
+          !owner ||
+          !executionVisibleToPrincipal(owner.caller, principal) ||
+          isSensitivePayload(owner.input) ||
+          isSensitivePayload(owner.result)
+        )
+          throw new McpError(RESOURCE_NOT_FOUND, "fixture not found");
         const decision = await can(db, {
           tenant_id: principal.tenant_id,
           principal,
@@ -775,7 +762,8 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
 
   server.setRequestHandler(SubscribeRequestSchema, async (req) => {
     const uri = req.params.uri;
-    if (!SUBSCRIBE_URI_PREFIXES.some((p) => uri.startsWith(p))) {
+    const access = subscriptionResource(uri);
+    if (!access) {
       logger.debug({
         module: "mcp",
         action: "mcp.resource.subscribe.rejected",
@@ -785,6 +773,14 @@ export function registerResourcesCapability(p: RegisterResourcesParams): void {
       });
       return {};
     }
+    if (principal.product_id) return {};
+    const decision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      ...access,
+      quiet: true,
+    });
+    if (!decision.allow) return {};
     if (!subscribed.has(uri) && subscribed.size >= SUBSCRIBE_CAP) {
       logger.warn({
         module: "mcp",

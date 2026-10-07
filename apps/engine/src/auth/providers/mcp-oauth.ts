@@ -237,6 +237,7 @@ export function createMcpOAuthAuthProvider(opts: McpOAuthProviderOptions = {}): 
         roles,
         scopes,
         oauth_client_id: row.client_id,
+        auth_source: { kind: "mcp_oauth", access_token_id: row.id, client_id: row.client_id },
         email: u.email,
       };
 

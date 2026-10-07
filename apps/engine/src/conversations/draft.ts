@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Executor } from "../db/client.ts";
 import {
   conversationDrafts,
@@ -8,6 +9,8 @@ import {
   workflows,
   workflowVersions,
 } from "../db/schema/index.ts";
+import { executionVisibilityFilter } from "../execution/execution-owner.ts";
+import { isSensitivePayload } from "../execution/sensitive-payload.ts";
 import { workflowUsesSandboxedJs } from "../workflows/runtime-annotation.ts";
 import { buildScopeAtStep } from "../workflows/scope-shape.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
@@ -47,6 +50,7 @@ async function buildPreviewFromLastExecution(
   workflow_id: string,
   workflow_version_id: string,
   exec: Executor,
+  principal?: ResolvedPrincipal,
 ): Promise<DraftDocument["latest_preview"] | null> {
   const executionRows = await exec
     .select({ id: executions.id })
@@ -56,6 +60,11 @@ async function buildPreviewFromLastExecution(
         eq(executions.tenant_id, tenant_id),
         eq(executions.workflow_id, workflow_id),
         eq(executions.workflow_version_id, workflow_version_id),
+        principal
+          ? executionVisibilityFilter(principal)
+          : sql`${executions.caller_context}->>'productId' is null`,
+        sql`coalesce(${executions.input}->>'$sensitive', 'false') <> 'true'`,
+        sql`${executions.sensitive_result} is null`,
         eq(executions.status, "succeeded"),
       ),
     )
@@ -113,6 +122,7 @@ export async function hydrateBoundWorkflow(
   target_workflow_id: string | null,
   draft: DraftDocument,
   exec: Executor,
+  principal?: ResolvedPrincipal,
 ): Promise<DraftDocument> {
   const normalized = normalizeDraftDocument(draft);
   if (!target_workflow_id) return normalized;
@@ -250,7 +260,13 @@ export async function hydrateBoundWorkflow(
       ? { ...normalized, workflow: hydratedWorkflow }
       : normalized;
   const seededPreview = selectedVersionId
-    ? await buildPreviewFromLastExecution(tenant_id, workflow.id, selectedVersionId, exec)
+    ? await buildPreviewFromLastExecution(
+        tenant_id,
+        workflow.id,
+        selectedVersionId,
+        exec,
+        principal,
+      )
     : null;
   const withPreview: DraftDocument = seededPreview
     ? { ...draftToBind, latest_preview: seededPreview }
@@ -274,10 +290,13 @@ export async function loadFocusExecution(
   tenant_id: string,
   execution_id: string,
   exec: Executor,
+  principal?: ResolvedPrincipal,
 ): Promise<LatestExecutionSummary | null> {
   const [row] = await exec
     .select({
       id: executions.id,
+      input: executions.input,
+      sensitive_result: executions.sensitive_result,
       workflow_id: executions.workflow_id,
       workflow_version_id: executions.workflow_version_id,
       status: executions.status,
@@ -286,17 +305,30 @@ export async function loadFocusExecution(
       created_at: executions.created_at,
     })
     .from(executions)
-    .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+    .where(
+      and(
+        eq(executions.tenant_id, tenant_id),
+        eq(executions.id, execution_id),
+        principal
+          ? executionVisibilityFilter(principal)
+          : sql`${executions.caller_context}->>'productId' is null`,
+      ),
+    )
     .limit(1);
   if (!row) return null;
-  const stepRows = await exec
-    .select({
-      step_key: executionSteps.step_key,
-      output_preview: executionSteps.output_preview,
-      request_meta: executionSteps.request_meta,
-    })
-    .from(executionSteps)
-    .where(and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, row.id)));
+  const sensitive = isSensitivePayload(row.input) || isSensitivePayload(row.sensitive_result);
+  const stepRows = sensitive
+    ? []
+    : await exec
+        .select({
+          step_key: executionSteps.step_key,
+          output_preview: executionSteps.output_preview,
+          request_meta: executionSteps.request_meta,
+        })
+        .from(executionSteps)
+        .where(
+          and(eq(executionSteps.tenant_id, tenant_id), eq(executionSteps.execution_id, row.id)),
+        );
   return {
     execution_id: row.id,
     workflow_id: row.workflow_id,
@@ -305,7 +337,7 @@ export async function loadFocusExecution(
     environment: row.execution_mode,
     warnings_count: stepWarningSources(stepRows).length,
     recorded_at: (row.finished_at ?? row.created_at).toISOString(),
-    diagnosis_available: true,
+    diagnosis_available: !sensitive,
   };
 }
 
@@ -313,6 +345,7 @@ export async function loadDraft(
   tenant_id: string,
   conversation_id: string,
   exec: Executor,
+  principal?: ResolvedPrincipal,
 ): Promise<DraftDocument> {
   const conversationRows = await exec
     .select({
@@ -343,6 +376,7 @@ export async function loadDraft(
         conversation?.target_workflow_id ?? null,
         normalizeDraftDocument(draft),
         exec,
+        principal,
       );
     }
     return hydrateBoundWorkflow(
@@ -350,6 +384,7 @@ export async function loadDraft(
       conversation?.target_workflow_id ?? null,
       emptyDraft(),
       exec,
+      principal,
     );
   }
   return hydrateBoundWorkflow(
@@ -357,6 +392,7 @@ export async function loadDraft(
     conversation?.target_workflow_id ?? null,
     normalizeDraftDocument(row.snapshot),
     exec,
+    principal,
   );
 }
 

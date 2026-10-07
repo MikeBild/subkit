@@ -5,6 +5,7 @@ import type { Db } from "../../../db/client.ts";
 import { auditLog, conversations, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { __setExternalMcpToolsBuilderForTests } from "../sdk-wrap/external-mcp-tools.ts";
@@ -46,7 +47,7 @@ beforeAll(async () => {
     .values({ slug: "t-palette-fail", display_name: "Palette Fail" })
     .returning();
   tenant_id = t!.id;
-  actor_id = "00000000-0000-0000-0000-000000000001";
+  actor_id = createDeterministicUuidFactory(321)();
   const [conv] = await ctx.db
     .insert(conversations)
     .values({ tenant_id, status: "active" })

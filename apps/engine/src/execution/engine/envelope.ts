@@ -1,3 +1,4 @@
+import { checkJsonSchemaContract } from "../json-schema-contract.ts";
 import { isOffloadRef, type OffloadRef, OffloadResolutionError, previewOf } from "../offload.ts";
 import type { RunStepOutcome } from "../step-runner.ts";
 import type { HeldRequest, StepResult } from "../types.ts";
@@ -7,62 +8,14 @@ export function validateAgainstJsonSchema(
   schema: Record<string, unknown>,
   location: string,
 ): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  if (!schema || typeof schema !== "object") return { valid: true, errors: [] };
-  const obj =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null;
-  const required = schema.required as string[] | undefined;
-  if (required && Array.isArray(required) && required.length > 0) {
-    for (const field of required) {
-      if (!obj || !(field in obj)) {
-        errors.push(`${location}: required field '${field}' is missing`);
-      }
-    }
-  }
-  const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? (schema.properties as Record<string, unknown>)
-      : null;
-  if (obj && properties) {
-    for (const [field, rawSpec] of Object.entries(properties)) {
-      if (!(field in obj)) continue;
-      if (!rawSpec || typeof rawSpec !== "object") continue;
-      const spec = rawSpec as Record<string, unknown>;
-      const fieldValue = obj[field];
-      const expectedType = typeof spec.type === "string" ? spec.type : null;
-      if (expectedType && !matchesJsonSchemaType(fieldValue, expectedType)) {
-        errors.push(`${location}: field '${field}' must be type '${expectedType}'`);
-        continue;
-      }
-      const enumValues = Array.isArray(spec.enum) ? spec.enum : null;
-      if (enumValues && enumValues.length > 0 && !enumValues.includes(fieldValue)) {
-        const rendered = enumValues.map((v) => JSON.stringify(v)).join(", ");
-        errors.push(`${location}: field '${field}' must be one of [${rendered}]`);
-      }
-    }
-  }
-  return { valid: errors.length === 0, errors };
-}
-
-function matchesJsonSchemaType(value: unknown, expected: string): boolean {
-  switch (expected) {
-    case "string":
-      return typeof value === "string";
-    case "number":
-      return typeof value === "number" && Number.isFinite(value);
-    case "integer":
-      return typeof value === "number" && Number.isInteger(value);
-    case "boolean":
-      return typeof value === "boolean";
-    case "object":
-      return value !== null && typeof value === "object" && !Array.isArray(value);
-    case "array":
-      return Array.isArray(value);
-    default:
-      return true;
-  }
+  const check = checkJsonSchemaContract(value, schema, location);
+  if (!check.ok) return { valid: false, errors: [`${location}: ${check.schema_error}`] };
+  return check.valid
+    ? { valid: true, errors: [] }
+    : {
+        valid: false,
+        errors: check.violations.map((violation) => `${violation.path}: ${violation.message}`),
+      };
 }
 
 export interface ScopeEnvelope {

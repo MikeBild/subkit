@@ -27,7 +27,7 @@ const ENDPOINT = "http://127.0.0.1/v1/identity/sessions";
 async function writeOidcConfig(
   issuerUrl: string,
   clientId: string,
-  opts: { enableSignup?: boolean } = {},
+  opts: { enableSignup?: boolean; productId?: string; linkByEmail?: boolean } = {},
 ): Promise<void> {
   const file = join(configDir, "subkit.config.json");
   const providers = issuerUrl
@@ -40,6 +40,8 @@ async function writeOidcConfig(
           issuer_url: issuerUrl,
           client_id: clientId,
           tenant_slug: "default",
+          ...(opts.productId ? { product_id: opts.productId } : {}),
+          ...(opts.linkByEmail !== undefined ? { link_by_email: opts.linkByEmail } : {}),
         },
       ]
     : [{ protocol: "api_key", id: "api-key", label: "SubKit API key" }];
@@ -173,6 +175,15 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
   test("unknown provider id is rejected with 403", async () => {
     const id_token = await mock.signIdToken({ sub: "attacker", email_verified: true });
     const res = await postIdentity({ provider_id: "attacker", identity_token: id_token });
+    expect(res.status).toBe(403);
+  });
+
+  test("product identity cannot mint an unbound API key", async () => {
+    await writeOidcConfig(mock.url, CLIENT_ID, { productId: "harmoniqs" });
+    const res = await postIdentity({
+      provider_id: "test-identity",
+      identity_token: "unused",
+    });
     expect(res.status).toBe(403);
   });
 
@@ -344,4 +355,27 @@ describe("POST /v1/identity/sessions — auth.enable_signup gate", () => {
     const [row] = await testDb.db.select().from(users).where(eq(users.id, json.principal_id));
     expect(row?.role_id).toBe(await builtinRoleId(testDb.db, "member"));
   });
+});
+
+test("configured email opt out refuses token exchange into an existing user", async () => {
+  await writeOidcConfig(mock.url, CLIENT_ID, { linkByEmail: false, enableSignup: true });
+  const [owner] = await testDb.db
+    .insert(users)
+    .values({
+      tenant_id: defaultTenantId,
+      email: "optout-existing@example.test",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
+    .returning();
+  if (!owner) throw new Error("owner seed failed");
+  const token = await mock.signIdToken({
+    sub: "optout-assertion",
+    email: owner.email,
+    email_verified: true,
+  });
+  const response = await postIdentity({ provider_id: "test-identity", identity_token: token });
+  expect(response.status).toBe(403);
+  expect(
+    await testDb.db.select().from(userIdentities).where(eq(userIdentities.user_id, owner.id)),
+  ).toHaveLength(0);
 });

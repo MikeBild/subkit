@@ -10,7 +10,7 @@ import {
   tenants,
   users,
 } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { createMcpOAuthProvider, type McpOAuthProvider } from "./server-provider.ts";
 import { sha256Hex } from "./tokens.ts";
@@ -74,11 +74,11 @@ beforeAll(async () => {
   userId = u.id;
 
   provider = createMcpOAuthProvider({ db, config });
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await testDb.cleanup();
-}, 30_000);
+  if (testDb) await testDb.cleanup();
+}, TEST_DB_HOOK_TIMEOUT);
 
 async function registerTestClient(opts?: {
   redirect_uris?: string[];

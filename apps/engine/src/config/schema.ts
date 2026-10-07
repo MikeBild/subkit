@@ -284,6 +284,11 @@ const AuthProviders = z
           client_id: z.string().min(1),
           scopes: z.string().default("openid profile email"),
           tenant_slug: z.string().min(1).default("default"),
+          link_by_email: z.boolean().optional(),
+          product_id: z
+            .string()
+            .regex(/^[a-z0-9][a-z0-9-]{0,62}$/)
+            .optional(),
         })
         .strict(),
     ]),

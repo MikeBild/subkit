@@ -391,7 +391,7 @@ const runCommand = defineCommand({
       process.exit(1);
     }
 
-    let input: unknown = null;
+    let input: unknown;
     if (args.input) {
       const raw = String(args.input);
       try {
@@ -449,7 +449,7 @@ const runCommand = defineCommand({
           source: "step" as const,
           step,
           ...(args.slug ? { workflow_slug: String(args.slug) } : {}),
-          ...(input !== null ? { input } : {}),
+          ...(input !== undefined ? { input } : {}),
           request_source: "cli" as const,
         };
         printRunResult(await client.runExecution(body));
@@ -465,7 +465,7 @@ const runCommand = defineCommand({
           source: "draft" as const,
           definition,
           ...(args.name ? { name: String(args.name) } : {}),
-          ...(input !== null ? { input } : {}),
+          ...(input !== undefined ? { input } : {}),
           request_source: "cli" as const,
         };
         printRunResult(await client.runExecution(body));
@@ -481,7 +481,7 @@ const runCommand = defineCommand({
       const body: Extract<RunExecutionBody, { source: "saved" }> = {
         source: "saved",
         workflow_id: workflowId,
-        ...(input !== null ? { input } : {}),
+        ...(input !== undefined ? { input } : {}),
         ...(args["idempotency-key"] ? { idempotency_key: String(args["idempotency-key"]) } : {}),
         request_source: "cli",
       };
@@ -557,7 +557,7 @@ const previewCommand = defineCommand({
   async run({ args }) {
     const { readFileSync } = await import("node:fs");
     const client = makeClient();
-    let input: unknown = null;
+    let input: unknown;
     if (args.input) {
       try {
         input = JSON.parse(args.input as string);
@@ -575,7 +575,7 @@ const previewCommand = defineCommand({
         source: "draft" as const,
         definition,
         ...(args.name ? { name: String(args.name) } : {}),
-        ...(input !== null ? { input } : {}),
+        ...(input !== undefined ? { input } : {}),
         request_source: "cli" as const,
       };
       printRunResult(await client.runExecution(body));
@@ -674,7 +674,7 @@ async function saveWorkflowFromFile(
           process.exit(1);
         }
 
-        let input: unknown = null;
+        let input: unknown;
         if (args.input) {
           try {
             input = JSON.parse(args.input as string);
@@ -687,7 +687,7 @@ async function saveWorkflowFromFile(
         const preview: RunExecutionResponse = await client.runExecution({
           source: "draft",
           definition: body,
-          ...(input !== null ? { input } : {}),
+          ...(input !== undefined ? { input } : {}),
           request_source: "cli",
         });
 

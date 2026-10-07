@@ -10,6 +10,7 @@ import {
   type McpClientLike,
 } from "../../../mcp/client/pool.ts";
 import { seedMcpConnector } from "../../../mcp/client/test-fixtures.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import type { TurnEvent } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
 import { buildExternalMcpTools } from "../sdk-wrap/external-mcp-tools.ts";
@@ -77,7 +78,7 @@ beforeAll(async () => {
     .values({ slug: "t-mcp-pending", display_name: "MCP Pending Output" })
     .returning();
   tenant_id = t!.id;
-  actor_id = "00000000-0000-0000-0000-000000000002";
+  actor_id = createDeterministicUuidFactory(319)();
   const [conv] = await ctx.db
     .insert(conversations)
     .values({ tenant_id, status: "active" })

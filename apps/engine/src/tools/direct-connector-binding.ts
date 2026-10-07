@@ -13,6 +13,7 @@ import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts";
 import { authorityConnectorDigest } from "../workflows/authority-configuration.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
+import { approvalOwnerFilter } from "./approval-owner.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const connectorBindingSchema = z
@@ -272,6 +273,7 @@ export async function assertDirectConnectorBinding(p: {
             eq(toolApprovals.tenant_id, p.tenant_id),
             eq(toolApprovals.id, p.approval.approval_id),
             eq(toolApprovals.principal_id, p.principal.id),
+            approvalOwnerFilter(p.principal),
             eq(toolApprovals.tool, p.approval.tool),
             eq(toolApprovals.surface, p.approval.surface),
             isNotNull(toolApprovals.granted_at),

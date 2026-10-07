@@ -184,6 +184,19 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return Response.redirect(loginUrl.toString(), 302);
     }
+    const [authorizingSession] = await db
+      .select({ product_id: sessions.product_id })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.id, sessionPayload.session_id),
+          eq(sessions.tenant_id, sessionPayload.tenant_id),
+        ),
+      )
+      .limit(1);
+    if (!authorizingSession || authorizingSession.product_id) {
+      return buildErrorRedirect(redirectUri, "access_denied", state);
+    }
 
     const userRows = await db
       .select({ email: users.email, role_name: rolesTable.name })
@@ -358,6 +371,22 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     if (!(await sessionIsLive(db, sessionPayload.session_id, sessionPayload.tenant_id))) {
       return c.json({ error: "unauthorized", error_description: "session revoked" }, 401);
+    }
+    const [authorizingSession] = await db
+      .select({ product_id: sessions.product_id })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.id, sessionPayload.session_id),
+          eq(sessions.tenant_id, sessionPayload.tenant_id),
+        ),
+      )
+      .limit(1);
+    if (!authorizingSession || authorizingSession.product_id) {
+      return c.json(
+        { error: "access_denied", error_description: "product session is not supported" },
+        403,
+      );
     }
 
     const csrfSecret = deriveSessionSecret();

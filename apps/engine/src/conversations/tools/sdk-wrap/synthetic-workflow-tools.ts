@@ -176,6 +176,7 @@ async function executeSyntheticRun(
         ...(decision.mode !== "no_confirm" ? { hold_writes: true } : {}),
       },
       db,
+      principal,
     );
     const result = await runExecution({
       db,

@@ -3,6 +3,7 @@ import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { Db } from "../../db/client.ts";
 import { apiKeys, roles as rolesTable, systemAccounts, users } from "../../db/schema/index.ts";
+import { sha256Hex } from "../../identity/api-key.ts";
 import { log, logger } from "../../logging/logger.ts";
 import type { AllowList, ResolvedPrincipal } from "../types.ts";
 
@@ -181,6 +182,11 @@ export async function resolvePrincipalFromApiKeyRow(
     tenant_id: row.tenant_id,
     roles,
     api_key_id: row.id,
+    auth_source: {
+      kind: "api_key",
+      api_key_id: row.id,
+      credential_version: sha256Hex(row.token_sha256),
+    },
   };
   const scopes = normalizeScopes(row.scopes);
   if (scopes !== undefined) principal.scopes = scopes;

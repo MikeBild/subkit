@@ -40,7 +40,8 @@ export const AGENT_SKILL_INDEX: Record<AgentSkillName, string> = {
   "workflow-step-kinds":
     "Eight step kinds, required fields per kind, banned namespaces (no `type`, no trigger.*)",
   "placeholder-rules":
-    "$" + "{cred|connector|input|scope.*} placeholder grammar, run-warnings repair routine",
+    "$" +
+    "{cred|connector|input|scope|caller.*} placeholder grammar, trusted caller identity, run-warnings repair routine",
   "attachment-handling":
     "$file refs resolve before tool dispatch, never paste raw file content into chat",
   "error-recovery-and-rbac":

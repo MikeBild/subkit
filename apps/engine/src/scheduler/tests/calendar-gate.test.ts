@@ -118,8 +118,7 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     );
     expect(callsForWorkflow.length).toBe(1);
 
-    const payload = callsForWorkflow[0]?.payload as { input: unknown };
-    expect(payload.input).toBeNull();
+    expect(callsForWorkflow[0]?.payload).not.toHaveProperty("input");
 
     const refreshed = (
       await ctx.testDb.db
@@ -135,6 +134,8 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
       .where(eq(executions.workflow_id, workflow_id));
     expect(execRows.length).toBe(1);
     expect(execRows[0]?.request_source).toBe("scheduler");
+    expect(execRows[0]?.input).toBeNull();
+    expect(execRows[0]?.caller_context).toBeNull();
 
     const audits = await ctx.testDb.db
       .select()

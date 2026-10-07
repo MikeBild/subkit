@@ -124,7 +124,13 @@ export const openWorkflowDraftTool: ConversationTool = {
       .where(
         and(eq(conversations.tenant_id, ctx.tenant_id), eq(conversations.id, ctx.conversation_id)),
       );
-    const opened = await hydrateBoundWorkflow(ctx.tenant_id, workflow.id, reset, ctx.db);
+    const opened = await hydrateBoundWorkflow(
+      ctx.tenant_id,
+      workflow.id,
+      reset,
+      ctx.db,
+      ctx.principal ?? undefined,
+    );
     await ctx.setDraft(opened);
     ctx.workflow_id = workflow.id;
     clearLastPreview({ tenant_id: ctx.tenant_id, conversation_id: ctx.conversation_id });

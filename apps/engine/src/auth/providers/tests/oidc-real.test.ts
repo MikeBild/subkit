@@ -11,6 +11,7 @@ import {
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
+import { createBrowserSessionProvider } from "../browser-session.ts";
 import { createOidcProvider } from "../oidc.ts";
 import { type MockOidcHandle, startMockOidc } from "./fixtures/mock-oidc.ts";
 
@@ -41,7 +42,9 @@ afterAll(async () => {
   if (testDb) await testDb.cleanup();
 });
 
-function buildProvider(overrides: { enableSignup?: boolean } = {}) {
+function buildProvider(
+  overrides: { enableSignup?: boolean; productId?: string; linkByEmail?: boolean } = {},
+) {
   return createOidcProvider({
     db: testDb.db,
     issuerUrl: mock.url,
@@ -49,6 +52,8 @@ function buildProvider(overrides: { enableSignup?: boolean } = {}) {
     clientSecret: "mock-secret",
     redirectUri: REDIRECT_URI,
     enableSignup: overrides.enableSignup ?? true,
+    ...(overrides.productId ? { productId: overrides.productId } : {}),
+    ...(overrides.linkByEmail !== undefined ? { linkByEmail: overrides.linkByEmail } : {}),
   });
 }
 
@@ -62,7 +67,25 @@ function parseSetCookie(header: string | null): string | null {
 
 describe("oidc provider — real flow", () => {
   test("finishLogin: issues session row, cookie resolves principal", async () => {
-    const provider = buildProvider();
+    const provider = buildProvider({ productId: "harmoniqs" });
+    const [owner] = await testDb.db
+      .insert(users)
+      .values({
+        tenant_id: tenantId,
+        email: "oidc-real@test.local",
+        role_id: await builtinRoleId(testDb.db, "member"),
+      })
+      .returning();
+    if (!owner) throw new Error("owner seed failed");
+    await testDb.db.insert(userIdentities).values({
+      tenant_id: tenantId,
+      user_id: owner.id,
+      provider_id: "oidc",
+      subject: "mock-sub-1",
+      email: owner.email,
+      issuer_url: mock.url,
+      product_id: "harmoniqs",
+    });
 
     const startUrl = `http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real`;
     const startRes = await provider.startLogin!(new Request(startUrl));
@@ -96,6 +119,7 @@ describe("oidc provider — real flow", () => {
     expect(session.revoked_at).toBeNull();
     expect(session.absolute_expires_at).not.toBeNull();
     expect(session.last_seen_at).not.toBeNull();
+    expect(session.product_id).toBe("harmoniqs");
 
     const resolveRes = await provider.resolve(
       new Request("http://127.0.0.1:0/v1/identity/tenants", {
@@ -106,6 +130,15 @@ describe("oidc provider — real flow", () => {
     expect(resolveRes?.tenant_id).toBe(tenantId);
     expect(resolveRes?.kind).toBe("user");
     expect(resolveRes?.session_id).toBe(session.id);
+    expect(resolveRes?.product_id).toBe("harmoniqs");
+
+    const browserPrincipal = await createBrowserSessionProvider({ db: testDb.db }).resolve(
+      new Request("http://127.0.0.1:0/v1/executions", {
+        headers: { cookie: `subkit_session=${cookie}` },
+      }),
+    );
+    expect(browserPrincipal?.product_id).toBe("harmoniqs");
+    expect(browserPrincipal?.id).toBe(resolveRes?.id);
 
     const auditRows = await testDb.db
       .select()
@@ -499,4 +532,74 @@ describe("oidc provider — browser error pages", () => {
     expect(html).toContain("<h1>Sign-in failed</h1>");
     expect(html).toContain(`href="${reentry}"`);
   });
+});
+
+test("product callback refuses verified email signup even with signup enabled", async () => {
+  const provider = buildProvider({ productId: "product-prebound", enableSignup: true });
+  const start = await provider.startLogin!(
+    new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real"),
+  );
+  const authorize = new URL(start.headers.get("location") ?? "");
+  await fetch(authorize, { redirect: "manual" });
+  const issued = mock.issueFor(
+    { sub: "product-unbound-subject", email: "product-new@example.test", email_verified: true },
+    { state: authorize.searchParams.get("state") ?? "", redirect_uri: REDIRECT_URI },
+  );
+  const response = await provider.finishLogin!(
+    new Request(issued.callbackUrl, { headers: { accept: "application/json" } }),
+  );
+  expect(response.status).toBe(403);
+  expect(response.headers.get("set-cookie")).toBeNull();
+  expect(
+    await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(
+        and(
+          eq(userIdentities.tenant_id, tenantId),
+          eq(userIdentities.subject, "product-unbound-subject"),
+        ),
+      ),
+  ).toHaveLength(0);
+  expect(
+    await testDb.db
+      .select()
+      .from(users)
+      .where(and(eq(users.tenant_id, tenantId), eq(users.email, "product-new@example.test"))),
+  ).toHaveLength(0);
+});
+
+test("unbound callback email opt out never inherits an existing account", async () => {
+  const [owner] = await testDb.db
+    .insert(users)
+    .values({
+      tenant_id: tenantId,
+      email: "optout@example.test",
+      role_id: await builtinRoleId(testDb.db, "admin"),
+    })
+    .returning();
+  if (!owner) throw new Error("owner seed failed");
+  const provider = buildProvider({ enableSignup: true, linkByEmail: false });
+  const start = await provider.startLogin!(
+    new Request("http://127.0.0.1:0/v1/identity/login/start?tenant=oidc-real"),
+  );
+  const authorize = new URL(start.headers.get("location") ?? "");
+  await fetch(authorize, { redirect: "manual" });
+  const issued = mock.issueFor(
+    { sub: "optout-subject", email: owner.email, email_verified: true },
+    { state: authorize.searchParams.get("state") ?? "", redirect_uri: REDIRECT_URI },
+  );
+  const response = await provider.finishLogin!(
+    new Request(issued.callbackUrl, { headers: { accept: "application/json" } }),
+  );
+  expect(response.status).toBe(403);
+  expect(response.headers.get("set-cookie")).toBeNull();
+  expect(
+    await testDb.db
+      .select()
+      .from(userIdentities)
+      .where(
+        and(eq(userIdentities.tenant_id, tenantId), eq(userIdentities.subject, "optout-subject")),
+      ),
+  ).toHaveLength(0);
 });

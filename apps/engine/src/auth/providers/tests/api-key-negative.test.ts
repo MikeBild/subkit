@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { apiKeys, tenants, users } from "../../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { generateKey } from "../../../identity/api-key.ts";
 import { logger } from "../../../logging/logger.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
@@ -29,11 +29,11 @@ beforeAll(async () => {
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await testDb.cleanup();
-}, 30_000);
+  if (testDb) await testDb.cleanup();
+}, TEST_DB_HOOK_TIMEOUT);
 
 async function seedKey(overrides: {
   revoked_at?: Date;

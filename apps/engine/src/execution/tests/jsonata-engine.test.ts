@@ -104,6 +104,7 @@ describe("flattenBindings", () => {
     const flat = flattenBindings({});
     expect(flat).toEqual({
       input: null,
+      caller: null,
       scope: {},
       cred: {},
       connector: {},

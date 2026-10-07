@@ -132,7 +132,7 @@ async function grantAndRun(
       db: ctx.db,
       source: { kind: "saved", workflow_id },
       input,
-      options: { existing_execution_id: admitted.execution_id, principal },
+      options: { existing_execution_id: admitted.execution_id },
     });
     return { result, sends };
   });

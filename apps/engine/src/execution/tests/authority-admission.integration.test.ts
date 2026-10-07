@@ -401,6 +401,50 @@ test("input validation runs before a reservation is consumed", async () => {
   ).toHaveLength(0);
 });
 
+test("nested input violations cannot create executions or consume approved runs", async () => {
+  const f = await fixture(1, {
+    type: "object",
+    required: ["context"],
+    additionalProperties: false,
+    properties: {
+      context: {
+        type: "object",
+        required: ["metadata"],
+        additionalProperties: false,
+        properties: {
+          metadata: {
+            type: "object",
+            required: ["count"],
+            additionalProperties: false,
+            properties: { count: { type: "integer", minimum: 0, maximum: 8 } },
+          },
+        },
+      },
+    },
+  });
+  for (const input of [
+    { context: { metadata: { count: 1, unexpected: true } } },
+    { context: { metadata: {} } },
+    { context: { metadata: { count: 9 } } },
+    { context: { metadata: { count: 1.5 } } },
+    { context: [] },
+  ]) {
+    await expect(
+      admitAuthorizedWorkflowExecution({ ...f.params, input }, ctx.db),
+    ).rejects.toMatchObject({ code: "input_schema_violation" });
+    expect(await reservations(f.authority.id)).toBe(0);
+    expect(
+      await ctx.db.select().from(executions).where(eq(executions.tenant_id, f.params.tenant_id)),
+    ).toHaveLength(0);
+    expect(
+      await ctx.db
+        .select()
+        .from(executionSteps)
+        .where(eq(executionSteps.tenant_id, f.params.tenant_id)),
+    ).toHaveLength(0);
+  }
+});
+
 test("a changed target cannot spend the explicitly supplied old authority", async () => {
   const f = await fixture();
   await ctx.db

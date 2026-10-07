@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { conversationElicitations, conversations, workflows } from "../../db/schema/index.ts";
+import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   withLatestPreview,
@@ -24,6 +26,16 @@ beforeAll(async () => {
 afterAll(async () => {
   await ctx.cleanup();
 });
+
+function testPrincipal(): ResolvedPrincipal {
+  return {
+    provider: "browser_session",
+    kind: "user",
+    id: ctx.user_id,
+    tenant_id: ctx.tenant_id,
+    roles: ["admin"],
+  };
+}
 
 function readyDraft(
   slug: string,
@@ -75,6 +87,7 @@ function stubToolCtx(conversationId: string, draft: DraftDocument): ToolContext 
     tenant_id: ctx.tenant_id,
     conversation_id: conversationId,
     actor_id: ctx.user_id,
+    principal: testPrincipal(),
     connector_id: null,
     workflow_id: null,
     permission_mode: null,
@@ -186,6 +199,7 @@ describe("run_workflow · withStatus contract on gate paths", () => {
       tenant_id: ctx.tenant_id,
       conversation_id: conversationId,
       actor_id: ctx.user_id,
+      principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
@@ -219,6 +233,7 @@ describe("inspect_execution_step", () => {
       .insert(executions)
       .values({
         tenant_id: ctx.tenant_id,
+        caller_context: callerFromPrincipal(testPrincipal(), ctx.tenant_id),
         workflow_id: null,
         workflow_version_id: null,
         status: "succeeded",
@@ -263,6 +278,7 @@ describe("inspect_execution_step", () => {
       tenant_id: ctx.tenant_id,
       conversation_id: conversationId,
       actor_id: ctx.user_id,
+      principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
@@ -293,6 +309,7 @@ describe("inspect_execution_step", () => {
       .insert(executions)
       .values({
         tenant_id: ctx.tenant_id,
+        caller_context: callerFromPrincipal(testPrincipal(), ctx.tenant_id),
         status: "succeeded",
         request_source: "chat",
         source_kind: "draft",
@@ -321,6 +338,7 @@ describe("inspect_execution_step", () => {
       tenant_id: ctx.tenant_id,
       conversation_id: conversationId,
       actor_id: ctx.user_id,
+      principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
       permission_mode: null,
@@ -371,6 +389,7 @@ describe("inspect_execution_step", () => {
       tenant_id: ctx.tenant_id,
       conversation_id: conversationId,
       actor_id: ctx.user_id,
+      principal: testPrincipal(),
       connector_id: null,
       workflow_id: null,
       permission_mode: null,

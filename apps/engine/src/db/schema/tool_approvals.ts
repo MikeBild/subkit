@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
+import type { CallerContext } from "../../execution/caller-context.ts";
 import { bytea, tenantId } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
@@ -9,6 +11,8 @@ export const toolApprovals = pgTable(
     id: uuid("id").primaryKey(),
     tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
     principal_id: uuid("principal_id").notNull(),
+    caller_context: jsonb("caller_context").$type<CallerContext>(),
+    authorization_context: jsonb("authorization_context").$type<ExecutionAuthorizationContext>(),
     claimed_execution_id: uuid("claimed_execution_id"),
     tool: text("tool").notNull(),
     surface: text("surface").notNull(),

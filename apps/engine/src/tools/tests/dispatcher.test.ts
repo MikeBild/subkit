@@ -19,9 +19,10 @@ import { buildRegistry, type ToolProvider } from "../registry.ts";
 import type { ToolDescriptor, ToolEnvelope } from "../types.ts";
 
 const PRINCIPAL: ResolvedPrincipal = {
+  provider: "test",
   kind: "user",
-  id: "00000000-0000-0000-0000-000000000001",
-  tenant_id: "00000000-0000-0000-0000-000000000002",
+  id: "00000000-0000-4000-8000-000000000001",
+  tenant_id: "00000000-0000-4000-8000-000000000002",
   authoring_role_id: null,
   scopes: new Set(),
   permission_grants: [],
@@ -55,11 +56,11 @@ beforeAll(async () => {
     .values({ slug: "t-dispatcher-confirm", display_name: "Dispatcher Confirm" })
     .returning();
   dbTenantId = tenant!.id;
-});
+}, 120_000);
 
 afterAll(async () => {
   await testDb.cleanup();
-});
+}, 120_000);
 
 function dbPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   // biome-ignore lint/suspicious/noExplicitAny: mirrors the PRINCIPAL stub above

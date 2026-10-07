@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { type Db, getDb } from "../../db/client.ts";
@@ -81,15 +81,19 @@ export function createBrowserSessionProvider(
           });
       });
 
-      // tenant-filter:exempt — the session row already fixed the tenant.
       const [u] = await db
-        .select({ role_name: roles.name, email: users.email })
+        .select({
+          role_name: roles.name,
+          email: users.email,
+          status: users.status,
+          deleted_at: users.deleted_at,
+        })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(eq(users.id, row.user_id))
+        .where(and(eq(users.tenant_id, row.tenant_id), eq(users.id, row.user_id)))
         .limit(1);
-      if (!u) {
-        log.auth.denied({ provider: "browser_session", reason: "user_not_found" });
+      if (u?.status !== "active" || u.deleted_at !== null) {
+        log.auth.denied({ provider: "browser_session", reason: "user_not_active" });
         return null;
       }
 
@@ -100,7 +104,9 @@ export function createBrowserSessionProvider(
         tenant_id: row.tenant_id,
         roles: u.role_name ? [u.role_name] : [],
         session_id: row.id,
+        auth_source: { kind: "browser_session", session_id: row.id },
       };
+      if (row.product_id) principal.product_id = row.product_id;
       if (u.email) principal.email = u.email;
 
       log.auth.resolved({

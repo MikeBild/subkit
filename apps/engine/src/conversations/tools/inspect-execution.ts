@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
 import { executions, workflows } from "../../db/schema/index.ts";
+import { executionVisibilityFilter, isSensitivePayload } from "../../execution/index.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
@@ -26,13 +27,16 @@ function boundWorkflowId(ctx: ToolContext): string | null {
 }
 
 async function latestExecutionId(ctx: ToolContext, workflowId: string | null) {
+  if (!ctx.principal) return null;
   const rows = await ctx.db
     .select({ id: executions.id })
     .from(executions)
     .where(
-      workflowId
-        ? and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.workflow_id, workflowId))
-        : eq(executions.tenant_id, ctx.tenant_id),
+      and(
+        eq(executions.tenant_id, ctx.tenant_id),
+        executionVisibilityFilter(ctx.principal),
+        ...(workflowId ? [eq(executions.workflow_id, workflowId)] : []),
+      ),
     )
     .orderBy(desc(executions.created_at))
     .limit(1);
@@ -63,8 +67,10 @@ export const inspectExecutionTool: ConversationTool = {
   ],
   inputSchema: Input,
   category: "tenant_read",
+  permission: { action: "execution:read", resourceType: "execution" },
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
+    if (!ctx.principal) return { ok: false, data: { error_code: "principal_required" } };
     let executionId = args.execution_id ?? null;
     let selectedBy: SelectedBy = "explicit";
     if (!executionId) {
@@ -91,6 +97,20 @@ export const inspectExecutionTool: ConversationTool = {
         };
       }
     }
+    const [visible] = await ctx.db
+      .select({ input: executions.input })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenant_id),
+          eq(executions.id, executionId),
+          executionVisibilityFilter(ctx.principal),
+        ),
+      )
+      .limit(1);
+    if (!visible) return { ok: false, data: { error_code: "execution_not_found" } };
+    if (isSensitivePayload(visible.input))
+      return { ok: false, data: { error_code: "sensitive_execution_unsupported" } };
     const [result, row] = await Promise.all([
       buildExecutionDiagnosis(ctx.db, ctx.tenant_id, executionId),
       ctx.engineClient.executions.get(executionId),

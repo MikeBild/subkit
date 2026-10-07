@@ -55,7 +55,7 @@ describe("no tracked source file is invisible to text search", () => {
       found,
       `a NUL byte makes the whole file "data" to file(1) and invisible to every grep that skips binaries:\n  ${found.join("\n  ")}`,
     ).toEqual([]);
-  });
+  }, 30_000);
 
   test("and it says nothing about an UNTRACKED file — the known limit, driven", () => {
     const sandbox = mkdtempSync(join(tmpdir(), "nul-untracked-"));

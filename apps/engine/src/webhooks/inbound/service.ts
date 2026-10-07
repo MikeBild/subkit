@@ -758,7 +758,6 @@ export async function handleInbound(
     tenant_id: row.tenant_id,
     workflow_id: row.workflow_id,
     execution_id,
-    input: admitted.input,
     request_source: "webhook",
     execution_mode: "prod",
   };

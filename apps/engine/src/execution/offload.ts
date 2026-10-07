@@ -214,7 +214,12 @@ async function writeToObjectStore(
   return `s3://${cfg.bucket}/${key}`;
 }
 
-export async function maybeOffload(db: Db, params: MaybeOffloadParams): Promise<OffloadResult> {
+export async function maybeOffload(
+  db: Db,
+  params: MaybeOffloadParams & { execution_privacy?: "sensitive" | undefined },
+): Promise<OffloadResult> {
+  if (params.execution_privacy === "sensitive")
+    return { storage_uri: null, preview: null, size_bytes: 0, sha256: "" };
   const serialized = JSON.stringify(params.result) ?? "null";
   const size = Buffer.byteLength(serialized, "utf8");
   const sha256 = createHash("sha256").update(serialized, "utf8").digest("hex");

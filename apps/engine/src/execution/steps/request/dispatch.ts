@@ -1195,9 +1195,22 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
           }
           if (s3Spec?.scope) {
             const declared = storageBoundary(p.step, storageBaseUrl(connector.config));
-            const violation = declared
-              ? storageKeyViolation(declared, reqPath.replace(/^\//, ""), params.body ?? null)
-              : null;
+            if (!declared)
+              return {
+                status: "failed",
+                retry_count: 0,
+                duration_ms: Date.now() - start,
+                error: {
+                  code: "request_outside_declared_boundary",
+                  message: "The declared storage scope cannot be enforced. Nothing was sent.",
+                },
+              };
+            const violation = storageKeyViolation(
+              declared,
+              reqPath.replace(/^\//, ""),
+              params.body ?? null,
+              p.ctx.caller_context ?? null,
+            );
             if (violation)
               return {
                 status: "failed",

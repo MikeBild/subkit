@@ -207,6 +207,22 @@ function recordToRing(level: LogLevel, fields: LogFields): void {
 
 function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
+  if (getContext().execution_privacy === "sensitive") {
+    const allowed = new Set([
+      "module",
+      "action",
+      "execution_id",
+      "tenant_id",
+      "workflow_id",
+      "step_index",
+      "kind",
+      "status",
+      "duration_ms",
+      "retry_count",
+    ]);
+    fields = Object.fromEntries(Object.entries(fields).filter(([key]) => allowed.has(key)));
+    fields.msg = "Sensitive execution.";
+  }
   if (MODE === "pretty") emitPretty(level, fields);
   else emitNdjson(level, fields);
   if (fields.module === "audit") return;

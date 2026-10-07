@@ -130,7 +130,8 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
       cause: error,
     });
   });
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-testid="runs-search"]').waitFor({ state: "visible" });
   const kept = await page.locator('[data-testid="runs-search"]').inputValue();
   if (kept !== "Monatsreport")
     throw new Error(`${where}: a reload lost the search — the field reads "${kept}"`);
@@ -213,7 +214,12 @@ export async function verifyRunsOverCatalog(page, stand, where) {
   )
     throw new Error(`${where}: the catalog shows no rows after the runs closed`);
 
-  await page.reload({ waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page
+    .locator('[data-testid="catalog-workflows"] [data-testid$="-row-0"]:visible')
+    .first()
+    .waitFor({ state: "visible" });
+  await page.locator('[data-testid="catalog-search"]').waitFor({ state: "visible" });
   const reloaded = await page.locator('[data-testid="catalog-search"]').inputValue();
   if (reloaded !== host.q)
     throw new Error(`${where}: a reload after closing the runs lost the catalog search`);

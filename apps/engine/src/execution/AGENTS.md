@@ -24,6 +24,7 @@ the runtime.
 | Binding | Source | Notes |
 |---|---|---|
 | `$input` | workflow input | Top-level invocation payload. |
+| `$caller` | authenticated execution caller | Immutable tenant, principal, kind, provider, and optional product identity; null for trusted system runs without a principal. Persisted at admission and reused by queue, resume, and child workflows. |
 | `$scope.<id>` | step outputs | The full per-step envelope record. |
 | `$steps.<id>` | alias of `$scope` | Retained for skill-doc symmetry. |
 | `$cred.<slug>.<key>` | resolved credentials | RBAC-gated; pre-resolved. |
@@ -36,6 +37,8 @@ Bare path expressions (without `$`) walk the second arg of
 `expr.evaluate(data, bindings)` — e.g. `step1.data` works because
 `step1` is a key on the scope object passed as data. Authors should
 prefer `$scope.step1.data` for clarity; both forms are supported.
+
+Request placeholders use `${caller.tenantId}`, `${caller.principalId}`, `${caller.principalKind}`, `${caller.provider}`, and `${caller.productId}`. They resolve from the same persisted caller, never from `$input`. A workflow with `product_id` requires a matching product-bound principal before execution. Product S3 steps must declare a principal-bound scope rooted at `products/<product_id>/`; the next object-key segment is the authenticated principal ID.
 
 ## No-rollback / no-compensation contract
 

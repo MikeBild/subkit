@@ -42,8 +42,9 @@ const ToolEnvelopeSchema = z.discriminatedUnion("status", [
 
 const PRINCIPAL: ResolvedPrincipal = {
   kind: "user",
-  id: "00000000-0000-0000-0000-000000000001",
-  tenant_id: "00000000-0000-0000-0000-000000000002",
+  provider: "test",
+  id: "00000000-0000-4000-8000-000000000001",
+  tenant_id: "00000000-0000-4000-8000-000000000002",
   authoring_role_id: null,
   scopes: new Set(),
   permission_grants: [],

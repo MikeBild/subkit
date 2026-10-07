@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthClients, users } from "../../db/schema/index.ts";
+import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
 import { countLiveConnectionsByUser } from "../../identity/oauth-connections.ts";
 import { deactivateUser } from "../../identity/provisioning.ts";
@@ -26,11 +27,11 @@ beforeAll(async () => {
   ctx = s.ctx;
   db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await teardownMcpOauthServer(ctx, priorBaseUrl);
-}, 30_000);
+  if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
+}, TEST_DB_HOOK_TIMEOUT);
 
 interface TokenPair {
   access_token: string;

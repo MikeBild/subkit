@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { executionSteps, executions, tenants, workflows } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { createEmptyDraftDocument, withFocusedExecution } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import { diagnoseLatestExecutionTool } from "../diagnose-latest-execution.ts";
@@ -24,11 +25,11 @@ beforeAll(async () => {
     .values({ slug: "t-foreign-exec-whole", display_name: "T2" })
     .returning();
   foreign_tenant_id = t2!.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   await ctx.cleanup();
-});
+}, 30_000);
 
 function makeCtx(): ToolContext & { draft: DraftDocument } {
   let draft = createEmptyDraftDocument();
@@ -37,6 +38,7 @@ function makeCtx(): ToolContext & { draft: DraftDocument } {
     tenant_id,
     conversation_id: crypto.randomUUID(), // allow-random: shape-only test
     actor_id: null,
+    principal: adminPrincipal(tenant_id),
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),

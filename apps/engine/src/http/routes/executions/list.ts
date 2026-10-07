@@ -1,18 +1,25 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { readRequestSource } from "../../../audit/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
 import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
 import {
+  authorizeSensitiveResume,
+  executionVisibilityFilter,
+  executionVisibleToPrincipal,
+  isSensitivePayload,
   listExecutions,
   loadExecutionOutcome,
   loadFailureSummaries,
+  recoverExecutionPayload,
 } from "../../../execution/index.ts";
 import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { streamOutboxTail } from "../sse-outbox-tail.ts";
+import { admissionRefusal } from "./admission-errors.ts";
 import {
   ExecDetailSchema,
   ExecListResponse,
@@ -95,6 +102,26 @@ const getStepsRoute = createRoute({
   },
 });
 
+const getSensitiveResultRoute = createRoute({
+  method: "get",
+  path: "/v1/executions/{id}/result",
+  tags: ["executions"],
+  summary: "Get the result of a sensitive execution for its original caller",
+  security: [{ bearerAuth: [] }],
+  request: { params: IdParam },
+  responses: {
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: z.object({ result: z.unknown() }) } },
+    },
+    403: {
+      description: "The authenticated caller does not match the original sensitive execution",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
 export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/executions/:id", async (c, next) => {
     const id = c.req.param("id");
@@ -111,6 +138,10 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const id = c.req.param("id");
     return requirePermission("execution:read", () => ({ type: "execution", id }))(c, next);
   });
+  app.use("/v1/executions/:id/result", async (c, next) => {
+    const id = c.req.param("id");
+    return requirePermission("execution:read", () => ({ type: "execution", id }))(c, next);
+  });
 
   app.openapi(listExecutionsRoute, async (c) => {
     const principal = requireAuth(c);
@@ -119,6 +150,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const { rows, total, next_cursor } = await listExecutions(
       principal.tenant_id,
       {
+        principal,
         ...(q.limit !== undefined ? { limit: q.limit } : {}),
         ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
         ...(q.workflow_id !== undefined ? { workflow_id: q.workflow_id } : {}),
@@ -167,7 +199,8 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
       .limit(1);
     const row = rows[0];
-    if (!row) throw new NotFoundError("execution");
+    if (!row || !executionVisibleToPrincipal(row.caller_context, principal))
+      throw new NotFoundError("execution");
     const [named, outcome] = await Promise.all([
       row.workflow_id
         ? db
@@ -187,6 +220,18 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { id } = c.req.valid("param");
+    const visible = await db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.tenant_id, principal.tenant_id),
+          eq(executions.id, id),
+          executionVisibilityFilter(principal),
+        ),
+      )
+      .limit(1);
+    if (!visible[0]) throw new NotFoundError("execution");
     const rows = await db
       .select()
       .from(executionSteps)
@@ -197,6 +242,54 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     return c.json({ items: rows.map(serializeStep) }, 200);
   });
 
+  app.openapi(getSensitiveResultRoute, async (c) => {
+    const principal = requireAuth(c);
+    const db = c.get("db");
+    const { id } = c.req.valid("param");
+    const row = (
+      await db
+        .select()
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, principal.tenant_id),
+            eq(executions.id, id),
+            executionVisibilityFilter(principal),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (
+      !row ||
+      row.status !== "succeeded" ||
+      !isSensitivePayload(row.input) ||
+      !isSensitivePayload(row.sensitive_result)
+    )
+      throw new NotFoundError("execution_result");
+    try {
+      await authorizeSensitiveResume(db, row, principal);
+    } catch (error) {
+      return admissionRefusal(error, {
+        db,
+        principal,
+        workflow_id: row.workflow_id,
+        request_source: readRequestSource(c) ?? "api",
+        execution_id: row.id,
+      });
+    }
+    return c.json(
+      {
+        result: recoverExecutionPayload(
+          row.sensitive_result,
+          principal.tenant_id,
+          row.id,
+          "result",
+        ),
+      },
+      200,
+    );
+  });
+
   app.get("/v1/executions/:id/stream", async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -204,7 +297,13 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const found = await db
       .select({ id: executions.id })
       .from(executions)
-      .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
+      .where(
+        and(
+          eq(executions.tenant_id, principal.tenant_id),
+          eq(executions.id, id),
+          executionVisibilityFilter(principal),
+        ),
+      )
       .limit(1);
     if (!found[0]) throw new NotFoundError("execution");
     return streamOutboxTail(c, {

@@ -1,13 +1,18 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Job, PgBoss } from "pg-boss";
+import { auditAwait } from "../../audit/audit.ts";
+import { AuditAction } from "../../audit/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { executionSteps, executions } from "../../db/schema/index.ts";
 import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
+import { rehydrateExecutionPrincipal } from "../../execution/authorization-context.ts";
+import { CallerContextSchema, callerAuditActorId } from "../../execution/caller-context.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
 import { log, logger } from "../../logging/logger.ts";
+import { can } from "../../rbac/evaluator.ts";
 import {
   endpointKeyFromRequestMeta,
   parsePersistedRequestMeta,
@@ -148,7 +153,13 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
   try {
     const [boundary] = data.execution_id
       ? await db
-          .select({ held: executions.hold_writes, authority: executions.execution_authority_id })
+          .select({
+            held: executions.hold_writes,
+            authority: executions.execution_authority_id,
+            input: executions.input,
+            caller: executions.caller_context,
+            authorization: executions.authorization_context,
+          })
           .from(executions)
           .where(
             and(
@@ -176,11 +187,48 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
       );
       throw Object.assign(new Error(message), { code: "execution_authority_required" });
     }
+    runOptions.caller_context = boundary.caller ? CallerContextSchema.parse(boundary.caller) : null;
+    try {
+      runOptions.principal = await rehydrateExecutionPrincipal(
+        db,
+        boundary.caller,
+        boundary.authorization,
+      );
+      if (runOptions.principal) {
+        const decision = await can(db, {
+          tenant_id: data.tenant_id,
+          principal: runOptions.principal,
+          permission: "workflow:run",
+          resource: { type: "workflow", id: data.workflow_id },
+        });
+        if (!decision.allow)
+          throw Object.assign(new Error("The queued workflow is no longer authorized."), {
+            code: "execution_authentication_unavailable",
+          });
+      }
+    } catch (error) {
+      await auditAwait(
+        {
+          tenant_id: data.tenant_id,
+          actor_type: runOptions.caller_context?.principalKind ?? "system",
+          actor_id: callerAuditActorId(runOptions.caller_context),
+          action: AuditAction.POLICY_DENIED,
+          resource_type: "execution",
+          resource_id: data.execution_id ?? null,
+          result: "denied",
+          reason: "execution_authentication_unavailable",
+          metadata: { workflow_id: data.workflow_id, request_source: "queue" },
+        },
+        db,
+      );
+      throw error;
+    }
+    runOptions.resume_authorized = true;
     const result = await runExecution({
       db,
       tenant_id: data.tenant_id,
       source: { kind: "saved", workflow_id: data.workflow_id },
-      input: data.input ?? null,
+      input: boundary.input,
       options: runOptions,
     });
     log.queue.job.completed({

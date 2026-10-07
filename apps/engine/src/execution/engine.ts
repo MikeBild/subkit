@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -7,6 +8,7 @@ import { executions, workflowExecutionAuthorities, workflows } from "../db/schem
 import { RunLlmBudget } from "../llm/accounting/index.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
 import { resolvePlaceholdersTypePreserving } from "../llm/substitution/resolver.ts";
+import { withContext } from "../logging/context.ts";
 import { logger } from "../logging/logger.ts";
 import {
   recordForEachExecution,
@@ -31,7 +33,14 @@ import {
 } from "../workflows/types.ts";
 import { combineSignals, registerAbort, unregisterAbort } from "./abort.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
+import { authorizationContextFromPrincipal } from "./authorization-context.ts";
 import { bindExistingRun } from "./bound-run.ts";
+import {
+  assertCallerExecutionSource,
+  assertCallerMatches,
+  callerAuditActorId,
+  callerFromPrincipal,
+} from "./caller-context.ts";
 import { connectorStepRefusal, refusedConnectorOf } from "./connector-availability.ts";
 import { rollupConnectorResolutions } from "./engine/connector-rollup.ts";
 import {
@@ -49,6 +58,7 @@ import { checkOutputContract, summarizeViolations } from "./output-contract.ts";
 import { capturePreparedWorkflowReferences } from "./prepared-workflow-references.ts";
 import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
 import { applyResponseFilters } from "./response-filter.ts";
+import { isSensitivePayload, sensitiveFailure } from "./sensitive-payload.ts";
 import { settleTerminalOutcome } from "./settle-terminal.ts";
 import {
   createExecution,
@@ -111,11 +121,55 @@ export interface RunExecutionParams {
 }
 
 export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
+  assertCallerExecutionSource(p.options?.principal, p.source.kind);
+  const [persisted] = p.options?.existing_execution_id
+    ? await p.db
+        .select({ input: executions.input, workflow_version_id: executions.workflow_version_id })
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, p.tenant_id),
+            eq(executions.id, p.options.existing_execution_id),
+          ),
+        )
+        .limit(1)
+    : [];
+  const privacySource =
+    persisted?.workflow_version_id && p.source.kind === "saved"
+      ? { ...p.source, version_id: persisted.workflow_version_id }
+      : p.source;
+  const resolved = await resolveDefinition(p.db, p.tenant_id, privacySource);
+  const privacy =
+    p.options?.execution_privacy ??
+    resolved.def.execution_privacy ??
+    (isSensitivePayload(persisted?.input) ? "sensitive" : undefined);
+  return withContext(
+    {
+      execution_privacy: privacy,
+      tenant_id: p.tenant_id,
+      ...(p.options?.existing_execution_id
+        ? { execution_id: p.options.existing_execution_id }
+        : {}),
+    },
+    () => runProtectedExecution({ ...p, options: { ...p.options, execution_privacy: privacy } }),
+  );
+}
+
+async function runProtectedExecution(p: RunExecutionParams): Promise<RunResult> {
   try {
     return await executeRun(p);
   } catch (error) {
     const execution_id = p.options?.existing_execution_id;
-    if (execution_id) {
+    const refusalCode = (error as { code?: unknown }).code;
+    const unboundRefusal = [
+      "execution_boundary_mismatch",
+      "sensitive_resume_forbidden",
+      "caller_required",
+      "caller_tenant_mismatch",
+      "caller_product_mismatch",
+      "caller_kind_mismatch",
+    ].includes(typeof refusalCode === "string" ? refusalCode : "");
+    if (execution_id && !unboundRefusal) {
       const { code, details } = error as { code?: unknown; details?: unknown };
       const named =
         details && typeof details === "object" && !Array.isArray(details)
@@ -148,6 +202,19 @@ export async function runExecution(p: RunExecutionParams): Promise<RunResult> {
         refused,
       ).catch(() => undefined);
     }
+    if (p.options?.execution_privacy === "sensitive") {
+      const code = (error as { code?: string }).code;
+      throw Object.assign(new Error("Sensitive execution could not be resumed or run."), {
+        code: [
+          "sensitive_resume_forbidden",
+          "sensitive_execution_unsupported",
+          "execution_boundary_mismatch",
+          "input_schema_violation",
+        ].includes(code ?? "")
+          ? code
+          : "sensitive_execution_failure",
+      });
+    }
     throw error;
   }
 }
@@ -156,7 +223,6 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   const { db, tenant_id } = p;
   const bound = await bindExistingRun(db, tenant_id, p.source, p.input, p.options ?? {});
   const opts = bound.options;
-  const normalizedInput = normalizeWorkflowRunInput(p.input);
   const depth = opts.depth ?? 0;
   if (depth > MAX_CALL_DEPTH) {
     throw new Error(`call chain depth exceeded ${MAX_CALL_DEPTH}`);
@@ -164,16 +230,60 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
 
   const resolved = await resolveDefinition(db, tenant_id, bound.source);
   const def = resolved.def;
+  const normalizedInput = normalizeWorkflowRunInput(bound.input, def.input_schema);
+  const execution_privacy = opts.execution_privacy ?? def.execution_privacy;
   const workflow_id = resolved.workflow_id;
   const workflow_version_id = resolved.workflow_version_id;
+  const caller =
+    opts.caller_context !== undefined
+      ? opts.caller_context
+      : callerFromPrincipal(opts.principal, tenant_id, def.product_id, def.required_caller_kind);
+  assertCallerMatches(caller, tenant_id, def.product_id, def.required_caller_kind);
+  if (execution_privacy === "sensitive" && opts.request_source === "chat") {
+    throw Object.assign(new Error("Sensitive workflow output cannot enter conversation history."), {
+      code: "sensitive_execution_unsupported",
+    });
+  }
+  if (
+    opts.principal &&
+    !isDeepStrictEqual(
+      caller,
+      callerFromPrincipal(opts.principal, tenant_id, def.product_id, def.required_caller_kind),
+    )
+  ) {
+    throw Object.assign(new Error("execution caller does not match the authenticated principal"), {
+      code: "execution_boundary_mismatch",
+    });
+  }
+  if (execution_privacy === "sensitive") {
+    const unsafe = def.steps.some(
+      (step) =>
+        step.kind === "wait_for_event" ||
+        (step.kind === "request" && (step.state_write || step.state_read || step.pagination)),
+    );
+    if (unsafe || opts.tool_approval_id || opts.step_output_fixtures)
+      throw Object.assign(
+        new Error(
+          "Sensitive execution does not support persistent state, event waits, pagination or prepared fixture replay.",
+        ),
+        { code: "sensitive_execution_unsupported" },
+      );
+  }
 
   if (def.input_schema) {
     const check = validateAgainstJsonSchema(normalizedInput, def.input_schema, "$input");
     if (!check.valid) {
-      throw Object.assign(new Error(check.errors.join("; ")), {
-        code: "input_schema_violation",
-        details: check.errors,
-      });
+      throw Object.assign(
+        new Error(
+          execution_privacy === "sensitive"
+            ? "Sensitive input validation failed."
+            : check.errors.join("; "),
+        ),
+        {
+          code: "input_schema_violation",
+          details: execution_privacy === "sensitive" ? [] : check.errors,
+        },
+      );
     }
   }
 
@@ -215,6 +325,9 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     ? opts.existing_execution_id
     : await createExecution(db, {
         tenant_id,
+        caller_context: caller,
+        authorization_context: authorizationContextFromPrincipal(opts.principal),
+        execution_privacy,
         workflow_id: resolved.persist_workflow_refs ? workflow_id : null,
         workflow_version_id: resolved.persist_workflow_refs ? workflow_version_id : null,
         source_kind: resolved.source_kind,
@@ -268,7 +381,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   await auditAwait(
     {
       tenant_id,
-      actor_type: "system",
+      actor_type: caller?.principalKind ?? "system",
+      actor_id: callerAuditActorId(caller),
       action: AuditAction.EXECUTION_STARTED,
       resource_type: "execution",
       resource_id: execution_id,
@@ -285,7 +399,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
 
   const llmBudget = new RunLlmBudget(def.max_llm_tokens_per_run ?? null);
 
-  const scope: Record<string, unknown> = { $input: normalizedInput };
+  const scope: Record<string, unknown> = { $input: normalizedInput, $caller: caller };
 
   let finalStatus: ExecutionStatus = "succeeded";
   const stepSummaries: RunResult["steps"] = [];
@@ -424,6 +538,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       workflow_slug: resolved.workflow_slug,
       trace_id: opts.trace_id ?? null,
       principal: opts.principal ?? null,
+      caller_context: caller,
+      execution_privacy,
       execution_mode,
       step,
       step_index: i,
@@ -525,6 +641,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             error: failedResult.error ?? null,
           },
           {
+            tenant_id,
             output_preview: null,
             result_preview: null,
             result_storage_uri: null,
@@ -603,6 +720,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
             retry_count: 0,
           },
           {
+            tenant_id,
             output_preview: [],
             result_preview: null,
             result_storage_uri: null,
@@ -774,6 +892,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           ...(forEachError ? { error: forEachError } : {}),
         },
         {
+          tenant_id,
           output_preview: previewOffloadRefs(iterationResults),
           result_preview: null,
           result_storage_uri: null,
@@ -949,6 +1068,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               workflow_slug: resolved.workflow_slug,
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
+              caller_context: caller,
+              execution_privacy,
               execution_mode,
               step: bodyStep,
               step_index: i,
@@ -1159,6 +1280,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   workflow_slug: resolved.workflow_slug,
                   trace_id: opts.trace_id ?? null,
                   principal: opts.principal ?? null,
+                  caller_context: caller,
+                  execution_privacy,
                   execution_mode,
                   step: branchStepDef,
                   step_index: i,
@@ -1575,6 +1698,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     execution_id,
     step_id: null,
     result: lastOutput ?? null,
+    execution_privacy,
   });
   void previewOf;
 
@@ -1595,8 +1719,10 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     undefined,
     offload.sha256,
     settled.output_contract,
+    false,
+    execution_privacy === "sensitive" ? (lastOutput ?? null) : undefined,
   );
-  if (opts.self_healing?.enabled !== false) {
+  if (execution_privacy !== "sensitive" && opts.self_healing?.enabled !== false) {
     await recordExecutionOutcome(
       {
         tenant_id,
@@ -1632,7 +1758,8 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   await auditAwait(
     {
       tenant_id,
-      actor_type: "system",
+      actor_type: caller?.principalKind ?? "system",
+      actor_id: callerAuditActorId(caller),
       action:
         finalStatus === "succeeded"
           ? AuditAction.EXECUTION_COMPLETED
@@ -1666,6 +1793,17 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     steps: stepSummaries,
   };
   const resolutions = rollupConnectorResolutions(stepSummaries, execution_mode);
+  if (execution_privacy === "sensitive") {
+    runResult.error = runResult.error ? sensitiveFailure(runResult.error.code) : null;
+    runResult.steps = runResult.steps.map(({ held_request: _heldRequest, ...step }) => ({
+      ...step,
+      output_preview: null,
+      raw_preview: null,
+      request_meta: null,
+      error: step.error ? sensitiveFailure() : null,
+    }));
+    return runResult;
+  }
   if (resolutions.length > 0) runResult.connector_resolutions = resolutions;
   if (warningsAccum.length > 0) runResult.warnings = warningsAccum;
   return runResult;
@@ -1839,7 +1977,7 @@ async function runCallStep(
     pinnedChildVersion = pin.workflow_version_id;
     authorityLink = { root_execution_id: ctx.execution_id, call_path: [step.id] };
   }
-  let resolvedInput: unknown = step.input ?? null;
+  let resolvedInput: unknown = step.input;
   if (step.input !== undefined && step.input !== null) {
     const credTokens = collectCredentialTokens(step.input);
     if (credTokens.length > 0) {
@@ -1882,15 +2020,36 @@ async function runCallStep(
   }
 
   try {
+    const childDefinition = await resolveDefinition(db, ctx.tenant_id, {
+      kind: "saved",
+      workflow_id: targetId,
+      ...(pinnedChildVersion ? { version_id: pinnedChildVersion } : {}),
+    });
+    if (
+      ctx.execution_privacy !== "sensitive" &&
+      childDefinition.def.execution_privacy === "sensitive"
+    ) {
+      return {
+        status: "failed",
+        retry_count: 0,
+        duration_ms: Date.now() - start,
+        error: {
+          code: "sensitive_execution_unsupported",
+          message: "A sensitive child workflow requires a sensitive parent execution.",
+        },
+      };
+    }
     const child = await runExecution({
       db,
       tenant_id: ctx.tenant_id,
       source: {
         kind: "saved",
         workflow_id: targetId,
-        ...(pinnedChildVersion ? { version_id: pinnedChildVersion } : {}),
+        ...(childDefinition.workflow_version_id
+          ? { version_id: childDefinition.workflow_version_id }
+          : {}),
       },
-      input: resolvedInput,
+      input: normalizeWorkflowRunInput(resolvedInput, childDefinition.def.input_schema) ?? null,
       options: {
         request_source: "tool-chain",
         parent_execution_id: ctx.execution_id,
@@ -1901,6 +2060,8 @@ async function runCallStep(
         execution_mode: ctx.execution_mode,
         ...(ctx.hold_writes ? { hold_writes: true } : {}),
         ...(ctx.principal ? { principal: ctx.principal } : {}),
+        caller_context: ctx.caller_context ?? null,
+        execution_privacy: ctx.execution_privacy,
       },
     });
     return {

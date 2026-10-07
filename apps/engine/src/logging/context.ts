@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export type LogContext = {
+  execution_privacy?: "sensitive" | undefined;
   trace_id?: string;
   span_id?: string;
   tenant_id?: string;

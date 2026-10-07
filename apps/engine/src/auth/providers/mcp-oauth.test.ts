@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import type { Db } from "../../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthClients, tenants, users } from "../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../db/tests/setup.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { generateAccessToken, generateRefreshToken } from "../oauth/tokens.ts";
 import { canonicalizeResourceUri, createMcpOAuthAuthProvider } from "./mcp-oauth.ts";
@@ -42,11 +42,11 @@ beforeAll(async () => {
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
   if (testDb) await testDb.cleanup();
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 let clientSeq = 0;
 async function seedClient(): Promise<string> {

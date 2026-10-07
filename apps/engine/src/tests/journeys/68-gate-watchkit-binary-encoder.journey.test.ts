@@ -155,7 +155,7 @@ describe("journey 68: a declared report the encoder breaks is refused with its r
         db: ctx.db,
         source: { kind: "saved", workflow_id: wf.id },
         input,
-        options: { existing_execution_id: admitted.execution_id, principal },
+        options: { existing_execution_id: admitted.execution_id },
       });
       expect(result.status).toBe("failed");
       const send = result.steps.find((step) => step.step_key === "send_email");

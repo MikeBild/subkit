@@ -6,6 +6,7 @@ import type { RunLlmBudget } from "../llm/accounting/index.ts";
 import type { ResolvedAuthorityReference } from "../llm/substitution/resolver.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
+import type { CallerContext } from "./caller-context.ts";
 import type { MaterializedRequest } from "./prepared-request.ts";
 
 export type ExecutionSourceKind = "saved" | "draft" | "step";
@@ -41,6 +42,7 @@ export interface RequestAuthoritySnapshot {
 }
 
 export interface ExecutionContext {
+  execution_privacy?: "sensitive" | undefined;
   prepared_workflow_references?: ResolvedAuthorityReference[];
   before_external_request?: (
     snapshot: RequestAuthoritySnapshot,
@@ -60,6 +62,7 @@ export interface ExecutionContext {
   workflow_slug: string;
   trace_id: string | null;
   principal?: ResolvedPrincipal | null;
+  caller_context?: CallerContext | null;
   execution_mode: ExecutionMode;
   llm_budget: RunLlmBudget;
   hold_writes?: boolean;
@@ -231,6 +234,8 @@ export interface StepResult {
 }
 
 export interface RunOptions {
+  execution_privacy?: "sensitive" | undefined;
+  resume_authorized?: boolean;
   request_source?: RequestSource;
   parent_execution_id?: string | null;
   authority_link?: { root_execution_id: string; call_path: string[] } | null;
@@ -238,6 +243,7 @@ export interface RunOptions {
   signal?: AbortSignal;
   trace_id?: string | null;
   principal?: ResolvedPrincipal | null;
+  caller_context?: CallerContext | null;
   execution_mode?: ExecutionMode;
   existing_execution_id?: string;
   tool_approval_id?: string;

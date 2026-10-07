@@ -29,7 +29,7 @@ export interface UnsupportedPlaceholder {
 const MUSTACHE_RE = /\{\{\s*([^{}]*?)\s*\}\}/g;
 const DOLLAR_RE = /\$\{([^{}]*)\}/g;
 
-const KNOWN_KINDS = new Set(["cred", "connector", "input", "scope", "item", "state"]);
+const KNOWN_KINDS = new Set(["cred", "connector", "input", "caller", "scope", "item", "state"]);
 
 function suggestRewrite(body: string): string {
   const trimmed = body.trim();
@@ -113,7 +113,7 @@ export function findUnsupportedPlaceholders(text: string): UnsupportedPlaceholde
       raw,
       span: { start: d.index, end: d.index + raw.length },
       did_you_mean: suggestRewrite(trimmed),
-      message: `Unknown placeholder kind '${trimmed.split(".")[0] ?? ""}'. Expected one of: cred, connector, input, scope, item, state.`,
+      message: `Unknown placeholder kind '${trimmed.split(".")[0] ?? ""}'. Expected one of: cred, connector, input, caller, scope, item, state.`,
     });
   }
 

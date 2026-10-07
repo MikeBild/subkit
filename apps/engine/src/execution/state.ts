@@ -1,11 +1,19 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { AuditAction, type AuditActorType, auditAwait } from "../audit/index.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
-import { executionSteps, executions } from "../db/schema/index.ts";
+import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { recordExecutionTerminal } from "../observability/instrumentation.ts";
+import type { ExecutionAuthorizationContext } from "./authorization-context.ts";
+import type { CallerContext } from "./caller-context.ts";
+import {
+  isSensitivePayload,
+  protectExecutionPayload,
+  sensitiveFailure,
+} from "./sensitive-payload.ts";
 import {
   type ExecutionMode,
   type ExecutionSourceKind,
@@ -17,7 +25,10 @@ import {
 } from "./types.ts";
 
 export interface CreateExecutionParams {
+  execution_privacy?: "sensitive" | undefined;
   tenant_id: string;
+  caller_context?: CallerContext | null;
+  authorization_context?: ExecutionAuthorizationContext | null;
   execution_authority_id?: string | null;
   tool_approval_id?: string | null;
   hold_writes?: boolean;
@@ -77,9 +88,27 @@ export async function createExecution(
   params: CreateExecutionParams,
 ): Promise<string> {
   const id = await db.transaction(async (tx) => {
+    const [version] = params.workflow_version_id
+      ? await tx
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, params.tenant_id),
+              eq(workflowVersions.id, params.workflow_version_id),
+            ),
+          )
+          .limit(1)
+      : [];
+    const sensitive =
+      params.execution_privacy === "sensitive" ||
+      (version?.dag as { execution_privacy?: string } | undefined)?.execution_privacy ===
+        "sensitive";
+    const executionId = randomUUID();
     const [row] = await tx
       .insert(executions)
       .values({
+        id: executionId,
         tenant_id: params.tenant_id,
         execution_authority_id: params.execution_authority_id ?? null,
         tool_approval_id: params.tool_approval_id ?? null,
@@ -87,14 +116,21 @@ export async function createExecution(
         workflow_id: params.workflow_id,
         workflow_version_id: params.workflow_version_id,
         source_kind: params.source_kind,
-        source_ref: params.source_ref,
+        source_ref:
+          sensitive && params.source_ref
+            ? protectExecutionPayload(params.source_ref, params.tenant_id, executionId, "source")
+            : params.source_ref,
+        caller_context: params.caller_context ?? null,
+        authorization_context: params.authorization_context ?? null,
         status: "queued",
         request_source: params.request_source,
         execution_mode: params.execution_mode ?? "dev",
         parent_execution_id: params.parent_execution_id ?? null,
         authority_root_execution_id: params.authority_link?.root_execution_id ?? null,
         authority_call_path: params.authority_link?.call_path ?? null,
-        input: params.input ?? null,
+        input: sensitive
+          ? protectExecutionPayload(params.input, params.tenant_id, executionId, "input")
+          : (params.input ?? null),
         idempotency_key: params.idempotency_key ?? null,
       })
       .returning({ id: executions.id });
@@ -246,12 +282,28 @@ export async function finalizeExecution(
   result_sha256: string | null = null,
   output_contract: OutputContractVerdict = "none",
   refused = false,
+  sensitive_result?: unknown,
 ): Promise<void> {
   let workflow_id: string | null = null;
   let request_source: string = "api";
   let duration_ms: number | null = null;
   let applied = false;
   await db.transaction(async (tx) => {
+    const [persisted] = await tx
+      .select({ input: executions.input })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, execution_id)))
+      .limit(1);
+    if (isSensitivePayload(persisted?.input)) {
+      failure = failure
+        ? {
+            step_id: failure.step_id,
+            error_code: sensitiveFailure(failure.error_code).code,
+            error_message: sensitiveFailure().message,
+          }
+        : null;
+      result_sha256 = null;
+    }
     const updated = await tx
       .update(executions)
       .set({
@@ -261,8 +313,24 @@ export async function finalizeExecution(
         result_sha256,
         failure: failure ?? null,
         output_contract,
+        ...(isSensitivePayload(persisted?.input) && sensitive_result !== undefined
+          ? {
+              sensitive_result: protectExecutionPayload(
+                sensitive_result,
+                tenant_id,
+                execution_id,
+                "result",
+              ),
+            }
+          : {}),
       })
-      .where(and(eq(executions.id, execution_id), inArray(executions.status, expectedStatuses)))
+      .where(
+        and(
+          eq(executions.tenant_id, tenant_id),
+          eq(executions.id, execution_id),
+          inArray(executions.status, expectedStatuses),
+        ),
+      )
       .returning({
         id: executions.id,
         workflow_id: executions.workflow_id,
@@ -373,6 +441,7 @@ export async function finalizeStepRow(
   status: StepStatus,
   result: StepResult,
   options: {
+    tenant_id: string;
     output_preview: unknown | null;
     result_preview: string | null;
     result_storage_uri: string | null;
@@ -380,6 +449,38 @@ export async function finalizeStepRow(
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    const [persisted] = await tx
+      .select({ input: executions.input, tenant: executions.tenant_id, execution: executions.id })
+      .from(executionSteps)
+      .innerJoin(
+        executions,
+        and(
+          eq(executions.id, executionSteps.execution_id),
+          eq(executions.tenant_id, executionSteps.tenant_id),
+        ),
+      )
+      .where(
+        and(eq(executionSteps.tenant_id, options.tenant_id), eq(executionSteps.id, step_row_id)),
+      )
+      .limit(1);
+    if (persisted && isSensitivePayload(persisted.input)) {
+      result = {
+        ...result,
+        request_meta: null,
+        error: result.error ? sensitiveFailure(result.error.code) : null,
+      };
+      options = {
+        ...options,
+        output_preview: protectExecutionPayload(
+          options.output_preview,
+          persisted.tenant,
+          persisted.execution,
+          `step:${step_row_id}`,
+        ),
+        result_preview: null,
+        result_sha256: null,
+      };
+    }
     const updated = await tx
       .update(executionSteps)
       .set({
@@ -395,7 +496,13 @@ export async function finalizeStepRow(
         error: result.error ?? null,
         held: hasHeldOutput(result),
       })
-      .where(and(eq(executionSteps.id, step_row_id), eq(executionSteps.status, "running")))
+      .where(
+        and(
+          eq(executionSteps.tenant_id, options.tenant_id),
+          eq(executionSteps.id, step_row_id),
+          eq(executionSteps.status, "running"),
+        ),
+      )
       .returning({
         tenant_id: executionSteps.tenant_id,
         execution_id: executionSteps.execution_id,

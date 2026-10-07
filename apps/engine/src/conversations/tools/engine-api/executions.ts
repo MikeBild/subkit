@@ -1,5 +1,8 @@
 import { z } from "@hono/zod-openapi";
-import { executionStatusEnum } from "../../../db/schema/index.ts";
+import { and, eq } from "drizzle-orm";
+import { executionStatusEnum, executions } from "../../../db/schema/index.ts";
+import { executionVisibilityFilter, isSensitivePayload } from "../../../execution/index.ts";
+import { listExecutions } from "../../../execution/list.ts";
 import type { ConversationTool } from "../index.ts";
 
 const ListInput = z
@@ -30,15 +33,21 @@ export const listExecutionsTool: ConversationTool = {
   inputSchema: ListInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    const { rows, total, next_cursor } = await ctx.engineClient.executions.list({
-      ...(args.limit !== undefined ? { limit: args.limit } : {}),
-      ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
-      ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
-      ...(args.status !== undefined ? { status: args.status } : {}),
-      ...(args.request_source !== undefined ? { request_source: args.request_source } : {}),
-      ...(args.started_from !== undefined ? { started_from: new Date(args.started_from) } : {}),
-      ...(args.started_to !== undefined ? { started_to: new Date(args.started_to) } : {}),
-    });
+    if (!ctx.principal) return { ok: false, data: { error: "principal_required" } };
+    const { rows, total, next_cursor } = await listExecutions(
+      ctx.tenant_id,
+      {
+        principal: ctx.principal,
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+        ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+        ...(args.workflow_id !== undefined ? { workflow_id: args.workflow_id } : {}),
+        ...(args.status !== undefined ? { status: args.status } : {}),
+        ...(args.request_source !== undefined ? { request_source: args.request_source } : {}),
+        ...(args.started_from !== undefined ? { started_from: new Date(args.started_from) } : {}),
+        ...(args.started_to !== undefined ? { started_to: new Date(args.started_to) } : {}),
+      },
+      ctx.db,
+    );
     return {
       ok: true,
       data: {
@@ -66,11 +75,38 @@ export const getExecutionTool: ConversationTool = {
   category: "tenant_read",
   permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
   async execute(ctx, args: z.infer<typeof GetInput>) {
-    const e = await ctx.engineClient.executions.get(args.id);
+    if (!ctx.principal) return { ok: false, data: { error: "principal_required" } };
+    const e = (
+      await ctx.db
+        .select()
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, ctx.tenant_id),
+            eq(executions.id, args.id),
+            executionVisibilityFilter(ctx.principal),
+          ),
+        )
+        .limit(1)
+    )[0];
     if (!e) return { ok: false, data: { error: "execution_not_found" } };
     return {
       ok: true,
-      data: { execution: e, outcome: await ctx.engineClient.executions.outcome(e) },
+      data: {
+        execution: {
+          id: e.id,
+          workflow_id: e.workflow_id,
+          workflow_version_id: e.workflow_version_id,
+          status: e.status,
+          request_source: e.request_source,
+          parent_execution_id: e.parent_execution_id,
+          input: isSensitivePayload(e.input) ? null : e.input,
+          started_at: e.started_at,
+          finished_at: e.finished_at,
+          created_at: e.created_at,
+        },
+        outcome: await ctx.engineClient.executions.outcome(e),
+      },
     };
   },
 };

@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
@@ -34,7 +34,7 @@ function hashDefinition(def: WorkflowDef): string {
 }
 
 async function resolveSaved(
-  db: Db,
+  db: Executor,
   tenant_id: string,
   workflow_id: string,
   version_id: string | undefined,
@@ -58,7 +58,10 @@ async function resolveSaved(
     });
   }
   const versionId = version_id ?? wfRow.current_version_id;
-  if (!versionId) throw new Error("workflow has no current version");
+  if (!versionId)
+    throw Object.assign(new Error("workflow has no current version"), {
+      code: "workflow_version_not_active",
+    });
   const versionRows = await db
     .select()
     .from(workflowVersions)
@@ -71,7 +74,10 @@ async function resolveSaved(
     )
     .limit(1);
   const versionRow = versionRows[0];
-  if (!versionRow) throw new Error("workflow version not found");
+  if (!versionRow)
+    throw Object.assign(new Error("workflow version not found"), {
+      code: "workflow_version_unavailable",
+    });
   const def = executableDefinition(versionRow.dag);
   return {
     def,
@@ -138,7 +144,7 @@ function resolveStep(step: unknown, workflow_slug: string | undefined): Resolved
 }
 
 export async function resolveDefinition(
-  db: Db,
+  db: Executor,
   tenant_id: string,
   source: RunExecutionSource,
 ): Promise<ResolvedDefinition> {

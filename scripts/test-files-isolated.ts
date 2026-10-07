@@ -80,7 +80,11 @@ const orderedTests = allTests.filter((_, index) => index % shardCount === shardI
 if (orderedTests.length === 0) throw new Error("selected shard contains no test files");
 
 if (listOnly) {
-  process.stdout.write(`${orderedTests.join("\n")}\n`);
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(`${orderedTests.join("\n")}\n`, (error) =>
+      error ? reject(error) : resolve(),
+    );
+  });
   process.exit(0);
 }
 

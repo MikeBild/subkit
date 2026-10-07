@@ -230,6 +230,8 @@ async function resolveOneRaw(tok: Placeholder, ctx: ResolverContext): Promise<On
     }
     case "input":
       return resolveJsonPathRaw(ctx.input, tok.path, "input");
+    case "caller":
+      return resolveJsonPathRaw(ctx.scope?.$caller, tok.path, "caller");
     case "scope":
       if (!tok.stepId) {
         return { ok: false, code: "path_empty", message: "scope requires step_id" };
@@ -303,6 +305,8 @@ async function resolveOne(tok: Placeholder, ctx: ResolverContext): Promise<OneRe
       return resolveConnectorConfig(tok, ctx);
     case "input":
       return resolveJsonPath(ctx.input, tok.path, "input");
+    case "caller":
+      return resolveJsonPath(ctx.scope?.$caller, tok.path, "caller");
     case "scope":
       if (!tok.stepId) {
         return { ok: false, code: "path_empty", message: "scope requires step_id" };

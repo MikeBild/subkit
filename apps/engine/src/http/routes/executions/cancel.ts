@@ -5,6 +5,7 @@ import { actorType, readRequestSource } from "../../../audit/index.ts";
 import { executions } from "../../../db/schema/index.ts";
 import {
   cancel as abortCancel,
+  executionVisibleToPrincipal,
   finalizeExecution,
   requestExecutionAbort,
 } from "../../../execution/index.ts";
@@ -44,7 +45,8 @@ export function registerCancelRoute(app: OpenAPIHono<AppEnv>): void {
       .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
       .limit(1);
     const row = rows[0];
-    if (!row) throw new NotFoundError("execution");
+    if (!row || !executionVisibleToPrincipal(row.caller_context, principal))
+      throw new NotFoundError("execution");
 
     if (row.status === "queued" || row.status === "running") {
       await requestExecutionAbort(db, {

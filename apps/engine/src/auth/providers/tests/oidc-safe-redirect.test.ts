@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { oidcLoginStates, tenants } from "../../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { createOidcProvider } from "../oidc.ts";
 import { type MockOidcHandle, startMockOidc } from "./fixtures/mock-oidc.ts";
 
@@ -22,14 +22,14 @@ beforeAll(async () => {
     .returning();
   if (!t) throw new Error("seed tenant failed");
   _tenantId = t.id;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
   try {
-    await mock.stop();
+    if (mock) await mock.stop();
   } catch {}
   if (testDb) await testDb.cleanup();
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 function buildProvider() {
   return createOidcProvider({

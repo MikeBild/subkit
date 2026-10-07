@@ -2,9 +2,17 @@ import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions, webhooksInbound } from "../db/schema/index.ts";
+import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
+import { callerFromPrincipal } from "../execution/caller-context.ts";
 import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import { runExecution } from "../execution/engine.ts";
+import { executionVisibilityFilter } from "../execution/execution-owner.ts";
 import { resolveDefinition } from "../execution/resolve-definition.ts";
+import {
+  authorizeSensitiveResume,
+  isSensitivePayload,
+  recoverExecutionPayload,
+} from "../execution/sensitive-payload.ts";
 import { createExecution } from "../execution/state.ts";
 import { listSchedules } from "../scheduler/repo.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
@@ -22,6 +30,17 @@ export async function prepareReportAuthority(
   db: Db,
   principal: ResolvedPrincipal,
 ) {
+  const resolved = await resolveDefinition(db, input.tenant_id, {
+    kind: "saved",
+    workflow_id: input.workflow_id,
+    version_id: input.workflow_version_id,
+  });
+  const caller = callerFromPrincipal(
+    principal,
+    input.tenant_id,
+    resolved.def.product_id,
+    resolved.def.required_caller_kind,
+  );
   const preview = await previewWorkflowAuthority(
     {
       tenant_id: input.tenant_id,
@@ -43,8 +62,10 @@ export async function prepareReportAuthority(
       prepared: false,
       reason: preview.eligible_for_repeated_runs ? "already_bindable" : "nothing_to_prepare",
     };
-  const replay = input.input === undefined ? await refusedRunInput(db, input, asking) : undefined;
-  const start = replay !== undefined ? { input: replay } : await preparationInput(input, db);
+  const replay =
+    input.input === undefined ? await refusedRunInput(db, input, asking, principal) : undefined;
+  const start =
+    replay !== undefined ? { input: replay } : await preparationInput(input, db, principal);
   if ("trigger" in start) return start;
   const executionId = await db.transaction(async (tx) => {
     await tx.execute(
@@ -60,6 +81,7 @@ export async function prepareReportAuthority(
           eq(executions.workflow_version_id, input.workflow_version_id),
           eq(executions.execution_mode, input.execution_environment),
           eq(executions.hold_writes, true),
+          executionVisibilityFilter(principal),
           inArray(executions.status, ["queued", "running"]),
         ),
       )
@@ -73,6 +95,8 @@ export async function prepareReportAuthority(
       source_kind: "saved",
       source_ref: null,
       input: start.input,
+      caller_context: caller,
+      authorization_context: authorizationContextFromPrincipal(principal),
       request_source: "ui",
       hold_writes: true,
     });
@@ -124,13 +148,19 @@ async function refusedRunInput(
   db: Db,
   input: Parameters<typeof prepareReportAuthority>[0],
   asking: { evidence?: { execution_id?: string } }[],
+  principal: ResolvedPrincipal,
 ): Promise<unknown> {
   const ids = asking.flatMap((entry) =>
     entry.evidence?.execution_id ? [entry.evidence.execution_id] : [],
   );
   if (ids.length === 0) return undefined;
   const [run] = await db
-    .select({ input: executions.input })
+    .select({
+      id: executions.id,
+      tenant_id: executions.tenant_id,
+      input: executions.input,
+      caller_context: executions.caller_context,
+    })
     .from(executions)
     .where(
       and(
@@ -139,17 +169,19 @@ async function refusedRunInput(
         eq(executions.workflow_version_id, input.workflow_version_id),
         eq(executions.execution_mode, input.execution_environment),
         inArray(executions.id, ids),
+        executionVisibilityFilter(principal),
         isNotNull(executions.input),
       ),
     )
     .orderBy(desc(executions.created_at))
     .limit(1);
-  return run?.input ?? undefined;
+  return run ? recoverPreparationSample(db, run, principal) : undefined;
 }
 
 async function preparationInput(
   input: Parameters<typeof prepareReportAuthority>[0],
   db: Db,
+  principal: ResolvedPrincipal,
 ): Promise<
   | { input: unknown }
   | {
@@ -196,7 +228,7 @@ async function preparationInput(
       .orderBy(webhooksInbound.slug)
       .limit(1);
     if (hook) {
-      const admitted = await latestAdmittedDelivery(input, db);
+      const admitted = await latestAdmittedDelivery(input, db, principal);
       if (admitted !== undefined) return { input: admitted };
       return {
         prepared: false,
@@ -211,9 +243,15 @@ async function preparationInput(
 async function latestAdmittedDelivery(
   input: Parameters<typeof prepareReportAuthority>[0],
   db: Db,
+  principal: ResolvedPrincipal,
 ): Promise<unknown | undefined> {
   const [row] = await db
-    .select({ input: executions.input })
+    .select({
+      id: executions.id,
+      tenant_id: executions.tenant_id,
+      input: executions.input,
+      caller_context: executions.caller_context,
+    })
     .from(executions)
     .where(
       and(
@@ -221,13 +259,15 @@ async function latestAdmittedDelivery(
         eq(executions.workflow_id, input.workflow_id),
         eq(executions.execution_mode, "prod"),
         eq(executions.request_source, "webhook"),
+        executionVisibilityFilter(principal),
         isNotNull(executions.input),
       ),
     )
     .orderBy(desc(executions.created_at), desc(executions.id))
     .limit(1);
   if (!row) return undefined;
-  const sample = row.input;
+  const sample = await recoverPreparationSample(db, row, principal);
+  if (sample === undefined) return undefined;
   const { def } = await resolveDefinition(db, input.tenant_id, {
     kind: "saved",
     workflow_id: input.workflow_id,
@@ -236,4 +276,18 @@ async function latestAdmittedDelivery(
   if (def.input_schema && !validateAgainstJsonSchema(sample, def.input_schema, "$input").valid)
     return undefined;
   return sample;
+}
+
+async function recoverPreparationSample(
+  db: Db,
+  row: { id: string; tenant_id: string; input: unknown; caller_context: unknown },
+  principal: ResolvedPrincipal,
+): Promise<unknown> {
+  if (!isSensitivePayload(row.input)) return row.input;
+  try {
+    await authorizeSensitiveResume(db, row, principal);
+    return recoverExecutionPayload(row.input, row.tenant_id, row.id);
+  } catch {
+    return undefined;
+  }
 }

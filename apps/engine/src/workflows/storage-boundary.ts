@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import type { CallerContext } from "../execution/caller-context.ts";
 import type { MaterializedRequest } from "../execution/prepared-request.ts";
 import { hasRuntimeValue } from "./report-delivery-boundary.ts";
 import type { RequestStep } from "./types.ts";
@@ -20,6 +21,7 @@ export const StorageScopeSchema = z
     key_prefix: safePrefix,
     max_bytes: z.number().int().positive().max(10_000_000),
     max_deletes: z.number().int().positive().max(10_000).optional(),
+    principal_bound: z.boolean().optional(),
   })
   .strict();
 export const StorageBoundarySchema = z
@@ -32,6 +34,7 @@ export const StorageBoundarySchema = z
     paginate: z.boolean(),
     content_type: z.string().max(200).nullable(),
     max_deletes: z.number().int().positive().max(10_000).optional(),
+    principal_bound: z.boolean().optional(),
   })
   .strict()
   .refine((boundary) => boundary.operation !== "DELETE" || boundary.max_deletes !== undefined, {
@@ -145,6 +148,7 @@ export function storageTarget(boundary: StorageBoundary): string {
 export function assertStorageRequest(
   boundary: StorageBoundary,
   request: MaterializedRequest | undefined,
+  caller: CallerContext | null = null,
 ): void {
   function deny(): never {
     throw Object.assign(new Error("Storage request differs from its reviewed folder and limits"), {
@@ -178,8 +182,10 @@ export function assertStorageRequest(
       deny();
     const prefix = query.get("prefix");
     const limit = Number(query.get("max-keys"));
+    const ownerPrefix = principalStoragePrefix(boundary, caller);
     if (
-      !prefix?.startsWith(boundary.key_prefix) ||
+      !ownerPrefix ||
+      !prefix?.startsWith(ownerPrefix) ||
       !Number.isInteger(limit) ||
       limit < 1 ||
       limit > Math.min(1000, boundary.max_keys) ||
@@ -200,7 +206,16 @@ export function assertStorageRequest(
   } catch {
     deny();
   }
-  if (storageKeyViolation(boundary, key, request.body) !== null) deny();
+  if (storageKeyViolation(boundary, key, request.body, caller) !== null) deny();
+}
+
+function principalStoragePrefix(
+  boundary: StorageBoundary,
+  caller: CallerContext | null,
+): string | null {
+  if (!boundary.principal_bound) return boundary.key_prefix;
+  if (!caller || !/^[A-Za-z0-9_+=.-]+$/.test(caller.principalId)) return null;
+  return `${boundary.key_prefix}${caller.principalKind}/${caller.principalId}/`;
 }
 
 export type StorageKeyViolation =
@@ -213,9 +228,15 @@ export function storageKeyViolation(
   boundary: StorageBoundary,
   key: string,
   body: unknown,
+  caller: CallerContext | null = null,
 ): StorageKeyViolation | null {
-  if (!key.startsWith(boundary.key_prefix))
-    return { kind: "outside_folder", key_prefix: boundary.key_prefix, key: key.slice(0, 200) };
+  const prefix = principalStoragePrefix(boundary, caller);
+  if (!prefix || !key.startsWith(prefix))
+    return {
+      kind: "outside_folder",
+      key_prefix: prefix ?? boundary.key_prefix,
+      key: key.slice(0, 200),
+    };
   if (boundary.operation === "LIST") return body == null ? null : { kind: "body_forbidden" };
   if (
     key.split("/").some((part) => !part || part === "." || part === "..") ||

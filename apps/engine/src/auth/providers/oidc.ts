@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { eq, lt } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import * as jose from "jose";
 import * as oauth from "openid-client";
 import { auditAwait } from "../../audit/audit.ts";
@@ -16,7 +16,11 @@ import {
 } from "../../http/routes/oauth/ui.ts";
 import { logger } from "../../logging/logger.ts";
 import { SESSION_ABSOLUTE_TTL_MS, SESSION_SLIDING_TTL_MS } from "../browser-session.ts";
-import { resolveProviderIdentity, SignupDisabledError } from "../identity-link.ts";
+import {
+  IdentityLinkConflictError,
+  resolveProviderIdentity,
+  SignupDisabledError,
+} from "../identity-link.ts";
 import { createMcpOAuthProvider } from "../oauth/server-provider.ts";
 import type { AuthProvider, ResolvedPrincipal } from "../types.ts";
 
@@ -34,6 +38,8 @@ export interface OidcProviderOptions {
   scopes?: string;
   redirectUri?: string;
   tenantSlug?: string;
+  productId?: string;
+  linkByEmail?: boolean;
   db?: Db;
   sessionSecret?: Uint8Array;
   enableSignup?: boolean;
@@ -218,12 +224,17 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         client_id: string;
         scopes: string;
         tenant_slug: string;
+        product_id?: string | undefined;
+        link_by_email?: boolean | undefined;
       }
     | undefined;
   let configuredRedirectUri = "";
   try {
     const config = getConfig();
-    configured = config.auth.providers.find((provider) => provider.protocol === "oidc");
+    const selectedId = opts.providerId?.trim();
+    configured = config.auth.providers
+      .filter((provider) => provider.protocol === "oidc")
+      .find((provider) => !selectedId || provider.id === selectedId);
     configuredRedirectUri = `${config.server.public_base_url}/v1/identity/login/callback`;
   } catch {}
   const issuerUrl = opts.issuerUrl ?? configured?.issuer_url ?? "";
@@ -232,6 +243,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   const scopes = opts.scopes ?? configured?.scopes ?? "openid profile email";
   const redirectUri = opts.redirectUri ?? configuredRedirectUri;
   const configuredTenantSlug = opts.tenantSlug ?? configured?.tenant_slug ?? DEFAULT_TENANT_SLUG;
+  const productId = opts.productId ?? configured?.product_id;
   const sessionSecret = deriveSessionSecret(opts.sessionSecret);
   const providerId = opts.providerId?.trim() || configured?.id;
   const adapterId = providerId ?? "oidc";
@@ -242,6 +254,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
   }
 
   function signupEnabled(): boolean {
+    if (productId) return false;
     if (opts.enableSignup !== undefined) return opts.enableSignup;
     return isConfigLoaded() ? getConfig().auth.enable_signup : false;
   }
@@ -503,8 +516,11 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           tenantId,
           providerId: adapterId,
           subject: sub,
+          issuerUrl,
+          ...(productId ? { productId } : {}),
           email,
-          linkByEmail: emailVerified,
+          linkByEmail:
+            !productId && (opts.linkByEmail ?? configured?.link_by_email ?? true) && emailVerified,
           allowCreate: signupEnabled(),
         }));
       } catch (err) {
@@ -523,6 +539,18 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             403,
             "access_denied",
             "signups are disabled and this identity matches no existing account",
+            GRANT_DENIED_MESSAGE,
+            retryHref,
+          );
+        }
+        if (err instanceof IdentityLinkConflictError) {
+          const clientRedirect = await redirectDenialToClient(exec, pending.redirect_to);
+          if (clientRedirect) return clientRedirect;
+          return browserError(
+            req,
+            403,
+            "access_denied",
+            "identity binding does not match the configured provider",
             GRANT_DENIED_MESSAGE,
             retryHref,
           );
@@ -548,6 +576,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         .values({
           tenant_id: tenantId,
           user_id: userRow.id,
+          product_id: productId ?? null,
           expires_at: new Date(now.getTime() + SESSION_SLIDING_TTL_MS),
           absolute_expires_at: new Date(now.getTime() + SESSION_ABSOLUTE_TTL_MS),
           last_seen_at: now,
@@ -699,15 +728,19 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
           });
       });
 
-      // tenant-filter:exempt — OIDC issuer/sub lookup pre-tenant
       const userRows = await exec
-        .select({ role_name: roles.name, email: users.email })
+        .select({
+          role_name: roles.name,
+          email: users.email,
+          status: users.status,
+          deleted_at: users.deleted_at,
+        })
         .from(users)
         .leftJoin(roles, eq(roles.id, users.role_id))
-        .where(eq(users.id, row.user_id))
+        .where(and(eq(users.tenant_id, row.tenant_id), eq(users.id, row.user_id)))
         .limit(1);
       const u = userRows[0];
-      if (!u) return null;
+      if (u?.status !== "active" || u.deleted_at !== null) return null;
 
       const principal: ResolvedPrincipal = {
         provider: "oidc",
@@ -716,7 +749,9 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
         tenant_id: row.tenant_id,
         roles: u.role_name ? [u.role_name] : [],
         session_id: row.id,
+        auth_source: { kind: "browser_session", session_id: row.id },
       };
+      if (row.product_id) principal.product_id = row.product_id;
       if (u.email) principal.email = u.email;
       return principal;
     },

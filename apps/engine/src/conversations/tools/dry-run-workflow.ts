@@ -74,6 +74,13 @@ export const dryRunWorkflowTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const draft = getWorkflowDraft(ctx.getDraft());
+    if (Reflect.get(draft, "execution_privacy") === "sensitive") {
+      return {
+        ok: false,
+        error_code: "sensitive_execution_unsupported",
+        message: "Sensitive workflows cannot run through persistent conversation previews.",
+      };
+    }
     const validation = validateWorkflowDef(draft);
     if (!validation.ok) {
       const invalidStepId =
@@ -195,7 +202,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       ? { inherited_step_references: references.notice }
       : {};
 
-    const author = await resolveConversationPrincipal(ctx);
+    const author = ctx.principal ?? (await resolveConversationPrincipal(ctx));
     const authorPermissionWarnings = author
       ? await authorConnectorWriteWarnings(
           ctx.db,
@@ -276,6 +283,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     }
 
     const definition = {
+      ...validation.workflow,
       name: draft.name ?? "draft",
       steps,
       ...(typeof draft.output_transform === "string" && draft.output_transform.length > 0
@@ -319,11 +327,12 @@ export const dryRunWorkflowTool: ConversationTool = {
       "info",
       `dry-running ${steps.length} step${steps.length === 1 ? "" : "s"} (env=${effectiveEnvironment})`,
     );
+    const cacheInput = { caller: author, input: previewInput ?? null };
     const cacheKey = buildDryRunCacheKey({
       tenant_id: ctx.tenant_id,
       execution_mode: effectiveEnvironment,
       draft: definition,
-      input: previewInput ?? null,
+      input: cacheInput,
     });
     const cached = readDryRunCache(cacheKey);
     let run: Awaited<ReturnType<typeof runExecution>>;
@@ -344,7 +353,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
-          input: previewInput ?? null,
+          input: cacheInput,
           stepIndex: i,
         });
         const fixture = readStepFixture(prefixHash);
@@ -372,6 +381,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             request_source: "chat",
             execution_mode: effectiveEnvironment,
             hold_writes: true,
+            principal: author,
             ...(signal ? { signal } : {}),
             ...(prefixReplayCount > 0 ? { step_output_fixtures: stepOutputFixtures } : {}),
           },
@@ -421,7 +431,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           tenant_id: ctx.tenant_id,
           execution_mode: effectiveEnvironment,
           draft: { steps, ...(draft.name ? { name: draft.name } : {}) },
-          input: previewInput ?? null,
+          input: cacheInput,
           stepIndex: i,
         });
         writeStepFixture(prefixHash, envelope);

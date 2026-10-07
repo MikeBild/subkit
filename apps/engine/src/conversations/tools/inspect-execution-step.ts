@@ -1,6 +1,7 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executionSteps, executions } from "../../db/schema/index.ts";
+import { executionVisibilityFilter, isSensitivePayload } from "../../execution/index.ts";
 import { OffloadResolutionError, resolveOffloaded } from "../../execution/offload.ts";
 import type { ConversationTool } from "./index.ts";
 
@@ -59,17 +60,30 @@ export const inspectExecutionStepTool: ConversationTool = {
   ],
   inputSchema: Input,
   category: "tenant_read",
+  permission: {
+    action: "execution:read",
+    resourceType: "execution",
+    resourceIdArg: "execution_id",
+  },
   async execute(ctx, rawArgs) {
     const args = Input.parse(rawArgs);
+    if (!ctx.principal) return { ok: false, data: { error_code: "principal_required" } };
     const execRows = await ctx.db
       .select({
         id: executions.id,
         tenant_id: executions.tenant_id,
         status: executions.status,
         workflow_id: executions.workflow_id,
+        input: executions.input,
       })
       .from(executions)
-      .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.id, args.execution_id)))
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenant_id),
+          eq(executions.id, args.execution_id),
+          executionVisibilityFilter(ctx.principal),
+        ),
+      )
       .limit(1);
     const exec = execRows[0];
     if (!exec) {
@@ -80,6 +94,9 @@ export const inspectExecutionStepTool: ConversationTool = {
           message: `no execution ${args.execution_id} on this tenant`,
         },
       };
+    }
+    if (isSensitivePayload(exec.input)) {
+      return { ok: false, data: { error_code: "sensitive_execution_unsupported" } };
     }
 
     const stepRows = await ctx.db

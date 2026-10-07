@@ -8,7 +8,11 @@ import {
   admitWorkflowRun,
   assertExecutionAuthorityCurrent,
   auditAdmissionRefusal,
+  authorizeSensitiveResume,
+  executionVisibilityFilter,
   finalizeExecution,
+  isSensitivePayload,
+  recoverExecutionPayload,
   runExecution,
 } from "../../../execution/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
@@ -18,7 +22,11 @@ import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
 import { admissionRefusal } from "./admission-errors.ts";
-import { enforceSavedWorkflowAllowlist, runRequestSource } from "./run.ts";
+import {
+  enforceAsyncAuthentication,
+  enforceSavedWorkflowAllowlist,
+  runRequestSource,
+} from "./run.ts";
 import { ClientDeclaredRunSourceSchema, RunResponseSchema } from "./schemas.ts";
 
 const RerunBody = z
@@ -53,6 +61,14 @@ const rerunRoute = createRoute({
       description: "Rerun queued",
       content: { "application/json": { schema: RunResponseSchema } },
     },
+    400: {
+      description: "Bad request or unsupported asynchronous authentication source",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    403: {
+      description: "The caller is not authorized to rerun this execution",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: {
       description:
@@ -71,7 +87,13 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       const rows = await db
         .select({ workflow_id: executions.workflow_id })
         .from(executions)
-        .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
+        .where(
+          and(
+            eq(executions.tenant_id, principal.tenant_id),
+            eq(executions.id, id),
+            executionVisibilityFilter(principal),
+          ),
+        )
         .limit(1);
       const workflowId = rows[0]?.workflow_id;
       if (workflowId) {
@@ -89,11 +111,18 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
+    if (body.async) enforceAsyncAuthentication(principal);
 
     const rows = await db
       .select()
       .from(executions)
-      .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
+      .where(
+        and(
+          eq(executions.tenant_id, principal.tenant_id),
+          eq(executions.id, id),
+          executionVisibilityFilter(principal),
+        ),
+      )
       .limit(1);
     const original = rows[0];
     if (!original) throw new NotFoundError("execution");
@@ -110,9 +139,25 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
 
     await enforceSavedWorkflowAllowlist(principal, original.workflow_id, db);
 
-    const input = body.input !== undefined ? body.input : (original.input ?? null);
-    const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
     const request_source = runRequestSource(c, body.request_source);
+    if (isSensitivePayload(original.input)) {
+      try {
+        await authorizeSensitiveResume(db, original, principal);
+      } catch (error) {
+        return admissionRefusal(error, {
+          db,
+          principal,
+          workflow_id: original.workflow_id,
+          request_source,
+          execution_id: original.id,
+        });
+      }
+    }
+    const input =
+      body.input !== undefined
+        ? body.input
+        : recoverExecutionPayload(original.input, principal.tenant_id, original.id);
+    const execution_mode: ExecutionMode = original.execution_mode ?? "dev";
 
     if (!original.workflow_version_id) {
       const message = "the original version is unavailable";
@@ -147,6 +192,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
           input,
         },
         db,
+        principal,
       );
       if (body.async && admitted.execution_authority_id && admitted.status === "queued") {
         await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
@@ -174,7 +220,6 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         workflow_id: original.workflow_id,
         execution_id,
-        input: admitted.input,
         request_source,
         trace_id,
         execution_mode,

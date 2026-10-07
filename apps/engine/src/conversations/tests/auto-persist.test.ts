@@ -14,6 +14,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { TEST_HUMAN_ANSWER } from "../../test-helpers/answer-actor.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
   withConnectorInspection,
   withConnectorProbe,
@@ -30,6 +31,7 @@ import type { DraftDocument } from "../types.ts";
 
 let ctx: TestDb;
 let tenant_id: string;
+const principal_id = createDeterministicUuidFactory(314)();
 
 beforeAll(async () => {
   ctx = await createTestDb("auto_persist");
@@ -209,7 +211,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       principal: {
         provider: "test",
         kind: "user",
-        id: "user-test",
+        id: principal_id,
         tenant_id,
         roles: ["admin"],
       },
@@ -220,6 +222,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
     expect(dispatch.dispatched).toBe(true);
     expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.error_code).toBeUndefined();
     expect(dispatch.synthetic_result?.tool).toBe("run_workflow");
     const data = dispatch.synthetic_result?.data as {
       workflow_id: string;
@@ -282,7 +285,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       principal: {
         provider: "test",
         kind: "user",
-        id: "user-test",
+        id: principal_id,
         tenant_id,
         roles: ["admin"],
       },
@@ -293,6 +296,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
     expect(dispatch.dispatched).toBe(true);
     expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.error_code).toBeUndefined();
     const data = dispatch.synthetic_result?.data as {
       input: Record<string, unknown>;
       output: Record<string, unknown>;
@@ -334,7 +338,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       principal: {
         provider: "test",
         kind: "user",
-        id: "user-test",
+        id: principal_id,
         tenant_id,
         roles: ["admin"],
       },
@@ -390,7 +394,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
       principal: {
         provider: "test",
         kind: "user",
-        id: "user-test",
+        id: principal_id,
         tenant_id,
         roles: ["admin"],
       },
@@ -401,6 +405,7 @@ describe("auto-persist on confirmation — save_connector_draft", () => {
 
     expect(dispatch.dispatched).toBe(true);
     expect(dispatch.synthetic_result?.ok).toBe(true);
+    expect(dispatch.synthetic_result?.error_code).toBeUndefined();
     expect(dispatch.synthetic_result?.tool).toBe("run_workflow");
     const data = dispatch.synthetic_result?.data as {
       input: Record<string, unknown>;

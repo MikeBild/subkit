@@ -6,7 +6,13 @@ import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { workflowAuthorityExecutionOptions } from "../workflows/execution-authorities.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { assertExecutionAuthorityCurrent } from "./authority-admission.ts";
-import type { RunExecutionSource } from "./resolve-definition.ts";
+import { CallerContextSchema, callerFromPrincipal } from "./caller-context.ts";
+import { type RunExecutionSource, resolveDefinition } from "./resolve-definition.ts";
+import {
+  authorizeSensitiveResume,
+  isSensitivePayload,
+  recoverExecutionPayload,
+} from "./sensitive-payload.ts";
 import type { RunOptions } from "./types.ts";
 
 export async function bindExistingRun(
@@ -15,8 +21,8 @@ export async function bindExistingRun(
   source: RunExecutionSource,
   input: unknown,
   options: RunOptions,
-): Promise<{ source: RunExecutionSource; options: RunOptions }> {
-  if (!options.existing_execution_id) return { source, options };
+): Promise<{ source: RunExecutionSource; options: RunOptions; input: unknown }> {
+  if (!options.existing_execution_id) return { source, options, input };
   const [row] = await db
     .select()
     .from(executions)
@@ -29,6 +35,32 @@ export async function bindExistingRun(
       code: "execution_boundary_mismatch",
     });
   if (!row) throw mismatch();
+  const persistedCaller = row.caller_context ? CallerContextSchema.parse(row.caller_context) : null;
+  if (persistedCaller && !options.principal) {
+    if (isSensitivePayload(row.input))
+      throw Object.assign(
+        new Error("Sensitive resume requires the original authenticated caller."),
+        { code: "sensitive_resume_forbidden" },
+      );
+    throw mismatch();
+  }
+  if (
+    (persistedCaller &&
+      options.principal &&
+      !isDeepStrictEqual(
+        callerFromPrincipal(options.principal, tenant_id, persistedCaller?.productId ?? undefined),
+        persistedCaller,
+      )) ||
+    (options.caller_context !== undefined &&
+      !isDeepStrictEqual(options.caller_context, persistedCaller))
+  )
+    throw mismatch();
+  if (isSensitivePayload(row.input)) {
+    await authorizeSensitiveResume(db, row, options.principal, options.resume_authorized === true);
+    const persistedInput = recoverExecutionPayload(row.input, tenant_id, row.id);
+    if (isDeepStrictEqual(input, row.input) || input === undefined) input = persistedInput;
+    options = { ...options, execution_privacy: "sensitive" };
+  }
   if (row.hold_writes) {
     options = { ...options, hold_writes: true, self_healing: { enabled: false } };
   }
@@ -47,15 +79,31 @@ export async function bindExistingRun(
       self_healing: { enabled: false },
     };
   }
-  if (row.source_kind !== "saved" && source.kind !== "saved") return { source, options };
+  if (row.source_kind !== "saved" && source.kind !== "saved")
+    return { source, options: { ...options, caller_context: persistedCaller }, input };
   if (
     row.source_kind !== "saved" ||
     source.kind !== "saved" ||
     !row.workflow_version_id ||
     row.workflow_id !== source.workflow_id ||
     (source.version_id !== undefined && source.version_id !== row.workflow_version_id) ||
-    (options.execution_mode !== undefined && options.execution_mode !== row.execution_mode) ||
-    !isDeepStrictEqual(normalizeWorkflowRunInput(input), normalizeWorkflowRunInput(row.input))
+    (options.execution_mode !== undefined && options.execution_mode !== row.execution_mode)
+  )
+    throw mismatch();
+  const pinned = await resolveDefinition(db, tenant_id, {
+    kind: "saved",
+    workflow_id: source.workflow_id,
+    version_id: row.workflow_version_id,
+  });
+  input = normalizeWorkflowRunInput(input, pinned.def.input_schema);
+  if (
+    !isDeepStrictEqual(
+      input,
+      normalizeWorkflowRunInput(
+        recoverExecutionPayload(row.input, tenant_id, row.id),
+        pinned.def.input_schema,
+      ),
+    )
   )
     throw mismatch();
   if (row.execution_authority_id) {
@@ -68,6 +116,7 @@ export async function bindExistingRun(
     await assertExecutionAuthorityCurrent(db, tenant_id, row.id);
   }
   return {
+    input,
     source: { kind: "saved", workflow_id: source.workflow_id, version_id: row.workflow_version_id },
     options: {
       ...options,
@@ -75,6 +124,7 @@ export async function bindExistingRun(
       execution_mode: row.execution_mode,
       request_source: RequestSourceSchema.parse(row.request_source),
       parent_execution_id: row.parent_execution_id,
+      caller_context: persistedCaller,
     },
   };
 }

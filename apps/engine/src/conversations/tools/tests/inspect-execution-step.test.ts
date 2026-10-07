@@ -10,6 +10,7 @@ import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { MemoryObjectStore, setObjectStoreForTesting } from "../../../storage/object-store.ts";
 import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/index.ts";
+import { adminPrincipal } from "../../../test-helpers/principals.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { DraftDocument } from "../../types.ts";
 import type { ToolContext } from "../index.ts";
@@ -37,12 +38,12 @@ beforeAll(async () => {
     .values({ slug: "t-foreign-exec", display_name: "T2" })
     .returning();
   foreign_tenant_id = t2!.id;
-});
+}, 30_000);
 
 afterAll(async () => {
   setObjectStoreForTesting(null);
   await ctx.cleanup();
-});
+}, 30_000);
 
 function makeCtx(): ToolContext & { draft: DraftDocument } {
   let draft = createEmptyDraftDocument();
@@ -51,6 +52,7 @@ function makeCtx(): ToolContext & { draft: DraftDocument } {
     tenant_id,
     conversation_id: crypto.randomUUID(), // allow-random: shape-only test
     actor_id: null,
+    principal: adminPrincipal(tenant_id),
     connector_id: null,
     workflow_id: null,
     engineClient: new EngineClient({ tenant_id, actor_id: null, db: ctx.db }),

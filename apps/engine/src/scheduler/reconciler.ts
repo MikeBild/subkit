@@ -957,7 +957,8 @@ export class SchedulerReconciler {
       throw error;
     });
     const execution_id = admitted.execution_id;
-    const job: ExecutionRunJob = { ...payload, execution_id, request_source: "scheduler" };
+    const { input: _queuedInput, ...queuedPayload } = payload;
+    const job: ExecutionRunJob = { ...queuedPayload, execution_id, request_source: "scheduler" };
     if (admitted.status === "queued")
       await this.opts.boss.send(EXECUTION_RUN_QUEUE, job, { id: execution_id });
     await recordScheduleAdmission(this.opts.db, audit, null);

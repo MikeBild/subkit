@@ -609,6 +609,7 @@ export async function maybeAutoPersistFromElicitation(
             ...(intent.payload.execute_writes === false ? { hold_writes: true } : {}),
           },
           p.db,
+          p.principal,
         );
         const run = await runExecution({
           db: p.db,

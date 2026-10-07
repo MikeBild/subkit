@@ -335,6 +335,7 @@ async function executeRunWorkflow(
         input: input ?? null,
       },
       p.db,
+      p.principal,
     );
     const result = await runExecution({
       db: p.db,

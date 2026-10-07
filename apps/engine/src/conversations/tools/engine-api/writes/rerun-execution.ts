@@ -1,7 +1,16 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executions } from "../../../../db/schema/index.ts";
-import { admitWorkflowRun, runExecution } from "../../../../execution/index.ts";
+import {
+  admitWorkflowRun,
+  executionVisibilityFilter,
+  runExecution,
+} from "../../../../execution/index.ts";
+import {
+  authorizeSensitiveResume,
+  isSensitivePayload,
+  recoverExecutionPayload,
+} from "../../../../execution/sensitive-payload.ts";
 import { gateWorkflowRunRbac } from "../../../../workflows/rbac.ts";
 import type { ConversationTool } from "../../index.ts";
 import { sampleWorkflowOutputForLlm } from "../../truncate.ts";
@@ -26,7 +35,13 @@ export const rerunExecutionTool: ConversationTool = {
     const rows = await ctx.db
       .select()
       .from(executions)
-      .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.id, args.execution_id)))
+      .where(
+        and(
+          eq(executions.tenant_id, ctx.tenant_id),
+          eq(executions.id, args.execution_id),
+          executionVisibilityFilter(ctx.principal),
+        ),
+      )
       .limit(1);
     const original = rows[0];
     if (!original) return { ok: false, data: { error: "execution_not_found" } };
@@ -53,7 +68,12 @@ export const rerunExecutionTool: ConversationTool = {
       }
     }
 
-    const input = args.input !== undefined ? args.input : (original.input ?? null);
+    if (isSensitivePayload(original.input))
+      await authorizeSensitiveResume(ctx.db, original, ctx.principal);
+    const input =
+      args.input !== undefined
+        ? args.input
+        : recoverExecutionPayload(original.input, ctx.tenant_id, original.id);
     if (!original.workflow_version_id)
       return { ok: false, data: { error: "workflow_version_unavailable" } };
     const admitted = await admitWorkflowRun(
@@ -67,6 +87,7 @@ export const rerunExecutionTool: ConversationTool = {
         input,
       },
       ctx.db,
+      ctx.principal,
     );
     const execution_id = admitted.execution_id;
 

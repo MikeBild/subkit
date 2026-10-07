@@ -4,11 +4,22 @@ import type { Executor } from "../../../db/client.ts";
 import { auditAdmissionRefusal } from "../../../execution/index.ts";
 import { HttpError, NotFoundError } from "../../errors.ts";
 
+const forbiddenCodes = new Set([
+  "caller_required",
+  "caller_kind_mismatch",
+  "caller_product_mismatch",
+  "caller_tenant_mismatch",
+  "caller_saved_workflow_required",
+  "sensitive_resume_forbidden",
+]);
+
 function isRefusal(code: string | undefined): code is string {
   return (
     code !== undefined &&
     (code.startsWith("execution_") ||
       code.startsWith("workflow_version_") ||
+      forbiddenCodes.has(code) ||
+      code === "sensitive_execution_unsupported" ||
       code === "workflow_archived" ||
       code === "prepared_credential_unavailable")
   );
@@ -19,7 +30,7 @@ export async function admissionRefusal(
   context: {
     db: Executor;
     principal: ResolvedPrincipal;
-    workflow_id: string;
+    workflow_id?: string | null;
     request_source: string;
     execution_id?: string | null;
     extra?: Record<string, unknown>;
@@ -36,7 +47,7 @@ export async function admissionRefusal(
       tenant_id: context.principal.tenant_id,
       reason: code,
       message,
-      workflow_id: context.workflow_id,
+      ...(context.workflow_id ? { workflow_id: context.workflow_id } : {}),
       ...(context.execution_id ? { execution_id: context.execution_id } : {}),
       request_source: context.request_source,
       actor_id: context.principal.id ?? null,
@@ -55,5 +66,10 @@ export async function admissionRefusal(
       : context.execution_id
         ? { execution_id: context.execution_id }
         : undefined;
-  throw new HttpError(409, code, message, details ? { details } : {});
+  throw new HttpError(
+    forbiddenCodes.has(code) ? 403 : 409,
+    code,
+    message,
+    details ? { details } : {},
+  );
 }

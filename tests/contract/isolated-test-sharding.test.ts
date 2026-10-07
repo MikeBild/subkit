@@ -15,6 +15,17 @@ function list(targets: string[], shard: string): string[] {
 }
 
 describe("isolated test sharding", () => {
+  test("list output stays complete through an external pipe consumer", () => {
+    const expected = `${list(["apps", "packages", "scripts"], "1/1").join("\n")}\n`;
+    expect(Buffer.byteLength(expected)).toBeGreaterThan(65_536);
+    const result = Bun.spawnSync(
+      ["sh", "-c", "bun run scripts/test-files-isolated.ts --list apps packages scripts | cat"],
+      { cwd: repoRoot, stderr: "pipe", stdout: "pipe" },
+    );
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(result.stdout.toString()).toBe(expected);
+  }, 30_000);
+
   test("is deterministic, exhaustive, and assigns every repository test exactly once", () => {
     const target = ["apps", "packages"];
     const complete = list(target, "1/1");
@@ -23,5 +34,5 @@ describe("isolated test sharding", () => {
     const flattened = shards.flat();
     expect(new Set(flattened).size).toBe(complete.length);
     expect(flattened.sort()).toEqual(complete.sort());
-  });
+  }, 30_000);
 });

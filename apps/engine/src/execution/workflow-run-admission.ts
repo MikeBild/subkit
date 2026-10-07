@@ -7,8 +7,11 @@ import { RequestSourceSchema } from "../observability/service-metadata.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { admitAuthorizedWorkflowExecution } from "./authority-admission.ts";
+import { authorizationContextFromPrincipal } from "./authorization-context.ts";
+import { callerFromPrincipal } from "./caller-context.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
 import { resolveDefinition } from "./resolve-definition.ts";
+import { recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
 
 const schema = z
@@ -30,9 +33,31 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-export async function admitWorkflowRun(raw: unknown, db: Db) {
+export async function admitWorkflowRun(
+  raw: unknown,
+  db: Db,
+  principal?: import("../auth/types.ts").ResolvedPrincipal | null,
+) {
   const input = schema.parse(raw);
-  const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
+  const resolved = await resolveDefinition(db, input.tenant_id, {
+    kind: "saved",
+    workflow_id: input.workflow_id,
+    ...(input.workflow_version_id ? { version_id: input.workflow_version_id } : {}),
+  });
+  const normalized = JsonValueSchema.parse(
+    normalizeWorkflowRunInput(input.input, resolved.def.input_schema) ?? null,
+  );
+  const caller = callerFromPrincipal(
+    principal,
+    input.tenant_id,
+    resolved.def.product_id,
+    resolved.def.required_caller_kind,
+  );
+  if (input.request_source === "chat" && resolved.def.execution_privacy === "sensitive")
+    fail(
+      "sensitive_execution_unsupported",
+      "Sensitive execution is unavailable on conversation surfaces.",
+    );
   if (input.hold_writes === true && input.execution_authority_id) {
     fail(
       "execution_boundary_mismatch",
@@ -42,7 +67,12 @@ export async function admitWorkflowRun(raw: unknown, db: Db) {
   if (input.hold_writes !== true) {
     const { hold_writes: _hold, ...authorityInput } = input;
     try {
-      const admitted = await admitAuthorizedWorkflowExecution(authorityInput, db);
+      const admitted = await admitAuthorizedWorkflowExecution(
+        authorityInput,
+        db,
+        caller,
+        authorizationContextFromPrincipal(principal),
+      );
       return { ...admitted, hold_writes: false };
     } catch (error) {
       const code = (error as { code?: string }).code;
@@ -60,11 +90,6 @@ export async function admitWorkflowRun(raw: unknown, db: Db) {
         throw error;
     }
   }
-  const resolved = await resolveDefinition(db, input.tenant_id, {
-    kind: "saved",
-    workflow_id: input.workflow_id,
-    ...(input.workflow_version_id ? { version_id: input.workflow_version_id } : {}),
-  });
   if (resolved.def.input_schema) {
     const check = validateAgainstJsonSchema(normalized, resolved.def.input_schema, "$input");
     if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
@@ -92,7 +117,11 @@ export async function admitWorkflowRun(raw: unknown, db: Db) {
           existing.workflow_version_id !== resolved.workflow_version_id ||
           existing.execution_mode !== input.execution_environment ||
           (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
-          !isDeepStrictEqual(existing.input, normalized)
+          !isDeepStrictEqual(existing.caller_context, caller) ||
+          !isDeepStrictEqual(
+            recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
+            normalized,
+          )
         ) {
           fail(
             "execution_boundary_mismatch",
@@ -122,6 +151,9 @@ export async function admitWorkflowRun(raw: unknown, db: Db) {
       idempotency_key: input.idempotency_key ?? null,
       parent_execution_id: input.parent_execution_id ?? null,
       hold_writes: true,
+      caller_context: caller,
+      authorization_context: authorizationContextFromPrincipal(principal),
+      execution_privacy: resolved.def.execution_privacy,
     });
     return {
       execution_id,

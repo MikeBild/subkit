@@ -27,17 +27,65 @@ beforeAll(async () => {
     .values({ slug: "t-approvals", display_name: "Approvals" })
     .returning();
   tenant_id = tenant!.id;
-});
+}, 120_000);
 
 afterAll(async () => {
   await testDb.cleanup();
-});
+}, 120_000);
 
 function principalIn(
   tenant: string,
   overrides: Partial<ResolvedPrincipal> = {},
 ): ResolvedPrincipal {
   return makeTestPrincipal({ tenant_id: tenant, ...overrides });
+}
+
+for (const mismatch of ["kind", "product", "missing_origin"] as const) {
+  test(`approval ${mismatch} mismatch neither discloses nor consumes the owner's decision`, async () => {
+    const owner = principalIn(tenant_id, { product_id: "harmoniqs" });
+    const approval_id = nextId();
+    await seedGrantedApproval({
+      principal: owner,
+      approval_id,
+      args: { private_canary: "owner-private-approval-args" },
+    });
+    if (mismatch === "missing_origin")
+      await testDb.db
+        .update(toolApprovals)
+        .set({ caller_context: null })
+        .where(eq(toolApprovals.id, approval_id));
+    const other =
+      mismatch === "kind"
+        ? { ...owner, kind: "system_account" as const }
+        : mismatch === "product"
+          ? { ...owner, product_id: "other" }
+          : owner;
+    const result = await consumeApproval({
+      db: testDb.db,
+      principal: other,
+      approval_id,
+      tool: "run_workflow",
+      surface: "mcp",
+      via: "mcp",
+    });
+    expect(result).toMatchObject({ ok: false, code: "unknown_confirmation" });
+    expect(JSON.stringify(result)).not.toContain("owner-private-approval-args");
+    expect((await approvalRow(approval_id))?.consumed_at).toBeNull();
+    if (mismatch !== "missing_origin") {
+      const claimed = await consumeApproval({
+        db: testDb.db,
+        principal: owner,
+        approval_id,
+        tool: "run_workflow",
+        surface: "mcp",
+        via: "mcp",
+      });
+      expect(claimed).toMatchObject({
+        ok: true,
+        args: { private_canary: "owner-private-approval-args" },
+      });
+    }
+  });
 }
 
 async function auditRowsFor(approval_id: string): Promise<
