@@ -26,14 +26,6 @@ const READ_PERMISSION: Record<CatalogKind, string> = {
   file: "file:read",
 };
 
-const WRITE_PERMISSIONS = [
-  "workflow:write",
-  "connector:write",
-  "knowledge:write",
-  "skill:write",
-  "file:write",
-] as const;
-
 const KindCountsSchema = z
   .object({
     workflow: z.number().int().nonnegative(),
@@ -104,7 +96,11 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
   );
   app.use(
     "/v1/categories/:name/rename",
-    ...WRITE_PERMISSIONS.map((permission) => requirePermission(permission)),
+    requirePermission("workflow:write"),
+    requirePermission("connector:write"),
+    requirePermission("knowledge:write"),
+    requirePermission("skill:write"),
+    requirePermission("file:write"),
   );
 
   app.openapi(listRoute, async (c) => {
