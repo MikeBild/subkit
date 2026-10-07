@@ -5,6 +5,7 @@ import {
   BOOTSTRAP_TIMEOUT_MS,
   type Bootstrap,
   bootstrap,
+  bootstrapLimits,
 } from "@/api/client";
 import { render } from "@/components/cockpit/patterns/test-utils";
 import { SessionSkeleton, sessionView } from "./session";
@@ -33,16 +34,29 @@ describe("session loading", () => {
     expect(html).toContain('aria-busy="true"');
   });
 
-  test("the bootstrap request carries a five second limit", async () => {
+  test("the first bootstrap request carries a five second limit", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       Response.json({ csrf_token: "token" }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    await bootstrap();
+    expect(bootstrapLimits(undefined)).toEqual({ timeoutMs: BOOTSTRAP_TIMEOUT_MS });
+    await bootstrap(bootstrapLimits(undefined));
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(init.signal?.aborted).toBe(false);
     expect(BOOTSTRAP_TIMEOUT_MS).toBe(5000);
+  });
+
+  test("a refresh of a loaded session is not cut off by the first-load limit", async () => {
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ csrf_token: "token" }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const loaded = { csrf_token: "token" } as Bootstrap;
+    expect(bootstrapLimits(loaded)).toEqual({});
+    await bootstrap(bootstrapLimits(loaded));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal).toBeUndefined();
   });
 
   test("a request that outlives its limit fails instead of waiting forever", async () => {
@@ -63,11 +77,20 @@ describe("session loading", () => {
     expect(((await pending) as DOMException).name).toBe("AbortError");
   });
 
-  test("a timed-out bootstrap ends on the bootstrap error page, never in an endless skeleton", () => {
+  test("a timed-out first load ends on the bootstrap error page, never in an endless skeleton", () => {
     const timeout = new DOMException("The operation timed out.", "TimeoutError");
     expect(sessionView({ isPending: false, error: timeout, data: undefined }, false)).toBe(
       "failed",
     );
+  });
+
+  test("a refresh that times out or fails keeps the loaded cockpit", () => {
+    const data = { csrf_token: "token" } as Bootstrap;
+    const timeout = new DOMException("The operation timed out.", "TimeoutError");
+    expect(sessionView({ isPending: false, error: timeout, data }, false)).toBe("ready");
+    expect(
+      sessionView({ isPending: false, error: new ApiError(503, null, null), data }, false),
+    ).toBe("ready");
   });
 
   test("loading, a lapsed session and a loaded session each have their own view", () => {

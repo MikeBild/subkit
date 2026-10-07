@@ -145,12 +145,12 @@ export async function apiText(path: string): Promise<string> {
   return response.text();
 }
 
-export async function bootstrap(): Promise<Bootstrap> {
-  const result = await apiRequest<Bootstrap>(
-    "/v1/cockpit/bootstrap",
-    {},
-    { timeoutMs: BOOTSTRAP_TIMEOUT_MS },
-  );
+export function bootstrapLimits(loaded: Bootstrap | undefined): RequestLimits {
+  return loaded ? {} : { timeoutMs: BOOTSTRAP_TIMEOUT_MS };
+}
+
+export async function bootstrap(limits: RequestLimits = {}): Promise<Bootstrap> {
+  const result = await apiRequest<Bootstrap>("/v1/cockpit/bootstrap", {}, limits);
   csrfToken = result.csrf_token;
   return result;
 }
