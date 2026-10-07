@@ -268,6 +268,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "webhook.inbound.received": "audit.action.webhookReceived",
   "webhook.inbound.denied": "audit.action.webhookDenied",
   "webhook.inbound.created": "audit.action.webhookCreated",
+  "webhook.inbound.slug_reassigned": "audit.action.webhookSlugReassigned",
   "connection.created": "audit.action.connectionCreated",
   "connection.renewed": "audit.action.connectionRenewed",
   "connection.failed": "audit.action.connectionFailed",
