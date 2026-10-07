@@ -280,8 +280,14 @@ export const HTML_PAGE_HEADERS = {
   "referrer-policy": "no-referrer",
 } as const;
 
+export const NEGOTIATED_VARY = "Accept, Cookie";
+
 export function authHtmlResponse(html: string, status = 200): Response {
   return new Response(html, { status, headers: { ...HTML_PAGE_HEADERS } });
+}
+
+export function negotiatedPageResponse(html: string, status: number): Response {
+  return new Response(html, { status, headers: { ...HTML_PAGE_HEADERS, vary: NEGOTIATED_VARY } });
 }
 
 export type SignInError =
