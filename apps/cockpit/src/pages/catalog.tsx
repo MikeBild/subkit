@@ -11,7 +11,6 @@ import { CreateAction } from "@/components/cockpit/create-choice";
 import {
   Button,
   type CockpitColumn,
-  DataState,
   DataTable,
   FilterBar,
   type FilterSelect,
@@ -20,6 +19,7 @@ import {
   StatusBadge,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { ForbiddenState } from "@/components/failure-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
@@ -357,11 +357,7 @@ export function CatalogPage({
         scroll="page"
         header={<PageHeader title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
   }

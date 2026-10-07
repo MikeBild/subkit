@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { navigationItem } from "@/app/navigation";
 import { ConnectorPage } from "@/components/cockpit/connector-page";
-import { BackLink, DataState, Skeleton } from "@/components/cockpit/patterns";
+import { BackLink, Skeleton } from "@/components/cockpit/patterns";
 import { WorkflowPage } from "@/components/cockpit/workflow-page";
-import { LoadFailed, queryView } from "@/components/failure-state";
+import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { type RecordValue, recordTitle } from "@/pages/catalog-model";
 import { returnedFromSignIn, withoutSignInReturn } from "@/pages/connector-detail-model";
@@ -55,11 +55,7 @@ export function CatalogDetailPage({
   if (!canRead)
     return (
       <div className="p-6">
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </div>
     );
   const view = queryView(query, () => false);

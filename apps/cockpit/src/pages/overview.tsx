@@ -46,6 +46,7 @@ import { RecordTable } from "@/components/cockpit/record-table";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { ScheduleReviewCard } from "@/components/cockpit/schedule-review-card";
 import { tableColumns } from "@/components/cockpit/table-columns";
+import { ForbiddenState } from "@/components/failure-state";
 import { causeClassLabel } from "@/lib/cause-class";
 import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import type { TranslationKey } from "@/lib/i18n";
@@ -422,11 +423,7 @@ export function OverviewPage() {
         testId="resource-permission-denied"
         header={<PageHeader title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 
@@ -521,11 +518,7 @@ export function OverviewPage() {
         <div data-action-scope="list">
           <Section label={t("overview.needsYou")} testId="attention-section">
             {view?.kind === "nothing_readable" ? (
-              <DataState
-                state="empty"
-                line={t("resource.permission.description")}
-                testId="resource-permission-alert"
-              />
+              <ForbiddenState />
             ) : (
               <NeedsYou
                 items={items}

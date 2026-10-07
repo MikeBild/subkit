@@ -44,7 +44,7 @@ import {
   Textarea,
 } from "@/components/cockpit/patterns";
 import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { queryView } from "@/components/failure-state";
+import { ForbiddenState, queryView } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -209,11 +209,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         testId="catalog-knowledge"
         header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 
@@ -562,14 +558,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
       {body}
     </Page>
   );
-  if (!canRead)
-    return frame(
-      <DataState
-        state="empty"
-        line={t("resource.permission.description")}
-        testId="resource-permission-alert"
-      />,
-    );
+  if (!canRead) return frame(<ForbiddenState />);
   const view = queryView(query, () => false);
   if (view === "loading") return frame(<DataState state="loading" />);
   const source = query.data;

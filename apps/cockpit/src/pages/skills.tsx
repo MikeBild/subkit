@@ -42,7 +42,7 @@ import {
   Textarea,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { queryView } from "@/components/failure-state";
+import { ForbiddenState, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
@@ -210,11 +210,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         testId="catalog-skills"
         header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 
@@ -411,14 +407,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
       {body}
     </Page>
   );
-  if (!canRead)
-    return frame(
-      <DataState
-        state="empty"
-        line={t("resource.permission.description")}
-        testId="resource-permission-alert"
-      />,
-    );
+  if (!canRead) return frame(<ForbiddenState />);
   const view = queryView(query, () => false);
   if (view === "loading") return frame(<DataState state="loading" />);
   const skill = query.data;
@@ -673,11 +662,7 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
   if (!canWrite)
     return (
       <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
   if (!isNew && query.isPending)
