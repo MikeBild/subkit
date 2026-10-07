@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, chatNewHref, connectorHref } from "@/app/links";
@@ -51,6 +51,7 @@ import {
   WorkflowTestResult,
   WorkflowTestRun,
 } from "@/components/cockpit/workflow-steps-list";
+import { WorkflowVersions } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
@@ -136,6 +137,7 @@ export function WorkflowPage({
   const canRun = permissions.includes("workflow:run");
   const canChat = permissions.includes("conversation:write");
   const versionId = text(record, "current_version_id");
+  const draftVersionId = text(record, "draft_version_id");
   const legacy = record.invalid === true;
   const version = typeof record.current_version === "number" ? record.current_version : null;
   const trigger =
@@ -150,13 +152,17 @@ export function WorkflowPage({
   const workflow = {
     lifecycle: text(record, "lifecycle"),
     current_version_id: versionId,
-    draft_version_id: text(record, "draft_version_id"),
+    draft_version_id: draftVersionId,
     current_version: version,
     webhooks_active: webhooksActive,
     invalid: legacy,
   };
   const health = text(record, "health_state");
   const disabled = record.lifecycle === "archived";
+  const versionIds = useMemo(
+    () => ({ current: versionId, draft: draftVersionId }),
+    [versionId, draftVersionId],
+  );
 
   const automation = useWorkflowAutomation(id, workflow, permissions);
   const build = useBuildVersion(id, { ...workflow, steps: stepRecords });
@@ -397,6 +403,13 @@ export function WorkflowPage({
             />
           ) : null}
           <div className="flex flex-col gap-2">
+            <WorkflowVersions
+              workflowId={id}
+              workflowName={title}
+              ids={versionIds}
+              canRestore={permissions.includes("workflow:restore")}
+              onRestored={automation.refresh}
+            />
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
               testId="workflow-technical"
