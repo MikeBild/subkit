@@ -4,6 +4,7 @@ import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
 import { logger } from "../../logging/logger.ts";
 import { applyAuthMaterial, resolveConnectorCredential } from "../drivers/http.ts";
 import { attachConnectorSelfDescriptionLinks, getConnectorForEnvironment } from "../service.ts";
@@ -225,11 +226,30 @@ async function writeCache(
   result: DiscoveryResult,
 ): Promise<void> {
   const json = JSON.stringify(result);
-  const version = createHash("sha256").update(json).digest("hex").slice(0, 32);
+  const version = knowledgeContentHash(json);
   const bytes = Buffer.byteLength(json, "utf8");
   const now = new Date();
+  await ctx.db.transaction((tx) =>
+    writeCacheRows(tx, ctx, cache, result, { json, version, bytes, now }),
+  );
+}
 
-  const existing = await ctx.db
+async function writeCacheRows(
+  tx: Executor,
+  ctx: DiscoveryServiceContext,
+  cache: CacheKey,
+  result: DiscoveryResult,
+  doc: { json: string; version: string; bytes: number; now: Date },
+): Promise<void> {
+  const { json, version, bytes, now } = doc;
+  const content = {
+    kind: "document" as const,
+    filename: cache.source_uri,
+    mime: "application/json",
+    text: json,
+  };
+
+  const existing = await tx
     .select()
     .from(knowledgeSources)
     .where(
@@ -239,7 +259,7 @@ async function writeCache(
   const prior = existing[0];
 
   if (prior) {
-    await ctx.db
+    await tx
       .update(knowledgeSources)
       .set({
         source_type: DISCOVERY_SOURCE_TYPE,
@@ -252,8 +272,15 @@ async function writeCache(
         updated_at: now,
       })
       .where(eq(knowledgeSources.id, prior.id));
-    await ctx.db.delete(knowledgeChunks).where(eq(knowledgeChunks.knowledge_source_id, prior.id));
-    await ctx.db.insert(knowledgeChunks).values({
+    await tx
+      .delete(knowledgeChunks)
+      .where(
+        and(
+          eq(knowledgeChunks.tenant_id, ctx.tenant_id),
+          eq(knowledgeChunks.knowledge_source_id, prior.id),
+        ),
+      );
+    await tx.insert(knowledgeChunks).values({
       tenant_id: ctx.tenant_id,
       knowledge_source_id: prior.id,
       ordinal: 0,
@@ -263,10 +290,18 @@ async function writeCache(
       byte_size: bytes,
       fingerprint: version,
     });
+    await recordKnowledgeVersion(tx, {
+      tenant_id: ctx.tenant_id,
+      knowledge_source_id: prior.id,
+      content,
+      content_hash: version,
+      actor: null,
+      note: null,
+    });
     await recordKnowledgeSourceRefreshed({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
-      executor: ctx.db,
+      executor: tx,
       knowledge_source_id: prior.id,
       source_type: DISCOVERY_SOURCE_TYPE,
       source_uri: cache.source_uri,
@@ -279,7 +314,7 @@ async function writeCache(
     return;
   }
 
-  const [inserted] = await ctx.db
+  const [inserted] = await tx
     .insert(knowledgeSources)
     .values({
       tenant_id: ctx.tenant_id,
@@ -300,7 +335,7 @@ async function writeCache(
     })
     .returning();
   assertInsertRow(inserted, "knowledge_sources");
-  await ctx.db.insert(knowledgeChunks).values({
+  await tx.insert(knowledgeChunks).values({
     tenant_id: ctx.tenant_id,
     knowledge_source_id: inserted.id,
     ordinal: 0,
@@ -310,10 +345,18 @@ async function writeCache(
     byte_size: bytes,
     fingerprint: version,
   });
+  await recordKnowledgeVersion(tx, {
+    tenant_id: ctx.tenant_id,
+    knowledge_source_id: inserted.id,
+    content,
+    content_hash: version,
+    actor: null,
+    note: null,
+  });
   await recordKnowledgeSourceRefreshed({
     tenant_id: ctx.tenant_id,
     actor_id: ctx.actor_id,
-    executor: ctx.db,
+    executor: tx,
     knowledge_source_id: inserted.id,
     source_type: DISCOVERY_SOURCE_TYPE,
     source_uri: cache.source_uri,
