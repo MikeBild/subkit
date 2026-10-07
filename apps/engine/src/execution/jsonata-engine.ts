@@ -3,6 +3,7 @@ import { instrument } from "../observability/runtime-telemetry.ts";
 
 export type EvalBindings = {
   input?: unknown;
+  caller?: unknown;
   scope?: Record<string, unknown>;
   cred?: Record<string, Record<string, string>>;
   connector?: Record<string, Record<string, unknown>>;
@@ -81,6 +82,7 @@ export async function evaluate<T = unknown>(
 export function flattenBindings(bindings: EvalBindings): Record<string, unknown> {
   const flat: Record<string, unknown> = {
     input: bindings.input ?? null,
+    caller: bindings.caller ?? bindings.scope?.$caller ?? null,
     scope: bindings.scope ?? {},
     cred: bindings.cred ?? {},
     connector: bindings.connector ?? {},

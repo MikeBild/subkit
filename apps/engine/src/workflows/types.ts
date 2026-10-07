@@ -144,7 +144,10 @@ export const InputSchemaFileNodeSchema = z
   .openapi("InputSchemaFileNode");
 
 const baseStep = {
-  id: z.string().min(1),
+  id: z
+    .string()
+    .min(1)
+    .refine((id) => !id.startsWith("$"), "step id is reserved"),
   on_error: onError.optional(),
   data_selector: z.string().optional(),
   timeout_ms: z.number().int().positive().optional(),
@@ -738,6 +741,12 @@ export type WorkflowTrigger = z.infer<typeof TriggerSchema>;
 
 const _baseWorkflowDefSchema = z.object({
   name: z.string().min(1),
+  product_id: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]*$/)
+    .optional(),
+  required_caller_kind: z.enum(["user", "system_account"]).optional(),
+  execution_privacy: z.literal("sensitive").optional(),
   slug: z.string().min(1).optional(),
   description: z.string().optional(),
   tool_effect: z.enum(["read", "reversible_write", "irreversible_write"]).optional(),
@@ -761,6 +770,22 @@ const WORKFLOW_TIMEOUT_DEFAULT_MS_LITERAL = 6 * 60 * 60_000;
 
 export const WorkflowDefSchema = _baseWorkflowDefSchema
   .superRefine((s, ctx) => {
+    if (s.product_id) {
+      s.steps.forEach((step, idx) => {
+        if (
+          step.kind === "request" &&
+          step.s3 &&
+          (!step.s3.scope?.principal_bound ||
+            step.s3.scope.key_prefix !== `products/${s.product_id}/`)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["steps", idx, "s3", "scope"],
+            message: "product S3 steps require a caller-bound product folder",
+          });
+        }
+      });
+    }
     if (s.output_transform && s.output_transform_function) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

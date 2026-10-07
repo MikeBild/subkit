@@ -16,6 +16,8 @@ import { registerNativeUrlElicitationCompletion } from "../../conversations/nati
 import type { Db } from "../../db/client.ts";
 import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
+import { authorizationContextFromPrincipal } from "../../execution/authorization-context.ts";
+import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import {
   admitAuthorizedWorkflowExecution,
   auditAdmissionRefusal,
@@ -481,6 +483,12 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     )
     .limit(1);
   const definition = executableDefinition(vRows[0]?.dag);
+  const caller = callerFromPrincipal(
+    principal,
+    principal.tenant_id,
+    definition.product_id,
+    definition.required_caller_kind,
+  );
   const totalSteps = definition.steps.length;
   const outputSchemaDeclared = definition.output_schema != null;
   let executionId: string;
@@ -496,6 +504,8 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
         input: args,
       },
       db,
+      caller,
+      authorizationContextFromPrincipal(principal),
     );
     executionId = admitted.execution_id;
   } catch (error) {
@@ -519,6 +529,9 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
       source_kind: "saved",
       source_ref: null,
       input: args,
+      caller_context: caller,
+      authorization_context: authorizationContextFromPrincipal(principal),
+      hold_writes: true,
       request_source: "mcp",
     });
     await auditAdmissionRefusal(
@@ -773,6 +786,7 @@ async function buildRunWorkflowAsyncAck(p: {
   const execId = await findBackgroundExecutionId({
     db,
     tenant_id: principal.tenant_id,
+    principal,
     workflowRef,
     since: started,
   });

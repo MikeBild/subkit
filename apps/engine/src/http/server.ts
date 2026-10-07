@@ -65,6 +65,7 @@ import { registerInviteRoutes } from "./routes/identity/invites.ts";
 import { registerLoginRoutes } from "./routes/identity/login.ts";
 import { registerEffectivePermissionsRoute } from "./routes/identity/permissions.ts";
 import { registerPortalTokenRoutes } from "./routes/identity/portal-tokens.ts";
+import { registerProviderIdentityRoutes } from "./routes/identity/provider-identities.ts";
 import { registerProvidersRoute } from "./routes/identity/providers.ts";
 import { registerIdentitySessionsRoute } from "./routes/identity/sessions.ts";
 import { registerSkBootstrapRoute } from "./routes/identity/sk-bootstrap.ts";
@@ -252,6 +253,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerRootRoute(app);
   registerTenantRoutes(app);
   registerUserRoutes(app);
+  registerProviderIdentityRoutes(app);
   registerInviteRoutes(app);
   registerSystemAccountRoutes(app);
   registerApiKeyRoutes(app);

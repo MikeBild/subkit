@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { executions, externalCallMetering, llmUsage } from "../../../db/schema/index.ts";
+import { executionVisibilityFilter } from "../../../execution/index.ts";
 import { PRICE_SOURCES } from "../../../llm/index.ts";
 import { readLlmCost } from "../../../stats/llm-cost.ts";
 import { NotFoundError } from "../../errors.ts";
@@ -81,7 +82,13 @@ export function registerCostRoute(app: OpenAPIHono<AppEnv>): void {
     const exec = await db
       .select({ id: executions.id })
       .from(executions)
-      .where(and(eq(executions.tenant_id, principal.tenant_id), eq(executions.id, id)))
+      .where(
+        and(
+          eq(executions.tenant_id, principal.tenant_id),
+          eq(executions.id, id),
+          executionVisibilityFilter(principal),
+        ),
+      )
       .limit(1);
     if (!exec[0]) throw new NotFoundError("execution");
 

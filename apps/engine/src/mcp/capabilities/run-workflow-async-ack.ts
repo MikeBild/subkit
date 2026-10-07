@@ -1,15 +1,18 @@
 import { and, desc, eq, gte, isNotNull, isNull, ne } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations, executions } from "../../db/schema/index.ts";
+import { executionVisibilityFilter } from "../../execution/execution-owner.ts";
 import { resolveWorkflowByIdOrSlug } from "../../workflows/lookup.ts";
 
 export async function findBackgroundExecutionId(opts: {
   db: Db;
   tenant_id: string;
+  principal: ResolvedPrincipal;
   workflowRef: string | undefined;
   since: number;
 }): Promise<string | null> {
-  const { db, tenant_id, workflowRef, since } = opts;
+  const { db, tenant_id, principal, workflowRef, since } = opts;
   if (!workflowRef) return null;
   const wf = await resolveWorkflowByIdOrSlug(db, tenant_id, workflowRef);
   if (!wf) return null;
@@ -20,6 +23,7 @@ export async function findBackgroundExecutionId(opts: {
       .where(
         and(
           eq(executions.tenant_id, tenant_id),
+          executionVisibilityFilter(principal),
           eq(executions.workflow_id, wf.id),
           isNull(executions.parent_execution_id),
           gte(executions.created_at, new Date(since)),

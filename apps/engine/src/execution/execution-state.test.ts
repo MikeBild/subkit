@@ -80,7 +80,12 @@ describe("finalizeStepRow — compare-and-set", () => {
       stepId,
       "succeeded",
       { status: "succeeded", output: { late: true }, retry_count: 0, duration_ms: 1 },
-      { output_preview: { late: true }, result_preview: null, result_storage_uri: null },
+      {
+        tenant_id: tenantId,
+        output_preview: { late: true },
+        result_preview: null,
+        result_storage_uri: null,
+      },
     );
 
     const [step] = await db.select().from(executionSteps).where(eq(executionSteps.id, stepId));
@@ -110,7 +115,7 @@ describe("a refused dispatch reaches the audit trail", () => {
         duration_ms: 3,
         ...(code ? { error: { code, message } } : {}),
       },
-      { output_preview: null, result_preview: null, result_storage_uri: null },
+      { tenant_id: tenantId, output_preview: null, result_preview: null, result_storage_uri: null },
     );
     return db
       .select()

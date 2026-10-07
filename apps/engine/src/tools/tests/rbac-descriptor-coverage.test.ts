@@ -47,7 +47,6 @@ const UNGATED_BY_DESIGN: Readonly<Record<string, readonly string[]>> = {
     "get_subscription",
     "get_token_budget",
     "get_workflow",
-    "inspect_execution_step",
     "inspect_role",
     "inspect_workflow",
     "list_attachments",
@@ -118,10 +117,10 @@ describe("MCP RBAC descriptor coverage", () => {
     const knownGap = UNGATED_BY_DESIGN["known gap — needs a permission"] ?? [];
 
     expect(byDesign.length, "deliberate exemptions").toBe(19);
-    expect(knownGap.length, "known gaps still needing a permission").toBe(40);
-    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(59);
-    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(59);
-    expect(ungatedIn("product").length, "product catalog, ungated").toBe(39);
+    expect(knownGap.length, "known gaps still needing a permission").toBe(39);
+    expect(ALLOWED.size, "the list has no duplicates across groups").toBe(58);
+    expect(ungatedIn("admin").length, "admin catalog, ungated").toBe(58);
+    expect(ungatedIn("product").length, "product catalog, ungated").toBe(38);
   });
 
   test("the audit trail is gated on MCP exactly as it is over HTTP", () => {
@@ -143,6 +142,15 @@ describe("MCP RBAC descriptor coverage", () => {
         .list({ surface: "mcp", mcpMode })
         .find((descriptor) => descriptor.name === "probe_connector");
       expect(probe?.rbac?.permission).toBe("connector:read");
+    }
+  });
+
+  test("persisted execution steps require execution read permission on MCP", () => {
+    for (const mcpMode of ["product", "authoring", "admin"] as const) {
+      const inspection = conversationToolProvider
+        .list({ surface: "mcp", mcpMode })
+        .find((descriptor) => descriptor.name === "inspect_execution_step");
+      expect(inspection?.rbac?.permission).toBe("execution:read");
     }
   });
 });

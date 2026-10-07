@@ -6,7 +6,9 @@ import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
+  assertCallerExecutionSource,
   assertExecutionAuthorityCurrent,
+  authorizationContextFromPrincipal,
   finalizeExecution,
   type RunExecutionSource,
   runExecution,
@@ -14,6 +16,7 @@ import {
 import type { RequestSource } from "../../../observability/index.ts";
 import type { ExecutionRunJob } from "../../../queue/index.ts";
 import { EXECUTION_RUN_QUEUE, getBoss } from "../../../queue/index.ts";
+import { normalizeWorkflowRunInput } from "../../../workflows/index.ts";
 import { BadRequestError, HttpError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
@@ -46,13 +49,17 @@ const runExecutionRoute = createRoute({
       content: { "application/json": { schema: RunResponseSchema } },
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    403: {
+      description: "Caller identity or workflow permission does not allow this run",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     404: {
       description: "Workflow not found",
       content: { "application/json": { schema: ErrorSchema } },
     },
     409: {
       description:
-        "Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`.",
+        "Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`.",
       content: { "application/json": { schema: ErrorSchema } },
     },
   },
@@ -101,6 +108,15 @@ export function runRequestSource(c: Context, declared?: ClientDeclaredRunSource)
   return heldByKey ? (declared ?? "api") : "api";
 }
 
+export function enforceAsyncAuthentication(principal: ResolvedPrincipal): void {
+  if (authorizationContextFromPrincipal(principal)) return;
+  throw new HttpError(
+    400,
+    "execution_authentication_unsupported",
+    "This authentication source does not support asynchronous execution.",
+  );
+}
+
 async function enforceWorkflowAllowlist(
   principal: ResolvedPrincipal,
   body: z.infer<typeof RuntimeRunBodySchema>,
@@ -144,8 +160,14 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
       });
     }
     const body = runtimeBody.data;
-    await enforceWorkflowAllowlist(principal, body, db);
     const request_source = runRequestSource(c, body.request_source);
+    try {
+      assertCallerExecutionSource(principal, body.source);
+    } catch (error) {
+      return admissionRefusal(error, { db, principal, request_source });
+    }
+    if (body.source === "saved" && body.async) enforceAsyncAuthentication(principal);
+    await enforceWorkflowAllowlist(principal, body, db);
 
     const idempotencyKey =
       body.source === "saved"
@@ -180,11 +202,12 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
             execution_authority_id: body.execution_authority_id,
             execution_environment: execution_mode,
             request_source,
-            input: body.input ?? null,
+            input: body.input,
             idempotency_key: idempotencyKey ?? undefined,
             hold_writes: body.hold_writes,
           },
           db,
+          principal,
         );
         if (body.async && admitted.status === "queued" && admitted.execution_authority_id) {
           await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);
@@ -216,7 +239,6 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
               tenant_id: principal.tenant_id,
               workflow_id: body.workflow_id,
               execution_id: admitted.execution_id,
-              input: admitted.input,
               request_source,
               trace_id: c.get("trace_id") ?? null,
               execution_mode,
@@ -307,7 +329,11 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
         db,
         tenant_id: principal.tenant_id,
         source,
-        input: "input" in body ? (body.input ?? null) : null,
+        input:
+          normalizeWorkflowRunInput(
+            body.input,
+            body.source === "draft" ? body.definition.input_schema : undefined,
+          ) ?? null,
         options: {
           request_source,
           principal,

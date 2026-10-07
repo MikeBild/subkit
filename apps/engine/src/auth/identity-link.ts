@@ -1,4 +1,5 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { AuditAction, auditAwait } from "../audit/index.ts";
 import type { Db } from "../db/client.ts";
 import { userIdentities, users } from "../db/schema/index.ts";
 import { builtinRoleId } from "../rbac/roles.ts";
@@ -21,6 +22,8 @@ export interface ResolveProviderIdentityOptions {
   tenantId: string;
   providerId: string;
   subject: string;
+  issuerUrl?: string;
+  productId?: string;
   email: string;
   linkByEmail: boolean;
   allowCreate: boolean;
@@ -37,8 +40,16 @@ export async function resolveProviderIdentity(
   const email = options.email.trim().toLowerCase();
 
   return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${options.tenantId}:${options.providerId}:identity`}, 0))`,
+    );
     const existing = await tx
-      .select({ user: users, identityId: userIdentities.id })
+      .select({
+        user: users,
+        identityId: userIdentities.id,
+        issuer: userIdentities.issuer_url,
+        product: userIdentities.product_id,
+      })
       .from(userIdentities)
       .innerJoin(
         users,
@@ -53,18 +64,53 @@ export async function resolveProviderIdentity(
       )
       .limit(1);
     if (existing[0]) {
+      const binding = existing[0];
+      if (
+        binding.user.deleted_at ||
+        binding.user.status === "disabled" ||
+        (binding.issuer !== null && binding.issuer !== (options.issuerUrl ?? null)) ||
+        binding.product !== (options.productId ?? null) ||
+        (options.productId && binding.issuer === null)
+      )
+        throw new IdentityLinkConflictError();
+      const pinIssuer = binding.issuer === null && options.issuerUrl !== undefined;
       await tx
         .update(userIdentities)
-        .set({ email, last_seen_at: new Date(), updated_at: new Date() })
+        .set({
+          email,
+          ...(pinIssuer ? { issuer_url: options.issuerUrl } : {}),
+          last_seen_at: new Date(),
+          updated_at: new Date(),
+        })
         .where(
           and(
             eq(userIdentities.tenant_id, options.tenantId),
             eq(userIdentities.id, existing[0].identityId),
           ),
         );
-      return { user: existing[0].user, createdUser: false, linkedIdentity: false };
+      if (pinIssuer)
+        await auditAwait(
+          {
+            tenant_id: options.tenantId,
+            actor_type: "user",
+            actor_id: binding.user.id,
+            action: AuditAction.USER_IDENTITY_LINKED,
+            resource_type: "user",
+            resource_id: binding.user.id,
+            result: "success",
+            metadata: {
+              provider_id: options.providerId,
+              issuer_url: options.issuerUrl,
+              product_id: null,
+              source: "legacy_identity_pin",
+            },
+          },
+          tx,
+        );
+      return { user: binding.user, createdUser: false, linkedIdentity: false };
     }
 
+    if (options.productId) throw new SignupDisabledError();
     let user = options.linkByEmail
       ? (
           await tx
@@ -90,6 +136,7 @@ export async function resolveProviderIdentity(
         .returning();
       createdUser = Boolean(user);
       if (!user) {
+        if (!options.linkByEmail) throw new IdentityLinkConflictError();
         [user] = await tx
           .select()
           .from(users)
@@ -120,6 +167,8 @@ export async function resolveProviderIdentity(
         tenant_id: options.tenantId,
         user_id: user.id,
         provider_id: options.providerId,
+        issuer_url: options.issuerUrl ?? null,
+        product_id: options.productId ?? null,
         subject: options.subject,
         email,
       })

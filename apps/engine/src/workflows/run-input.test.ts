@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { normalizeWorkflowRunInput, workflowInputObjectKeys } from "./run-input.ts";
 
 describe("normalizeWorkflowRunInput", () => {
+  test("defaults only omitted object input and preserves explicit null and schema-free input", () => {
+    expect(normalizeWorkflowRunInput(undefined, { type: "object" })).toEqual({});
+    expect(normalizeWorkflowRunInput(null, { type: "object" })).toBeNull();
+    expect(normalizeWorkflowRunInput(undefined)).toBeUndefined();
+    expect(normalizeWorkflowRunInput(undefined, { type: "array" })).toBeUndefined();
+    expect(normalizeWorkflowRunInput('{"value":1}', { type: "object" })).toEqual({ value: 1 });
+  });
   test("parses a stringified object payload", () => {
     expect(normalizeWorkflowRunInput('{"date":"tomorrow +1"}')).toEqual({
       date: "tomorrow +1",

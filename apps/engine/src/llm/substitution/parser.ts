@@ -3,6 +3,7 @@ export type PlaceholderKind =
   | "connector_url"
   | "connector_config"
   | "input"
+  | "caller"
   | "scope"
   | "item"
   | "state";
@@ -25,6 +26,7 @@ export interface ParseError {
     | "malformed_cred"
     | "malformed_connector"
     | "malformed_input"
+    | "malformed_caller"
     | "malformed_scope"
     | "malformed_item"
     | "malformed_state"
@@ -283,6 +285,19 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
       }
       return { ok: true, token: { kind: "input", path: pathParts, span, raw } };
     }
+    case "caller": {
+      if (parts.length !== 2 || !IDENT.test(parts[1] ?? "")) {
+        return {
+          ok: false,
+          error: {
+            code: "malformed_caller",
+            message: `expected \${caller.<field>}`,
+            span,
+          },
+        };
+      }
+      return { ok: true, token: { kind: "caller", path: [parts[1]!], span, raw } };
+    }
     case "scope": {
       if (parts.length < 3) {
         return {
@@ -361,7 +376,7 @@ function parseBody(body: string, span: { start: number; end: number }, raw: stri
         ok: false,
         error: {
           code: "unknown_kind",
-          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, scope, item, state`,
+          message: `unknown placeholder kind '${head}'; expected one of: cred, connector, input, caller, scope, item, state`,
           span,
         },
       };

@@ -297,6 +297,24 @@ describe("MCP tools/call — wf_<slug> end-to-end (T7)", () => {
           ),
         );
       expect(authority?.reserved_runs).toBe(2);
+      const rows = await ctx.db
+        .select({
+          caller: executions.caller_context,
+          held: executions.hold_writes,
+          authorization: executions.authorization_context,
+        })
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, fixture.id)));
+      expect(rows).toHaveLength(3);
+      expect(rows.filter((row) => row.held)).toHaveLength(1);
+      for (const row of rows) expect(row.authorization?.source.kind).toBe("api_key");
+      for (const row of rows)
+        expect(row.caller).toMatchObject({
+          tenantId: ctx.tenantId,
+          principalId: ctx.userId,
+          principalKind: "user",
+          productId: null,
+        });
     } finally {
       await client.close();
     }

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { AuditAction } from "../apps/engine/src/audit/types.ts";
@@ -60,6 +61,13 @@ function freePort() {
 async function startPreviewServer() {
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const previewDir = await mkdtemp(resolve(tmpdir(), "subkit-cockpit-preview-"));
+  try {
+    await cp(resolve("assets/cockpit"), previewDir, { recursive: true });
+  } catch (error) {
+    await rm(previewDir, { recursive: true, force: true });
+    throw error;
+  }
   const child = spawn(
     "bunx",
     [
@@ -72,25 +80,37 @@ async function startPreviewServer() {
       "--port",
       String(port),
       "--strictPort",
+      "--outDir",
+      previewDir,
     ],
     { stdio: ["ignore", "ignore", "inherit"] },
   );
-  const stop = () => {
-    if (!child.killed) child.kill("SIGTERM");
+  const stop = async () => {
+    try {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      await new Promise((resolve, reject) => {
+        child.once("exit", resolve);
+        child.once("error", reject);
+        if (!child.killed) child.kill("SIGTERM");
+      });
+    } finally {
+      await rm(previewDir, { recursive: true, force: true });
+    }
   };
-  process.on("exit", stop);
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode !== null)
+    if (child.exitCode !== null) {
+      await stop();
       throw new Error(
         `Cockpit visual sweep NOT TAKEN — the preview server exited with code ${child.exitCode} before serving ${baseUrl}/cockpit/.`,
       );
+    }
     const answered = await fetch(`${baseUrl}/cockpit/`)
       .then((res) => res.ok)
       .catch(() => false);
     if (answered) return { baseUrl, stop };
     await new Promise((ok) => setTimeout(ok, 250));
   }
-  stop();
+  await stop();
   throw new Error(
     `Cockpit visual sweep NOT TAKEN — the preview server never answered on ${baseUrl}/cockpit/ within 30 s.`,
   );
@@ -3958,726 +3978,766 @@ const stand = standAt({
 
 assertAuditFixtureActionsAreReal();
 
-const browser = await chromium.launch({ headless: true });
-const errors = [];
-const locales = [
-  { name: "de", browser: "de-DE" },
-  { name: "en", browser: "en-US" },
-];
-const variants = locales
-  .flatMap((locale) =>
-    ["light", "dark"].map((theme) => ({
-      ...locale,
-      theme,
-      artifact: `${locale.name}-${theme}`,
-    })),
-  )
-  .filter((variant) => sweepList("COCKPIT_SWEEP_VARIANTS")?.includes(variant.artifact) ?? true);
-const viewports = [
-  { name: "desktop", width: 1440, height: 1000 },
-  { name: "wide", width: 1990, height: 1090 },
-  { name: "mobile", width: 390, height: 844 },
-].filter((viewport) => sweepList("COCKPIT_SWEEP_VIEWPORTS")?.includes(viewport.name) ?? true);
+let browser;
+let sweepFailed = false;
+let sweepFailure;
+try {
+  browser = await chromium.launch({ headless: true });
+  const errors = [];
+  const locales = [
+    { name: "de", browser: "de-DE" },
+    { name: "en", browser: "en-US" },
+  ];
+  const variants = locales
+    .flatMap((locale) =>
+      ["light", "dark"].map((theme) => ({
+        ...locale,
+        theme,
+        artifact: `${locale.name}-${theme}`,
+      })),
+    )
+    .filter((variant) => sweepList("COCKPIT_SWEEP_VARIANTS")?.includes(variant.artifact) ?? true);
+  const viewports = [
+    { name: "desktop", width: 1440, height: 1000 },
+    { name: "wide", width: 1990, height: 1090 },
+    { name: "mobile", width: 390, height: 844 },
+  ].filter((viewport) => sweepList("COCKPIT_SWEEP_VIEWPORTS")?.includes(viewport.name) ?? true);
 
-for (const locale of variants) {
-  for (const viewport of viewports) {
-    const context = await browser.newContext({
-      viewport: { width: viewport.width, height: viewport.height },
-      locale: locale.browser,
-    });
-    await context.addInitScript(
-      ({ language, theme }) => {
-        localStorage.setItem("sk-cockpit-locale", language);
-        localStorage.setItem("sk-cockpit-theme", theme);
-      },
-      { language: locale.name, theme: locale.theme },
-    );
-    await context.addInitScript(() => {
-      document.addEventListener("DOMContentLoaded", () => {
-        const style = document.createElement("style");
-        style.textContent = "::-webkit-scrollbar{width:15px;height:15px}";
-        document.head.append(style);
+  for (const locale of variants) {
+    for (const viewport of viewports) {
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+        locale: locale.browser,
       });
-    });
-    const tooltips = await watchUnpromptedTooltips(context);
-    const page = await context.newPage();
-    page.on("pageerror", (error) => {
-      const message = `${locale.artifact}/${viewport.name}: ${error.message}`;
-      errors.push(message);
-      console.error(message);
-    });
-    page.on("console", (message) => {
-      if (message.type() === "error")
-        console.error(`${locale.artifact}/${viewport.name}: ${message.text()}`);
-    });
-    await page.route("**/v1/**", mockApi);
-    const headingLeft = new Map();
-    for (const route of sweptRoutes) {
-      const artifactRoute = artifactRouteName(route);
-      await stand.visit(page, route);
-      try {
-        await page.locator(markerFor(route)).waitFor({ state: "visible" });
-      } catch (error) {
-        const body = await page
-          .locator("body")
-          .innerText()
-          .catch(() => "body unavailable");
-        throw new Error(
-          `${locale.artifact}/${viewport.name}/${route} did not mount: ${body.slice(0, 1000)}`,
-          { cause: error },
-        );
-      }
-      await page
-        .locator('[data-testid="data-table-retry"]')
-        .waitFor({ state: "hidden" })
-        .catch(() => {});
-      for (const errorSelector of [
-        '[data-testid="data-table-retry"]',
-        '[data-testid="attention-error"]',
-      ]) {
-        if (
-          await page
-            .locator(errorSelector)
-            .isVisible()
-            .catch(() => false)
-        )
-          throw new Error(`${locale.artifact}/${viewport.name}/${route} displays a resource error`);
-      }
-      const text = await page.locator("body").innerText();
-      await assertNoVisibleUuids(
-        page.locator("body"),
-        `${locale.artifact}/${viewport.name}/${route}`,
+      await context.addInitScript(
+        ({ language, theme }) => {
+          localStorage.setItem("sk-cockpit-locale", language);
+          localStorage.setItem("sk-cockpit-theme", theme);
+        },
+        { language: locale.name, theme: locale.theme },
       );
-      if ((await page.locator("html").getAttribute("lang")) !== locale.name)
-        throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong locale`);
-      if (!documentThemeMatches(await page.locator("html").getAttribute("class"), locale.theme))
-        throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong theme`);
-      await assertViewport(page, `${locale.artifact}/${viewport.name}/${route}`);
-      await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
-      await assertHeadingAlignment(
-        page,
-        `${locale.artifact}/${viewport.name}/${route}`,
-        route,
-        viewport.width >= 1024,
-      );
-      const migrated = patternMigratedView(route);
-      if (migrated !== null)
-        await assertSingleTriggers(page, `${locale.artifact}/${viewport.name}/${route}`, {
-          root: patternViewRoot(migrated),
-          ...(migrated === "chat" ? { content: TRANSCRIPT.content } : {}),
+      await context.addInitScript(() => {
+        document.addEventListener("DOMContentLoaded", () => {
+          const style = document.createElement("style");
+          style.textContent = "::-webkit-scrollbar{width:15px;height:15px}";
+          document.head.append(style);
         });
-      await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
-      await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "")
-        await assertOverviewHostile(
-          page,
-          `${locale.artifact}/${viewport.name}/overview`,
-          locale.name,
+      });
+      const tooltips = await watchUnpromptedTooltips(context);
+      const page = await context.newPage();
+      page.on("pageerror", (error) => {
+        const message = `${locale.artifact}/${viewport.name}: ${error.message}`;
+        errors.push(message);
+        console.error(message);
+      });
+      page.on("console", (message) => {
+        if (message.type() === "error")
+          console.error(`${locale.artifact}/${viewport.name}: ${message.text()}`);
+      });
+      await page.route("**/v1/**", mockApi);
+      const headingLeft = new Map();
+      for (const route of sweptRoutes) {
+        const artifactRoute = artifactRouteName(route);
+        await stand.visit(page, route);
+        try {
+          await page.locator(markerFor(route)).waitFor({ state: "visible" });
+        } catch (error) {
+          const body = await page
+            .locator("body")
+            .innerText()
+            .catch(() => "body unavailable");
+          throw new Error(
+            `${locale.artifact}/${viewport.name}/${route} did not mount: ${body.slice(0, 1000)}`,
+            { cause: error },
+          );
+        }
+        await page
+          .locator('[data-testid="data-table-retry"]')
+          .waitFor({ state: "hidden" })
+          .catch(() => {});
+        for (const errorSelector of [
+          '[data-testid="data-table-retry"]',
+          '[data-testid="attention-error"]',
+        ]) {
+          if (
+            await page
+              .locator(errorSelector)
+              .isVisible()
+              .catch(() => false)
+          )
+            throw new Error(
+              `${locale.artifact}/${viewport.name}/${route} displays a resource error`,
+            );
+        }
+        const text = await page.locator("body").innerText();
+        await assertNoVisibleUuids(
+          page.locator("body"),
+          `${locale.artifact}/${viewport.name}/${route}`,
         );
-      if (route.startsWith("connectors?health="))
-        await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "usage")
-        await assertUsageOrigins(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "settings?tab=notifications")
-        await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route.startsWith("audit?") && route.includes("action="))
-        await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "chat") await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (
-        route === "usage" &&
-        (await page.locator('[data-family-kpi-id], [data-testid="operations-bar"]').count()) > 0
-      )
-        throw new Error(
-          `${locale.artifact}/${viewport.name}/usage: the operating figures stand here a second time`,
-        );
-      if (
-        route === "workflows" &&
-        ((await page.getByTestId("workflow-health-engine-wording").count()) > 0 ||
-          /Wortlaut der Engine|Wording from the engine/.test(text))
-      )
-        throw new Error(
-          `${locale.artifact}/${viewport.name}/workflows: a list row repeats the engine's wording`,
-        );
-      if (route === "?runs=all")
-        await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (/^\?run=.+/.test(route))
-        await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`, locale.name);
-      if (/^workflows\/.+/.test(route))
-        await assertWorkflowDetail(
+        if ((await page.locator("html").getAttribute("lang")) !== locale.name)
+          throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong locale`);
+        if (!documentThemeMatches(await page.locator("html").getAttribute("class"), locale.theme))
+          throw new Error(`${locale.artifact}/${viewport.name}/${route} uses the wrong theme`);
+        await assertViewport(page, `${locale.artifact}/${viewport.name}/${route}`);
+        await assertTables(page, `${locale.artifact}/${viewport.name}/${route}`);
+        await assertHeadingAlignment(
           page,
           `${locale.artifact}/${viewport.name}/${route}`,
-          locale.name,
+          route,
+          viewport.width >= 1024,
         );
-      if (route === "settings?section=auth")
-        await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
-      if (route === "access") {
-        const landed = new URL(page.url());
-        if (landed.pathname !== "/cockpit/people" || landed.searchParams.get("section") !== "roles")
-          throw new Error(
-            `${locale.artifact}/${viewport.name}/access lands on ${landed.pathname}${landed.search}, not the roles of /people`,
+        const migrated = patternMigratedView(route);
+        if (migrated !== null)
+          await assertSingleTriggers(page, `${locale.artifact}/${viewport.name}/${route}`, {
+            root: patternViewRoot(migrated),
+            ...(migrated === "chat" ? { content: TRANSCRIPT.content } : {}),
+          });
+        await assertInteractiveSelectors(page, `${locale.artifact}/${viewport.name}/${route}`);
+        await assertBlankLists(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route === "")
+          await assertOverviewHostile(
+            page,
+            `${locale.artifact}/${viewport.name}/overview`,
+            locale.name,
           );
-        const localizedRoles =
-          locale.name === "de"
-            ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]
-            : [
-                "Metrics scraper",
-                "Portal token user",
-                "Can read Prometheus metrics",
-                "portal access tokens",
-              ];
-        for (const expected of localizedRoles) {
-          if (!text.includes(expected)) {
+        if (route.startsWith("connectors?health="))
+          await assertUnhealthyConnectorsOnly(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route === "usage")
+          await assertUsageOrigins(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route === "settings?tab=notifications")
+          await assertNotificationRules(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route.startsWith("audit?") && route.includes("action="))
+          await assertAuditActionChip(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route === "chat")
+          await assertChat(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (
+          route === "usage" &&
+          (await page.locator('[data-family-kpi-id], [data-testid="operations-bar"]').count()) > 0
+        )
+          throw new Error(
+            `${locale.artifact}/${viewport.name}/usage: the operating figures stand here a second time`,
+          );
+        if (
+          route === "workflows" &&
+          ((await page.getByTestId("workflow-health-engine-wording").count()) > 0 ||
+            /Wortlaut der Engine|Wording from the engine/.test(text))
+        )
+          throw new Error(
+            `${locale.artifact}/${viewport.name}/workflows: a list row repeats the engine's wording`,
+          );
+        if (route === "?runs=all")
+          await assertOpenOnce(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (/^\?run=.+/.test(route))
+          await assertRunDetail(page, `${locale.artifact}/${viewport.name}/${route}`, locale.name);
+        if (/^workflows\/.+/.test(route))
+          await assertWorkflowDetail(
+            page,
+            `${locale.artifact}/${viewport.name}/${route}`,
+            locale.name,
+          );
+        if (route === "settings?section=auth")
+          await assertAuthProviderSettings(page, `${locale.artifact}/${viewport.name}/${route}`);
+        if (route === "access") {
+          const landed = new URL(page.url());
+          if (
+            landed.pathname !== "/cockpit/people" ||
+            landed.searchParams.get("section") !== "roles"
+          )
             throw new Error(
-              `${locale.artifact}/${viewport.name}/${route} misses localized built-in role text: ${expected}`,
+              `${locale.artifact}/${viewport.name}/access lands on ${landed.pathname}${landed.search}, not the roles of /people`,
             );
+          const localizedRoles =
+            locale.name === "de"
+              ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]
+              : [
+                  "Metrics scraper",
+                  "Portal token user",
+                  "Can read Prometheus metrics",
+                  "portal access tokens",
+                ];
+          for (const expected of localizedRoles) {
+            if (!text.includes(expected)) {
+              throw new Error(
+                `${locale.artifact}/${viewport.name}/${route} misses localized built-in role text: ${expected}`,
+              );
+            }
           }
         }
-      }
-      if (route === "" || route === "workflows" || route === "usage")
-        headingLeft.set(
-          route,
-          await page.evaluate(() =>
-            Math.round(
-              document.querySelector('[data-testid="page-content"] h1')?.getBoundingClientRect()
-                .left ?? -1,
+        if (route === "" || route === "workflows" || route === "usage")
+          headingLeft.set(
+            route,
+            await page.evaluate(() =>
+              Math.round(
+                document.querySelector('[data-testid="page-content"] h1')?.getBoundingClientRect()
+                  .left ?? -1,
+              ),
             ),
-          ),
-        );
-      tooltips.assertNone(`${locale.artifact}/${viewport.name}/${route}`);
-      await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
-        fullPage: false,
-      });
-      if (route === "")
-        await assertReviewCloseLeavesNoTrail(page, `${locale.artifact}/${viewport.name}/overview`);
-      if (route in ENDLESS_LISTS)
-        await assertEndlessList(page, `${locale.artifact}/${viewport.name}/${route}`, route);
-    }
-    if (!focused && new Set(headingLeft.values()).size !== 1)
-      throw new Error(
-        `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
-      );
-    if (standOn(verifyOverviewCalm))
-      await verifyOverviewCalm(
-        page,
-        `${locale.artifact}/${viewport.name}/overview-calm`,
-        locale.name,
-        () => shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
-      );
-    if (viewport.name === "desktop")
-      if (standOn(verifyInstallationPages))
-        await verifyInstallationPages(
-          page,
-          stand,
-          locale.name,
-          (state) =>
-            shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
-              fullPage: false,
-            }),
-          {
-            settingsSections: SETTINGS_SECTION_COUNT,
-            viewport,
-            settingRows: ENGINE_SETTINGS.map((item) => ({
-              path: item.path,
-              scope: item.meta.scope,
-              source: item.meta.source,
-              description: item.meta.description ?? null,
-            })),
-          },
-        );
-    if (standOn(verifyApiAccess))
-      await verifyApiAccess(page, stand, locale.name, {
-        realClients: REAL_OAUTH_CLIENTS,
-        deadClients: OAUTH_CLIENTS.filter(
-          (item) => !item.disabled_at && item.live_connections === 0,
-        ).length,
-        disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
-        activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
-        revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
-        grantsToRenew: CONNECTIONS.filter((item) =>
-          ["expiring", "expired", "unreadable"].includes(item.state),
-        ).length,
-      });
-    if (standOn(verifyScheduleHolds))
-      await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyHookHolds))
-      await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifyChatApprovals))
-      await verifyChatApprovals(page, stand, conversation, locale.name, async (state) => {
-        await assertChatLayout(page, `${locale.artifact}/${viewport.name}/chat-approval-${state}`);
-        await shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+          );
+        tooltips.assertNone(`${locale.artifact}/${viewport.name}/${route}`);
+        await shoot(page, `${locale.artifact}-${viewport.name}-${artifactRoute}`, {
           fullPage: false,
         });
-      });
-    if (standOn(verifyChatDecidedApproval))
-      await verifyChatDecidedApproval(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyChatChoices))
-      await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyChatReplies))
-      await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifyChatHeader))
-      await verifyChatHeader(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyChatStability))
-      await verifyChatStability(
-        page,
-        stand,
-        conversation,
-        locale.name,
-        `${locale.artifact}/${viewport.name}/chat-stability`,
-      );
-    if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
-    if (viewport.name === "desktop")
-      if (standOn(verifyLoadFailures))
-        await verifyLoadFailures(page, stand, conversation, (state) =>
-          shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+        if (route === "")
+          await assertReviewCloseLeavesNoTrail(
+            page,
+            `${locale.artifact}/${viewport.name}/overview`,
+          );
+        if (route in ENDLESS_LISTS)
+          await assertEndlessList(page, `${locale.artifact}/${viewport.name}/${route}`, route);
+      }
+      if (!focused && new Set(headingLeft.values()).size !== 1)
+        throw new Error(
+          `${locale.artifact}/${viewport.name}: page titles start at different x — ${JSON.stringify(Object.fromEntries(headingLeft))}`,
+        );
+      if (standOn(verifyOverviewCalm))
+        await verifyOverviewCalm(
+          page,
+          `${locale.artifact}/${viewport.name}/overview-calm`,
+          locale.name,
+          () =>
+            shoot(page, `${locale.artifact}-${viewport.name}-overview-calm`, { fullPage: false }),
+        );
+      if (viewport.name === "desktop")
+        if (standOn(verifyInstallationPages))
+          await verifyInstallationPages(
+            page,
+            stand,
+            locale.name,
+            (state) =>
+              shoot(page, `${locale.artifact}-${viewport.name}-installation-${state}`, {
+                fullPage: false,
+              }),
+            {
+              settingsSections: SETTINGS_SECTION_COUNT,
+              viewport,
+              settingRows: ENGINE_SETTINGS.map((item) => ({
+                path: item.path,
+                scope: item.meta.scope,
+                source: item.meta.source,
+                description: item.meta.description ?? null,
+              })),
+            },
+          );
+      if (standOn(verifyApiAccess))
+        await verifyApiAccess(page, stand, locale.name, {
+          realClients: REAL_OAUTH_CLIENTS,
+          deadClients: OAUTH_CLIENTS.filter(
+            (item) => !item.disabled_at && item.live_connections === 0,
+          ).length,
+          disabledClients: OAUTH_CLIENTS.filter((item) => item.disabled_at).length,
+          activeKeys: API_KEYS.filter((item) => !item.revoked_at).length,
+          revokedKeys: API_KEYS.filter((item) => item.revoked_at).length,
+          grantsToRenew: CONNECTIONS.filter((item) =>
+            ["expiring", "expired", "unreadable"].includes(item.state),
+          ).length,
+        });
+      if (standOn(verifyScheduleHolds))
+        await verifyScheduleHolds(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-schedule-held-${state}`, {
             fullPage: false,
           }),
         );
-    if (standOn(verifyChatOAuth)) await verifyChatOAuth(page, stand, conversation, locale.name);
-    if (standOn(verifyChatActivation))
-      await verifyChatActivation(page, stand, conversation, locale.name);
-    if (standOn(verifyChatActivity))
-      await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyConnectorDetail))
-      await verifyConnectorDetail(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
-      );
-    if (standOn(verifyCreateConnector))
-      await verifyCreateConnector(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifyFirstClickOpens))
-      await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
-    if (standOn(verifyPeopleLoadsPerTab))
-      await verifyPeopleLoadsPerTab(page, stand, `${locale.artifact}/${viewport.name}/people-tabs`);
-    if (standOn(verifyRunSheet))
-      await verifyRunSheet(
-        page,
-        stand,
-        uuid,
-        locale.name,
-        `${locale.artifact}/${viewport.name}/run-sheet`,
-      );
-    if (standOn(verifyRunsOverCatalog))
-      await verifyRunsOverCatalog(
-        page,
-        stand,
-        `${locale.artifact}/${viewport.name}/runs-over-catalog`,
-      );
-    if (standOn(verifyRunDialog))
-      await verifyRunDialog(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifyDetailAction))
-      await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifyWorkflowPreview)) await verifyWorkflowPreview(page, stand, uuid, locale.name);
-    if (standOn(verifyWorkflowPage))
-      await verifyWorkflowPage(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
-      );
-    if (standOn(verifySessionExpiry)) await verifySessionExpiry(page, stand, uuid, locale.name);
-    if (standOn(verifyWorkflowAuthorities))
-      await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyGrantDialog))
-      await verifyGrantDialog(page, stand, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyChatReviewCard))
-      await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyGateDiagnosis))
-      await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
-          fullPage: false,
-        }),
-      );
-    if (standOn(verifyDecisionLifecycle))
-      await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
-        shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, { fullPage: false }),
-      );
-    if (viewport.name === "desktop" && !focused) {
-      for (const resource of ["workflows", "connectors", "knowledge", "skills"]) {
-        await stand.visit(page, `${resource}/${uuid}`);
-        await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
-        await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await assertBlankLists(page, `${locale.artifact}/desktop/${resource}-detail`);
-        await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, {
-          fullPage: false,
-        });
-      }
-      {
-        const where = `${locale.artifact}/desktop/skill-proposal`;
-        await stand.visit(page, "skills");
-        await page.locator('[data-testid="catalog-skills"]').waitFor({ state: "visible" });
-        const listed = await page.locator('[data-testid="catalog-skills"]').innerText();
-        for (const advisory of ["capabilities", "Recurring failure"])
-          if (listed.includes(advisory))
-            throw new Error(`${where}: advisory candidate "${advisory}" listed as a proposal`);
-        await page.locator('[data-testid="skills-row-link-0"]').click();
-        const sheet = page.locator('[data-testid="skill-proposal"]');
-        await sheet.waitFor({ state: "visible" });
-        for (const part of ["skill-proposal-preview", "skill-proposal-facts"])
-          await sheet.locator(`[data-testid="${part}"]`).waitFor({ state: "visible" });
-        for (const verb of ["skill-proposal-accept", "skill-proposal-reject"])
-          if ((await sheet.locator(`[data-testid="${verb}"]`).count()) !== 1)
-            throw new Error(`${where}: expected exactly one ${verb}`);
-        await page.waitForTimeout(300);
-        await assertInteractiveSelectors(page, where);
-        await shoot(page, `${locale.artifact}-desktop-skill-proposal`, { fullPage: false });
-        await sheet.locator('[data-testid="skill-proposal-reject"]').click();
-        await page
-          .locator('[data-testid="skill-proposal-reject-confirm"]')
-          .waitFor({ state: "visible" });
-        await shoot(page, `${locale.artifact}-desktop-skill-proposal-reject`, { fullPage: false });
-        await page.keyboard.press("Escape");
-        await page
-          .locator('[data-testid="skill-proposal-reject-confirm"]')
-          .waitFor({ state: "hidden" });
-        await page.keyboard.press("Escape");
-        await sheet.waitFor({ state: "hidden" });
-      }
-      {
-        const where = `${locale.artifact}/desktop/workflow-drafting-context`;
-        await stand.visit(page, `workflows/${uuid}?tab=structure`);
-        const section = page.locator('[data-testid="workflow-drafting-context"]');
-        await section.waitFor({ state: "visible" });
-        await section.locator('[data-testid="workflow-drafting-context-toggle"]').click();
-        const notes = section.locator('[data-testid="workflow-drafting-context-notes"]');
-        await notes.waitFor({ state: "visible" });
-        const shown = await notes.innerText();
-        for (const fact of [
-          "workflow-drafting-fact-inputs",
-          "workflow-drafting-fact-output",
-          "workflow-drafting-fact-connectors",
-          "workflow-drafting-fact-steps",
-          "workflow-drafting-fact-state",
-          "workflow-drafting-fact-failure",
-        ])
-          if ((await notes.locator(`[data-testid="${fact}"]`).count()) !== 1)
-            throw new Error(`${where}: the fact "${fact}" is missing`);
-        for (const prose of [
-          "what it does",
-          "consistently",
-          "capabilities",
-          "interne Referenz",
-          "internal reference",
-          "Approving",
-        ])
-          if (shown.includes(prose)) throw new Error(`${where}: a note still reads "${prose}"`);
-        if (shown.includes("Umbenannte Antwortfelder"))
-          throw new Error(`${where}: a proposal is listed as drafting context`);
-        if (shown.includes(uuid)) throw new Error(`${where}: a note shows a raw identifier`);
-        if (await section.getByRole("button", { name: /annehmen|adopt|ablehnen|reject/i }).count())
-          throw new Error(`${where}: drafting context offers a decision`);
-        await notes.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(300);
-        await assertInteractiveSelectors(page, where);
-        await shoot(page, `${locale.artifact}-desktop-workflow-drafting-context`, {
-          fullPage: false,
-        });
-      }
-      let expandedCards = 0;
-      for (const [review, positions] of [
-        [`workflow:${uuid}`, [0, 1]],
-        ["skills", [0]],
-      ]) {
-        await stand.visit(page, `?review=${review}`);
-        await page.locator('[data-testid="attention-review-body"]').waitFor({ state: "visible" });
-        for (const position of positions) {
-          const toggle = page.locator(`[data-testid="review-decision-${position}-toggle"]`);
-          if (!(await toggle.count())) continue;
-          await toggle.first().scrollIntoViewIfNeeded();
-          await toggle.first().click();
-          await page
-            .locator(`[data-testid="review-decision-${position}-detail"]`)
-            .waitFor({ state: "visible", timeout: 10_000 });
-          await page.waitForTimeout(300);
-          await shoot(
+      if (standOn(verifyHookHolds))
+        await verifyHookHolds(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-hook-held-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatApprovals))
+        await verifyChatApprovals(page, stand, conversation, locale.name, async (state) => {
+          await assertChatLayout(
             page,
-            `${locale.artifact}-desktop-review-${review.split(":")[0]}-${position}-expanded`,
-            { fullPage: false },
+            `${locale.artifact}/${viewport.name}/chat-approval-${state}`,
           );
-          expandedCards += 1;
+          await shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+            fullPage: false,
+          });
+        });
+      if (standOn(verifyChatDecidedApproval))
+        await verifyChatDecidedApproval(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-approval-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatChoices))
+        await verifyChatChoices(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-choice-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatReplies))
+        await verifyChatReplies(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-reply-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatHeader))
+        await verifyChatHeader(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-header-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatStability))
+        await verifyChatStability(
+          page,
+          stand,
+          conversation,
+          locale.name,
+          `${locale.artifact}/${viewport.name}/chat-stability`,
+        );
+      if (standOn(verifyChatReauth)) await verifyChatReauth(page, stand, conversation);
+      if (viewport.name === "desktop")
+        if (standOn(verifyLoadFailures))
+          await verifyLoadFailures(page, stand, conversation, (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-load-failed-${state}`, {
+              fullPage: false,
+            }),
+          );
+      if (standOn(verifyChatOAuth)) await verifyChatOAuth(page, stand, conversation, locale.name);
+      if (standOn(verifyChatActivation))
+        await verifyChatActivation(page, stand, conversation, locale.name);
+      if (standOn(verifyChatActivity))
+        await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyConnectorDetail))
+        await verifyConnectorDetail(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: true }),
+        );
+      if (standOn(verifyCreateConnector))
+        await verifyCreateConnector(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+        );
+      if (standOn(verifyFirstClickOpens))
+        await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
+      if (standOn(verifyPeopleLoadsPerTab))
+        await verifyPeopleLoadsPerTab(
+          page,
+          stand,
+          `${locale.artifact}/${viewport.name}/people-tabs`,
+        );
+      if (standOn(verifyRunSheet))
+        await verifyRunSheet(
+          page,
+          stand,
+          uuid,
+          locale.name,
+          `${locale.artifact}/${viewport.name}/run-sheet`,
+        );
+      if (standOn(verifyRunsOverCatalog))
+        await verifyRunsOverCatalog(
+          page,
+          stand,
+          `${locale.artifact}/${viewport.name}/runs-over-catalog`,
+        );
+      if (standOn(verifyRunDialog))
+        await verifyRunDialog(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+        );
+      if (standOn(verifyDetailAction))
+        await verifyDetailAction(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+        );
+      if (standOn(verifyWorkflowPreview))
+        await verifyWorkflowPreview(page, stand, uuid, locale.name);
+      if (standOn(verifyWorkflowPage))
+        await verifyWorkflowPage(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+        );
+      if (standOn(verifySessionExpiry)) await verifySessionExpiry(page, stand, uuid, locale.name);
+      if (standOn(verifyWorkflowAuthorities))
+        await verifyWorkflowAuthorities(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-workflow-authority-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyGrantDialog))
+        await verifyGrantDialog(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-grant-dialog-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyChatReviewCard))
+        await verifyChatReviewCard(page, stand, conversation, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-chat-review-card-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyGateDiagnosis))
+        await verifyGateDiagnosis(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-gate-diagnosis-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyDecisionLifecycle))
+        await verifyDecisionLifecycle(page, stand, uuid, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-decisions-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (viewport.name === "desktop" && !focused) {
+        for (const resource of ["workflows", "connectors", "knowledge", "skills"]) {
+          await stand.visit(page, `${resource}/${uuid}`);
+          await page.locator(`[data-testid="detail-${resource}"]`).waitFor({ state: "visible" });
+          await assertViewport(page, `${locale.artifact}/desktop/${resource}-detail`);
+          await assertTables(page, `${locale.artifact}/desktop/${resource}-detail`);
+          await assertInteractiveSelectors(page, `${locale.artifact}/desktop/${resource}-detail`);
+          await assertBlankLists(page, `${locale.artifact}/desktop/${resource}-detail`);
+          await shoot(page, `${locale.artifact}-desktop-${resource}-detail`, {
+            fullPage: false,
+          });
         }
-      }
-      if (expandedCards === 0) {
-        throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
-      }
+        {
+          const where = `${locale.artifact}/desktop/skill-proposal`;
+          await stand.visit(page, "skills");
+          await page.locator('[data-testid="catalog-skills"]').waitFor({ state: "visible" });
+          const listed = await page.locator('[data-testid="catalog-skills"]').innerText();
+          for (const advisory of ["capabilities", "Recurring failure"])
+            if (listed.includes(advisory))
+              throw new Error(`${where}: advisory candidate "${advisory}" listed as a proposal`);
+          await page.locator('[data-testid="skills-row-link-0"]').click();
+          const sheet = page.locator('[data-testid="skill-proposal"]');
+          await sheet.waitFor({ state: "visible" });
+          for (const part of ["skill-proposal-preview", "skill-proposal-facts"])
+            await sheet.locator(`[data-testid="${part}"]`).waitFor({ state: "visible" });
+          for (const verb of ["skill-proposal-accept", "skill-proposal-reject"])
+            if ((await sheet.locator(`[data-testid="${verb}"]`).count()) !== 1)
+              throw new Error(`${where}: expected exactly one ${verb}`);
+          await page.waitForTimeout(300);
+          await assertInteractiveSelectors(page, where);
+          await shoot(page, `${locale.artifact}-desktop-skill-proposal`, { fullPage: false });
+          await sheet.locator('[data-testid="skill-proposal-reject"]').click();
+          await page
+            .locator('[data-testid="skill-proposal-reject-confirm"]')
+            .waitFor({ state: "visible" });
+          await shoot(page, `${locale.artifact}-desktop-skill-proposal-reject`, {
+            fullPage: false,
+          });
+          await page.keyboard.press("Escape");
+          await page
+            .locator('[data-testid="skill-proposal-reject-confirm"]')
+            .waitFor({ state: "hidden" });
+          await page.keyboard.press("Escape");
+          await sheet.waitFor({ state: "hidden" });
+        }
+        {
+          const where = `${locale.artifact}/desktop/workflow-drafting-context`;
+          await stand.visit(page, `workflows/${uuid}?tab=structure`);
+          const section = page.locator('[data-testid="workflow-drafting-context"]');
+          await section.waitFor({ state: "visible" });
+          await section.locator('[data-testid="workflow-drafting-context-toggle"]').click();
+          const notes = section.locator('[data-testid="workflow-drafting-context-notes"]');
+          await notes.waitFor({ state: "visible" });
+          const shown = await notes.innerText();
+          for (const fact of [
+            "workflow-drafting-fact-inputs",
+            "workflow-drafting-fact-output",
+            "workflow-drafting-fact-connectors",
+            "workflow-drafting-fact-steps",
+            "workflow-drafting-fact-state",
+            "workflow-drafting-fact-failure",
+          ])
+            if ((await notes.locator(`[data-testid="${fact}"]`).count()) !== 1)
+              throw new Error(`${where}: the fact "${fact}" is missing`);
+          for (const prose of [
+            "what it does",
+            "consistently",
+            "capabilities",
+            "interne Referenz",
+            "internal reference",
+            "Approving",
+          ])
+            if (shown.includes(prose)) throw new Error(`${where}: a note still reads "${prose}"`);
+          if (shown.includes("Umbenannte Antwortfelder"))
+            throw new Error(`${where}: a proposal is listed as drafting context`);
+          if (shown.includes(uuid)) throw new Error(`${where}: a note shows a raw identifier`);
+          if (
+            await section.getByRole("button", { name: /annehmen|adopt|ablehnen|reject/i }).count()
+          )
+            throw new Error(`${where}: drafting context offers a decision`);
+          await notes.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(300);
+          await assertInteractiveSelectors(page, where);
+          await shoot(page, `${locale.artifact}-desktop-workflow-drafting-context`, {
+            fullPage: false,
+          });
+        }
+        let expandedCards = 0;
+        for (const [review, positions] of [
+          [`workflow:${uuid}`, [0, 1]],
+          ["skills", [0]],
+        ]) {
+          await stand.visit(page, `?review=${review}`);
+          await page.locator('[data-testid="attention-review-body"]').waitFor({ state: "visible" });
+          for (const position of positions) {
+            const toggle = page.locator(`[data-testid="review-decision-${position}-toggle"]`);
+            if (!(await toggle.count())) continue;
+            await toggle.first().scrollIntoViewIfNeeded();
+            await toggle.first().click();
+            await page
+              .locator(`[data-testid="review-decision-${position}-detail"]`)
+              .waitFor({ state: "visible", timeout: 10_000 });
+            await page.waitForTimeout(300);
+            await shoot(
+              page,
+              `${locale.artifact}-desktop-review-${review.split(":")[0]}-${position}-expanded`,
+              { fullPage: false },
+            );
+            expandedCards += 1;
+          }
+        }
+        if (expandedCards === 0) {
+          throw new Error(`${locale.artifact}: no decision card exposed an expand toggle`);
+        }
 
-      await stand.visit(page, "audit?scope=decisions");
-      await page.locator('[data-testid="resource-audit"]').waitFor({ state: "visible" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-audit-decisions`, {
-        fullPage: false,
-      });
+        await stand.visit(page, "audit?scope=decisions");
+        await page.locator('[data-testid="resource-audit"]').waitFor({ state: "visible" });
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-audit-decisions`, {
+          fullPage: false,
+        });
 
-      await stand.visit(page, "chat");
-      await openConversationList(page);
-      await page.locator('[data-testid="conversation-item-0"]').waitFor({ state: "visible" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-list`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="conversation-toggle-hidden"]').click();
-      await page.locator('[data-testid="conversation-hidden-empty"]').waitFor({ state: "visible" });
-      await shoot(page, `${locale.artifact}-desktop-chat-hidden`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="conversation-toggle-hidden"]').click();
-      await closeConversationList(page);
-      await page.locator('[data-testid="conversation-new"]').click();
-      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
-      if ((await page.getByTestId("chat-summary").count()) !== 0)
-        throw new Error(`${locale.artifact}: a new conversation carries a line under its title`);
-      const newTitle = locale.name === "de" ? "Neue Unterhaltung" : "New conversation";
-      if ((await page.getByTestId("chat-title").innerText()).trim() !== newTitle)
-        throw new Error(`${locale.artifact}: a new conversation is not titled "${newTitle}"`);
-      const modePicker = page.locator('[data-testid="chat-permission-select"]');
-      const autoName = locale.name === "de" ? "Autonom" : "Autonomous";
-      const askName = locale.name === "de" ? "Fragt vorher" : "Asks first";
-      const defaultMode = locale.name === "de" ? "Systemstandard" : "system default";
-      const pillText = async () => ((await modePicker.textContent()) ?? "").trim();
-      if ((await pillText()) !== autoName)
-        throw new Error(
-          `${locale.artifact}: the mode pill reads ${JSON.stringify(await pillText())}, not "${autoName}"`,
-        );
-      if (
+        await stand.visit(page, "chat");
+        await openConversationList(page);
+        await page.locator('[data-testid="conversation-item-0"]').waitFor({ state: "visible" });
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-chat-list`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="conversation-toggle-hidden"]').click();
         await page
-          .getByTestId("chat-mode-gates")
-          .isVisible()
-          .catch(() => false)
-      )
-        throw new Error(`${locale.artifact}: the gate matrix stands permanently in the header`);
-      const gatesFor = async () => {
-        await page.getByTestId("chat-mode-explain").click();
-        const gates = page.getByTestId("chat-mode-gates");
-        await gates.waitFor({ state: "visible" });
-        const text = await gates.innerText();
-        await page.keyboard.press("Escape");
-        await gates.waitFor({ state: "hidden" });
-        return text;
-      };
-      const autoGates = await gatesFor();
-      await modePicker.click();
-      const optionCount = await page.getByRole("option").count();
-      if (optionCount !== 3)
-        throw new Error(`${locale.artifact}: the mode picker offers ${optionCount} modes, not 3`);
-      const defaultOption = page.getByRole("option", { name: autoName, exact: true });
-      if (!(await defaultOption.innerText()).includes(defaultMode))
-        throw new Error(`${locale.artifact}: the open list does not mark the system default`);
-      const described = await page
-        .locator('[role="option"] [data-slot="select-item-description"]')
-        .count();
-      if (described !== 3)
-        throw new Error(`${locale.artifact}: ${described} of 3 modes explain themselves`);
-      await page.getByRole("option", { name: askName, exact: true }).click();
-      if ((await pillText()) !== askName)
-        throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
-      if ((await gatesFor()) === autoGates)
-        throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
-      await stand.visit(page, "chat/new");
-      await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
-      if ((await pillText()) !== autoName)
-        throw new Error(`${locale.artifact}: new chat retains an unintended override`);
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-new`, {
-        fullPage: false,
-      });
-      await openConversationList(page);
-      await page.locator('[data-testid="conversation-item-0"]').click();
-      await page.getByTestId("chat-usage-tokens").waitFor({ state: "visible" });
-      if ((await page.getByTestId("chat-permission-select").count()) !== 0)
-        throw new Error(`${locale.artifact}: a running conversation offers to change its mode`);
-      if (!(await page.getByTestId("chat-permission-mode").innerText()).includes(autoName))
-        throw new Error(
-          `${locale.artifact}: the running conversation's mode pill is not "${autoName}"`,
-        );
-      if ((await gatesFor()).length === 0)
-        throw new Error(`${locale.artifact}: the running conversation's matrix is empty`);
-      const tokensPill = (await page.getByTestId("chat-usage-tokens").innerText()).trim();
-      if (tokensPill !== (locale.name === "de" ? "48.210 Chat-Tokens" : "48,210 chat tokens"))
-        throw new Error(`${locale.artifact}: the tokens pill reads ${JSON.stringify(tokensPill)}`);
-      const costText = (await page.getByTestId("chat-usage-cost").innerText()).trim();
-      if (!costText.startsWith(locale.name === "de" ? "mind." : "at least"))
-        throw new Error(
-          `${locale.artifact}: a partly priced cost reads ${JSON.stringify(costText)}`,
-        );
-      const budgetLink = page.getByTestId("chat-budget");
-      if ((await budgetLink.getAttribute("data-budget")) !== "critical")
-        throw new Error(`${locale.artifact}: the month at 95 % shows no critical allowance pill`);
-      if (!(await budgetLink.getAttribute("href"))?.endsWith("/usage"))
-        throw new Error(`${locale.artifact}: the allowance pill does not lead to Nutzung`);
-      if ((await page.getByTestId("chat-origin").count()) !== 0)
-        throw new Error(`${locale.artifact}: the origin line still stands in the header`);
-      const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
-      await tool.scrollIntoViewIfNeeded();
-      await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
-      await shoot(page, `${locale.artifact}-desktop-chat-tool`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="chat-context-toggle"]').click();
-      await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
-      await page.locator('[data-testid="chat-context-reference-0"]').waitFor({ state: "visible" });
-      if ((await page.locator('[data-testid="chat-context-reference-0"] a').count()) !== 0)
-        throw new Error(`${locale.artifact}: unresolved chat reference is still linked`);
-      const resolvedReference = page.locator('[data-testid="chat-context-reference-1"] a');
-      if ((await resolvedReference.count()) !== 1)
-        throw new Error(`${locale.artifact}: resolved chat reference is not linked`);
-      if (!(await resolvedReference.getAttribute("href"))?.includes(`/workflows/${uuid}`))
-        throw new Error(`${locale.artifact}: resolved chat reference links to the wrong record`);
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-context`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="chat-context-close"]').click();
-      await page.locator('[data-testid="chat-context"]').waitFor({ state: "hidden" });
-      await page.locator('[data-testid="chat-composer-input"]').fill("Prüfe @mon");
-      await page.locator('[data-testid="chat-mention-popover"]').waitFor({ state: "visible" });
-      await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
-      const pickerHit = await page.evaluate(() => {
-        const row = document.querySelector('[data-testid="chat-mention-item-0"]');
-        if (!row) return false;
-        const r = row.getBoundingClientRect();
-        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return Boolean(hit && row.contains(hit));
-      });
-      if (!pickerHit)
-        throw new Error(`${locale.artifact}: the @-picker is in the page but covered or clipped`);
-      await shoot(page, `${locale.artifact}-desktop-chat-mention`, {
-        fullPage: false,
-      });
-      await page.keyboard.press("Escape");
-      const composerField = page.locator('[data-testid="chat-composer-input"]');
-      await composerField.fill("");
-      await composerField.pressSequentially("Zeig @rep");
-      await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
-      const firstPick = (await page.getByTestId("chat-mention-item-0").innerText()).replace(
-        /\s+/g,
-        " ",
-      );
-      if (!/kategorie\/reporting · 21 workflows/i.test(firstPick))
-        throw new Error(
-          `${locale.artifact}: the picker's first entry is ${JSON.stringify(firstPick)}, not the reporting category`,
-        );
-      await page.keyboard.press("Enter");
-      if ((await composerField.inputValue()) !== "Zeig @kategorie/reporting ")
-        throw new Error(
-          `${locale.artifact}: picking a category wrote ${JSON.stringify(await composerField.inputValue())}`,
-        );
-      await composerField.fill("");
-      const chips = page.locator('[data-testid="chat-message-2-text-0-mentions"]');
-      await chips.scrollIntoViewIfNeeded();
-      await page
-        .locator('[data-testid="chat-message-2-text-0-chip-1"]')
-        .waitFor({ state: "visible" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-chat-mention-chips`, {
-        fullPage: false,
-      });
-      await page
-        .locator('[data-testid="chat-composer-input"]')
-        .fill("Prüfe den Workflow, ohne ihn auszuführen.");
-      await page.locator('[data-testid="chat-composer-submit"]').click();
-      await page
-        .locator('[data-testid="chat-error"]')
-        .waitFor({ state: "hidden" })
-        .catch(() => {});
-      await shoot(page, `${locale.artifact}-desktop-chat-interaction`, {
-        fullPage: false,
-      });
-      await stand.visit(page, "workflows");
-      await page.locator('[data-testid="sidebar-trigger"]').hover();
-      await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-tooltip`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="account-menu-trigger"]').click();
-      await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
-      await page.waitForTimeout(300);
-      await shoot(page, `${locale.artifact}-desktop-account`, {
-        fullPage: false,
-      });
-      await page.locator('[data-testid="account-language-menu"]').hover();
-      await page.locator('[data-testid="account-language-content"]').waitFor({ state: "visible" });
-      await shoot(page, `${locale.artifact}-desktop-account-language`, {
-        fullPage: false,
-      });
-      await page.keyboard.press("Escape");
-      await page.locator('[data-testid="account-language-content"]').waitFor({ state: "hidden" });
-      await page.keyboard.press("Escape");
-      await page.locator('[data-testid="account-menu"]').waitFor({ state: "hidden" });
-      await page.locator('[data-testid="account-menu-trigger"]').click();
-      await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
-      await page.locator('[data-testid="account-theme-menu"]').hover();
-      await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
-      await shoot(page, `${locale.artifact}-desktop-account-theme`, {
-        fullPage: false,
-      });
-    }
-    tooltips.assertNone(`${locale.artifact}/${viewport.name}`);
-    await context.close();
-  }
-}
-
-for (const locale of focused ? [] : variants) {
-  for (const viewport of ["desktop", "mobile"].filter((name) =>
-    viewports.some((swept) => swept.name === name),
-  )) {
-    const contact = await browser.newPage({
-      viewport: { width: 1600, height: 1000 },
-    });
-    const cards = await Promise.all(
-      sweptRoutes.map(async (route) => {
-        const artifactRoute = artifactRouteName(route);
-        const frame = written.get(`${locale.artifact}-${viewport}-${artifactRoute}`);
-        if (frame === undefined)
+          .locator('[data-testid="conversation-hidden-empty"]')
+          .waitFor({ state: "visible" });
+        await shoot(page, `${locale.artifact}-desktop-chat-hidden`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="conversation-toggle-hidden"]').click();
+        await closeConversationList(page);
+        await page.locator('[data-testid="conversation-new"]').click();
+        await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+        if ((await page.getByTestId("chat-summary").count()) !== 0)
+          throw new Error(`${locale.artifact}: a new conversation carries a line under its title`);
+        const newTitle = locale.name === "de" ? "Neue Unterhaltung" : "New conversation";
+        if ((await page.getByTestId("chat-title").innerText()).trim() !== newTitle)
+          throw new Error(`${locale.artifact}: a new conversation is not titled "${newTitle}"`);
+        const modePicker = page.locator('[data-testid="chat-permission-select"]');
+        const autoName = locale.name === "de" ? "Autonom" : "Autonomous";
+        const askName = locale.name === "de" ? "Fragt vorher" : "Asks first";
+        const defaultMode = locale.name === "de" ? "Systemstandard" : "system default";
+        const pillText = async () => ((await modePicker.textContent()) ?? "").trim();
+        if ((await pillText()) !== autoName)
           throw new Error(
-            `no frame ${locale.artifact}/${viewport}/${artifactRoute} to build a sheet from`,
+            `${locale.artifact}: the mode pill reads ${JSON.stringify(await pillText())}, not "${autoName}"`,
           );
-        const bytes = await readFile(frame);
-        const source = `data:image/png;base64,${bytes.toString("base64")}`;
-        return `<figure><img src="${source}" alt=""><figcaption>${artifactRoute}</figcaption></figure>`;
-      }),
-    );
-    await contact.setContent(
-      `<style>
+        if (
+          await page
+            .getByTestId("chat-mode-gates")
+            .isVisible()
+            .catch(() => false)
+        )
+          throw new Error(`${locale.artifact}: the gate matrix stands permanently in the header`);
+        const gatesFor = async () => {
+          await page.getByTestId("chat-mode-explain").click();
+          const gates = page.getByTestId("chat-mode-gates");
+          await gates.waitFor({ state: "visible" });
+          const text = await gates.innerText();
+          await page.keyboard.press("Escape");
+          await gates.waitFor({ state: "hidden" });
+          return text;
+        };
+        const autoGates = await gatesFor();
+        await modePicker.click();
+        const optionCount = await page.getByRole("option").count();
+        if (optionCount !== 3)
+          throw new Error(`${locale.artifact}: the mode picker offers ${optionCount} modes, not 3`);
+        const defaultOption = page.getByRole("option", { name: autoName, exact: true });
+        if (!(await defaultOption.innerText()).includes(defaultMode))
+          throw new Error(`${locale.artifact}: the open list does not mark the system default`);
+        const described = await page
+          .locator('[role="option"] [data-slot="select-item-description"]')
+          .count();
+        if (described !== 3)
+          throw new Error(`${locale.artifact}: ${described} of 3 modes explain themselves`);
+        await page.getByRole("option", { name: askName, exact: true }).click();
+        if ((await pillText()) !== askName)
+          throw new Error(`${locale.artifact}: explicit conservative mode is not selectable`);
+        if ((await gatesFor()) === autoGates)
+          throw new Error(`${locale.artifact}: "ask" reads the same gates as the default mode`);
+        await stand.visit(page, "chat/new");
+        await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
+        if ((await pillText()) !== autoName)
+          throw new Error(`${locale.artifact}: new chat retains an unintended override`);
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-chat-new`, {
+          fullPage: false,
+        });
+        await openConversationList(page);
+        await page.locator('[data-testid="conversation-item-0"]').click();
+        await page.getByTestId("chat-usage-tokens").waitFor({ state: "visible" });
+        if ((await page.getByTestId("chat-permission-select").count()) !== 0)
+          throw new Error(`${locale.artifact}: a running conversation offers to change its mode`);
+        if (!(await page.getByTestId("chat-permission-mode").innerText()).includes(autoName))
+          throw new Error(
+            `${locale.artifact}: the running conversation's mode pill is not "${autoName}"`,
+          );
+        if ((await gatesFor()).length === 0)
+          throw new Error(`${locale.artifact}: the running conversation's matrix is empty`);
+        const tokensPill = (await page.getByTestId("chat-usage-tokens").innerText()).trim();
+        if (tokensPill !== (locale.name === "de" ? "48.210 Chat-Tokens" : "48,210 chat tokens"))
+          throw new Error(
+            `${locale.artifact}: the tokens pill reads ${JSON.stringify(tokensPill)}`,
+          );
+        const costText = (await page.getByTestId("chat-usage-cost").innerText()).trim();
+        if (!costText.startsWith(locale.name === "de" ? "mind." : "at least"))
+          throw new Error(
+            `${locale.artifact}: a partly priced cost reads ${JSON.stringify(costText)}`,
+          );
+        const budgetLink = page.getByTestId("chat-budget");
+        if ((await budgetLink.getAttribute("data-budget")) !== "critical")
+          throw new Error(`${locale.artifact}: the month at 95 % shows no critical allowance pill`);
+        if (!(await budgetLink.getAttribute("href"))?.endsWith("/usage"))
+          throw new Error(`${locale.artifact}: the allowance pill does not lead to Nutzung`);
+        if ((await page.getByTestId("chat-origin").count()) !== 0)
+          throw new Error(`${locale.artifact}: the origin line still stands in the header`);
+        const tool = page.locator('[data-testid="chat-message-3-tool-0"]');
+        await tool.scrollIntoViewIfNeeded();
+        await page.locator('[data-testid="chat-message-3-tool-0-toggle"]').click();
+        await shoot(page, `${locale.artifact}-desktop-chat-tool`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="chat-context-toggle"]').click();
+        await page.locator('[data-testid="chat-context"]').waitFor({ state: "visible" });
+        await page
+          .locator('[data-testid="chat-context-reference-0"]')
+          .waitFor({ state: "visible" });
+        if ((await page.locator('[data-testid="chat-context-reference-0"] a').count()) !== 0)
+          throw new Error(`${locale.artifact}: unresolved chat reference is still linked`);
+        const resolvedReference = page.locator('[data-testid="chat-context-reference-1"] a');
+        if ((await resolvedReference.count()) !== 1)
+          throw new Error(`${locale.artifact}: resolved chat reference is not linked`);
+        if (!(await resolvedReference.getAttribute("href"))?.includes(`/workflows/${uuid}`))
+          throw new Error(`${locale.artifact}: resolved chat reference links to the wrong record`);
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-chat-context`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="chat-context-close"]').click();
+        await page.locator('[data-testid="chat-context"]').waitFor({ state: "hidden" });
+        await page.locator('[data-testid="chat-composer-input"]').fill("Prüfe @mon");
+        await page.locator('[data-testid="chat-mention-popover"]').waitFor({ state: "visible" });
+        await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
+        const pickerHit = await page.evaluate(() => {
+          const row = document.querySelector('[data-testid="chat-mention-item-0"]');
+          if (!row) return false;
+          const r = row.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return Boolean(hit && row.contains(hit));
+        });
+        if (!pickerHit)
+          throw new Error(`${locale.artifact}: the @-picker is in the page but covered or clipped`);
+        await shoot(page, `${locale.artifact}-desktop-chat-mention`, {
+          fullPage: false,
+        });
+        await page.keyboard.press("Escape");
+        const composerField = page.locator('[data-testid="chat-composer-input"]');
+        await composerField.fill("");
+        await composerField.pressSequentially("Zeig @rep");
+        await page.locator('[data-testid="chat-mention-item-0"]').waitFor({ state: "visible" });
+        const firstPick = (await page.getByTestId("chat-mention-item-0").innerText()).replace(
+          /\s+/g,
+          " ",
+        );
+        if (!/kategorie\/reporting · 21 workflows/i.test(firstPick))
+          throw new Error(
+            `${locale.artifact}: the picker's first entry is ${JSON.stringify(firstPick)}, not the reporting category`,
+          );
+        await page.keyboard.press("Enter");
+        if ((await composerField.inputValue()) !== "Zeig @kategorie/reporting ")
+          throw new Error(
+            `${locale.artifact}: picking a category wrote ${JSON.stringify(await composerField.inputValue())}`,
+          );
+        await composerField.fill("");
+        const chips = page.locator('[data-testid="chat-message-2-text-0-mentions"]');
+        await chips.scrollIntoViewIfNeeded();
+        await page
+          .locator('[data-testid="chat-message-2-text-0-chip-1"]')
+          .waitFor({ state: "visible" });
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-chat-mention-chips`, {
+          fullPage: false,
+        });
+        await page
+          .locator('[data-testid="chat-composer-input"]')
+          .fill("Prüfe den Workflow, ohne ihn auszuführen.");
+        await page.locator('[data-testid="chat-composer-submit"]').click();
+        await page
+          .locator('[data-testid="chat-error"]')
+          .waitFor({ state: "hidden" })
+          .catch(() => {});
+        await shoot(page, `${locale.artifact}-desktop-chat-interaction`, {
+          fullPage: false,
+        });
+        await stand.visit(page, "workflows");
+        await page.locator('[data-testid="sidebar-trigger"]').hover();
+        await page.locator('[data-slot="tooltip-content"]').waitFor({ state: "visible" });
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-tooltip`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="account-menu-trigger"]').click();
+        await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
+        await page.waitForTimeout(300);
+        await shoot(page, `${locale.artifact}-desktop-account`, {
+          fullPage: false,
+        });
+        await page.locator('[data-testid="account-language-menu"]').hover();
+        await page
+          .locator('[data-testid="account-language-content"]')
+          .waitFor({ state: "visible" });
+        await shoot(page, `${locale.artifact}-desktop-account-language`, {
+          fullPage: false,
+        });
+        await page.keyboard.press("Escape");
+        await page.locator('[data-testid="account-language-content"]').waitFor({ state: "hidden" });
+        await page.keyboard.press("Escape");
+        await page.locator('[data-testid="account-menu"]').waitFor({ state: "hidden" });
+        await page.locator('[data-testid="account-menu-trigger"]').click();
+        await page.locator('[data-testid="account-menu"]').waitFor({ state: "visible" });
+        await page.locator('[data-testid="account-theme-menu"]').hover();
+        await page.locator('[data-testid="account-theme-content"]').waitFor({ state: "visible" });
+        await shoot(page, `${locale.artifact}-desktop-account-theme`, {
+          fullPage: false,
+        });
+      }
+      tooltips.assertNone(`${locale.artifact}/${viewport.name}`);
+      await context.close();
+    }
+  }
+
+  for (const locale of focused ? [] : variants) {
+    for (const viewport of ["desktop", "mobile"].filter((name) =>
+      viewports.some((swept) => swept.name === name),
+    )) {
+      const contact = await browser.newPage({
+        viewport: { width: 1600, height: 1000 },
+      });
+      const cards = await Promise.all(
+        sweptRoutes.map(async (route) => {
+          const artifactRoute = artifactRouteName(route);
+          const frame = written.get(`${locale.artifact}-${viewport}-${artifactRoute}`);
+          if (frame === undefined)
+            throw new Error(
+              `no frame ${locale.artifact}/${viewport}/${artifactRoute} to build a sheet from`,
+            );
+          const bytes = await readFile(frame);
+          const source = `data:image/png;base64,${bytes.toString("base64")}`;
+          return `<figure><img src="${source}" alt=""><figcaption>${artifactRoute}</figcaption></figure>`;
+        }),
+      );
+      await contact.setContent(
+        `<style>
       * { box-sizing: border-box }
       body { margin: 0; padding: 16px; background: #e2e8f0; font: 14px system-ui }
       main { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px }
@@ -4685,51 +4745,68 @@ for (const locale of focused ? [] : variants) {
       img { display: block; width: 100%; aspect-ratio: ${viewport === "desktop" ? "1.44" : "0.462"}; object-fit: cover; object-position: top }
       figcaption { padding: 8px; font-weight: 600 }
     </style><main>${cards.join("")}</main>`,
-      { waitUntil: "load" },
-    );
-    await shootSheet(contact, `${locale.artifact}-${viewport}-contact-sheet`, {
-      fullPage: true,
+        { waitUntil: "load" },
+      );
+      await shootSheet(contact, `${locale.artifact}-${viewport}-contact-sheet`, {
+        fullPage: true,
+      });
+      await contact.close();
+    }
+  }
+  const RESPONSIVE_WIDTHS = [390, 768, 1024, 1440, 1920];
+  const migratedRoutes = sweptRoutes.filter((route) => patternMigratedView(route) !== null);
+  for (const width of RESPONSIVE_WIDTHS) {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      locale: "de-DE",
+      reducedMotion: "reduce",
     });
-    await contact.close();
+    await context.addInitScript(() => {
+      localStorage.setItem("sk-cockpit-locale", "de");
+      localStorage.setItem("sk-cockpit-theme", "light");
+    });
+    const page = await context.newPage();
+    page.on("pageerror", (error) => errors.push(`responsive/${width}: ${error.message}`));
+    await page.route("**/v1/**", mockApi);
+    for (const route of migratedRoutes) {
+      await stand.visit(page, route);
+      await page.locator(markerFor(route)).waitFor({ state: "visible" });
+      await assertNoHorizontalScroll(page, `responsive/${width}/${route}`);
+    }
+    await context.close();
   }
-}
-const RESPONSIVE_WIDTHS = [390, 768, 1024, 1440, 1920];
-const migratedRoutes = sweptRoutes.filter((route) => patternMigratedView(route) !== null);
-for (const width of RESPONSIVE_WIDTHS) {
-  const context = await browser.newContext({
-    viewport: { width, height: 900 },
-    locale: "de-DE",
-    reducedMotion: "reduce",
-  });
-  await context.addInitScript(() => {
-    localStorage.setItem("sk-cockpit-locale", "de");
-    localStorage.setItem("sk-cockpit-theme", "light");
-  });
-  const page = await context.newPage();
-  page.on("pageerror", (error) => errors.push(`responsive/${width}: ${error.message}`));
-  await page.route("**/v1/**", mockApi);
-  for (const route of migratedRoutes) {
-    await stand.visit(page, route);
-    await page.locator(markerFor(route)).waitFor({ state: "visible" });
-    await assertNoHorizontalScroll(page, `responsive/${width}/${route}`);
-  }
-  await context.close();
-}
 
-if (standOn(assertFirstSendIsNeverLost)) await assertFirstSendIsNeverLost(browser);
-await browser.close();
-spawnedPreview?.stop();
-if (errors.length) throw new Error(errors.join("; "));
-if (framesWritten === 0) await prepareOutput();
-const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
-  (entry) => entry.isFile() && entry.name.endsWith(".png"),
-).length;
-if (framesOnDisk !== framesWritten)
-  throw new Error(
-    `Cockpit visual sweep counted ${framesWritten} frames but ${outputDir} holds ${framesOnDisk} ` +
-      "PNG files. A screenshot was taken past shoot(), so the number below would not be a " +
-      "measurement of this run.",
-  );
+  if (standOn(assertFirstSendIsNeverLost)) await assertFirstSendIsNeverLost(browser);
+  if (errors.length) throw new Error(errors.join("; "));
+  if (framesWritten === 0) await prepareOutput();
+  const framesOnDisk = (await readdir(outputDir, { recursive: true, withFileTypes: true })).filter(
+    (entry) => entry.isFile() && entry.name.endsWith(".png"),
+  ).length;
+  if (framesOnDisk !== framesWritten)
+    throw new Error(
+      `Cockpit visual sweep counted ${framesWritten} frames but ${outputDir} holds ${framesOnDisk} ` +
+        "PNG files. A screenshot was taken past shoot(), so the number below would not be a " +
+        "measurement of this run.",
+    );
+} catch (error) {
+  sweepFailed = true;
+  sweepFailure = error;
+} finally {
+  const results = await Promise.allSettled([browser?.close(), spawnedPreview?.stop()]);
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    const error = new AggregateError(
+      failures.map((result) => result.reason),
+      "Cockpit visual sweep resources could not be closed.",
+    );
+    if (sweepFailed) console.error(error);
+    else {
+      sweepFailed = true;
+      sweepFailure = error;
+    }
+  }
+}
+if (sweepFailed) throw sweepFailure;
 console.log(
   `Cockpit visual sweep passed: ${framesWritten} screenshots in ${outputDir} ` +
     "(counted at each write and held against the files on disk — not computed from the route table)",

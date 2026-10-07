@@ -339,11 +339,12 @@ export const runWorkflowTool: ConversationTool = {
           workflow_version_id: wf.current_version_id,
           execution_environment: environment,
           request_source: "chat",
-          input: suppliedInput ?? null,
+          input: suppliedInput,
           ...(args.idempotency_key ? { idempotency_key: args.idempotency_key } : {}),
           ...(args.execute_writes === false ? { hold_writes: true } : {}),
         },
         ctx.db,
+        ctx.principal,
       );
       const holdWrites = admitted.hold_writes;
       if (args.idempotency_key) {
@@ -380,7 +381,7 @@ export const runWorkflowTool: ConversationTool = {
           workflow_id: workflowId,
           version_id: admitted?.workflow_version_id ?? wf.current_version_id,
         },
-        input: admitted ? admitted.input : (suppliedInput ?? null),
+        input: admitted ? admitted.input : suppliedInput,
         options: {
           request_source: "chat",
           trace_id: null,

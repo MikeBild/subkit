@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import * as svc from "../../conversations/service.ts";
@@ -10,6 +11,7 @@ import {
   auditLog,
   conversations,
   mcpTasks,
+  sessions,
   tenantLlmSettings,
   tenants,
   users,
@@ -32,7 +34,7 @@ import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { flush, waitFor } from "../../test-helpers/determinism/wait.ts";
 import { createQueueCtx, type QueueTestCtx } from "../tests/setup.ts";
 import {
-  enqueueConversationRunTurn,
+  enqueueConversationRunTurn as enqueueRawConversationRunTurn,
   registerConversationRunTurnHandler,
   SUPERSEDED_WHILE_PARKED_FAILURE_REASON,
 } from "./conversation-run-turn.ts";
@@ -40,6 +42,27 @@ import {
 let queue: QueueTestCtx;
 let tenantId: string;
 let userId: string;
+let queuedPrincipal: ResolvedPrincipal;
+function enqueueConversationRunTurn(
+  boss: Parameters<typeof enqueueRawConversationRunTurn>[0],
+  payload: Parameters<typeof enqueueRawConversationRunTurn>[1],
+  options?: Parameters<typeof enqueueRawConversationRunTurn>[2],
+) {
+  const auth_source = payload.principal?.auth_source ?? queuedPrincipal.auth_source;
+  if (!auth_source) throw new Error("queued fixture requires credential provenance");
+  return enqueueRawConversationRunTurn(
+    boss,
+    {
+      ...payload,
+      principal: {
+        ...queuedPrincipal,
+        ...payload.principal,
+        auth_source,
+      },
+    },
+    options,
+  );
+}
 
 async function ensureConfig(): Promise<void> {
   try {
@@ -84,6 +107,23 @@ beforeAll(async () => {
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
+  const [session] = await queue.testDb.db
+    .insert(sessions)
+    .values({
+      tenant_id: tenantId,
+      user_id: userId,
+      expires_at: sql`clock_timestamp() + interval '1 hour'`,
+    })
+    .returning();
+  if (!session) throw new Error("seed session failed");
+  queuedPrincipal = {
+    provider: "test",
+    kind: "user",
+    id: userId,
+    tenant_id: tenantId,
+    roles: ["admin"],
+    auth_source: { kind: "browser_session", session_id: session.id },
+  };
   await queue.testDb.db.insert(tenantLlmSettings).values({
     tenant_id: tenantId,
     llm_provider: "mock",

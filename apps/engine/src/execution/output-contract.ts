@@ -1,8 +1,4 @@
-import Ajv, { type ValidateFunction } from "ajv";
-
-function freshAjv(): Ajv {
-  return new Ajv({ strict: false, allErrors: true, validateFormats: false });
-}
+import { checkJsonSchemaContract, compileJsonSchemaContract } from "./json-schema-contract.ts";
 
 export interface OutputContractViolation {
   path: string;
@@ -17,37 +13,14 @@ export type OutputContractCheck =
 export function compileOutputContractSchema(
   schema: Record<string, unknown>,
 ): { ok: true } | { ok: false; error: string } {
-  try {
-    freshAjv().compile(schema);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  return compileJsonSchemaContract(schema);
 }
 
 export function checkOutputContract(
   value: unknown,
   schema: Record<string, unknown>,
 ): OutputContractCheck {
-  let validate: ValidateFunction;
-  try {
-    validate = freshAjv().compile(schema);
-  } catch (err) {
-    return { ok: false, schema_error: err instanceof Error ? err.message : String(err) };
-  }
-  if (validate(value)) return { ok: true, valid: true };
-  const violations: OutputContractViolation[] = (validate.errors ?? []).map((e) => {
-    const missing =
-      e.keyword === "required" &&
-      typeof (e.params as { missingProperty?: unknown }).missingProperty === "string"
-        ? `/${(e.params as { missingProperty: string }).missingProperty}`
-        : "";
-    return {
-      path: `$output${e.instancePath}${missing}`,
-      message: e.message ?? "violates output_schema",
-    };
-  });
-  return { ok: true, valid: false, violations };
+  return checkJsonSchemaContract(value, schema, "$output");
 }
 
 export function summarizeViolations(

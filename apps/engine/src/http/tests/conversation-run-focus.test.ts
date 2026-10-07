@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
+import { createApiKeyProvider } from "../../auth/providers/api-key.ts";
 import { loadDraft } from "../../conversations/draft.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { inspectExecutionTool } from "../../conversations/tools/inspect-execution.ts";
@@ -83,15 +84,22 @@ function create(body: Record<string, unknown>) {
 }
 
 async function toolContextFor(conversationId: string, workflowId: string | null) {
+  const principal = await createApiKeyProvider({ db: srv.db }).resolve(
+    new Request(`${srv.baseUrl}/v1/conversations/${conversationId}`, {
+      headers: { authorization: `Bearer ${srv.apiKey}` },
+    }),
+  );
+  if (!principal) throw new Error("fixture API key did not resolve its principal");
   let draft: DraftDocument = await loadDraft(srv.tenantId, conversationId, srv.db);
   const ctx: ToolContext = {
     db: srv.db,
     tenant_id: srv.tenantId,
     conversation_id: conversationId,
-    actor_id: null,
+    actor_id: principal.id,
+    principal,
     connector_id: null,
     workflow_id: workflowId,
-    engineClient: new EngineClient({ tenant_id: srv.tenantId, actor_id: null, db: srv.db }),
+    engineClient: new EngineClient({ tenant_id: srv.tenantId, actor_id: principal.id, db: srv.db }),
     getDraft: () => draft,
     setDraft: async (next) => {
       draft = next;
@@ -114,6 +122,17 @@ afterAll(async () => {
 });
 
 describe("POST /v1/conversations with the run it is about", () => {
+  test("run inspection without authenticated tool identity fails before changing the draft", async () => {
+    const response = await create({ workflow_id: growthId, execution_id: growthFailedRun });
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as { conversation: { id: string } };
+    const { ctx, draft } = await toolContextFor(created.conversation.id, growthId);
+    const before = structuredClone(draft());
+    const result = await inspectExecutionTool.execute({ ...ctx, principal: null }, {});
+    expect(result).toEqual({ ok: false, data: { error_code: "principal_required" } });
+    expect(draft()).toEqual(before);
+  });
+
   test("keeps the workflow binding and 'this run' is the run the chat was opened for", async () => {
     const res = await create({ workflow_id: growthId, execution_id: growthFailedRun });
     expect(res.status).toBe(201);
@@ -156,6 +175,7 @@ describe("POST /v1/conversations with the run it is about", () => {
     const created = (await res.json()) as { conversation: { id: string } };
     const { ctx } = await toolContextFor(created.conversation.id, growthId);
     const result = await inspectExecutionTool.execute(ctx, {});
+    expect(result.ok).toBe(true);
     const data = result.data as { inspected: { execution_id: string; selected_by: string } };
     expect(data.inspected.execution_id).toBe(growthNewerRun);
     expect(data.inspected.execution_id).not.toBe(triageNewestRun);

@@ -6,7 +6,11 @@ function looksLikeStructuredJson(value: string): boolean {
   return (first === "{" && last === "}") || (first === "[" && last === "]");
 }
 
-export function normalizeWorkflowRunInput(input: unknown): unknown {
+export function normalizeWorkflowRunInput(
+  input: unknown,
+  schema?: Record<string, unknown>,
+): unknown {
+  if (input === undefined && schema?.type === "object") return {};
   if (typeof input !== "string" || !looksLikeStructuredJson(input)) {
     return input;
   }

@@ -20,10 +20,10 @@ let testDb: TestDb;
 const id = createDeterministicUuidFactory(730);
 beforeAll(async () => {
   testDb = await createTestDb("direct-connector-binding");
-});
+}, 120_000);
 afterAll(async () => {
   await testDb.cleanup();
-});
+}, 120_000);
 
 async function fixture() {
   const tenant = id();
@@ -111,11 +111,14 @@ async function fixture() {
     tool: "call_connector",
     binding,
   };
-  const check = (bound: DirectConnectorBinding | null = binding) =>
+  const check = (
+    bound: DirectConnectorBinding | null = binding,
+    caller: ResolvedPrincipal = principal,
+  ) =>
     assertDirectConnectorBinding({
       db: testDb.db,
       tenant_id: tenant,
-      principal,
+      principal: caller,
       approval: { ...approval, binding: bound },
       connector: system.connector,
       credential: {
@@ -128,6 +131,19 @@ async function fixture() {
 }
 
 describe("direct connector approval authority", () => {
+  for (const mismatch of ["kind", "product"] as const) {
+    test(`a claimed approval cannot dispatch for another ${mismatch} domain`, async () => {
+      const f = await fixture();
+      const caller =
+        mismatch === "kind"
+          ? { ...f.principal, kind: "system_account" as const }
+          : { ...f.principal, product_id: "harmoniqs" };
+      await expect(f.check(undefined, caller)).rejects.toMatchObject({
+        code: "connector_authority_changed",
+      });
+      expect(await f.check()).toEqual({ redirect: "manual" });
+    });
+  }
   test("prepared metadata includes credential references outside request steps without exposing secrets", async () => {
     const f = await fixture();
     const definition = WorkflowDefSchema.parse({

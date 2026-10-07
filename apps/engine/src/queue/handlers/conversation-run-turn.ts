@@ -16,6 +16,11 @@ import {
 import * as svc from "../../conversations/service.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
+import {
+  authorizationContextFromPrincipal,
+  rehydrateExecutionPrincipal,
+} from "../../execution/authorization-context.ts";
+import { callerFromPrincipal } from "../../execution/caller-context.ts";
 import { log } from "../../logging/logger.ts";
 import {
   type ConversationTurnEnvelope,
@@ -30,6 +35,7 @@ import {
   setMcpTaskResultIfCurrentAttempt,
 } from "../../mcp/tasks/store.ts";
 import { readMemoryUsage } from "../../observability/runtime-telemetry.ts";
+import { can } from "../../rbac/evaluator.ts";
 import { recordUsageEvent } from "../../stats/usage-events.ts";
 import { withJobContext } from "../job-context.ts";
 import { CONVERSATION_RUN_TURN_QUEUE, type ConversationRunTurnJob } from "../queues.ts";
@@ -196,6 +202,27 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
 
   const rssBefore = readMemoryUsage().rss;
   try {
+    const principal = await rehydrateExecutionPrincipal(
+      db,
+      callerFromPrincipal(data.principal, data.tenant_id, data.principal?.product_id),
+      authorizationContextFromPrincipal(data.principal),
+    );
+    if (!principal)
+      throw Object.assign(
+        new Error("Queued conversation requires authenticated credential provenance."),
+        {
+          code: "execution_authentication_unavailable",
+        },
+      );
+    const decisions = await Promise.all(
+      ["conversation:write", "workflow:write"].map((permission) =>
+        can(db, { tenant_id: data.tenant_id, principal, permission }),
+      ),
+    );
+    if (!decisions.some((decision) => decision.allow))
+      throw Object.assign(new Error("The queued conversation is no longer authorized."), {
+        code: "execution_authentication_unavailable",
+      });
     let outcome: svc.ConversationTurnOutcome;
     if (data.kind === "respond_elicitation") {
       if (!data.elicitation_id) {
@@ -212,10 +239,10 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           conversation_id: data.conversation_id,
           elicitation_id: data.elicitation_id,
           actor_id: data.actor_id,
-          ...(data.principal ? { principal: data.principal } : {}),
+          principal,
           answer_actor:
             data.answer_channel === "mcp_native"
-              ? humanInBandAnswer(data.principal)
+              ? humanInBandAnswer(principal)
               : data.answer_channel === "portal"
                 ? humanPortalAnswer(data.approver_user_id)
                 : MODEL_RELAYED_ANSWER,
@@ -242,7 +269,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
           tenant_id: data.tenant_id,
           conversation_id: data.conversation_id,
           actor_id: data.actor_id,
-          ...(data.principal ? { principal: data.principal } : {}),
+          principal,
           user_message: message,
           answer_actor: MODEL_RELAYED_ANSWER,
           surface: "mcp",
@@ -289,6 +316,26 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
       rss_delta_mb: Math.round(((readMemoryUsage().rss - rssBefore) / 1048576) * 10) / 10,
     });
   } catch (err) {
+    const refusalCode = (err as { code?: string }).code;
+    if (
+      refusalCode === "execution_authentication_unavailable" ||
+      refusalCode?.startsWith("caller_")
+    ) {
+      await auditAwait(
+        {
+          tenant_id: data.tenant_id,
+          actor_type: data.principal?.kind ?? "system",
+          actor_id: data.principal?.id ?? null,
+          action: AuditAction.POLICY_DENIED,
+          resource_type: "conversation",
+          resource_id: data.conversation_id,
+          result: "denied",
+          reason: refusalCode,
+          metadata: { mcp_task_id: data.mcp_task_id, request_source: task.request_source },
+        },
+        db,
+      );
+    }
     if (isExpectedCancellation(err, turnAbortCtrl.signal)) {
       log.queue.job.completed({
         msg: "conversation.run-turn cancelled",

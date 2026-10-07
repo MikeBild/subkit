@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
+import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
 import { setupMcpOauthServer, teardownMcpOauthServer } from "./mcp-oauth-test-helpers.ts";
 
@@ -12,11 +13,11 @@ beforeAll(async () => {
   ctx = s.ctx;
   _db = ctx.db;
   priorBaseUrl = s.priorBaseUrl;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await teardownMcpOauthServer(ctx, priorBaseUrl);
-}, 30_000);
+  if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
+}, TEST_DB_HOOK_TIMEOUT);
 
 describe("GET /.well-known/oauth-protected-resource", () => {
   test("returns 200 with RFC 9728 shaped document", async () => {

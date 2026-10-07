@@ -93,7 +93,7 @@ most common authoring bug.
 
 ## Placeholder tokens
 
-Six token families can appear inside step configs and request bodies. The engine
+The supported token families can appear inside step configs and request bodies. The engine
 resolves them at step-start time:
 
 | Token | Resolves to | Example |
@@ -102,8 +102,11 @@ resolves them at step-start time:
 | `${connector.<slug>.base_url}` | Connector's `base_url` | `${connector.hubspot.base_url}/crm/v3/objects` |
 | `${connector.<slug>.config.<path>}` | Arbitrary connector config dotted-path | `${connector.warehouse.config.region}` |
 | `${input.<path>}` | Workflow input, validated against `input_schema` | `${input.week}` |
+| `${caller.<field>}` | Immutable authenticated execution identity, never workflow input | `${caller.principalId}` |
 | `${scope.<step_id>.<path>}` | Envelope field from a prior step (scope form) | `${scope.list_orders.data.total}` |
 | `${item.<path>}` | Current loop iteration item (only valid inside a loop body) | `${item.id}` |
+
+Caller is `{ tenantId, principalId, principalKind, provider, productId }` or `null` for trusted callerless system runs. `principalKind` is `user` or `system_account`; an authenticated system account has a caller. `provider` is an open string and `productId` is a string or null. JavaScript transforms read `input.scope.$caller`; JSONata reads `$caller`. Neither caller-shaped input nor a child workflow can replace this identity. Product principals run matching saved workflows only; declaring a product on an inline definition does not authorize it. See workflow-authoring for exact field types, header constraints, owner storage boundaries and sensitive execution limitations.
 
 `${scope...}` and `$scope...` are two interchangeable forms for the same scope
 access. Use `${scope.foo.data.x}` inside string-interpolated configs (URLs, headers,

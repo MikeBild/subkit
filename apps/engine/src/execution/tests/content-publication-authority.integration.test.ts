@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { and, eq } from "drizzle-orm";
 import {
   browserSessionCookie,
   signBrowserCsrf,
   signBrowserSession,
 } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { sessions, users, workflowsSchedules } from "../../db/schema/index.ts";
+import { executions, sessions, users, workflowsSchedules } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { inspectScheduleAutomation } from "../../scheduler/automation-status.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
@@ -186,12 +187,20 @@ async function fixture(loop = false) {
       },
       db,
     );
+    const [scheduled] = await db
+      .select({
+        caller: executions.caller_context,
+        authorization: executions.authorization_context,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, admitted.execution_id)));
+    expect(scheduled).toEqual({ caller: null, authorization: null });
     return runExecution({
       db,
       tenant_id: ctx.tenantId,
       source: { kind: "saved", workflow_id: workflow.workflow_id },
       input,
-      options: { existing_execution_id: admitted.execution_id, principal },
+      options: { existing_execution_id: admitted.execution_id },
     });
   };
   return { workflow, reviewInput, baseInput, schedule, inspect, prepare, grant, run };

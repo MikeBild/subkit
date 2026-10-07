@@ -18,6 +18,55 @@ talking to you in a conversation. The process is design-once / emit-once:
 ONE `author_workflow` call produces the complete evaluated draft; the
 micro-tools exist only to repair specific findings afterwards.
 
+## Authenticated caller contract
+
+`$caller` is immutable execution identity supplied by SubKit authentication. It is available to every authenticated workflow, including generic workflows. It is `null` for trusted system invocations without a principal, such as callerless scheduler or webhook runs. A system account is an authenticated principal with `principalKind: "system_account"`; it is not the same as a callerless system run.
+
+The runtime type is:
+
+```typescript
+type CallerContext = {
+  tenantId: string;
+  principalId: string;
+  principalKind: "user" | "system_account";
+  provider: string;
+  productId: string | null;
+} | null;
+```
+
+`tenantId` is a UUID. `principalId` is normally a UUID; generic `portal_token` user identities may instead contain the authenticated opaque end-user reference. `provider` is a nonempty, open string identifying the authentication provider, not a role or a closed enum. Use `principalKind` to distinguish users and system accounts. `productId` is a nonempty authenticated product identity or `null`; an ordinary authenticated workflow does not invent one. The object contains no credentials, tokens, email, roles or grants.
+
+Use the syntax for the actual expression surface:
+
+| Surface | Trusted identity reference |
+|---|---|
+| JavaScript transform function body | `input.scope.$caller` |
+| JSONata, including `branch.when`, `loop.over`, `output_transform` | `$caller` |
+| Request string placeholder | `${caller.principalId}` |
+
+All five fields support `${caller.<field>}` placeholders. Never use `${$caller.principalId}`, `${input.owner_id}` or a hard-coded owner to authorize access. In JavaScript, `input.input` is the user payload; `input.scope.$caller` is the trusted identity. In JSONata, `$input` is the user payload and `$caller` is the identity. Caller-shaped input and step outputs cannot replace `$caller`. Step IDs `$caller` and `$input` are reserved. Queue, resume, loops and child workflows preserve the admitted caller, not a new identity from job input or child input.
+
+`productId: null` remains null in JavaScript and JSONata. In text interpolation, `${caller.productId}` becomes an empty string; as the entire value of a type-preserving JSON placeholder, it remains JSON null. If caller itself is null, caller-field placeholders are unresolved. Require a non-null caller and productId before building product paths or storage namespaces; never treat an empty interpolation as an authorized product.
+
+Programmable transforms use `language: "javascript"` with an expression FUNCTION BODY, not JSONata or an arrow function. A caller-aware transformation can read identity without returning private context:
+
+```json
+{
+  "id": "prepare",
+  "kind": "transform",
+  "language": "javascript",
+  "expression": "if (!input.scope.$caller) throw new Error('caller_required'); return { ownerId: input.scope.$caller.principalId, text: input.input.text };"
+}
+```
+
+Identity checks belong in the workflow header when supported: `required_caller_kind: "user" | "system_account"` requires an authenticated principal of that kind. `product_id` must match `^[a-z][a-z0-9-]*$` and must match the authenticated `productId`; declaring it never grants that identity. A product principal may execute only a matching saved workflow, never an inline draft or standalone step, even for reads or held writes. A generic principal cannot run a product workflow, and a product principal cannot run an untagged workflow. Callerless schedules/webhooks cannot run workflows requiring a caller or product. Do not copy the human approver's identity into a schedule.
+
+For product S3 requests, declare `s3.scope: { key_prefix: "products/<product-id>/", principal_bound: true, max_bytes: <reviewed-limit> }`. Author keys or LIST prefixes under `products/<product-id>/${caller.principalKind}/${caller.principalId}/`; the engine enforces both kind and ID. Same UUID with another principal kind is another owner. Keep the literal reviewed prefix and existing size/delete limits; do not broaden scope to fix a denial. Opaque IDs unsafe as path segments are refused.
+
+Validate the actual definition with the schema and placeholder validator before saving. Ground business input separately from identity: never put a fabricated caller in `input_schema`, `input_schema_sample`, fixtures or request data to make validation pass. For ordinary workflows, use existing authoring/validation tools and a permitted preview; validate the result, warnings and storage boundary before the human effect review. Product execution must use the approved matching saved workflow through the public run API.
+
+`execution_privacy: "sensitive"` is an explicit opt-in. Sensitive input/results are encrypted at rest and require the original authenticated caller for resume/result access. Sensitive execution is refused in chat and `dry_run_workflow`; inspection/sample tools do not expose its payload. It also refuses persistent state, event waits/signals, pagination and prepared fixture replay; an ordinary parent cannot call a sensitive child. Generic opaque portal callers cannot resume sensitive executions. Prepare and schema-validate an inert definition without inventing private sample data or bypassing gates, and report that live verification remains unavailable in chat. The preview/save recipes below apply to ordinary workflows; do not force a sensitive save past a missing or forbidden preview. Use the documented execution/result APIs with the actual original caller for permitted execution and verification; do not embed a deployment's database, files, queues or private runtime in a workflow. Caller support needs no product-specific engine fork.
+
 ## Chat completion and human review
 
 In cockpit, a saved draft is reviewed inside the current chat with “Review saved change”. This opens the exact-version effect and limit dialog; the human can apply the change and allow bounded automatic runs in one decision. Never send API commands, ask the user to activate externally, or use call_connector to call the engine. Use review_workflow_automation to render the actual bounded review card in chat. Never use ask_user_confirm for recurring-run permission: it cannot create execution authority. A held-write preview does not send an email and is not a live test. Report these outcomes separately. A repaired credential alone does not authorize a changed workflow. If run_workflow reports activation required, stop retrying and point to the chat review action. If access preparation fails, inspect the precise connector/environment once and repair the evidenced problem; do not invent cache or checkpoint causes. Never claim the next scheduled run will happen without observed authorized automation status.
@@ -567,18 +616,31 @@ output contract, not an afterthought.
 - **`input_schema`** — JSON Schema, enforced at runtime. Use for stable contracts (another workflow, a known webhook).
 - **`input_schema_sample`** — literal example payload, used by dry-run + LLM context. Not enforced.
 
+Client-supplied context belongs in ordinary input, for example `input.context` with locale, timezone, screen and request ID. Read `$input.context` in JSONata or `input.scope.$input.context` in JavaScript. Declare its nested fields, required properties, types and size limits in `input_schema`; use `additionalProperties: false` where extra fields must be refused. Context is untrusted business data, never a replacement for `$caller`, tenant authorization or object ownership. Do not include credentials. An object ID supplied in context still requires an access check using the authenticated caller.
+
+Runtime schemas use synchronous JSON Schema draft-07 semantics, including nested constraints and local references. Invalid schemas, unresolved references and `$async` are refused. Validation does not coerce values, insert defaults or remove fields. `format` is an annotation, not a validation rule; use explicit `pattern`, `enum` and bounds when those restrictions matter.
+
+Omitted workflow input becomes `{}` when the declared schema has `type: "object"`; required fields still fail validation. Explicit JSON `null` stays null and must satisfy the schema. Existing schedule input is used only when preparation input is omitted, never to replace explicit `{}` or null.
+
 Both can coexist:
 
 ```json
 {
   "input_schema": {
     "type": "object",
-    "required": ["tenant_id"],
-    "properties": { "tenant_id": { "type": "string", "format": "uuid" } }
+    "required": ["context"],
+    "additionalProperties": false,
+    "properties": {
+      "context": {
+        "type": "object",
+        "required": ["locale"],
+        "additionalProperties": false,
+        "properties": { "locale": { "type": "string", "minLength": 2, "maxLength": 16 } }
+      }
+    }
   },
   "input_schema_sample": {
-    "tenant_id": "6a3c8f2e-1d5b-4b7a-9c4e-8f2b1d5a3c7e",
-    "options": { "dry_run": true }
+    "context": { "locale": "de-DE" }
   }
 }
 ```

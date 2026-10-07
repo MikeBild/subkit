@@ -47,7 +47,12 @@ import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatte
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { ResponseFilterSchema, TriggerSchema, WorkflowRuntimeSchema } from "../workflows/types.ts";
+import {
+  ResponseFilterSchema,
+  TriggerSchema,
+  WorkflowDefSchema,
+  WorkflowRuntimeSchema,
+} from "../workflows/types.ts";
 import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
@@ -110,6 +115,9 @@ export const GeneratedWorkflowSchema = z.object({
     .max(64)
     .regex(/^[a-z][a-z0-9_-]{0,63}$/u),
   description: z.string().max(2000).optional(),
+  product_id: WorkflowDefSchema.shape.product_id,
+  required_caller_kind: WorkflowDefSchema.shape.required_caller_kind,
+  execution_privacy: WorkflowDefSchema.shape.execution_privacy,
   input_schema: z.record(z.string(), z.unknown()).optional(),
   output_schema: z.record(z.string(), z.unknown()).optional(),
   validation_expression: z.string().min(1).optional(),
@@ -302,16 +310,19 @@ export function buildGenerationPrompt(args: {
     "- Request steps are FLATTENED: `connector_id`, `method`, `path` (or absolute `url`), `query`, `headers`, `body` live directly on the step — never inside a `config` wrapper.",
     '- Loop: `{ "id": "...", "kind": "loop", "over": "<JSONata over $scope.<step_id>.data…>", "body": ["<sibling_step_id>", …] }`. `body` is an ARRAY of sibling step ids (the body steps live in the same top-level `steps` array). `item_var` is retired — never emit it.',
     "- JSONata sites (`loop.over`, `branch.when`, `output_transform`): address upstream steps ONLY as `$scope.<step_id>.data…`, the workflow input as `$input`, the current loop item ONLY as `$item` (plus `$loop_index`). Bare item names are rejected. (Transforms are NOT JSONata — see the Transform contract below.)",
-    "- String placeholders in request fields (`path` / `url` / `headers` / `query` / `body`): only `${input.<path>}`, `${scope.<step_id>.data.<path>}`, `${item.<path>}` (inside a loop body), `${cred.<slug>.<field>}`, `${connector.<slug>.url}`. Mustache `{{…}}` is rejected.",
+    "- String placeholders in request fields (`path` / `url` / `headers` / `query` / `body`): `${input.<path>}`, `${scope.<step_id>.data.<path>}`, `${item.<path>}` (inside a loop body), `${caller.<field>}`, `${cred.<slug>.<field>}`, `${connector.<slug>.base_url}`. Mustache `{{…}}` and `${$caller.*}` are rejected.",
+    "- Trusted identity is immutable `$caller` in JSONata, `input.scope.$caller` in JavaScript, and `${caller.<field>}` in request strings. It is null for trusted callerless system runs; otherwise `{ tenantId: string (UUID), principalId: string (normally UUID; generic portal users may have opaque refs), principalKind: 'user' | 'system_account', provider: string (open nonempty provider id), productId: string | null }`. All authenticated generic workflows receive it too. Never infer identity from workflow input, role, email or provider name; no input or fixture can fabricate caller. Step IDs `$caller` and `$input` are reserved.",
+    "- Header `product_id` requires matching authenticated product and saved-workflow execution only; declaring it cannot authorize a draft or standalone step. `required_caller_kind` requires user or system_account; callerless schedules/webhooks cannot meet it. Product S3 scope is literal products/<product-id>/ with principal_bound:true and reviewed limits; key suffix starts ${caller.principalKind}/${caller.principalId}/. Queue, loops and children retain the original caller.",
+    "- Header execution_privacy:'sensitive' refuses chat execution and dry_run_workflow, payload inspection, persistent state, event waits/signals, pagination and prepared fixture replay. Do not invent caller fixtures/private sample data to preview it or claim live verification in chat; schema validation prepares an inert definition, and permitted live verification uses the public execution/result API with the original caller. An ordinary parent cannot call a sensitive child. Keep integrations on public APIs, never another product's private database/files/queues.",
     "",
     "## Transform contract — JavaScript only",
-    'Every `transform` step is `language: "javascript"` (the default and only transform language). The execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network; values are JSON-marshalled):',
+    'Programmable `transform` steps use `language: "javascript"` (the default programmable language); specialized extraction modes use their own schema configuration. The execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network; values are JSON-marshalled):',
     "- The `expression` is a FUNCTION BODY (not a module, not an arrow function). It must `return` its result; a trailing expression also works.",
     "- It receives exactly one value, `input`:",
     "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
     "  - `input.input` — the workflow input",
     "  - `input.scope.$item` / `input.scope.$loop_index` — inside a loop body",
-    "JSONata is NOT a transform language — it survives only in `loop.over`, `branch.when`, `output_transform`, and `${…}` string interpolation.",
+    "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
     "",
     "## Design rules",
     "- Prefer ONE bulk list endpoint over a nested per-item loop: when the vendor offers an endpoint that returns the collection with the fields you need, fetch it once and reshape with a single transform instead of looping a detail endpoint per item.",
@@ -342,6 +353,9 @@ function toWorkflowDraftDocument(def: GeneratedWorkflow): WorkflowDraftDocument 
     name: def.name,
     slug: def.slug,
     ...(def.description ? { description: def.description } : {}),
+    ...(def.product_id ? { product_id: def.product_id } : {}),
+    ...(def.required_caller_kind ? { required_caller_kind: def.required_caller_kind } : {}),
+    ...(def.execution_privacy ? { execution_privacy: def.execution_privacy } : {}),
     ...(def.input_schema ? { input_schema: def.input_schema } : {}),
     ...(def.output_schema ? { output_schema: def.output_schema } : {}),
     ...(def.validation_expression ? { validation_expression: def.validation_expression } : {}),

@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
-import { roles, systemAccounts, toolApprovals, users } from "../db/schema/index.ts";
+import { executions, toolApprovals } from "../db/schema/index.ts";
+import { rehydrateExecutionPrincipal } from "../execution/authorization-context.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { insertMcpTask, setMcpTaskFailure, setMcpTaskJobId } from "../mcp/tasks/store.ts";
 import { enqueueConversationRunTurn } from "./handlers/conversation-run-turn.ts";
@@ -12,35 +13,37 @@ async function approvalOwnerPrincipal(
   tenant_id: string,
   approval_id: string,
   db: Db,
+  decision: "approve" | "decline",
 ): Promise<ResolvedPrincipal | null> {
   const [owner] = await db
-    .select({ principal_id: toolApprovals.principal_id })
+    .select()
     .from(toolApprovals)
     .where(and(eq(toolApprovals.tenant_id, tenant_id), eq(toolApprovals.id, approval_id)))
     .limit(1);
-  const id = owner?.principal_id;
-  if (!id) return null;
-
-  const [user] = await db
-    .select({ role_name: roles.name })
-    .from(users)
-    .leftJoin(roles, eq(roles.id, users.role_id))
-    .where(and(eq(users.id, id), eq(users.tenant_id, tenant_id)))
-    .limit(1);
-  if (user) {
-    const roleNames = user.role_name ? [user.role_name] : [];
-    return { provider: "conversation_tool", kind: "user", id, tenant_id, roles: roleNames };
+  if (
+    !owner ||
+    owner.consumed_at ||
+    owner.expires_at <= new Date() ||
+    (decision === "approve" ? !owner.granted_at || owner.declined_at : !owner.declined_at)
+  )
+    return null;
+  let caller = owner.caller_context;
+  let authorization = owner.authorization_context;
+  if (!caller && !authorization) {
+    const linked = await db
+      .select({
+        caller: executions.caller_context,
+        authorization: executions.authorization_context,
+      })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, tenant_id), eq(executions.tool_approval_id, approval_id)))
+      .limit(2);
+    if (linked.length !== 1) return null;
+    caller = linked[0]?.caller ?? null;
+    authorization = linked[0]?.authorization ?? null;
   }
-
-  const [account] = await db
-    .select({ id: systemAccounts.id })
-    .from(systemAccounts)
-    .where(and(eq(systemAccounts.id, id), eq(systemAccounts.tenant_id, tenant_id)))
-    .limit(1);
-  if (account) {
-    return { provider: "conversation_tool", kind: "system_account", id, tenant_id, roles: [] };
-  }
-  return null;
+  const principal = await rehydrateExecutionPrincipal(db, caller, authorization);
+  return principal?.id === owner.principal_id ? principal : null;
 }
 
 export async function enqueueApprovalElicitationResume(
@@ -55,7 +58,30 @@ export async function enqueueApprovalElicitationResume(
   db: Db,
   boss: PgBoss,
 ): Promise<boolean> {
-  const runAs = await approvalOwnerPrincipal(p.tenant_id, p.approval_id, db);
+  let runAs: ResolvedPrincipal | null;
+  try {
+    runAs = await approvalOwnerPrincipal(p.tenant_id, p.approval_id, db, p.decision);
+  } catch (error) {
+    logger.warn({
+      module: "queue",
+      action: "approval_resume.authentication_refused",
+      msg: "Approved continuation requires fresh authenticated preparation.",
+      tenant_id: p.tenant_id,
+      approval_id: p.approval_id,
+      ...errorFields(error),
+    });
+    return false;
+  }
+  if (!runAs) {
+    logger.warn({
+      module: "queue",
+      action: "approval_resume.authentication_refused",
+      msg: "Approved continuation requires fresh authenticated preparation.",
+      tenant_id: p.tenant_id,
+      approval_id: p.approval_id,
+    });
+    return false;
+  }
   const actor_id = runAs?.kind === "user" ? runAs.id : p.approver_user_id;
 
   let task_id: string;

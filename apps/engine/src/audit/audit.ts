@@ -14,7 +14,16 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     );
   }
   const traceId = entry.trace_id ?? ctx.trace_id ?? "";
-  const metadata = withAuthVia(entry.metadata ?? {}, ctx.auth_via);
+  const sensitive = ctx.execution_privacy === "sensitive";
+  const metadata = withAuthVia(
+    sensitive
+      ? {
+          execution_privacy: "sensitive",
+          ...(ctx.execution_id ? { execution_id: ctx.execution_id } : {}),
+        }
+      : (entry.metadata ?? {}),
+    ctx.auth_via,
+  );
 
   return scrubAuditEntry({
     id: entry.id ?? crypto.randomUUID(),
@@ -29,9 +38,9 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
     trace_id: traceId,
     ip: entry.ip ?? null,
     user_agent: entry.user_agent ?? null,
-    before: (entry.before ?? null) as AuditEntry["before"],
-    after: (entry.after ?? null) as AuditEntry["after"],
-    reason: entry.reason ?? null,
+    before: (sensitive ? null : (entry.before ?? null)) as AuditEntry["before"],
+    after: (sensitive ? null : (entry.after ?? null)) as AuditEntry["after"],
+    reason: sensitive && entry.reason ? "sensitive_execution" : (entry.reason ?? null),
     metadata,
   });
 }

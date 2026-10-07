@@ -90,6 +90,20 @@ The single runtime entry point. The request body is a discriminated union on `so
 
 Common optional fields: `input` (the run input, validated against the workflow's input schema), `request_source` (`api` | `cli` | `mcp` | `webhook` | `tool-chain` | `scheduler` | `chat`, default `api`). Environment is selected by the `x-subkit-environment: dev | prod` header (default `dev`).
 
+## Trusted execution caller
+
+Every authenticated workflow receives immutable `$caller`; trusted system runs without a principal receive null. Its fields are `tenantId: string` (UUID), `principalId: string` (normally UUID, with opaque references supported for generic portal-token users), `principalKind: "user" | "system_account"`, `provider: string` (nonempty, open provider identifier), and `productId: string | null`. An authenticated system account differs from a callerless system run. Provider is not a role, and caller carries no credential, email, roles or token. Read it as `input.scope.$caller` in JavaScript transform function bodies, `$caller` in JSONata, or `${caller.<field>}` in request strings. Input owner fields cannot set caller identity.
+
+Pass application context as ordinary JSON in the run request's `input.context`, for example locale, timezone, screen and request ID. Read `$input.context` in JSONata or `input.scope.$input.context` in JavaScript. Declare nested fields, types and bounds in `input_schema`; invalid input is refused before execution admission. Context remains untrusted and cannot replace caller identity or authorize access to an object ID. Never include tokens or secrets. Runtime schemas are synchronous draft-07 contracts; `format` is annotation-only and validation never coerces, supplies defaults or removes fields.
+
+Omitting `input` for a declared object schema supplies `{}`; required fields still apply. Explicit `input: null` remains null and is refused unless the schema permits it. The CLI also preserves explicit `--input 'null'`; omission and null are separate values.
+
+A workflow's `product_id` must match the authenticated product; `required_caller_kind` optionally requires `user` or `system_account`. Product principals may use only `source: "saved"` for matching persisted workflows. Draft/step execution returns audited 403 `caller_saved_workflow_required` before creating an execution or dispatching a read/write. Self-declaring product identity does not grant it. Callerless scheduler/webhook execution cannot satisfy a caller/product requirement. Queue, resume, loops and children retain the persisted identity; async supported auth sources are revalidated at worker execution.
+
+Product S3 requests require literal `s3.scope.key_prefix: "products/<product-id>/"`, `principal_bound: true` and reviewed size limits. The effective owner folder is `products/<product-id>/<principalKind>/<principalId>/`; use `${caller.principalKind}` and `${caller.principalId}` in keys. Unsafe path-segment identities are refused. Approval and connector permissions still apply.
+
+`execution_privacy: "sensitive"` encrypts input/result persistence. Sensitive runs are refused in chat and `dry_run_workflow` and cannot expose payload through inspection or sample tools; persistent state, event waits/signals, pagination and prepared fixture replay are unsupported. An ordinary parent cannot call a sensitive child. Schema validation does not fabricate identity or prove private live execution. `GET /v1/executions/{id}/result` returns the decrypted result only to the original authenticated caller, with live principal validation; another authentication provider for the same user is refused with audited 403 `sensitive_resume_forbidden`. Generic opaque portal callers cannot resume sensitive execution. Build integrations with these public APIs, never deployment database objects, files or queues.
+
 ## Saved run
 
 ```json

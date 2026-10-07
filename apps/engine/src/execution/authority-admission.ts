@@ -32,7 +32,10 @@ import { assertStorageRequest } from "../workflows/storage-boundary.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
 import { JsonValueSchema } from "../workflows/types.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
+import { assertCallerMatches, type CallerContext } from "./caller-context.ts";
 import { validateAgainstJsonSchema } from "./engine/envelope.ts";
+import { resolveDefinition } from "./resolve-definition.ts";
+import { recoverExecutionPayload } from "./sensitive-payload.ts";
 import { createExecution } from "./state.ts";
 import { assertToolApprovalDispatch } from "./tool-approval-dispatch.ts";
 import type { RequestAuthoritySnapshot } from "./types.ts";
@@ -75,9 +78,13 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executor) {
+export async function admitAuthorizedWorkflowExecution(
+  raw: unknown,
+  db: Executor,
+  caller: CallerContext | null = null,
+  authorization: import("./authorization-context.ts").ExecutionAuthorizationContext | null = null,
+) {
   const input = admissionSchema.parse(raw);
-  const normalized = JsonValueSchema.parse(normalizeWorkflowRunInput(input.input) ?? null);
   return db.transaction(async (tx) => {
     if (input.idempotency_key) {
       await tx.execute(
@@ -94,6 +101,19 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
         )
         .limit(1);
       if (existing) {
+        if (existing.workflow_id !== input.workflow_id || !existing.workflow_version_id)
+          fail(
+            "execution_boundary_mismatch",
+            "the idempotency key belongs to a different execution boundary",
+          );
+        const pinned = await resolveDefinition(tx, input.tenant_id, {
+          kind: "saved",
+          workflow_id: input.workflow_id,
+          version_id: existing.workflow_version_id,
+        });
+        const normalized = JsonValueSchema.parse(
+          normalizeWorkflowRunInput(input.input, pinned.def.input_schema) ?? null,
+        );
         if (
           !existing.execution_authority_id ||
           existing.workflow_id !== input.workflow_id ||
@@ -103,7 +123,11 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
             input.execution_authority_id !== existing.execution_authority_id) ||
           existing.execution_mode !== input.execution_environment ||
           (existing.parent_execution_id ?? null) !== (input.parent_execution_id ?? null) ||
-          !isDeepStrictEqual(existing.input, normalized)
+          !isDeepStrictEqual(existing.caller_context, caller) ||
+          !isDeepStrictEqual(
+            recoverExecutionPayload(existing.input, input.tenant_id, existing.id),
+            normalized,
+          )
         )
           fail(
             "execution_boundary_mismatch",
@@ -140,6 +164,20 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
       .limit(1);
     if (!version) fail("workflow_version_not_active", "active workflow version unavailable");
     const definition = executableDefinition(version.dag);
+    const normalized = JsonValueSchema.parse(
+      normalizeWorkflowRunInput(input.input, definition.input_schema) ?? null,
+    );
+    if (input.request_source === "chat" && definition.execution_privacy === "sensitive")
+      fail(
+        "sensitive_execution_unsupported",
+        "Sensitive execution is unavailable on conversation surfaces.",
+      );
+    assertCallerMatches(
+      caller,
+      input.tenant_id,
+      definition.product_id,
+      definition.required_caller_kind,
+    );
     if (definition.input_schema) {
       const check = validateAgainstJsonSchema(normalized, definition.input_schema, "$input");
       if (!check.valid) fail("input_schema_violation", check.errors.join("; "));
@@ -195,6 +233,9 @@ export async function admitAuthorizedWorkflowExecution(raw: unknown, db: Executo
       source_kind: "saved",
       source_ref: input.parent_execution_id ? { rerun_of: input.parent_execution_id } : null,
       input: normalized,
+      caller_context: caller,
+      authorization_context: authorization,
+      execution_privacy: definition.execution_privacy,
       request_source: input.request_source,
       parent_execution_id: input.parent_execution_id ?? null,
       idempotency_key: input.idempotency_key ?? null,
@@ -319,7 +360,8 @@ export async function assertExecutionAuthorityCurrent(
         snapshot.request,
         await loadContentRevisionReceipts(db, tenant_id, execution_id),
       );
-    if (effect.storage) assertStorageRequest(effect.storage, snapshot.request);
+    if (effect.storage)
+      assertStorageRequest(effect.storage, snapshot.request, execution.caller_context ?? null);
     if (effect.boundary) assertRequestBoundary(effect.boundary, snapshot.request);
     if (effect.read_path) assertReadPath(effect.read_path, snapshot.request);
     if (effect.read_query) assertReadQuery(effect.read_query, effect.target, snapshot.request);

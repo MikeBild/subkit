@@ -201,7 +201,7 @@ beforeAll(async () => {
       db: ctx.db,
       source: { kind: "saved", workflow_id: wf.id },
       input: {},
-      options: { existing_execution_id: admitted.execution_id, principal },
+      options: { existing_execution_id: admitted.execution_id },
     });
     expect(result.status).toBe("failed");
   });

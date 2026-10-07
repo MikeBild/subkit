@@ -2,9 +2,10 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { executions } from "../../../db/schema/index.ts";
+import { executionVisibilityFilter, isSensitivePayload } from "../../../execution/index.ts";
 import { appendSignal } from "../../../workflow-signals/service.ts";
 import { verifySignalToken } from "../../../workflow-signals/token.ts";
-import { NotFoundError, UnauthorizedError } from "../../errors.ts";
+import { HttpError, NotFoundError, UnauthorizedError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
@@ -38,6 +39,10 @@ const signalRoute = createRoute({
       content: { "application/json": { schema: SignalResponseSchema } },
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "Sensitive executions do not accept persistent signals",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -55,10 +60,11 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
     const token = c.req.query("token");
 
     let tenant_id: string;
+    let input: unknown;
     if (token) {
       // tenant-filter:exempt — token-mediated lookup by globally-unique execution_id; tenant_id is read out and verified against the signed HMAC token below
       const rows = await db
-        .select({ id: executions.id, tenant_id: executions.tenant_id })
+        .select({ id: executions.id, tenant_id: executions.tenant_id, input: executions.input })
         .from(executions)
         .where(eq(executions.id, id))
         .limit(1);
@@ -72,16 +78,31 @@ export function registerSignalRoute(app: OpenAPIHono<AppEnv>): void {
         throw new UnauthorizedError(`signal token rejected: ${verdict.reason}`);
       }
       tenant_id = rows[0].tenant_id;
+      input = rows[0].input;
     } else {
       const principal = requireAuth(c);
       tenant_id = principal.tenant_id;
       const rows = await db
-        .select({ id: executions.id })
+        .select({ id: executions.id, input: executions.input })
         .from(executions)
-        .where(and(eq(executions.tenant_id, tenant_id), eq(executions.id, id)))
+        .where(
+          and(
+            eq(executions.tenant_id, tenant_id),
+            eq(executions.id, id),
+            executionVisibilityFilter(principal),
+          ),
+        )
         .limit(1);
       if (!rows[0]) throw new NotFoundError("execution");
+      input = rows[0].input;
     }
+
+    if (isSensitivePayload(input))
+      throw new HttpError(
+        409,
+        "sensitive_execution_unsupported",
+        "Sensitive executions do not accept persistent signals.",
+      );
 
     const { id: signal_id } = await appendSignal(db, {
       tenant_id,

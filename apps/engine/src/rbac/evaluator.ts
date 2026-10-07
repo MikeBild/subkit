@@ -231,6 +231,12 @@ function ceilingDeny(check: PermissionCheck, cause: string): Decision {
 
 function credentialCeiling(check: PermissionCheck): Decision | null {
   const { principal } = check;
+  if (
+    principal.product_id &&
+    !["workflow:run", "execution:read", "execution:abort"].includes(check.permission)
+  ) {
+    return ceilingDeny(check, "product_permission_not_granted");
+  }
   if (principal.provider === "portal_token") return null;
 
   const scopes = principal.scopes;

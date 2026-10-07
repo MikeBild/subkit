@@ -5,9 +5,17 @@ import { type Browser, chromium } from "playwright";
 import { issueBrowserSession } from "../../auth/browser-session.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
-import { toolApprovals, workflows, workflowVersions } from "../../db/schema/index.ts";
+import {
+  apiKeys,
+  systemAccounts,
+  toolApprovals,
+  workflows,
+  workflowVersions,
+} from "../../db/schema/index.ts";
 import { runExecution } from "../../execution/engine.ts";
 import { approvedDispatchOutcome } from "../../execution/tool-approval-dispatch.ts";
+import { sha256Hex } from "../../identity/api-key.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import { consumeApproval, requestApproval } from "../../tools/approval.ts";
@@ -35,16 +43,39 @@ beforeAll(async () => {
   const separator = first?.indexOf("=") ?? -1;
   if (!first || separator < 1) throw new Error("missing test browser session");
   cookie = { name: first.slice(0, separator), value: first.slice(separator + 1) };
+  const digest = sha256Hex("synthetic-local-approval-fixture");
+  await server.db
+    .update(systemAccounts)
+    .set({ role_id: await builtinRoleId(server.db, "admin") })
+    .where(
+      and(
+        eq(systemAccounts.tenant_id, server.tenantId),
+        eq(systemAccounts.id, server.systemAccountId),
+      ),
+    );
+  const [key] = await server.db
+    .insert(apiKeys)
+    .values({
+      tenant_id: server.tenantId,
+      system_account_id: server.systemAccountId,
+      prefix: `approval-${server.systemAccountId}`,
+      token_sha256: digest,
+      scopes: ["*"],
+    })
+    .returning();
+  if (!key) throw new Error("requester credential missing");
   requester = {
     provider: "api_key",
     kind: "system_account",
     id: server.systemAccountId,
     tenant_id: server.tenantId,
-    roles: [],
+    roles: ["admin"],
+    scopes: ["*"],
+    auth_source: { kind: "api_key", api_key_id: key.id, credential_version: sha256Hex(digest) },
   };
   browser = await chromium.launch({ headless: true });
   await mkdir(".artifacts/approval-portal", { recursive: true });
-}, 30_000);
+}, 120_000);
 
 afterAll(async () => {
   await browser?.close();

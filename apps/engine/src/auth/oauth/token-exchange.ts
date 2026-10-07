@@ -298,6 +298,13 @@ export function createTokenExchangeProvider(opts: TokenExchangeProviderOptions =
         log.auth.denied({ provider: PROVIDER, reason: "owner_changed", api_key_id: row.id });
         return null;
       }
+      if (typeof claims.exp !== "number") return null;
+      principal.auth_source = {
+        kind: "token_exchange",
+        api_key_id: row.id,
+        credential_version: createHash("sha256").update(row.token_sha256).digest("hex"),
+        expires_at: new Date(claims.exp * 1000).toISOString(),
+      };
       return applyTokenGrants(principal, claims, row);
     },
   };

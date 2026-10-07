@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
+import { createApiKeyProvider } from "../../auth/providers/api-key.ts";
 import { ChatAdapterRegistry } from "../../chat/registry.ts";
 import { SkCliAdapter } from "../../chat/sk-cli/adapter.ts";
 import { auditLog } from "../../db/schema/audit.ts";
@@ -168,6 +169,12 @@ describe("journey 64: a refused run stays out of the inbox", () => {
     expect(await inboxEventTypes()).toEqual(["execution.failed"]);
   });
   test("AC5: a queued run refused in the worker still reaches the inbox", async () => {
+    const principal = await createApiKeyProvider({ db: ctx.db }).resolve(
+      new Request("http://localhost/v1/executions", {
+        headers: { authorization: `Bearer ${ctx.apiKey}` },
+      }),
+    );
+    if (!principal) throw new Error("fixture_principal_unavailable");
     const res = await journeyFetch(ctx, "/v1/executions", {
       method: "POST",
       headers: { "x-subkit-environment": "dev" },
@@ -182,6 +189,7 @@ describe("journey 64: a refused run stays out of the inbox", () => {
         source: { kind: "saved", workflow_id: refusingWorkflowId },
         input: null,
         options: {
+          principal,
           request_source: "api",
           existing_execution_id: execution_id,
           execution_mode: "dev",

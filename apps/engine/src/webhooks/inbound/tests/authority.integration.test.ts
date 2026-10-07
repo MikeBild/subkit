@@ -236,6 +236,41 @@ describe("webhook execution authority admission", () => {
     expect(await receive(input)).toMatchObject({ status: "deduped" });
   });
 
+  test("sensitive retry recovers original encrypted input before stable event comparison", async () => {
+    const [version] = await ctx.db
+      .select()
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenantId),
+          eq(workflowVersions.workflow_id, ctx.workflowId),
+        ),
+      );
+    if (!version) throw new Error("missing workflow version");
+    await ctx.db
+      .update(workflowVersions)
+      .set({ dag: { ...(version.dag as Record<string, unknown>), execution_privacy: "sensitive" } })
+      .where(
+        and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, version.id)),
+      );
+    const authority = await ctx.grantAuthority("prod", 1);
+    const input = delivery("sensitive-retry");
+    const send = spyOn(ctx.boss, "send").mockRejectedValueOnce(new Error("queue unavailable"));
+    try {
+      await expect(receive(input)).rejects.toThrow("queue unavailable");
+    } finally {
+      send.mockRestore();
+    }
+    const [original] = await rows();
+    expect(JSON.stringify(original?.input)).not.toContain("invoice");
+    expect(await receive(delivery("sensitive-retry", input.rawBody, 60))).toMatchObject({
+      status: "ok",
+      execution_id: original?.id,
+    });
+    expect(await rows()).toHaveLength(1);
+    expect(await reserved(authority.id)).toBe(1);
+  });
+
   test("a retry cannot replace the reserved event body", async () => {
     const authority = await ctx.grantAuthority("prod", 1);
     const input = delivery("changed-input");

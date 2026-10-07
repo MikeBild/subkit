@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../../db/client.ts";
 import { auditLog, portalTokens, tenants, users } from "../../../db/schema/index.ts";
-import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
+import { createTestDb, TEST_DB_HOOK_TIMEOUT, type TestDb } from "../../../db/tests/setup.ts";
 import { generatePortalToken } from "../../../identity/portal-token.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../../test-helpers/determinism/clock.ts";
@@ -33,11 +33,11 @@ beforeAll(async () => {
     .returning();
   if (!u) throw new Error("seed user failed");
   ownerId = u.id;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await testDb.cleanup();
-}, 30_000);
+  if (testDb) await testDb.cleanup();
+}, TEST_DB_HOOK_TIMEOUT);
 
 function bearerReq(token: string): Request {
   return new Request("https://engine/v1/whoami", {

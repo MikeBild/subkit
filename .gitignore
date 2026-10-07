@@ -33,3 +33,4 @@ apps/engine/assets/embeddings/
 apps/engine/src/connectors/template-audit-report.json
 
 /key.txt
+.devtools

@@ -1,3 +1,4 @@
+import { compileJsonSchemaContract } from "../execution/index.ts";
 import {
   compile as compileJsonata,
   findUnboundFunctionCalls,
@@ -281,6 +282,16 @@ export function validateWorkflowDef(
         message:
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal `${item.…}` token names the placeholder grammar surfaced to the LLM.
           'step uses `${item.…}` placeholder but is not contained in any `loop.body[]` and has no `for_each` declared. Set `for_each: "(sourceData) => sourceData.<prev_step>.<array_path>"` on this step to bind `$item` per element (the placeholder resolver only sets `$item` inside a `for_each` iteration or a loop body).',
+      });
+    }
+  }
+
+  if (wf.input_schema) {
+    const compiled = compileJsonSchemaContract(wf.input_schema);
+    if (!compiled.ok) {
+      errors.push({
+        path: "input_schema",
+        message: `input_schema is not a valid JSON Schema: ${compiled.error}`,
       });
     }
   }

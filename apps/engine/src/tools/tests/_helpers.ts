@@ -4,9 +4,10 @@ import type { Db } from "../../db/client.ts";
 
 export function makeTestPrincipal(overrides: Partial<ResolvedPrincipal> = {}): ResolvedPrincipal {
   return {
+    provider: "test",
     kind: "user",
-    id: "00000000-0000-0000-0000-000000000001",
-    tenant_id: "00000000-0000-0000-0000-000000000002",
+    id: "00000000-0000-4000-8000-000000000001",
+    tenant_id: "00000000-0000-4000-8000-000000000002",
     authoring_role_id: null,
     scopes: new Set(),
     permission_grants: [],

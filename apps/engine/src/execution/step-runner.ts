@@ -130,10 +130,12 @@ export async function runStep(
       const offload = await maybeOffload(ctx.db, {
         tenant_id: ctx.tenant_id,
         execution_id: ctx.execution_id,
+        execution_privacy: ctx.execution_privacy,
         step_id: ctx.step_row_id,
         result: scrubbedScope ?? null,
       });
       await finalizeStepRow(ctx.db, ctx.step_row_id, result.status, result, {
+        tenant_id: ctx.tenant_id,
         output_preview: offload.storage_uri ? null : (scrubbedScope ?? null),
         result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
         result_storage_uri: offload.storage_uri,
@@ -381,6 +383,7 @@ export async function runStep(
   const offload = await maybeOffload(ctx.db, {
     tenant_id: ctx.tenant_id,
     execution_id: ctx.execution_id,
+    execution_privacy: ctx.execution_privacy,
     step_id: ctx.step_row_id,
     result: scrubbedScope ?? result.output ?? null,
   });
@@ -392,6 +395,7 @@ export async function runStep(
       ? { value: scrubbedScope ?? null, warnings }
       : (scrubbedScope ?? null);
   await finalizeStepRow(ctx.db, ctx.step_row_id, result.status, result, {
+    tenant_id: ctx.tenant_id,
     output_preview,
     result_preview: offload.preview ?? previewOf(scrubbedScope ?? null),
     result_storage_uri: offload.storage_uri,

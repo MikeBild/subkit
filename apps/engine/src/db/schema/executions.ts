@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
 import { tenants } from "./identity.ts";
@@ -56,7 +57,18 @@ export const executions = pgTable(
     hold_writes: boolean("hold_writes").notNull().default(false),
     source_kind: text("source_kind").notNull().default("saved"),
     source_ref: jsonb("source_ref").$type<Record<string, unknown> | null>(),
+    caller_context: jsonb("caller_context").$type<{
+      tenantId: string;
+      principalId: string;
+      principalKind: "user" | "system_account";
+      provider: string;
+      productId: string | null;
+    } | null>(),
     input: jsonb("input"),
+    authorization_context: jsonb(
+      "authorization_context",
+    ).$type<ExecutionAuthorizationContext | null>(),
+    sensitive_result: jsonb("sensitive_result"),
     status: executionStatusEnum("status").notNull(),
     request_source: text("request_source").notNull(),
     execution_mode: executionModeEnum("execution_mode").notNull(),

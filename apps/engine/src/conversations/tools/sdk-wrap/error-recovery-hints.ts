@@ -8,6 +8,8 @@ import {
 } from "../error-codes.ts";
 
 export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
+  caller_saved_workflow_required:
+    "this product identity may run only a saved workflow matching its product. Select an authorized saved workflow; do not submit a draft or standalone step, self-declare a product, or switch tools to bypass the restriction.",
   draft_write_held:
     "the draft probe held an external write before credential lookup or dispatch. Validate the draft with a read-only probe, save the connector, then use call_connector for the exact write with human approval. Do not retry the write through a draft probe or bypass the approval gate.",
   workflow_activation_required:
@@ -152,6 +154,8 @@ export const ERROR_CODE_ALTERNATIVES: Readonly<Record<string, string>> = {
     "the step did not run in the last preview — call dry_run_workflow or run_workflow first to populate the preview",
   no_preview_recorded:
     "the workflow has no recorded preview — call dry_run_workflow to produce one before reading step results",
+  sensitive_execution_unsupported:
+    "this workflow carries sensitive execution data, which cannot be placed in conversation previews or messages. Run it through the authenticated executions API and read the result through the owner's execution result endpoint; do not retry it through chat tools",
   preview_empty:
     "the last preview produced no output — call run_workflow with concrete input, or dry_run_workflow with a non-empty input payload",
   connector_auth_unset:

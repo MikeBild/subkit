@@ -384,7 +384,7 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       body: `event: outcome\ndata: ${JSON.stringify({ conversation, status: "active" })}\n\n`,
     });
   });
-  const decisionCount = async () => {
+  const decisionCount = async (expectedCount) => {
     const count = page.getByTestId("nav-overview-count");
     const mobile = page.viewportSize().width < 768;
     const sidebar = page.locator('[data-slot="sidebar"]');
@@ -393,6 +393,13 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       : (await sidebar.getAttribute("data-state")) === "collapsed";
     if (needsOpen) await page.getByTestId("sidebar-trigger").click();
     await count.waitFor();
+    if (expectedCount !== undefined)
+      await page.waitForFunction(
+        (expected) =>
+          Number(document.querySelector('[data-testid="nav-overview-count"]')?.textContent) ===
+          expected,
+        expectedCount,
+      );
     const value = Number(await count.innerText());
     if (mobile) {
       await page
@@ -511,7 +518,7 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
     await page.getByTestId("chat-automation-ready").waitFor();
-    const after = await decisionCount();
+    const after = await decisionCount(before - 1);
     if (after !== before - 1)
       throw new Error(`Decision count did not decrease once: ${before} -> ${after}`);
     await page.reload();

@@ -72,6 +72,8 @@ export const userIdentities = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     provider_id: text("provider_id").notNull(),
+    issuer_url: text("issuer_url"),
+    product_id: text("product_id"),
     subject: text("subject").notNull(),
     email: text("email").notNull(),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
@@ -100,6 +102,7 @@ export const sessions = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    product_id: text("product_id"),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }),

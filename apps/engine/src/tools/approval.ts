@@ -6,7 +6,10 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { toolApprovals } from "../db/schema/index.ts";
+import { authorizationContextFromPrincipal } from "../execution/authorization-context.ts";
+import { callerFromPrincipal } from "../execution/caller-context.ts";
 import { logger } from "../logging/logger.ts";
+import { approvalOwnerFilter } from "./approval-owner.ts";
 import {
   type ApprovalPreview,
   buildApprovalPreview,
@@ -186,6 +189,8 @@ export async function requestApproval(input: RequestApprovalInput): Promise<Requ
       id: approval_id,
       tenant_id: principal.tenant_id,
       principal_id: principal.id,
+      caller_context: callerFromPrincipal(principal, principal.tenant_id, principal.product_id),
+      authorization_context: authorizationContextFromPrincipal(principal),
       tool,
       surface,
       execution_mode,
@@ -628,6 +633,7 @@ export async function consumeApproval(input: ConsumeApprovalInput): Promise<Cons
             eq(toolApprovals.id, approval_id),
             eq(toolApprovals.tenant_id, principal.tenant_id),
             eq(toolApprovals.principal_id, principal.id),
+            approvalOwnerFilter(principal),
             eq(toolApprovals.tool, tool),
             eq(toolApprovals.surface, surface),
             isNotNull(toolApprovals.granted_at),
@@ -831,7 +837,11 @@ async function classifyClaimMiss(
     })
     .from(toolApprovals)
     .where(
-      and(eq(toolApprovals.id, approval_id), eq(toolApprovals.tenant_id, principal.tenant_id)),
+      and(
+        eq(toolApprovals.id, approval_id),
+        eq(toolApprovals.tenant_id, principal.tenant_id),
+        approvalOwnerFilter(principal),
+      ),
     );
 
   const row = rows[0];

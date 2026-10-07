@@ -150,7 +150,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (body.execution_id)
       await ensurePermission(c, "execution:read", { type: "execution", id: body.execution_id });
     const focus = body.execution_id
-      ? await svc.loadFocusExecution(principal.tenant_id, body.execution_id, db)
+      ? await svc.loadFocusExecution(principal.tenant_id, body.execution_id, db, principal)
       : null;
     if (body.execution_id && !focus) throw new NotFoundError("execution");
     if (focus && body.workflow_id && focus.workflow_id !== body.workflow_id) {

@@ -6,6 +6,8 @@ import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { EngineClient } from "../../engine-client/index.ts";
+import { callerFromPrincipal } from "../../execution/caller-context.ts";
+import { runExecution } from "../../execution/engine.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../../llm/core/ai-sdk-model.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { recordSuccessShape } from "../../schema-versions/service.ts";
@@ -21,6 +23,7 @@ import {
 import { createEmptyDraftDocument } from "../authoring-state.ts";
 import type { RecordedEvalReport } from "../recorded-eval.ts";
 import { authorWorkflowTool } from "../tools/author-workflow.ts";
+import { dryRunWorkflowTool } from "../tools/dry-run-workflow.ts";
 import type { ToolContext } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
 
@@ -125,6 +128,122 @@ const NEVER_VALID_DEF = {
 };
 
 describe("runAuthoringPipeline — one-shot contract", () => {
+  tw(
+    "scripted caller workflow authors once and runs with exact authenticated types and zero egress",
+    async () => {
+      const definition = {
+        name: "Observe trusted caller",
+        slug: "observe-trusted-caller",
+        required_caller_kind: "user",
+        steps: [
+          {
+            id: "identity",
+            kind: "transform",
+            language: "javascript",
+            expression:
+              "const caller = input.scope.$caller; if (!caller) return null; return caller;",
+          },
+        ],
+      };
+      const principal = {
+        provider: "test",
+        kind: "user" as const,
+        id: nextUuid(),
+        tenant_id,
+        roles: ["admin"],
+      };
+      getMockProvider().generateOverrides.generate = () => definition;
+      const toolCtx = { ...makeCtx(), principal };
+      const authored = await runAuthoringPipeline({
+        ctx: toolCtx,
+        goal: "Return the authenticated caller; ignore caller-shaped user input.",
+      });
+      expect(authored.ok).toBe(true);
+      if (!authored.ok) throw new Error("caller authoring failed");
+      expect(authored.attempts).toBe(1);
+      expect(authored.validation.ok).toBe(true);
+      expect(getMockProvider().calls.filter((call) => call.flow === "generate")).toHaveLength(1);
+      const run = await runExecution({
+        db: ctx.db,
+        tenant_id,
+        source: { kind: "draft", definition: authored.definition },
+        input: { caller: { principalId: "spoofed-owner", productId: "spoofed-product" } },
+        options: { principal },
+      });
+      expect(run.status).toBe("succeeded");
+      expect(run.steps).toHaveLength(1);
+      expect(run.output).toEqual(callerFromPrincipal(principal, tenant_id));
+      expect(run.output).toMatchObject({
+        tenantId: tenant_id,
+        principalId: principal.id,
+        principalKind: "user",
+        provider: "test",
+        productId: null,
+      });
+      expect(Object.keys(run.output as object).sort()).toEqual([
+        "principalId",
+        "principalKind",
+        "productId",
+        "provider",
+        "tenantId",
+      ]);
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw(
+    "generated product and sensitive headers survive authoring and cannot downgrade a chat preview",
+    async () => {
+      const headers = {
+        product_id: "harmoniqs",
+        required_caller_kind: "user",
+        execution_privacy: "sensitive",
+      };
+      getMockProvider().generateOverrides.generate = () => ({
+        name: "Private caller workflow",
+        slug: "private-caller-workflow",
+        ...headers,
+        steps: [
+          {
+            id: "identity",
+            kind: "transform",
+            language: "javascript",
+            expression: "return input.scope.$caller ?? null;",
+          },
+        ],
+      });
+      const principal = {
+        provider: "test",
+        kind: "user" as const,
+        id: nextUuid(),
+        tenant_id,
+        roles: ["admin"],
+      };
+      const toolCtx = { ...makeCtx(), principal };
+      const authored = await runAuthoringPipeline({
+        ctx: toolCtx,
+        goal: "Prepare a sensitive product user workflow without running it in chat.",
+      });
+      expect(authored.ok).toBe(true);
+      if (!authored.ok) throw new Error("private authoring failed");
+      expect(authored.definition).toMatchObject(headers);
+      expect(toolCtx.getDraft().workflow).toMatchObject(headers);
+      const initial = JSON.stringify(toolCtx.getDraft());
+      let writes = 0;
+      toolCtx.setDraft = async () => {
+        writes++;
+      };
+      const preview = await dryRunWorkflowTool.execute(toolCtx, {
+        input: { secret: "private-input-canary" },
+      });
+      expect(preview).toMatchObject({ ok: false, error_code: "sensitive_execution_unsupported" });
+      expect(JSON.stringify(preview)).not.toContain("private-input-canary");
+      expect(writes).toBe(0);
+      expect(JSON.stringify(toolCtx.getDraft())).toBe(initial);
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
   tw(
     "emits a schema-valid complete definition with recorded_eval attached, goal stashed, JS transform preserved, zero egress",
     async () => {

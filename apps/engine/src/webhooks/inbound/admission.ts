@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { executions } from "../../db/schema/index.ts";
 import { admitAuthorizedWorkflowExecution } from "../../execution/authority-admission.ts";
+import { recoverExecutionPayload } from "../../execution/sensitive-payload.ts";
 import { JsonValueSchema } from "../../workflows/types.ts";
 
 const PayloadSchema = z
@@ -41,7 +42,7 @@ export async function admitWebhookExecution(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${binding.tenant_id}:${idempotency_key}`}, 0))`,
     );
     const [existing] = await tx
-      .select({ input: executions.input })
+      .select({ id: executions.id, input: executions.input })
       .from(executions)
       .where(
         and(
@@ -52,7 +53,9 @@ export async function admitWebhookExecution(
       .limit(1);
     let input = payload;
     if (existing) {
-      const original = PayloadSchema.safeParse(existing.input);
+      const original = PayloadSchema.safeParse(
+        recoverExecutionPayload(existing.input, binding.tenant_id, existing.id),
+      );
       if (
         !original.success ||
         !isDeepStrictEqual(stablePayload(original.data), stablePayload(payload))

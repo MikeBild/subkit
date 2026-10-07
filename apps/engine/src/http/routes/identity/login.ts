@@ -40,6 +40,8 @@ type OidcConfig = {
   client_id: string;
   scopes: string;
   tenant_slug: string;
+  product_id?: string | undefined;
+  link_by_email?: boolean | undefined;
 };
 
 function providers() {
@@ -84,6 +86,8 @@ function oidcProvider(config: OidcConfig, db: Db) {
     scopes: config.scopes,
     redirectUri: `${getConfig().server.public_base_url}/v1/identity/login/callback`,
     tenantSlug: config.tenant_slug,
+    ...(config.product_id ? { productId: config.product_id } : {}),
+    ...(config.link_by_email !== undefined ? { linkByEmail: config.link_by_email } : {}),
   });
 }
 

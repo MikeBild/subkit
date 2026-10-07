@@ -139,9 +139,11 @@ async function resolveOidcAssertion(
       tenantId: resolvedTenantId,
       providerId: provider.id,
       subject,
+      issuerUrl: provider.issuer_url,
+      ...(provider.product_id ? { productId: provider.product_id } : {}),
       email: accountEmail,
-      linkByEmail: email !== null,
-      allowCreate: getConfig().auth.enable_signup,
+      linkByEmail: !provider.product_id && (provider.link_by_email ?? true) && email !== null,
+      allowCreate: !provider.product_id && getConfig().auth.enable_signup,
     });
   } catch (error) {
     if (error instanceof SignupDisabledError) {
@@ -202,6 +204,9 @@ export function registerIdentitySessionsRoute(app: OpenAPIHono<AppEnv>): void {
     if (!provider) throw new ForbiddenError("identity provider not configured");
     if (provider.protocol === "api_key") {
       throw new BadRequestError("api_key does not accept identity assertions");
+    }
+    if (provider.product_id) {
+      throw new ForbiddenError("product identity assertions cannot issue unbound API keys");
     }
 
     const resolved = await resolveOidcAssertion(db, provider, body.identity_token);

@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium } from "playwright";
+import { waitFor } from "../../apps/engine/src/test-helpers/determinism/wait.ts";
 import {
   expectedIdentity,
   IDENTITY_META,
@@ -72,9 +73,42 @@ let served = "";
 let server: Server;
 let baseUrl = "";
 let browser: Browser;
+let recordSweepProcesses: (() => void) | null = null;
+
+function ownedBrowserProcesses(pid: number): number[] {
+  const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,comm="], { stdout: "pipe" });
+  expect(result.exitCode).toBe(0);
+  const processes = result.stdout
+    .toString()
+    .split("\n")
+    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/))
+    .flatMap((match) =>
+      match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3] ?? "" }] : [],
+    );
+  const owned = new Set([pid]);
+  let previousSize = 0;
+  while (previousSize !== owned.size) {
+    previousSize = owned.size;
+    for (const process of processes) if (owned.has(process.parent)) owned.add(process.pid);
+  }
+  return processes
+    .filter((process) => owned.has(process.pid) && /chrome|chromium/i.test(process.command))
+    .map((process) => process.pid);
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+}
 
 beforeAll(async () => {
   server = createServer((_request, response) => {
+    recordSweepProcesses?.();
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(served);
   });
@@ -83,10 +117,23 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true });
 }, 60_000);
 
+async function closeServer(testServer: Server | undefined): Promise<void> {
+  if (!testServer?.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    testServer.close((error) => (error ? reject(error) : resolve()));
+    testServer.closeAllConnections();
+  });
+}
+
 afterAll(async () => {
-  await browser?.close();
-  server?.close();
-});
+  const results = await Promise.allSettled([browser?.close(), closeServer(server)]);
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0)
+    throw new AggregateError(
+      failures.map((result) => result.reason),
+      "Cockpit identity test resources could not be closed.",
+    );
+}, 30_000);
 
 async function asServed(document: string) {
   served = document;
@@ -193,12 +240,31 @@ describe("the visual sweep asks whose console it is photographing", () => {
         PLAYWRIGHT_BROWSERS_PATH: browsersPath(),
       },
     });
-    const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
-    const exitCode = await run.exited;
+    const browserPids = new Set<number>();
+    recordSweepProcesses = () => {
+      for (const pid of ownedBrowserProcesses(run.pid)) browserPids.add(pid);
+    };
+    let output: string;
+    let exitCode: number;
+    try {
+      output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
+      exitCode = await run.exited;
+    } finally {
+      recordSweepProcesses = null;
+    }
     expect(exitCode, output).not.toBe(0);
     expect(output).toContain("NOT TAKEN");
     expect(output).toContain("this is not SubKit but WorkKit");
     expect(existsSync(outputDir), "not one frame was written").toBe(false);
+    expect(browserPids.size, "the failed sweep actually owned a browser process").toBeGreaterThan(
+      0,
+    );
+    await waitFor(() => [...browserPids].every((pid) => !processExists(pid)), {
+      tries: 100,
+      sleepMs: 20,
+      label: "failed visual sweep browser shutdown",
+    });
+    expect([...browserPids].filter(processExists)).toEqual([]);
   }, 120_000);
 });
 
@@ -244,7 +310,7 @@ describe("a stand that changes hands mid-run photographs nothing of the new owne
     handOverUrl = `http://127.0.0.1:${(handOver.address() as AddressInfo).port}`;
   });
 
-  afterAll(() => handOver?.close());
+  afterAll(() => closeServer(handOver), 30_000);
 
   test("the sweep stops at the first document of the new owner", async () => {
     htmlAnswers = 0;

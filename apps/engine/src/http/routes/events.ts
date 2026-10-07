@@ -82,6 +82,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
+    if (principal.product_id) throw new ForbiddenError("product_caller_forbidden");
     const db = c.get("db");
     const q = c.req.valid("query");
     const tenantConds = [eq(events.tenant_id, principal.tenant_id)];
@@ -110,6 +111,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(emitRoute, async (c) => {
     const principal = requireAuth(c);
+    if (principal.product_id) throw new ForbiddenError("product_caller_forbidden");
     if (!principal.roles.includes("admin")) {
       throw new ForbiddenError("admin_required");
     }
@@ -166,6 +168,7 @@ export function registerEventRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.get("/v1/events/stream", async (c) => {
     const principal = requireAuth(c);
+    if (principal.product_id) throw new ForbiddenError("product_caller_forbidden");
     const db = c.get("db");
     const tenantId = principal.tenant_id;
 

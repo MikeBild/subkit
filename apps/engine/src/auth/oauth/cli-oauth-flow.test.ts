@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Db } from "../../db/client.ts";
+import { TEST_DB_HOOK_TIMEOUT } from "../../db/tests/setup.ts";
 import type { HttpTestServer } from "../../http/tests/setup.ts";
 import {
   CODE_CHALLENGE,
@@ -20,11 +21,11 @@ beforeAll(async () => {
   ctx = setup.ctx;
   db = ctx.db;
   priorBaseUrl = setup.priorBaseUrl;
-}, 30_000);
+}, TEST_DB_HOOK_TIMEOUT);
 
 afterAll(async () => {
-  await teardownMcpOauthServer(ctx, priorBaseUrl);
-}, 30_000);
+  if (ctx) await teardownMcpOauthServer(ctx, priorBaseUrl);
+}, TEST_DB_HOOK_TIMEOUT);
 
 describe("CLI OAuth authorization-code flow", () => {
   test("mints a one-time CLI credential without exposing provider discovery", async () => {

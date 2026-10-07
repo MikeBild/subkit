@@ -28,7 +28,10 @@ import {
 import { prepareReportAuthority } from "../../workflows/prepare-report-authority.ts";
 import { GMAIL_SEND_TARGET } from "../../workflows/report-delivery-boundary.ts";
 import { admitAuthorizedWorkflowExecution } from "../authority-admission.ts";
+import { callerFromPrincipal } from "../caller-context.ts";
 import { runExecution } from "../engine.ts";
+import { isSensitivePayload } from "../sensitive-payload.ts";
+import { createExecution } from "../state.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
@@ -184,6 +187,7 @@ async function fixture(withRead: boolean | "path" | "analytics" = false) {
         input: { raw: value, window: resource },
       },
       db,
+      callerFromPrincipal(principal, ctx.tenantId),
     );
     return runExecution({
       tenant_id: ctx.tenantId,
@@ -419,6 +423,22 @@ test("a reviewed report draft is activated and resolves only its own held decisi
     execution_environment: "dev" as const,
   };
   await prepareReportAuthority(reviewInput, db, f.principal);
+  const [preparedCaller] = await db
+    .select({ caller: executions.caller_context })
+    .from(executions)
+    .where(
+      and(
+        eq(executions.tenant_id, ctx.tenantId),
+        eq(executions.workflow_version_id, draft.id),
+        eq(executions.hold_writes, true),
+      ),
+    );
+  expect(preparedCaller?.caller).toMatchObject({
+    principalId: f.principal.id,
+    principalKind: f.principal.kind,
+    tenantId: ctx.tenantId,
+  });
+
   const preview = await previewWorkflowAuthority(reviewInput, db);
   expect(preview.eligible_for_repeated_runs).toBe(true);
   await grantWorkflowAuthority(
@@ -786,4 +806,98 @@ test("a declared recipient is contradicted only by what this version's preparati
     report_delivery_proposal: declaration,
   });
   expect(await verdict()).toEqual({ eligible: true, reason: undefined });
+});
+
+test("another product owner's running preparation cannot block or supply this owner's preparation", async () => {
+  const f = await fixture();
+  const db = ctx.testDb.db;
+  const [version] = await db
+    .select()
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, f.wf.version_id)),
+    );
+  if (!version) throw new Error("missing fixture version");
+  await db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        ...(version.dag as Record<string, unknown>),
+        product_id: "harmoniqs",
+        required_caller_kind: "user",
+      },
+    })
+    .where(and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, version.id)));
+  const principal = { ...f.principal, product_id: "harmoniqs" };
+  const other = { ...principal, id: "00000000-0000-4000-8000-000000000043" };
+  const foreignId = await createExecution(db, {
+    tenant_id: ctx.tenantId,
+    workflow_id: f.wf.workflow_id,
+    workflow_version_id: f.wf.version_id,
+    source_kind: "saved",
+    source_ref: null,
+    request_source: "ui",
+    execution_mode: "dev",
+    input: { raw: "foreign-input", window: 13 },
+    hold_writes: true,
+    caller_context: callerFromPrincipal(other, ctx.tenantId, "harmoniqs"),
+  });
+  const result = await prepareReportAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      workflow_version_id: f.wf.version_id,
+      execution_environment: "dev",
+      input: { raw: f.raw, window: f.raw.length },
+    },
+    db,
+    principal,
+  );
+  expect(result.prepared).toBe(true);
+  const rows = await db
+    .select()
+    .from(executions)
+    .where(
+      and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, f.wf.workflow_id)),
+    );
+  expect(rows).toHaveLength(2);
+  expect(rows.find((row) => row.id !== foreignId)?.caller_context?.principalId).toBe(principal.id);
+});
+
+test("sensitive report preparation creates encrypted held input for its authenticated owner", async () => {
+  const f = await fixture();
+  const db = ctx.testDb.db;
+  const [version] = await db
+    .select()
+    .from(workflowVersions)
+    .where(
+      and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, f.wf.version_id)),
+    );
+  if (!version) throw new Error("missing fixture version");
+  await db
+    .update(workflowVersions)
+    .set({ dag: { ...(version.dag as Record<string, unknown>), execution_privacy: "sensitive" } })
+    .where(and(eq(workflowVersions.tenant_id, ctx.tenantId), eq(workflowVersions.id, version.id)));
+  const result = await prepareReportAuthority(
+    {
+      tenant_id: ctx.tenantId,
+      workflow_id: f.wf.workflow_id,
+      workflow_version_id: f.wf.version_id,
+      execution_environment: "dev",
+      input: { raw: f.raw, window: f.raw.length },
+    },
+    db,
+    f.principal,
+  );
+  expect(result.prepared).toBe(true);
+  const [row] = await db
+    .select()
+    .from(executions)
+    .where(
+      and(eq(executions.tenant_id, ctx.tenantId), eq(executions.workflow_id, f.wf.workflow_id)),
+    );
+  expect(row?.hold_writes).toBe(true);
+  expect(row?.caller_context?.principalId).toBe(f.principal.id);
+  expect(isSensitivePayload(row?.input)).toBe(true);
+  expect(JSON.stringify(row?.input)).not.toContain(f.raw);
 });
