@@ -216,16 +216,41 @@ export function presentAddress(address: string): { shown: string; keepsSecret: b
 }
 
 export const SIGNED_IN_PARAM = "signed_in";
+export const SIGNIN_FAILED_PARAM = "signin_failed";
 
-export function returnedFromSignIn(search: string): boolean {
-  return new URLSearchParams(search).has(SIGNED_IN_PARAM);
+export type SignInReturn = { kind: "signed_in" } | { kind: "signin_failed"; failure: string };
+
+export function signInReturn(search: string): SignInReturn | null {
+  const params = new URLSearchParams(search);
+  const failure = params.get(SIGNIN_FAILED_PARAM);
+  if (failure !== null) return { kind: "signin_failed", failure };
+  return params.has(SIGNED_IN_PARAM) ? { kind: "signed_in" } : null;
 }
 
 export function withoutSignInReturn(search: string): string {
   const params = new URLSearchParams(search);
   params.delete(SIGNED_IN_PARAM);
+  params.delete(SIGNIN_FAILED_PARAM);
   const query = params.toString();
   return query ? `?${query}` : "";
+}
+
+const SIGN_IN_FAILURE_KEYS: Record<string, TranslationKey> = {
+  link_expired: "connectorStrip.signInFailure.linkExpired",
+  provider_declined: "connectorStrip.signInFailure.providerDeclined",
+  no_authorization: "connectorStrip.signInFailure.noAuthorization",
+  exchange_failed: "connectorStrip.signInFailure.exchangeFailed",
+  issuer_mismatch: "connectorStrip.signInFailure.issuerMismatch",
+  connector_gone: "connectorStrip.signInFailure.connectorGone",
+  not_startable: "connectorStrip.signInFailure.notStartable",
+  no_public_address: "connectorStrip.signInFailure.noPublicAddress",
+  unsupported_credential: "connectorStrip.signInFailure.unsupportedCredential",
+  missing_field: "connectorStrip.signInFailure.missingField",
+  not_saved: "connectorStrip.signInFailure.notSaved",
+};
+
+export function signInFailureKey(failure: string): TranslationKey {
+  return SIGN_IN_FAILURE_KEYS[failure] ?? "connectorStrip.signInFailure.other";
 }
 
 export type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;

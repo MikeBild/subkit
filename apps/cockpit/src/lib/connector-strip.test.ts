@@ -16,6 +16,7 @@ function input(overrides: Partial<ConnectorStripInput>): ConnectorStripInput {
     probe: null,
     missingScopes: 0,
     returned: false,
+    signInFailed: false,
     rights: { write: true, test: true },
     ...overrides,
   };
@@ -82,5 +83,34 @@ describe("connector status strip (D15)", () => {
     expect(CATALOGS.de[connectorStripActionKey({ kind: "renew", way: "provider" })]).toBe(
       "Neu anmelden",
     );
+  });
+
+  test("a failed sign-in leads the strip, with one way to sign in again", () => {
+    expect(connectorStrip(input({ signInFailed: true, auth: "expired" }))).toEqual({
+      kind: "signInFailed",
+      tone: "error",
+      action: { kind: "retry", way: "provider" },
+      lower: ["expired"],
+    });
+    expect(connectorStripActionKey({ kind: "retry", way: "provider" })).toBe(
+      "connectorStrip.action.signInAgain",
+    );
+    expect(CATALOGS.de["connectorStrip.state.signInFailed"]).toBe("Anmeldung fehlgeschlagen");
+    expect(CATALOGS.de["connectorStrip.action.signInAgain"]).toBe("Erneut anmelden");
+    expect(CATALOGS.en["connectorStrip.state.signInFailed"]).toBe("Sign-in failed");
+  });
+
+  test("a failed sign-in offers no retry to a reader who may not sign in", () => {
+    expect(connectorStrip(input({ signInFailed: true, way: null })).action).toBeNull();
+  });
+
+  test("a confirmed sign-in is the calm strip, and never alongside a failure", () => {
+    expect(connectorStrip(input({ returned: true }))).toEqual({
+      kind: "signedIn",
+      tone: "ok",
+      action: null,
+      lower: [],
+    });
+    expect(connectorStrip(input({ returned: true, signInFailed: true })).kind).toBe("signInFailed");
   });
 });

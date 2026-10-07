@@ -27,7 +27,6 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
 import { catalogListParams } from "@/pages/catalog-model";
-import { useConnectionCallback } from "@/pages/connection-callback";
 import { driverLabel } from "@/pages/connector-detail-model";
 import {
   type ConnectorHealthFilter,
@@ -274,7 +273,6 @@ export function CatalogPage({
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const config = CONFIG[resource];
-  useConnectionCallback(resource === "connectors");
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
   const debouncedSearch = useDebouncedValue(search);

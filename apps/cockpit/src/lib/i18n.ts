@@ -432,8 +432,6 @@ const EN = {
   "connections.rightsOne": "1 right",
   "connections.showRights": "Show details",
   "connections.hideRights": "Hide details",
-  "connections.connected": "Connected: {name}",
-  "connections.renewed": "Renewed: {name}",
   "connections.disconnected": "Disconnected: {name}",
   "connections.renew": "Renew",
   "connections.disconnect": "Disconnect",
@@ -462,26 +460,6 @@ const EN = {
     "The access has ended and cannot renew itself. Renew repeats the approval.",
   "connections.reason.secretUnreadable":
     "The stored access cannot be read with this installation's key. Renew repeats the approval.",
-  "connections.failedTitle": "The connection did not complete",
-  "connections.failedTitleNamed": "The connection {name} did not complete",
-  "connections.failure.denied": "Access was refused on the other side. Nothing was stored.",
-  "connections.failure.stateInvalid": "This attempt expired or was already used. Start it again.",
-  "connections.failure.tokenExchange":
-    "The other side did not hand out access after the approval. Try again.",
-  "connections.failure.discoveryMissing":
-    "This address does not describe how to grant access. Enter the key on the connector page instead.",
-  "connections.failure.discoveryFailed":
-    "This address did not answer as a system that grants access.",
-  "connections.failure.registrationMissing":
-    "This system grants access, but does not let SubKit register itself. Enter the key on the connector page instead.",
-  "connections.failure.registrationFailed": "SubKit could not register at this system.",
-  "connections.failure.pkceUnsupported":
-    "This system does not support the secure approval SubKit uses.",
-  "connections.failure.baseUrlInvalid":
-    "That is not an address SubKit can use. It starts with https://",
-  "connections.failure.nameTaken": "An account connection with this name already exists.",
-  "connections.failure.nameInvalid": "The name may contain lowercase letters, digits and hyphens.",
-  "connections.failure.other": "The connection could not be made.",
   "prepared.title": "Prepared changes",
   "prepared.description":
     "Somebody prepared a new value for this installation. Nothing changes until you approve it.",
@@ -3758,6 +3736,23 @@ const EN = {
   "connectorStrip.state.unproven": "Not checked yet",
   "connectorStrip.action.recheck": "Check again",
   "connectorStrip.action.enterCredentials": "Enter credentials",
+  "connectorStrip.state.signInFailed": "Sign-in failed",
+  "connectorStrip.action.signInAgain": "Sign in again",
+  "connectorStrip.signInFailure.linkExpired": "The sign-in link had expired",
+  "connectorStrip.signInFailure.providerDeclined": "The provider did not confirm the sign-in",
+  "connectorStrip.signInFailure.noAuthorization": "The provider sent no authorization back",
+  "connectorStrip.signInFailure.exchangeFailed":
+    "The provider's answer could not be exchanged for access",
+  "connectorStrip.signInFailure.issuerMismatch":
+    "The answer came from a different authorization server",
+  "connectorStrip.signInFailure.connectorGone": "The connector no longer exists",
+  "connectorStrip.signInFailure.notStartable": "The sign-in could not be started",
+  "connectorStrip.signInFailure.noPublicAddress": "The engine has no public address",
+  "connectorStrip.signInFailure.unsupportedCredential":
+    "This kind of credential is not accepted here",
+  "connectorStrip.signInFailure.missingField": "A required field was empty",
+  "connectorStrip.signInFailure.notSaved": "The credentials could not be stored",
+  "connectorStrip.signInFailure.other": "Nothing was stored",
   "connectorPage.tab.usage": "Usage",
   "connectorPage.tab.connection": "Connection",
   "connectorPage.tab.tools": "Tools",
@@ -4422,8 +4417,6 @@ const DE: Record<TranslationKey, string> = {
   "connections.rightsOne": "1 Recht",
   "connections.showRights": "Details anzeigen",
   "connections.hideRights": "Details ausblenden",
-  "connections.connected": "Verbunden: {name}",
-  "connections.renewed": "Erneuert: {name}",
   "connections.disconnected": "Getrennt: {name}",
   "connections.renew": "Erneuern",
   "connections.disconnect": "Trennen",
@@ -4452,29 +4445,6 @@ const DE: Record<TranslationKey, string> = {
     "Der Zugriff ist abgelaufen und kann sich nicht selbst erneuern. „Erneuern“ wiederholt die Freigabe.",
   "connections.reason.secretUnreadable":
     "Der gespeicherte Zugriff lässt sich mit dem Schlüssel dieser Installation nicht lesen. „Erneuern“ wiederholt die Freigabe.",
-  "connections.failedTitle": "Die Verbindung kam nicht zustande",
-  "connections.failedTitleNamed": "Die Verbindung {name} kam nicht zustande",
-  "connections.failure.denied":
-    "Der Zugriff wurde auf der anderen Seite abgelehnt. Es wurde nichts gespeichert.",
-  "connections.failure.stateInvalid":
-    "Dieser Versuch ist abgelaufen oder wurde schon verwendet. Starte ihn neu.",
-  "connections.failure.tokenExchange":
-    "Die andere Seite hat nach der Freigabe keinen Zugriff ausgegeben. Versuche es noch einmal.",
-  "connections.failure.discoveryMissing":
-    "Diese Adresse beschreibt nicht, wie sie Zugriff freigibt. Trage den Schlüssel stattdessen auf der Konnektor-Seite ein.",
-  "connections.failure.discoveryFailed":
-    "Diese Adresse hat nicht wie ein System geantwortet, das Zugriff freigibt.",
-  "connections.failure.registrationMissing":
-    "Dieses System gibt Zugriff frei, lässt SubKit aber nicht selbst anmelden. Trage den Schlüssel stattdessen auf der Konnektor-Seite ein.",
-  "connections.failure.registrationFailed": "SubKit konnte sich bei diesem System nicht anmelden.",
-  "connections.failure.pkceUnsupported":
-    "Dieses System unterstützt die sichere Freigabe nicht, die SubKit verwendet.",
-  "connections.failure.baseUrlInvalid":
-    "Das ist keine Adresse, die SubKit verwenden kann. Sie beginnt mit https://",
-  "connections.failure.nameTaken": "Eine Verbindung mit diesem Namen gibt es schon.",
-  "connections.failure.nameInvalid":
-    "Der Name darf Kleinbuchstaben, Ziffern und Bindestriche enthalten.",
-  "connections.failure.other": "Die Verbindung konnte nicht hergestellt werden.",
   "prepared.title": "Vorbereitete Änderungen",
   "prepared.description":
     "Jemand hat einen neuen Wert für diese Installation vorbereitet. Es ändert sich nichts, bis du ihn freigibst.",
@@ -7821,6 +7791,23 @@ const DE: Record<TranslationKey, string> = {
   "connectorStrip.state.unproven": "Noch nicht geprüft",
   "connectorStrip.action.recheck": "Erneut prüfen",
   "connectorStrip.action.enterCredentials": "Zugangsdaten eintragen",
+  "connectorStrip.state.signInFailed": "Anmeldung fehlgeschlagen",
+  "connectorStrip.action.signInAgain": "Erneut anmelden",
+  "connectorStrip.signInFailure.linkExpired": "Der Anmeldelink war abgelaufen",
+  "connectorStrip.signInFailure.providerDeclined": "Der Anbieter hat die Anmeldung nicht bestätigt",
+  "connectorStrip.signInFailure.noAuthorization": "Der Anbieter hat keine Freigabe zurückgeschickt",
+  "connectorStrip.signInFailure.exchangeFailed":
+    "Die Antwort des Anbieters ließ sich nicht gegen einen Zugang tauschen",
+  "connectorStrip.signInFailure.issuerMismatch":
+    "Die Antwort kam von einem anderen Autorisierungsserver",
+  "connectorStrip.signInFailure.connectorGone": "Den Konnektor gibt es nicht mehr",
+  "connectorStrip.signInFailure.notStartable": "Die Anmeldung ließ sich nicht starten",
+  "connectorStrip.signInFailure.noPublicAddress": "Die Engine hat keine öffentliche Adresse",
+  "connectorStrip.signInFailure.unsupportedCredential":
+    "Diese Art von Zugangsdaten wird hier nicht angenommen",
+  "connectorStrip.signInFailure.missingField": "Ein Pflichtfeld war leer",
+  "connectorStrip.signInFailure.notSaved": "Die Zugangsdaten ließen sich nicht speichern",
+  "connectorStrip.signInFailure.other": "Es wurde nichts gespeichert",
   "connectorPage.tab.usage": "Verwendung",
   "connectorPage.tab.connection": "Verbindung",
   "connectorPage.tab.tools": "Werkzeuge",
