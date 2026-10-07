@@ -117,6 +117,8 @@ export async function runInit(opts: RunInitOptions): Promise<RunInitResult> {
     err(
       "  hint: the bootstrap token expires 15 minutes after engine boot — the engine reprints a fresh banner on an expired attempt; copy the new `sk init --token <token>` command from the engine logs and re-run it.\n",
     );
+  } else if (code === "in_progress") {
+    err("  hint: another `sk init` is running; wait for it, then retry with the same token.\n");
   } else if (code === "llm_unreachable") {
     err(
       "  hint: nothing was saved; check --llm-provider and --llm-api-key and run `sk init` again with the same token.\n",

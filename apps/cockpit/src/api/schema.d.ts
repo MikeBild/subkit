@@ -381,6 +381,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Bootstrap already completed; route is gone */
                 410: {
                     headers: {
@@ -495,6 +504,15 @@ export interface paths {
                 };
                 /** @description Token missing, expired, or did not match */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };

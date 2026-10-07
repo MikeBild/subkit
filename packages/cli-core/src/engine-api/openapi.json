@@ -26042,6 +26042,16 @@
               }
             }
           },
+          "409": {
+            "description": "Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "410": {
             "description": "Bootstrap already completed; route is gone",
             "content": {
@@ -26133,6 +26143,16 @@
           },
           "401": {
             "description": "Token missing, expired, or did not match",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed",
             "content": {
               "application/json": {
                 "schema": {

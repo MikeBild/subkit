@@ -443,3 +443,50 @@ describe("consume() — the LLM key is checked live before anything is saved", (
     expect(outcome.status).toBe("ok");
   });
 });
+
+describe("consume() — one first start at a time", () => {
+  test("a second attempt while the first is checking its key gets in_progress and seeds nothing", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const token = minted.plaintext_token!;
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const probing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const payload = {
+      admin_email: "ops@example.com",
+      tenant_name: "Acme Corp",
+      llm_provider: "anthropic" as const,
+      llm_api_key: "sk-ant-key",
+    };
+    const first = consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.1",
+      probe: async () => {
+        entered();
+        await held;
+        return { ok: true, model: null };
+      },
+    });
+    await probing;
+    const second = await consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.2",
+      probe: acceptingProbe,
+    });
+    expect(second).toEqual(expect.objectContaining({ status: "failed", code: "in_progress" }));
+    expect(await tdb.db.select().from(tenants)).toHaveLength(0);
+    release();
+    expect((await first).status).toBe("ok");
+    expect(await tdb.db.select().from(tenants)).toHaveLength(1);
+    const third = await consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.3",
+      probe: acceptingProbe,
+    });
+    expect(third).toEqual(expect.objectContaining({ status: "failed", code: "gone" }));
+  });
+});

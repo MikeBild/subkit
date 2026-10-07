@@ -85,6 +85,11 @@ const postRoute = createRoute({
       description: "Token missing, expired, or did not match",
       content: { "application/json": { schema: ErrorSchema } },
     },
+    409: {
+      description:
+        "Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     410: {
       description: "Bootstrap already completed; route is gone",
       content: { "application/json": { schema: ErrorSchema } },
@@ -203,6 +208,15 @@ export function registerSetupRoute(
         );
       case "validation_failed":
         return c.json({ code: "validation_failed", message: outcome.message }, 400);
+      case "in_progress":
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          409,
+        );
       case "llm_unreachable":
         return c.json(
           {
@@ -271,6 +285,15 @@ export function registerSetupRoute(
         );
       case "validation_failed":
         return c.json({ code: "validation_failed", message: outcome.message }, 400);
+      case "in_progress":
+        return c.json(
+          {
+            code: outcome.code,
+            message: outcome.message,
+            ...(outcome.hint ? { hint: outcome.hint } : {}),
+          },
+          409,
+        );
       case "llm_unreachable":
         return c.json(
           {

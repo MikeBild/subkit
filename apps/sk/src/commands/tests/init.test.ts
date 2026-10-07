@@ -284,6 +284,35 @@ describe("runInit — failure modes", () => {
     expect(all).toContain("--llm-api-key");
   });
 
+  test("409 in_progress says another first start is running", async () => {
+    const errLines: string[] = [];
+    const result = await runInit({
+      payload: {
+        token: "a".repeat(64),
+        admin_email: "ops@example.com",
+        tenant_name: "Acme",
+        llm_provider: "mock",
+        llm_api_key: "x",
+      },
+      engine_url: "http://engine.test",
+      profile: "default",
+      out: () => undefined,
+      err: (line) => {
+        errLines.push(line);
+      },
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ code: "in_progress", message: "another first start is running" }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+        )) as unknown as typeof fetch,
+      saveProfileImpl: () => undefined,
+    });
+    expect(result.error?.code).toBe("in_progress");
+    expect(errLines.join("")).toContain("retry with the same token");
+  });
+
   test("network error returns engine_unreachable", async () => {
     const result = await runInit({
       payload: {

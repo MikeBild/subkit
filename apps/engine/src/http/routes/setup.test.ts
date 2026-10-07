@@ -238,6 +238,52 @@ describe("POST /v1/setup", () => {
   });
 });
 
+describe("POST /v1/setup — a first start already running", () => {
+  test("answers 409 in_progress while another attempt holds the bootstrap", async () => {
+    const token = await mintToken();
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const probing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const app = createOpenApiApp();
+    app.use("*", async (c, next) => {
+      c.set("db", ctx.testDb.db);
+      await next();
+    });
+    registerSetupRoute(app, {
+      probe: async () => {
+        entered();
+        await held;
+        return { ok: true, model: null };
+      },
+    });
+    const body = JSON.stringify({
+      token,
+      admin_email: "ops@example.com",
+      tenant_name: "Acme",
+      llm_provider: "anthropic",
+      llm_api_key: "sk-ant-key",
+    });
+    const request = (ip: string) =>
+      app.request("/v1/setup", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body,
+      });
+    const first = request("10.0.1.1");
+    await probing;
+    const second = await request("10.0.1.2");
+    expect(second.status).toBe(409);
+    expect(((await second.json()) as { code: string }).code).toBe("in_progress");
+    release();
+    expect((await first).status).toBe(200);
+  });
+});
+
 describe("POST /v1/setup — a key the provider refuses", () => {
   const refusing = async () => ({
     ok: false as const,
