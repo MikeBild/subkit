@@ -44092,6 +44092,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The slug is already in use; inbound hook slugs are unique across the engine",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

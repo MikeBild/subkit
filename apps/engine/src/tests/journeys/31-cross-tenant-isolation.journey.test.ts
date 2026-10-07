@@ -12,7 +12,6 @@ import {
   users,
   webhooksInbound,
   workflows,
-  workflowVersions,
 } from "../../db/schema/index.ts";
 import { grantScheduleAuthorityFixture } from "../../scheduler/tests/authority-fixture.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
@@ -208,7 +207,7 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
     }
   });
 
-  test("AC6: same slug across tenants — signatures do not cross over", async () => {
+  test("AC6: a hook slug is one public URL — another tenant cannot bind it", async () => {
     const SHARED_SLUG = "shared-cross-tenant";
     const SECRET_A = `whsec_a_${hex(8)}`;
     const SECRET_B = `whsec_b_${hex(8)}`;
@@ -234,24 +233,6 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
       })
       .returning();
     if (!b_wf) throw new Error("seed tenant B workflow failed");
-    const [b_v] = await ctx.db
-      .insert(workflowVersions)
-      .values({
-        tenant_id: tenantB.tenantId,
-        workflow_id: b_wf.id,
-        version: 1,
-        dag: {
-          name: "Tenant B target",
-          slug: "tenant-b-target",
-          steps: [{ id: "s1", kind: "transform", expression: '"b"' }],
-        },
-      })
-      .returning();
-    if (!b_v) throw new Error("seed tenant B workflow version failed");
-    await ctx.db
-      .update(workflows)
-      .set({ current_version_id: b_v.id })
-      .where(eq(workflows.id, b_wf.id));
 
     const bindB = await fetchAs(ctx, tenantB.apiKey, "/v1/webhooks/inbound", {
       method: "POST",
@@ -262,69 +243,51 @@ describe("journey: cross-tenant isolation (HTTP + MCP + webhook)", () => {
         secret: SECRET_B,
       }),
     });
-    expect(bindB.status).toBe(201);
+    expect(bindB.status).toBe(409);
+    const refusal = await bindB.text();
+    expect(refusal).toContain(SHARED_SLUG);
+    expect(refusal).not.toContain(ctx.tenantId);
+    expect(refusal).not.toContain(tenantAWorkflowId);
+
+    const sharedRows = await ctx.db
+      .select({ tenant_id: webhooksInbound.tenant_id })
+      .from(webhooksInbound)
+      .where(eq(webhooksInbound.slug, SHARED_SLUG));
+    expect(sharedRows).toEqual([{ tenant_id: ctx.tenantId }]);
 
     await grantScheduleAuthorityFixture(ctx.db, ctx.tenantId, tenantAWorkflowId, "prod", 1);
-    await grantScheduleAuthorityFixture(ctx.db, tenantB.tenantId, b_wf.id, "prod", 1);
-
-    const countRows = await ctx.db.select().from(webhooksInbound);
-    const sharedRows = countRows.filter((r) => r.slug === SHARED_SLUG);
-    expect(sharedRows.length).toBeGreaterThanOrEqual(2);
 
     const body = JSON.stringify({ ts: TEST_NOW_MS });
-    const webhookId = uuid();
     // allow-wall-clock: this test exercises real-time polling or freshness windows.
     const ts = Math.floor(Date.now() / 1000);
-    const baseStr = `${webhookId}.${ts}.${body}`;
-    const sigA = `v1,${createHmac("sha256", SECRET_A).update(baseStr, "utf8").digest("base64")}`;
-    const sigB = `v1,${createHmac("sha256", SECRET_B).update(baseStr, "utf8").digest("base64")}`;
+    const deliver = async (secret: string) => {
+      const webhookId = uuid();
+      const signature = createHmac("sha256", secret)
+        .update(`${webhookId}.${ts}.${body}`, "utf8")
+        .digest("base64");
+      return await fetch(`${ctx.baseUrl}/v1/hooks/${SHARED_SLUG}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "webhook-id": webhookId,
+          "webhook-timestamp": String(ts),
+          "webhook-signature": `v1,${signature}`,
+        },
+        body,
+      });
+    };
 
-    const reqA = await fetch(`${ctx.baseUrl}/v1/hooks/${SHARED_SLUG}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "webhook-id": webhookId,
-        "webhook-timestamp": String(ts),
-        "webhook-signature": sigA,
-      },
-      body,
-    });
-    expect([200, 401, 404]).toContain(reqA.status);
-    if (reqA.status === 200) {
-      const env = (await reqA.json()) as { execution_id?: string };
-      if (env.execution_id) {
-        const exRows = await ctx.db
-          .select({ tenant_id: executions.tenant_id })
-          .from(executions)
-          .where(eq(executions.id, env.execution_id));
-        expect(exRows[0]?.tenant_id).toBe(ctx.tenantId);
-      }
-    }
+    const signedByB = await deliver(SECRET_B);
+    expect(signedByB.status).toBe(401);
 
-    const webhookIdB = uuid();
-    const baseStrB = `${webhookIdB}.${ts}.${body}`;
-    const sigBOnly = `v1,${createHmac("sha256", SECRET_B).update(baseStrB, "utf8").digest("base64")}`;
-    void sigB;
-    const reqB = await fetch(`${ctx.baseUrl}/v1/hooks/${SHARED_SLUG}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "webhook-id": webhookIdB,
-        "webhook-timestamp": String(ts),
-        "webhook-signature": sigBOnly,
-      },
-      body,
-    });
-    expect([200, 401, 404]).toContain(reqB.status);
-    if (reqB.status === 200) {
-      const env = (await reqB.json()) as { execution_id?: string };
-      if (env.execution_id) {
-        const exRows = await ctx.db
-          .select({ tenant_id: executions.tenant_id })
-          .from(executions)
-          .where(eq(executions.id, env.execution_id));
-        expect(exRows[0]?.tenant_id).toBe(tenantB.tenantId);
-      }
-    }
+    const signedByA = await deliver(SECRET_A);
+    expect(signedByA.status).toBe(200);
+    const accepted = (await signedByA.json()) as { execution_id?: string };
+    if (!accepted.execution_id) throw new Error("expected an execution for tenant A");
+    const exRows = await ctx.db
+      .select({ tenant_id: executions.tenant_id })
+      .from(executions)
+      .where(eq(executions.id, accepted.execution_id));
+    expect(exRows[0]?.tenant_id).toBe(ctx.tenantId);
   });
 });

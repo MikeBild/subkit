@@ -103,6 +103,7 @@ import sql0082CatalogMetadata from "./0082_catalog_metadata.sql" with { type: "t
 import sql0083CatalogDescribeRefresh from "./0083_catalog_describe_refresh.sql" with { type: "text" };
 import sql0084KnowledgeSourceVersions from "./0084_knowledge_source_versions.sql" with { type: "text" };
 import sql0085KnowledgeLearningProposer from "./0085_knowledge_learning_proposer.sql" with { type: "text" };
+import sql0086InboundHookSlugGlobalUnique from "./0086_inbound_hook_slug_global_unique.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -213,6 +214,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0083_catalog_describe_refresh": sql0083CatalogDescribeRefresh,
   "0084_knowledge_source_versions": sql0084KnowledgeSourceVersions,
   "0085_knowledge_learning_proposer": sql0085KnowledgeLearningProposer,
+  "0086_inbound_hook_slug_global_unique": sql0086InboundHookSlugGlobalUnique,
 };
 
 const journal = journalMeta as unknown as Journal;

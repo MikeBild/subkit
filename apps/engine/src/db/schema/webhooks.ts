@@ -36,7 +36,7 @@ export const webhooksInbound = pgTable(
     }>(),
     ...timestamps,
   },
-  (t) => [uniqueIndex("webhooks_inbound_tenant_slug_key").on(t.tenant_id, t.slug)],
+  (t) => [uniqueIndex("webhooks_inbound_slug_key").on(t.slug)],
 );
 
 export const subscriptions = pgTable(
