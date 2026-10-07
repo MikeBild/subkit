@@ -36,6 +36,7 @@ import { registerAiGenerateRoute } from "./routes/ai/generate.ts";
 import { registerAiRepairRoute } from "./routes/ai/repair.ts";
 import { registerAiSummarizeRoute } from "./routes/ai/summarize.ts";
 import { registerAuditLogRoutes } from "./routes/audit-log.ts";
+import { registerCategoryRoutes } from "./routes/categories.ts";
 import { registerChatRoutes } from "./routes/chat.ts";
 import { registerChatIdentityRoutes } from "./routes/chat-identities.ts";
 import { registerChatSpaceRoutes } from "./routes/chat-spaces.ts";
@@ -81,6 +82,14 @@ import { registerLlmsTxtRoutes } from "./routes/llms-txt.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
 import { registerMetricsRoute } from "./routes/metrics.ts";
 import { registerNotificationRoutes } from "./routes/notifications/index.ts";
+import {
+  HTML_PAGE_HEADERS,
+  NEGOTIATED_VARY,
+  renderNotFoundPage,
+  renderServerErrorPage,
+  resolvePageLook,
+  wantsHtmlPage,
+} from "./routes/oauth/ui.ts";
 import { registerMcpOAuthRoutes } from "./routes/oauth.ts";
 import { registerOAuthClientAdminRoutes } from "./routes/oauth-clients.ts";
 import { registerAttentionRoute } from "./routes/operator/attention.ts";
@@ -150,9 +159,9 @@ export function buildDefaultRegistry(db?: Db, cfg?: Config["auth"]): AuthProvide
 }
 
 const SCALAR_HTML = `<!doctype html>
-<html>
+<html lang="en">
   <head>
-    <title>subkit engine — API reference</title>
+    <title>SubKit — API reference</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
@@ -201,6 +210,11 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
       stack,
       bucket: "unhandled",
     });
+    if (wantsHtmlPage(c.req.header("accept")))
+      return c.body(renderServerErrorPage(resolvePageLook(c.req.raw.headers), traceId), 500, {
+        ...HTML_PAGE_HEADERS,
+        vary: NEGOTIATED_VARY,
+      });
     return c.json(
       {
         code: "internal_error",
@@ -208,8 +222,17 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
         trace_id: traceId,
       },
       500,
+      { vary: NEGOTIATED_VARY },
     );
   });
+  app.notFound((c) =>
+    wantsHtmlPage(c.req.header("accept"))
+      ? c.body(renderNotFoundPage(resolvePageLook(c.req.raw.headers)), 404, {
+          ...HTML_PAGE_HEADERS,
+          vary: NEGOTIATED_VARY,
+        })
+      : c.text("404 Not Found", 404, { vary: NEGOTIATED_VARY }),
+  );
   if (opts.db) {
     const boundDb = opts.db;
     app.use("*", async (c, next) => {
@@ -276,6 +299,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerConnectorDocsRoutes(app);
   registerCredentialRoutes(app);
   registerSkillRoutes(app);
+  registerCategoryRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
   registerAgentBriefingRoutes(app);

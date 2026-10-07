@@ -1,9 +1,8 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { compareCategoryCounts } from "../../api/catalog-metadata.ts";
 import type { Executor } from "../../db/client.ts";
 import { totalOverWindow } from "../../db/list-result.ts";
 import { connectors, workflows } from "../../db/schema/index.ts";
-import { loadCategoryIndex } from "../../workflows/catalog-view.ts";
-import { groupByCategory } from "../../workflows/categorize.ts";
 
 export interface TenantSummary {
   workflows: ReadonlyArray<{
@@ -21,6 +20,7 @@ export interface TenantSummary {
     display_name: string;
     driver: string;
     environment: string;
+    category?: string;
   }>;
   workflows_total: number;
   connectors_total: number;
@@ -66,7 +66,7 @@ export async function loadSnapshotCoverage(
 }
 
 export async function loadTenantSummary(tenant_id: string, exec: Executor): Promise<TenantSummary> {
-  const [workflowRows, connectorRows, categoryIndex] = await Promise.all([
+  const [workflowRows, connectorRows, categoryCounts] = await Promise.all([
     exec
       .select({
         id: workflows.id,
@@ -74,6 +74,7 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
         name: workflows.name,
         lifecycle: workflows.lifecycle,
         is_tool: workflows.is_tool,
+        category: workflows.category,
         total: totalOverWindow(),
       })
       .from(workflows)
@@ -87,21 +88,24 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
         display_name: connectors.display_name,
         driver: connectors.driver,
         environment: connectors.environment,
+        category: connectors.category,
         total: totalOverWindow(),
       })
       .from(connectors)
       .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
       .orderBy(asc(connectors.slug), asc(connectors.environment))
       .limit(MAX_CONNECTORS_IN_SUMMARY),
-    loadCategoryIndex(tenant_id, exec),
+    exec
+      .select({ category: workflows.category, count: sql<number>`count(*)::int` })
+      .from(workflows)
+      .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
+      .groupBy(workflows.category),
   ]);
-  const blocks = groupByCategory([...categoryIndex.values()], (category) => category);
   return {
-    workflows: workflowRows.map(({ total: _t, ...row }) => {
-      const category = categoryIndex.get(row.slug);
-      return category ? { ...row, category } : row;
-    }),
-    workflow_categories: blocks.map((b) => ({ category: b.category, count: b.items.length })),
+    workflows: workflowRows.map(({ total: _t, ...row }) => row),
+    workflow_categories: categoryCounts
+      .map((c) => ({ category: c.category, count: Number(c.count) }))
+      .sort(compareCategoryCounts),
     connectors: connectorRows.map(({ total: _t, ...row }) => row),
     workflows_total: Number(workflowRows[0]?.total ?? 0),
     connectors_total: Number(connectorRows[0]?.total ?? 0),
@@ -138,7 +142,10 @@ export function renderTenantSummaryBlock(summary: TenantSummary): string | null 
     if (lines.length > 0) lines.push("");
     lines.push(`Connectors (${connectorsTotal} total):`);
     for (const c of connectorsShown) {
-      lines.push(`- ${c.slug} (${c.driver}/${c.environment}) — ${c.display_name} [id=${c.id}]`);
+      const category = c.category ? ` [category=${c.category}]` : "";
+      lines.push(
+        `- ${c.slug} (${c.driver}/${c.environment}) — ${c.display_name}${category} [id=${c.id}]`,
+      );
     }
     if (!connectorsComplete) {
       lines.push(

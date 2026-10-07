@@ -98,7 +98,7 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("This sign-in attempt expired or was already used.");
     expect(html).toContain('href="/v1/identity/login/start"');
     expect(html).toContain('data-auth-contract="mcp-auth"');
@@ -109,7 +109,7 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).not.toContain("<h1>Sign-in failed</h1>");
+    expect(html).not.toContain(">Sign-in failed</h1>");
     expect(html).toMatch(/login_state=[^"&]+/);
   });
 
@@ -118,7 +118,7 @@ describe("POST /v1/identity/sessions — configured provider boundary", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("This sign-in attempt expired or was already used.");
     expect(html).toContain('href="/v1/identity/login/start"');
   });

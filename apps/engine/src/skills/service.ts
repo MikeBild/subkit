@@ -1,4 +1,9 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  catalogMetadataView,
+  humanMetadataWrite,
+  metadataChange,
+} from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -44,6 +49,7 @@ function rowToSkill(row: SkillRow): Skill {
     workflow_id: row.workflow_id ?? null,
     slug: row.slug ?? null,
     title: row.title,
+    ...catalogMetadataView(row),
     body: row.body,
     examples: fields.examples,
     best_practices: fields.best_practices,
@@ -111,6 +117,10 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
         connector_id: p.input.connector_id ?? null,
         workflow_id: p.input.workflow_id ?? null,
         title: p.input.title,
+        ...humanMetadataWrite({
+          ...(p.input.description !== undefined ? { description: p.input.description } : {}),
+          ...(p.input.category !== undefined ? { category: p.input.category } : {}),
+        }),
         body: p.input.body,
         examples: blob,
         lifecycle: p.input.status ?? "active",
@@ -174,6 +184,7 @@ export interface ListSkillsParams {
   connector_id?: string;
   workflow_id?: string;
   status?: SkillLifecycle;
+  category?: string;
   q?: string;
   sort?: "title" | "scope" | "status" | "version" | "updated_at";
   order?: "asc" | "desc";
@@ -188,11 +199,14 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.category) tenantConds.push(eq(skills.category, p.category));
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
       ilike(skills.title, needle),
       ilike(skills.slug, needle),
+      ilike(skills.description, needle),
+      ilike(skills.category, needle),
       ilike(skills.body, needle),
     );
     if (search) tenantConds.push(search);
@@ -228,11 +242,14 @@ export async function countSkills(
   if (p.connector_id) tenantConds.push(eq(skills.connector_id, p.connector_id));
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
+  if (p.category) tenantConds.push(eq(skills.category, p.category));
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
       ilike(skills.title, needle),
       ilike(skills.slug, needle),
+      ilike(skills.description, needle),
+      ilike(skills.category, needle),
       ilike(skills.body, needle),
     );
     if (search) tenantConds.push(search);
@@ -322,6 +339,13 @@ export async function updateSkill(
     if (patch.maturity !== undefined) set.maturity = patch.maturity;
     if (patch.tags !== undefined) set.tags = patch.tags;
     if (patch.applies_to !== undefined) set.applies_to = patch.applies_to;
+    Object.assign(
+      set,
+      metadataChange(prior, {
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.category !== undefined ? { category: patch.category } : {}),
+      }),
+    );
     const [row] = await tx.update(skills).set(set).where(eq(skills.id, id)).returning();
     if (!row) return null;
     const retired =

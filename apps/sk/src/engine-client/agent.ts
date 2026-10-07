@@ -9,7 +9,18 @@ export interface AgentBriefing {
   skills_title_only: string[];
   knowledge_sources: string[];
   knowledge_sources_omitted: number;
+  workflows: string[];
+  workflows_omitted: number;
+  connectors: string[];
+  connectors_omitted: number;
+  guides: string[];
   proposed_candidates: number;
+}
+
+export interface AgentDomains {
+  domains: string[];
+  from_prompt: string[];
+  from_repo: string[];
 }
 
 export const agentMethods = {
@@ -20,6 +31,16 @@ export const agentMethods = {
     return this.request("GET", "/v1/agent/briefing", undefined, {
       domains: params.domains.join(","),
       ...(params.budget_tokens !== undefined ? { budget_tokens: params.budget_tokens } : {}),
+    });
+  },
+
+  resolveAgentDomains(
+    this: EngineClient,
+    params: { prompt?: string; repo?: string },
+  ): Promise<AgentDomains> {
+    return this.request("POST", "/v1/agent/domains", {
+      ...(params.prompt ? { prompt: params.prompt } : {}),
+      ...(params.repo ? { repo: params.repo } : {}),
     });
   },
 

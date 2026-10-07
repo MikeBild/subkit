@@ -1,13 +1,13 @@
 import { z } from "@hono/zod-openapi";
+import { listedDescription } from "../../api/catalog-metadata.ts";
 import {
   bindingFor,
   type EffectiveTrigger,
   workflowTriggerView,
 } from "../../scheduler/trigger-bindings.ts";
-import { UNCATEGORIZED } from "../../workflows/categorize.ts";
 import type { WorkflowTrigger } from "../../workflows/types.ts";
+import { rankedPage } from "./catalog-rank.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
-import { keywordSearch } from "./keyword-search.ts";
 
 const inputSchema = z
   .object({
@@ -16,7 +16,7 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe(
-        'Free-text query. Matches against id, slug, name, description, step ids/kinds/connector_ids. Use "*" or omit to list all.',
+        'Free-text query, a few distinctive words. Ranked by category, then slug and name, then description, then connectors and step ids; each match lists the `reasons` it matched on. Use "*" or omit to list all.',
       ),
     id: z.string().min(1).optional().describe("Exact workflow id; takes precedence over query."),
     category: z
@@ -39,7 +39,7 @@ interface WorkflowSummary {
   name: string;
   current_version: number | null;
   description: string | null;
-  category?: string;
+  category: string;
   connectors?: string[];
   effective_trigger?: EffectiveTrigger;
   steps: Array<{ id: string; kind: string; connector_id: string | null }>;
@@ -50,8 +50,9 @@ export function summarize(wf: {
   slug: string;
   name: string;
   current_version: number | null;
-  description?: string | null | undefined;
-  definition?: { description?: string | null | undefined; steps?: Array<Record<string, unknown>> };
+  description: string | null;
+  category: string;
+  definition?: { steps?: Array<Record<string, unknown>> };
   steps?: Array<Record<string, unknown>>;
 }): WorkflowSummary {
   const stepArr = (wf.definition?.steps ?? wf.steps ?? []) as Array<Record<string, unknown>>;
@@ -60,7 +61,8 @@ export function summarize(wf: {
     slug: wf.slug,
     name: wf.name,
     current_version: wf.current_version ?? null,
-    description: wf.description ?? wf.definition?.description ?? null,
+    description: listedDescription(wf.description),
+    category: wf.category,
     steps: stepArr.map((s) => ({
       id: typeof s.id === "string" ? s.id : "",
       kind: typeof s.kind === "string" ? s.kind : "unknown",
@@ -78,26 +80,23 @@ function withTrigger(
   return { ...summary, effective_trigger: view.effective_trigger };
 }
 
-function searchableText(s: WorkflowSummary): string {
-  return [
-    s.id,
-    s.slug,
-    s.name,
-    s.description ?? "",
-    s.category ?? "",
-    ...(s.connectors ?? []),
-    ...s.steps.map((st) => st.id),
-    ...s.steps.map((st) => st.kind),
-    ...s.steps.map((st) => st.connector_id ?? ""),
-  ]
-    .filter(Boolean)
-    .join(" ");
+function rankFields(s: WorkflowSummary) {
+  return {
+    category: [s.category],
+    identity: [s.slug, s.name],
+    description: [s.description],
+    detail: [
+      ...(s.connectors ?? []),
+      ...s.steps.map((st) => st.id),
+      ...s.steps.map((st) => st.connector_id ?? ""),
+    ],
+  };
 }
 
 export const findWorkflowTool: ConversationTool = {
   name: "find_workflow",
   description:
-    "Look up saved workflows by exact id or free-text query. Keyword scoring across id/slug/name/description/category/connectors/step.id/step.kind/step.connector_id, and narrowable with `category` or `connector`. Use this before list_workflows for catalogs over ~50 entries.",
+    "Look up saved workflows by exact id or free-text query — the way to reach every workflow, including the ones not listed as a `wf_<slug>` tool. Matches are ranked by category, slug and name, description and connectors, and each says why it matched (`reasons`). Narrow with `category` or `connector`.",
   use_case:
     'Operator says "do we have a HubSpot workflow already?" or "find the orders thing I built". Faster than scrolling list_workflows for large tenants.',
   important_notes: [
@@ -129,25 +128,17 @@ export const findWorkflowTool: ConversationTool = {
       ...(args.category !== undefined ? { category: args.category } : {}),
       ...(args.connector !== undefined ? { connector: args.connector } : {}),
     });
-    const [categories, connectorRefs, bindings] = await Promise.all([
-      ctx.engineClient.workflows.categories(),
+    const [connectorRefs, bindings] = await Promise.all([
       ctx.engineClient.workflows.connectorRefs(),
       ctx.engineClient.workflows.triggerBindings(list.map((wf) => wf.id)),
     ]);
     const summaries = list.map((wf) => ({
       ...withTrigger(summarize(wf), wf.definition.trigger, bindings),
-      category: categories.get(wf.slug) ?? UNCATEGORIZED,
       connectors: connectorRefs.get(wf.id) ?? [],
     }));
-    const ranked = keywordSearch(args.query ?? "*", summaries, searchableText);
-    const limited = ranked.slice(0, args.limit);
     return {
       ok: true,
-      data: {
-        matches: limited,
-        total: ranked.length,
-        ...(ranked.length > limited.length ? { truncated: true } : {}),
-      },
+      data: rankedPage(args.query, summaries, rankFields, args.limit, "list_workflows"),
     };
   },
 };

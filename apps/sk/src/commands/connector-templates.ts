@@ -321,7 +321,7 @@ const recipePackCommand = defineCommand({
     vertical: {
       type: "positional",
       description:
-        "Vertical (revops | customer-success | finance | data | devops | security | marketing | hr)",
+        "Vertical (revops | customer-success | finance | data | devops | security | marketing | hr | solutions)",
     },
     json: { type: "boolean", description: "JSON output" },
   },

@@ -8,7 +8,6 @@ import {
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
-import { buildNamingGroundingBlock } from "../../workflows/catalog-view.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
@@ -248,11 +247,6 @@ export async function assembleEnhancedPrompt(
     );
   }
 
-  let namingGroundingBlock: string | null = null;
-  if (preEmbedCorpus) {
-    namingGroundingBlock = await buildNamingGroundingBlock(p.tenant_id, db);
-  }
-
   let priorWorkflowsBlock: string | null = null;
   let priorWorkflowsSurvivors: PriorWorkflowRef[] = [];
   if (preEmbedCorpus) {
@@ -339,7 +333,6 @@ export async function assembleEnhancedPrompt(
     if (connectorRecipesBlock) sections.push(connectorRecipesBlock);
     if (connectorRecipeBodiesBlock) sections.push(connectorRecipeBodiesBlock);
     if (priorWorkflowsBlock) sections.push(priorWorkflowsBlock);
-    if (namingGroundingBlock) sections.push(namingGroundingBlock);
     if (connectorIndexBlock) sections.push(connectorIndexBlock);
     if (workflowIndexBlock) sections.push(workflowIndexBlock);
     for (const s of loadedSkills) sections.push(formatSkill(s, p.runtime_context));

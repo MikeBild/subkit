@@ -7,6 +7,11 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { planSync, SKILL_TARGET_DIRS, type SyncSkill } from "../lib/skill-sync.ts";
 import { AGENT_FILE_RELPATH, findAgentFile } from "./agent.ts";
 
@@ -105,11 +110,10 @@ const listCommand = defineCommand({
     const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
     try {
       const { items } = await client.listSkills({ limit: Number(args.limit) });
-      emitList(
-        !!args.json,
-        ["id", "title", "status", "connector_id"],
-        items as Record<string, unknown>[],
+      const rows = (items as Record<string, unknown>[]).map((r) =>
+        args.json ? r : { ...r, description: shortDescription(r.description) },
       );
+      emitList(!!args.json, ["id", "title", "category", "description", "status"], rows);
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }
@@ -158,6 +162,7 @@ const patchCommand = defineCommand({
     id: { type: "positional", required: true, description: "Skill id" },
     file: { type: "string", description: "Path to JSON patch file" },
     title: { type: "string", description: "New title" },
+    ...catalogMetadataArgs,
   },
   async run({ args }) {
     const { engine_url, api_key, active_tenant_id } = resolveProfile();
@@ -169,6 +174,7 @@ const patchCommand = defineCommand({
         body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
       }
       if (args.title) body.title = args.title;
+      Object.assign(body, catalogMetadataBody(args));
       const skill = await client.patchSkill(args.id, body);
       printJson(skill);
     } catch (err) {

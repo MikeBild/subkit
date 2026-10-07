@@ -8,6 +8,13 @@ import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+  CatalogNameCell,
+  useCategoryFilter,
+} from "@/components/cockpit/catalog-metadata";
+import { KnowledgeVersions } from "@/components/cockpit/knowledge-versions";
+import {
   ActionMenu,
   Button,
   type CockpitColumn,
@@ -38,7 +45,7 @@ import {
   Textarea,
 } from "@/components/cockpit/patterns";
 import { bytes, MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { queryView } from "@/components/failure-state";
+import { ForbiddenState, queryView } from "@/components/failure-state";
 import { formatRelativeTime } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -52,6 +59,7 @@ import {
   type SourceKind,
   type SourceSection,
   sourceKind,
+  sourcePrimaryAction,
   sourceSections,
 } from "@/pages/knowledge-sources-model";
 
@@ -135,9 +143,15 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
   const [adding, setAdding] = useState(false);
+  const categoryFilter = useCategoryFilter("knowledge_source");
   const list = useInfiniteList<KnowledgeSource>(
     ENDPOINT,
-    { q: q || undefined, sort: first?.id ?? "updated_at", order: first?.desc ? "desc" : "asc" },
+    {
+      q: q || undefined,
+      category: categoryFilter.category,
+      sort: first?.id ?? "updated_at",
+      order: first?.desc ? "desc" : "asc",
+    },
     { enabled: canRead },
   );
   const title = t("nav.knowledgeSources");
@@ -149,7 +163,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         "name",
         (row) => row.name,
         t("knowledge.column.name"),
-        (row) => row.name,
+        (row) => <CatalogNameCell name={row.name} record={row} />,
         {
           sortable: true,
           width: "w-[34%]",
@@ -197,18 +211,14 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
         testId="catalog-knowledge"
         header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 
   const rows = list.items;
   const pending = list.query.isPending && !list.query.failureReason;
   const failed = Boolean(list.query.error || list.query.failureReason);
-  const empty = !pending && !failed && rows.length === 0 && !q;
+  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
   const addButton = (testId: string) =>
     canWrite ? (
       <Button onClick={() => setAdding(true)} data-testid={testId}>
@@ -260,6 +270,7 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
                 placeholder: t("knowledge.search"),
                 testId: "knowledge-search",
               }}
+              selects={categoryFilter.select ? [categoryFilter.select] : []}
             />
           }
           pending={pending}
@@ -491,6 +502,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     enabled: Boolean(query.data),
   });
   const [editing, setEditing] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [openSection, setOpenSection] = useState<SourceSection | null>(null);
 
@@ -548,14 +560,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
       {body}
     </Page>
   );
-  if (!canRead)
-    return frame(
-      <DataState
-        state="empty"
-        line={t("resource.permission.description")}
-        testId="resource-permission-alert"
-      />,
-    );
+  if (!canRead) return frame(<ForbiddenState />);
   const view = queryView(query, () => false);
   if (view === "loading") return frame(<DataState state="loading" />);
   const source = query.data;
@@ -570,6 +575,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     );
 
   const kind = sourceKind(source.source_type);
+  const primary = canWrite ? sourcePrimaryAction(kind) : null;
   const readAt = source.last_refreshed_at ?? source.updated_at;
   const strip =
     source.status === "error" ? (
@@ -645,7 +651,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
   ];
   const menu = [
-    ...(canWrite
+    ...(canWrite && primary !== "edit"
       ? [{ label: t("knowledge.edit"), onSelect: () => setEditing(true), testId: "knowledge-edit" }]
       : []),
     ...(canWrite && source.status === "active"
@@ -680,20 +686,23 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           back={back}
           title={source.name}
           purpose={
-            kind === "file"
-              ? t("knowledge.purpose.file")
-              : kind === "text"
-                ? t("knowledge.purpose.text")
-                : undefined
+            <CatalogMetadataSummary
+              record={source}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
           }
           action={
-            kind === "url" && canWrite ? (
+            primary === "refresh" ? (
               <Button
                 onClick={() => refresh.mutate()}
                 pending={refresh.isPending}
                 data-testid="knowledge-refresh"
               >
                 {t("knowledge.refresh")}
+              </Button>
+            ) : primary === "edit" ? (
+              <Button onClick={() => setEditing(true)} data-testid="knowledge-edit">
+                {t("knowledge.edit")}
               </Button>
             ) : undefined
           }
@@ -732,9 +741,12 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           onRetry={() => void chunks.refetch()}
           onOpen={setOpenSection}
         />
-        <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
-          <FactList items={technical} />
-        </CollapsibleSection>
+        <div className="flex flex-col gap-2">
+          <KnowledgeVersions sourceId={source.id} sourceName={source.name} canWrite={canWrite} />
+          <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
+            <FactList items={technical} />
+          </CollapsibleSection>
+        </div>
       </div>
       <RecordSheet
         open={openSection !== null}
@@ -751,7 +763,17 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         ) : null}
       </RecordSheet>
       {canWrite ? (
-        <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
+        <>
+          <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
+          <CatalogMetadataDialog
+            kind="knowledge_source"
+            id={source.id}
+            record={source}
+            open={describing}
+            onOpenChange={setDescribing}
+            queryKey={["knowledge-source", source.id]}
+          />
+        </>
       ) : null}
       <ConfirmDialog
         open={deleting}

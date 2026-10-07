@@ -10,7 +10,8 @@ export interface WorkflowToolDescriptor {
   workflow_id: string;
   slug: string;
   name: string;
-  description: string;
+  description: string | null;
+  category: string;
   effect: "read" | "reversible_write" | "irreversible_write";
   inputSchema: { type: "object"; properties?: Record<string, unknown>; [k: string]: unknown };
   outputSchema?: { type: "object"; properties?: Record<string, unknown>; [k: string]: unknown };
@@ -70,6 +71,7 @@ export async function listWorkflowToolsForTenant(
       slug: workflows.slug,
       name: workflows.name,
       description: workflows.description,
+      category: workflows.category,
       current_version_id: workflows.current_version_id,
       last_executed_at: workflows.last_executed_at,
     })
@@ -125,8 +127,7 @@ export async function listWorkflowToolsForTenant(
 
   const out: WorkflowToolDescriptor[] = [];
   for (const row of visibleRows) {
-    const columnDescription = row.description?.trim() ? row.description.trim() : null;
-    let description = columnDescription ?? row.name;
+    const description = row.description?.trim() ? row.description.trim() : null;
     let effect: WorkflowToolDescriptor["effect"] = "irreversible_write";
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
     let outputSchema: WorkflowToolDescriptor["outputSchema"];
@@ -134,7 +135,6 @@ export async function listWorkflowToolsForTenant(
     if (dag) {
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {
-        if (!columnDescription && parsed.data.description) description = parsed.data.description;
         effect = parsed.data.tool_effect ?? "irreversible_write";
         if (parsed.data.input_schema) {
           inputSchema = toInputSchema(parsed.data.input_schema);
@@ -152,6 +152,7 @@ export async function listWorkflowToolsForTenant(
       slug: row.slug,
       name: row.name,
       description,
+      category: row.category,
       effect,
       inputSchema,
       ...(outputSchema ? { outputSchema } : {}),

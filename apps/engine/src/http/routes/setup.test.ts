@@ -9,7 +9,9 @@ import { _resetRateLimitForTests } from "../../onboarding/bootstrap.ts";
 
 const clearCache = (): void => {};
 
+import { createOpenApiApp } from "../openapi.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
+import { registerSetupRoute } from "./setup.ts";
 
 interface Ctx {
   testDb: TestDb;
@@ -150,7 +152,7 @@ describe("POST /v1/setup", () => {
         token,
         admin_email: "ops@example.com",
         tenant_name: "Acme Corp",
-        llm_provider: "anthropic",
+        llm_provider: "mock",
         llm_api_key: "sk-ant-test",
       }),
     });
@@ -234,4 +236,91 @@ describe("POST /v1/setup", () => {
     });
     expect(res.status).toBe(400);
   });
+});
+
+describe("POST /v1/setup — a first start already running", () => {
+  test("answers 409 in_progress while another attempt holds the bootstrap", async () => {
+    const token = await mintToken();
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const probing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const app = createOpenApiApp();
+    app.use("*", async (c, next) => {
+      c.set("db", ctx.testDb.db);
+      await next();
+    });
+    registerSetupRoute(app, {
+      probe: async () => {
+        entered();
+        await held;
+        return { ok: true, model: null };
+      },
+    });
+    const body = JSON.stringify({
+      token,
+      admin_email: "ops@example.com",
+      tenant_name: "Acme",
+      llm_provider: "anthropic",
+      llm_api_key: "sk-ant-key",
+    });
+    const request = (ip: string) =>
+      app.request("/v1/setup", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": ip },
+        body,
+      });
+    const first = request("10.0.1.1");
+    await probing;
+    const second = await request("10.0.1.2");
+    expect(second.status).toBe(409);
+    expect(((await second.json()) as { code: string }).code).toBe("in_progress");
+    release();
+    expect((await first).status).toBe(200);
+  });
+});
+
+describe("POST /v1/setup — a key the provider refuses", () => {
+  const refusing = async () => ({
+    ok: false as const,
+    model: "probe-model",
+    reason: "anthropic rejected the API key (HTTP 401)",
+  });
+
+  function appWithRefusingProbe() {
+    const app = createOpenApiApp();
+    app.use("*", async (c, next) => {
+      c.set("db", ctx.testDb.db);
+      await next();
+    });
+    registerSetupRoute(app, { probe: refusing });
+    return app;
+  }
+
+  for (const path of ["/v1/setup", "/v1/bootstrap/complete"]) {
+    test(`${path} answers 422 llm_unreachable and saves nothing`, async () => {
+      const token = await mintToken();
+      const res = await appWithRefusingProbe().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token,
+          admin_email: "ops@example.com",
+          tenant_name: "Acme",
+          llm_provider: "anthropic",
+          llm_api_key: "sk-ant-wrong",
+        }),
+      });
+      expect(res.status).toBe(422);
+      const body = (await res.json()) as { code: string; message: string; hint?: string };
+      expect(body.code).toBe("llm_unreachable");
+      expect(body.message).toContain("rejected the API key");
+      expect(body.hint).toContain("nothing was saved");
+      expect(await ctx.testDb.db.select().from(tenants)).toHaveLength(0);
+    });
+  }
 });

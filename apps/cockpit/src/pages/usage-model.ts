@@ -91,6 +91,7 @@ export const FLOW_ORIGIN: Readonly<Record<string, UsageOrigin>> = {
   summarize: "summaries",
   judge: "reviews",
   extract: "knowledge",
+  catalog_describe: "knowledge",
   discover: "knowledge",
   workflow_step: "workflowRuns",
 };

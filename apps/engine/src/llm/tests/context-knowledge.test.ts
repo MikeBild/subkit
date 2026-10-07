@@ -22,7 +22,7 @@ beforeAll(async () => {
         filename: "api-rules.md",
         mime: "text/markdown",
       },
-      actor_id: null,
+      actor: null,
     },
     ctx.testDb.db,
   );

@@ -5,7 +5,7 @@ import { defineCommand } from "citty";
 import pc from "picocolors";
 import { resolveProfile } from "../config.ts";
 import { EngineClient } from "../engine-client.ts";
-import { fetchProposedLearnings } from "../lib/pending-learnings.ts";
+import { fetchProposedLearnings, learningTarget } from "../lib/pending-learnings.ts";
 
 const listCommand = defineCommand({
   meta: { name: "list", description: "List proposed session learnings" },
@@ -24,11 +24,12 @@ const listCommand = defineCommand({
       const rows = items.map((c) => ({
         id: c.id,
         title: c.title,
+        target: learningTarget(c),
         tags: (c.tags ?? []).join(", "),
         confidence: c.confidence,
         evidence: c.evidence_count,
       }));
-      emitList(false, ["id", "title", "tags", "confidence", "evidence"], rows);
+      emitList(false, ["id", "title", "target", "tags", "confidence", "evidence"], rows);
     } catch (err) {
       reportCommandError(err, { json: Boolean(args.json) });
     }
@@ -54,7 +55,7 @@ const reviewCommand = defineCommand({
           [
             `${pc.bold(`[${index + 1}/${items.length}]`)} ${pc.bold(candidate.title)}`,
             pc.dim(
-              `tags: ${(candidate.tags ?? []).join(", ") || "—"} · confidence: ${candidate.confidence} · evidence: ${candidate.evidence_count}`,
+              `lands in: ${learningTarget(candidate)} · tags: ${(candidate.tags ?? []).join(", ") || "—"} · confidence: ${candidate.confidence} · evidence: ${candidate.evidence_count}`,
             ),
             "",
             candidate.body,
@@ -63,10 +64,16 @@ const reviewCommand = defineCommand({
               : []),
           ].join("\n"),
         );
+        const fact = candidate.pattern_kind === "knowledge_learning";
         const action = await prompts.select({
           message: "Decision?",
           options: [
-            { value: "approve", label: "Approve → active skill (lands in the next briefing)" },
+            {
+              value: "approve",
+              label: fact
+                ? `Approve → new version of ${learningTarget(candidate).replace("knowledge: ", "")}`
+                : "Approve → active skill (lands in the next briefing)",
+            },
             { value: "edit", label: "Edit title/body, then approve" },
             { value: "reject", label: "Reject (same learning is never re-proposed)" },
             { value: "skip", label: "Skip for now" },
@@ -97,14 +104,19 @@ const reviewCommand = defineCommand({
           title = String(nextTitle);
           body = String(nextBody);
         }
-        const result = await client.approveSkillCandidate(candidate.id, {
+        const result = (await client.approveSkillCandidate(candidate.id, {
           title,
           body,
-          status: "active",
-        });
+          ...(fact ? {} : { status: "active" }),
+        })) as {
+          skill_id?: string | null;
+          knowledge?: { slug: string; version: number | null } | null;
+        };
         approved += 1;
         prompts.log.success(
-          `approved → skill ${String((result as { skill_id?: unknown }).skill_id ?? "")}`,
+          result.knowledge
+            ? `approved → ${result.knowledge.slug} v${result.knowledge.version ?? "?"}`
+            : `approved → skill ${result.skill_id ?? ""}`,
         );
       }
       prompts.outro(`${approved} approved · ${rejected} rejected`);

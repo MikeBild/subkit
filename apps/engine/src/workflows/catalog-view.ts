@@ -1,7 +1,15 @@
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import {
+  CATALOG_KINDS,
+  type CatalogKind,
+  compareCategoryCounts,
+  PLATFORM_CATEGORY,
+  UNCATEGORIZED,
+} from "../api/catalog-metadata.ts";
+import { auditAwait } from "../audit/audit.ts";
+import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { workflows } from "../db/schema/index.ts";
-import { deriveCategories, UNCATEGORIZED } from "./categorize.ts";
+import { connectors, files, knowledgeSources, skills, workflows } from "../db/schema/index.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
 
 export interface CatalogFilterOptions {
@@ -22,6 +30,8 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
 export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
   const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
   if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
+  const category = opts.category?.trim();
+  if (category) conds.push(eq(workflows.category, category));
   if (opts.name_contains) conds.push(ilike(workflows.name, `%${opts.name_contains}%`));
   if (opts.q) {
     const needle = `%${opts.q}%`;
@@ -29,6 +39,7 @@ export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOpt
       ilike(workflows.name, needle),
       ilike(workflows.slug, needle),
       ilike(workflows.description, needle),
+      ilike(workflows.category, needle),
     );
     if (search) conds.push(search);
   }
@@ -49,45 +60,8 @@ export async function countWorkflows(
   return Number(row?.c ?? 0);
 }
 
-export async function loadCategoryIndex(
-  tenant_id: string,
-  exec?: Executor,
-): Promise<Map<string, string>> {
-  const db = exec ?? getDb();
-  const rows = await db
-    .select({ slug: workflows.slug })
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)));
-  return deriveCategories(rows.map((r) => r.slug));
-}
-
-export async function buildNamingGroundingBlock(
-  tenant_id: string,
-  exec?: Executor,
-): Promise<string | null> {
-  const index = await loadCategoryIndex(tenant_id, exec);
-  const counts = new Map<string, number>();
-  for (const category of index.values()) {
-    if (category === UNCATEGORIZED) continue;
-    counts.set(category, (counts.get(category) ?? 0) + 1);
-  }
-  if (counts.size === 0) return null;
-  const families = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
-    .map(([category, count]) => `${category} (${count})`)
-    .join(", ");
-  return [
-    "WORKFLOW NAMING — join an existing family when one fits:",
-    `Existing catalog families: ${families}.`,
-    "The catalog groups workflows by the leading dash-separated segments of their slug, so the slug decides which block a workflow lands in.",
-    "When the workflow you are authoring belongs to one of the families above, give it a `slug` carrying that family prefix (e.g. a new Notion reader → `notion-<what-it-does>`).",
-    "Keep `name` a clean human title — `slug` is a separate field, so the family prefix never has to show up in the display name.",
-    "When it genuinely belongs to no existing family, name it plainly. Do NOT invent a prefix to force a match, and do NOT rename existing workflows.",
-  ].join("\n");
-}
-
 export interface CatalogFilter {
-  keep(row: { id: string; slug: string }): boolean;
+  keep(row: { id: string }): boolean;
 }
 
 export async function resolveCatalogFilter(
@@ -96,20 +70,163 @@ export async function resolveCatalogFilter(
   exec?: Executor,
 ): Promise<CatalogFilter | null> {
   const db = exec ?? getDb();
-  const wantCategory = opts.category?.trim();
   const wantConnector = opts.connector?.trim();
-  if (!wantCategory && !wantConnector) return null;
-
-  const categories = wantCategory ? await loadCategoryIndex(tenant_id, db) : null;
-  const connectorMatches = wantConnector
-    ? await workflowIdsUsingConnector(tenant_id, wantConnector, db)
-    : null;
-
+  if (!wantConnector) return null;
+  const connectorMatches = await workflowIdsUsingConnector(tenant_id, wantConnector, db);
   return {
     keep(row) {
-      if (categories && (categories.get(row.slug) ?? UNCATEGORIZED) !== wantCategory) return false;
-      if (connectorMatches && !connectorMatches.has(row.id)) return false;
-      return true;
+      return connectorMatches.has(row.id);
     },
   };
+}
+
+const CATALOG_TABLES = {
+  workflow: workflows,
+  connector: connectors,
+  knowledge_source: knowledgeSources,
+  skill: skills,
+  file: files,
+} as const;
+
+export interface CategoryUsage {
+  category: string;
+  total: number;
+  counts: Record<CatalogKind, number>;
+}
+
+function liveRows(kind: CatalogKind) {
+  if (kind === "workflow") return isNull(workflows.deleted_at);
+  if (kind === "connector") return isNull(connectors.deleted_at);
+  if (kind === "knowledge_source") return isNull(knowledgeSources.deleted_at);
+  if (kind === "file") return isNull(files.deleted_at);
+  return undefined;
+}
+
+export async function loadCategoryVocabulary(
+  tenant_id: string,
+  exec?: Executor,
+): Promise<CategoryUsage[]> {
+  const db = exec ?? getDb();
+  const byCategory = new Map<string, CategoryUsage>();
+  for (const kind of CATALOG_KINDS) {
+    const table = CATALOG_TABLES[kind];
+    const live = liveRows(kind);
+    const rows = await db
+      .select({ category: table.category, c: sql<number>`count(*)::int` })
+      .from(table)
+      .where(and(eq(table.tenant_id, tenant_id), ...(live ? [live] : [])))
+      .groupBy(table.category);
+    for (const row of rows) {
+      const usage = byCategory.get(row.category) ?? {
+        category: row.category,
+        total: 0,
+        counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
+      };
+      usage.counts[kind] = Number(row.c);
+      usage.total += Number(row.c);
+      byCategory.set(row.category, usage);
+    }
+  }
+  return [...byCategory.values()].sort((a, b) =>
+    compareCategoryCounts(
+      { category: a.category, count: a.total },
+      { category: b.category, count: b.total },
+    ),
+  );
+}
+
+export class CategoryRenameRefused extends Error {}
+
+export interface RenameCategoryInput {
+  tenant_id: string;
+  from: string;
+  to: string;
+  actor_type?: AuditActorType;
+  actor_id?: string | null;
+}
+
+export async function renameCategory(
+  input: RenameCategoryInput,
+  exec?: Executor,
+): Promise<{ moved: Record<CatalogKind, number>; total: number }> {
+  const db = exec ?? getDb();
+  const moved: Record<CatalogKind, number> = {
+    workflow: 0,
+    connector: 0,
+    knowledge_source: 0,
+    skill: 0,
+    file: 0,
+  };
+  if (input.from === input.to) return { moved, total: 0 };
+  if (input.from === UNCATEGORIZED || input.from === PLATFORM_CATEGORY) {
+    throw new CategoryRenameRefused(`\`${input.from}\` cannot be renamed`);
+  }
+  if (input.to === PLATFORM_CATEGORY) {
+    throw new CategoryRenameRefused(
+      `\`${PLATFORM_CATEGORY}\` is reserved for the engine's own guidance`,
+    );
+  }
+  await db.transaction(async (tx) => {
+    for (const kind of CATALOG_KINDS) {
+      const table = CATALOG_TABLES[kind];
+      const updated = await tx
+        .update(table)
+        .set(
+          input.to === UNCATEGORIZED
+            ? {
+                category: input.to,
+                category_source: "llm",
+                catalog_input_hash: null,
+                catalog_described_at: null,
+              }
+            : { category: input.to, category_source: "human" },
+        )
+        .where(and(eq(table.tenant_id, input.tenant_id), eq(table.category, input.from)))
+        .returning({ id: table.id });
+      moved[kind] = updated.length;
+    }
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: input.actor_type ?? "system",
+        actor_id: input.actor_id ?? null,
+        action: AuditAction.CATALOG_CATEGORY_RENAMED,
+        resource_type: "catalog_category",
+        resource_id: input.to,
+        result: "success",
+        metadata: {
+          from: input.from,
+          to: input.to,
+          moved,
+          total: Object.values(moved).reduce((sum, n) => sum + n, 0),
+        },
+      },
+      tx,
+    );
+  });
+  const total = Object.values(moved).reduce((sum, n) => sum + n, 0);
+  return { moved, total };
+}
+
+const CATALOG_SUMMARY_MAX_BLOCKS = 15;
+
+export async function buildCatalogSummaryLine(
+  tenant_id: string,
+  readable: ReadonlySet<CatalogKind>,
+  exec?: Executor,
+): Promise<string | null> {
+  const count = (v: CategoryUsage) =>
+    (["workflow", "connector", "knowledge_source"] as const)
+      .filter((kind) => readable.has(kind))
+      .reduce((sum, kind) => sum + v.counts[kind], 0);
+  const business = (await loadCategoryVocabulary(tenant_id, exec))
+    .filter((v) => v.category !== UNCATEGORIZED && v.category !== PLATFORM_CATEGORY)
+    .map((v) => ({ category: v.category, count: count(v) }))
+    .filter((v) => v.count > 0)
+    .sort(compareCategoryCounts);
+  if (business.length === 0) return null;
+  const shown = business.slice(0, CATALOG_SUMMARY_MAX_BLOCKS);
+  const blocks = shown.map((v) => `${v.category} (${v.count})`).join(", ");
+  const more = business.length > shown.length ? ` and ${business.length - shown.length} more` : "";
+  return `Catalog blocks of this tenant: ${blocks}${more}. Pass one as \`category\` to list_* or find_* to see everything in it.`;
 }

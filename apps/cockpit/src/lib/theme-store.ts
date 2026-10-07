@@ -8,6 +8,7 @@ export interface ThemeEnvironment {
   remove(key: string): void;
   prefersDark(): boolean;
   apply(theme: ResolvedTheme): void;
+  share(theme: ResolvedTheme | null): void;
   watchSystem(listener: () => void): void;
 }
 
@@ -26,11 +27,14 @@ export function createThemeStore(env: ThemeEnvironment) {
   }
   let current = read();
   env.apply(current.resolved);
+  if (current.theme !== "system") env.share(current.theme);
   function publish(): void {
     const next = read();
     if (next.theme === current.theme && next.resolved === current.resolved) return;
+    const chosen = next.theme !== current.theme;
     current = next;
     env.apply(current.resolved);
+    if (chosen && current.theme !== "system") env.share(current.theme);
     for (const listener of listeners) listener();
   }
   env.watchSystem(publish);
@@ -41,8 +45,10 @@ export function createThemeStore(env: ThemeEnvironment) {
     },
     snapshot: () => current,
     set(theme: Theme) {
-      if (theme === "system") env.remove(THEME_STORAGE_KEY);
-      else env.write(THEME_STORAGE_KEY, theme);
+      if (theme === "system") {
+        env.remove(THEME_STORAGE_KEY);
+        env.share(null);
+      } else env.write(THEME_STORAGE_KEY, theme);
       publish();
     },
   };

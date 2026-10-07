@@ -191,6 +191,31 @@ describe("connectors/service", () => {
     expect(created.template_version).toBe(1);
     expect(created.template_snapshot?.slug).toBe("stripe");
   });
+
+  test("a person's description and category survive the template enrichment", async () => {
+    const tenant_id = await seedTenant();
+    const created = await createConnector(
+      {
+        tenant_id,
+        input: {
+          name: "Stripe billing",
+          slug: "stripe-billing",
+          driver: "http",
+          environment: "dev",
+          auth_type: "bearer",
+          template_slug: "stripe",
+          description: "Charges customers for the monthly plan.",
+          category: "billing",
+        },
+        actor_id: null,
+      },
+      ctx.db,
+    );
+    expect(created.description).toBe("Charges customers for the monthly plan.");
+    expect(created.description_source).toBe("human");
+    expect(created.category).toBe("billing");
+    expect(created.category_source).toBe("human");
+  });
 });
 
 describe("connectors/service — sorted by name", () => {

@@ -14,6 +14,11 @@ import {
   type RunExecutionBody,
   type RunExecutionResponse,
 } from "../engine-client.ts";
+import {
+  catalogMetadataArgs,
+  catalogMetadataBody,
+  shortDescription,
+} from "../lib/catalog-metadata.ts";
 import { effectiveTriggerLabel, type TriggerFields } from "../lib/effective-trigger.ts";
 import {
   INVOCATION_LOOKUP_TIMEOUT_MS,
@@ -21,6 +26,13 @@ import {
   resolveInvokeSnippet,
 } from "../lib/invoke-snippet-source.ts";
 import { pickId } from "../lib/pick.ts";
+import {
+  createBodyFor,
+  parseBinds,
+  recipeWorkflowSource,
+  SOLUTIONS_VERTICAL,
+  type WorkflowSource,
+} from "../lib/recipe-source.ts";
 import { exitCodeForTerminalStatus, tailExecution } from "../lib/tail-execution.ts";
 import { computeStepBottlenecks, humanMs } from "../render/format.ts";
 import { renderIntent, renderSummary, renderTaskList } from "../render/index.ts";
@@ -284,6 +296,7 @@ const listCommand = defineCommand({
         ? items
         : items.map((item) => ({
             ...item,
+            description: shortDescription((item as Record<string, unknown>).description),
             runs_on: effectiveTriggerLabel(item as TriggerFields),
           }));
       if (args.flat || !categories?.length) {
@@ -643,16 +656,43 @@ const restoreCommand = defineCommand({
   },
 });
 
-async function saveWorkflowFromFile(
+async function loadWorkflowSource(
+  client: EngineClient,
+  args: Record<string, unknown>,
+): Promise<WorkflowSource> {
+  if (args["from-recipe"]) {
+    const binds = parseBinds(args.bind);
+    const [pack, known] = await Promise.all([
+      client.getRecipePack(SOLUTIONS_VERTICAL),
+      Object.keys(binds).length > 0
+        ? client.listConnectors({ limit: 1000 })
+        : Promise.resolve({ items: [] }),
+    ]);
+    const connectors = known.items.map((item) => ({
+      id: String(item.id),
+      slug: String(item.slug),
+      template_slug: typeof item.template_slug === "string" ? item.template_slug : null,
+    }));
+    return recipeWorkflowSource(pack, String(args["from-recipe"]), binds, connectors);
+  }
+  const { readFileSync } = await import("node:fs");
+  return {
+    body: JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>,
+    previewInput: undefined,
+    recipe: null,
+  };
+}
+
+async function saveWorkflow(
   target: { kind: "create" } | { kind: "update"; id: string },
   args: Record<string, unknown>,
 ): Promise<void> {
-  const { readFileSync } = await import("node:fs");
   const client = makeClient();
   const jsonMode = Boolean(args.json);
   try {
     {
-      const body = JSON.parse(readFileSync(String(args.file), "utf8")) as Record<string, unknown>;
+      const source = await loadWorkflowSource(client, args);
+      const body = source.body;
       const skip = Boolean(args["skip-checks"]);
       const intent = intentFromBody(body);
       intent.action = target.kind === "create" ? "Create" : "Update";
@@ -674,7 +714,7 @@ async function saveWorkflowFromFile(
           process.exit(1);
         }
 
-        let input: unknown;
+        let input: unknown = source.previewInput;
         if (args.input) {
           try {
             input = JSON.parse(args.input as string);
@@ -738,7 +778,7 @@ async function saveWorkflowFromFile(
       }
 
       const created = (await (target.kind === "create"
-        ? client.createWorkflow(body)
+        ? client.createWorkflow(createBodyFor(source))
         : client.updateWorkflow(target.id, body))) as Record<string, unknown> & {
         id?: string;
         version?: number;
@@ -777,7 +817,6 @@ async function saveWorkflowFromFile(
 }
 
 const SAVE_ARGS = {
-  file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
   "skip-checks": {
     type: "boolean",
     description:
@@ -794,11 +833,33 @@ const createCommand = defineCommand({
   meta: {
     name: "create",
     description:
-      "Create a workflow from a JSON file. Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
+      "Create a workflow from a JSON file (--file) or a solution recipe (--from-recipe <slug>, see `sk connector-templates recipe-pack solutions`). Runs `validate` and `preview` by default; pass --skip-checks to bypass.",
   },
-  args: { ...SAVE_ARGS },
+  args: {
+    file: { type: "string", description: "Path to WorkflowDef JSON" },
+    "from-recipe": {
+      type: "string",
+      description:
+        "Slug of a solution recipe; its connectors are bound to the ones you already have",
+    },
+    bind: {
+      type: "string",
+      description:
+        "With --from-recipe: bind connectors yourself, as <template or placeholder>=<connector id or slug>[,…]; needed for templates without a fixed address such as http",
+    },
+    ...SAVE_ARGS,
+    input: {
+      type: "string",
+      description:
+        "Input JSON string passed to the preview dry-run. With --from-recipe it defaults to the recipe's sample input.",
+    },
+  },
   async run({ args }) {
-    await saveWorkflowFromFile({ kind: "create" }, args as Record<string, unknown>);
+    if (Boolean(args.file) === Boolean(args["from-recipe"])) {
+      process.stderr.write("error: pass exactly one of --file or --from-recipe\n");
+      process.exit(1);
+    }
+    await saveWorkflow({ kind: "create" }, args as Record<string, unknown>);
   },
 });
 
@@ -810,13 +871,43 @@ const updateCommand = defineCommand({
   },
   args: {
     id: { type: "positional", required: true, description: "Workflow id" },
+    file: { type: "string", required: true, description: "Path to WorkflowDef JSON" },
     ...SAVE_ARGS,
   },
   async run({ args }) {
-    await saveWorkflowFromFile(
+    await saveWorkflow(
       { kind: "update", id: String((args as Record<string, unknown>).id) },
       args as Record<string, unknown>,
     );
+  },
+});
+
+const patchCommand = defineCommand({
+  meta: {
+    name: "patch",
+    description:
+      "Change a workflow's name, description or category without saving a new version (the slug and its wf_<slug> tool stay as they are).",
+  },
+  args: {
+    workflow: { type: "positional", required: true, description: "Workflow id or slug" },
+    name: { type: "string", description: "New display name" },
+    ...catalogMetadataArgs,
+    json: { type: "boolean", description: "JSON-only output (suppresses narration)" },
+  },
+  async run({ args }) {
+    const client = makeClient();
+    const jsonMode = Boolean(args.json);
+    try {
+      const body: Record<string, unknown> = { ...catalogMetadataBody(args) };
+      if (args.name) body.name = args.name;
+      if (Object.keys(body).length === 0) {
+        throw new Error("pass at least one of --name, --description, --category");
+      }
+      const id = await resolveWorkflowIdOrSlug(client, String(args.workflow));
+      printJson(await client.patchWorkflowMetadata(id, body));
+    } catch (err) {
+      reportCommandError(err, { json: jsonMode });
+    }
   },
 });
 
@@ -834,6 +925,7 @@ export const workflowsCommand = defineCommand({
     restore: restoreCommand,
     create: createCommand,
     update: updateCommand,
+    patch: patchCommand,
     "invoke-snippet": invokeSnippetCommand,
   },
 });

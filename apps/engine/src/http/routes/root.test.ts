@@ -32,7 +32,10 @@ describe("GET /", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
     const body = await res.text();
     expect(body).toContain("<!doctype html>");
-    expect(body).toContain("<title>sk");
+    expect(body).toContain('<html lang="en">');
+    expect(body).toContain("<title>SubKit — ");
+    expect(body).toContain("<h1>SubKit</h1>");
+    expect(body).not.toMatch(/<title>(sk|subkit)\b/);
   });
 
   test("both renderings list the same entries", async () => {

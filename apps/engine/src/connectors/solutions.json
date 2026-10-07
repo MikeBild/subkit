@@ -1,0 +1,719 @@
+[
+  {
+    "slug": "invoice-attachments-to-drive",
+    "title": "File invoice attachments from Gmail in Google Drive",
+    "description": "Every evening, searches Gmail for messages with PDF invoices, names each file by date and sender domain and files it in a Drive folder of its own. With the drive.file scope SubKit only sees folders it created itself, so the first run creates the folder by name and later runs find it.",
+    "intent_keywords": [
+      "save invoices",
+      "gmail pdf to drive",
+      "file receipts",
+      "bookkeeping inbox"
+    ],
+    "derived_from_skill": null,
+    "category": "productivity",
+    "tags": ["solution", "trigger:schedule", "gmail", "google-drive", "bookkeeping"],
+    "difficulty": "intermediate",
+    "estimated_setup_minutes": 10,
+    "prerequisites": [
+      "Gmail connector signed in to the mailbox that receives the invoices",
+      "Google Drive connector signed in with the drive.file scope",
+      "A name for the Drive folder SubKit creates for the invoices on its first run"
+    ],
+    "sample_input": {
+      "query": "has:attachment filename:pdf subject:invoice newer_than:1d",
+      "folder_name": "Invoices"
+    },
+    "expected_output_preview": {
+      "folder_id": "folder-1",
+      "messages_scanned": 1,
+      "files_saved": 1,
+      "file_names": ["2026-09-30_example.com_invoice-1042.pdf"]
+    },
+    "required_connectors": [
+      {
+        "placeholder": "51000000-0000-4000-8000-000000000001",
+        "template": "google-gmail"
+      },
+      {
+        "placeholder": "51000000-0000-4000-8000-000000000002",
+        "template": "google-drive"
+      }
+    ],
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "workflow": {
+      "name": "invoice-attachments-to-drive",
+      "description": "Files PDF invoice attachments from Gmail in a Drive folder SubKit creates and finds by name, named date_sender_filename.",
+      "trigger": {
+        "kind": "schedule",
+        "cron": "0 20 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "input_schema": {
+        "type": "object",
+        "required": ["query", "folder_name"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Gmail search that finds the invoice mails, e.g. has:attachment filename:pdf subject:invoice newer_than:1d"
+          },
+          "folder_name": {
+            "type": "string",
+            "description": "Name of the Drive folder SubKit creates on the first run and finds again later"
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "request",
+          "id": "list_messages",
+          "method": "GET",
+          "connector_id": "51000000-0000-4000-8000-000000000001",
+          "path": "/users/me/messages",
+          "query": {
+            "q": "${input.query}",
+            "maxResults": "50"
+          },
+          "side_effects": "read"
+        },
+        {
+          "kind": "request",
+          "id": "fetch_message",
+          "method": "GET",
+          "connector_id": "51000000-0000-4000-8000-000000000001",
+          "path": "/users/me/messages/${item.id}",
+          "query": {
+            "format": "full"
+          },
+          "for_each": "(sourceData) => (sourceData.list_messages.data && sourceData.list_messages.data.messages) || []",
+          "side_effects": "read"
+        },
+        {
+          "kind": "transform",
+          "id": "pick_attachments",
+          "language": "javascript",
+          "expression": "const fetched = Array.isArray(input.scope.fetch_message && input.scope.fetch_message.data) ? input.scope.fetch_message.data : []; const attachments = []; const walk = (part, msg, day, sender) => { if (!part) return; if (part.body && part.body.attachmentId && /\\.pdf$/i.test(part.filename || '')) { attachments.push({ message_id: msg.id, attachment_id: part.body.attachmentId, file_name: day + '_' + sender + '_' + part.filename }); } (part.parts || []).forEach((child) => walk(child, msg, day, sender)); }; for (const entry of fetched) { const msg = entry && entry.fetch_message && entry.fetch_message.data ? entry.fetch_message.data : entry; if (!msg || !msg.payload) continue; const from = ((msg.payload.headers || []).find((h) => String(h.name).toLowerCase() === 'from') || { value: '' }).value; const domain = (String(from).match(/@([a-z0-9.-]+)/i) || [null, 'unknown'])[1].toLowerCase(); const day = new Date(Number(msg.internalDate || 0)).toISOString().slice(0, 10); walk(msg.payload, msg, day, domain); } return { message_count: fetched.length, attachments };"
+        },
+        {
+          "kind": "request",
+          "id": "download_attachment",
+          "method": "GET",
+          "connector_id": "51000000-0000-4000-8000-000000000001",
+          "path": "/users/me/messages/${item.message_id}/attachments/${item.attachment_id}",
+          "for_each": "(sourceData) => sourceData.pick_attachments.data.attachments",
+          "side_effects": "read"
+        },
+        {
+          "kind": "request",
+          "id": "find_folder",
+          "method": "GET",
+          "connector_id": "51000000-0000-4000-8000-000000000002",
+          "path": "/files",
+          "query": {
+            "q": "mimeType='application/vnd.google-apps.folder' and name='${input.folder_name}' and trashed=false",
+            "fields": "files(id,name)",
+            "spaces": "drive"
+          },
+          "side_effects": "read"
+        },
+        {
+          "kind": "branch",
+          "id": "folder_route",
+          "when": "$count($scope.find_folder.data.files) = 0",
+          "then_steps": ["create_folder"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "create_folder",
+          "method": "POST",
+          "connector_id": "51000000-0000-4000-8000-000000000002",
+          "path": "/files",
+          "query": {
+            "fields": "id,name"
+          },
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "name": "${input.folder_name}",
+            "mimeType": "application/vnd.google-apps.folder"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "folder",
+          "language": "javascript",
+          "expression": "const found = ((input.scope.find_folder.data || {}).files || [])[0]; const made = input.scope.create_folder && input.scope.create_folder.data; const id = found ? found.id : made && made.id; if (!id) throw new Error('no Drive folder named ' + input.input.folder_name + ' could be found or created'); return { id, created: !found };"
+        },
+        {
+          "kind": "transform",
+          "id": "build_uploads",
+          "language": "javascript",
+          "expression": "const picked = input.scope.pick_attachments.data.attachments; const downloads = Array.isArray(input.scope.download_attachment && input.scope.download_attachment.data) ? input.scope.download_attachment.data : []; const boundary = 'subkit-upload'; const uploads = picked.map((attachment, index) => { const entry = downloads[index]; const file = entry && entry.download_attachment && entry.download_attachment.data ? entry.download_attachment.data : entry; const data = String((file && file.data) || '').replace(/-/g, '+').replace(/_/g, '/'); const meta = JSON.stringify({ name: attachment.file_name, parents: [input.scope.folder.data.id] }); const body = '--' + boundary + '\\r\\nContent-Type: application/json; charset=UTF-8\\r\\n\\r\\n' + meta + '\\r\\n--' + boundary + '\\r\\nContent-Type: application/pdf\\r\\nContent-Transfer-Encoding: base64\\r\\n\\r\\n' + data + '\\r\\n--' + boundary + '--'; return { file_name: attachment.file_name, body }; }); return { uploads };"
+        },
+        {
+          "kind": "request",
+          "id": "upload_file",
+          "method": "POST",
+          "connector_id": "51000000-0000-4000-8000-000000000002",
+          "url": "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name",
+          "headers": {
+            "Content-Type": "multipart/related; boundary=subkit-upload"
+          },
+          "body": "${item.body}",
+          "for_each": "(sourceData) => sourceData.build_uploads.data.uploads"
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const saved = Array.isArray(input.scope.upload_file && input.scope.upload_file.data) ? input.scope.upload_file.data : []; return { folder_id: input.scope.folder.data.id, messages_scanned: input.scope.pick_attachments.data.message_count, files_saved: saved.length, file_names: input.scope.build_uploads.data.uploads.map((u) => u.file_name) };"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "daily-analytics-report",
+    "title": "Email a daily Google Analytics report",
+    "description": "Every morning, reads yesterday's users, sessions, page views and top pages from Google Analytics 4 and sends them as one mail.",
+    "intent_keywords": [
+      "morning traffic mail",
+      "ga4 daily summary",
+      "website kpis by email",
+      "analytics digest"
+    ],
+    "derived_from_skill": null,
+    "category": "analytics",
+    "tags": ["solution", "trigger:schedule", "google-analytics", "gmail", "reporting"],
+    "difficulty": "intermediate",
+    "estimated_setup_minutes": 10,
+    "prerequisites": [
+      "Google Analytics 4 connector signed in to an account with Viewer access to the property",
+      "Gmail connector signed in to the sending mailbox",
+      "The numeric GA4 property id"
+    ],
+    "sample_input": {
+      "property_id": "123456789",
+      "recipient": "team@example.com",
+      "sender": "reports@example.com"
+    },
+    "expected_output_preview": {
+      "active_users": 42,
+      "sessions": 57,
+      "page_views": 133,
+      "top_page": "/pricing",
+      "message_id": "msg-0002"
+    },
+    "required_connectors": [
+      {
+        "placeholder": "52000000-0000-4000-8000-000000000001",
+        "template": "google-analytics"
+      },
+      {
+        "placeholder": "52000000-0000-4000-8000-000000000002",
+        "template": "google-gmail"
+      }
+    ],
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "workflow": {
+      "name": "daily-analytics-report",
+      "description": "Mails yesterday's Google Analytics 4 totals and top pages every morning.",
+      "trigger": {
+        "kind": "schedule",
+        "cron": "0 7 * * *",
+        "tz": "Europe/Berlin"
+      },
+      "input_schema": {
+        "type": "object",
+        "required": ["property_id", "recipient", "sender"],
+        "properties": {
+          "property_id": {
+            "type": "string",
+            "description": "GA4 property id (digits only)"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Address that receives the report"
+          },
+          "sender": {
+            "type": "string",
+            "description": "Address of the Gmail mailbox that sends it"
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "request",
+          "id": "totals",
+          "method": "POST",
+          "connector_id": "52000000-0000-4000-8000-000000000001",
+          "path": "/v1beta/properties/${input.property_id}:runReport",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "side_effects": "read",
+          "body": {
+            "dateRanges": [
+              {
+                "startDate": "yesterday",
+                "endDate": "yesterday"
+              }
+            ],
+            "metrics": [
+              {
+                "name": "activeUsers"
+              },
+              {
+                "name": "sessions"
+              },
+              {
+                "name": "screenPageViews"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "request",
+          "id": "top_pages",
+          "method": "POST",
+          "connector_id": "52000000-0000-4000-8000-000000000001",
+          "path": "/v1beta/properties/${input.property_id}:runReport",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "side_effects": "read",
+          "body": {
+            "dateRanges": [
+              {
+                "startDate": "yesterday",
+                "endDate": "yesterday"
+              }
+            ],
+            "dimensions": [
+              {
+                "name": "pagePath"
+              }
+            ],
+            "metrics": [
+              {
+                "name": "screenPageViews"
+              }
+            ],
+            "orderBys": [
+              {
+                "desc": true,
+                "metric": {
+                  "metricName": "screenPageViews"
+                }
+              }
+            ],
+            "limit": 5
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "build_report",
+          "language": "javascript",
+          "expression": "const totals = input.scope.totals.data || {}; const metric = (name) => { const headers = totals.metricHeaders || []; const index = headers.findIndex((h) => h.name === name); const row = (totals.rows || [])[0]; return index >= 0 && row ? Number(row.metricValues[index].value) : 0; }; const pages = ((input.scope.top_pages.data || {}).rows || []).map((row) => ({ path: row.dimensionValues[0].value, views: Number(row.metricValues[0].value) })); const active_users = metric('activeUsers'); const sessions = metric('sessions'); const page_views = metric('screenPageViews'); const rows = pages.map((p) => '<tr><td>' + p.path + '</td><td>' + p.views + '</td></tr>').join(''); const html = '<h1>Daily analytics report</h1><p>Yesterday: ' + active_users + ' active users, ' + sessions + ' sessions, ' + page_views + ' page views.</p><table><tr><th>Page</th><th>Views</th></tr>' + rows + '</table>'; const mail = sk.buildMimeMessage({ from: input.input.sender, to: input.input.recipient, subject: 'Daily analytics report', html }); return { active_users, sessions, page_views, top_page: pages.length ? pages[0].path : null, raw: mail.raw };"
+        },
+        {
+          "kind": "request",
+          "id": "send_report",
+          "method": "POST",
+          "connector_id": "52000000-0000-4000-8000-000000000002",
+          "path": "/users/me/messages/send",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "raw": "${scope.build_report.data.raw}"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const r = input.scope.build_report.data; return { active_users: r.active_users, sessions: r.sessions, page_views: r.page_views, top_page: r.top_page, message_id: input.scope.send_report.data.id };"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "payment-grants-access",
+    "title": "Grant access after a paid Stripe checkout",
+    "description": "When Stripe reports a completed checkout (the Stripe signature is checked before the workflow runs), confirms the payment with Stripe, grants the buyer access in your own system and sends a welcome mail.",
+    "intent_keywords": [
+      "checkout unlocks account",
+      "paid order onboarding",
+      "stripe webhook access",
+      "welcome mail after payment"
+    ],
+    "derived_from_skill": null,
+    "category": "payments",
+    "tags": ["solution", "trigger:webhook", "stripe", "gmail", "onboarding"],
+    "difficulty": "advanced",
+    "estimated_setup_minutes": 20,
+    "prerequisites": [
+      "Stripe connector with a restricted key that can read checkout sessions",
+      "Stripe webhook for checkout.session.completed pointed at this workflow, with its signing secret",
+      "HTTP connector for your own access API that accepts POST /access/grants",
+      "Gmail connector signed in to the sending mailbox",
+      "Checkout sessions carry metadata.access_group with the group to grant"
+    ],
+    "sample_input": {
+      "id": "evt_example_0001",
+      "type": "checkout.session.completed",
+      "data": {
+        "object": {
+          "id": "cs_example_0001",
+          "customer_details": {
+            "email": "buyer@example.com"
+          },
+          "metadata": {
+            "access_group": "members"
+          }
+        }
+      }
+    },
+    "expected_output_preview": {
+      "status": "granted",
+      "email": "buyer@example.com",
+      "group": "members",
+      "message_id": "msg-0003"
+    },
+    "required_connectors": [
+      {
+        "placeholder": "53000000-0000-4000-8000-000000000001",
+        "template": "stripe"
+      },
+      {
+        "placeholder": "53000000-0000-4000-8000-000000000002",
+        "template": "http"
+      },
+      {
+        "placeholder": "53000000-0000-4000-8000-000000000003",
+        "template": "google-gmail"
+      }
+    ],
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "workflow": {
+      "name": "payment-grants-access",
+      "description": "Stripe checkout.session.completed → payment confirmed with Stripe → access granted → welcome mail.",
+      "trigger": {
+        "kind": "webhook",
+        "source": "stripe",
+        "events": ["checkout.session.completed"],
+        "verify": "stripe-signature"
+      },
+      "steps": [
+        {
+          "kind": "transform",
+          "id": "settings",
+          "language": "javascript",
+          "expression": "return { sender: 'team@example.com', welcome_subject: 'Welcome aboard' };"
+        },
+        {
+          "kind": "transform",
+          "id": "parse_event",
+          "language": "javascript",
+          "expression": "const raw = input.input; let parsed = raw; if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; } } parsed = parsed && typeof parsed === 'object' ? parsed : {}; const evt = parsed.body && typeof parsed.body === 'object' ? parsed.body : parsed; if (evt.type !== 'checkout.session.completed') return { skip: true, event_type: evt.type || 'unknown' }; const session = (evt.data && evt.data.object) || {}; const email = String((session.customer_details && session.customer_details.email) || session.customer_email || '').trim(); const group = String((session.metadata && session.metadata.access_group) || '').trim(); const missing = []; if (!session.id) missing.push('session id'); if (!email) missing.push('customer email'); if (!group) missing.push('metadata.access_group'); if (missing.length) throw new Error('stripe event ' + (evt.id || 'unknown') + ' is missing: ' + missing.join(', ')); return { skip: false, event_id: evt.id || null, session_id: session.id, email, group };"
+        },
+        {
+          "kind": "branch",
+          "id": "paid_route",
+          "when": "$not($boolean($scope.parse_event.data.skip))",
+          "then_steps": ["verify_payment", "decide", "grant_route"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "verify_payment",
+          "method": "GET",
+          "connector_id": "53000000-0000-4000-8000-000000000001",
+          "path": "/checkout/sessions/${scope.parse_event.data.session_id}",
+          "side_effects": "read"
+        },
+        {
+          "kind": "transform",
+          "id": "decide",
+          "language": "javascript",
+          "expression": "const session = input.scope.verify_payment.data || {}; return { grant: session.payment_status === 'paid' };"
+        },
+        {
+          "kind": "branch",
+          "id": "grant_route",
+          "when": "$boolean($scope.decide.data.grant)",
+          "then_steps": ["grant_access", "build_welcome", "send_welcome"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "grant_access",
+          "method": "POST",
+          "connector_id": "53000000-0000-4000-8000-000000000002",
+          "path": "/access/grants",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "email": "${scope.parse_event.data.email}",
+            "group": "${scope.parse_event.data.group}",
+            "reference": "${scope.parse_event.data.session_id}"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "build_welcome",
+          "language": "javascript",
+          "expression": "const p = input.scope.parse_event.data; const s = input.scope.settings.data; const text = 'Welcome! Your payment went through and your access to ' + p.group + ' is active. Sign in with ' + p.email + '.'; const mail = sk.buildMimeMessage({ from: s.sender, to: p.email, subject: s.welcome_subject, text }); return { raw: mail.raw };"
+        },
+        {
+          "kind": "request",
+          "id": "send_welcome",
+          "method": "POST",
+          "connector_id": "53000000-0000-4000-8000-000000000003",
+          "path": "/users/me/messages/send",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "raw": "${scope.build_welcome.data.raw}"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const p = input.scope.parse_event.data; if (p.skip) return { status: 'skipped', event_type: p.event_type }; const verdict = input.scope.decide && input.scope.decide.data; if (!verdict || !verdict.grant) return { status: 'not_paid', email: p.email, group: p.group }; const sent = input.scope.send_welcome && input.scope.send_welcome.data; return { status: 'granted', email: p.email, group: p.group, message_id: sent ? sent.id : null };"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "webhook-to-slack",
+    "title": "Check incoming events and post the important ones to Slack",
+    "description": "Receives signed events from any system by webhook, keeps only those at or above the level you choose and posts them into one Slack channel. Each request must carry an HMAC-SHA256 signature of its raw body made with the webhook's secret (header X-Hub-Signature-256: sha256=<hex>); unsigned or wrongly signed requests are refused before the workflow runs.",
+    "intent_keywords": [
+      "alert channel",
+      "forward webhook to slack",
+      "notify team on error",
+      "event filter"
+    ],
+    "derived_from_skill": null,
+    "category": "communication",
+    "tags": ["solution", "trigger:webhook", "slack", "alerting"],
+    "difficulty": "beginner",
+    "estimated_setup_minutes": 10,
+    "prerequisites": [
+      "Slack connector with a bot token that has chat:write and is a member of the channel",
+      "The sending system posts JSON with level, title and detail to this workflow's webhook address and signs each request with the webhook secret (X-Hub-Signature-256: sha256=<HMAC-SHA256 of the raw body>)"
+    ],
+    "sample_input": {
+      "level": "error",
+      "title": "Payment provider unreachable",
+      "detail": "3 retries failed for order 1042"
+    },
+    "expected_output_preview": {
+      "important": true,
+      "level": "error",
+      "posted": true,
+      "slack_ts": "1790755200.000100"
+    },
+    "required_connectors": [
+      {
+        "placeholder": "54000000-0000-4000-8000-000000000001",
+        "template": "slack"
+      }
+    ],
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "workflow": {
+      "name": "webhook-to-slack",
+      "description": "Posts signed incoming events at or above a minimum level into one Slack channel.",
+      "trigger": {
+        "kind": "webhook",
+        "source": "events",
+        "events": [],
+        "verify": "github-hmac"
+      },
+      "steps": [
+        {
+          "kind": "transform",
+          "id": "settings",
+          "language": "javascript",
+          "expression": "return { channel: '#alerts', min_level: 'error' };"
+        },
+        {
+          "kind": "transform",
+          "id": "check_event",
+          "language": "javascript",
+          "expression": "const raw = input.input; let parsed = raw; if (typeof raw === 'string') { try { parsed = JSON.parse(raw); } catch (e) { parsed = {}; } } parsed = parsed && typeof parsed === 'object' ? parsed : {}; const evt = parsed.body && typeof parsed.body === 'object' ? parsed.body : parsed; const levels = ['debug', 'info', 'warning', 'error', 'critical']; const level = levels.includes(String(evt.level).toLowerCase()) ? String(evt.level).toLowerCase() : 'info'; const important = levels.indexOf(level) >= levels.indexOf(input.scope.settings.data.min_level); const title = String(evt.title || 'Event without title').slice(0, 200); const detail = String(evt.detail || '').slice(0, 1000); return { important, level, text: '[' + level.toUpperCase() + '] ' + title + (detail ? ' — ' + detail : '') };"
+        },
+        {
+          "kind": "branch",
+          "id": "notify_route",
+          "when": "$boolean($scope.check_event.data.important)",
+          "then_steps": ["post_message"],
+          "else_steps": []
+        },
+        {
+          "kind": "request",
+          "id": "post_message",
+          "method": "POST",
+          "connector_id": "54000000-0000-4000-8000-000000000001",
+          "path": "/chat.postMessage",
+          "headers": {
+            "Content-Type": "application/json; charset=utf-8"
+          },
+          "body": {
+            "channel": "${scope.settings.data.channel}",
+            "text": "${scope.check_event.data.text}"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const checked = input.scope.check_event.data; const posted = input.scope.post_message && input.scope.post_message.data; return { important: checked.important, level: checked.level, posted: Boolean(posted && posted.ok), slack_ts: posted && posted.ts ? posted.ts : null };"
+        }
+      ]
+    }
+  },
+  {
+    "slug": "weekly-run-digest",
+    "title": "Email a weekly digest of runs and failures",
+    "description": "Every Friday afternoon, counts this installation's workflow runs of the week, lists the failed ones and sends the digest as one mail.",
+    "intent_keywords": [
+      "friday summary",
+      "failed runs report",
+      "automation health mail",
+      "weekly operations review"
+    ],
+    "derived_from_skill": null,
+    "category": "devops",
+    "tags": ["solution", "trigger:schedule", "gmail", "reporting", "operations"],
+    "difficulty": "intermediate",
+    "estimated_setup_minutes": 10,
+    "prerequisites": [
+      "HTTP connector for this SubKit installation's API with an API key that can read executions and stats",
+      "Gmail connector signed in to the sending mailbox"
+    ],
+    "sample_input": {
+      "recipient": "team@example.com",
+      "sender": "reports@example.com"
+    },
+    "expected_output_preview": {
+      "total_runs": 120,
+      "failed_runs": 3,
+      "message_id": "msg-0005"
+    },
+    "required_connectors": [
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000001",
+        "template": "http"
+      },
+      {
+        "placeholder": "55000000-0000-4000-8000-000000000002",
+        "template": "google-gmail"
+      }
+    ],
+    "version": "1.0.0",
+    "author": "subkit-builtin",
+    "last_validated_at": null,
+    "deprecated": null,
+    "workflow": {
+      "name": "weekly-run-digest",
+      "description": "Mails a weekly digest of workflow runs and the failed ones.",
+      "trigger": {
+        "kind": "schedule",
+        "cron": "0 16 * * 5",
+        "tz": "Europe/Berlin"
+      },
+      "input_schema": {
+        "type": "object",
+        "required": ["recipient", "sender"],
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "description": "Address that receives the digest"
+          },
+          "sender": {
+            "type": "string",
+            "description": "Address of the Gmail mailbox that sends it"
+          }
+        }
+      },
+      "steps": [
+        {
+          "kind": "transform",
+          "id": "window",
+          "language": "javascript",
+          "expression": "const end = sk.now(); return { from: new Date(end - 7 * 86400000).toISOString(), to: new Date(end).toISOString() };"
+        },
+        {
+          "kind": "request",
+          "id": "run_stats",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000001",
+          "path": "/v1/stats/executions",
+          "query": {
+            "from": "${scope.window.data.from}",
+            "to": "${scope.window.data.to}",
+            "bucket": "day"
+          },
+          "side_effects": "read"
+        },
+        {
+          "kind": "request",
+          "id": "failed_runs",
+          "method": "GET",
+          "connector_id": "55000000-0000-4000-8000-000000000001",
+          "path": "/v1/executions",
+          "query": {
+            "status": "failed,timed_out",
+            "started_from": "${scope.window.data.from}",
+            "started_to": "${scope.window.data.to}",
+            "limit": "10"
+          },
+          "side_effects": "read"
+        },
+        {
+          "kind": "transform",
+          "id": "build_digest",
+          "language": "javascript",
+          "expression": "const totals = ((input.scope.run_stats.data || {}).totals || {}).executions || { count: 0, by_status: {} }; const failed = (input.scope.failed_runs.data || {}).items || []; const total_runs = Number(totals.count || 0); const failed_runs = Number((totals.by_status || {}).failed || 0) + Number((totals.by_status || {}).timed_out || 0); const rows = failed.map((run) => '<li>' + (run.workflow_name || 'workflow') + ': ' + (run.error_code || run.status) + '</li>').join(''); const html = '<h1>Weekly run digest</h1><p>' + total_runs + ' runs, ' + failed_runs + ' failed.</p>' + (rows ? '<ul>' + rows + '</ul>' : '<p>No failures this week.</p>'); const mail = sk.buildMimeMessage({ from: input.input.sender, to: input.input.recipient, subject: 'Weekly run digest', html }); return { total_runs, failed_runs, raw: mail.raw };"
+        },
+        {
+          "kind": "request",
+          "id": "send_digest",
+          "method": "POST",
+          "connector_id": "55000000-0000-4000-8000-000000000002",
+          "path": "/users/me/messages/send",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "raw": "${scope.build_digest.data.raw}"
+          }
+        },
+        {
+          "kind": "transform",
+          "id": "result",
+          "language": "javascript",
+          "expression": "const d = input.scope.build_digest.data; return { total_runs: d.total_runs, failed_runs: d.failed_runs, message_id: input.scope.send_digest.data.id };"
+        }
+      ]
+    }
+  }
+]

@@ -410,6 +410,7 @@ describe("decision adapters", () => {
       fingerprint: "f",
       version: 1,
       tags: [],
+      proposed_by: null,
       created_at: daysAgo(4),
       updated_at: daysAgo(4),
     });
@@ -444,6 +445,7 @@ describe("decision adapters", () => {
         fingerprint: "f",
         version: 1,
         tags: [],
+        proposed_by: null,
         created_at: daysAgo(4),
         updated_at: daysAgo(4),
       },

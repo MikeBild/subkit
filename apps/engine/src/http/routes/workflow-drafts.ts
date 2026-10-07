@@ -6,6 +6,7 @@ import {
   currentOrDraftDefinition,
   getWorkflowDraft,
   proposeBoundaries,
+  recipeAuditMetadata,
   type SaveWorkflowDraftResult,
   saveWorkflowDraft,
   UpdateWorkflowDraftSchema,
@@ -15,6 +16,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { assertRecipeOrigin } from "./recipe-origin.ts";
 
 const failures = {
   400: { description: "Invalid draft", content: { "application/json": { schema: ErrorSchema } } },
@@ -43,7 +45,15 @@ const create = createRoute({
   summary: "Save a new inert workflow draft without activating triggers",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: CreateWorkflowDraftSchema } } } },
-  responses: { 201: draftResponse, ...failures },
+  responses: {
+    201: draftResponse,
+    ...failures,
+    422: {
+      description:
+        "The recipe origin names no shipped recipe, or the definition was not built from it",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
 });
 const update = createRoute({
   method: "put",
@@ -163,6 +173,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(create, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
+    if (body.recipe) assertRecipeOrigin(body.recipe, body.definition);
     const result = await saveWorkflowDraft(
       {
         tenant_id: principal.tenant_id,
@@ -170,6 +181,8 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         actor_type: principal.kind,
         def: body.definition,
         request_source: c.get("request_source") ?? "api",
+        ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
+        ...(body.recipe ? { audit_metadata: recipeAuditMetadata(body.recipe) } : {}),
       },
       c.get("db"),
     );
@@ -186,6 +199,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
         workflow_id: c.req.valid("param").id,
         expected_draft_version_id: body.expected_draft_version_id,
         def: body.definition,
+        ...(body.category !== undefined ? { metadata: { category: body.category } } : {}),
         request_source: c.get("request_source") ?? "api",
       },
       c.get("db"),

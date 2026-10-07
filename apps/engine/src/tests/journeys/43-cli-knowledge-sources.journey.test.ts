@@ -196,7 +196,7 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     const { stdout } = await run(
       knowledgeSourcesCommand,
       ["create"],
-      ["--file", tmpFile, "--title", "Test Doc"],
+      ["--file", tmpFile, "--name", "Test Doc"],
     );
     const body = JSON.parse(extractLastJson(stdout));
     expect(typeof body.id).toBe("string");
@@ -225,7 +225,7 @@ describe("journey 43: sk knowledge-sources CLI", () => {
     const { stdout } = await run(
       knowledgeSourcesCommand,
       ["patch", createdId],
-      ["--title", "Updated Doc"],
+      ["--name", "Updated Doc"],
     );
     const body = JSON.parse(extractLastJson(stdout));
     expect(body.id).toBe(createdId);

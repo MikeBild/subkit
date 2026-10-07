@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MessageSquare, PencilLine } from "lucide-react";
+import { LayoutTemplate, MessageSquare, PencilLine } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute, chatNewHref, connectorHref, workflowHref } from "@/app/links";
+import { absolute, chatNewHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import { ConnectorSignInFields } from "@/components/cockpit/connector-sign-in-fields";
 import {
@@ -19,10 +19,14 @@ import {
   needsSecret,
   type OAuthClientFields,
 } from "@/components/cockpit/create-connector-model";
+import {
+  useConnectorFinish,
+  useConnectorTemplateFlow,
+  useSolutionFlow,
+} from "@/components/cockpit/create-from-template";
 import { ChoiceField, SelectField, TextField } from "@/components/cockpit/form-field";
 import { ActionButton, ChoiceCards, FormDialog } from "@/components/cockpit/patterns";
 import { ScheduleFields } from "@/components/cockpit/workflow-schedule";
-import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import { useI18n } from "@/lib/i18n-context";
 import { DEFAULT_RHYTHM, type RhythmValue, rhythmToCron, validTime } from "@/lib/schedule-rhythm";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
@@ -42,7 +46,7 @@ export function slugify(text: string): string {
 }
 
 type Kind = "workflow" | "connector";
-type Step = "choose" | "manual";
+type Step = "choose" | "manual" | "template" | "template-detail";
 
 function CreateChoiceDialog({
   kind,
@@ -56,21 +60,34 @@ function CreateChoiceDialog({
   canChat: boolean;
 }) {
   const { t } = useI18n();
-  const [step, setStep] = useState<Step>(canChat ? "choose" : "manual");
+  const [step, setStep] = useState<Step>("choose");
+  const [picked, setPicked] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const done = () => onOpenChange(false);
+  const taken = t(kind === "workflow" ? "create.workflow.taken" : "create.connector.taken");
+  const refuse = (failure: unknown) => refusal(failure, taken, t);
   const workflow = useManualWorkflow(open && kind === "workflow", done, setError);
   const connector = useManualConnector(done, setError);
+  const solutions = useSolutionFlow(open && kind === "workflow", done, setError, refuse);
+  const templates = useConnectorTemplateFlow(open && kind === "connector", done, setError, refuse);
   const manual = kind === "workflow" ? workflow : connector;
+  const flow = kind === "workflow" ? solutions : templates;
+  const busy = manual.pending || flow.pending;
+  const goTo = (next: Step) => {
+    setStep(next);
+    setError(null);
+  };
   const close = (next: boolean) => {
-    if (manual.pending) return;
+    if (busy) return;
     onOpenChange(next);
     if (!next) {
-      setStep(canChat ? "choose" : "manual");
-      setError(null);
+      goTo("choose");
+      setPicked(null);
       manual.reset();
+      flow.reset();
     }
   };
+  const back = { label: t("create.back"), onClick: () => goTo("choose") };
   if (step === "choose")
     return (
       <FormDialog
@@ -83,23 +100,44 @@ function CreateChoiceDialog({
       >
         <ChoiceCards
           items={[
-            {
-              icon: <MessageSquare />,
-              title: t(kind === "workflow" ? "create.workflow.chat" : "create.connector.chat"),
-              line: t(
-                kind === "workflow" ? "create.workflow.chatLine" : "create.connector.chatLine",
-              ),
-              onSelect: () =>
-                window.location.assign(
-                  absolute(
-                    chatNewHref({
-                      prompt: t(
-                        kind === "workflow" ? "create.workflow.prompt" : "create.connector.prompt",
+            ...(canChat
+              ? [
+                  {
+                    icon: <MessageSquare />,
+                    title: t(
+                      kind === "workflow" ? "create.workflow.chat" : "create.connector.chat",
+                    ),
+                    line: t(
+                      kind === "workflow"
+                        ? "create.workflow.chatLine"
+                        : "create.connector.chatLine",
+                    ),
+                    onSelect: () =>
+                      window.location.assign(
+                        absolute(
+                          chatNewHref({
+                            prompt: t(
+                              kind === "workflow"
+                                ? "create.workflow.prompt"
+                                : "create.connector.prompt",
+                            ),
+                          }),
+                        ),
                       ),
-                    }),
-                  ),
-                ),
-              testId: `create-${kind}-chat`,
+                    testId: `create-${kind}-chat`,
+                  },
+                ]
+              : []),
+            {
+              icon: <LayoutTemplate />,
+              title: t("create.template.card"),
+              line: t(
+                kind === "workflow"
+                  ? "create.workflow.templateLine"
+                  : "create.connector.templateLine",
+              ),
+              onSelect: () => goTo("template"),
+              testId: `create-${kind}-template`,
             },
             {
               icon: <PencilLine />,
@@ -107,11 +145,58 @@ function CreateChoiceDialog({
               line: t(
                 kind === "workflow" ? "create.workflow.byHandLine" : "create.connector.byHandLine",
               ),
-              onSelect: () => setStep("manual"),
+              onSelect: () => goTo("manual"),
               testId: `create-${kind}-manual`,
             },
           ]}
         />
+      </FormDialog>
+    );
+  const detail = step === "template-detail" && picked ? flow.detail(picked) : null;
+  if (step === "template" || (step === "template-detail" && !detail))
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={close}
+        title={t("create.template.pickTitle")}
+        description={t(
+          kind === "workflow"
+            ? "create.workflow.templateDescription"
+            : "create.connector.templateDescription",
+        )}
+        size="wide"
+        step="template"
+        back={back}
+        testId={`create-${kind}-dialog`}
+      >
+        {flow.list((slug) => {
+          setPicked(slug);
+          goTo("template-detail");
+        })}
+      </FormDialog>
+    );
+  if (detail && picked)
+    return (
+      <FormDialog
+        open={open}
+        onOpenChange={close}
+        title={detail.title}
+        description={detail.description}
+        size="wide"
+        step="template-detail"
+        back={{ label: t("create.template.all"), onClick: () => goTo("template") }}
+        submit={{
+          label: t(kind === "workflow" ? "create.create" : "create.template.connect"),
+          pending: flow.pending,
+        }}
+        onSubmit={() => {
+          setError(null);
+          flow.submit(picked);
+        }}
+        error={error}
+        testId={`create-${kind}-dialog`}
+      >
+        {detail.body}
       </FormDialog>
     );
   return (
@@ -123,17 +208,7 @@ function CreateChoiceDialog({
       )}
       size="wide"
       step="manual"
-      {...(canChat
-        ? {
-            back: {
-              label: t("create.back"),
-              onClick: () => {
-                setStep("choose");
-                setError(null);
-              },
-            },
-          }
-        : {})}
+      back={back}
       submit={{ label: t("create.create"), pending: manual.pending }}
       onSubmit={() => {
         setError(null);
@@ -191,11 +266,7 @@ function useManualWorkflow(
   };
   const create = useMutation({
     mutationFn: () => {
-      const base = slugify(name);
-      const slug =
-        category !== UNCATEGORIZED && !base.startsWith(`${category}-`)
-          ? `${category}-${base}`
-          : base;
+      const slug = slugify(name);
       const definition = {
         name: name.trim(),
         slug,
@@ -214,7 +285,10 @@ function useManualWorkflow(
       };
       return apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
         method: "POST",
-        body: JSON.stringify({ definition }),
+        body: JSON.stringify({
+          definition,
+          ...(category !== UNCATEGORIZED ? { category } : {}),
+        }),
       });
     },
     onSuccess: async (draft) => {
@@ -285,8 +359,7 @@ function useManualWorkflow(
 
 function useManualConnector(done: () => void, fail: (error: string) => void): ManualForm {
   const { t } = useI18n();
-  const navigate = useNavigate();
-  const client = useQueryClient();
+  const finish = useConnectorFinish();
   const callbackUrl = useSession().oauth_callback_url;
   const [target, setTarget] = useState<ConnectorTarget>("web");
   const [signIn, setSignIn] = useState<ConnectorSignIn>(DEFAULT_SIGN_IN);
@@ -320,32 +393,7 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
     onSuccess: async (connector) => {
       done();
       reset();
-      await client.invalidateQueries({ queryKey: ["catalog"] });
-      await client.invalidateQueries({ queryKey: ["connectors", "lookup"] });
-      const page = `${connectorHref(connector.id)}?tab=${afterCreateTab(target)}`;
-      const route = connectorSignIn(connector);
-      if (route) {
-        try {
-          const start = await apiRequest<{ authorization_url: string }>(route.start, {
-            method: "POST",
-          });
-          if (start.authorization_url) {
-            window.location.assign(start.authorization_url);
-            return;
-          }
-          toast.success(t("create.connector.connected", { name: connector.display_name }));
-        } catch (failure) {
-          toast.error(signInFailure(failure, t));
-        }
-        void navigate({ to: page });
-        return;
-      }
-      toast.success(
-        t(needsSecret(signIn) ? "create.connector.connected" : "create.connector.created", {
-          name: connector.display_name,
-        }),
-      );
-      void navigate({ to: page });
+      await finish(connector, { keyed: needsSecret(signIn), tab: afterCreateTab(target) });
     },
     onError: (failure) => fail(refusal(failure, t("create.connector.taken"), t)),
   });

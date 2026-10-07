@@ -1,37 +1,99 @@
 import { createHash } from "node:crypto";
+import contractCss from "../../../../../../contract/cockpit-ui.css" with { type: "text" };
 import { escapeHtml } from "./shared.ts";
 
 const AUTH_CONTRACT = "mcp-auth";
+const PRODUCT_NAME = "SubKit";
+export const BROWSER_TITLE = `${PRODUCT_NAME} Cockpit`;
+export const LOCALE_COOKIE = "sk_locale";
+export const THEME_COOKIE = "sk_theme";
+const PREFERENCE_MAX_AGE = 60 * 60 * 24 * 365;
 
-const TOKENS = `
-  /*mcp-auth:begin*/
-  :root{color-scheme:light dark;--background:#ffffff;--foreground:#020817;--card:#ffffff;--muted:#f1f5f9;--muted-foreground:#64748b;--primary:#0f172a;--primary-foreground:#f8fafc;--primary-hover:#020817;--border:#e2e8f0;--input:#e2e8f0;--destructive:#dc2626;--ring:#2563eb;--radius:12px;--radius-md:calc(var(--radius)*.8);--radius-lg:var(--radius);--radius-xl:calc(var(--radius)*1.4);--shadow:0 10px 30px rgba(2,8,23,.08)}
-  @media(prefers-color-scheme:dark){:root:not(.scheme-light){color-scheme:dark;--background:#020817;--foreground:#f8fafc;--card:#0f172a;--muted:#1e293b;--muted-foreground:#94a3b8;--primary:#f8fafc;--primary-foreground:#0f172a;--primary-hover:#ffffff;--border:#334155;--input:#334155;--destructive:#f87171;--ring:#60a5fa;--shadow:0 10px 30px rgba(0,0,0,.5)}}
-  :root.scheme-light{color-scheme:light}:root.scheme-dark{color-scheme:dark;--background:#020817;--foreground:#f8fafc;--card:#0f172a;--muted:#1e293b;--muted-foreground:#94a3b8;--primary:#f8fafc;--primary-foreground:#0f172a;--primary-hover:#ffffff;--border:#334155;--input:#334155;--destructive:#f87171;--ring:#60a5fa;--shadow:0 10px 30px rgba(0,0,0,.5)}
-  *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px;display:flex;align-items:center;justify-content:center;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--background);color:var(--foreground)}
-  :focus-visible{outline:2px solid var(--ring);outline-offset:2px}
-  .card{background:var(--card);width:100%;max-width:420px;border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--shadow);padding:32px}
-  .brand{display:block;width:42px;height:42px;border-radius:var(--radius-lg);object-fit:cover;margin:0 0 20px}
-  h1{font-size:1.2rem;line-height:1.3;margin:0 0 8px}p{margin:0 0 10px;line-height:1.5}.muted{color:var(--muted-foreground);font-size:.9rem}.strong{font-weight:600}.error{color:var(--destructive)}
-  ul.scopes{list-style:none;margin:18px 0 4px;padding:0}ul.scopes li{padding:12px 14px;margin-bottom:8px;background:var(--muted);border:1px solid var(--border);border-radius:var(--radius-md)}.provider-stack{display:grid;gap:10px;margin-top:20px}
-  .scope-row{display:flex;align-items:flex-start;gap:10px;cursor:pointer}.scope-row input[type=checkbox]{margin-top:2px;flex:none;accent-color:var(--primary)}.scope-text{display:flex;flex-direction:column;gap:2px}.scope-name{font-weight:600;font-size:.92rem}.scope-desc{color:var(--muted-foreground);font-size:.85rem}
-  label.field{display:block;margin:16px 0 0;font-size:.9rem;font-weight:600}input[type=password]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--input);border-radius:var(--radius-md);background:var(--card);color:var(--foreground);font:inherit}
-  .actions{display:flex;gap:10px;margin-top:22px}button,.button{flex:1;min-height:44px;padding:11px 18px;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:600;cursor:pointer;border-radius:var(--radius-md);border:1px solid transparent;font-family:inherit;text-align:center;text-decoration:none}.provider-stack .button{width:100%}.approve{background:var(--primary);color:var(--primary-foreground)}.approve:hover{background:var(--primary-hover)}.deny{background:var(--card);color:var(--foreground);border-color:var(--input)}.deny:hover{background:var(--muted)}
-  .switch{display:block;margin:16px auto 0;padding:0;border:0;background:transparent;color:var(--muted-foreground);font-size:.82rem;text-decoration:underline;cursor:pointer}.footer{margin-top:20px;color:var(--muted-foreground);font-size:.78rem;text-align:center}@media(max-width:480px){body{padding:12px}.card{padding:24px}.actions{flex-direction:column-reverse}}
-  /*mcp-auth:end*/
+export type AuthLocale = "de" | "en";
+export type PageScheme = "light" | "dark";
+
+export interface PageLook {
+  locale: AuthLocale;
+  scheme: PageScheme | null;
+}
+
+export function contractRegion(css: string, name: string): string {
+  const begin = `/* cockpit-ui:begin ${name} */\n`;
+  const end = `/* cockpit-ui:end ${name} */`;
+  const start = css.indexOf(begin);
+  const stop = start < 0 ? -1 : css.indexOf(end, start);
+  if (start < 0 || stop < 0) throw new Error(`cockpit-ui region ${name} is missing`);
+  return css.slice(start + begin.length, stop);
+}
+
+const TOKENS_LIGHT = contractRegion(contractCss, "tokens-light");
+const TOKENS_DARK = contractRegion(contractCss, "tokens-dark");
+const THEME_MAP = contractRegion(contractCss, "theme-map");
+const DARK_DECLARATIONS = TOKENS_DARK.slice(
+  TOKENS_DARK.indexOf("{") + 1,
+  TOKENS_DARK.lastIndexOf("}"),
+);
+
+export const COCKPIT_UI_DIGEST = `sha256-${createHash("sha256").update(contractCss).digest("base64")}`;
+
+const SINGLE_PAGE = `
+:root{color-scheme:light;--font-sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+:root.dark{color-scheme:dark}
+@media (prefers-color-scheme: dark){:root:not(.light){color-scheme:dark}}
+*{box-sizing:border-box}html,body{margin:0}h1,h2,h3,p,dl,dd,ul,pre{margin:0}
+body{min-height:100vh;display:grid;place-items:center;padding:32px 16px;background:var(--muted);color:var(--foreground);font-family:var(--font-sans);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.card{width:min(420px,100%);display:grid;gap:16px;padding:24px;border:1px solid var(--border);border-radius:16px;background:var(--background);min-width:0;overflow-wrap:anywhere}
+.card.wide{width:min(640px,100%)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}.brand img{width:28px;height:28px;border-radius:var(--radius-md)}
+.head{display:grid;gap:4px;min-width:0}.title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+h1{font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.02em}h2{font-size:16px;line-height:24px;font-weight:600}h3{font-size:14px;line-height:20px;font-weight:600}
+.eyebrow{font-size:12px;line-height:16px;font-weight:500;color:var(--muted-foreground)}
+.muted{color:var(--muted-foreground)}.strong{font-weight:600}.error{color:var(--destructive);font-size:13px}
+.mono{font-family:var(--font-mono);font-size:12.5px;overflow-wrap:anywhere}
+.stack{display:grid;gap:12px;min-width:0}ul.plain{list-style:none;margin:0;padding:0}
+.note{padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);color:var(--muted-foreground)}
+.reference{display:flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.actions.stack{display:grid;justify-content:stretch}.actions.stack .button{width:100%}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--radius-lg);border:1px solid transparent;background:none;color:var(--foreground);font:inherit;font-size:14px;line-height:20px;font-weight:500;white-space:nowrap;text-decoration:none;cursor:pointer}
+.button.primary{background:var(--primary);color:var(--primary-foreground)}.button.primary:hover{opacity:.9}
+.button.outline{border-color:var(--border);background:var(--background)}.button.outline:hover,.button.ghost:hover{background:var(--muted)}
+.button[aria-pressed=true]{background:var(--muted)}
+.link{padding:0;border:0;background:none;color:var(--muted-foreground);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;justify-self:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border:1px solid var(--border);border-radius:999px;background:var(--background);font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:999px;flex:none;background:var(--muted-foreground)}.dot.warning{background:var(--warning)}.dot.success{background:var(--success)}.dot.destructive{background:var(--destructive)}.dot.accent{background:var(--accent)}
+form{display:grid;gap:16px;margin:0}
+label.field{display:grid;gap:6px;font-weight:500}
+input[type=password],input[type=text]{width:100%;height:36px;padding:0 12px;border:1px solid var(--input);border-radius:var(--radius-md);background:var(--background);color:var(--foreground);font:inherit}
+ul.scopes{list-style:none;display:grid;gap:8px;margin:0;padding:0}ul.scopes li{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.scope-row{display:flex;align-items:flex-start;gap:10px;cursor:pointer}.scope-row input{margin-top:3px;flex:none;accent-color:var(--primary)}.scope-text{display:grid;gap:2px}.scope-name{font-weight:500}.scope-desc{color:var(--muted-foreground);font-size:13px}
+.facts{display:grid;grid-template-columns:minmax(120px,200px) minmax(0,1fr);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.facts dt,.facts dd{padding:10px 14px;border-top:1px solid var(--border);min-width:0}.facts dt:first-of-type,.facts dt:first-of-type+dd{border-top:0}
+.facts dt{color:var(--muted-foreground)}.facts dd{font-weight:500;overflow-wrap:anywhere}
+details{border:1px solid var(--border);border-radius:var(--radius)}details summary{cursor:pointer;padding:10px 14px;font-weight:500}details>div{display:grid;gap:12px;padding:14px;border-top:1px solid var(--border)}
+pre.payload{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:var(--radius-md);background:var(--muted);font-family:var(--font-mono);font-size:12.5px;line-height:20px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:16px;color:var(--muted-foreground)}
+.foot form{display:flex;gap:4px}.foot .button{height:24px;padding:0 8px;font-size:12px}
+@media (max-width:639px){body{place-items:start center;padding:16px}.card{padding:20px}.actions .button{flex:1}.facts{grid-template-columns:1fr}.facts dt+dd{border-top:0;padding-top:0}}
 `;
 
-export const AUTH_UI_STYLES = TOKENS;
+const STYLES = `/*mcp-auth:begin*/
+${TOKENS_LIGHT}${TOKENS_DARK}@media (prefers-color-scheme: dark) {
+:root:not(.light) {${DARK_DECLARATIONS}}
+}
+:root {
+${THEME_MAP}}
+${SINGLE_PAGE}/*mcp-auth:end*/`;
 
-export const AUTH_UI_DIGEST = `sha256-${createHash("sha256").update(sharedRegion(TOKENS)).digest("hex").slice(0, 12)}`;
+export const AUTH_UI_STYLES = STYLES;
+
+export const AUTH_UI_DIGEST = `sha256-${createHash("sha256").update(sharedRegion(STYLES)).digest("hex").slice(0, 12)}`;
 
 function sharedRegion(css: string): string {
   return css.match(/\/\*mcp-auth:begin\*\/([\s\S]*?)\/\*mcp-auth:end\*\//)?.[1] ?? "";
 }
 
-export type AuthLocale = "de" | "en";
-
-export function resolveAuthLocale(acceptLanguage: string | undefined): AuthLocale {
+export function resolveAuthLocale(acceptLanguage: string | null | undefined): AuthLocale {
   for (const range of acceptLanguage?.split(",") ?? []) {
     const language = range.trim().split(";", 1)[0]?.toLowerCase();
     if (language === "de" || language?.startsWith("de-")) return "de";
@@ -40,41 +102,148 @@ export function resolveAuthLocale(acceptLanguage: string | undefined): AuthLocal
   return "en";
 }
 
-const PRODUCT_STYLES = `
-  input[type=text]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--input);border-radius:var(--radius-md);background:var(--card);color:var(--foreground);font:inherit}
-  .result p+p{margin-top:10px}.result .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;overflow-wrap:anywhere}
-`;
+function cookieValue(header: string | null, name: string): string | null {
+  for (const part of header?.split(";") ?? []) {
+    const index = part.indexOf("=");
+    if (index > 0 && part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
+  }
+  return null;
+}
 
-const DEFAULT_CONTEXT = "OAuth 2.1";
+export function resolvePageLook(headers: Headers): PageLook {
+  const cookie = headers.get("cookie");
+  const locale = cookieValue(cookie, LOCALE_COOKIE);
+  const theme = cookieValue(cookie, THEME_COOKIE);
+  return {
+    locale:
+      locale === "de" || locale === "en"
+        ? locale
+        : resolveAuthLocale(headers.get("accept-language")),
+    scheme: theme === "light" || theme === "dark" ? theme : null,
+  };
+}
 
-function page(
-  title: string,
-  body: string,
-  locale: AuthLocale = "en",
-  context: string = DEFAULT_CONTEXT,
-): string {
+export function localeCookie(locale: AuthLocale, secure: boolean): string {
+  return `${LOCALE_COOKIE}=${locale}; Path=/; Max-Age=${PREFERENCE_MAX_AGE}; SameSite=Lax${secure ? "; Secure" : ""}`;
+}
+
+export function wantsHtmlPage(accept: string | null | undefined): boolean {
+  return (accept ?? "").includes("text/html");
+}
+
+export type PageSurface = "auth" | "not-found" | "fatal-error";
+
+export interface SinglePage {
+  look: PageLook;
+  surface: PageSurface;
+  body: string;
+  context: string;
+  wide?: boolean;
+  footer?: string;
+  attributes?: string;
+}
+
+const SURFACE_ATTRIBUTES: Record<PageSurface, string> = {
+  auth: ` data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"`,
+  "not-found": ' data-testid="single-page"',
+  "fatal-error": ' data-testid="single-page"',
+};
+
+export function renderSinglePage(page: SinglePage): string {
+  const scheme = page.look.scheme ? ` class="${page.look.scheme}"` : "";
   return `<!doctype html>
-<html lang="${locale}">
+<html lang="${page.look.locale}"${scheme}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="cockpit-ui-contract" content="cockpit-ui">
+  <meta name="cockpit-ui-digest" content="${COCKPIT_UI_DIGEST}">
   <meta name="mcp-auth-ui-contract" content="${AUTH_UI_DIGEST}">
   <link rel="icon" type="image/svg+xml" href="/cockpit/favicon.svg">
-  <title>${escapeHtml(title)} — SubKit</title>
-  <style>${TOKENS}${PRODUCT_STYLES}</style>
+  <title>${BROWSER_TITLE}</title>
+  <style>${STYLES}</style>
 </head>
-<body><main class="card" data-auth-contract="${AUTH_CONTRACT}" data-auth-product="subkit" data-testid="auth-page"><img class="brand" src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon">${body}<div class="footer" data-family-slot="auth-meta">SubKit · ${escapeHtml(context)}</div></main></body>
+<body><main class="card${page.wide ? " wide" : ""}" data-family-surface="${page.surface}"${SURFACE_ATTRIBUTES[page.surface]}${page.attributes ?? ""}><div class="brand" data-family-slot="product-identity"><img src="/cockpit/favicon.svg" alt="" data-testid="auth-product-icon"><span>${PRODUCT_NAME}</span></div>${page.body}<footer class="foot" data-family-slot="auth-meta"><span>${PRODUCT_NAME} · ${escapeHtml(page.context)}</span>${page.footer ?? ""}</footer></main></body>
 </html>`;
 }
 
-export function renderShellPage(
-  title: string,
-  body: string,
-  locale: AuthLocale,
-  context: string,
+export type ChipTone = "warning" | "success" | "destructive" | "accent";
+
+export interface PageHead {
+  title: string;
+  slot: string;
+  line?: string | null;
+  lineHtml?: string;
+  eyebrow?: string | null;
+  chip?: { tone: ChipTone; word: string } | null;
+}
+
+export function pageHead(head: PageHead): string {
+  const eyebrow = head.eyebrow ? `<p class="eyebrow">${escapeHtml(head.eyebrow)}</p>` : "";
+  const chip = head.chip
+    ? `<span class="chip" data-testid="page-status"><span class="dot ${head.chip.tone}"></span>${escapeHtml(head.chip.word)}</span>`
+    : "";
+  const line = head.lineHtml
+    ? `<p class="muted">${head.lineHtml}</p>`
+    : head.line
+      ? `<p class="muted">${escapeHtml(head.line)}</p>`
+      : "";
+  return `<div class="head">${eyebrow}<div class="title"><h1 data-family-slot="${head.slot}">${escapeHtml(head.title)}</h1>${chip}</div>${line}</div>`;
+}
+
+export function pageActions(html: string, opts: { stack?: boolean; slot?: string } = {}): string {
+  const slot = opts.slot ? ` data-family-slot="${opts.slot}"` : "";
+  return `<div class="actions${opts.stack ? " stack" : ""}"${slot}>${html}</div>`;
+}
+
+export function linkButton(
+  href: string,
+  label: string,
+  variant: "primary" | "outline",
+  attributes = "",
 ): string {
-  return page(title, body, locale, context);
+  return `<a class="button ${variant}" href="${escapeHtml(href)}"${attributes}>${escapeHtml(label)}</a>`;
+}
+
+const PAGE_COPY: Record<
+  AuthLocale,
+  {
+    cockpit: string;
+    start: string;
+    signInTitle: string;
+    signInHeading: string;
+    signInFailed: string;
+    signInAgain: string;
+    oauthContext: string;
+  }
+> = {
+  en: {
+    cockpit: "Back to Cockpit",
+    start: "To the start page",
+    signInTitle: "Sign in",
+    signInHeading: "Sign in to SubKit",
+    signInFailed: "Sign-in failed",
+    signInAgain: "Sign in again",
+    oauthContext: "OAuth 2.1",
+  },
+  de: {
+    cockpit: "Zum Cockpit",
+    start: "Zur Startseite",
+    signInTitle: "Anmelden",
+    signInHeading: "Bei SubKit anmelden",
+    signInFailed: "Anmeldung fehlgeschlagen",
+    signInAgain: "Erneut anmelden",
+    oauthContext: "OAuth 2.1",
+  },
+};
+
+export const COCKPIT_HOME = "/cockpit";
+
+export function cockpitLink(locale: AuthLocale, href: string = COCKPIT_HOME): string {
+  return linkButton(href, PAGE_COPY[locale].cockpit, "primary", ' data-testid="page-cockpit-link"');
 }
 
 export interface ResultPage {
@@ -82,55 +251,88 @@ export interface ResultPage {
   title: string;
   lines: readonly string[];
   command?: string | null;
-  link?: { href: string; label: string } | null;
+  cockpitHref: string;
   context: string;
 }
 
-export function renderResultPage(result: ResultPage, locale: AuthLocale): string {
+export function renderResultPage(result: ResultPage, look: PageLook): string {
   const [statement = "", ...rest] = result.lines;
   const qualifiers = rest.map((line) => `<p class="muted">${escapeHtml(line)}</p>`).join("");
   const command = result.command
     ? `<p class="mono" data-testid="auth-result-command">${escapeHtml(result.command)}</p>`
     : "";
-  const link = result.link
-    ? `<div class="actions"><a class="button approve" href="${escapeHtml(result.link.href)}" data-testid="auth-result-link">${escapeHtml(result.link.label)}</a></div>`
-    : "";
-  return page(
-    result.title,
-    `<div class="result" data-testid="auth-result" data-result-kind="${result.kind}"${result.kind === "error" ? ' role="alert"' : ""}><h1 data-family-slot="auth-heading">${escapeHtml(result.title)}</h1><p>${escapeHtml(statement)}</p>${qualifiers}${command}${link}</div>`,
-    locale,
-    result.context,
-  );
-}
-
-export function authHtmlResponse(html: string, status = 200): Response {
-  return new Response(html, {
-    status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "private,no-store",
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
-      "x-content-type-options": "nosniff",
-      "x-frame-options": "DENY",
-      "referrer-policy": "no-referrer",
-    },
+  const alert = result.kind === "error" ? ' role="alert"' : "";
+  return renderSinglePage({
+    look,
+    surface: "auth",
+    context: result.context,
+    body: `<div class="stack" data-testid="auth-result" data-result-kind="${result.kind}"${alert}>${pageHead({ title: result.title, slot: "auth-heading", line: statement })}${qualifiers}${command}</div>${pageActions(cockpitLink(look.locale, result.cockpitHref))}`,
   });
 }
 
-export const SIGN_IN_FAILED_TITLE = "Sign-in failed";
-export const STATE_ERROR_MESSAGE =
-  "This sign-in attempt expired or was already used. Please sign in again.";
-export const GRANT_DENIED_MESSAGE =
-  "Your account is not authorized for SubKit. Contact the operator.";
-export const AUTHORIZE_INVALID_MESSAGE =
-  "This authorization request is invalid. Return to the application and start the sign-in again.";
+export const HTML_PAGE_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+  "cache-control": "private,no-store",
+  "content-security-policy":
+    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+} as const;
 
-export function renderErrorPage(title: string, message: string, retryHref: string): string {
-  return page(
-    title,
-    `<h1>${escapeHtml(title)}</h1><p class="muted">${escapeHtml(message)}</p><div class="actions"><a class="button approve" href="${escapeHtml(retryHref)}">Sign in again</a></div>`,
-  );
+export const NEGOTIATED_VARY = "Accept, Cookie";
+
+export function authHtmlResponse(html: string, status = 200): Response {
+  return new Response(html, { status, headers: { ...HTML_PAGE_HEADERS } });
+}
+
+export function negotiatedPageResponse(html: string, status: number): Response {
+  return new Response(html, { status, headers: { ...HTML_PAGE_HEADERS, vary: NEGOTIATED_VARY } });
+}
+
+export type SignInError =
+  | "state_expired"
+  | "grant_denied"
+  | "authorize_invalid"
+  | "provider_not_configured"
+  | "tenant_unavailable"
+  | "provider_unavailable";
+
+const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
+  en: {
+    state_expired: "This sign-in attempt expired or was already used. Please sign in again.",
+    grant_denied: "Your account is not authorized for SubKit. Contact the operator.",
+    authorize_invalid:
+      "This authorization request is invalid. Return to the application and start the sign-in again.",
+    provider_not_configured: "This sign-in provider is not configured. Contact the operator.",
+    tenant_unavailable:
+      "This sign-in provider is not available for this tenant. Please sign in again.",
+    provider_unavailable: "The sign-in provider is temporarily unavailable. Please try again.",
+  },
+  de: {
+    state_expired:
+      "Dieser Anmeldeversuch ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
+    grant_denied:
+      "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
+    authorize_invalid:
+      "Diese Autorisierungsanfrage ist ungültig. Kehre zur Anwendung zurück und starte die Anmeldung dort neu.",
+    provider_not_configured:
+      "Dieser Anmeldeanbieter ist nicht eingerichtet. Frag eine Person mit der Rolle Administrator.",
+    tenant_unavailable:
+      "Dieser Anmeldeanbieter steht für diesen Mandanten nicht bereit. Melde dich erneut an.",
+    provider_unavailable:
+      "Der Anmeldeanbieter ist gerade nicht erreichbar. Versuche es gleich noch einmal.",
+  },
+};
+
+export function renderErrorPage(error: SignInError, retryHref: string, look: PageLook): string {
+  const copy = PAGE_COPY[look.locale];
+  return renderSinglePage({
+    look,
+    surface: "auth",
+    context: copy.oauthContext,
+    body: `<div class="stack" role="alert">${pageHead({ title: copy.signInFailed, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
+  });
 }
 
 export interface LoginProviderChoice {
@@ -139,46 +341,54 @@ export interface LoginProviderChoice {
   href: string;
 }
 
-export function renderProviderChoice(
-  providers: LoginProviderChoice[],
-  locale: AuthLocale = "en",
-): string {
+export function renderProviderChoice(providers: LoginProviderChoice[], look: PageLook): string {
+  const de = look.locale === "de";
   const links = [...providers]
     .sort(
       (left, right) => Number(left.protocol === "api_key") - Number(right.protocol === "api_key"),
     )
     .map((provider) => {
       const apiKey = provider.protocol === "api_key";
-      const label =
-        locale === "de"
-          ? apiKey
-            ? "Mit API-Schlüssel fortfahren"
-            : "Mit SSO fortfahren"
-          : apiKey
-            ? "Continue with API key"
-            : "Continue with SSO";
-      return `<a class="button ${apiKey ? "deny" : "approve"}" data-auth-provider="${apiKey ? "api-key" : "sso"}" data-testid="auth-provider-${apiKey ? "api-key" : "sso"}" href="${escapeHtml(provider.href)}">${label}</a>`;
+      const label = de
+        ? apiKey
+          ? "Mit API-Schlüssel fortfahren"
+          : "Mit SSO fortfahren"
+        : apiKey
+          ? "Continue with API key"
+          : "Continue with SSO";
+      const kind = apiKey ? "api-key" : "sso";
+      return linkButton(
+        provider.href,
+        label,
+        apiKey ? "outline" : "primary",
+        ` data-auth-provider="${kind}" data-testid="auth-provider-${kind}"`,
+      );
     })
     .join("");
-  return page(
-    locale === "de" ? "Anmelden" : "Sign in",
-    `<h1 data-family-slot="auth-heading">${locale === "de" ? "Bei SubKit anmelden" : "Sign in to SubKit"}</h1><p class="muted">${locale === "de" ? "Wähle die Anmeldung für SubKit." : "Choose how to sign in to SubKit."}</p><div class="provider-stack" data-family-slot="provider-actions">${links}</div>`,
-    locale,
-  );
+  const copy = PAGE_COPY[look.locale];
+  return renderSinglePage({
+    look,
+    surface: "auth",
+    context: copy.oauthContext,
+    body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Wähle, wie du dich bei SubKit anmeldest." : "Choose how to sign in to SubKit." })}${pageActions(links, { stack: true, slot: "provider-actions" })}`,
+  });
 }
 
 export function renderApiKeyLogin(
   action: string,
   providerId: string,
   state: string,
-  error?: string,
-  locale: AuthLocale = "en",
+  error: string | undefined,
+  look: PageLook,
 ): string {
-  return page(
-    locale === "de" ? "Anmelden" : "Sign in",
-    `<h1 data-family-slot="auth-heading">${locale === "de" ? "Bei SubKit anmelden" : "Sign in to SubKit"}</h1><p class="muted">${locale === "de" ? "Verwende einen bereichsgebundenen SubKit API-Schlüssel." : "Use a scoped SubKit API key."}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">${locale === "de" ? "API-Schlüssel" : "API key"}<input type="password" name="api_key" autocomplete="current-password" required></label><div class="actions"><button class="approve" type="submit">${locale === "de" ? "Fortfahren" : "Continue"}</button></div></form>`,
-    locale,
-  );
+  const de = look.locale === "de";
+  const copy = PAGE_COPY[look.locale];
+  return renderSinglePage({
+    look,
+    surface: "auth",
+    context: copy.oauthContext,
+    body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Verwende einen bereichsgebundenen SubKit API-Schlüssel." : "Use a scoped SubKit API key." })}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">${de ? "API-Schlüssel" : "API key"}<input type="password" name="api_key" autocomplete="current-password" required></label>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}${pageActions(`<button class="button primary" type="submit">${de ? "Fortfahren" : "Continue"}</button>`)}</form>`,
+  });
 }
 
 export function renderConsentPage(opts: {
@@ -193,10 +403,9 @@ export function renderConsentPage(opts: {
   clientId: string;
   redirectUri: string;
   resource: string;
-  locale?: AuthLocale;
+  look: PageLook;
 }): string {
-  const locale = opts.locale ?? "en";
-  const de = locale === "de";
+  const de = opts.look.locale === "de";
   const labels: Record<string, [string, string]> = de
     ? {
         "mcp:read": ["Lesen", "Veröffentlichte Inhalte, Ressourcen und Kennzahlen lesen"],
@@ -225,7 +434,6 @@ export function renderConsentPage(opts: {
   const clientUri = opts.clientUri
     ? `<p class="muted" data-testid="auth-client-uri">${de ? "Adresse" : "Address"}: <span class="strong">${escapeHtml(opts.clientUri)}</span></p>`
     : "";
-  const title = de ? "Zugriff freigeben" : "Authorize access";
   const asks = de
     ? `<span class="strong">${escapeHtml(opts.clientName)}</span> möchte auf <span class="strong">${escapeHtml(opts.tenantName)}</span> zugreifen.`
     : `<span class="strong">${escapeHtml(opts.clientName)}</span> is requesting access to <span class="strong">${escapeHtml(opts.tenantName)}</span>.`;
@@ -234,9 +442,112 @@ export function renderConsentPage(opts: {
   const deny = de ? "Ablehnen" : "Deny";
   const approve = de ? "Freigeben" : "Approve";
   const switchAccount = de ? "Anderes Konto verwenden" : "Use another account";
-  return page(
-    title,
-    `<h1>${title}</h1><p>${asks}</p>${clientUri}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><p class="muted">${can}</p><form method="POST" action="/v1/oauth/authorize/decision"><ul class="scopes">${scopeItems}</ul>${hidden}<div class="actions"><button name="decision" value="deny" class="deny">${deny}</button><button name="decision" value="approve" class="approve">${approve}</button></div><button name="decision" value="switch_account" class="switch">${switchAccount}</button></form>`,
-    locale,
-  );
+  return renderSinglePage({
+    look: opts.look,
+    surface: "auth",
+    context: PAGE_COPY[opts.look.locale].oauthContext,
+    body: `${pageHead({ title: de ? "Zugriff freigeben" : "Authorize access", slot: "auth-heading", lineHtml: asks })}${clientUri}<p class="muted">${signedIn} ${escapeHtml(opts.userEmail)}</p><form method="POST" action="/v1/oauth/authorize/decision"><p class="muted">${can}</p><ul class="scopes">${scopeItems}</ul>${hidden}${pageActions(`<button name="decision" value="deny" class="button outline">${deny}</button><button name="decision" value="approve" class="button primary">${approve}</button>`)}<button name="decision" value="switch_account" class="link">${switchAccount}</button></form>`,
+  });
+}
+
+const NOTICE_COPY: Record<
+  AuthLocale,
+  {
+    notFoundTitle: string;
+    notFoundLine: string;
+    errorTitle: string;
+    errorLine: string;
+    reference: string;
+    loginMissingTitle: string;
+    loginMissingLine: string;
+    bundleMissingTitle: string;
+    bundleMissingLine: string;
+    returnInvalidTitle: string;
+    returnInvalidLine: string;
+    context: string;
+  }
+> = {
+  en: {
+    notFoundTitle: "This page does not exist",
+    notFoundLine: "The address is wrong, or the page was removed.",
+    errorTitle: "Something went wrong",
+    errorLine: "SubKit could not handle the request. Quote this reference if you ask for help.",
+    reference: "Reference",
+    loginMissingTitle: "Sign-in is not set up",
+    loginMissingLine:
+      "No sign-in provider is configured for this installation. An administrator has to add one under auth.providers.",
+    bundleMissingTitle: "The Cockpit is not included",
+    bundleMissingLine:
+      "This installation was built without the Cockpit. The API and the sk command-line client keep working.",
+    returnInvalidTitle: "This sign-in link is invalid",
+    returnInvalidLine:
+      "Its return address leads outside the Cockpit. Open the Cockpit and sign in there.",
+    context: "Engine",
+  },
+  de: {
+    notFoundTitle: "Diese Seite gibt es nicht",
+    notFoundLine: "Die Adresse ist falsch, oder die Seite wurde entfernt.",
+    errorTitle: "Etwas ist schiefgelaufen",
+    errorLine: "SubKit konnte die Anfrage nicht bearbeiten. Nenne bei Rückfragen diese Kennung.",
+    reference: "Kennung",
+    loginMissingTitle: "Anmeldung nicht eingerichtet",
+    loginMissingLine:
+      "Für diese Installation ist kein Anmeldeanbieter eingerichtet. Eine Person mit der Rolle Administrator muss einen unter auth.providers hinterlegen.",
+    bundleMissingTitle: "Das Cockpit fehlt",
+    bundleMissingLine:
+      "Diese Installation wurde ohne das Cockpit gebaut. Die API und die Kommandozeile sk funktionieren weiter.",
+    returnInvalidTitle: "Dieser Anmeldelink ist ungültig",
+    returnInvalidLine:
+      "Seine Rücksprungadresse führt aus dem Cockpit hinaus. Öffne das Cockpit und melde dich dort an.",
+    context: "Engine",
+  },
+};
+
+export function renderNotFoundPage(look: PageLook): string {
+  const copy = NOTICE_COPY[look.locale];
+  return renderSinglePage({
+    look,
+    surface: "not-found",
+    context: copy.context,
+    body: `${pageHead({ title: copy.notFoundTitle, slot: "failure-state", line: copy.notFoundLine })}${pageActions(cockpitLink(look.locale), { slot: "failure-actions" })}`,
+  });
+}
+
+export function renderServerErrorPage(look: PageLook, reference: string | null): string {
+  const copy = NOTICE_COPY[look.locale];
+  const shown = reference
+    ? `<div class="stack"><p class="muted">${copy.reference}</p><p class="reference mono" data-testid="page-reference">${escapeHtml(reference)}</p></div>`
+    : "";
+  return renderSinglePage({
+    look,
+    surface: "fatal-error",
+    context: copy.context,
+    body: `${pageHead({ title: copy.errorTitle, slot: "failure-state", line: copy.errorLine })}${shown}${pageActions(cockpitLink(look.locale), { slot: "failure-actions" })}`,
+  });
+}
+
+export type UnavailablePart = "login" | "cockpit";
+
+export function renderUnavailablePage(look: PageLook, part: UnavailablePart): string {
+  const copy = NOTICE_COPY[look.locale];
+  const [title, line] =
+    part === "login"
+      ? [copy.loginMissingTitle, copy.loginMissingLine]
+      : [copy.bundleMissingTitle, copy.bundleMissingLine];
+  return renderSinglePage({
+    look,
+    surface: "fatal-error",
+    context: copy.context,
+    body: `${pageHead({ title, slot: "failure-state", line })}${pageActions(linkButton("/", PAGE_COPY[look.locale].start, "primary", ' data-testid="page-start-link"'), { slot: "failure-actions" })}`,
+  });
+}
+
+export function renderInvalidReturnPage(look: PageLook): string {
+  const copy = NOTICE_COPY[look.locale];
+  return renderSinglePage({
+    look,
+    surface: "auth",
+    context: PAGE_COPY[look.locale].oauthContext,
+    body: `${pageHead({ title: copy.returnInvalidTitle, slot: "auth-heading", line: copy.returnInvalidLine })}${pageActions(cockpitLink(look.locale))}`,
+  });
 }

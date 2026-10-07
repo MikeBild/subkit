@@ -65,7 +65,7 @@ function renderHtml(origin: string): string {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sk — ${escapeHtml(OPENAPI_INFO.version)}</title>
+<title>SubKit — ${escapeHtml(OPENAPI_INFO.version)}</title>
 <style>
   :root { color-scheme: light dark; }
   body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; }
@@ -77,7 +77,7 @@ function renderHtml(origin: string): string {
   code { font-size: .95em; }
   footer { margin-top: 2.5rem; opacity: .7; font-size: .9rem; }
 </style>
-<h1>sk</h1>
+<h1>SubKit</h1>
 <p class="sub">A governed workflow engine, version ${escapeHtml(OPENAPI_INFO.version)}.</p>
 <p>Everything below is served by this engine out of its own binary.</p>
 <table>

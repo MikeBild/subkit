@@ -4,6 +4,7 @@ export {
   type CompleteConnectionResult,
   completeConnection,
   connectionStateOf,
+  connectorsUsingConnection,
   disconnectConnection,
   getConnection,
   listConnections,

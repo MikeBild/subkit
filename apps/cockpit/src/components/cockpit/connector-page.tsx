@@ -5,6 +5,10 @@ import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref } from "@/app/links";
 import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+} from "@/components/cockpit/catalog-metadata";
+import {
   ConnectorCredentials,
   useConnectorCredential,
 } from "@/components/cockpit/connector-credentials";
@@ -50,6 +54,8 @@ import {
   connectorNotice,
   type McpInspect,
   renewalWay,
+  type SignInReturn,
+  signInFailureLine,
 } from "@/pages/connector-detail-model";
 
 type RecordValue = Record<string, unknown>;
@@ -172,20 +178,19 @@ export function ConnectorPage({
   id,
   record,
   title,
-  purpose,
   permissions,
   returned,
 }: {
   id: string;
   record: RecordValue;
   title: string;
-  purpose: string | null;
   permissions: readonly string[];
-  returned: boolean;
+  returned: SignInReturn | null;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const canWrite = permissions.includes("connector:write");
   const canTest = permissions.includes("connector:test");
@@ -283,7 +288,12 @@ export function ConnectorPage({
     canWrite,
   });
   const enabled = record.enabled !== false;
-  const notice = connectorNotice({ enabled, authState: auth, returned });
+  const notice = connectorNotice({
+    enabled,
+    authState: auth,
+    returned: returned?.kind === "signed_in",
+  });
+  const failedSignIn = returned?.kind === "signin_failed" ? returned : null;
   const strip = connectorStrip({
     auth,
     way,
@@ -292,6 +302,7 @@ export function ConnectorPage({
     probe: probe.data ? { ok: probe.data.ok } : null,
     missingScopes: credential.data?.missing_scopes?.length ?? 0,
     returned: notice === "signed_in" || notice === "signed_in_off",
+    signInFailed: failedSignIn !== null,
     rights: { write: canWrite, test: canTest },
   });
   const toConnection = () => setEditing(true);
@@ -301,6 +312,7 @@ export function ConnectorPage({
         return enable.mutate(undefined);
       case "recheck":
         return runTest();
+      case "retry":
       case "renew":
       case "complete":
         if (action.way === "provider") return oauthStart.mutate();
@@ -312,20 +324,22 @@ export function ConnectorPage({
   const busy =
     enable.isPending || probe.isPending || oauthStart.isPending || connectionRenew.isPending;
   const stripLine =
-    strip.kind === "tested" && probe.data
-      ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
-      : strip.kind === "unreachable" && probe.data && !probe.data.ok
-        ? (probe.data.detail ?? t("connectors.probeFailed"))
-        : strip.kind === "expired" && users.data
-          ? t(
-              userCount === 1
-                ? "connectorStrip.line.expired.one"
-                : "connectorStrip.line.expired.other",
-              { count: userCount },
-            )
-          : strip.kind === "notSignedIn"
-            ? t("connectorStrip.line.notSignedIn")
-            : null;
+    strip.kind === "signInFailed" && failedSignIn !== null
+      ? signInFailureLine(failedSignIn, t)
+      : strip.kind === "tested" && probe.data
+        ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
+        : strip.kind === "unreachable" && probe.data && !probe.data.ok
+          ? (probe.data.detail ?? t("connectors.probeFailed"))
+          : strip.kind === "expired" && users.data
+            ? t(
+                userCount === 1
+                  ? "connectorStrip.line.expired.one"
+                  : "connectorStrip.line.expired.other",
+                { count: userCount },
+              )
+            : strip.kind === "notSignedIn"
+              ? t("connectorStrip.line.notSignedIn")
+              : null;
 
   const menu: ActionMenuItem[] = [
     ...(canTest
@@ -453,7 +467,12 @@ export function ConnectorPage({
         <PageHeader
           back={{ to: "/connectors", label: t("nav.connectors") }}
           title={title}
-          purpose={purpose || undefined}
+          purpose={
+            <CatalogMetadataSummary
+              record={record}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           secondary={
             canChat ? (
               <ActionMenu
@@ -520,7 +539,9 @@ export function ConnectorPage({
                         ? "connector-enable"
                         : strip.action.kind === "recheck"
                           ? "connector-recheck"
-                          : "connector-renew-signin",
+                          : strip.action.kind === "retry"
+                            ? "connector-signin-again"
+                            : "connector-renew-signin",
                   }
                 : undefined
             }
@@ -530,6 +551,14 @@ export function ConnectorPage({
       </div>
       {canWrite ? (
         <>
+          <CatalogMetadataDialog
+            kind="connector"
+            id={id}
+            record={record}
+            open={describing}
+            onOpenChange={setDescribing}
+            queryKey={["catalog-detail", "connectors", id]}
+          />
           <ConnectorEditDialog
             open={editing}
             onOpenChange={setEditing}

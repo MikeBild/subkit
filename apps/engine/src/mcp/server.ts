@@ -1,6 +1,7 @@
 import { VERSION } from "@cli-core/version.ts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ElicitResultSchema as McpElicitResultSchema } from "@modelcontextprotocol/sdk/types.js";
+import type { CatalogKind } from "../api/catalog-metadata.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { listElicitationsForConversation } from "../conversations/elicitations.ts";
 import { registerNativeUrlElicitationCompletion } from "../conversations/native-url-elicitation.ts";
@@ -8,6 +9,7 @@ import type { Db } from "../db/client.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { buildOperatorHealthSummary } from "../operator/health-digest.ts";
 import { can } from "../rbac/evaluator.ts";
+import { buildCatalogSummaryLine } from "../workflows/catalog-view.ts";
 import { registerCompletionCapability } from "./capabilities/completion.ts";
 import { ELICITATION_FORM_TIMEOUT_MS } from "./capabilities/conversation-native-elicitation.ts";
 import { deliverPendingNativeElicitation } from "./capabilities/conversations.ts";
@@ -36,9 +38,11 @@ const SHARED_INTRO = [
 ];
 
 const CATALOG_AND_GROUNDING = [
-  "The catalog itself is grouped: `list_workflows` and `find_workflow` report a `category`",
-  "(the block a workflow belongs to) and the `connectors` it uses, and both are filters —",
-  "ask for one block, or for everything that touches a given connector.",
+  "Workflows, connectors, knowledge sources, skills and files carry a `description` (what",
+  "each is for, when known) and a `category` (the catalog block it belongs to, one vocabulary",
+  "for all of them). `list_*` and `find_*` return both and take `category` as a filter; `find_*` ranks",
+  "by category, name and description and says why each match matched. Only the most",
+  "recently used workflows appear as `wf_<slug>` tools — `find_workflow` reaches every one.",
   "",
   "Grounding: for questions about the tenant's business domains (conventions, runbooks,",
   "internal APIs), call `search_knowledge` FIRST and answer from the hits — do not",
@@ -71,14 +75,47 @@ const READ_EXECUTE_INTRO = [
   ...CATALOG_AND_GROUNDING,
 ].join("\n");
 
-export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
-  const { db, principal, transport } = p;
+async function raceWithin<T>(work: Promise<T | null>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    work,
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ms);
+      (timer as unknown as { unref?: () => void }).unref?.();
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  return result;
+}
 
-  const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
+const CATALOG_READ_PERMISSIONS = [
+  ["workflow", "workflow:read"],
+  ["connector", "connector:read"],
+  ["knowledge_source", "knowledge:read"],
+] as const;
 
-  const INSTRUCTIONS_TIMEOUT_MS = 400;
-  const baseIntro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;
-  let instructions: string = baseIntro;
+async function readableCatalogKinds(
+  db: CreateMcpServerParams["db"],
+  principal: CreateMcpServerParams["principal"],
+): Promise<Set<CatalogKind>> {
+  const readable = new Set<CatalogKind>();
+  for (const [kind, permission] of CATALOG_READ_PERMISSIONS) {
+    const decision = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission,
+      quiet: true,
+    });
+    if (decision.allow) readable.add(kind);
+  }
+  return readable;
+}
+
+async function connectHealthSummary(
+  db: CreateMcpServerParams["db"],
+  principal: CreateMcpServerParams["principal"],
+  timeoutMs: number,
+): Promise<string | null> {
   try {
     const decision = await can(db, {
       tenant_id: principal.tenant_id,
@@ -100,25 +137,14 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
           return null;
         },
       );
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const text = await Promise.race([
-        digestText,
-        new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), INSTRUCTIONS_TIMEOUT_MS);
-          (timer as unknown as { unref?: () => void }).unref?.();
-        }),
-      ]);
-      if (timer) clearTimeout(timer);
-      if (text) {
-        instructions = `${baseIntro}\n\n${text}`;
-      } else {
-        logger.warn({
-          module: "mcp",
-          action: "mcp.instructions.skipped",
-          msg: `connect health summary exceeded ${INSTRUCTIONS_TIMEOUT_MS}ms — proceeding with base intro only`,
-          tenant_id: principal.tenant_id,
-        });
-      }
+      const text = await raceWithin(digestText, timeoutMs);
+      if (text) return text;
+      logger.warn({
+        module: "mcp",
+        action: "mcp.instructions.skipped",
+        msg: `connect health summary exceeded ${timeoutMs}ms — proceeding with base intro only`,
+        tenant_id: principal.tenant_id,
+      });
     }
   } catch (err) {
     logger.warn({
@@ -129,6 +155,36 @@ export async function createMcpServer(p: CreateMcpServerParams): Promise<Server>
       ...errorFields(err),
     });
   }
+  return null;
+}
+
+export async function createMcpServer(p: CreateMcpServerParams): Promise<Server> {
+  const { db, principal, transport } = p;
+
+  const taskStore = new ConversationTaskStore({ db, tenant_id: principal.tenant_id });
+
+  const INSTRUCTIONS_TIMEOUT_MS = 400;
+  const intro = resolveMcpMode(principal) === "product" ? READ_EXECUTE_INTRO : AUTHORING_INTRO;
+  const catalogLine = raceWithin(
+    readableCatalogKinds(db, principal)
+      .then((readable) => buildCatalogSummaryLine(principal.tenant_id, readable, db))
+      .catch((err) => {
+        logger.warn({
+          module: "mcp",
+          action: "mcp.instructions.catalog_skipped",
+          msg: "could not compute the catalog summary line — proceeding without it",
+          tenant_id: principal.tenant_id,
+          ...errorFields(err),
+        });
+        return null;
+      }),
+    INSTRUCTIONS_TIMEOUT_MS,
+  );
+  const healthText = connectHealthSummary(db, principal, INSTRUCTIONS_TIMEOUT_MS);
+  const [catalog, health] = await Promise.all([catalogLine, healthText]);
+  const instructions = [catalog ? `${intro}\n${catalog}` : intro, health]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 
   const server = new Server(
     {

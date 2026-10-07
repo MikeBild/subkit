@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/api/client";
 import { navigationItem } from "@/app/navigation";
 import { ConnectorPage } from "@/components/cockpit/connector-page";
-import { BackLink, DataState, Skeleton } from "@/components/cockpit/patterns";
+import { BackLink, Skeleton } from "@/components/cockpit/patterns";
 import { WorkflowPage } from "@/components/cockpit/workflow-page";
-import { LoadFailed, queryView } from "@/components/failure-state";
+import { ForbiddenState, LoadFailed, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
-import { type RecordValue, recordPurpose, recordTitle } from "@/pages/catalog-model";
-import { returnedFromSignIn, withoutSignInReturn } from "@/pages/connector-detail-model";
+import { type RecordValue, recordTitle } from "@/pages/catalog-model";
+import { signInReturn, withoutSignInReturn } from "@/pages/connector-detail-model";
 
 type DetailResource = "workflows" | "connectors";
 
@@ -31,8 +31,8 @@ export function CatalogDetailPage({
 }) {
   const { t } = useI18n();
   const id = decodeURIComponent(window.location.pathname.split("/").filter(Boolean).at(-1) ?? "");
-  const [returned] = useState(
-    () => resource === "connectors" && returnedFromSignIn(window.location.search),
+  const [returned] = useState(() =>
+    resource === "connectors" ? signInReturn(window.location.search) : null,
   );
   useEffect(() => {
     if (!returned) return;
@@ -55,11 +55,7 @@ export function CatalogDetailPage({
   if (!canRead)
     return (
       <div className="p-6">
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </div>
     );
   const view = queryView(query, () => false);
@@ -83,20 +79,13 @@ export function CatalogDetailPage({
     );
   if (resource === "workflows")
     return (
-      <WorkflowPage
-        id={id}
-        record={record}
-        title={recordTitle(record)}
-        purpose={recordPurpose(record)}
-        permissions={permissions}
-      />
+      <WorkflowPage id={id} record={record} title={recordTitle(record)} permissions={permissions} />
     );
   return (
     <ConnectorPage
       id={id}
       record={record}
       title={recordTitle(record)}
-      purpose={recordPurpose(record)}
       permissions={permissions}
       returned={returned}
     />

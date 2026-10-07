@@ -14,3 +14,11 @@ export class KnowledgeContentReadOnlyError extends Error {
     this.name = "KnowledgeContentReadOnlyError";
   }
 }
+
+export class KnowledgeVersionAlreadyCurrentError extends Error {
+  readonly code = "version_already_current";
+  constructor(readonly version: number) {
+    super(`version ${version} is already the current content of this knowledge source`);
+    this.name = "KnowledgeVersionAlreadyCurrentError";
+  }
+}

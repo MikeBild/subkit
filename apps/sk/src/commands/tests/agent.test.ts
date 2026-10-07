@@ -1,8 +1,23 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AGENT_FILE_RELPATH, findAgentFile, wireClaudeSessionStartHook } from "../agent.ts";
+import { runCommand } from "citty";
+import {
+  AGENT_FILE_RELPATH,
+  agentCommand,
+  agentEngineClient,
+  boundedFetch,
+  codexHookSnippet,
+  findAgentFile,
+  forgetBriefed,
+  newPromptDomains,
+  parseHookPayload,
+  planBriefing,
+  readBriefed,
+  recordBriefed,
+  wireClaudeHooks,
+} from "../agent.ts";
 
 describe("findAgentFile", () => {
   test("walks up from a nested cwd to the repo-root declaration", () => {
@@ -34,9 +49,9 @@ describe("findAgentFile", () => {
   });
 });
 
-describe("wireClaudeSessionStartHook", () => {
-  test("adds SessionStart briefing and SessionEnd capture entries to empty settings", () => {
-    const updated = wireClaudeSessionStartHook({});
+describe("wireClaudeHooks", () => {
+  test("adds SessionStart + UserPromptSubmit briefing and SessionEnd capture to empty settings", () => {
+    const updated = wireClaudeHooks({});
     if (!updated) throw new Error("expected settings update");
     const hooks = updated.hooks as Record<string, unknown>;
     const sessionStart = hooks.SessionStart as Array<{
@@ -46,15 +61,41 @@ describe("wireClaudeSessionStartHook", () => {
     expect(sessionStart).toHaveLength(1);
     expect(sessionStart[0]?.matcher).toBe("startup|resume|compact");
     expect(sessionStart[0]?.hooks[0]?.command).toContain("sk agent briefing --hook");
+    const prompt = hooks.UserPromptSubmit as Array<{
+      matcher?: string;
+      hooks: Array<{ command: string; timeout: number }>;
+    }>;
+    expect(prompt).toHaveLength(1);
+    expect(prompt[0]?.matcher).toBeUndefined();
+    expect(prompt[0]?.hooks[0]?.command).toBe("sk agent briefing --hook");
+    expect(prompt[0]?.hooks[0]?.timeout).toBeLessThanOrEqual(10);
     const sessionEnd = hooks.SessionEnd as Array<{ hooks: Array<{ command: string }> }>;
     expect(sessionEnd).toHaveLength(1);
     expect(sessionEnd[0]?.hooks[0]?.command).toContain("sk agent capture --hook");
   });
 
+  test("an earlier install gains only the prompt hook, and a second run changes nothing", () => {
+    const earlier = {
+      hooks: {
+        SessionStart: [
+          { matcher: "startup", hooks: [{ type: "command", command: "sk agent briefing --hook" }] },
+        ],
+        SessionEnd: [{ hooks: [{ type: "command", command: "sk agent capture --hook" }] }],
+      },
+    };
+    const updated = wireClaudeHooks(earlier);
+    if (!updated) throw new Error("expected settings update");
+    const hooks = updated.hooks as Record<string, unknown[]>;
+    expect(hooks.SessionStart).toEqual(earlier.hooks.SessionStart);
+    expect(hooks.SessionEnd).toEqual(earlier.hooks.SessionEnd);
+    expect(hooks.UserPromptSubmit).toHaveLength(1);
+    expect(wireClaudeHooks(updated)).toBeNull();
+  });
+
   test("is idempotent — returns null when already wired", () => {
-    const first = wireClaudeSessionStartHook({});
+    const first = wireClaudeHooks({});
     expect(first).not.toBeNull();
-    expect(wireClaudeSessionStartHook(first as Record<string, unknown>)).toBeNull();
+    expect(wireClaudeHooks(first as Record<string, unknown>)).toBeNull();
   });
 
   test("preserves unrelated settings and existing hooks", () => {
@@ -65,12 +106,185 @@ describe("wireClaudeSessionStartHook", () => {
         SessionStart: [{ matcher: "startup", hooks: [{ type: "command", command: "other-tool" }] }],
       },
     };
-    const updated = wireClaudeSessionStartHook(existing);
+    const updated = wireClaudeHooks(existing);
     if (!updated) throw new Error("expected settings update");
     expect(updated.model).toBe("opus");
     const hooks = updated.hooks as Record<string, unknown>;
     expect(hooks.PreToolUse).toEqual(existing.hooks.PreToolUse);
     const sessionStart = hooks.SessionStart as unknown[];
     expect(sessionStart).toHaveLength(2);
+  });
+});
+
+describe("hook payload", () => {
+  test("reads the prompt of a UserPromptSubmit payload", () => {
+    expect(
+      parseHookPayload(
+        JSON.stringify({ cwd: "/r", session_id: "s1", prompt: "page the ops on-call" }),
+      ),
+    ).toEqual({
+      cwd: "/r",
+      session_id: "s1",
+      transcript_path: null,
+      prompt: "page the ops on-call",
+    });
+  });
+
+  test("a blank prompt, empty input or broken JSON reads as no prompt", () => {
+    expect(parseHookPayload(JSON.stringify({ prompt: "   " })).prompt).toBeNull();
+    expect(parseHookPayload("").prompt).toBeNull();
+    expect(parseHookPayload("{nope").prompt).toBeNull();
+  });
+});
+
+describe("which domains a turn is briefed on", () => {
+  test("a hook outside a repo with .sk/agent.json plans no request at all", () => {
+    expect(planBriefing({ explicit: null, declared: [], hook: true, prompt: "page ops" })).toEqual({
+      kind: "none",
+    });
+    expect(planBriefing({ explicit: null, declared: [], hook: true, prompt: null })).toEqual({
+      kind: "none",
+    });
+  });
+
+  test("a declared repo briefs its domains at start and resolves each prompt", () => {
+    expect(planBriefing({ explicit: null, declared: ["ops"], hook: true, prompt: null })).toEqual({
+      kind: "declared",
+      domains: ["ops"],
+    });
+    expect(
+      planBriefing({ explicit: null, declared: ["ops"], hook: true, prompt: "x".repeat(5_000) }),
+    ).toEqual({ kind: "prompt", prompt: "x".repeat(2_000), declared: ["ops"] });
+  });
+
+  test("explicit domains win; only a person's own command falls back to the repository name", () => {
+    expect(
+      planBriefing({ explicit: ["radar"], declared: ["ops"], hook: true, prompt: "page ops" }),
+    ).toEqual({ kind: "explicit", domains: ["radar"] });
+    expect(planBriefing({ explicit: null, declared: [], hook: false, prompt: null })).toEqual({
+      kind: "repo",
+    });
+  });
+
+  test("a prompt adds only domains the session has not been briefed on", () => {
+    expect(newPromptDomains(["blog-de", "ops"], ["blog-de"])).toEqual(["ops"]);
+    expect(newPromptDomains(["blog-de"], ["blog-de", "ops"])).toEqual([]);
+  });
+});
+
+describe("briefed domains per session", () => {
+  test("are remembered per session, merged, and forgotten when the session starts again", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "sk-agent-briefed-")), "agent-sessions");
+    expect(readBriefed(dir, "s/1")).toEqual([]);
+    recordBriefed(dir, "s/1", ["ops"]);
+    recordBriefed(dir, "s/1", ["blog-de", "ops"]);
+    expect(readBriefed(dir, "s/1")).toEqual(["blog-de", "ops"]);
+    expect(readBriefed(dir, "s2")).toEqual([]);
+    forgetBriefed(dir, "s/1");
+    expect(readBriefed(dir, "s/1")).toEqual([]);
+  });
+
+  test("a record that vanishes while old records are cleared does not fail the write", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "sk-agent-briefed-")), "agent-sessions");
+    mkdirSync(dir, { recursive: true });
+    symlinkSync(join(dir, "already-gone.json"), join(dir, "dangling.json"));
+    expect(() => recordBriefed(dir, "s1", ["ops"])).not.toThrow();
+    expect(readBriefed(dir, "s1")).toEqual(["ops"]);
+  });
+
+  test("records of old sessions are cleared on the next write", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "sk-agent-briefed-")), "agent-sessions");
+    recordBriefed(dir, "old", ["ops"]);
+    const file = join(dir, "old.json");
+    expect(existsSync(file)).toBe(true);
+    const threeDaysLater = statSync(file).mtimeMs + 3 * 24 * 60 * 60 * 1000;
+    recordBriefed(dir, "new", ["ops"], threeDaysLater);
+    expect(existsSync(file)).toBe(false);
+    expect(readBriefed(dir, "new")).toEqual(["ops"]);
+  });
+});
+
+describe("sk agent init --skip-claude", () => {
+  let cwd: string;
+  let savedCwd: string;
+  let savedEnv: Record<string, string | undefined>;
+  let printed: string[];
+  let originalWrite: typeof process.stdout.write;
+  beforeEach(() => {
+    savedCwd = process.cwd();
+    cwd = mkdtempSync(join(tmpdir(), "sk-agent-init-"));
+    process.chdir(cwd);
+    savedEnv = { SUBKIT_ENGINE_URL: process.env.SUBKIT_ENGINE_URL };
+    process.env.SUBKIT_ENGINE_URL = "https://engine.example.test";
+    printed = [];
+    originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      printed.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+  });
+  afterEach(() => {
+    process.stdout.write = originalWrite;
+    process.chdir(savedCwd);
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  test("declares the domains and prints the Codex and Hermes snippets without touching Claude", async () => {
+    await runCommand(agentCommand, {
+      rawArgs: ["init", "--domains", "blog-de", "--skip-claude"],
+    });
+    const output = printed.join("");
+    expect(findAgentFile(cwd)?.config.domains).toEqual(["blog-de"]);
+    expect(output).toContain("Codex (manual, feature-gated):");
+    expect(output).toContain('"UserPromptSubmit"');
+    expect(output).toContain("Hermes (manual):");
+    expect(output).toContain("https://engine.example.test/mcp");
+    expect(output).toContain("sk agent briefing");
+    expect(output).not.toContain("wired SessionStart");
+    expect(output).not.toContain("Claude Code hooks");
+  });
+});
+
+describe("hook requests", () => {
+  test("give up after their time budget instead of holding the prompt", async () => {
+    const never = ((_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      })) as typeof fetch;
+    await expect(
+      boundedFetch(50, never)("http://engine.invalid/v1/agent/domains"),
+    ).rejects.toThrow();
+  });
+});
+
+describe("hook clients", () => {
+  const profile = { engine_url: "http://engine.invalid", api_key: "", active_tenant_id: null };
+
+  test("a hook without an API key makes no client and so no request", () => {
+    expect(agentEngineClient(profile, true)).toBeNull();
+    expect(agentEngineClient(profile, false)).not.toBeNull();
+  });
+
+  test("every hook request carries a time budget", async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const recording = ((_input: unknown, init?: RequestInit) => {
+      signals.push(init?.signal);
+      return Promise.resolve(
+        new Response(JSON.stringify({ domains: [], from_prompt: [], from_repo: [] })),
+      );
+    }) as typeof fetch;
+    const client = agentEngineClient({ ...profile, api_key: "wf_live_probe" }, true, recording);
+    await client?.resolveAgentDomains({ prompt: "page ops" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  test("the Codex snippet says the capture runs once per turn", () => {
+    const snippet = codexHookSnippet();
+    expect(snippet).toContain("once per turn");
+    expect(snippet).not.toContain("cheap");
   });
 });

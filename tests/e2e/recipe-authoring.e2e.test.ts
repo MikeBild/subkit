@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { boot, type E2EEnv, shutdown } from "./setup.ts";
+import { boot, cli, type E2EEnv, expectSuccess, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 
@@ -118,4 +118,34 @@ describe("recipe-authoring e2e", () => {
       }
     }
   });
+});
+
+describe("sk workflows create --from-recipe", () => {
+  test("names the missing connector, then creates the solution once it exists", async () => {
+    const refused = await cli(["workflows", "create", "--from-recipe", "webhook-to-slack"], {
+      env,
+    });
+    expect(refused.exitCode).not.toBe(0);
+    expect(refused.stderr).toContain("sk connectors create --template slack");
+
+    const slack = await createConnector({
+      name: "Slack E2E",
+      slug: "slack-e2e",
+      driver: "http",
+      environment: "dev",
+      auth_type: "bearer",
+      template_slug: "slack",
+      template_source: "builtin",
+    });
+    const created = await cli(
+      ["workflows", "create", "--from-recipe", "webhook-to-slack", "--json"],
+      { env, timeout: 60_000 },
+    );
+    expectSuccess(created, "sk workflows create --from-recipe");
+    const workflow = parseJson<{ id: string; slug: string }>(created);
+    expect(workflow.slug).toBe("webhook-to-slack");
+
+    const res = await fetch(`${env.baseUrl}/v1/workflows/${workflow.id}`, { headers: bearer() });
+    expect(JSON.stringify(await res.json())).toContain(slack.id);
+  }, 90_000);
 });

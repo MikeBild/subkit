@@ -6,9 +6,16 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
+import {
+  CatalogMetadataDialog,
+  CatalogMetadataSummary,
+  CatalogNameCell,
+  useCategoryFilter,
+} from "@/components/cockpit/catalog-metadata";
 import {
   ActionMenu,
   Button,
@@ -36,12 +43,13 @@ import {
   Textarea,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { queryView } from "@/components/failure-state";
+import { ForbiddenState, queryView } from "@/components/failure-state";
 import { useI18n } from "@/lib/i18n-context";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
+import { proposalAuthor, proposalTarget } from "@/pages/learning-proposal-model";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
@@ -93,6 +101,16 @@ function rowWhere(row: SkillRow): string | null {
   return row.kind === "skill" ? row.skill.applies_to : null;
 }
 
+function proposalLine(
+  candidate: SkillCandidate,
+  directory: ReadonlyMap<string, string>,
+  t: Translate,
+): string {
+  const target = proposalTarget(candidate, t);
+  const author = proposalAuthor(candidate, directory, t);
+  return author ? `${target} · ${t("proposal.by", { name: author })}` : target;
+}
+
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -106,9 +124,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const q = useDebouncedValue(search).trim();
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
+  const categoryFilter = useCategoryFilter("skill");
   const list = useInfiniteList<Skill>(
     ENDPOINT,
-    { q: q || undefined, sort: first?.id ?? "updated_at", order: first?.desc ? "desc" : "asc" },
+    {
+      q: q || undefined,
+      category: categoryFilter.category,
+      sort: first?.id ?? "updated_at",
+      order: first?.desc ? "desc" : "asc",
+    },
     { enabled: canRead },
   );
   const proposals = useQuery({
@@ -119,6 +143,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   });
   const open = proposals.data?.items ?? [];
   const proposal = open.find((candidate) => candidate.id === proposalId) ?? null;
+  const directory = useActorDirectory(canRead && open.length > 0);
   const decided = () => {
     void client.invalidateQueries({ queryKey: PROPOSALS_KEY });
     void client.invalidateQueries({ queryKey: ["catalog"] });
@@ -134,7 +159,20 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         "title",
         (row) => rowTitle(row),
         t("skills.column.name"),
-        (row) => rowTitle(row),
+        (row) =>
+          row.kind === "skill" ? (
+            <CatalogNameCell name={row.skill.title} record={row.skill} />
+          ) : (
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate">{rowTitle(row)}</span>
+              <span
+                className="truncate text-xs text-muted-foreground"
+                data-testid={`skill-proposal-row-target-${row.candidate.id}`}
+              >
+                {proposalLine(row.candidate, directory, t)}
+              </span>
+            </span>
+          ),
         {
           sortable: true,
           width: "w-[36%]",
@@ -182,7 +220,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         { sortable: true, width: "w-[18%]" },
       ),
     ];
-  }, [t, dateTime]);
+  }, [t, dateTime, directory]);
 
   if (!canRead)
     return (
@@ -193,11 +231,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         testId="catalog-skills"
         header={<PageHeader eyebrow={t("nav.group.knowledge")} title={title} />}
       >
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 
@@ -206,7 +240,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     ...list.items.map((skill) => ({ kind: "skill" as const, skill })),
   ];
   const { pending, failed } = skillsLoadState([list.query, proposals]);
-  const empty = !pending && !failed && rows.length === 0 && !q;
+  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
   const newButton = (testId: string) =>
     canWrite ? (
       <Button asChild>
@@ -267,6 +301,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                   placeholder: t("skills.search"),
                   testId: "skills-search",
                 }}
+                selects={categoryFilter.select ? [categoryFilter.select] : []}
               />
             }
             pending={pending}
@@ -358,6 +393,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   const canChat = permissions.includes("conversation:write");
   const query = useSkill(id, canRead);
   const [deleting, setDeleting] = useState(false);
+  const [describing, setDescribing] = useState(false);
   const lifecycle = useOptimisticAction<"activate" | "archive", Skill, Skill>({
     queryKey: ["skill", id],
     mutationFn: (verb) =>
@@ -392,14 +428,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
       {body}
     </Page>
   );
-  if (!canRead)
-    return frame(
-      <DataState
-        state="empty"
-        line={t("resource.permission.description")}
-        testId="resource-permission-alert"
-      />,
-    );
+  if (!canRead) return frame(<ForbiddenState />);
   const view = queryView(query, () => false);
   if (view === "loading") return frame(<DataState state="loading" />);
   const skill = query.data;
@@ -487,6 +516,12 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         <PageHeader
           back={back}
           title={skill.title}
+          purpose={
+            <CatalogMetadataSummary
+              record={skill}
+              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
+            />
+          }
           action={
             canWrite ? (
               <Button asChild>
@@ -535,6 +570,16 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
           <FactList items={technical} />
         </CollapsibleSection>
       </div>
+      {canWrite ? (
+        <CatalogMetadataDialog
+          kind="skill"
+          id={skill.id}
+          record={skill}
+          open={describing}
+          onOpenChange={setDescribing}
+          queryKey={["skill", skill.id]}
+        />
+      ) : null}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}
@@ -638,11 +683,7 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
   if (!canWrite)
     return (
       <Page kind="detail" surface="detail" scroll="page" testId="skill-editor" header={header}>
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
   if (!isNew && query.isPending)

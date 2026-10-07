@@ -4,6 +4,7 @@ import { registerOAuth2RefreshHandler } from "../../credentials/oauth2/refresh-w
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { registerAgentSessionAnalyzeHandler } from "./agent-session-analyze.ts";
+import { registerCatalogDescribeHandler } from "./catalog-describe.ts";
 import { registerChatEventHandler } from "./chat-event.ts";
 import { registerConversationRunTurnHandler } from "./conversation-run-turn.ts";
 import { registerConversationRunTurnDlqHandler } from "./conversation-run-turn-dlq.ts";
@@ -29,6 +30,7 @@ export interface RegisteredHandlers {
   ingestDocsWorkerId: string;
   ingestKnowledgeWorkerId: string;
   skillCandidateAnalyzeWorkerId: string;
+  catalogDescribeWorkerId: string;
   agentSessionAnalyzeWorkerId: string;
   workflowRepairWorkerId: string;
   webhookDeliverWorkerId: string | null;
@@ -67,6 +69,10 @@ export async function registerAllHandlers(
     boss: opts.boss,
     db: opts.db,
   });
+  const catalogDescribeWorkerId = await registerCatalogDescribeHandler({
+    boss: opts.boss,
+    db: opts.db,
+  });
   const agentSessionAnalyzeWorkerId = await registerAgentSessionAnalyzeHandler({
     boss: opts.boss,
     db: opts.db,
@@ -102,6 +108,7 @@ export async function registerAllHandlers(
     ingest_docs_worker_id: ingestDocsWorkerId,
     ingest_knowledge_worker_id: ingestKnowledgeWorkerId,
     skill_candidate_analyze_worker_id: skillCandidateAnalyzeWorkerId,
+    catalog_describe_worker_id: catalogDescribeWorkerId,
     agent_session_analyze_worker_id: agentSessionAnalyzeWorkerId,
     workflow_repair_worker_id: workflowRepairWorkerId,
     webhook_deliver_worker_id: webhookDeliverWorkerId,
@@ -117,6 +124,7 @@ export async function registerAllHandlers(
     ingestDocsWorkerId,
     ingestKnowledgeWorkerId,
     skillCandidateAnalyzeWorkerId,
+    catalogDescribeWorkerId,
     agentSessionAnalyzeWorkerId,
     workflowRepairWorkerId,
     webhookDeliverWorkerId,

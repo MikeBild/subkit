@@ -87,10 +87,11 @@ export function rejectPatchCandidate(id: string, reason: string): Promise<{ reje
 export function approveSkillCandidate(
   id: string,
   expected_review_digest: string,
+  activate: boolean,
 ): Promise<unknown> {
   return apiRequest(`/v1/skill-candidates/${encodeURIComponent(id)}/approve`, {
     method: "POST",
-    body: JSON.stringify({ status: "active", expected_review_digest }),
+    body: JSON.stringify({ ...(activate ? { status: "active" } : {}), expected_review_digest }),
   });
 }
 

@@ -85,6 +85,7 @@ async function seedCandidate(opts: SeedOptions): Promise<SkillCandidateView> {
     promoted_skill_id: row.promoted_skill_id,
     fingerprint: row.fingerprint,
     tags: row.tags ?? [],
+    proposed_by: null,
     version: row.version,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),

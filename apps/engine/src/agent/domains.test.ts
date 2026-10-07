@@ -1,0 +1,66 @@
+import { describe, expect, test } from "bun:test";
+import { DOMAIN_PROMPT_MAX_CHARS, domainsOfTags, resolveDomains } from "./domains.ts";
+
+const KNOWN = ["blog-de", "ops", "radar", "mikebild-dev", "data_lake"];
+
+describe("resolveDomains", () => {
+  test("a domain matches when every part of its slug is a word of the prompt", () => {
+    expect(
+      resolveDomains({ prompt: "Write the next blog post, in DE please", known: KNOWN })
+        .from_prompt,
+    ).toEqual(["blog-de"]);
+    expect(
+      resolveDomains({ prompt: "Check the blog-de release order", known: KNOWN }).domains,
+    ).toEqual(["blog-de"]);
+    expect(resolveDomains({ prompt: "Fix the data_lake loader", known: KNOWN }).domains).toEqual([
+      "data_lake",
+    ]);
+  });
+
+  test("a part inside a longer word does not match", () => {
+    expect(
+      resolveDomains({ prompt: "DevOps pipeline and radarscope", known: KNOWN }).domains,
+    ).toEqual([]);
+  });
+
+  test("the repository hint resolves on its own and both sources stay apart", () => {
+    const resolved = resolveDomains({
+      prompt: "page the ops on-call",
+      repo_hint: "mikebild-dev",
+      known: KNOWN,
+    });
+    expect(resolved).toEqual({
+      domains: ["mikebild-dev", "ops"],
+      from_prompt: ["ops"],
+      from_repo: ["mikebild-dev"],
+    });
+  });
+
+  test("the result is sorted and the same for the same input", () => {
+    const first = resolveDomains({
+      prompt: "radar and ops and blog de",
+      known: [...KNOWN].reverse(),
+    });
+    expect(first.domains).toEqual(["blog-de", "ops", "radar"]);
+    expect(resolveDomains({ prompt: "radar and ops and blog de", known: KNOWN })).toEqual(first);
+  });
+
+  test("only the head of a long prompt is read", () => {
+    const prompt = `${"x ".repeat(DOMAIN_PROMPT_MAX_CHARS)} radar`;
+    expect(resolveDomains({ prompt, known: KNOWN }).domains).toEqual([]);
+  });
+
+  test("nothing to read resolves nothing", () => {
+    expect(resolveDomains({ known: KNOWN })).toEqual({
+      domains: [],
+      from_prompt: [],
+      from_repo: [],
+    });
+  });
+});
+
+describe("domainsOfTags", () => {
+  test("keeps only domain tags with a value", () => {
+    expect(domainsOfTags(["domain:ops", "kind:guide", "domain:", "billing"])).toEqual(["ops"]);
+  });
+});

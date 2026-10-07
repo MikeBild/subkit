@@ -2,13 +2,20 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { eq } from "drizzle-orm";
 import { auditLog } from "../db/schema/audit.ts";
 import { engineSettings, tenants } from "../db/schema/identity.ts";
-import { workflows } from "../db/schema/index.ts";
+import { runtimeSecretVersions, workflows } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { type SeededRoleIds, seedBuiltinRolesAndPermissions } from "../rbac/seed.ts";
 import { getTestNow } from "../test-helpers/determinism/clock.ts";
 import { DEMO_WORKFLOWS } from "./demo-seed.ts";
 
 const clearCache = (): void => {};
+
+const acceptingProbe = async () => ({ ok: true as const, model: "probe-model" });
+const refusingProbe = async () => ({
+  ok: false as const,
+  model: "probe-model",
+  reason: "anthropic rejected the API key (HTTP 401)",
+});
 
 import {
   _internal,
@@ -21,6 +28,7 @@ import {
   consume,
   deriveTenantSlug,
   isBootstrapPending,
+  LLM_UNREACHABLE_HINT,
   run,
 } from "./bootstrap.ts";
 
@@ -142,7 +150,7 @@ describe("consume() — single-use enforcement + 410 lockout", () => {
         llm_provider: "anthropic",
         llm_api_key: "sk-ant-test-key",
       },
-      { token, ip: "127.0.0.1", user_agent: "sk/test" },
+      { token, ip: "127.0.0.1", user_agent: "sk/test", probe: acceptingProbe },
     );
 
     expect(outcome.status).toBe("ok");
@@ -347,5 +355,138 @@ describe("buildBootstrapBanner", () => {
     const out = buildBootstrapBanner("abc123", expires);
     expect(out).toContain("sk init --token abc123");
     expect(out).toContain("2030-01-01T00:00:00.000Z");
+  });
+});
+
+describe("consume() — the LLM key is checked live before anything is saved", () => {
+  const payload = {
+    admin_email: "ops@example.com",
+    tenant_name: "Acme Corp",
+    llm_provider: "anthropic" as const,
+    llm_api_key: "sk-ant-wrong",
+  };
+
+  test("a refused key answers llm_unreachable and leaves no tenant, no secret and no sentinel", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const secretsBefore = (await tdb.db.select().from(runtimeSecretVersions)).length;
+    const outcome = await consume(tdb.db, rbacIds, payload, {
+      token: minted.plaintext_token!,
+      probe: refusingProbe,
+    });
+    expect(outcome).toEqual({
+      status: "failed",
+      code: "llm_unreachable",
+      message: "the LLM access check failed: anthropic rejected the API key (HTTP 401)",
+      hint: LLM_UNREACHABLE_HINT,
+    });
+    expect(await tdb.db.select().from(tenants)).toHaveLength(0);
+    expect(await tdb.db.select().from(runtimeSecretVersions)).toHaveLength(secretsBefore);
+    expect(await _internal.readSetting(tdb.db, BOOTSTRAP_COMPLETED_KEY)).toBeUndefined();
+    expect(await _internal.readSetting(tdb.db, BOOTSTRAP_TOKEN_KEY)).toBeDefined();
+    const failed = await tdb.db.select().from(auditLog).where(eq(auditLog.action, "setup.failed"));
+    expect(failed.map((row) => (row.metadata as { code?: string }).code)).toEqual([
+      "llm_unreachable",
+    ]);
+    expect(JSON.stringify(failed)).not.toContain("sk-ant-wrong");
+  });
+
+  test("the same token works once the key is accepted", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const token = minted.plaintext_token!;
+    await consume(tdb.db, rbacIds, payload, { token, probe: refusingProbe });
+    const outcome = await consume(tdb.db, rbacIds, payload, { token, probe: acceptingProbe });
+    expect(outcome.status).toBe("ok");
+    expect(await tdb.db.select().from(tenants)).toHaveLength(1);
+  });
+
+  test("the probe sees the provider and key that would be saved", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const seen: unknown[] = [];
+    await consume(tdb.db, rbacIds, payload, {
+      token: minted.plaintext_token!,
+      probe: async (p) => {
+        seen.push(p);
+        return { ok: true, model: null };
+      },
+    });
+    expect(seen).toEqual([{ provider: "anthropic", api_key: "sk-ant-wrong" }]);
+  });
+
+  test("a model passed to the first start reaches the probe", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const seen: unknown[] = [];
+    await consume(
+      tdb.db,
+      rbacIds,
+      { ...payload, llm_provider: "azure", llm_model: "prod-deployment" },
+      {
+        token: minted.plaintext_token!,
+        probe: async (p) => {
+          seen.push(p);
+          return { ok: true, model: p.model ?? null };
+        },
+      },
+    );
+    expect(seen).toEqual([
+      { provider: "azure", api_key: "sk-ant-wrong", model: "prod-deployment" },
+    ]);
+  });
+
+  test("the mock provider passes without a probe call", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const outcome = await consume(
+      tdb.db,
+      rbacIds,
+      { ...payload, llm_provider: "mock" },
+      { token: minted.plaintext_token! },
+    );
+    expect(outcome.status).toBe("ok");
+  });
+});
+
+describe("consume() — one first start at a time", () => {
+  test("a second attempt while the first is checking its key gets in_progress and seeds nothing", async () => {
+    const minted = await run(tdb.db, { stdout: { write: () => undefined } });
+    const token = minted.plaintext_token!;
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const probing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const payload = {
+      admin_email: "ops@example.com",
+      tenant_name: "Acme Corp",
+      llm_provider: "anthropic" as const,
+      llm_api_key: "sk-ant-key",
+    };
+    const first = consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.1",
+      probe: async () => {
+        entered();
+        await held;
+        return { ok: true, model: null };
+      },
+    });
+    await probing;
+    const second = await consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.2",
+      probe: acceptingProbe,
+    });
+    expect(second).toEqual(expect.objectContaining({ status: "failed", code: "in_progress" }));
+    expect(await tdb.db.select().from(tenants)).toHaveLength(0);
+    release();
+    expect((await first).status).toBe("ok");
+    expect(await tdb.db.select().from(tenants)).toHaveLength(1);
+    const third = await consume(tdb.db, rbacIds, payload, {
+      token,
+      ip: "10.0.0.3",
+      probe: acceptingProbe,
+    });
+    expect(third).toEqual(expect.objectContaining({ status: "failed", code: "gone" }));
   });
 });

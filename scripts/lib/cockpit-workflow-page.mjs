@@ -1096,23 +1096,23 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the technical facts lack the version`);
 
     await page.getByTestId("workflow-menu").click();
-    for (const entry of ["rename", "category"])
-      await page.getByTestId(`workflow-menu-${entry}`).waitFor({ state: "visible" });
+    await page.getByTestId("workflow-menu-rename").waitFor({ state: "visible" });
+    if (await page.getByTestId("workflow-menu-category").count())
+      throw new Error(`${where}: the menu still offers a second way to change the category`);
     if (await page.getByTestId("workflow-menu-ask").count())
       throw new Error(`${where}: the menu offers the chat a second time`);
-    await page.getByTestId("workflow-menu-category").click();
-    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "visible" });
-    const current = (await text(page, "catalog-recategorize-select")) ?? "";
-    if (!current.includes("Example Api"))
-      throw new Error(
-        `${where}: the category dialog does not start at the current block: ${current}`,
-      );
-    if (await page.getByTestId("catalog-recategorize-dialog-submit").isEnabled())
-      throw new Error(
-        `${where}: the category dialog offers to move the workflow where it already is`,
-      );
     await page.keyboard.press("Escape");
-    await page.getByTestId("catalog-recategorize-dialog").waitFor({ state: "hidden" });
+    await page.getByTestId("catalog-metadata-edit").click();
+    await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "visible" });
+    const current = await page.getByTestId("catalog-metadata-category-input").inputValue();
+    if (current !== "example-api")
+      throw new Error(
+        `${where}: the description dialog does not start at the current category: ${current}`,
+      );
+    if (await page.getByTestId("catalog-metadata-save").isEnabled())
+      throw new Error(`${where}: the description dialog offers to save an unchanged record`);
+    await page.keyboard.press("Escape");
+    await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "hidden" });
 
     await assertSingleTriggers(page, `${where}, sections open`, { approvalOpeners: 1 });
 

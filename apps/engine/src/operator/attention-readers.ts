@@ -550,11 +550,13 @@ const readSkills: TenantReader = async (db, tenantId) => {
   const [row] = await db
     .select({
       count: sql<number>`count(*)::int`,
+      knowledge: sql<number>`(count(*) filter (where ${skillCandidates.pattern_kind} = 'knowledge_learning'))::int`,
       oldest: sql<Date | null>`min(${skillCandidates.created_at})`,
     })
     .from(skillCandidates)
     .where(and(eq(skillCandidates.tenant_id, tenantId), eq(skillCandidates.status, "proposed")));
   const count = Number(row?.count ?? 0);
+  const knowledge = Number(row?.knowledge ?? 0);
   if (count === 0) return [];
   const oldest = row?.oldest ? new Date(row.oldest) : null;
   return [
@@ -569,7 +571,7 @@ const readSkills: TenantReader = async (db, tenantId) => {
         reason: "skills_proposed",
         trigger: null,
         cause_class: null,
-        counts: { skills: count },
+        counts: { skills: count, ...(knowledge > 0 ? { knowledge } : {}) },
         since: oldest?.toISOString() ?? null,
         deadline: null,
         detail: null,

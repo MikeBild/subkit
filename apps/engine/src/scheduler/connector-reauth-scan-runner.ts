@@ -1,5 +1,6 @@
 import { and, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { catalogMetadataView } from "../api/catalog-metadata.ts";
 import { probeConnector } from "../connectors/drivers/index.ts";
 import { flagConnectorAuthFailure } from "../connectors/reauth.ts";
 import type { AuthType, ConnectorView, DriverName } from "../connectors/types.ts";
@@ -75,6 +76,7 @@ export async function runConnectorReauthScanForTenant(
       tenant_id: row.tenant_id,
       slug: row.slug,
       display_name: row.display_name,
+      ...catalogMetadataView(row),
       driver: row.driver as DriverName,
       environment: row.environment,
       auth_type: row.auth_type as AuthType,

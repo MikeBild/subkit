@@ -1,4 +1,6 @@
 import { z } from "@hono/zod-openapi";
+import { CatalogSourceSchema, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
+import type { Actor } from "../audit/actor.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
 export const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
@@ -16,6 +18,9 @@ export const KnowledgeSourceSchema = z
     name: z.string(),
     slug: z.string(),
     description: z.string().nullable(),
+    description_source: CatalogSourceSchema,
+    category: z.string(),
+    category_source: CatalogSourceSchema,
     tags: z.array(z.string()),
     scope: KnowledgeSourceScopeSchema,
     workflow_id: z.string().nullable(),
@@ -49,7 +54,8 @@ export const CreateKnowledgeSourceSchema = z
         "slug must be lowercase alphanumeric with hyphens/underscores",
       )
       .optional(),
-    description: z.string().max(2000).optional(),
+    description: DescriptionSchema.optional(),
+    category: CategorySchema.optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().optional(),
@@ -89,7 +95,8 @@ export type CreateKnowledgeSourceBundleInput = z.infer<typeof CreateKnowledgeSou
 export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
-    description: z.string().max(2000).optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
     workflow_id: z.string().uuid().nullable().optional(),
@@ -106,6 +113,7 @@ export interface KnowledgeSearchHit {
   knowledge_source_id: string;
   source_name: string;
   source_tags: string[];
+  source_description: string | null;
   title: string | null;
   path: string | null;
   snippet: string;
@@ -119,6 +127,7 @@ export interface KnowledgeIngestResult {
   skipped_count: number;
   total_bytes: number;
   budget_exceeded: boolean;
+  content_version: number | null;
 }
 
 export interface CreateKnowledgeSourceParams {
@@ -129,10 +138,11 @@ export interface CreateKnowledgeSourceParams {
     filename: string;
     mime?: string;
   };
-  actor_id: string | null;
+  actor: Actor | null;
   source_type_override?: "file_upload" | "inline" | "url" | "seed" | "bundle";
   source_uri_override?: string;
   parsed_chunks?: RawChunk[];
+  note?: string;
 }
 
 export interface ListKnowledgeSourcesParams {
@@ -140,6 +150,7 @@ export interface ListKnowledgeSourcesParams {
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
   status?: KnowledgeSourceStatus;
+  category?: string;
   q?: string;
   sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
   order?: "asc" | "desc";
@@ -179,9 +190,11 @@ export interface IngestKnowledgeSourceParams {
     filename: string;
     mime?: string;
   };
-  actor_id: string | null;
+  actor: Actor | null;
   expected_version?: string;
   parsed_chunks?: RawChunk[];
+  note?: string;
+  restored_from?: number;
 }
 
 export interface KnowledgeContentDocument {
@@ -202,12 +215,12 @@ export interface UpdateKnowledgeSourceContentParams {
   expected_version: string;
   path: string;
   content: string;
-  actor_id: string | null;
+  actor: Actor | null;
 }
 
 export interface UpsertKnowledgeBundleParams {
   tenant_id: string;
-  actor_id: string | null;
+  actor: Actor | null;
   input: CreateKnowledgeSourceInput;
   files: { path: string; content: string }[];
 }

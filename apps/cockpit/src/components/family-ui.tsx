@@ -176,27 +176,73 @@ export function FamilyState({
   );
 }
 
-type FamilyFailureStateProps = HTMLAttributes<HTMLElement> & {
-  kind: "not-found" | "fatal-error";
+type FamilyFailureContent = {
   title: ReactNode;
   description: ReactNode;
   icon: ReactNode;
-  primaryAction: ReactNode;
-  secondaryAction?: ReactNode;
-  standalone?: boolean;
 };
 
-export function FamilyFailureState({
-  kind,
+type FamilyFailureStateProps = HTMLAttributes<HTMLElement> &
+  FamilyFailureContent &
+  (
+    | {
+        kind: "not-found" | "fatal-error";
+        primaryAction: ReactNode;
+        secondaryAction?: ReactNode;
+        standalone?: boolean;
+      }
+    | { kind: "forbidden" }
+  );
+
+function FamilyForbiddenState({
   title,
   description,
   icon,
-  primaryAction,
-  secondaryAction,
-  standalone = false,
   className,
   ...props
-}: FamilyFailureStateProps) {
+}: HTMLAttributes<HTMLElement> & FamilyFailureContent) {
+  return (
+    <div
+      data-family-failure-kind="forbidden"
+      data-family-state="forbidden"
+      data-family-slot="data-state"
+      className={classes(
+        "flex min-h-11 min-w-0 items-start gap-3 rounded-lg border bg-card px-4 py-2.5 text-sm leading-5 text-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <span aria-hidden="true" className="mt-0.5 shrink-0 text-muted-foreground">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p className="font-semibold" data-slot="failure-title">
+          {title}
+        </p>
+        <p className="text-muted-foreground" data-slot="failure-description">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function FamilyFailureState(props: FamilyFailureStateProps) {
+  if (props.kind === "forbidden") {
+    const { kind: _kind, ...rest } = props;
+    return <FamilyForbiddenState {...rest} />;
+  }
+  const {
+    kind,
+    title,
+    description,
+    icon,
+    primaryAction,
+    secondaryAction,
+    standalone = false,
+    className,
+    ...rest
+  } = props;
   const fatal = kind === "fatal-error";
   return (
     <div
@@ -210,7 +256,7 @@ export function FamilyFailureState({
         standalone ? "min-h-svh bg-background" : "min-h-[calc(100svh-3.5rem)]",
         className,
       )}
-      {...props}
+      {...rest}
     >
       <section
         data-family-slot="failure-state"

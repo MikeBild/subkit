@@ -1,10 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { ConnectionStateEnum, ConnectionStateReasonEnum } from "../../../api/connection-schemas.ts";
+import type { SignInFailure } from "../../../connectors/index.ts";
 import {
   buildConnectionCallbackUri,
+  type CompleteConnectionResult,
   ConnectionError,
+  type ConnectionFailureCode,
   completeConnection,
+  connectorsUsingConnection,
   disconnectConnection,
   discoverService,
   getConnection,
@@ -13,11 +17,19 @@ import {
   resolvePublicOrigin,
   startConnection,
 } from "../../../credentials/index.ts";
+import type { Db } from "../../../db/client.ts";
 import { logger } from "../../../logging/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
+import {
+  cockpitReturn,
+  requestLocale,
+  resultResponse,
+  signedInPage,
+  signInFailedPage,
+} from "../connectors/signin-result.ts";
 
 const ConnectionUserSchema = z
   .object({
@@ -126,7 +138,17 @@ const callbackRoute = createRoute({
   tags: ["connections"],
   summary: "Complete a connection; the other side redirects the browser here",
   request: { query: CallbackQuery },
-  responses: { 302: { description: "Redirect into the Cockpit" } },
+  responses: {
+    200: {
+      description: "Connected, and no single connector page to return to (HTML)",
+      content: { "text/html": { schema: z.string() } },
+    },
+    303: { description: "Back to the connector page that uses this connection" },
+    400: {
+      description: "Not connected, and no single connector page to return to (HTML)",
+      content: { "text/html": { schema: z.string() } },
+    },
+  },
 });
 
 const listRoute = createRoute({
@@ -189,13 +211,21 @@ function rethrow(error: unknown): never {
   throw error;
 }
 
-function cockpitReturn(origin: string, params: Record<string, string | null>): Response {
-  const url = new URL("/cockpit/connectors", origin);
-  for (const [key, value] of Object.entries(params)) if (value) url.searchParams.set(key, value);
-  return new Response(null, {
-    status: 302,
-    headers: { location: url.toString(), "cache-control": "no-store" },
-  });
+const CONNECTION_SIGN_IN_FAILURE: Partial<Record<ConnectionFailureCode, SignInFailure>> = {
+  state_invalid: "link_expired",
+  denied: "provider_declined",
+  token_exchange_failed: "exchange_failed",
+  not_found: "connector_gone",
+};
+
+function signInFailureOf(code: ConnectionFailureCode): SignInFailure {
+  return CONNECTION_SIGN_IN_FAILURE[code] ?? "not_saved";
+}
+
+async function soleConnector(db: Db, result: CompleteConnectionResult): Promise<string | null> {
+  if (!result.tenant_id || !result.connection_id) return null;
+  const users = await connectorsUsingConnection(db, result.tenant_id, result.connection_id);
+  return users.length === 1 ? (users[0] ?? null) : null;
 }
 
 export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
@@ -273,27 +303,42 @@ export function registerConnectionRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(callbackRoute, async (c) => {
     const query = c.req.valid("query");
+    const db = c.get("db");
     const origin = resolvePublicOrigin({ req: c.req.raw }) ?? new URL(c.req.url).origin;
-    if (!query.state) return cockpitReturn(origin, { failed: "state_invalid" });
-    const result = await completeConnection(c.get("db"), {
+    if (!query.state)
+      return resultResponse(c, signInFailedPage(requestLocale(c), null, "link_expired"));
+    const result = await completeConnection(db, {
       state: query.state,
       code: query.code,
       error: query.error,
     });
-    if (result.ok) {
-      return cockpitReturn(origin, {
-        connected: result.name,
-        renewed: result.renewed ? "1" : null,
+    if (!result.ok)
+      logger.warn({
+        module: "connections",
+        action: "connection.callback_failed",
+        msg: "a connection round did not complete",
+        code: result.code,
+        name: result.name,
       });
-    }
-    logger.warn({
-      module: "connections",
-      action: "connection.callback_failed",
-      msg: "a connection round did not complete",
-      code: result.code,
-      name: result.name,
-    });
-    return cockpitReturn(origin, { failed: result.code, name: result.name });
+    const connectorId = await soleConnector(db, result);
+    const outcome = result.ok
+      ? ({ kind: "signed_in" } as const)
+      : ({ kind: "signin_failed", failure: signInFailureOf(result.code) } as const);
+    const back = connectorId
+      ? cockpitReturn({ connector_id: connectorId, redirect_uri: origin }, outcome)
+      : null;
+    if (back) return back;
+    return resultResponse(
+      c,
+      result.ok
+        ? signedInPage(
+            requestLocale(c),
+            "cockpit",
+            { stored: "signed_in", name: result.name, enabled: true, missing_scopes: [] },
+            null,
+          )
+        : signInFailedPage(requestLocale(c), null, signInFailureOf(result.code)),
+    );
   });
 
   app.openapi(listRoute, async (c) => {

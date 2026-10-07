@@ -339,7 +339,7 @@ export interface paths {
         put?: never;
         /**
          * Redeem the first-run bootstrap token and materialise tenant + admin
-         * @description Consumes the one-time token printed to engine stdout on a fresh install. Creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.
+         * @description Consumes the one-time token printed to engine stdout on a fresh install. Checks the LLM key with one live probe call first (provider `mock` passes without a call); a refused key answers 422 `llm_unreachable` and saves nothing. Then creates the tenant, admin user, admin API key, writes the LLM provider settings, and flips the post-bootstrap sentinel. The returned `api_key` is the only time the plaintext key is ever returned.
          */
         post: {
             parameters: {
@@ -381,8 +381,26 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Bootstrap already completed; route is gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -493,8 +511,26 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Another first start is running right now (`in_progress`); wait for it, then retry with the same token if it failed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Bootstrap already completed; route is gone */
                 410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The LLM provider did not accept the key in a live probe call (`llm_unreachable`); nothing was saved and the token stays valid */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2370,12 +2406,30 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Redirect into the Cockpit */
-                302: {
+                /** @description Connected, and no single connector page to return to (HTML) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                /** @description Back to the connector page that uses this connection */
+                303: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description Not connected, and no single connector page to return to (HTML) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
                 };
             };
         };
@@ -3202,6 +3256,108 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/v1/identity/users/{id}/provider-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a configured OIDC subject to an existing user
+         * @description Operator-only. Issuer, product and tenant derive from trusted provider configuration. Does not change roles or grants, reassign identities, or revoke existing sessions.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        provider_id: string;
+                        subject: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Existing exact binding */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderIdentityBinding"];
+                    };
+                };
+                /** @description Binding created or legacy binding pinned */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProviderIdentityBinding"];
+                    };
+                };
+                /** @description Invalid or unavailable provider */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Forbidden or provider tenant mismatch */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Active user unavailable */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Subject, owner, issuer or product conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/identity/users/{id}/invites": {
@@ -4173,6 +4329,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Error"];
+                        "text/html": string;
                     };
                 };
             };
@@ -5687,6 +5844,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -6172,7 +6338,7 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["CreateWorkflowBody"];
+                    "application/json": components["schemas"]["CreateWorkflowRequest"];
                 };
             };
             responses: {
@@ -6187,6 +6353,15 @@ export interface paths {
                 };
                 /** @description Bad request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -6614,7 +6789,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch workflow metadata (slug/name/description/lifecycle) without rotating a version */
+        /** Patch workflow metadata (slug/name/description/category/lifecycle) without rotating a version */
         patch: {
             parameters: {
                 query?: never;
@@ -6756,6 +6931,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Caller identity or workflow permission does not allow this run */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Workflow not found */
                 404: {
                     headers: {
@@ -6765,7 +6949,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Refused before the run started: the execution authority or replay boundary no longer matches, or (`prepared_credential_unavailable`) a connector the run needs cannot serve it in this environment. `details` then names `step_id`, `connector_id` (as resolved in the environment), `connector_slug`, `connector_name`, `environment`, `reason` (missing | disabled | needs_reauth | credential_unavailable | too_many_references) and, when a row was created, `execution_id`. */
+                /** @description Refused before the run started: the workflow version, execution authority, replay boundary, or sensitive execution mode is unavailable. For `prepared_credential_unavailable`, `details` names the connector and reason; when a row was created, it includes `execution_id`. */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -6889,6 +7073,24 @@ export interface paths {
                         "application/json": components["schemas"]["ExecutionRunResponse"];
                     };
                 };
+                /** @description Bad request or unsupported asynchronous authentication source */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The caller is not authorized to rerun this execution */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -6988,6 +7190,64 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ExecutionStepListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/executions/{id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the result of a sensitive execution for its original caller */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            result?: unknown;
+                        };
+                    };
+                };
+                /** @description The authenticated caller does not match the original sensitive execution */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description Not found */
@@ -7137,6 +7397,15 @@ export interface paths {
                 };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Sensitive executions do not accept persistent signals */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -7486,13 +7755,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a vertical recipe pack (computed from category + tags) */
+        /** Get a vertical recipe pack (computed from category + tags; `solutions` spans several connectors) */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+                    vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr" | "solutions";
                 };
                 cookie?: never;
             };
@@ -7825,6 +8094,8 @@ export interface paths {
                     offset?: number | null;
                     /** @description Only connectors in this catalog block (see the `category` field on each item) */
                     category?: string;
+                    /** @description Only connectors of this driver (http, graphql, postgres, s3, mcp, …) */
+                    driver?: string;
                 };
                 header?: never;
                 path?: never;
@@ -9545,6 +9816,8 @@ export interface paths {
                     status?: "draft" | "active" | "archived";
                     connector_id?: string;
                     workflow_id?: string;
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "title" | "scope" | "status" | "version" | "updated_at";
                     order?: "asc" | "desc";
@@ -9923,6 +10196,256 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tenant's catalog categories with how many objects of each kind use them */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CategoryListResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/categories/{name}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename or merge a catalog category across every kind */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    name: components["schemas"]["CatalogCategoryFilter"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RenameCategoryBody"];
+                };
+            };
+            responses: {
+                /** @description Renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RenameCategoryResponse"];
+                    };
+                };
+                /** @description Bad request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List knowledge source versions, newest first
+         * @description One page of the source's content versions, newest first, each with its author and note. `current` marks the version agents and workflows read now. `total` is the size of the whole history: page with `limit` and `offset`.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Page size. Defaults to 50, at most 200. */
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceVersionListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/history/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one stored knowledge source version with its documents */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceVersionDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/restore/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a previous knowledge source version as a new version
+         * @description Reads the stored content of `version` in again. The result is always a new version whose note names the restored one; the history keeps every earlier version.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RestoreKnowledgeSourceVersionResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The version is already current, or the source changed meanwhile */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge-sources": {
         parameters: {
             query?: never;
@@ -9937,6 +10460,8 @@ export interface paths {
                     scope?: "global" | "workflow";
                     workflow_id?: string;
                     status?: "active" | "inactive" | "processing" | "error";
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "name" | "status" | "source_type" | "bytes_total" | "updated_at";
                     order?: "asc" | "desc";
@@ -10643,7 +11168,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
-                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
+                    pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
                     offset?: number | null;
@@ -10806,6 +11331,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApproveSkillCandidateResponse"];
                     };
                 };
+                /** @description A fact writes knowledge and needs knowledge:write as well */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -10876,6 +11410,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agent/domains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve which known domains a prompt or repository is about
+         * @description Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AgentDomainsBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AgentDomainsResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agent/briefing": {
         parameters: {
             query?: never;
@@ -10885,7 +11462,7 @@ export interface paths {
         };
         /**
          * Domain-scoped session briefing for external coding agents
-         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, and the search-first grounding rule. Intended for SessionStart hooks.
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.
          */
         get: {
             parameters: {
@@ -10939,7 +11516,7 @@ export interface paths {
         put?: never;
         /**
          * Capture a coding-agent session transcript for learning distillation
-         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` skill candidates that wait for human review — nothing goes live from this endpoint.
+         * @description Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that wait for human review — nothing goes live from this endpoint.
          */
         post: {
             parameters: {
@@ -13093,6 +13670,8 @@ export interface paths {
                 query?: {
                     status?: components["schemas"]["FileStatus"];
                     linked_to?: string;
+                    /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+                    category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
                     sort?: "filename" | "content_type" | "size_bytes" | "status" | "created_at";
                     order?: "asc" | "desc";
@@ -13242,11 +13821,11 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["RenameFile"];
+                    "application/json": components["schemas"]["UpdateFile"];
                 };
             };
             responses: {
-                /** @description Renamed */
+                /** @description Updated */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -14529,6 +15108,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["WebhookInbound"];
+                    };
+                };
+                /** @description The slug is already in use; inbound hook slugs are unique across the engine */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -17687,6 +18275,8 @@ export interface components {
             /** @enum {string} */
             llm_provider: "mock" | "anthropic" | "openai" | "gemini" | "azure" | "bedrock" | "vertex";
             llm_api_key: string;
+            /** @description Model id (Azure: deployment name) the key is checked with and saved as llm.model; without it the provider's configured or default model is used */
+            llm_model?: string;
         };
         BootstrapStatusResponse: components["schemas"]["SetupStatusResponse"] & {
             completed: boolean;
@@ -18360,6 +18950,17 @@ export interface components {
             /** @enum {string} */
             role: "admin" | "member" | "enduser";
         };
+        ProviderIdentityBinding: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            provider_id: string;
+            issuer_url: string;
+            product_id: string | null;
+            subject: string;
+            replayed: boolean;
+        };
         UserInviteIssued: components["schemas"]["UserInvite"] & {
             /** @description Only returned once at issue time. Hand to the invited user; the engine never shows it again. */
             plaintext_token: string;
@@ -18802,6 +19403,7 @@ export interface components {
                     paginate: boolean;
                     content_type: string | null;
                     max_deletes?: number;
+                    principal_bound?: boolean;
                 };
                 boundary?: {
                     /** Format: uri */
@@ -19156,6 +19758,11 @@ export interface components {
         };
         WorkflowDef: {
             name: string;
+            product_id?: string;
+            /** @enum {string} */
+            required_caller_kind?: "user" | "system_account";
+            /** @enum {string} */
+            execution_privacy?: "sensitive";
             slug?: string;
             description?: string;
             /** @enum {string} */
@@ -19292,6 +19899,7 @@ export interface components {
                     key_prefix: string;
                     max_bytes: number;
                     max_deletes?: number;
+                    principal_bound?: boolean;
                 };
                 key?: string;
                 prefix?: string;
@@ -19611,8 +20219,19 @@ export interface components {
         };
         CreateWorkflowDraft: {
             definition: components["schemas"]["WorkflowDef"];
+            category?: components["schemas"]["CatalogCategory"];
+            recipe?: components["schemas"]["RecipeOrigin"];
         };
-        UpdateWorkflowDraft: components["schemas"]["CreateWorkflowDraft"] & {
+        /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+        CatalogCategory: string;
+        /** @description The recipe pack entry this workflow was created from; recorded in the audit trail. */
+        RecipeOrigin: {
+            vertical: string;
+            slug: string;
+        };
+        UpdateWorkflowDraft: {
+            definition: components["schemas"]["WorkflowDef"];
+            category?: components["schemas"]["CatalogCategory"];
             /** Format: uuid */
             expected_draft_version_id: string | null;
         };
@@ -19667,10 +20286,12 @@ export interface components {
             id: string;
             tenant_id: string;
             slug: string;
-            /** @description The catalog block this workflow belongs to, derived from the leading dash-separated segments its slug shares with other workflows; `other` when it shares none. */
+            /** @description The catalog block this workflow belongs to. One vocabulary is shared by every workflow, connector, knowledge source, skill and file of the tenant; `other` until one is assigned. */
             category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             name: string;
             description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
             lifecycle: string;
             current_version_id: string | null;
             draft_version_id: string | null;
@@ -19702,6 +20323,8 @@ export interface components {
             webhooks_active: number;
             effective_trigger: components["schemas"]["EffectiveTrigger"];
         };
+        /** @enum {string} */
+        CatalogMetadataSource: "human" | "llm";
         WorkflowScheduleBinding: {
             id: string;
             cron: string;
@@ -19793,10 +20416,18 @@ export interface components {
             id: string;
             deleted: boolean;
         };
+        CreateWorkflowRequest: components["schemas"]["CreateWorkflowBody"] & ({
+            recipe?: components["schemas"]["RecipeOrigin"];
+        } & {
+            [key: string]: unknown;
+        });
+        /** @description What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description. */
+        CatalogDescription: string;
         CreateWorkflowBody: {
             name: string;
             slug?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"];
+            category?: components["schemas"]["CatalogCategory"];
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -19851,7 +20482,8 @@ export interface components {
         WorkflowMetadataPatchBody: {
             slug?: string;
             name?: string;
-            description?: string | null;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             /** @enum {string} */
             lifecycle?: "active" | "archived";
         };
@@ -20449,6 +21081,7 @@ export interface components {
             placeholder: string;
             doc_url: string | null;
             secret: boolean;
+            header_name?: string;
         };
         ConnectorTemplateBaseUrlOption: {
             environment: string;
@@ -20652,17 +21285,37 @@ export interface components {
         };
         RecipePackResponse: {
             /** @enum {string} */
-            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr";
+            vertical: "revops" | "customer-success" | "finance" | "data" | "devops" | "security" | "marketing" | "hr" | "solutions";
             outcome: string;
             recipes: components["schemas"]["RecipePackEntry"][];
         };
         RecipePackEntry: {
-            template_slug: string;
+            template_slug: string | null;
             recipe_slug: string;
             title: string;
+            description: string;
             category: string;
             tags: string[];
             difficulty: string;
+            connectors: components["schemas"]["RecipeConnectorBinding"][];
+            sample_input?: unknown;
+            workflow: {
+                [key: string]: unknown;
+            };
+        };
+        RecipeConnectorBinding: {
+            placeholder: string;
+            template: string;
+            template_name: string;
+            connector_id: string | null;
+            connector_name: string | null;
+            /** @description Enabled connectors of this template. Bound automatically only when the template has a fixed address and exactly one candidate exists; otherwise the caller picks one. */
+            candidates: components["schemas"]["RecipeConnectorCandidate"][];
+        };
+        RecipeConnectorCandidate: {
+            id: string;
+            slug: string;
+            name: string;
         };
         TemplateOAuthCredentialResponse: {
             id: string;
@@ -20738,6 +21391,8 @@ export interface components {
             /** @enum {string} */
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         ProbeConnectorResponse: {
             ok: boolean;
@@ -20800,39 +21455,23 @@ export interface components {
             force_new?: boolean;
         };
         ConnectorListResponse: {
-            items: components["schemas"]["ConnectorListItem"][];
+            items: components["schemas"]["Connector"][];
             total: number;
             categories: {
                 category: string;
                 count: number;
             }[];
         };
-        ConnectorListItem: components["schemas"]["Connector"] & {
-            category: string;
-        };
-        /** @enum {string} */
-        ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
-        CredentialSummary: {
-            id: string;
-            mode: string;
-            environment: string;
-            has_oauth_refresh: boolean;
-            granted_scopes: string | null;
-            /** Format: date-time */
-            oauth2_expires_at: string | null;
-            connection: components["schemas"]["ConnectionSummary"];
-            created_at: string;
-        };
-        ConnectionSummary: {
-            id: string;
-            name: string;
-            state: components["schemas"]["ConnectionState"];
-        } | null;
         Connector: {
             id: string;
             tenant_id: string;
             slug: string;
             display_name: string;
+            description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            /** @description The catalog block this connector belongs to, shared with workflows, knowledge sources, skills and files; `other` until one is assigned. */
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             driver: string;
             environment: string;
             auth_type: string;
@@ -20883,6 +21522,24 @@ export interface components {
             updated_at: string;
             credentials?: components["schemas"]["CredentialSummary"][];
         };
+        /** @enum {string} */
+        ConnectorHealthState: "ok" | "degraded" | "needs_update" | "needs_reauth";
+        CredentialSummary: {
+            id: string;
+            mode: string;
+            environment: string;
+            has_oauth_refresh: boolean;
+            granted_scopes: string | null;
+            /** Format: date-time */
+            oauth2_expires_at: string | null;
+            connection: components["schemas"]["ConnectionSummary"];
+            created_at: string;
+        };
+        ConnectionSummary: {
+            id: string;
+            name: string;
+            state: components["schemas"]["ConnectionState"];
+        } | null;
         UpdateConnectorBody: {
             name?: string;
             /** Format: uri */
@@ -20902,6 +21559,8 @@ export interface components {
             template_source?: "builtin" | "tenant";
             template_base_url_environment?: string;
             clear_template_binding?: boolean;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         ConnectorProbeResult: {
             ok: boolean;
@@ -21209,6 +21868,12 @@ export interface components {
             /** @default null */
             slug: string | null;
             title: string;
+            /** @default null */
+            description: string | null;
+            description_source?: components["schemas"]["CatalogMetadataSource"];
+            /** @default other */
+            category: string;
+            category_source?: components["schemas"]["CatalogMetadataSource"];
             body: string;
             /** @default [] */
             examples: string[];
@@ -21338,6 +22003,8 @@ export interface components {
             items: components["schemas"]["Skill"][];
             next_cursor?: string | null;
         };
+        /** @description Only objects in this catalog block (see `GET /v1/categories`). */
+        CatalogCategoryFilter: string;
         CreateSkillBody: {
             /** @enum {string} */
             scope: "global" | "connector" | "workflow";
@@ -21346,6 +22013,8 @@ export interface components {
             /** Format: uuid */
             workflow_id?: string;
             title: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             body: string;
             examples?: string[];
             best_practices?: string[];
@@ -21376,6 +22045,8 @@ export interface components {
         UpdateSkillBody: {
             expected_version?: number;
             title?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             body?: string;
             examples?: string[];
             best_practices?: string[];
@@ -21419,9 +22090,57 @@ export interface components {
             /** Format: uuid */
             audit_entry_id: string;
         };
-        KnowledgeSourceListResponse: {
-            items: components["schemas"]["KnowledgeSource"][];
+        CategoryListResponse: {
+            categories: components["schemas"]["CategoryUsage"][];
+        };
+        CategoryUsage: {
+            category: string;
             total: number;
+            counts: components["schemas"]["CategoryKindCounts"];
+        };
+        CategoryKindCounts: {
+            workflow: number;
+            connector: number;
+            knowledge_source: number;
+            skill: number;
+            file: number;
+        };
+        RenameCategoryResponse: {
+            from: string;
+            to: string;
+            total: number;
+            moved: components["schemas"]["CategoryKindCounts"];
+        };
+        /** @description Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two. */
+        RenameCategoryBody: {
+            to: components["schemas"]["CatalogCategory"];
+        };
+        KnowledgeSourceVersionListResponse: {
+            items: components["schemas"]["KnowledgeSourceVersion"][];
+            total: number;
+        };
+        KnowledgeSourceVersion: {
+            version: number;
+            content_hash: string;
+            author: components["schemas"]["KnowledgeSourceVersionAuthor"];
+            note: string | null;
+            created_at: string;
+            current: boolean;
+        };
+        KnowledgeSourceVersionAuthor: {
+            /** @enum {string} */
+            kind: "user" | "system_account";
+            id: string;
+        } | null;
+        KnowledgeSourceVersionDetail: components["schemas"]["KnowledgeSourceVersion"] & {
+            documents: {
+                path: string;
+                content: string;
+            }[];
+        };
+        RestoreKnowledgeSourceVersionResponse: {
+            knowledge_source: components["schemas"]["KnowledgeSource"];
+            version: number;
         };
         KnowledgeSource: {
             id: string;
@@ -21429,6 +22148,9 @@ export interface components {
             name: string;
             slug: string;
             description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
             tags: string[];
             /** @enum {string} */
             scope: "global" | "workflow";
@@ -21448,6 +22170,10 @@ export interface components {
             last_refreshed_at: string | null;
             created_at: string;
             updated_at: string;
+        };
+        KnowledgeSourceListResponse: {
+            items: components["schemas"]["KnowledgeSource"][];
+            total: number;
         };
         KnowledgeSearchResult: {
             hits: {
@@ -21496,7 +22222,8 @@ export interface components {
         CreateKnowledgeSourceBody: {
             name: string;
             slug?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"];
+            category?: components["schemas"]["CatalogCategory"];
             tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
@@ -21508,7 +22235,8 @@ export interface components {
         };
         UpdateKnowledgeSourceBody: {
             name?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
             tags?: string[];
             /** @enum {string} */
             scope?: "global" | "workflow";
@@ -21576,7 +22304,7 @@ export interface components {
             endpoint_key: string | null;
             workflow_id: string | null;
             /** @enum {string} */
-            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability";
+            pattern_kind: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
             title: string;
             body: string;
             /** @default [] */
@@ -21600,6 +22328,12 @@ export interface components {
             version: number;
             /** @default [] */
             tags: string[];
+            /** @description Who proposed this candidate; null for proposals the engine detected itself. */
+            proposed_by: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                id: string;
+            } | null;
             created_at: string;
             updated_at: string;
         };
@@ -21643,7 +22377,14 @@ export interface components {
         };
         ApproveSkillCandidateResponse: {
             candidate: components["schemas"]["SkillCandidate"];
-            skill_id: string;
+            /** @description The skill a practice or pattern became; null for a fact. */
+            skill_id: string | null;
+            /** @description The knowledge source and version a fact was appended to. */
+            knowledge: {
+                knowledge_source_id: string;
+                slug: string;
+                version: number | null;
+            } | null;
         };
         ApproveSkillCandidateBody: {
             title?: string;
@@ -21655,6 +22396,15 @@ export interface components {
         RejectSkillCandidateBody: {
             reason?: string;
         };
+        AgentDomainsResponse: {
+            domains: string[];
+            from_prompt: string[];
+            from_repo: string[];
+        };
+        AgentDomainsBody: {
+            prompt?: string;
+            repo?: string;
+        };
         AgentBriefingResponse: {
             markdown: string;
             domains: string[];
@@ -21664,6 +22414,14 @@ export interface components {
             skills_title_only: string[];
             knowledge_sources: string[];
             knowledge_sources_omitted: number;
+            /** @description Slugs of the domain's workflows the caller may read, as listed in the briefing. */
+            workflows: string[];
+            workflows_omitted: number;
+            /** @description Slugs of the domain's connectors the caller may read, as listed in the briefing. */
+            connectors: string[];
+            connectors_omitted: number;
+            /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
+            guides: string[];
             proposed_candidates: number;
         };
         AgentSessionCaptureResponse: {
@@ -22229,6 +22987,10 @@ export interface components {
             deleted_at: string | null;
             slug: string | null;
             reference: string | null;
+            description: string | null;
+            description_source: components["schemas"]["CatalogMetadataSource"];
+            category: string;
+            category_source: components["schemas"]["CatalogMetadataSource"];
         };
         ConversationAttachmentUpload: components["schemas"]["FileRef"] | {
             filename: string;
@@ -22313,8 +23075,10 @@ export interface components {
         };
         /** @enum {string} */
         FileLinkResourceType: "conversation" | "knowledge_source" | "skill" | "connector" | "workflow_run" | "discovery_run";
-        RenameFile: {
-            filename: string;
+        UpdateFile: {
+            filename?: string;
+            description?: components["schemas"]["CatalogDescription"] & (string | null);
+            category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         FileUsage: {
             workflows: {
@@ -22675,6 +23439,8 @@ export interface components {
                 patches?: number;
                 failures?: number;
                 skills?: number;
+                /** @description Of the proposals in `skills`, how many are facts for a knowledge source. */
+                knowledge?: number;
             };
             since: string | null;
             deadline: string | null;
@@ -24256,6 +25022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24292,6 +25059,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24328,6 +25096,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24366,6 +25135,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };
@@ -24404,6 +25174,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "text/html": string;
                     "text/plain": string;
                 };
             };

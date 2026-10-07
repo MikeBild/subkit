@@ -23,7 +23,7 @@ Every workflow has one optional `trigger` block that decides how its execution s
 - **Public inbound ingress is `POST /v1/hooks/:slug`** — unauthenticated. The request **signature is the only gate**; no bearer token is read. The verifier runs over the exact raw body.
 - **Verifiers**: `standard` (Standard Webhooks), `github` (HMAC-SHA256), `stripe`, and a `none`/skip path for trusted ingress only. A bad or missing signature returns HTTP 401 `{ error: "denied", reason }`.
 - **Replay is idempotent**: dedup on the provider event id means a repeated event runs at most once and returns `{ deduped: true }`.
-- **Binding management is separate and RBAC-gated**: `POST | GET | DELETE /v1/webhooks/inbound` (permissions `inbound_hook:read | write | delete`). The signing secret is write-only and stored encrypted. Reverse-bound triggers derive the public slug `wf-<workflow_slug>` and write a placeholder secret you must rotate before real traffic verifies.
+- **Binding management is separate and RBAC-gated**: `POST | GET | DELETE /v1/webhooks/inbound` (permissions `inbound_hook:read | write | delete`). The signing secret is write-only and stored encrypted. Reverse-bound triggers derive the public slug `wf-<workflow_slug>` (with a short suffix when that slug is taken; read the actual slug from the binding) and write a placeholder secret you must rotate before real traffic verifies.
 - **Schedules**: `cron` (5-field or `every:N` shorthand) plus `tz`, optional `business_days_only` (skips weekends only — holidays are never inferred), and explicit `skip_dates` (`YYYY-MM-DD`).
 
 ## Read-only MCP tools

@@ -1,4 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { compareCategoryCounts } from "../../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
@@ -70,6 +71,10 @@ const listRoute = createRoute({
           .describe(
             "Only connectors in this catalog block (see the `category` field on each item)",
           ),
+        driver: z
+          .string()
+          .optional()
+          .describe("Only connectors of this driver (http, graphql, postgres, s3, mcp, …)"),
       })
       .openapi("ListConnectorsQuery"),
   },
@@ -159,6 +164,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const opts: Parameters<typeof connectorSvc.listConnectors>[1] = {};
     if (q.environment) opts.environment = q.environment;
     if (q.category) opts.category = q.category;
+    if (q.driver) opts.driver = q.driver;
     if (q.enabled !== undefined) opts.enabled = q.enabled;
     if (q.health_state) opts.health_state = q.health_state;
     if (q.health) opts.health = q.health;
@@ -168,14 +174,11 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.limit !== undefined) opts.limit = q.limit;
     if (q.offset !== undefined) opts.offset = q.offset;
     const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
-    const items = rows.map((r) => ({
-      ...serialize(r),
-      category: connectorSvc.categoryOfConnector(r),
-    }));
+    const items = rows.map((r) => serialize(r));
     const counts = await connectorSvc.connectorCategoryCounts(principal.tenant_id, db);
     const blocks = [...counts.entries()]
       .map(([category, count]) => ({ category, count }))
-      .sort((a, b) => (a.count !== b.count ? b.count - a.count : a.category < b.category ? -1 : 1));
+      .sort(compareCategoryCounts);
     return c.json({ items, total, categories: blocks }, 200);
   });
 

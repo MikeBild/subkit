@@ -398,6 +398,7 @@ export async function loadKnowledgeChunks(
       knowledge_source_id: h.knowledge_source_id,
       source_name: h.source_name,
       source_tags: h.source_tags,
+      source_description: h.source_description,
       title: h.title,
       path: h.path,
       snippet: h.snippet,

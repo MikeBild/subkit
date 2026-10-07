@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { runMigrations } from "../../db/migrate.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   hasCredentialAuthorityRevisionColumn,
@@ -21,23 +20,17 @@ afterAll(async () => {
 
 async function fixture(database = ctx) {
   const slug = `credential-authority-${++counter}`;
-  const [tenant] = await database.db
-    .insert(tenants)
-    .values({ slug, display_name: slug })
-    .returning();
+  const tenantRows = await database.pool.query<{ id: string }>(
+    "INSERT INTO subkit.tenants (slug, display_name) VALUES ($1, $1) RETURNING id",
+    [slug],
+  );
+  const tenant = tenantRows.rows[0];
   if (!tenant) throw new Error("missing fixture tenant");
-  const [connector] = await database.db
-    .insert(connectors)
-    .values({
-      tenant_id: tenant.id,
-      slug,
-      display_name: slug,
-      driver: "http",
-      environment: "dev",
-      auth_type: "oauth2",
-      base_url: "https://example.test",
-    })
-    .returning();
+  const connectorRows = await database.pool.query<{ id: string }>(
+    "INSERT INTO subkit.connectors (tenant_id, slug, display_name, driver, environment, auth_type, base_url) VALUES ($1, $2, $2, 'http', 'dev', 'oauth2', 'https://example.test') RETURNING id",
+    [tenant.id, slug],
+  );
+  const connector = connectorRows.rows[0];
   if (!connector) throw new Error("missing fixture connector");
   const input = {
     tenant_id: tenant.id,

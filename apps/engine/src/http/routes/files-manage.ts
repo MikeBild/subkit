@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, ne } from "drizzle-orm";
+import { metadataChange } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   FileIdSchema,
@@ -9,8 +10,8 @@ import {
   InlineUploadSchema,
   MAX_INLINE_BYTES,
   parseFileIdOrThrow,
-  RenameFileSchema,
   toFileId,
+  UpdateFileSchema,
 } from "../../api/files-schemas.ts";
 import {
   AuditAction,
@@ -78,17 +79,17 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     security: [{ bearerAuth: [] }],
     request: {
       params: FileIdParam,
-      body: { content: { "application/json": { schema: RenameFileSchema } } },
+      body: { content: { "application/json": { schema: UpdateFileSchema } } },
     },
     responses: {
-      200: { description: "Renamed", content: { "application/json": { schema: FileSchema } } },
+      200: { description: "Updated", content: { "application/json": { schema: FileSchema } } },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
     },
   });
 
   app.openapi(renameRoute, async (c) => {
     const { id } = c.req.valid("param");
-    const { filename } = c.req.valid("json");
+    const body = c.req.valid("json");
     const principal = requireAuth(c);
     const db = c.get("db");
     let row: typeof files.$inferSelect;
@@ -98,27 +99,65 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       return c.json(notFound, 404);
     }
     if (row.deleted_at) return c.json(notFound, 404);
+    const metadata = metadataChange(row, {
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.category !== undefined ? { category: body.category } : {}),
+    });
+    const renamed = body.filename !== undefined && body.filename !== row.filename;
+    if (!renamed && !metadata) return c.json(toFileWire(row), 200);
     const [updated] = await db
       .update(files)
-      .set({ filename, updated_at: new Date() })
+      .set({
+        ...(renamed ? { filename: body.filename } : {}),
+        ...metadata,
+        updated_at: new Date(),
+      })
       .where(eq(files.id, row.id))
       .returning();
-    await auditAwait(
-      {
-        tenant_id: principal.tenant_id,
-        actor_type: actorType(principal),
-        actor_id: principal.id,
-        action: AuditAction.FILE_RENAMED,
-        resource_type: "file",
-        resource_id: row.id,
-        result: "success",
-        metadata: FileRenamedMetadataSchema.parse({
-          file_id: row.id,
-          request_source: readRequestSource(c),
-        }),
-      },
-      db,
-    );
+    if (renamed) {
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+          action: AuditAction.FILE_RENAMED,
+          resource_type: "file",
+          resource_id: row.id,
+          result: "success",
+          metadata: FileRenamedMetadataSchema.parse({
+            file_id: row.id,
+            request_source: readRequestSource(c),
+          }),
+        },
+        db,
+      );
+    }
+    if (metadata) {
+      await auditAwait(
+        {
+          tenant_id: principal.tenant_id,
+          actor_type: actorType(principal),
+          actor_id: principal.id,
+          action: AuditAction.CATALOG_METADATA_UPDATED,
+          resource_type: "file",
+          resource_id: row.id,
+          result: "success",
+          before: { description: row.description, category: row.category },
+          after: {
+            description:
+              metadata.description === undefined ? row.description : metadata.description,
+            category: metadata.category ?? row.category,
+          },
+          metadata: {
+            ...(metadata.description_source
+              ? { description_source: metadata.description_source }
+              : {}),
+            ...(metadata.category_source ? { category_source: metadata.category_source } : {}),
+          },
+        },
+        db,
+      );
+    }
     return c.json(toFileWire(updated ?? row), 200);
   });
 

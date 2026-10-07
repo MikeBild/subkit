@@ -7,6 +7,13 @@ import type { Context } from "hono";
 import { logger } from "../logging/logger.ts";
 import { EMBEDDED_COCKPIT } from "./cockpit-embedded.ts";
 import type { AppEnv } from "./openapi.ts";
+import {
+  NEGOTIATED_VARY,
+  negotiatedPageResponse,
+  renderUnavailablePage,
+  resolvePageLook,
+  wantsHtmlPage,
+} from "./routes/oauth/ui.ts";
 
 const COCKPIT_PREFIX = "/cockpit";
 const COCKPIT_DIR = fileURLToPath(new URL("../../../../assets/cockpit", import.meta.url));
@@ -34,7 +41,7 @@ const cockpitAssetResponses = {
   304: { description: "Asset unchanged" },
   503: {
     description: "Cockpit bundle was not included in this deployment",
-    content: { "text/plain": { schema: z.string() } },
+    content: { "text/html": { schema: z.string() }, "text/plain": { schema: z.string() } },
   },
 } as const;
 const cockpitCanonicalShellRoute = createRoute({
@@ -129,6 +136,29 @@ function readAsset(relativePath: string): Asset | null {
   };
 }
 
+function cockpitSecurityHeaders(csp: string) {
+  return {
+    "content-security-policy": csp,
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+  } as const;
+}
+
+export function cockpitBundleMissing(c: Context<AppEnv>): Response {
+  if (wantsHtmlPage(c.req.header("accept")))
+    return negotiatedPageResponse(
+      renderUnavailablePage(resolvePageLook(c.req.raw.headers), "cockpit"),
+      503,
+    );
+  return c.text("the SubKit Cockpit was not built into this deployment\n", 503, {
+    ...cockpitSecurityHeaders(cockpitCsp()),
+    "cache-control": NEVER,
+    vary: NEGOTIATED_VARY,
+  });
+}
+
 export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
   const shell = readAsset("index.html");
   if (!shell) {
@@ -141,21 +171,10 @@ export function registerCockpitRoutes(app: OpenAPIHono<AppEnv>): void {
   const csp = shell
     ? cockpitCsp(inlineScriptHashes(new TextDecoder().decode(shell.body)))
     : cockpitCsp();
-  const securityHeaders = {
-    "content-security-policy": csp,
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
-    "referrer-policy": "no-referrer",
-    "x-content-type-options": "nosniff",
-    "x-frame-options": "DENY",
-  } as const;
+  const securityHeaders = cockpitSecurityHeaders(csp);
 
   const serve = (c: Context<AppEnv>) => {
-    if (!shell) {
-      return c.text("the SubKit Cockpit was not built into this deployment\n", 503, {
-        ...securityHeaders,
-        "cache-control": NEVER,
-      });
-    }
+    if (!shell) return cockpitBundleMissing(c);
     const relative = c.req.path.slice(COCKPIT_PREFIX.length).replace(/^\/+/, "");
     const requested = relative ? readAsset(relative) : null;
     const asset = requested ?? shell;

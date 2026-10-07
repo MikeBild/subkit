@@ -7,7 +7,6 @@ import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import {
   type CockpitColumn,
-  DataState,
   DataTable,
   Page,
   PageHeader,
@@ -16,6 +15,7 @@ import {
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { ForbiddenState } from "@/components/failure-state";
 import { pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import {
@@ -314,11 +314,7 @@ export function UsagePage() {
   if (!allowed)
     return (
       <Page kind="list" surface="collection" testId="resource-usage" scroll="page" header={header}>
-        <DataState
-          state="empty"
-          line={t("resource.permission.description")}
-          testId="resource-permission-alert"
-        />
+        <ForbiddenState />
       </Page>
     );
 

@@ -12,6 +12,13 @@ import { roles, sessions, tenants, users } from "../../../db/schema/index.ts";
 import { ALL_PERMISSION_NAMES, can } from "../../../rbac/index.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { type AppEnv, OPENAPI_INFO } from "../../openapi.ts";
+import {
+  NEGOTIATED_VARY,
+  negotiatedPageResponse,
+  renderInvalidReturnPage,
+  resolvePageLook,
+  wantsHtmlPage,
+} from "../oauth/ui.ts";
 
 const CockpitLoginQuery = z.object({
   return_to: z.string().max(2048).optional(),
@@ -68,7 +75,10 @@ const loginRoute = createRoute({
     },
     400: {
       description: "Invalid return path",
-      content: { "application/json": { schema: ErrorSchema } },
+      content: {
+        "application/json": { schema: ErrorSchema },
+        "text/html": { schema: z.string() },
+      },
     },
   },
 });
@@ -110,9 +120,15 @@ export function registerCockpitIdentityRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(loginRoute, async (c) => {
     const returnTo = safeCockpitReturnPath(c.req.valid("query").return_to);
     if (!returnTo) {
+      if (wantsHtmlPage(c.req.header("accept")))
+        return negotiatedPageResponse(
+          renderInvalidReturnPage(resolvePageLook(c.req.raw.headers)),
+          400,
+        );
       return c.json(
         { code: "invalid_return_to", message: "return_to must stay under /cockpit" },
         400,
+        { vary: NEGOTIATED_VARY },
       );
     }
     const loginState = await signLoginState({ redirect_to: returnTo });

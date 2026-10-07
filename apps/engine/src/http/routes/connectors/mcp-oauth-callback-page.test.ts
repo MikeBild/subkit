@@ -57,17 +57,17 @@ describe("GET /v1/connectors/mcp/oauth/callback — the result page", () => {
     expect(body).not.toContain("auth-result-link");
   });
 
-  test("a declined Cockpit flow: a page with the way back, the code and no free text", async () => {
+  test("a declined Cockpit flow returns to the connector page with its failure code only", async () => {
     await seedState("mcp-declined-cockpit", "cockpit");
     const res = await callback(
       "state=mcp-declined-cockpit&error=access_denied&error_description=call+this+number",
     );
-    expect(res.status).toBe(400);
-    const body = await res.text();
-    expect(body).toContain("Provider code: access_denied");
-    expect(body).not.toContain("call this number");
-    expect(body).toContain(`href="${server.baseUrl}/cockpit/connectors/${connectorId}"`);
-    expect(body).toContain("Back to the connector");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(
+      `${server.baseUrl}/cockpit/connectors/${connectorId}?signin_failed=provider_declined&signin_code=access_denied`,
+    );
+    expect(res.headers.get("location")).not.toContain("call");
+    expect(await res.text()).toBe("");
     const rows = await server.db
       .select()
       .from(mcpOauthStates)
@@ -79,6 +79,7 @@ describe("GET /v1/connectors/mcp/oauth/callback — the result page", () => {
     await seedState("mcp-declined-cli", null);
     const body = await (await callback("state=mcp-declined-cli&error=access_denied")).text();
     expect(body).toContain("Start the sign-in again from the terminal.");
-    expect(body).not.toContain("auth-result-link");
+    expect(body.match(/<a\s/g)?.length).toBe(1);
+    expect(body).toContain('href="/cockpit"');
   });
 });

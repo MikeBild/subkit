@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { type CatalogSource, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
 
 export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp"]);
 export type DriverName = z.infer<typeof DriverEnum>;
@@ -196,6 +197,8 @@ export const CreateConnectorSchema = z
     template_slug: z.string().min(1).optional(),
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.driver === "mcp" && !v.base_url) {
@@ -222,6 +225,8 @@ export const UpdateConnectorSchema = z
     template_source: ConnectorTemplateSourceEnum.optional(),
     template_base_url_environment: z.string().min(1).optional(),
     clear_template_binding: z.boolean().optional(),
+    description: DescriptionSchema.nullable().optional(),
+    category: CategorySchema.nullable().optional(),
   })
   .openapi("UpdateConnectorBody");
 
@@ -243,6 +248,10 @@ export interface ConnectorView {
   tenant_id: string;
   slug: string;
   display_name: string;
+  description: string | null;
+  description_source: CatalogSource;
+  category: string;
+  category_source: CatalogSource;
   driver: DriverName;
   environment: Environment;
   auth_type: AuthType;

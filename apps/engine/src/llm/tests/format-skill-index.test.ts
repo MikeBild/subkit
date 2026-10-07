@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UNDESCRIBED_METADATA } from "../../api/catalog-metadata.ts";
 import type { Skill } from "../../skills/types.ts";
 import { formatSkillIndex } from "../core/context-assembler.ts";
 
@@ -9,6 +10,7 @@ function fakeSkill(overrides: Partial<Skill> & { id: string; title: string }): S
     connector_id: null,
     workflow_id: null,
     slug: null,
+    ...UNDESCRIBED_METADATA,
     body: "",
     examples: [],
     best_practices: [],

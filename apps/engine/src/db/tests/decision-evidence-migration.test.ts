@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { runMigrations } from "../migrate.ts";
-import { auditLog, skillCandidateEvidence, skillCandidates, tenants } from "../schema/index.ts";
+import { auditLog, skillCandidateEvidence, skillCandidates } from "../schema/index.ts";
 import { createTestDb, TEST_DB_HOOK_TIMEOUT } from "./setup.ts";
 
 test(
@@ -9,33 +9,29 @@ test(
   async () => {
     const ctx = await createTestDb("decision_evidence_upgrade", { upToIdx: 58 });
     try {
-      const [tenant] = await ctx.db
-        .insert(tenants)
-        .values({ slug: "evidence-upgrade", display_name: "Evidence upgrade" })
-        .returning();
+      const tenantRows = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO tenants (slug, display_name)
+        VALUES ('evidence-upgrade', 'Evidence upgrade')
+        RETURNING id
+      `);
+      const tenant = tenantRows.rows[0];
       if (!tenant) throw new Error("missing tenant");
-      const [candidate] = await ctx.db
-        .insert(skillCandidates)
-        .values({
-          tenant_id: tenant.id,
-          scope: "global",
-          pattern_kind: "session_learning",
-          title: "Reviewed rule",
-          body: "Retain this decision",
-          evidence: [],
-          status: "approved",
-          confidence: "low",
-          fingerprint: "migration-test",
-        })
-        .returning();
+      const candidateRows = await ctx.db.execute<{ id: string }>(sql`
+        INSERT INTO skill_candidates
+          (tenant_id, scope, pattern_kind, title, body, evidence, status, confidence, fingerprint)
+        VALUES
+          (${tenant.id}, 'global', 'session_learning', 'Reviewed rule', 'Retain this decision',
+           '[]'::jsonb, 'approved', 'low', 'migration-test')
+        RETURNING id
+      `);
+      const candidate = candidateRows.rows[0];
       if (!candidate) throw new Error("missing candidate");
-      await ctx.db.insert(skillCandidateEvidence).values(
-        Array.from({ length: 50 }, (_, index) => ({
-          skill_candidate_id: candidate.id,
-          evidence_type: "session_learning",
-          summary: `Observation ${index % 3}`,
-        })),
-      );
+      for (let index = 0; index < 50; index += 1) {
+        await ctx.db.execute(sql`
+          INSERT INTO skill_candidate_evidence (skill_candidate_id, evidence_type, summary)
+          VALUES (${candidate.id}, 'session_learning', ${`Observation ${index % 3}`})
+        `);
+      }
       await runMigrations(ctx.db);
       const evidence = await ctx.db
         .select()

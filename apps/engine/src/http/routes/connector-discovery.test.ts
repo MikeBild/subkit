@@ -5,7 +5,12 @@ import * as discoveryModule from "../../connectors/discovery/index.ts";
 import { DiscoveryError, type DiscoveryResult } from "../../connectors/discovery/types.ts";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, tenants, users } from "../../db/schema/index.ts";
-import { knowledgeSources } from "../../db/schema/knowledge_sources.ts";
+import {
+  knowledgeChunks,
+  knowledgeSources,
+  knowledgeSourceVersions,
+} from "../../db/schema/knowledge_sources.ts";
+import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 
 const hex = createDeterministicHexFactory(0xc4112_d15c);
@@ -277,5 +282,51 @@ describe("POST /v1/connectors/discover", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("POST /v1/connectors/discover — the cache keeps a true history", () => {
+  test("each changed refresh is a version of exactly the stored index; an unchanged one is not", async () => {
+    const discover = (result: DiscoveryResult) => {
+      const spy = spyOn(discoveryModule, "discoverConnectorEndpoints").mockResolvedValue(result);
+      return fetch(`${ctx.baseUrl}/v1/connectors/discover`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ template_id: "history-probe", force_refresh: true }),
+      }).finally(() => spy.mockRestore());
+    };
+    const changed = { ...SAMPLE_RESULT, title: "Stripe API v2" };
+    expect((await discover(SAMPLE_RESULT)).status).toBe(200);
+    expect((await discover(SAMPLE_RESULT)).status).toBe(200);
+    expect((await discover(changed)).status).toBe(200);
+
+    const [source] = await ctx.db
+      .select()
+      .from(knowledgeSources)
+      .where(
+        and(
+          eq(knowledgeSources.tenant_id, ctx.tenantId),
+          eq(knowledgeSources.slug, "discovery-template-history-probe"),
+        ),
+      );
+    if (!source) throw new Error("discovery cache row missing");
+    const versions = await ctx.db
+      .select()
+      .from(knowledgeSourceVersions)
+      .where(
+        and(
+          eq(knowledgeSourceVersions.tenant_id, ctx.tenantId),
+          eq(knowledgeSourceVersions.knowledge_source_id, source.id),
+        ),
+      );
+    expect(versions.map((v) => v.version).sort()).toEqual([1, 2]);
+    const [chunk] = await ctx.db
+      .select()
+      .from(knowledgeChunks)
+      .where(eq(knowledgeChunks.knowledge_source_id, source.id));
+    const latest = versions.find((v) => v.version === 2);
+    expect(latest?.content).toMatchObject({ kind: "document", text: chunk?.content });
+    expect(latest?.content_hash).toBe(knowledgeContentHash(chunk?.content ?? ""));
+    expect(latest?.content_hash).toBe(source.version);
   });
 });

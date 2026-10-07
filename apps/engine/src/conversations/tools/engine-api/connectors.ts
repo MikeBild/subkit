@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { categoryOfConnector } from "../../../connectors/categorize.ts";
+import { listedDescription } from "../../../api/catalog-metadata.ts";
 import { toPublicConnector } from "../../../connectors/public-view.ts";
 import type { ConversationTool } from "../index.ts";
 
@@ -9,8 +9,12 @@ const ListInput = z
       .string()
       .optional()
       .describe(
-        "Only connectors in this catalog block. A connector's block is its driver (http, graphql, postgres, s3, mcp) and is reported as `category` on every item.",
+        "Only connectors in this catalog block. Categories are shared with workflows, knowledge sources, skills and files; read one from a previous list rather than inventing one.",
       ),
+    driver: z
+      .string()
+      .optional()
+      .describe("Only connectors of this driver (http, graphql, postgres, s3, mcp)."),
   })
   .openapi("ListConnectorsToolInput");
 const GetInput = z
@@ -20,20 +24,21 @@ const GetInput = z
 export const listConnectorsTool: ConversationTool = {
   name: "list_connectors",
   description:
-    "List the tenant's connectors. Each item carries a `category` (its driver) which is also filterable.",
+    "List the tenant's connectors with what each one is for (`description`) and the catalog block it belongs to (`category`). `category` and `driver` are filters.",
   use_case:
     "Call early to find out which external systems the tenant has already configured; use the resulting slugs in placeholder tokens when authoring steps.",
   important_notes: [
-    "Returns minimal metadata only (id, slug, driver, environment). Call get_connector for placeholder tokens and config.",
+    "Returns metadata only (id, slug, description, category, driver, environment). Call get_connector for placeholder tokens and config.",
     `No credentials are returned here — use \${cred.<slug>.<field>} tokens, never inline values.`,
   ],
   inputSchema: ListInput,
   category: "tenant_read",
   permission: { action: "connector:read", resourceType: "connector" },
   async execute(ctx, args: z.infer<typeof ListInput>) {
-    const { rows, total } = await ctx.engineClient.connectors.list(
-      args.category !== undefined ? { category: args.category } : {},
-    );
+    const { rows, total } = await ctx.engineClient.connectors.list({
+      ...(args.category !== undefined ? { category: args.category } : {}),
+      ...(args.driver !== undefined ? { driver: args.driver } : {}),
+    });
     return {
       ok: true,
       data: {
@@ -41,8 +46,9 @@ export const listConnectorsTool: ConversationTool = {
           id: c.id,
           display_name: c.display_name,
           slug: c.slug,
+          description: listedDescription(c.description),
           driver: c.driver,
-          category: categoryOfConnector(c),
+          category: c.category,
           environment: c.environment,
           needs_reauth: c.needs_reauth,
           auth_failed_at: c.auth_failed_at?.toISOString() ?? null,

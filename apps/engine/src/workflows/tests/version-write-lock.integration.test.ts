@@ -37,7 +37,7 @@ function definition(slug: string, description: string) {
         id: "fetch",
         kind: "request",
         method: "GET",
-        url: "https://example.test/items",
+        url: `https://example.test/items?variant=${encodeURIComponent(description)}`,
         data_selector: "$.data.id",
       },
     ],

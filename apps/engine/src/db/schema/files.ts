@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { tenantId, timestamps } from "./_common.ts";
+import { catalogMetadata, catalogMetadataConstraints, tenantId, timestamps } from "./_common.ts";
 import { tenants } from "./identity.ts";
 
 export const fileStatusEnum = pgEnum("file_status", [
@@ -47,6 +47,7 @@ export const files = pgTable(
     scan_result: text("scan_result"),
     created_by: uuid("created_by"),
     slug: text("slug"),
+    ...catalogMetadata(),
     ...timestamps,
     replaced_at: timestamp("replaced_at", { withTimezone: true }),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -57,6 +58,7 @@ export const files = pgTable(
     uniqueIndex("files_tenant_slug_uq")
       .on(t.tenant_id, t.slug)
       .where(sql`${t.slug} IS NOT NULL AND ${t.deleted_at} IS NULL`),
+    ...catalogMetadataConstraints("files", t),
   ],
 );
 

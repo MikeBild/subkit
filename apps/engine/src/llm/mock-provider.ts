@@ -122,6 +122,13 @@ class MockProvider {
         };
         return { text: JSON.stringify(obj), object: obj };
       }
+      case "catalog_describe": {
+        const obj = {
+          description: `Mock description: ${lastUser.slice(0, 80).replace(/\s+/g, " ")}`,
+          category: "mock-category",
+        };
+        return { text: JSON.stringify(obj), object: obj };
+      }
       case "repair": {
         const obj = {
           classification: "safe" as const,
