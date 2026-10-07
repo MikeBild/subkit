@@ -55,7 +55,7 @@ import {
   type McpInspect,
   renewalWay,
   type SignInReturn,
-  signInFailureKey,
+  signInFailureLine,
 } from "@/pages/connector-detail-model";
 
 type RecordValue = Record<string, unknown>;
@@ -293,7 +293,7 @@ export function ConnectorPage({
     authState: auth,
     returned: returned?.kind === "signed_in",
   });
-  const failedSignIn = returned?.kind === "signin_failed" ? returned.failure : null;
+  const failedSignIn = returned?.kind === "signin_failed" ? returned : null;
   const strip = connectorStrip({
     auth,
     way,
@@ -325,7 +325,7 @@ export function ConnectorPage({
     enable.isPending || probe.isPending || oauthStart.isPending || connectionRenew.isPending;
   const stripLine =
     strip.kind === "signInFailed" && failedSignIn !== null
-      ? t(signInFailureKey(failedSignIn))
+      ? signInFailureLine(failedSignIn, t)
       : strip.kind === "tested" && probe.data
         ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
         : strip.kind === "unreachable" && probe.data && !probe.data.ok

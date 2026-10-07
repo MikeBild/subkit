@@ -496,7 +496,9 @@ describe("GET /v1/oauth/callback", () => {
       { headers: { host: "evil.example", "x-forwarded-host": "evil.example" } },
     );
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe(`${connectorPage()}?signin_failed=provider_declined`);
+    expect(res.headers.get("location")).toBe(
+      `${connectorPage()}?signin_failed=provider_declined&signin_code=access_denied`,
+    );
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(await getStateRow(state)).toBeNull();
   });
