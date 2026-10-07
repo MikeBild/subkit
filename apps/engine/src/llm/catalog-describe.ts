@@ -128,7 +128,7 @@ export async function describeCatalogObject(
   const prompt = buildDescribePrompt(p.input, p.vocabulary);
   const result = await invoke<z.infer<typeof DescribeResultSchema>>(
     {
-      flow: "extract",
+      flow: "catalog_describe",
       tenant_id: p.tenant_id,
       user_turns: [{ role: "user", content: prompt }],
       schema: DescribeResultSchema,

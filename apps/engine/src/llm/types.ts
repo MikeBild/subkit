@@ -12,6 +12,7 @@ import type { ProviderKind } from "./core/model-init.ts";
 export type LlmFlow =
   | "generate"
   | "extract"
+  | "catalog_describe"
   | "repair"
   | "tool_repair"
   | "converse"
