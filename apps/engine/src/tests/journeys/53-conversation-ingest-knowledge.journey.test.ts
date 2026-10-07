@@ -64,7 +64,7 @@ function makeToolCtx(ctx: JourneyCtx): ToolContext {
             tenant_id: ctx.tenantId,
             input: params.input,
             upload: params.upload,
-            actor_id: ctx.userId,
+            actor: { kind: "user", id: ctx.userId },
             ...(params.source_type_override
               ? { source_type_override: params.source_type_override }
               : {}),

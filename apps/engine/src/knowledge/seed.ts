@@ -79,7 +79,7 @@ export async function applyKnowledgeSeeds(
       await createKnowledgeSource(
         {
           tenant_id,
-          actor_id: null,
+          actor: null,
           input: {
             name: s.name,
             slug: s.slug,
@@ -123,7 +123,7 @@ export async function applyKnowledgeSeeds(
         tenant_id,
         knowledge_source_id: existing.id,
         upload: { buffer, filename: `${s.slug}.md`, mime: "text/markdown" },
-        actor_id: null,
+        actor: null,
       },
       db,
     );

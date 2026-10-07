@@ -29,7 +29,7 @@ beforeAll(async () => {
       tenant_id: ctx.tenantId,
       input: { name: "Refresh Target", scope: "global" },
       upload: { buffer: Buffer.from("# seed\ninitial content\n"), filename: "seed.md" },
-      actor_id: null,
+      actor: null,
     },
     ctx.testDb.db,
   );
@@ -120,7 +120,7 @@ describe.skipIf(skip)(
 
     test("the job fetches the page again instead of ingesting empty content", async () => {
       const source = await createKnowledgeSourceFromUrl(
-        { tenant_id: ctx.tenantId, actor_id: null, url: pageUrl, input: { scope: "global" } },
+        { tenant_id: ctx.tenantId, actor: null, url: pageUrl, input: { scope: "global" } },
         ctx.testDb.db,
       );
       expect(await chunkText(source.id)).toContain("Erste Fassung");
@@ -144,7 +144,7 @@ describe.skipIf(skip)(
       const source = await createKnowledgeSourceFromUrl(
         {
           tenant_id: ctx.tenantId,
-          actor_id: null,
+          actor: null,
           url: `${pageUrl}-jetzt`,
           input: { scope: "global" },
         },
@@ -154,7 +154,7 @@ describe.skipIf(skip)(
       expect(before).not.toBeNull();
       await Bun.sleep(20);
       const refreshed = await refreshKnowledgeSource(
-        { tenant_id: ctx.tenantId, actor_id: null, id: source.id },
+        { tenant_id: ctx.tenantId, actor: null, id: source.id },
         ctx.testDb.db,
       );
       expect(refreshed?.last_refreshed_at).not.toBeNull();

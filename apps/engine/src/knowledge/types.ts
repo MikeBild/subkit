@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { CatalogSourceSchema, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
+import type { Actor } from "../audit/actor.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
 export const KnowledgeSourceScopeSchema = z.enum(["global", "workflow"]);
@@ -126,6 +127,7 @@ export interface KnowledgeIngestResult {
   skipped_count: number;
   total_bytes: number;
   budget_exceeded: boolean;
+  content_version: number | null;
 }
 
 export interface CreateKnowledgeSourceParams {
@@ -136,10 +138,11 @@ export interface CreateKnowledgeSourceParams {
     filename: string;
     mime?: string;
   };
-  actor_id: string | null;
+  actor: Actor | null;
   source_type_override?: "file_upload" | "inline" | "url" | "seed" | "bundle";
   source_uri_override?: string;
   parsed_chunks?: RawChunk[];
+  note?: string;
 }
 
 export interface ListKnowledgeSourcesParams {
@@ -187,9 +190,11 @@ export interface IngestKnowledgeSourceParams {
     filename: string;
     mime?: string;
   };
-  actor_id: string | null;
+  actor: Actor | null;
   expected_version?: string;
   parsed_chunks?: RawChunk[];
+  note?: string;
+  restored_from?: number;
 }
 
 export interface KnowledgeContentDocument {
@@ -210,12 +215,12 @@ export interface UpdateKnowledgeSourceContentParams {
   expected_version: string;
   path: string;
   content: string;
-  actor_id: string | null;
+  actor: Actor | null;
 }
 
 export interface UpsertKnowledgeBundleParams {
   tenant_id: string;
-  actor_id: string | null;
+  actor: Actor | null;
   input: CreateKnowledgeSourceInput;
   files: { path: string; content: string }[];
 }

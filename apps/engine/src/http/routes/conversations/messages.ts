@@ -6,6 +6,7 @@ import {
 } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
+import { actorOf } from "../../../audit/index.ts";
 import type { TurnEvent } from "../../../conversations/index.ts";
 import * as svc from "../../../conversations/index.ts";
 import {
@@ -240,7 +241,7 @@ export function registerMessagesRoutes(app: OpenAPIHono<AppEnv>): void {
               filename: file.name,
               ...(file.type ? { mime: file.type } : {}),
             },
-            actor_id: principal.id,
+            actor: actorOf(principal),
           },
           db,
         );

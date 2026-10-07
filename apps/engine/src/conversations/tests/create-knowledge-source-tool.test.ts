@@ -29,7 +29,7 @@ function toolCtx(): ToolContext {
             tenant_id: ctx.tenant_id,
             input: params.input,
             upload: params.upload,
-            actor_id: ctx.user_id,
+            actor: { kind: "user", id: ctx.user_id },
             ...(params.source_type_override
               ? { source_type_override: params.source_type_override }
               : {}),

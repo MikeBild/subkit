@@ -89,7 +89,7 @@ async function upsertKnowledgeBundleInner(
       created = await createKnowledgeSource(
         {
           tenant_id: p.tenant_id,
-          actor_id: p.actor_id,
+          actor: p.actor,
           input: { ...p.input, slug, tags },
           upload,
           source_type_override: "bundle",
@@ -157,7 +157,7 @@ async function upsertKnowledgeBundleInner(
   const applyMetaMerge = async (): Promise<KnowledgeSourceView | null> =>
     Object.keys(patch).length > 0
       ? await updateKnowledgeSource(
-          { tenant_id: p.tenant_id, id: existing.id, patch, actor_id: p.actor_id },
+          { tenant_id: p.tenant_id, id: existing.id, patch, actor_id: p.actor?.id ?? null },
           db,
         )
       : null;
@@ -178,7 +178,7 @@ async function upsertKnowledgeBundleInner(
       tenant_id: p.tenant_id,
       knowledge_source_id: existing.id,
       upload,
-      actor_id: p.actor_id,
+      actor: p.actor,
       parsed_chunks: parsed.chunks,
     },
     db,

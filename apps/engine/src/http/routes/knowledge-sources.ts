@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { CategoryFilterSchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
+import { actorOf } from "../../audit/index.ts";
 import * as svc from "../../knowledge/index.ts";
 import {
   CreateKnowledgeSourceBundleSchema,
@@ -23,6 +24,7 @@ import {
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { registerKnowledgeVersionRoutes } from "./knowledge-versions.ts";
 
 const KnowledgeSourceListResponse = z
   .object({ items: z.array(KnowledgeSourceSchema), total: z.number().int().nonnegative() })
@@ -516,6 +518,8 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.use("/v1/knowledge-sources/search", requirePermission("knowledge:read"));
 
+  registerKnowledgeVersionRoutes(app);
+
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
@@ -613,7 +617,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
           expected_version: body.expected_version,
           path: body.path,
           content: body.content,
-          actor_id: principal.id,
+          actor: actorOf(principal),
         },
         db,
       );
@@ -640,7 +644,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       const source = await svc.createKnowledgeSourceFromUrl(
         {
           tenant_id: principal.tenant_id,
-          actor_id: principal.id,
+          actor: actorOf(principal),
           url,
           input,
         },
@@ -659,7 +663,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       const source = await svc.refreshKnowledgeSource(
         {
           tenant_id: principal.tenant_id,
-          actor_id: principal.id,
+          actor: actorOf(principal),
           id,
         },
         c.get("db"),
@@ -748,7 +752,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
             filename,
             mime: mime_type,
           },
-          actor_id: principal.id,
+          actor: actorOf(principal),
           source_type_override: "inline",
           source_uri_override: source_uri ?? filename,
         },
@@ -785,7 +789,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
         const result = await svc.upsertKnowledgeBundle(
           {
             tenant_id: principal.tenant_id,
-            actor_id: principal.id,
+            actor: actorOf(principal),
             input: inputFields,
             files,
           },
@@ -876,7 +880,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
           filename: file.name,
           ...(file.type ? { mime: file.type } : {}),
         },
-        actor_id: principal.id,
+        actor: actorOf(principal),
       },
       db,
     );

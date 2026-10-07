@@ -112,7 +112,7 @@ describe("resolveReferences", () => {
           buffer: Buffer.from("# Vertrieb\n\nRabatte bis zehn Prozent."),
           filename: "v.md",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

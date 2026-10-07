@@ -15519,13 +15519,13 @@
         ],
         "description": "Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two."
       },
-      "KnowledgeSourceListResponse": {
+      "KnowledgeSourceVersionListResponse": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/KnowledgeSource"
+              "$ref": "#/components/schemas/KnowledgeSourceVersion"
             }
           },
           "total": {
@@ -15536,6 +15536,112 @@
         "required": [
           "items",
           "total"
+        ]
+      },
+      "KnowledgeSourceVersion": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "author": {
+            "$ref": "#/components/schemas/KnowledgeSourceVersionAuthor"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "version",
+          "content_hash",
+          "author",
+          "note",
+          "created_at",
+          "current"
+        ]
+      },
+      "KnowledgeSourceVersionAuthor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account"
+            ]
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ]
+      },
+      "KnowledgeSourceVersionDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/KnowledgeSourceVersion"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "documents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "documents"
+            ]
+          }
+        ]
+      },
+      "RestoreKnowledgeSourceVersionResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source": {
+            "$ref": "#/components/schemas/KnowledgeSource"
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "knowledge_source",
+          "version"
         ]
       },
       "KnowledgeSource": {
@@ -15675,6 +15781,25 @@
           "last_refreshed_at",
           "created_at",
           "updated_at"
+        ]
+      },
+      "KnowledgeSourceListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSource"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total"
         ]
       },
       "KnowledgeSearchResult": {
@@ -37983,6 +38108,198 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/history": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "List knowledge source versions, newest first",
+        "description": "One page of the source's content versions, newest first, each with its author and note. `current` marks the version agents and workflows read now. `total` is the size of the whole history: page with `limit` and `offset`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "description": "Page size. Defaults to 50, at most 200."
+            },
+            "required": false,
+            "description": "Page size. Defaults to 50, at most 200.",
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceVersionListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/history/{version}": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read one stored knowledge source version with its documents",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSourceVersionDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/restore/{version}": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Restore a previous knowledge source version as a new version",
+        "description": "Reads the stored content of `version` in again. The result is always a new version whose note names the restored one; the history keeps every earlier version.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreKnowledgeSourceVersionResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The version is already current, or the source changed meanwhile",
             "content": {
               "application/json": {
                 "schema": {
