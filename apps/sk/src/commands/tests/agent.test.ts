@@ -1,19 +1,21 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
 import {
   AGENT_FILE_RELPATH,
   agentCommand,
+  agentEngineClient,
   boundedFetch,
+  codexHookSnippet,
   findAgentFile,
   forgetBriefed,
   newPromptDomains,
   parseHookPayload,
+  planBriefing,
   readBriefed,
   recordBriefed,
-  sessionDomains,
   wireClaudeHooks,
 } from "../agent.ts";
 
@@ -136,10 +138,32 @@ describe("hook payload", () => {
 });
 
 describe("which domains a turn is briefed on", () => {
-  test("the session starts with the declared domains, else what the repository names", () => {
-    expect(sessionDomains(["blog-de"], ["infra"])).toEqual(["blog-de"]);
-    expect(sessionDomains([], ["infra"])).toEqual(["infra"]);
-    expect(sessionDomains([], [])).toEqual([]);
+  test("a hook outside a repo with .sk/agent.json plans no request at all", () => {
+    expect(planBriefing({ explicit: null, declared: [], hook: true, prompt: "page ops" })).toEqual({
+      kind: "none",
+    });
+    expect(planBriefing({ explicit: null, declared: [], hook: true, prompt: null })).toEqual({
+      kind: "none",
+    });
+  });
+
+  test("a declared repo briefs its domains at start and resolves each prompt", () => {
+    expect(planBriefing({ explicit: null, declared: ["ops"], hook: true, prompt: null })).toEqual({
+      kind: "declared",
+      domains: ["ops"],
+    });
+    expect(
+      planBriefing({ explicit: null, declared: ["ops"], hook: true, prompt: "x".repeat(5_000) }),
+    ).toEqual({ kind: "prompt", prompt: "x".repeat(2_000), declared: ["ops"] });
+  });
+
+  test("explicit domains win; only a person's own command falls back to the repository name", () => {
+    expect(
+      planBriefing({ explicit: ["radar"], declared: ["ops"], hook: true, prompt: "page ops" }),
+    ).toEqual({ kind: "explicit", domains: ["radar"] });
+    expect(planBriefing({ explicit: null, declared: [], hook: false, prompt: null })).toEqual({
+      kind: "repo",
+    });
   });
 
   test("a prompt adds only domains the session has not been briefed on", () => {
@@ -158,6 +182,14 @@ describe("briefed domains per session", () => {
     expect(readBriefed(dir, "s2")).toEqual([]);
     forgetBriefed(dir, "s/1");
     expect(readBriefed(dir, "s/1")).toEqual([]);
+  });
+
+  test("a record that vanishes while old records are cleared does not fail the write", () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "sk-agent-briefed-")), "agent-sessions");
+    mkdirSync(dir, { recursive: true });
+    symlinkSync(join(dir, "already-gone.json"), join(dir, "dangling.json"));
+    expect(() => recordBriefed(dir, "s1", ["ops"])).not.toThrow();
+    expect(readBriefed(dir, "s1")).toEqual(["ops"]);
   });
 
   test("records of old sessions are cleared on the next write", () => {
@@ -225,5 +257,34 @@ describe("hook requests", () => {
     await expect(
       boundedFetch(50, never)("http://engine.invalid/v1/agent/domains"),
     ).rejects.toThrow();
+  });
+});
+
+describe("hook clients", () => {
+  const profile = { engine_url: "http://engine.invalid", api_key: "", active_tenant_id: null };
+
+  test("a hook without an API key makes no client and so no request", () => {
+    expect(agentEngineClient(profile, true)).toBeNull();
+    expect(agentEngineClient(profile, false)).not.toBeNull();
+  });
+
+  test("every hook request carries a time budget", async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    const recording = ((_input: unknown, init?: RequestInit) => {
+      signals.push(init?.signal);
+      return Promise.resolve(
+        new Response(JSON.stringify({ domains: [], from_prompt: [], from_repo: [] })),
+      );
+    }) as typeof fetch;
+    const client = agentEngineClient({ ...profile, api_key: "wf_live_probe" }, true, recording);
+    await client?.resolveAgentDomains({ prompt: "page ops" });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+  });
+
+  test("the Codex snippet says the capture runs once per turn", () => {
+    const snippet = codexHookSnippet();
+    expect(snippet).toContain("once per turn");
+    expect(snippet).not.toContain("cheap");
   });
 });
