@@ -275,7 +275,7 @@
       "de",
       "en"
     ],
-    "localeSource": "accept-language",
+    "localeSource": "cookie-then-accept-language",
     "fallbackLocale": "en",
     "returnPath": "current-cockpit-path-and-query",
     "productIdentity": "real-cockpit-favicon-and-canonical-product-name",

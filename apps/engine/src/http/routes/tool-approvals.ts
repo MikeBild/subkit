@@ -23,7 +23,7 @@ import {
   signCsrfToken,
   verifyCsrfToken,
 } from "./oauth/shared.ts";
-import { resolveAuthLocale } from "./oauth/ui.ts";
+import { localeCookie, resolvePageLook } from "./oauth/ui.ts";
 import { approvalCopy, approvalDenialCopy } from "./tool-approval-copy.ts";
 import {
   alreadyDecidedPage,
@@ -37,6 +37,10 @@ function sha256Hex(value: string): string {
 
 function publicBaseUrl(): string {
   return getConfig().server.public_base_url;
+}
+
+function servedOverHttps(requestUrl: string): boolean {
+  return new URL(publicBaseUrl() || requestUrl).protocol === "https:";
 }
 
 const ApprovalGrantQuery = z.object({ grant: z.string().min(20) }).openapi("ApprovalGrantQuery");
@@ -61,7 +65,7 @@ const HTML_HEADERS = {
   "cache-control": "no-store",
   "referrer-policy": "no-referrer",
   "content-security-policy":
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 } as const;
@@ -118,8 +122,8 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(approvalPortalPageRoute, async (c) => {
     const db = c.get("db");
     const { grant } = c.req.valid("query");
-    const locale = resolveAuthLocale(c.req.header("accept-language"));
-    const copy = approvalCopy(locale);
+    const look = resolvePageLook(c.req.raw.headers);
+    const copy = approvalCopy(look.locale);
 
     const view = await resolveApprovalPortalToken(db, grant);
     if (!view) {
@@ -128,12 +132,12 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         action: "approval.portal.invalid_grant",
         msg: "approval grant not found or expired — a browser opened a dead link",
       });
-      const { html, status } = approvalStatusPage(locale, copy.deadTitle, copy.deadMessage);
+      const { html, status } = approvalStatusPage(look, copy.deadTitle, copy.deadMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
     if (view.state !== "pending") {
-      const { html, status } = alreadyDecidedPage(view, locale);
+      const { html, status } = alreadyDecidedPage(view, look);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -147,7 +151,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       grant_sha256: sha256Hex(grant),
     });
     return c.body(
-      buildApprovalDecisionHtml(view, grant, approver, csrfToken, locale),
+      buildApprovalDecisionHtml(view, grant, approver, csrfToken, look),
       200,
       HTML_HEADERS,
     );
@@ -159,16 +163,15 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
     const grant = form.get("grant") ?? "";
     const decision = form.get("decision") ?? "";
     const language = z.enum(["de", "en"]).safeParse(form.get("language"));
-    const locale = language.success
-      ? language.data
-      : resolveAuthLocale(c.req.header("accept-language"));
-    const copy = approvalCopy(locale);
+    const requested = resolvePageLook(c.req.raw.headers);
+    const look = language.success ? { ...requested, locale: language.data } : requested;
+    const copy = approvalCopy(look.locale);
 
     if (
       !grant ||
       (decision !== "approve" && decision !== "decline" && !(decision === "" && language.success))
     ) {
-      const { html, status } = approvalStatusPage(locale, copy.invalidTitle, copy.invalidMessage);
+      const { html, status } = approvalStatusPage(look, copy.invalidTitle, copy.invalidMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -180,7 +183,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         msg: "approval grant not found or expired at decision time",
         decision,
       });
-      const { html, status } = approvalStatusPage(locale, copy.deadTitle, copy.deadMessage);
+      const { html, status } = approvalStatusPage(look, copy.deadTitle, copy.deadMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
@@ -194,7 +197,7 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: view.tenant_id,
         decision,
       });
-      const { html, status } = approvalStatusPage(locale, copy.signTitle, copy.signMessage);
+      const { html, status } = approvalStatusPage(look, copy.signTitle, copy.signMessage);
       return c.body(html, status, HTML_HEADERS);
     }
     const granted_by_user_id = approver.user_id;
@@ -214,19 +217,23 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         user_id: approver.user_id,
         decision,
       });
-      const { html, status } = approvalStatusPage(locale, copy.csrfTitle, copy.csrfMessage);
+      const { html, status } = approvalStatusPage(look, copy.csrfTitle, copy.csrfMessage);
       return c.body(html, status, HTML_HEADERS);
     }
 
     if (decision === "") {
+      const remembered = {
+        ...HTML_HEADERS,
+        "set-cookie": localeCookie(look.locale, servedOverHttps(c.req.url)),
+      };
       if (view.state !== "pending") {
-        const { html, status } = alreadyDecidedPage(view, locale);
-        return c.body(html, status, HTML_HEADERS);
+        const { html, status } = alreadyDecidedPage(view, look);
+        return c.body(html, status, remembered);
       }
       return c.body(
-        buildApprovalDecisionHtml(view, grant, approver, form.get("csrf_token") ?? "", locale),
+        buildApprovalDecisionHtml(view, grant, approver, form.get("csrf_token") ?? "", look),
         200,
-        HTML_HEADERS,
+        remembered,
       );
     }
 
@@ -259,9 +266,9 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
         error_code: result.code,
       });
       const { html, status } = approvalStatusPage(
-        locale,
+        look,
         copy.refusedTitle,
-        `${approvalDenialCopy(result.code, locale)} ${copy.unchanged}`,
+        `${approvalDenialCopy(result.code, look.locale)} ${copy.unchanged}`,
       );
       return c.body(html, status, HTML_HEADERS);
     }
@@ -294,12 +301,12 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
     const { html, status } =
       decision === "approve"
         ? approvalStatusPage(
-            locale,
+            look,
             copy.approvedTitle,
             completion.resumed > 0 ? copy.queuedMessage : copy.approvedMessage,
             200,
           )
-        : approvalStatusPage(locale, copy.declinedTitle, copy.declinedMessage, 200);
+        : approvalStatusPage(look, copy.declinedTitle, copy.declinedMessage, 200);
     return c.body(html, status, HTML_HEADERS);
   });
 }

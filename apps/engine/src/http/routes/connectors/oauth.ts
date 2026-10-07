@@ -257,14 +257,19 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
     const failed = async (
       failure: Parameters<typeof signInFailedPage>[2],
       provider_code?: string,
-    ): Promise<Response> =>
-      resultResponse(
+    ): Promise<Response> => {
+      if (origin === "cockpit") {
+        const back = cockpitReturn(stateRow, { kind: "signin_failed", failure });
+        if (back) return back;
+      }
+      return resultResponse(
         c,
         signInFailedPage(requestLocale(c), origin, failure, {
           provider_code: provider_code ?? null,
           backlink: await connectorBacklink(c, db, { ...stateRow, origin }),
         }),
       );
+    };
 
     if (q.error) {
       logger.warn({
@@ -383,7 +388,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
         has_refresh_token: bundle.refresh_token != null,
       });
       if (origin === "cockpit") {
-        const back = cockpitReturn(stateRow);
+        const back = cockpitReturn(stateRow, { kind: "signed_in" });
         if (back) return back;
       }
       return resultResponse(

@@ -276,7 +276,7 @@ describe("oidc provider — auth.enable_signup gate", () => {
     expect(res.status).toBe(403);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
 
     const created = await testDb.db
@@ -379,7 +379,7 @@ describe("oidc provider — browser error pages", () => {
     expect(browserRes.status).toBe(400);
     expect(browserRes.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await browserRes.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("This sign-in provider is not available for this tenant.");
     expect(html).not.toStartWith("{");
 
@@ -405,7 +405,7 @@ describe("oidc provider — browser error pages", () => {
     expect(browserRes.status).toBe(502);
     expect(browserRes.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await browserRes.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("The sign-in provider is temporarily unavailable.");
     expect(html).not.toStartWith("{");
 
@@ -428,7 +428,7 @@ describe("oidc provider — browser error pages", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain(
       "This sign-in attempt expired or was already used. Please sign in again.",
     );
@@ -462,7 +462,7 @@ describe("oidc provider — browser error pages", () => {
     expect(res.status).toBe(400);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain(
       "This sign-in attempt expired or was already used. Please sign in again.",
     );
@@ -477,7 +477,7 @@ describe("oidc provider — browser error pages", () => {
     expect(res.status).toBe(403);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
     expect(html).toContain(">Sign in again</a>");
   });
@@ -496,7 +496,7 @@ describe("oidc provider — browser error pages", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain("<h1>Sign-in failed</h1>");
+    expect(html).toContain(">Sign-in failed</h1>");
     expect(html).toContain(`href="${reentry}"`);
   });
 });

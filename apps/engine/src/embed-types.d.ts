@@ -47,3 +47,8 @@ declare module "*.bin" {
   const path: string;
   export default path;
 }
+
+declare module "*.css" {
+  const content: string;
+  export default content;
+}

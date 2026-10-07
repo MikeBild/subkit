@@ -283,7 +283,7 @@ describe("approval portal — the decision owns its effect", () => {
     const res = await decide(grant, "approve");
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("<h1>Approved</h1>");
+    expect(body).toContain(">Approved</h1>");
     expect(body).not.toContain("being carried out");
     expect(sent).toHaveLength(0);
   });

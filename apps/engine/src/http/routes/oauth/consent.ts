@@ -32,15 +32,7 @@ import {
   signCsrfToken,
   verifyCsrfToken,
 } from "./shared.ts";
-import {
-  AUTHORIZE_INVALID_MESSAGE,
-  authHtmlResponse,
-  renderConsentPage,
-  renderErrorPage,
-  resolveAuthLocale,
-  SIGN_IN_FAILED_TITLE,
-  STATE_ERROR_MESSAGE,
-} from "./ui.ts";
+import { authHtmlResponse, renderConsentPage, renderErrorPage, resolvePageLook } from "./ui.ts";
 
 function authorizeBrowserError(
   c: Context<AppEnv>,
@@ -51,7 +43,11 @@ function authorizeBrowserError(
     return c.json({ error, error_description: errorDescription }, 400);
   }
   return authHtmlResponse(
-    renderErrorPage(SIGN_IN_FAILED_TITLE, AUTHORIZE_INVALID_MESSAGE, "/v1/identity/login/start"),
+    renderErrorPage(
+      "authorize_invalid",
+      "/v1/identity/login/start",
+      resolvePageLook(c.req.raw.headers),
+    ),
     400,
   );
 }
@@ -320,7 +316,7 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
     const html = renderConsentPage({
       clientName: client.client_name ?? clientId,
       clientUri: client.client_uri ?? null,
-      locale: resolveAuthLocale(c.req.header("accept-language")),
+      look: resolvePageLook(c.req.raw.headers),
       tenantName: tenantRow?.display_name ?? sessionPayload.tenant_id,
       userEmail: userRow.email,
       offeredScopes,
@@ -384,7 +380,11 @@ export function registerOAuthConsentRoutes(app: OpenAPIHono<AppEnv>): void {
         }
       }
       return authHtmlResponse(
-        renderErrorPage(SIGN_IN_FAILED_TITLE, STATE_ERROR_MESSAGE, "/v1/identity/login/start"),
+        renderErrorPage(
+          "state_expired",
+          "/v1/identity/login/start",
+          resolvePageLook(c.req.raw.headers),
+        ),
         400,
       );
     }

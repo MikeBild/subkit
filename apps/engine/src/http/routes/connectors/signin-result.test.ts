@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { SIGN_IN_FAILURES } from "../../../connectors/index.ts";
 import { renderResultPage } from "../oauth/ui.ts";
 import { signedInPage, signInFailedPage } from "./signin-result.ts";
 
@@ -69,13 +70,12 @@ describe("signedInPage", () => {
     expect(received.title).toBe("Zugangsdaten erhalten");
   });
 
-  test("links to the connector only when it was given an address", () => {
-    expect(signedInPage("en", "cli", FACTS, null).link).toBeNull();
-    expect(signedInPage("en", "cli", FACTS, BACKLINK).link).toEqual({
-      href: BACKLINK,
-      label: "Open the connector",
-    });
-    expect(signedInPage("de", "cockpit", FACTS, BACKLINK).link?.label).toBe("Zurück zum Konnektor");
+  test("leads into the cockpit, onto the connector when it was given its address", () => {
+    expect(signedInPage("en", "cli", FACTS, null).cockpitHref).toBe("/cockpit");
+    expect(signedInPage("en", "cli", FACTS, BACKLINK).cockpitHref).toBe(BACKLINK);
+    expect(
+      signInFailedPage("de", "cockpit", "exchange_failed", { backlink: BACKLINK }).cockpitHref,
+    ).toBe(BACKLINK);
   });
 });
 
@@ -130,9 +130,9 @@ describe("the rendered page", () => {
         { ...FACTS, name: '<img src=x onerror="alert(1)">', enabled: false },
         `${BACKLINK}?x="><script>`,
       ),
-      "de",
+      { locale: "de", scheme: "dark" },
     );
-    expect(html).toContain('<html lang="de">');
+    expect(html).toContain('<html lang="de" class="dark">');
     expect(html).toContain('data-auth-contract="mcp-auth"');
     expect(html).toContain('data-result-kind="success"');
     expect(html).toContain("SubKit · Konnektor-Anmeldung");
@@ -142,9 +142,46 @@ describe("the rendered page", () => {
   });
 
   test("a failure is announced as one", () => {
-    const html = renderResultPage(signInFailedPage("en", null, "link_expired"), "en");
+    const html = renderResultPage(signInFailedPage("en", null, "link_expired"), {
+      locale: "en",
+      scheme: null,
+    });
     expect(html).toContain('data-result-kind="error"');
     expect(html).toContain('role="alert"');
-    expect(html).not.toContain("auth-result-link");
+  });
+
+  test("every result ends with exactly one link, into the cockpit", () => {
+    const pages = [
+      ...(["cli", "chat", "portal", "cockpit"] as const).map((origin) =>
+        signedInPage("de", origin, FACTS, origin === "cockpit" ? BACKLINK : null),
+      ),
+      ...SIGN_IN_FAILURES.map((failure) => signInFailedPage("de", "chat", failure)),
+    ];
+    for (const page of pages) {
+      const html = renderResultPage(page, { locale: "de", scheme: null });
+      expect(html.match(/<a\s/g)?.length).toBe(1);
+      expect(html).toContain(">Zum Cockpit</a>");
+      expect(html).toContain(`href="${page.cockpitHref}"`);
+      expect(html).toContain("<title>SubKit Cockpit</title>");
+    }
+  });
+
+  test("a German result carries none of the English copy", () => {
+    const english = (page: ReturnType<typeof signedInPage>) =>
+      [page.title, ...page.lines].map((line) => line.replace(/“[^”]*”/, "").split(":")[0] ?? "");
+    for (const failure of SIGN_IN_FAILURES) {
+      const german = renderResultPage(signInFailedPage("de", "cli", failure, { field: "token" }), {
+        locale: "de",
+        scheme: null,
+      });
+      for (const line of english(signInFailedPage("en", "cli", failure, { field: "token" })))
+        expect(german).not.toContain(line);
+    }
+    const german = renderResultPage(signedInPage("de", "cli", { ...FACTS, enabled: false }, null), {
+      locale: "de",
+      scheme: null,
+    });
+    for (const line of english(signedInPage("en", "cli", { ...FACTS, enabled: false }, null)))
+      expect(german).not.toContain(line);
   });
 });
