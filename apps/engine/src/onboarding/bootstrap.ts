@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import pc from "picocolors";
 import { z } from "zod";
 import { auditAwait } from "../audit/audit.ts";
@@ -182,7 +182,10 @@ export type ConsumeFailureCode =
   | "invalid_token"
   | "token_expired"
   | "validation_failed"
-  | "llm_unreachable";
+  | "llm_unreachable"
+  | "in_progress";
+
+const BOOTSTRAP_LOCK = "subkit:bootstrap";
 
 export type ConsumeOutcome =
   | {
@@ -224,7 +227,29 @@ export async function consume(
       message: "too many bootstrap attempts from this IP — wait 15 minutes",
     };
   }
+  return await db.transaction(async (tx) => {
+    const claim = (await tx.execute(
+      sql`select pg_try_advisory_xact_lock(hashtextextended(${BOOTSTRAP_LOCK}, 0)) as claimed`,
+    )) as unknown as { rows: Array<{ claimed: boolean }> };
+    if (claim.rows[0]?.claimed !== true) {
+      await emitFailure(db, "in_progress", "another first start holds the bootstrap", opts);
+      return {
+        status: "failed",
+        code: "in_progress",
+        message: "another first start is running right now",
+        hint: "wait until it finishes; if it fails, run `sk init` again with the same token",
+      } as const;
+    }
+    return consumeClaimed(db, rbacIds, rawPayload, opts);
+  });
+}
 
+async function consumeClaimed(
+  db: Db,
+  rbacIds: SeededRoleIds,
+  rawPayload: unknown,
+  opts: ConsumeOptions & { token: string },
+): Promise<ConsumeOutcome> {
   const sentinel = await readSetting<boolean>(db, BOOTSTRAP_COMPLETED_KEY);
   if (sentinel === true || (await tenantsCount(db)) > 0) {
     await emitFailure(db, "gone", "bootstrap already completed", opts);
