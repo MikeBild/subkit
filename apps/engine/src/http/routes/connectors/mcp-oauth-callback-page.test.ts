@@ -64,9 +64,9 @@ describe("GET /v1/connectors/mcp/oauth/callback — the result page", () => {
     );
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(
-      `${server.baseUrl}/cockpit/connectors/${connectorId}?signin_failed=provider_declined`,
+      `${server.baseUrl}/cockpit/connectors/${connectorId}?signin_failed=provider_declined&signin_code=access_denied`,
     );
-    expect(res.headers.get("location")).not.toContain("access_denied");
+    expect(res.headers.get("location")).not.toContain("call");
     expect(await res.text()).toBe("");
     const rows = await server.db
       .select()

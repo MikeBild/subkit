@@ -217,13 +217,23 @@ export function presentAddress(address: string): { shown: string; keepsSecret: b
 
 export const SIGNED_IN_PARAM = "signed_in";
 export const SIGNIN_FAILED_PARAM = "signin_failed";
+export const SIGNIN_CODE_PARAM = "signin_code";
+const PROVIDER_CODE = /^[a-z0-9_.-]{1,64}$/i;
 
-export type SignInReturn = { kind: "signed_in" } | { kind: "signin_failed"; failure: string };
+export type SignInReturn =
+  | { kind: "signed_in" }
+  | { kind: "signin_failed"; failure: string; code: string | null };
 
 export function signInReturn(search: string): SignInReturn | null {
   const params = new URLSearchParams(search);
   const failure = params.get(SIGNIN_FAILED_PARAM);
-  if (failure !== null) return { kind: "signin_failed", failure };
+  const code = params.get(SIGNIN_CODE_PARAM);
+  if (failure !== null)
+    return {
+      kind: "signin_failed",
+      failure,
+      code: code !== null && PROVIDER_CODE.test(code) ? code : null,
+    };
   return params.has(SIGNED_IN_PARAM) ? { kind: "signed_in" } : null;
 }
 
@@ -231,6 +241,7 @@ export function withoutSignInReturn(search: string): string {
   const params = new URLSearchParams(search);
   params.delete(SIGNED_IN_PARAM);
   params.delete(SIGNIN_FAILED_PARAM);
+  params.delete(SIGNIN_CODE_PARAM);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -253,6 +264,16 @@ const SIGN_IN_FAILURE_KEYS = new Map<string, TranslationKey>(
 
 export function signInFailureKey(failure: string): TranslationKey {
   return SIGN_IN_FAILURE_KEYS.get(failure) ?? "connectorStrip.signInFailure.other";
+}
+
+export function signInFailureLine(
+  failed: { failure: string; code: string | null },
+  t: Translate,
+): string {
+  const reason = t(signInFailureKey(failed.failure));
+  return failed.code
+    ? `${reason} · ${t("connectorStrip.providerCode", { code: failed.code })}`
+    : reason;
 }
 
 export type ConnectorNotice = "signed_in" | "signed_in_off" | "off" | null;

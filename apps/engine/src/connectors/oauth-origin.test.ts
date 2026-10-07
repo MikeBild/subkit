@@ -68,6 +68,22 @@ describe("cockpitConnectorUrl", () => {
       ).toBe(`https://engine.example.org/cockpit/connectors/${ID}?signin_failed=${failure}`);
   });
 
+  test("a provider's code comes along only when it is a code", () => {
+    const url = (provider_code: string | null) =>
+      cockpitConnectorUrl({
+        connector_id: ID,
+        redirect_uri: STORED,
+        outcome: { kind: "signin_failed", failure: "provider_declined", provider_code },
+      });
+    expect(url("invalid_scope")).toBe(
+      `https://engine.example.org/cockpit/connectors/${ID}?signin_failed=provider_declined&signin_code=invalid_scope`,
+    );
+    for (const hostile of ["<script>", "call me", "a".repeat(65), "", null])
+      expect(url(hostile)).toBe(
+        `https://engine.example.org/cockpit/connectors/${ID}?signin_failed=provider_declined`,
+      );
+  });
+
   test("the configured public address wins over the stored redirect_uri", async () => {
     await setConfigKey("server.public_base_url", "https://sk.example.org/", { force: true });
     expect(

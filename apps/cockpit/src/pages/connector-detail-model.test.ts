@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { absolute, connectorHref } from "@/app/links";
-import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import { auditActionsFromUrl, auditFilterFromUrl, auditResultFromUrl } from "@/pages/audit-model";
 import {
   asInspect,
@@ -25,6 +25,7 @@ import {
   SIGNIN_FAILED_PARAM,
   signInActionLabel,
   signInFailureKey,
+  signInFailureLine,
   signInLine,
   signInReturn,
   toolsWithoutConfirmation,
@@ -234,12 +235,40 @@ describe("coming back from a sign-in", () => {
     expect(signInReturn("?signin_failed=provider_declined")).toEqual({
       kind: "signin_failed",
       failure: "provider_declined",
+      code: null,
     });
     expect(signInReturn("?tab=x&signin_failed=exchange_failed&signed_in=1")).toEqual({
       kind: "signin_failed",
       failure: "exchange_failed",
+      code: null,
     });
-    expect(withoutSignInReturn("?tab=x&signin_failed=exchange_failed")).toBe("?tab=x");
+    expect(withoutSignInReturn("?tab=x&signin_failed=exchange_failed&signin_code=x")).toBe(
+      "?tab=x",
+    );
+  });
+
+  test("the provider's code comes along when it is a code, and is named in the strip", () => {
+    const failed = signInReturn("?signin_failed=provider_declined&signin_code=invalid_scope");
+    expect(failed).toEqual({
+      kind: "signin_failed",
+      failure: "provider_declined",
+      code: "invalid_scope",
+    });
+    for (const hostile of ["<script>", "call+me+now", "a".repeat(65), ""])
+      expect(signInReturn(`?signin_failed=provider_declined&signin_code=${hostile}`)).toMatchObject(
+        { code: null },
+      );
+    const line = (locale: "de" | "en", code: string | null) =>
+      signInFailureLine({ failure: "provider_declined", code }, (key, values) =>
+        translate(locale, key, values),
+      );
+    expect(line("de", "invalid_scope")).toBe(
+      "Der Anbieter hat die Anmeldung nicht bestätigt · Anbietercode: invalid_scope",
+    );
+    expect(line("en", "invalid_scope")).toBe(
+      "The provider did not confirm the sign-in · Provider code: invalid_scope",
+    );
+    expect(line("de", null)).toBe("Der Anbieter hat die Anmeldung nicht bestätigt");
   });
 
   test("every failure the engine sends has its own reason in both languages", () => {

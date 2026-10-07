@@ -259,7 +259,11 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
       provider_code?: string,
     ): Promise<Response> => {
       if (origin === "cockpit") {
-        const back = cockpitReturn(stateRow, { kind: "signin_failed", failure });
+        const back = cockpitReturn(stateRow, {
+          kind: "signin_failed",
+          failure,
+          provider_code: provider_code ?? null,
+        });
         if (back) return back;
       }
       return resultResponse(
