@@ -1,4 +1,5 @@
 import { type ReactNode, useId } from "react";
+import { cn } from "@/lib/utils";
 
 export interface ChoiceCardItem {
   icon: ReactNode;
@@ -11,7 +12,10 @@ export interface ChoiceCardItem {
 export function ChoiceCards({ items }: { items: readonly ChoiceCardItem[] }) {
   const id = useId();
   return (
-    <div className="grid gap-3 sm:grid-cols-2" data-slot="choices">
+    <div
+      className={cn("grid gap-3", items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2")}
+      data-slot="choices"
+    >
       {items.map((item, index) => (
         <button
           key={item.testId}
