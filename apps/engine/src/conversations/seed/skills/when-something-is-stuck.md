@@ -1,7 +1,7 @@
 ---
 slug: when-something-is-stuck
 scope: global
-title: When Something Is Stuck
+title: Wenn etwas hakt
 description: What to do when a workflow is held, refused or keeps failing — read the diagnosis with `diagnose_workflow`, file the deterministic repair with `propose_workflow_repair` when one exists, and hand everything else to a person with the exact next step.
 activates_when: [{"kind":"intent_keyword","word":"stuck"},{"kind":"intent_keyword","word":"hakt"},{"kind":"intent_keyword","word":"is held"},{"kind":"intent_keyword","word":"wird gehalten"},{"kind":"intent_keyword","word":"blocked"},{"kind":"intent_keyword","word":"blockiert"},{"kind":"intent_keyword","word":"refused"},{"kind":"intent_keyword","word":"diagnose_workflow"},{"kind":"intent_keyword","word":"propose_workflow_repair"}]
 side_effects: read
@@ -11,7 +11,7 @@ tags: [diagnosis, repair, agent-briefing]
 version: 1
 ---
 
-# When Something Is Stuck
+# Wenn etwas hakt
 
 A stuck workflow has one cause the engine can name. Read it, act on exactly that
 cause, and leave every decision to a person.

@@ -1,7 +1,7 @@
 ---
 slug: knowledge-find-and-maintain
 scope: global
-title: Find and Maintain Knowledge
+title: Wissen finden und pflegen
 description: When to look facts up with `search_knowledge` instead of answering from memory, when to propose a learning with `save_learning`, and how to tell a fact (becomes part of the domain's knowledge source) from a practice (becomes a skill).
 activates_when: [{"kind":"intent_keyword","word":"remember this"},{"kind":"intent_keyword","word":"merk dir"},{"kind":"intent_keyword","word":"merke dir"},{"kind":"intent_keyword","word":"what do we know"},{"kind":"intent_keyword","word":"was wissen wir"},{"kind":"intent_keyword","word":"knowledge source"},{"kind":"intent_keyword","word":"wissensquelle"},{"kind":"intent_keyword","word":"search_knowledge"},{"kind":"intent_keyword","word":"save_learning"}]
 side_effects: read
@@ -11,7 +11,7 @@ tags: [knowledge, learnings, agent-briefing]
 version: 1
 ---
 
-# Find and Maintain Knowledge
+# Wissen finden und pflegen
 
 sk keeps one shared memory for people and agents: knowledge sources (runbooks,
 policies, reference pages, what the team learned) and skills (how to work).
