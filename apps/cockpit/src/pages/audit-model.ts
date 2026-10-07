@@ -121,6 +121,7 @@ const RESOURCE_KEYS: Record<string, TranslationKey> = {
   catalog_category: "catalogMeta.category",
   conversation: "nav.chat",
   session: "audit.resource.session",
+  user_identity: "audit.resource.userIdentity",
   credential: "permission.resource.credentials",
   setting: "nav.settings",
   webhook_inbound: "audit.resource.inboundWebhook",
