@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
 import {
   AGENT_FILE_RELPATH,
   agentCommand,
+  boundedFetch,
   findAgentFile,
   forgetBriefed,
   newPromptDomains,
@@ -164,9 +165,8 @@ describe("briefed domains per session", () => {
     recordBriefed(dir, "old", ["ops"]);
     const file = join(dir, "old.json");
     expect(existsSync(file)).toBe(true);
-    const longAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-    utimesSync(file, longAgo, longAgo);
-    recordBriefed(dir, "new", ["ops"]);
+    const threeDaysLater = statSync(file).mtimeMs + 3 * 24 * 60 * 60 * 1000;
+    recordBriefed(dir, "new", ["ops"], threeDaysLater);
     expect(existsSync(file)).toBe(false);
     expect(readBriefed(dir, "new")).toEqual(["ops"]);
   });
@@ -213,5 +213,17 @@ describe("sk agent init --skip-claude", () => {
     expect(output).toContain("sk agent briefing");
     expect(output).not.toContain("wired SessionStart");
     expect(output).not.toContain("Claude Code hooks");
+  });
+});
+
+describe("hook requests", () => {
+  test("give up after their time budget instead of holding the prompt", async () => {
+    const never = ((_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      })) as typeof fetch;
+    await expect(
+      boundedFetch(50, never)("http://engine.invalid/v1/agent/domains"),
+    ).rejects.toThrow();
   });
 });

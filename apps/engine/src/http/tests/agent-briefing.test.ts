@@ -200,12 +200,17 @@ describe("GET /v1/agent/briefing — the domain's catalog", () => {
   });
 });
 
-describe("GET /v1/agent/domains", () => {
+function postDomains(body: unknown): Promise<Response> {
+  return fetch(`${ctx.baseUrl}/v1/agent/domains`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("POST /v1/agent/domains", () => {
   test("resolves known domains from the prompt and the repository hint", async () => {
-    const res = await fetch(
-      `${ctx.baseUrl}/v1/agent/domains?prompt=${encodeURIComponent("Neuer Blog Artikel, DE")}&repo=infra-tools`,
-      { headers: { authorization: `Bearer ${ctx.apiKey}` } },
-    );
+    const res = await postDomains({ prompt: "Neuer Blog Artikel, DE", repo: "infra-tools" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       domains: ["blog-de", "infra"],
@@ -215,9 +220,7 @@ describe("GET /v1/agent/domains", () => {
   });
 
   test("a prompt over the limit is a validation error, not a silent cut", async () => {
-    const res = await fetch(`${ctx.baseUrl}/v1/agent/domains?prompt=${"x".repeat(2_001)}`, {
-      headers: { authorization: `Bearer ${ctx.apiKey}` },
-    });
+    const res = await postDomains({ prompt: "x".repeat(2_001) });
     expect([400, 422]).toContain(res.status);
   });
 });

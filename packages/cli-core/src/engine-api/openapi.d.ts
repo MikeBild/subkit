@@ -11158,21 +11158,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Resolve which known domains a prompt or repository is about
-         * @description Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about.
+         * @description Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.
          */
-        get: {
+        post: {
             parameters: {
-                query?: {
-                    prompt?: string;
-                    repo?: string;
-                };
+                query?: never;
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AgentDomainsBody"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
@@ -11185,8 +11188,6 @@ export interface paths {
                 };
             };
         };
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -22077,6 +22078,10 @@ export interface components {
             domains: string[];
             from_prompt: string[];
             from_repo: string[];
+        };
+        AgentDomainsBody: {
+            prompt?: string;
+            repo?: string;
         };
         AgentBriefingResponse: {
             markdown: string;
