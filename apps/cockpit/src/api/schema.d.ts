@@ -5742,6 +5742,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -6242,6 +6251,15 @@ export interface paths {
                 };
                 /** @description Bad request */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The recipe origin names no shipped recipe, or the definition was not built from it */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };

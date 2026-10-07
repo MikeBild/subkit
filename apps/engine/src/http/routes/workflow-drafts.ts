@@ -1,6 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { isKnownRecipe } from "../../connectors/index.ts";
 import {
   applyBoundaryProposals,
   CreateWorkflowDraftSchema,
@@ -17,6 +16,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { assertRecipeOrigin } from "./recipe-origin.ts";
 
 const failures = {
   400: { description: "Invalid draft", content: { "application/json": { schema: ErrorSchema } } },
@@ -45,7 +45,15 @@ const create = createRoute({
   summary: "Save a new inert workflow draft without activating triggers",
   security: [{ bearerAuth: [] }],
   request: { body: { content: { "application/json": { schema: CreateWorkflowDraftSchema } } } },
-  responses: { 201: draftResponse, ...failures },
+  responses: {
+    201: draftResponse,
+    ...failures,
+    422: {
+      description:
+        "The recipe origin names no shipped recipe, or the definition was not built from it",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+  },
 });
 const update = createRoute({
   method: "put",
@@ -165,9 +173,7 @@ export function registerWorkflowDraftRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(create, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    if (body.recipe && !isKnownRecipe(body.recipe.vertical, body.recipe.slug)) {
-      throw new BadRequestError(`unknown recipe ${body.recipe.vertical}/${body.recipe.slug}`);
-    }
+    if (body.recipe) assertRecipeOrigin(body.recipe, body.definition);
     const result = await saveWorkflowDraft(
       {
         tenant_id: principal.tenant_id,

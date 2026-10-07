@@ -160,6 +160,43 @@ describe("creating a workflow from a recipe records its origin", () => {
         recipe: { vertical: "solutions", slug: "made-up" },
       }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { details?: { reason?: string } }).details?.reason).toBe(
+      "recipe_unknown",
+    );
+  });
+
+  test("an origin whose definition was not built from that recipe is refused", async () => {
+    const entry = (await solutions()).find((e) => e.recipe_slug === "webhook-to-slack");
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows/drafts`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({
+        definition: {
+          ...entry?.workflow,
+          slug: "webhook-to-slack-forged",
+          steps: [{ id: "start", kind: "transform", expression: "return input;" }],
+        },
+        recipe: { vertical: "solutions", slug: "webhook-to-slack" },
+      }),
+    });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { details?: { reason?: string } }).details?.reason).toBe(
+      "recipe_mismatch",
+    );
+  });
+
+  test("an origin in a vertical that does not exist is refused", async () => {
+    const entry = (await solutions()).find((e) => e.recipe_slug === "webhook-to-slack");
+    const res = await fetch(`${ctx.baseUrl}/v1/workflows`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({
+        ...entry?.workflow,
+        slug: "webhook-to-slack-other-pack",
+        recipe: { vertical: "made-up", slug: "webhook-to-slack" },
+      }),
+    });
+    expect(res.status).toBe(422);
   });
 });

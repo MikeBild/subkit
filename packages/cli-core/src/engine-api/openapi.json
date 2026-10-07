@@ -33341,6 +33341,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -33987,6 +33997,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The recipe origin names no shipped recipe, or the definition was not built from it",
             "content": {
               "application/json": {
                 "schema": {

@@ -6,7 +6,6 @@ import {
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
-import { isKnownRecipe } from "../../connectors/index.ts";
 import {
   bindingFor,
   createSchedule,
@@ -29,6 +28,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { assertRecipeOrigin } from "./recipe-origin.ts";
 import { registerWorkflowAuthorityRoutes } from "./workflow-authorities.ts";
 import { registerWorkflowDiagnosisRoutes } from "./workflow-diagnosis.ts";
 import { registerWorkflowDraftRoutes } from "./workflow-drafts.ts";
@@ -116,6 +116,11 @@ const createRouteSpec = createRoute({
   responses: {
     201: { description: "Created", content: { "application/json": { schema: WorkflowSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
+    422: {
+      description:
+        "The recipe origin names no shipped recipe, or the definition was not built from it",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -658,9 +663,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { category, recipe, ...def } = c.req.valid("json");
-    if (recipe && !isKnownRecipe(recipe.vertical, recipe.slug)) {
-      throw new BadRequestError(`unknown recipe ${recipe.vertical}/${recipe.slug}`);
-    }
+    if (recipe) assertRecipeOrigin(recipe, def);
     const result = await svc.createWorkflow(
       {
         tenant_id: principal.tenant_id,
