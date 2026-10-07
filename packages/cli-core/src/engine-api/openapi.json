@@ -39746,6 +39746,16 @@
               }
             }
           },
+          "403": {
+            "description": "A fact writes knowledge and needs knowledge:write as well",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {

@@ -3,6 +3,7 @@ import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   approvalActivatesSkill,
   isKnowledgeFact,
+  mayApproveProposal,
   proposalAddition,
   proposalAuthor,
   proposalDomain,
@@ -36,6 +37,16 @@ describe("learning proposals", () => {
     expect(approvalActivatesSkill({ pattern_kind: "knowledge_learning" })).toBe(false);
     expect(approvalActivatesSkill({ pattern_kind: "session_learning" })).toBe(true);
     expect(approvalActivatesSkill({ pattern_kind: "repair_pattern" })).toBe(true);
+  });
+
+  test("a fact needs knowledge:write to approve, a practice needs skill:activate", () => {
+    const fact = { pattern_kind: "knowledge_learning" as const };
+    const practice = { pattern_kind: "session_learning" as const };
+    expect(mayApproveProposal(fact, ["skill:write", "skill:activate"])).toBe(false);
+    expect(mayApproveProposal(fact, ["skill:write", "knowledge:write"])).toBe(true);
+    expect(mayApproveProposal(practice, ["skill:write", "knowledge:write"])).toBe(false);
+    expect(mayApproveProposal(practice, ["skill:write", "skill:activate"])).toBe(true);
+    expect(mayApproveProposal(fact, ["knowledge:write"])).toBe(false);
   });
 
   test("the author is named from the directory, else by kind; a detected pattern has none", () => {

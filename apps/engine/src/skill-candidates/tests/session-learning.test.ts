@@ -94,7 +94,12 @@ describe.skipIf(skip)("session_learning capture loop", () => {
   test("deleting a promoted skill nulls the candidate reference instead of failing", async () => {
     const proposal = await propose("Löschbare Regel");
     const approved = await approveSkillCandidate(
-      { tenant_id: tenantId, candidate_id: proposal.candidate_id ?? "", actor: null },
+      {
+        tenant_id: tenantId,
+        candidate_id: proposal.candidate_id ?? "",
+        actor: null,
+        may_write_knowledge: false,
+      },
       db,
     );
     if (!approved) throw new Error("approve failed");
@@ -112,6 +117,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
         tenant_id: tenantId,
         candidate_id: proposal.candidate_id ?? "",
         actor: null,
+        may_write_knowledge: false,
         overrides: { status: "active" },
       },
       db,
@@ -134,6 +140,7 @@ describe.skipIf(skip)("session_learning capture loop", () => {
       tenant_id: tenantId,
       candidate_id: candidateId,
       actor: null,
+      may_write_knowledge: false,
       expected_review_digest: candidate.review_digest,
       overrides: { status: "active" as const },
     };

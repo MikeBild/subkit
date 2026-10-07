@@ -2,16 +2,20 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
 import { type LearningKind, proposeLearning } from "../../agent/sessions.ts";
 import type { Actor } from "../../audit/actor.ts";
+import { approveSkillCandidateTool } from "../../conversations/tools/engine-api/writes/candidates.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { saveLearningTool } from "../../conversations/tools/save-learning.ts";
 import type { Db } from "../../db/client.ts";
-import { auditLog, knowledgeSourceVersions, tenants } from "../../db/schema/index.ts";
+import { auditLog, knowledgeSourceVersions, tenants, users } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { EngineClient } from "../../engine-client/index.ts";
 import { getKnowledgeSourceBySlug, searchKnowledge } from "../../knowledge/service.ts";
+import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
   approveSkillCandidate,
   getSkillCandidate,
+  KnowledgeWriteNotAllowedError,
   listSkillCandidates,
   rejectSkillCandidate,
 } from "../service.ts";
@@ -45,7 +49,12 @@ function propose(
 
 async function approve(candidate_id: string | null) {
   const out = await approveSkillCandidate(
-    { tenant_id: tenantId, candidate_id: candidate_id ?? "", actor: approver },
+    {
+      tenant_id: tenantId,
+      candidate_id: candidate_id ?? "",
+      actor: approver,
+      may_write_knowledge: true,
+    },
     db,
   );
   if (!out) throw new Error("approve returned null");
@@ -225,5 +234,59 @@ describe.skipIf(skip)("a fact learning becomes knowledge", () => {
     const source = await getKnowledgeSourceBySlug(tenantId, "learnings", db);
     const [v1] = await versionsOf(source?.id ?? "");
     expect(v1?.note).toBe("proposed by an agent");
+  });
+
+  test("the service refuses a fact when the caller may not write knowledge", async () => {
+    const fact = await propose("Billing cutoff", "Invoices close on the 3rd working day.");
+    await expect(
+      approveSkillCandidate(
+        {
+          tenant_id: tenantId,
+          candidate_id: fact.candidate_id ?? "",
+          actor: approver,
+          may_write_knowledge: false,
+        },
+        db,
+      ),
+    ).rejects.toBeInstanceOf(KnowledgeWriteNotAllowedError);
+    expect((await getSkillCandidate(tenantId, fact.candidate_id ?? "", db))?.status).toBe(
+      "proposed",
+    );
+  });
+
+  test("the chat tool refuses a fact for a role without knowledge:write", async () => {
+    const role = await createRole(db, tenantId, "skill-only");
+    await grantPermissionToRole(db, tenantId, role.id, "skill:write");
+    const [curator] = await db
+      .insert(users)
+      .values({ tenant_id: tenantId, email: "skill-only@test.local", role_id: role.id })
+      .returning();
+    if (!curator) throw new Error("seed user failed");
+    const fact = await propose("Status owner", "The status page is owned by the platform team.");
+    const ctx = {
+      tenant_id: tenantId,
+      conversation_id: nextUuid(),
+      db,
+      actor_id: curator.id,
+      principal: {
+        provider: "api_key",
+        kind: "user",
+        id: curator.id,
+        tenant_id: tenantId,
+        roles: [],
+      },
+      engineClient: new EngineClient({ tenant_id: tenantId, actor_id: curator.id, db }),
+    } as unknown as ToolContext;
+    const result = await approveSkillCandidateTool.execute(ctx, {
+      candidate_id: fact.candidate_id ?? "",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "permission_denied",
+      permission: "knowledge:write",
+    });
+    expect((await getSkillCandidate(tenantId, fact.candidate_id ?? "", db))?.status).toBe(
+      "proposed",
+    );
   });
 });

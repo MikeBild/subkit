@@ -666,6 +666,14 @@ export async function runPatternAnalysis(
   };
 }
 
+export class KnowledgeWriteNotAllowedError extends Error {
+  readonly code = "knowledge_write_required";
+  constructor() {
+    super("approving a fact writes knowledge and needs knowledge:write");
+    this.name = "KnowledgeWriteNotAllowedError";
+  }
+}
+
 export interface ApprovedKnowledge {
   knowledge_source_id: string;
   slug: string;
@@ -711,6 +719,7 @@ export async function approveSkillCandidate(
     let retired_skill_ids: string[] = [];
     let knowledge: (ApprovedKnowledge & { finish(db: Executor): void }) | null = null;
     if (row.pattern_kind === "knowledge_learning") {
+      if (!p.may_write_knowledge) throw new KnowledgeWriteNotAllowedError();
       knowledge = await appendLearningToKnowledge(tx, {
         tenant_id: p.tenant_id,
         title: p.overrides?.title ?? row.title,
