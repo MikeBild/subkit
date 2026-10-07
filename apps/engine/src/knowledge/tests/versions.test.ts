@@ -1,18 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { Actor } from "../../audit/actor.ts";
+import { EMBEDDED_MIGRATIONS } from "../../db/migrations/embedded.ts";
 import { auditLog, knowledgeChunks, knowledgeSourceVersions } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { upsertKnowledgeBundle } from "../bundle-service.ts";
 import { getKnowledgeSource } from "../catalog.ts";
-import { KnowledgeVersionConflictError } from "../errors.ts";
-import { createKnowledgeSource, ingestKnowledgeSource } from "../service.ts";
-import {
-  getKnowledgeVersion,
-  KnowledgeVersionAlreadyCurrentError,
-  listKnowledgeHistory,
-  restoreKnowledgeVersion,
-} from "../versions.ts";
+import { KnowledgeVersionAlreadyCurrentError, KnowledgeVersionConflictError } from "../errors.ts";
+import { createKnowledgeSource, deleteKnowledgeSource, ingestKnowledgeSource } from "../service.ts";
+import { KNOWLEDGE_VERSIONS_KEPT, recordKnowledgeVersion } from "../version-record.ts";
+import { getKnowledgeVersion, listKnowledgeHistory, restoreKnowledgeVersion } from "../versions.ts";
 import { createKnowledgeTestCtx, type KnowledgeTestCtx } from "./setup.ts";
 
 const skip = process.env.REQUIRES_PG === "0";
@@ -237,5 +234,116 @@ describe.skipIf(skip)("knowledge versions", () => {
     const v3 = await getKnowledgeVersion(ctx.tenantId, id, 3, ctx.testDb.db);
     expect(v3?.documents).toEqual(files);
     expect(v3?.author).toEqual(robot);
+  });
+
+  test("a source keeps only its newest versions, pruned as each new one is recorded", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Busy page" },
+        upload: { buffer: Buffer.from("v1", "utf8"), filename: "busy.md", mime: "text/markdown" },
+        actor: editor,
+        source_type_override: "inline",
+      },
+      ctx.testDb.db,
+    );
+    for (let n = 2; n <= KNOWLEDGE_VERSIONS_KEPT + 2; n++) {
+      await ctx.testDb.db.transaction((tx) =>
+        recordKnowledgeVersion(tx, {
+          tenant_id: ctx.tenantId,
+          knowledge_source_id: source.id,
+          content: { kind: "document", filename: "busy.md", mime: "text/markdown", text: `v${n}` },
+          content_hash: `hash-${n}`,
+          actor: editor,
+          note: null,
+        }),
+      );
+    }
+    const rows = await versionRows(source.id);
+    expect(rows).toHaveLength(KNOWLEDGE_VERSIONS_KEPT);
+    expect(rows[0]?.version).toBe(3);
+    expect(rows.at(-1)?.version).toBe(KNOWLEDGE_VERSIONS_KEPT + 2);
+  });
+
+  test("deleting a source deletes its versions", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Secret notes" },
+        upload: {
+          buffer: Buffer.from("token=abc", "utf8"),
+          filename: "s.md",
+          mime: "text/markdown",
+        },
+        actor: editor,
+        source_type_override: "inline",
+      },
+      ctx.testDb.db,
+    );
+    expect(await versionRows(source.id)).toHaveLength(1);
+    expect(await deleteKnowledgeSource(ctx.tenantId, source.id, null, ctx.testDb.db)).toBe(true);
+    expect(await versionRows(source.id)).toHaveLength(0);
+  });
+
+  test("a backfilled v1 restores once; restoring it again is a conflict that writes nothing", async () => {
+    const source = await createKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        input: { name: "Before versions" },
+        upload: {
+          buffer: Buffer.from(FIRST, "utf8"),
+          filename: "before.md",
+          mime: "text/markdown",
+        },
+        actor: null,
+        source_type_override: "inline",
+      },
+      ctx.testDb.db,
+    );
+    await ctx.testDb.db
+      .delete(knowledgeSourceVersions)
+      .where(
+        and(
+          eq(knowledgeSourceVersions.tenant_id, ctx.tenantId),
+          eq(knowledgeSourceVersions.knowledge_source_id, source.id),
+        ),
+      );
+    const backfill = EMBEDDED_MIGRATIONS.find(
+      (m) => m.tag === "0084_knowledge_source_versions",
+    )?.statements.find((statement) => /^\s*INSERT\b/i.test(statement));
+    if (!backfill) throw new Error("backfill statement missing");
+    await ctx.testDb.db.execute(sql.raw(backfill));
+
+    await ingestKnowledgeSource(
+      {
+        tenant_id: ctx.tenantId,
+        knowledge_source_id: source.id,
+        upload: {
+          buffer: Buffer.from(SECOND, "utf8"),
+          filename: "before.md",
+          mime: "text/markdown",
+        },
+        actor: editor,
+      },
+      ctx.testDb.db,
+    );
+    const first = await restoreKnowledgeVersion(ctx.tenantId, source.id, 1, editor, ctx.testDb.db);
+    expect(first?.version).toBe(3);
+
+    const chunksBefore = await chunkTexts(source.id);
+    const auditsBefore = await ctx.testDb.db
+      .select({ c: count() })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, source.id)));
+    await expect(
+      restoreKnowledgeVersion(ctx.tenantId, source.id, 1, editor, ctx.testDb.db),
+    ).rejects.toBeInstanceOf(KnowledgeVersionAlreadyCurrentError);
+    expect((await versionRows(source.id)).map((r) => r.version)).toEqual([1, 2, 3]);
+    expect(await chunkTexts(source.id)).toEqual(chunksBefore);
+    const auditsAfter = await ctx.testDb.db
+      .select({ c: count() })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenantId), eq(auditLog.resource_id, source.id)));
+    expect(auditsAfter[0]?.c).toBe(auditsBefore[0]?.c);
   });
 });

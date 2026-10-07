@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { asc, eq, sql } from "drizzle-orm";
+import { canonicalBundleSerialization } from "../../knowledge/bundle.ts";
+import { knowledgeContentHash } from "../../knowledge/version-record.ts";
 import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import {
   knowledgeChunks,
@@ -83,6 +85,9 @@ beforeAll(async () => {
     { path: "/a.md", content: "# A" },
     { path: null, content: "# Untitled" },
   ]);
+  await seedSource("quoted", "bundle", [
+    { path: "/notes/ä.md", content: 'He said "hi"\n\tback\\slash \u0001 € ✓' },
+  ]);
   await seedSource("empty", "file_upload", []);
   await seedSource("gone", "inline", [{ path: null, content: "old" }], true);
 
@@ -94,13 +99,13 @@ afterAll(async () => {
 });
 
 describe("0084 backfill — every live source starts with v1 of its current content", () => {
-  test("a document becomes v1 with its chunks joined in order and the source hash", async () => {
+  test("a document becomes v1 with its chunks joined in order, hashed as stored", async () => {
     const [v1, ...rest] = await versionsOf("runbook");
     expect(rest).toHaveLength(0);
     expect(v1).toMatchObject({
       version: 1,
       tenant_id: tenantId,
-      content_hash: "hash-runbook",
+      content_hash: knowledgeContentHash("# Runbook\n\nPage by phone."),
       author_user_id: null,
       author_system_account_id: null,
       note: null,
@@ -125,6 +130,16 @@ describe("0084 backfill — every live source starts with v1 of its current cont
     });
   });
 
+  test("a bundle's hash is the one the engine computes for the same files", async () => {
+    for (const slug of ["wiki", "quoted"]) {
+      const [v1] = await versionsOf(slug);
+      if (v1?.content.kind !== "bundle") throw new Error(`${slug} is not a bundle version`);
+      expect(v1.content_hash).toBe(
+        knowledgeContentHash(canonicalBundleSerialization(v1.content.files)),
+      );
+    }
+  });
+
   test("a source without chunks gets an empty v1 and a deleted source gets none", async () => {
     const [v1] = await versionsOf("empty");
     expect(v1?.content).toMatchObject({ kind: "document", text: "" });
@@ -137,6 +152,6 @@ describe("0084 backfill — every live source starts with v1 of its current cont
       .select({ c: sql<number>`count(*)::int` })
       .from(knowledgeSourceVersions)
       .where(eq(knowledgeSourceVersions.tenant_id, tenantId));
-    expect(Number(rows[0]?.c)).toBe(3);
+    expect(Number(rows[0]?.c)).toBe(4);
   });
 });

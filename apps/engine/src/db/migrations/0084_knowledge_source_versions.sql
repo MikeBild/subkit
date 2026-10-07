@@ -17,43 +17,73 @@ CREATE UNIQUE INDEX "knowledge_source_versions_source_version_key" ON "knowledge
 CREATE INDEX "knowledge_source_versions_tenant_source_idx" ON "knowledge_source_versions" USING btree ("tenant_id","knowledge_source_id");--> statement-breakpoint
 INSERT INTO "knowledge_source_versions" ("tenant_id", "knowledge_source_id", "version", "content", "content_hash", "created_at")
 SELECT
-  ks."tenant_id",
-  ks."id",
+  b."tenant_id",
+  b."id",
   1,
   CASE
-    WHEN ks."source_type" = 'bundle' THEN jsonb_build_object(
+    WHEN b."source_type" = 'bundle' THEN jsonb_build_object(
       'kind', 'bundle',
-      'filename', ks."slug" || '.bundle.json',
-      'files', COALESCE(
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object('path', COALESCE(kc."path", '/' || ks."slug" || '.md'), 'content', kc."content")
-            ORDER BY kc."ordinal"
-          )
-          FROM "knowledge_chunks" kc
-          WHERE kc."tenant_id" = ks."tenant_id" AND kc."knowledge_source_id" = ks."id"
-        ),
-        '[]'::jsonb
-      )
+      'filename', b."slug" || '.bundle.json',
+      'files', b."files"
     )
     ELSE jsonb_build_object(
       'kind', 'document',
-      'filename', ks."source_uri",
-      'mime', ks."mime_type",
-      'text', COALESCE(
-        (
-          SELECT string_agg(kc."content", E'\n\n' ORDER BY kc."ordinal")
-          FROM "knowledge_chunks" kc
-          WHERE kc."tenant_id" = ks."tenant_id" AND kc."knowledge_source_id" = ks."id"
-        ),
-        ''
-      )
+      'filename', b."source_uri",
+      'mime', b."mime_type",
+      'text', b."text"
     )
   END,
-  ks."version",
-  COALESCE(ks."last_refreshed_at", ks."updated_at")
-FROM "knowledge_sources" ks
-WHERE ks."deleted_at" IS NULL
-  AND NOT EXISTS (
-    SELECT 1 FROM "knowledge_source_versions" v WHERE v."knowledge_source_id" = ks."id"
-  );
+  substr(
+    encode(
+      sha256(convert_to(CASE WHEN b."source_type" = 'bundle' THEN b."bundle_text" ELSE b."text" END, 'UTF8')),
+      'hex'
+    ),
+    1,
+    32
+  ),
+  b."created_at"
+FROM (
+  SELECT
+    ks."tenant_id",
+    ks."id",
+    ks."slug",
+    ks."source_type",
+    ks."source_uri",
+    ks."mime_type",
+    COALESCE(ks."last_refreshed_at", ks."updated_at") AS "created_at",
+    COALESCE(
+      (
+        SELECT string_agg(kc."content", E'\n\n' ORDER BY kc."ordinal")
+        FROM "knowledge_chunks" kc
+        WHERE kc."tenant_id" = ks."tenant_id" AND kc."knowledge_source_id" = ks."id"
+      ),
+      ''
+    ) AS "text",
+    COALESCE(
+      (
+        SELECT jsonb_agg(
+          jsonb_build_object('path', COALESCE(kc."path", '/' || ks."slug" || '.md'), 'content', kc."content")
+          ORDER BY kc."ordinal"
+        )
+        FROM "knowledge_chunks" kc
+        WHERE kc."tenant_id" = ks."tenant_id" AND kc."knowledge_source_id" = ks."id"
+      ),
+      '[]'::jsonb
+    ) AS "files",
+    '[' || COALESCE(
+      (
+        SELECT string_agg(
+          '{"path":' || to_json(COALESCE(kc."path", '/' || ks."slug" || '.md'))::text || ',"content":' || to_json(kc."content")::text || '}',
+          ',' ORDER BY kc."ordinal"
+        )
+        FROM "knowledge_chunks" kc
+        WHERE kc."tenant_id" = ks."tenant_id" AND kc."knowledge_source_id" = ks."id"
+      ),
+      ''
+    ) || ']' AS "bundle_text"
+  FROM "knowledge_sources" ks
+  WHERE ks."deleted_at" IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM "knowledge_source_versions" v WHERE v."knowledge_source_id" = ks."id"
+    )
+) b;

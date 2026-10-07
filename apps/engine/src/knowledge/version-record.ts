@@ -1,4 +1,5 @@
-import { and, desc, eq } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, desc, eq, lte } from "drizzle-orm";
 import { type Actor, actorIds } from "../audit/actor.ts";
 import type { Executor } from "../db/client.ts";
 import {
@@ -6,8 +7,11 @@ import {
   knowledgeSourceVersions,
 } from "../db/schema/knowledge_sources.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
+import { canonicalBundleSerialization, parseBundle } from "./bundle.ts";
 
 export type { KnowledgeVersionContent } from "../db/schema/knowledge_sources.ts";
+
+export const KNOWLEDGE_VERSIONS_KEPT = 50;
 
 export const RESTORED_NOTE_PREFIX = "restored from v";
 
@@ -17,6 +21,10 @@ export function restoredNote(version: number): string {
 
 export function learningNote(proposer: Actor | null): string {
   return proposer ? `proposed by ${proposer.kind}:${proposer.id}` : "proposed by an agent";
+}
+
+export function knowledgeContentHash(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 32);
 }
 
 export function knowledgeVersionContent(p: {
@@ -43,11 +51,57 @@ export function knowledgeVersionContent(p: {
   };
 }
 
+export interface KnowledgeVersionUpload {
+  text: string;
+  filename: string;
+  mime: string | null;
+  parsed_chunks: RawChunk[] | null;
+}
+
+export function knowledgeVersionUpload(content: KnowledgeVersionContent): KnowledgeVersionUpload {
+  if (content.kind === "document") {
+    return {
+      text: content.text,
+      filename: content.filename,
+      mime: content.mime,
+      parsed_chunks: null,
+    };
+  }
+  return {
+    text: canonicalBundleSerialization(content.files),
+    filename: content.filename,
+    mime: "application/json",
+    parsed_chunks: parseBundle(content.files).chunks,
+  };
+}
+
 export function knowledgeVersionDocuments(
   content: KnowledgeVersionContent,
 ): { path: string; content: string }[] {
   if (content.kind === "document") return [{ path: content.filename, content: content.text }];
   return content.files;
+}
+
+export async function latestKnowledgeVersion(
+  exec: Executor,
+  tenant_id: string,
+  knowledge_source_id: string,
+): Promise<{ version: number; content_hash: string } | null> {
+  const [latest] = await exec
+    .select({
+      version: knowledgeSourceVersions.version,
+      content_hash: knowledgeSourceVersions.content_hash,
+    })
+    .from(knowledgeSourceVersions)
+    .where(
+      and(
+        eq(knowledgeSourceVersions.tenant_id, tenant_id),
+        eq(knowledgeSourceVersions.knowledge_source_id, knowledge_source_id),
+      ),
+    )
+    .orderBy(desc(knowledgeSourceVersions.version))
+    .limit(1);
+  return latest ?? null;
 }
 
 export async function recordKnowledgeVersion(
@@ -61,20 +115,7 @@ export async function recordKnowledgeVersion(
     note: string | null;
   },
 ): Promise<number | null> {
-  const [latest] = await tx
-    .select({
-      version: knowledgeSourceVersions.version,
-      content_hash: knowledgeSourceVersions.content_hash,
-    })
-    .from(knowledgeSourceVersions)
-    .where(
-      and(
-        eq(knowledgeSourceVersions.tenant_id, p.tenant_id),
-        eq(knowledgeSourceVersions.knowledge_source_id, p.knowledge_source_id),
-      ),
-    )
-    .orderBy(desc(knowledgeSourceVersions.version))
-    .limit(1);
+  const latest = await latestKnowledgeVersion(tx, p.tenant_id, p.knowledge_source_id);
   if (latest && latest.content_hash === p.content_hash) return null;
   const version = (latest?.version ?? 0) + 1;
   const author = actorIds(p.actor);
@@ -88,5 +129,29 @@ export async function recordKnowledgeVersion(
     author_system_account_id: author.system_account_id,
     note: p.note,
   });
+  await tx
+    .delete(knowledgeSourceVersions)
+    .where(
+      and(
+        eq(knowledgeSourceVersions.tenant_id, p.tenant_id),
+        eq(knowledgeSourceVersions.knowledge_source_id, p.knowledge_source_id),
+        lte(knowledgeSourceVersions.version, version - KNOWLEDGE_VERSIONS_KEPT),
+      ),
+    );
   return version;
+}
+
+export async function forgetKnowledgeVersions(
+  tx: Executor,
+  tenant_id: string,
+  knowledge_source_id: string,
+): Promise<void> {
+  await tx
+    .delete(knowledgeSourceVersions)
+    .where(
+      and(
+        eq(knowledgeSourceVersions.tenant_id, tenant_id),
+        eq(knowledgeSourceVersions.knowledge_source_id, knowledge_source_id),
+      ),
+    );
 }

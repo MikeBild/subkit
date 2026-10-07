@@ -73,9 +73,11 @@ describe("knowledge versions model", () => {
     expect(versionWhy(null, directory, de)).toBeNull();
   });
 
-  test("only the first version has nothing before it", () => {
-    expect(previousVersion(1)).toBeNull();
-    expect(previousVersion(4)).toBe(3);
+  test("the change is shown against the version before, while the history still keeps it", () => {
+    const kept = [{ version: 4 }, { version: 3 }, { version: 2 }];
+    expect(previousVersion(kept, 4)).toBe(3);
+    expect(previousVersion(kept, 2)).toBeNull();
+    expect(previousVersion([{ version: 1 }], 1)).toBeNull();
   });
 
   test("the hint says what restoring creates, or that this is what agents read", () => {

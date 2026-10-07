@@ -143,6 +143,7 @@ export function KnowledgeVersions({
         sourceId={sourceId}
         sourceName={sourceName}
         version={open}
+        kept={items}
         latest={latest}
         canWrite={canWrite}
         directory={directory}
@@ -156,6 +157,7 @@ function KnowledgeVersionSheet({
   sourceId,
   sourceName,
   version,
+  kept,
   latest,
   canWrite,
   directory,
@@ -164,6 +166,7 @@ function KnowledgeVersionSheet({
   sourceId: string;
   sourceName: string;
   version: KnowledgeVersion | null;
+  kept: readonly KnowledgeVersion[];
   latest: number;
   canWrite: boolean;
   directory: ReadonlyMap<string, string>;
@@ -172,7 +175,7 @@ function KnowledgeVersionSheet({
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
   const number = version?.version ?? 0;
-  const prior = previousVersion(number);
+  const prior = previousVersion(kept, number);
   const detail = useQuery({
     queryKey: ["knowledge-source", sourceId, "history", number],
     queryFn: () => apiRequest<KnowledgeVersionDetail>(`${sourcePath(sourceId)}/history/${number}`),

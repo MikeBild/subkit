@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { and, asc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { humanMetadataWrite, metadataChange } from "../api/catalog-metadata.ts";
@@ -26,7 +25,7 @@ import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
 } from "./budgets.ts";
-import { KnowledgeVersionConflictError } from "./errors.ts";
+import { KnowledgeVersionAlreadyCurrentError, KnowledgeVersionConflictError } from "./errors.ts";
 import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { dedupeTags, mergeStructuralTags } from "./tags.ts";
@@ -41,8 +40,11 @@ import type {
   UpdateKnowledgeSourceParams,
 } from "./types.ts";
 import {
+  forgetKnowledgeVersions,
   type KnowledgeVersionContent,
+  knowledgeContentHash,
   knowledgeVersionContent,
+  latestKnowledgeVersion,
   recordKnowledgeVersion,
   restoredNote,
 } from "./version-record.ts";
@@ -107,10 +109,6 @@ function assertSourceSize(content: string): void {
   }
 }
 
-function contentHash(content: string): string {
-  return createHash("sha256").update(content).digest("hex").slice(0, 32);
-}
-
 export interface PreparedKnowledgeCreate {
   slug: string;
   hash: string;
@@ -140,7 +138,7 @@ export async function prepareKnowledgeCreate(
   const source_type = p.source_type_override ?? "file_upload";
   return {
     slug: p.input.slug ?? toSlug(p.input.name),
-    hash: contentHash(content),
+    hash: knowledgeContentHash(content),
     source_type,
     accepted,
     skipped,
@@ -520,6 +518,7 @@ export async function deleteKnowledgeSource(
       .update(knowledgeSources)
       .set({ deleted_at: new Date(), updated_at: new Date() })
       .where(eq(knowledgeSources.id, id));
+    await forgetKnowledgeVersions(tx, tenant_id, id);
 
     await auditAwait(
       {
@@ -597,7 +596,7 @@ export async function prepareKnowledgeIngest(
   const keepsFile = sourceRow !== undefined && sourceRow.source_type !== "url";
   return {
     format,
-    hash: contentHash(content),
+    hash: knowledgeContentHash(content),
     accepted,
     skipped,
     total_bytes: accepted.reduce((s, c) => s + c.byte_size, 0),
@@ -633,6 +632,12 @@ export async function applyKnowledgeIngest(
   if (!lockedSource) return null;
   if (p.expected_version !== undefined && lockedSource.version !== p.expected_version) {
     throw new KnowledgeVersionConflictError(p.expected_version, lockedSource.version);
+  }
+  if (p.restored_from !== undefined) {
+    const latest = await latestKnowledgeVersion(tx, p.tenant_id, p.knowledge_source_id);
+    if (latest?.content_hash === prepared.hash) {
+      throw new KnowledgeVersionAlreadyCurrentError(p.restored_from);
+    }
   }
   await assertTenantKnowledgeBudget(tx, p.tenant_id, prepared.total_bytes, p.knowledge_source_id);
 

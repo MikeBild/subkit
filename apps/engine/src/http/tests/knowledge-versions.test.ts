@@ -88,6 +88,14 @@ describe("knowledge source versions over HTTP", () => {
       [1, false],
     ]);
     expect(body.items[0]?.author?.kind).toBe("user");
+    expect(Object.keys(body.items[0] ?? {}).sort()).toEqual([
+      "author",
+      "content_hash",
+      "created_at",
+      "current",
+      "note",
+      "version",
+    ]);
   });
 
   test("one version carries its documents", async () => {
