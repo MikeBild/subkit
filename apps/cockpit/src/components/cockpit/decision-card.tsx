@@ -747,7 +747,9 @@ export function DecisionCard({
             data-testid={`${testId}-note`}
             aria-label={t("decisions.note")}
           />
-          <p className="mt-1 text-xs text-muted-foreground">{t("decisions.noteScope")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t(item.kind === "skill" ? "decisions.noteScopeFinal" : "decisions.noteScope")}
+          </p>
         </div>
       )}
 

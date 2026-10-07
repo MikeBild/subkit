@@ -1345,7 +1345,8 @@ const EN = {
   "skills.proposal.appliesTo": "Applies to",
   "skills.proposal.reason": "Reason",
   "skills.reject": "Discard",
-  "skills.rejectConsequence": "SubKit will not propose this skill again.",
+  "skills.proposalObject": "proposal",
+  "skills.rejectConsequence": "“{name}” is not adopted, and SubKit will not propose it again.",
   "skills.rejected": "Proposal discarded: {name}",
   "skills.rejectReason": "Discarded in the cockpit",
   "skills.saved": "Skill saved",
@@ -2204,6 +2205,8 @@ const EN = {
   "decisions.note": "Note",
   "decisions.notePlaceholder": "Why is this rejected?",
   "decisions.noteScope": "The note is recorded with the rejection.",
+  "decisions.noteScopeFinal":
+    "The note is recorded with the rejection. SubKit will not propose this skill again.",
   "decisions.approved": "Approved.",
   "decisions.rejected": "Rejected.",
   "decisions.decisionFailed": "The decision could not be recorded.",
@@ -5347,7 +5350,9 @@ const DE: Record<TranslationKey, string> = {
   "skills.proposal.appliesTo": "Gilt für",
   "skills.proposal.reason": "Grund",
   "skills.reject": "Verwerfen",
-  "skills.rejectConsequence": "SubKit schlägt diesen Skill danach nicht wieder vor.",
+  "skills.proposalObject": "Vorschlag",
+  "skills.rejectConsequence":
+    "„{name}“ wird nicht übernommen, und SubKit schlägt ihn nicht noch einmal vor.",
   "skills.rejected": "Vorschlag verworfen: {name}",
   "skills.rejectReason": "Im Cockpit verworfen",
   "skills.saved": "Skill gespeichert",
@@ -6224,6 +6229,8 @@ const DE: Record<TranslationKey, string> = {
   "decisions.note": "Notiz",
   "decisions.notePlaceholder": "Warum wird das abgelehnt?",
   "decisions.noteScope": "Die Notiz wird mit der Ablehnung festgehalten.",
+  "decisions.noteScopeFinal":
+    "Die Notiz wird mit der Ablehnung festgehalten. SubKit schlägt diesen Skill danach nicht noch einmal vor.",
   "decisions.approved": "Freigegeben.",
   "decisions.rejected": "Abgelehnt.",
   "decisions.decisionFailed": "Die Entscheidung konnte nicht festgehalten werden.",
