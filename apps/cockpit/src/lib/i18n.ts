@@ -3840,6 +3840,12 @@ const EN = {
   "workflowVersions.restoreHint":
     "Restoring creates {next} with this state. If its boundary grows, {next} waits for approval; {newest} stays in the history.",
   "workflowVersions.newestHint": "This is the newest version.",
+  "workflowVersions.restoreHintDraft":
+    "Restoring creates {next} with this state. If its boundary grows, {next} waits for approval. The open draft {draft} stays open; if you approve it, it replaces {next}.",
+  "workflowVersions.restoreHintOpenDraft":
+    "Restoring creates {next} with this state. If its boundary grows, {next} waits for approval. The open draft stays open; if you approve it, it replaces {next}.",
+  "workflowVersions.draftHint": "This draft is waiting for approval.",
+  "workflowVersions.archivedHint": "This workflow is disabled. Enable it to restore a version.",
   "workflowVersions.currentHint": "This version is active; {newest} is newer and not active yet.",
   "workflowVersions.invalidHint":
     "This version no longer fits the current definition format and cannot be restored.",
@@ -8018,6 +8024,13 @@ const DE: Record<TranslationKey, string> = {
   "workflowVersions.restoreHint":
     "Wiederherstellen legt {next} mit diesem Stand an. Wächst dabei die Grenze, wartet {next} auf Freigabe; {newest} bleibt im Verlauf.",
   "workflowVersions.newestHint": "Das ist die neueste Version.",
+  "workflowVersions.restoreHintDraft":
+    "Wiederherstellen legt {next} mit diesem Stand an. Wächst dabei die Grenze, wartet {next} auf Freigabe. Der offene Entwurf {draft} bleibt offen; gibst du ihn frei, ersetzt er {next}.",
+  "workflowVersions.restoreHintOpenDraft":
+    "Wiederherstellen legt {next} mit diesem Stand an. Wächst dabei die Grenze, wartet {next} auf Freigabe. Der offene Entwurf bleibt offen; gibst du ihn frei, ersetzt er {next}.",
+  "workflowVersions.draftHint": "Dieser Entwurf wartet auf Freigabe.",
+  "workflowVersions.archivedHint":
+    "Dieser Workflow ist deaktiviert. Aktiviere ihn, um eine Version wiederherzustellen.",
   "workflowVersions.currentHint":
     "Diese Version ist aktiv; {newest} ist neuer und noch nicht aktiv.",
   "workflowVersions.invalidHint":

@@ -21,6 +21,7 @@ import {
   VERSION_BADGE_STATES,
   VERSION_STATE_KEYS,
   type WorkflowVersion,
+  type WorkflowVersionAccess,
   type WorkflowVersionIds,
   workflowVersionSheetCopy,
   workflowVersionState,
@@ -47,13 +48,13 @@ export function WorkflowVersions({
   workflowId,
   workflowName,
   ids,
-  canRestore,
+  access,
   onRestored,
 }: {
   workflowId: string;
   workflowName: string;
   ids: WorkflowVersionIds;
-  canRestore: boolean;
+  access: WorkflowVersionAccess;
   onRestored: () => void;
 }) {
   const { t, dateTime } = useI18n();
@@ -63,7 +64,6 @@ export function WorkflowVersions({
     {},
     { queryKey: ["workflow", workflowId, "versions"], limit: VERSION_PAGE },
   );
-  const newest = list.first?.items[0];
   const columns = useMemo<CockpitColumn<WorkflowVersion>[]>(() => {
     const column = tableColumns<WorkflowVersion>({ t, dateTime });
     return [
@@ -120,11 +120,11 @@ export function WorkflowVersions({
       {open ? (
         <WorkflowVersionSheet
           version={open}
-          newest={newest}
+          history={list.items}
           ids={ids}
           workflowId={workflowId}
           workflowName={workflowName}
-          canRestore={canRestore}
+          access={access}
           onClose={() => setOpen(null)}
           onRestored={onRestored}
         />
@@ -135,26 +135,26 @@ export function WorkflowVersions({
 
 function WorkflowVersionSheet({
   version,
-  newest,
+  history,
   ids,
   workflowId,
   workflowName,
-  canRestore,
+  access,
   onClose,
   onRestored,
 }: {
   version: WorkflowVersion;
-  newest: WorkflowVersion | undefined;
+  history: readonly WorkflowVersion[];
   ids: WorkflowVersionIds;
   workflowId: string;
   workflowName: string;
-  canRestore: boolean;
+  access: WorkflowVersionAccess;
   onClose: () => void;
   onRestored: () => void;
 }) {
   const { t, dateTime } = useI18n();
   const client = useQueryClient();
-  const view = workflowVersionView(version, newest, ids);
+  const view = workflowVersionView(version, history, ids);
   const label = `v${version.version}`;
   const next = view.nextVersion === null ? MISSING : `v${view.nextVersion}`;
   const restore = useMutation({
@@ -185,7 +185,7 @@ function WorkflowVersionSheet({
           : t("common.actionFailed"),
       ),
   });
-  const copy = workflowVersionSheetCopy(view, canRestore);
+  const copy = workflowVersionSheetCopy(view, access);
   const facts: Fact[] = [
     { label: t("workflowVersions.fact.version"), value: label },
     { label: t("workflowVersions.fact.saved"), value: dateTime(version.created_at) },
