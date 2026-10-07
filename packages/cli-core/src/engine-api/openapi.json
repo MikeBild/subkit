@@ -45057,9 +45057,9 @@
           {
             "schema": {
               "type": "string",
-              "minLength": 20
+              "default": ""
             },
-            "required": true,
+            "required": false,
             "name": "grant",
             "in": "query"
           }
