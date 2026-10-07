@@ -113,8 +113,11 @@ export function registerRecipeRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { vertical } = c.req.valid("param");
     const allTemplates = await listResolvedConnectorTemplates(db, principal.tenant_id);
-    const templateNames = new Map(
-      allTemplates.map(({ template }) => [template.slug, template.name]),
+    const templates = new Map(
+      allTemplates.map(({ template }) => [
+        template.slug,
+        { name: template.name, base_url: template.base_url },
+      ]),
     );
     const picked: { template_slug: string | null; recipe: ConnectorRecipe }[] = [];
     let outcome: string;
@@ -140,7 +143,7 @@ export function registerRecipeRoutes(app: OpenAPIHono<AppEnv>): void {
     const available = await listTemplateConnectors(principal.tenant_id, [...needed], db);
     const entries: z.infer<typeof RecipePackEntrySchema>[] = picked.map(
       ({ template_slug, recipe }) => {
-        const bound = bindRecipe(recipe, available, templateNames);
+        const bound = bindRecipe(recipe, available, templates);
         return {
           template_slug,
           recipe_slug: recipe.slug,
