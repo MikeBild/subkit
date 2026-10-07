@@ -205,7 +205,7 @@ function FamilyForbiddenState({
     <div
       data-family-failure-kind="forbidden"
       data-family-state="forbidden"
-      data-family-slot="failure-state"
+      data-family-slot="data-state"
       className={classes(
         "flex min-h-11 min-w-0 items-start gap-3 rounded-lg border bg-card px-4 py-2.5 text-sm leading-5 text-foreground",
         className,

@@ -54,6 +54,7 @@ describe("ForbiddenState", () => {
 
   test("is a titled forbidden state inside the page, never a second page title or an action", () => {
     const html = render(<ForbiddenState />);
+    expect(html).toContain('data-family-slot="data-state"');
     expect(html).toContain('data-family-state="forbidden"');
     expect(html).toContain('data-family-failure-kind="forbidden"');
     expect(html).toContain('data-testid="resource-permission-alert"');
