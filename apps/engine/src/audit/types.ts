@@ -210,6 +210,7 @@ export const AuditAction = {
   KNOWLEDGE_SOURCE_INGESTED: "knowledge_source.ingested",
   KNOWLEDGE_SOURCE_REFRESHED: "knowledge_source.refreshed",
   KNOWLEDGE_SOURCE_ANALYZED: "knowledge_source.analyzed",
+  KNOWLEDGE_SOURCE_RESTORED: "knowledge_source.restored",
   KNOWLEDGE_SOURCE_CANDIDATES_SYNTHESIZED: "knowledge_source.candidates_synthesized",
 
   DISCOVERY_RUN_CREATED: "discovery.run_created",

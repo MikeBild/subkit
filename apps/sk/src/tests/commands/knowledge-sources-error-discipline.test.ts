@@ -86,6 +86,22 @@ describe("knowledge-sources CLI: error-path discipline", () => {
   test("delete: handler throws on transport error", async () => {
     await expectThrowsNotExits(["delete", "00000000-0000-0000-0000-000000000000"]);
   });
+
+  test("history: handler throws on transport error", async () => {
+    await expectThrowsNotExits(["history", "00000000-0000-0000-0000-000000000000"]);
+  });
+
+  test("restore: handler throws on transport error", async () => {
+    await expectThrowsNotExits(["restore", "00000000-0000-0000-0000-000000000000", "--to", "1"]);
+  });
+
+  test("restore: a version that is not a positive number exits 2 without calling the engine", async () => {
+    await runCommand(knowledgeSourcesCommand, {
+      rawArgs: ["restore", "00000000-0000-0000-0000-000000000000", "--to", "latest"],
+    });
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
+  });
 });
 
 describe("knowledge-sources CLI: exitCodeFor wiring", () => {

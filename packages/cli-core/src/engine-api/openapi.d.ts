@@ -10034,6 +10034,168 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/knowledge-sources/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List knowledge source versions, newest first
+         * @description One page of the source's content versions, newest first, each with its author and note. `current` marks the version agents and workflows read now. `total` is the size of the whole history: page with `limit` and `offset`.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Page size. Defaults to 50, at most 200. */
+                    limit?: number;
+                    offset?: number | null;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceVersionListResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/history/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one stored knowledge source version with its documents */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KnowledgeSourceVersionDetail"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/restore/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a previous knowledge source version as a new version
+         * @description Reads the stored content of `version` in again. The result is always a new version whose note names the restored one; the history keeps every earlier version.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    version: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RestoreKnowledgeSourceVersionResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The version is already current, or the source changed meanwhile */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge-sources": {
         parameters: {
             query?: never;
@@ -21588,9 +21750,32 @@ export interface components {
         RenameCategoryBody: {
             to: components["schemas"]["CatalogCategory"];
         };
-        KnowledgeSourceListResponse: {
-            items: components["schemas"]["KnowledgeSource"][];
+        KnowledgeSourceVersionListResponse: {
+            items: components["schemas"]["KnowledgeSourceVersion"][];
             total: number;
+        };
+        KnowledgeSourceVersion: {
+            version: number;
+            content_hash: string;
+            author: components["schemas"]["KnowledgeSourceVersionAuthor"];
+            note: string | null;
+            created_at: string;
+            current: boolean;
+        };
+        KnowledgeSourceVersionAuthor: {
+            /** @enum {string} */
+            kind: "user" | "system_account";
+            id: string;
+        } | null;
+        KnowledgeSourceVersionDetail: components["schemas"]["KnowledgeSourceVersion"] & {
+            documents: {
+                path: string;
+                content: string;
+            }[];
+        };
+        RestoreKnowledgeSourceVersionResponse: {
+            knowledge_source: components["schemas"]["KnowledgeSource"];
+            version: number;
         };
         KnowledgeSource: {
             id: string;
@@ -21620,6 +21805,10 @@ export interface components {
             last_refreshed_at: string | null;
             created_at: string;
             updated_at: string;
+        };
+        KnowledgeSourceListResponse: {
+            items: components["schemas"]["KnowledgeSource"][];
+            total: number;
         };
         KnowledgeSearchResult: {
             hits: {

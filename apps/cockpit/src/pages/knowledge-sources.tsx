@@ -13,6 +13,7 @@ import {
   CatalogNameCell,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
+import { KnowledgeVersions } from "@/components/cockpit/knowledge-versions";
 import {
   ActionMenu,
   Button,
@@ -740,9 +741,12 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           onRetry={() => void chunks.refetch()}
           onOpen={setOpenSection}
         />
-        <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
-          <FactList items={technical} />
-        </CollapsibleSection>
+        <div className="flex flex-col gap-2">
+          <KnowledgeVersions sourceId={source.id} sourceName={source.name} canWrite={canWrite} />
+          <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">
+            <FactList items={technical} />
+          </CollapsibleSection>
+        </div>
       </div>
       <RecordSheet
         open={openSection !== null}

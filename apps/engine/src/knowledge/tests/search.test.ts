@@ -29,7 +29,7 @@ beforeAll(async () => {
         filename: "api-guidelines.md",
         mime: "text/markdown",
       },
-      actor_id: null,
+      actor: null,
     },
     ctx.testDb.db,
   );
@@ -50,7 +50,7 @@ beforeAll(async () => {
         filename: "payment-runbook.md",
         mime: "text/markdown",
       },
-      actor_id: null,
+      actor: null,
     },
     ctx.testDb.db,
   );
@@ -233,7 +233,7 @@ describe.skipIf(skip)("knowledge/search", () => {
           buffer: Buffer.from("Payment processing with idempotency keys and retry logic."),
           filename: "payments.txt",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -282,7 +282,7 @@ describe.skipIf(skip)("knowledge/search", () => {
           buffer: Buffer.from("Completely different content about zeppelins and airships."),
           filename: "other.txt",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

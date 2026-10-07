@@ -32,7 +32,7 @@ beforeAll(async () => {
   const wiki = await upsertKnowledgeBundle(
     {
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
+      actor: { kind: "user", id: ctx.user_id },
       input: { name: "Read Wiki", slug: "read-wiki" },
       files: [
         {
@@ -53,7 +53,7 @@ beforeAll(async () => {
   const bigWiki = await upsertKnowledgeBundle(
     {
       tenant_id: ctx.tenant_id,
-      actor_id: ctx.user_id,
+      actor: { kind: "user", id: ctx.user_id },
       input: { name: "Big Read Wiki", slug: "big-read-wiki" },
       files: [{ path: "big.md", content: big }],
     },
@@ -134,7 +134,7 @@ describe("read_knowledge tool", () => {
     const wiki = await upsertKnowledgeBundle(
       {
         tenant_id: ctx.tenant_id,
-        actor_id: ctx.user_id,
+        actor: { kind: "user", id: ctx.user_id },
         input: { name: "Split File Wiki", slug: "split-file-wiki" },
         files: [
           { path: "big/one.md", content: big },
@@ -179,7 +179,7 @@ describe("read_knowledge tool", () => {
     const wiki = await upsertKnowledgeBundle(
       {
         tenant_id: ctx.tenant_id,
-        actor_id: ctx.user_id,
+        actor: { kind: "user", id: ctx.user_id },
         input: { name: "Tiny Files Wiki", slug: "tiny-files-wiki" },
         files,
       },

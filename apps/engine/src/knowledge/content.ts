@@ -86,7 +86,7 @@ export async function updateKnowledgeSourceContent(
         tenant_id: p.tenant_id,
         knowledge_source_id: p.knowledge_source_id,
         expected_version: p.expected_version,
-        actor_id: p.actor_id,
+        actor: p.actor,
         upload: {
           buffer: Buffer.from(canonicalBundleSerialization(files), "utf8"),
           filename: `${source.slug}.bundle.json`,
@@ -102,7 +102,7 @@ export async function updateKnowledgeSourceContent(
         tenant_id: p.tenant_id,
         knowledge_source_id: p.knowledge_source_id,
         expected_version: p.expected_version,
-        actor_id: p.actor_id,
+        actor: p.actor,
         upload: {
           buffer: Buffer.from(p.content, "utf8"),
           filename: source.source_uri,

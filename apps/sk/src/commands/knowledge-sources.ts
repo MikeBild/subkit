@@ -342,6 +342,83 @@ const deleteCommand = defineCommand({
   },
 });
 
+function authorLabel(author: unknown): string {
+  if (!author || typeof author !== "object") return "system";
+  const { kind, id } = author as { kind?: unknown; id?: unknown };
+  return typeof kind === "string" && typeof id === "string" ? `${kind}:${id}` : "system";
+}
+
+const historyCommand = defineCommand({
+  meta: {
+    name: "history",
+    description: "Show a knowledge source's content versions (newest first)",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Knowledge source id" },
+    limit: { type: "string", description: "Max rows" },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const { items } = await client.knowledgeHistory(
+        args.id,
+        args.limit ? { limit: Number(args.limit) } : {},
+      );
+      if (args.json) {
+        printJson(items);
+        return;
+      }
+      emitList(
+        false,
+        ["version", "current", "author", "note", "created_at"],
+        items.map((it) => ({ ...it, author: authorLabel(it.author), note: it.note ?? "" })),
+      );
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
+const restoreCommand = defineCommand({
+  meta: {
+    name: "restore",
+    description: "Restore an earlier content version; the result is a new version",
+  },
+  args: {
+    id: { type: "positional", required: true, description: "Knowledge source id" },
+    to: {
+      type: "string",
+      required: true,
+      description: "Version number from `sk knowledge-sources history`",
+    },
+    json: { type: "boolean", description: "JSON output", default: false },
+  },
+  async run({ args }) {
+    const version = Number(args.to);
+    if (!Number.isInteger(version) || version <= 0) {
+      process.stderr.write(
+        "sk knowledge-sources restore: --to must be a positive version number\n",
+      );
+      process.exitCode = 2;
+      return;
+    }
+    const { engine_url, api_key, active_tenant_id } = resolveProfile();
+    const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+    try {
+      const restored = await client.restoreKnowledgeVersion(args.id, version);
+      if (args.json) {
+        printJson(restored);
+        return;
+      }
+      process.stdout.write(`${pc.green("restored")} v${version} as v${restored.version}\n`);
+    } catch (err) {
+      reportCommandError(err, { json: Boolean(args.json) });
+    }
+  },
+});
+
 export const knowledgeSourcesCommand = defineCommand({
   meta: { name: "knowledge-sources", description: "Manage knowledge sources" },
   subCommands: {
@@ -352,6 +429,8 @@ export const knowledgeSourcesCommand = defineCommand({
     import: importCommand,
     patch: patchCommand,
     analyze: analyzeCommand,
+    history: historyCommand,
+    restore: restoreCommand,
     delete: deleteCommand,
   },
 });

@@ -27,7 +27,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Empty File" },
         upload: { buffer: Buffer.from(""), filename: "empty.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -41,7 +41,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Whitespace" },
         upload: { buffer: Buffer.from("   \n\n   \n   "), filename: "whitespace.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -63,7 +63,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Unique Doc", slug: "unique-slug" },
         upload: { buffer: Buffer.from("content"), filename: "unique.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -74,7 +74,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
           tenant_id: ctx.tenantId,
           input: { name: "Duplicate Doc", slug: "unique-slug" },
           upload: { buffer: Buffer.from("other"), filename: "dup.txt" },
-          actor_id: null,
+          actor: null,
         },
         ctx.testDb.db,
       ),
@@ -87,7 +87,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Scope Change Test" },
         upload: { buffer: Buffer.from("data"), filename: "scope.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -111,7 +111,7 @@ describe.skipIf(skip)("knowledge/edge-cases", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Delete Twice" },
         upload: { buffer: Buffer.from("data"), filename: "del.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

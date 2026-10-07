@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import type { Actor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { getAuditRowById, queryAuditLog } from "../audit/query.ts";
 import type { AuditEntry } from "../audit/types.ts";
@@ -77,6 +78,11 @@ export class EngineClient {
     this.actor_id = ctx.actor_id;
     this.actor_type = ctx.actor_type ?? (ctx.actor_id ? "user" : "system");
     this.db = ctx.db ?? getDb();
+  }
+
+  private get actor(): Actor | null {
+    if (!this.actor_id || this.actor_type === "system") return null;
+    return { kind: this.actor_type, id: this.actor_id };
   }
 
   get context(): EngineClientCtx {
@@ -256,7 +262,7 @@ export class EngineClient {
           tenant_id: this.tenant_id,
           input: params.input,
           upload: params.upload,
-          actor_id: this.actor_id,
+          actor: this.actor,
           ...(params.source_type_override
             ? { source_type_override: params.source_type_override }
             : {}),

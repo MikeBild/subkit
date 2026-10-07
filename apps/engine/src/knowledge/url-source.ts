@@ -1,3 +1,4 @@
+import type { Actor } from "../audit/actor.ts";
 import { htmlToMarkdown, looksLikeHtml } from "../connectors/discovery/html-to-markdown.ts";
 import { getDriverFetch } from "../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowedResolved, EgressBlockedError } from "../connectors/egress-guard.ts";
@@ -87,7 +88,7 @@ export function nameFromUrl(url: string): string {
 export async function createKnowledgeSourceFromUrl(
   p: {
     tenant_id: string;
-    actor_id: string | null;
+    actor: Actor | null;
     url: string;
     input: Omit<CreateKnowledgeSourceInput, "name"> & { name?: string | undefined };
   },
@@ -97,7 +98,7 @@ export async function createKnowledgeSourceFromUrl(
   return createKnowledgeSource(
     {
       tenant_id: p.tenant_id,
-      actor_id: p.actor_id,
+      actor: p.actor,
       input: { ...p.input, name: p.input.name?.trim() || nameFromUrl(p.url) },
       upload: {
         buffer: Buffer.from(document.content, "utf8"),
@@ -114,7 +115,7 @@ export async function createKnowledgeSourceFromUrl(
 export async function refreshKnowledgeSource(
   p: {
     tenant_id: string;
-    actor_id: string | null;
+    actor: Actor | null;
     id: string;
   },
   exec?: Executor,
@@ -127,7 +128,7 @@ export async function refreshKnowledgeSource(
   await ingestKnowledgeSource(
     {
       tenant_id: p.tenant_id,
-      actor_id: p.actor_id,
+      actor: p.actor,
       knowledge_source_id: p.id,
       upload: {
         buffer: Buffer.from(document.content, "utf8"),

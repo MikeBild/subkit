@@ -53,7 +53,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "security.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -107,7 +107,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "harmony.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -144,7 +144,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "chords.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -179,7 +179,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "relocation.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -211,7 +211,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "guide.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -254,7 +254,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "compliance.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -302,7 +302,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "stable.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -341,7 +341,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           buffer: Buffer.from("Content that should not cross tenants."),
           filename: "cross.txt",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -362,7 +362,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           buffer: Buffer.from(""),
           filename: "empty.txt",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -402,7 +402,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "runbook.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -439,7 +439,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "budget.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -476,7 +476,7 @@ describe.skipIf(skip)("knowledge/analyzeKnowledgeSource", () => {
           filename: "api.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

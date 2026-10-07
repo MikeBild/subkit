@@ -25,7 +25,7 @@ beforeAll(async () => {
         filename: "payments.md",
         mime: "text/markdown",
       },
-      actor_id: null,
+      actor: null,
     },
     ctx.testDb.db,
   );

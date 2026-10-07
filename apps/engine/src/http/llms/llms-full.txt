@@ -106,7 +106,7 @@ every API call.
 | `sk install` | `connector:write` | Guided setup for enterprise integrations | `github`, `google-workspace`, `hubspot`, `jira`, `salesforce`, `slack`, `teams` |
 | `sk invites` | `identity:read` | Manage user-provisioning invites | `list`, `revoke` |
 | `sk join` | — | Redeem an invite to provision your personal API key (no login required) | — |
-| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `import`, `list`, `patch`, `search` |
+| `sk knowledge-sources` | `knowledge:read` | Manage knowledge sources | `analyze`, `create`, `delete`, `get`, `history`, `import`, `list`, `patch`, `restore`, `search` |
 | `sk learnings` | `skill:read` | Review learnings captured from coding-agent sessions | `list`, `review` |
 | `sk login` | — | Authenticate against a subkit engine | — |
 | `sk logout` | — | Drop the active profile | — |
@@ -981,6 +981,14 @@ Get a knowledge source by id
 
 - `<id>` (positional, required) — Knowledge source id
 
+#### `sk knowledge-sources history`
+
+Show a knowledge source's content versions (newest first)
+
+- `<id>` (positional, required) — Knowledge source id
+- `--limit` (string) — Max rows
+- `--json` (default: false) — JSON output
+
 #### `sk knowledge-sources import`
 
 Import a directory of markdown files as one knowledge source (upsert by slug; OKF-compatible frontmatter is read tolerantly)
@@ -1012,6 +1020,14 @@ Update a knowledge source
 - `--category` (string) — Catalog block, lowercase words joined by dashes (see `sk categories list`). "" hands it back to automatic categorisation.
 - `--tags` (string) — Comma-separated tags (replaces existing)
 - `--status` (string) — Status: active | inactive
+
+#### `sk knowledge-sources restore`
+
+Restore an earlier content version; the result is a new version
+
+- `<id>` (positional, required) — Knowledge source id
+- `--to` (string, required) — Version number from `sk knowledge-sources history`
+- `--json` (default: false) — JSON output
 
 #### `sk knowledge-sources search`
 

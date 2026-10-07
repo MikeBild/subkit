@@ -8,4 +8,6 @@ export * from "./service.ts";
 export * from "./tags.ts";
 export * from "./types.ts";
 export * from "./url-source.ts";
+export * from "./version-record.ts";
+export * from "./versions.ts";
 export * from "./view.ts";

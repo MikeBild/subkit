@@ -49,7 +49,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           filename: "compliance.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -145,7 +145,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           tenant_id: ctx.tenantId,
           input: { name: "Bad Scope", scope: "workflow" },
           upload: { buffer: Buffer.from("hello"), filename: "test.txt" },
-          actor_id: null,
+          actor: null,
         },
         ctx.testDb.db,
       ),
@@ -162,7 +162,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           workflow_id: ctx.workflowId,
         },
         upload: { buffer: Buffer.from("Step 1: Do the thing"), filename: "runbook.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -186,7 +186,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           filename: "compliance-v2.md",
           mime: "text/markdown",
         },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -212,7 +212,7 @@ describe.skipIf(skip)("knowledge/service", () => {
         expected_version: before!.version,
         path,
         content: "# Edited policy\n\nOperator-approved content.",
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -227,7 +227,7 @@ describe.skipIf(skip)("knowledge/service", () => {
           expected_version: before!.version,
           path,
           content: "# Stale overwrite",
-          actor_id: null,
+          actor: null,
         },
         ctx.testDb.db,
       ),
@@ -320,7 +320,7 @@ describe.skipIf(skip)("knowledge/service", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Tagged Source", tags: inputTags, scope: "global" },
         upload: { buffer: Buffer.from("content about tagging"), filename: "tags.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -337,7 +337,7 @@ describe.skipIf(skip)("knowledge/service", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Tag Replace Source", tags: ["original", "tags"], scope: "global" },
         upload: { buffer: Buffer.from("source with tags to replace"), filename: "replace.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -364,7 +364,7 @@ describe.skipIf(skip)("knowledge/service", () => {
         tenant_id: ctx.tenantId,
         input: { name: "Case Dedupe Source", scope: "global" },
         upload: { buffer: Buffer.from("case dedupe test"), filename: "case.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );
@@ -389,7 +389,7 @@ describe.skipIf(skip)("knowledge/service", () => {
         tenant_id: ctx.tenantId,
         input: { name: "No Tags Source", scope: "global" },
         upload: { buffer: Buffer.from("no tags"), filename: "notags.txt" },
-        actor_id: null,
+        actor: null,
       },
       ctx.testDb.db,
     );

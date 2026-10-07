@@ -1145,7 +1145,7 @@ export class SchedulerReconciler {
           knowledge_source_id: row.id,
           filename: row.source_uri,
           content: "",
-          actor_id: null,
+          actor: null,
           read_address_again: true,
         });
         await this.opts.db

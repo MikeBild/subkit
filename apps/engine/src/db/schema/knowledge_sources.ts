@@ -3,6 +3,7 @@ import {
   customType,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   real,
@@ -104,5 +105,34 @@ export const knowledgeChunks = pgTable(
       t.ordinal,
     ),
     index("knowledge_chunks_tsv_idx").using("gin", t.tsv),
+  ],
+);
+
+export type KnowledgeVersionContent =
+  | { kind: "document"; filename: string; mime: string | null; text: string }
+  | { kind: "bundle"; filename: string; files: { path: string; content: string }[] };
+
+export const knowledgeSourceVersions = pgTable(
+  "knowledge_source_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
+    knowledge_source_id: uuid("knowledge_source_id")
+      .notNull()
+      .references(() => knowledgeSources.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    content: jsonb("content").$type<KnowledgeVersionContent>().notNull(),
+    content_hash: text("content_hash").notNull(),
+    author_user_id: uuid("author_user_id"),
+    author_system_account_id: uuid("author_system_account_id"),
+    note: text("note"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("knowledge_source_versions_source_version_key").on(
+      t.knowledge_source_id,
+      t.version,
+    ),
+    index("knowledge_source_versions_tenant_source_idx").on(t.tenant_id, t.knowledge_source_id),
   ],
 );
