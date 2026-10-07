@@ -339,7 +339,26 @@ describe("the sentence", () => {
           NOW,
         ),
       ),
-    ).toBe("4 Skill-Vorschläge warten auf deine Entscheidung — seit 3 Tagen.");
+    ).toBe("4 Vorschläge aus Unterhaltungen warten auf deine Entscheidung — seit 3 Tagen.");
+  });
+
+  test("all proposals are one entry that says how many become knowledge", () => {
+    const proposals = item({
+      id: "skills",
+      reason: "skills_proposed",
+      subject: null,
+      counts: { skills: 3, knowledge: 1 },
+    });
+    expect(attentionRow(proposals, de)).toMatchObject({
+      name: "Gelerntes aus Unterhaltungen",
+      reason: "3 Vorschläge · 1 für Wissen, 2 für Skills",
+    });
+    expect(
+      attentionRow(
+        item({ id: "skills", reason: "skills_proposed", subject: null, counts: { skills: 1 } }),
+        de,
+      ).reason,
+    ).toBe("1 Vorschlag");
   });
 
   test("a reason this build does not know keeps the subject and shows the engine's value, marked", () => {

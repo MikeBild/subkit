@@ -2,9 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { approveSkillCandidate, rejectSkillCandidate, type SkillCandidate } from "@/api/decisions";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, recordHref } from "@/app/links";
 import { useNameIndex } from "@/app/use-decisions";
 import { ORIGIN_LABEL } from "@/components/cockpit/decision-card";
+import { FocusedDiff } from "@/components/cockpit/diff-card";
 import {
   Button,
   ConfirmDialog,
@@ -20,6 +22,13 @@ import { skillTargetName } from "@/lib/name-index";
 import { hideTechnicalIdentifiers } from "@/lib/presentation";
 import { skillDecision } from "@/pages/decisions-model";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
+import {
+  approvalActivatesSkill,
+  isKnowledgeFact,
+  proposalAddition,
+  proposalAuthor,
+  proposalTarget,
+} from "@/pages/learning-proposal-model";
 import { skillScopeKey } from "@/pages/skills-model";
 
 export function SkillProposalSheet({
@@ -35,16 +44,22 @@ export function SkillProposalSheet({
 }) {
   const { t } = useI18n();
   const canWrite = permissions.includes("skill:write");
-  const canAdopt = canWrite && permissions.includes("skill:activate");
+  const fact = candidate ? isKnowledgeFact(candidate) : false;
+  const canAdopt = canWrite && (fact || permissions.includes("skill:activate"));
   const names = useNameIndex(permissions, Boolean(candidate));
+  const directory = useActorDirectory(Boolean(candidate));
   const [rejecting, setRejecting] = useState(false);
   const hidden = t("tool.referenceHiddenInline");
 
   const accept = useMutation({
     mutationFn: (target: SkillCandidate) =>
-      approveSkillCandidate(target.id, target.review_digest ?? ""),
+      approveSkillCandidate(target.id, target.review_digest ?? "", approvalActivatesSkill(target)),
     onSuccess: (_result, target) => {
-      toast.success(t("skills.accepted", { name: target.title }));
+      toast.success(
+        isKnowledgeFact(target)
+          ? t("proposal.acceptedFact", { name: target.title, target: proposalTarget(target, t) })
+          : t("skills.accepted", { name: target.title }),
+      );
       onDecided();
       onClose();
     },
@@ -72,23 +87,30 @@ export function SkillProposalSheet({
           ? recordHref("connectors", candidate.connector_id)
           : null
       : null;
+  const author = candidate ? proposalAuthor(candidate, directory, t) : null;
   const facts: Fact[] =
     candidate && item
       ? [
-          {
-            label: t("skills.proposal.appliesTo"),
-            value: targetHref ? (
-              <a
-                href={absolute(targetHref)}
-                className="underline underline-offset-2"
-                data-testid="skill-proposal-target"
-              >
-                {item.target}
-              </a>
-            ) : (
-              (item.target ?? t(skillScopeKey(candidate.scope)))
-            ),
-          },
+          { label: t("proposal.target"), value: proposalTarget(candidate, t) },
+          ...(author ? [{ label: t("proposal.author"), value: author }] : []),
+          ...(fact
+            ? []
+            : [
+                {
+                  label: t("skills.proposal.appliesTo"),
+                  value: targetHref ? (
+                    <a
+                      href={absolute(targetHref)}
+                      className="underline underline-offset-2"
+                      data-testid="skill-proposal-target"
+                    >
+                      {item.target}
+                    </a>
+                  ) : (
+                    (item.target ?? t(skillScopeKey(candidate.scope)))
+                  ),
+                },
+              ]),
           { label: t("skills.proposal.reason"), value: t(ORIGIN_LABEL[item.origin]) },
         ]
       : [];
@@ -142,17 +164,29 @@ export function SkillProposalSheet({
         {candidate && detail ? (
           <>
             <FactList items={facts} testId="skill-proposal-facts" />
-            <Section label={t("skills.editor.body")} testId="skill-proposal-body">
-              <FilePreview
-                name=""
-                mimeType="text/markdown"
-                text={documentUnderTitle(
-                  hideTechnicalIdentifiers(detail.body, hidden),
-                  candidate.title,
-                )}
-                testId="skill-proposal-preview"
-              />
-            </Section>
+            {fact ? (
+              <Section label={t("proposal.change")} testId="skill-proposal-change">
+                <FocusedDiff
+                  rows={proposalAddition({
+                    title: hideTechnicalIdentifiers(candidate.title, hidden),
+                    body: hideTechnicalIdentifiers(detail.body, hidden),
+                  })}
+                  testId="skill-proposal-diff"
+                />
+              </Section>
+            ) : (
+              <Section label={t("skills.editor.body")} testId="skill-proposal-body">
+                <FilePreview
+                  name=""
+                  mimeType="text/markdown"
+                  text={documentUnderTitle(
+                    hideTechnicalIdentifiers(detail.body, hidden),
+                    candidate.title,
+                  )}
+                  testId="skill-proposal-preview"
+                />
+              </Section>
+            )}
             {lists.map((list) => (
               <Section key={list.id} label={list.label} testId={`skill-proposal-${list.id}`}>
                 <ul className="grid list-disc gap-1 pl-5 text-sm">

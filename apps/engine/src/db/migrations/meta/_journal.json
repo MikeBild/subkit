@@ -596,6 +596,13 @@
       "when": 1791363403891,
       "tag": "0084_knowledge_source_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1791363440180,
+      "tag": "0085_knowledge_learning_proposer",
+      "breakpoints": true
     }
   ]
 }

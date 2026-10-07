@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { actorFromColumns, actorIds, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
+import { appendLearningToKnowledge } from "../knowledge/learnings.ts";
 import { log } from "../logging/logger.ts";
 import {
   recordLoopPatchToSkillCandidate,
@@ -22,15 +24,16 @@ import {
   detectSuccessPatterns,
 } from "./detectors/index.ts";
 import { evidenceIdentity, uniqueEvidence } from "./evidence-identity.ts";
-import type {
-  AnalysisResult,
-  ApproveSkillCandidateParams,
-  ListSkillCandidatesParams,
-  PatternSignal,
-  RejectSkillCandidateParams,
-  SkillCandidateEvidenceView,
-  SkillCandidateStatus,
-  SkillCandidateView,
+import {
+  type AnalysisResult,
+  type ApproveSkillCandidateParams,
+  LEARNING_PATTERN_KINDS,
+  type ListSkillCandidatesParams,
+  type PatternSignal,
+  type RejectSkillCandidateParams,
+  type SkillCandidateEvidenceView,
+  type SkillCandidateStatus,
+  type SkillCandidateView,
 } from "./types.ts";
 
 const MAX_EVIDENCE_PER_CANDIDATE = 50;
@@ -391,8 +394,8 @@ export async function upsertFromSignal(
 
     if (existing[0]) {
       const row = existing[0];
-      const reviveSessionLearning =
-        row.status === "superseded" && signal.pattern_kind === "session_learning";
+      const learning = LEARNING_PATTERN_KINDS.has(signal.pattern_kind);
+      const reviveSessionLearning = row.status === "superseded" && learning;
       if (!reviveSessionLearning && (row.status === "rejected" || row.status === "superseded")) {
         log.skill.candidate.dedup({
           candidate_id: row.id,
@@ -421,7 +424,7 @@ export async function upsertFromSignal(
           body: signal.body,
           examples: signalDetails(signal),
           updated_at: sql`now()`,
-          ...(signal.pattern_kind === "session_learning"
+          ...(learning
             ? {
                 status: "proposed" as const,
                 title: signal.title,
@@ -492,7 +495,7 @@ export async function upsertFromSignal(
     }
 
     let supersededCount = 0;
-    if (!signal.endpoint_key && signal.pattern_kind !== "session_learning") {
+    if (!signal.endpoint_key && !LEARNING_PATTERN_KINDS.has(signal.pattern_kind)) {
       const tenantSupersedeScope = [
         eq(skillCandidates.tenant_id, tenant_id),
         inArray(skillCandidates.status, OPEN_STATUSES),
@@ -541,6 +544,7 @@ export async function upsertFromSignal(
       }
     }
 
+    const proposer = actorIds(signal.proposer ?? null);
     const [row] = await tx
       .insert(skillCandidates)
       .values({
@@ -558,6 +562,8 @@ export async function upsertFromSignal(
         status,
         fingerprint: signal.fingerprint,
         tags: signal.tags ?? [],
+        proposed_by_user_id: proposer.user_id,
+        proposed_by_system_account_id: proposer.system_account_id,
       })
       .returning();
 
@@ -580,7 +586,7 @@ export async function upsertFromSignal(
     await auditAwait(
       {
         tenant_id,
-        actor_type: "system",
+        ...auditActor(signal.proposer ?? null),
         action:
           status === "context"
             ? AuditAction.SKILL_CANDIDATE_CONTEXT_RECORDED
@@ -660,11 +666,24 @@ export async function runPatternAnalysis(
   };
 }
 
+export interface ApprovedKnowledge {
+  knowledge_source_id: string;
+  slug: string;
+  version: number | null;
+}
+
+export interface ApproveSkillCandidateResult {
+  candidate: SkillCandidateView;
+  skill_id: string | null;
+  knowledge: ApprovedKnowledge | null;
+}
+
 export async function approveSkillCandidate(
   p: ApproveSkillCandidateParams,
   exec?: Db,
-): Promise<{ candidate: SkillCandidateView; skill_id: string } | null> {
+): Promise<ApproveSkillCandidateResult | null> {
   const db = exec ?? (getDb() as Db);
+  const actor_id = p.actor?.id ?? null;
 
   const out = await db.transaction(async (tx) => {
     await tx.execute(
@@ -688,55 +707,76 @@ export async function approveSkillCandidate(
       return null;
     const blob = (row.examples ?? {}) as Record<string, unknown>;
 
-    const skill = await createSkill(
-      {
+    let skill_id: string | null = null;
+    let retired_skill_ids: string[] = [];
+    let knowledge: (ApprovedKnowledge & { finish(db: Executor): void }) | null = null;
+    if (row.pattern_kind === "knowledge_learning") {
+      knowledge = await appendLearningToKnowledge(tx, {
         tenant_id: p.tenant_id,
-        input: {
-          scope: row.scope,
-          connector_id: row.connector_id ?? undefined,
-          workflow_id: row.workflow_id ?? undefined,
-          title: p.overrides?.title ?? row.title,
-          body: p.overrides?.body ?? row.body,
-          status: p.overrides?.status ?? "draft",
-          source: "candidate",
-          ...(row.tags && row.tags.length > 0 ? { tags: row.tags } : {}),
-          examples: (blob.examples as string[]) ?? [],
-          best_practices: (blob.best_practices as string[]) ?? [],
-          pitfalls: (blob.pitfalls as string[]) ?? [],
-          doc_refs: (blob.doc_refs as string[]) ?? [],
+        title: p.overrides?.title ?? row.title,
+        body: p.overrides?.body ?? row.body,
+        tags: row.tags ?? [],
+        approver: p.actor,
+        proposer: actorFromColumns(row.proposed_by_user_id, row.proposed_by_system_account_id),
+      });
+    } else {
+      const skill = await createSkill(
+        {
+          tenant_id: p.tenant_id,
+          input: {
+            scope: row.scope,
+            connector_id: row.connector_id ?? undefined,
+            workflow_id: row.workflow_id ?? undefined,
+            title: p.overrides?.title ?? row.title,
+            body: p.overrides?.body ?? row.body,
+            status: p.overrides?.status ?? "draft",
+            source: "candidate",
+            ...(row.tags && row.tags.length > 0 ? { tags: row.tags } : {}),
+            examples: (blob.examples as string[]) ?? [],
+            best_practices: (blob.best_practices as string[]) ?? [],
+            pitfalls: (blob.pitfalls as string[]) ?? [],
+            doc_refs: (blob.doc_refs as string[]) ?? [],
+          },
+          actor_id,
         },
-        actor_id: p.actor_id,
-      },
-      tx,
-    );
+        tx,
+      );
+      skill_id = skill.id;
+      retired_skill_ids =
+        skill.status === "active"
+          ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill.id, actor_id)
+          : [];
+    }
 
     const [updated] = await tx
       .update(skillCandidates)
       .set({
         status: "approved",
-        promoted_skill_id: skill.id,
+        promoted_skill_id: skill_id,
         updated_at: new Date(),
       })
-      .where(eq(skillCandidates.id, p.candidate_id))
+      .where(
+        and(eq(skillCandidates.tenant_id, p.tenant_id), eq(skillCandidates.id, p.candidate_id)),
+      )
       .returning();
-
-    const retired_skill_ids =
-      skill.status === "active"
-        ? await retireReplacedConnectorSkills(tx, p.tenant_id, skill.id, p.actor_id ?? null)
-        : [];
 
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...auditActor(p.actor),
         action: AuditAction.SKILL_CANDIDATE_APPROVED,
         resource_type: "skill_candidate",
         resource_id: p.candidate_id,
         result: "success",
         metadata: {
-          promoted_skill_id: skill.id,
           pattern_kind: row.pattern_kind,
+          ...(skill_id ? { promoted_skill_id: skill_id } : {}),
+          ...(knowledge
+            ? {
+                knowledge_source_id: knowledge.knowledge_source_id,
+                knowledge_version: knowledge.version,
+              }
+            : {}),
           ...(retired_skill_ids.length > 0 ? { retired_skill_ids } : {}),
         },
       },
@@ -745,9 +785,10 @@ export async function approveSkillCandidate(
 
     log.skill.candidate.approved({
       candidate_id: p.candidate_id,
-      skill_id: skill.id,
+      skill_id,
+      knowledge_source_id: knowledge?.knowledge_source_id ?? null,
       pattern_kind: row.pattern_kind,
-      actor_id: p.actor_id,
+      actor_id,
     });
 
     // tenant-filter:exempt — evidence rows are FK children of the candidate
@@ -778,13 +819,15 @@ export async function approveSkillCandidate(
 
     return {
       candidate: updated ? toView(updated) : toView(row),
-      skill_id: skill.id,
+      skill_id,
+      knowledge,
       promotion_source: "auto-suggested" as const,
       lag_seconds,
     };
   });
 
   if (!out) return null;
+  out.knowledge?.finish(db);
   invalidateTenantState(p.tenant_id);
 
   recordLoopSkillCandidatePromoted({
@@ -793,7 +836,17 @@ export async function approveSkillCandidate(
     lag_seconds: out.lag_seconds,
   });
 
-  return { candidate: out.candidate, skill_id: out.skill_id };
+  return {
+    candidate: out.candidate,
+    skill_id: out.skill_id,
+    knowledge: out.knowledge
+      ? {
+          knowledge_source_id: out.knowledge.knowledge_source_id,
+          slug: out.knowledge.slug,
+          version: out.knowledge.version,
+        }
+      : null,
+  };
 }
 
 export async function rejectSkillCandidate(

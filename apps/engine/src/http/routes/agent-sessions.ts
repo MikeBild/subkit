@@ -2,7 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { DOMAIN_SLUG_RE } from "../../agent/briefing.ts";
 import { TRANSCRIPT_MAX_CHARS } from "../../agent/sessions.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { AuditAction, actorOf, audit, auditActor } from "../../audit/index.ts";
 import type { AgentSessionAnalyzeJob } from "../../queue/index.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -37,7 +37,7 @@ const captureRoute = createRoute({
   summary: "Capture a coding-agent session transcript for learning distillation",
   description:
     "Accepts a session transcript (JSONL or plain text) plus metadata. Distillation runs " +
-    "asynchronously; extracted learnings become `session_learning` skill candidates that " +
+    "asynchronously; extracted learnings become `session_learning` (practice) or `knowledge_learning` (fact) candidates that " +
     "wait for human review — nothing goes live from this endpoint.",
   security: [{ bearerAuth: [] }],
   request: {
@@ -69,14 +69,14 @@ export function registerAgentSessionRoutes(
       ...(body.repo ? { repo: body.repo } : {}),
       domains: body.domains,
       transcript: body.transcript,
+      actor: actorOf(principal),
     };
     await opts.enqueue(job);
 
     audit(
       {
         tenant_id: principal.tenant_id,
-        actor_type: "user",
-        actor_id: principal.id,
+        ...auditActor(actorOf(principal)),
         action: AuditAction.AGENT_SESSION_CAPTURED,
         resource_type: "skill_candidate",
         resource_id: null,

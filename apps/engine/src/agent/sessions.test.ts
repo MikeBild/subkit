@@ -1,23 +1,59 @@
 import { describe, expect, test } from "bun:test";
-import { learningFingerprint, sampleTranscript, transcriptLineText } from "./sessions.ts";
+import { createHash } from "node:crypto";
+import {
+  LearningSchema,
+  learningFingerprint,
+  learningPattern,
+  sampleTranscript,
+  transcriptLineText,
+} from "./sessions.ts";
 
 describe("learningFingerprint", () => {
   test("normalizes whitespace and case in the title", () => {
-    const a = learningFingerprint(["blog-de"], "Halbgeviertstrich  als   Gedankenstrich");
-    const b = learningFingerprint(["blog-de"], "halbgeviertstrich als gedankenstrich ");
+    const a = learningFingerprint(
+      ["blog-de"],
+      "Halbgeviertstrich  als   Gedankenstrich",
+      "practice",
+    );
+    const b = learningFingerprint(["blog-de"], "halbgeviertstrich als gedankenstrich ", "practice");
     expect(a).toBe(b);
   });
 
   test("is domain-order independent", () => {
-    const a = learningFingerprint(["blog-de", "infra"], "Regel");
-    const b = learningFingerprint(["infra", "blog-de"], "Regel");
+    const a = learningFingerprint(["blog-de", "infra"], "Regel", "practice");
+    const b = learningFingerprint(["infra", "blog-de"], "Regel", "practice");
     expect(a).toBe(b);
   });
 
   test("different domains yield different fingerprints", () => {
-    expect(learningFingerprint(["blog-de"], "Regel")).not.toBe(
-      learningFingerprint(["infra"], "Regel"),
+    expect(learningFingerprint(["blog-de"], "Regel", "practice")).not.toBe(
+      learningFingerprint(["infra"], "Regel", "practice"),
     );
+  });
+
+  test("a practice keeps the fingerprint earlier decisions were recorded under", () => {
+    const legacy = createHash("sha256").update("session_learning:blog-de:regel").digest("hex");
+    expect(learningFingerprint(["blog-de"], "Regel", "practice")).toBe(legacy);
+  });
+
+  test("a fact and a practice with the same title are different proposals", () => {
+    expect(learningFingerprint(["blog-de"], "Regel", "fact")).not.toBe(
+      learningFingerprint(["blog-de"], "Regel", "practice"),
+    );
+  });
+});
+
+describe("learning kind", () => {
+  test("a fact becomes knowledge, a practice stays a skill", () => {
+    expect(learningPattern("fact")).toBe("knowledge_learning");
+    expect(learningPattern("practice")).toBe("session_learning");
+  });
+
+  test("the extraction schema requires a kind and accepts only the two", () => {
+    const base = { title: "t", body: "b", confidence: "high" as const };
+    expect(LearningSchema.safeParse(base).success).toBe(false);
+    expect(LearningSchema.safeParse({ ...base, kind: "fact" }).success).toBe(true);
+    expect(LearningSchema.safeParse({ ...base, kind: "opinion" }).success).toBe(false);
   });
 });
 

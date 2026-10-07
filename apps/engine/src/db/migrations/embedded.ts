@@ -102,6 +102,7 @@ import sql0081FileReplacedAt from "./0081_file_replaced_at.sql" with { type: "te
 import sql0082CatalogMetadata from "./0082_catalog_metadata.sql" with { type: "text" };
 import sql0083CatalogDescribeRefresh from "./0083_catalog_describe_refresh.sql" with { type: "text" };
 import sql0084KnowledgeSourceVersions from "./0084_knowledge_source_versions.sql" with { type: "text" };
+import sql0085KnowledgeLearningProposer from "./0085_knowledge_learning_proposer.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -211,6 +212,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0082_catalog_metadata": sql0082CatalogMetadata,
   "0083_catalog_describe_refresh": sql0083CatalogDescribeRefresh,
   "0084_knowledge_source_versions": sql0084KnowledgeSourceVersions,
+  "0085_knowledge_learning_proposer": sql0085KnowledgeLearningProposer,
 };
 
 const journal = journalMeta as unknown as Journal;

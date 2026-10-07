@@ -1,12 +1,12 @@
 import type { Db } from "../db/client.ts";
 import { listKnowledgeSources } from "../knowledge/service.ts";
+import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
 import type { KnowledgeSourceView } from "../knowledge/types.ts";
 import { countTokens } from "../llm/accounting/count.ts";
 import { listSkillCandidates } from "../skill-candidates/index.ts";
 import { listSkills } from "../skills/service.ts";
 import type { Skill } from "../skills/types.ts";
 
-export const DOMAIN_TAG_PREFIX = "domain:";
 export const DOMAIN_SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 export const DEFAULT_BRIEFING_BUDGET_TOKENS = 4000;

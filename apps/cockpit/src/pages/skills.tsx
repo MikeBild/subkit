@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
@@ -48,6 +49,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
+import { proposalAuthor, proposalTarget } from "@/pages/learning-proposal-model";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
@@ -99,6 +101,16 @@ function rowWhere(row: SkillRow): string | null {
   return row.kind === "skill" ? row.skill.applies_to : null;
 }
 
+function proposalLine(
+  candidate: SkillCandidate,
+  directory: ReadonlyMap<string, string>,
+  t: Translate,
+): string {
+  const target = proposalTarget(candidate, t);
+  const author = proposalAuthor(candidate, directory, t);
+  return author ? `${target} · ${t("proposal.by", { name: author })}` : target;
+}
+
 export function SkillsPage({ permissions }: { permissions: readonly string[] }) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
@@ -131,6 +143,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   });
   const open = proposals.data?.items ?? [];
   const proposal = open.find((candidate) => candidate.id === proposalId) ?? null;
+  const directory = useActorDirectory(canRead && open.length > 0);
   const decided = () => {
     void client.invalidateQueries({ queryKey: PROPOSALS_KEY });
     void client.invalidateQueries({ queryKey: ["catalog"] });
@@ -150,7 +163,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
           row.kind === "skill" ? (
             <CatalogNameCell name={row.skill.title} record={row.skill} />
           ) : (
-            rowTitle(row)
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate">{rowTitle(row)}</span>
+              <span
+                className="truncate text-xs text-muted-foreground"
+                data-testid={`skill-proposal-row-target-${row.candidate.id}`}
+              >
+                {proposalLine(row.candidate, directory, t)}
+              </span>
+            </span>
           ),
         {
           sortable: true,
@@ -199,7 +220,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
         { sortable: true, width: "w-[18%]" },
       ),
     ];
-  }, [t, dateTime]);
+  }, [t, dateTime, directory]);
 
   if (!canRead)
     return (

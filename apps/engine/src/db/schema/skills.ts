@@ -104,6 +104,7 @@ export const skillCandidatePatternEnum = pgEnum("skill_candidate_pattern", [
   "authoring_capability",
   "session_learning",
   "connector_capability",
+  "knowledge_learning",
 ]);
 
 export const skillCandidates = pgTable(
@@ -128,6 +129,8 @@ export const skillCandidates = pgTable(
     fingerprint: text("fingerprint").notNull(),
     version: integer("version").notNull().default(1),
     tags: text("tags").array().notNull().default([]),
+    proposed_by_user_id: uuid("proposed_by_user_id"),
+    proposed_by_system_account_id: uuid("proposed_by_system_account_id"),
     ...timestamps,
   },
   (t) => [

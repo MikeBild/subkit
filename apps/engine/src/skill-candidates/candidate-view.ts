@@ -1,3 +1,4 @@
+import { actorFromColumns } from "../audit/actor.ts";
 import type { skillCandidates } from "../db/schema/skills.ts";
 import { workflowJsonDigest } from "../workflows/canonical-json.ts";
 import { SkillCandidateFactsSchema, type SkillCandidateView } from "./types.ts";
@@ -55,6 +56,7 @@ export function toView(
     fingerprint: row.fingerprint,
     version: row.version,
     tags: row.tags ?? [],
+    proposed_by: actorFromColumns(row.proposed_by_user_id, row.proposed_by_system_account_id),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };

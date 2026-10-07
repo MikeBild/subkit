@@ -31,6 +31,7 @@ function makeCandidate(overrides: Partial<SkillCandidateView> = {}): SkillCandid
     promoted_skill_id: null,
     fingerprint: `fp-${id}`,
     tags: [],
+    proposed_by: null,
     version: 1,
     created_at: new Date(2025, 0, 1, 0, 0, 0).toISOString(),
     updated_at: new Date(2025, 0, 1, 0, 0, 0).toISOString(),
