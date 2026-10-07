@@ -157,14 +157,19 @@ describe("cockpit i18n", () => {
     expect(store.snapshot()).toEqual({ preference: "auto", locale: "de" });
   });
 
-  test("tells engine pages the chosen language on boot and on change, and nothing for automatic", () => {
+  test("tells engine pages a chosen language on boot and on change, and forgets it only on request", () => {
     const fake = environment("de", ["en-US"]);
     const store = createLocaleStore(fake.env);
     store.set("en");
     store.set("auto");
     expect(fake.shared).toEqual(["de", "en", null]);
+  });
+
+  test("loading in automatic mode leaves the language a portal remembered alone", () => {
     const automatic = environment(null, ["de-DE"]);
-    createLocaleStore(automatic.env);
+    const store = createLocaleStore(automatic.env);
+    expect(automatic.shared).toEqual([]);
+    store.set("auto");
     expect(automatic.shared).toEqual([null]);
   });
 

@@ -65,8 +65,14 @@ describe("cockpit theme", () => {
     expect(fake.shared).toEqual(["dark", "light", null]);
     fake.setSystem(true);
     expect(fake.shared).toEqual(["dark", "light", null]);
+  });
+
+  test("loading in system mode leaves a remembered scheme alone", () => {
     const boot = environment(null, true);
-    createThemeStore(boot.env);
+    const store = createThemeStore(boot.env);
+    boot.setSystem(false);
+    expect(boot.shared).toEqual([]);
+    store.set("system");
     expect(boot.shared).toEqual([null]);
   });
 
