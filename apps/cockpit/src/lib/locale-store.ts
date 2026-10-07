@@ -42,7 +42,7 @@ export function createLocaleStore(env: LocaleEnvironment) {
   }
   let current = read();
   env.apply(current.locale);
-  env.share(current.preference === "auto" ? null : current.preference);
+  if (current.preference !== "auto") env.share(current.preference);
 
   function publish(): void {
     const next = read();
@@ -50,7 +50,7 @@ export function createLocaleStore(env: LocaleEnvironment) {
     const chosen = next.preference !== current.preference;
     current = next;
     env.apply(current.locale);
-    if (chosen) env.share(current.preference === "auto" ? null : current.preference);
+    if (chosen && current.preference !== "auto") env.share(current.preference);
     for (const listener of listeners) listener();
   }
   env.watch?.(publish);
@@ -62,8 +62,10 @@ export function createLocaleStore(env: LocaleEnvironment) {
     },
     snapshot: () => current,
     set(preference: LocalePreference) {
-      if (preference === "auto") env.remove(LOCALE_STORAGE_KEY);
-      else env.write(LOCALE_STORAGE_KEY, preference);
+      if (preference === "auto") {
+        env.remove(LOCALE_STORAGE_KEY);
+        env.share(null);
+      } else env.write(LOCALE_STORAGE_KEY, preference);
       publish();
     },
   };
