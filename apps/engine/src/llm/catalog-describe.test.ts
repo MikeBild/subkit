@@ -157,3 +157,37 @@ describe("the flow that describes catalog objects", () => {
     }
   });
 });
+
+describe("a thin object and a fixed category", () => {
+  test("the prompt forbids guessing a purpose when the object shows little", () => {
+    const prompt = buildDescribePrompt(workflow, vocabulary);
+    expect(prompt).toContain("shows little or nothing about itself");
+    expect(prompt).toContain("do not guess what it contains or what it is used for");
+  });
+
+  test("a fixed category is part of the input, the hash and the prompt", () => {
+    const fixed: CatalogDescribeInput = { ...workflow, pinned_category: "wikikit" };
+    expect(renderCatalogInput(fixed)).toContain("category (fixed): wikikit");
+    expect(catalogInputHash(fixed)).not.toBe(catalogInputHash(workflow));
+    expect(buildDescribePrompt(fixed, vocabulary)).toContain('The category is fixed as "wikikit"');
+    expect(buildDescribePrompt(workflow, vocabulary)).not.toContain("is fixed as");
+  });
+
+  test("the model cannot override a fixed category", async () => {
+    const spy = spyOn(invokeModule, "invoke").mockImplementation((async () => ({
+      object: { description: "Reads the wiki.", category: "somewhere-else" },
+      model_used: "mock",
+    })) as unknown as typeof invokeModule.invoke);
+    try {
+      const out = await describeCatalogObject({
+        tenant_id: "00000000-0000-0000-0000-000000000001",
+        input: { ...workflow, pinned_category: "wikikit" },
+        vocabulary,
+      });
+      expect(out?.category).toBe("wikikit");
+      expect(out?.description).toBe("Reads the wiki.");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

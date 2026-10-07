@@ -582,6 +582,13 @@
       "when": 1791299317272,
       "tag": "0082_catalog_metadata",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791355794751,
+      "tag": "0083_catalog_describe_refresh",
+      "breakpoints": true
     }
   ]
 }

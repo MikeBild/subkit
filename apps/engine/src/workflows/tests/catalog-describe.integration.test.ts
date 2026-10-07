@@ -12,6 +12,7 @@ import {
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import * as invokeModule from "../../llm/core/invoke.ts";
+import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import {
   describeOne,
   describePendingCatalog,
@@ -50,7 +51,27 @@ function mockModel() {
   }) as never);
 }
 
+const store = new MemoryObjectStore();
+
+async function seedFile(filename: string, content_type: string, body: string | null) {
+  const key = `catalog-describe/${filename}`;
+  if (body !== null) await store.put(key, new TextEncoder().encode(body));
+  const [file] = await ctx.db
+    .insert(files)
+    .values({
+      tenant_id,
+      filename,
+      content_type,
+      storage_uri: `s3://bucket/${key}`,
+      size_bytes: body?.length ?? 0,
+      status: "ready",
+    })
+    .returning();
+  return file!.id;
+}
+
 beforeAll(async () => {
+  setObjectStoreForTesting(store);
   ctx = await createTestDb("catalog_describe");
   const [t] = await ctx.db
     .insert(tenants)
@@ -66,6 +87,7 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  setObjectStoreForTesting(null);
   await ctx.cleanup();
 });
 
@@ -125,6 +147,7 @@ async function seedAllKinds() {
       status: "ready",
     })
     .returning();
+  await store.put("orders-2026.csv", new TextEncoder().encode("id,amount\n1,10\n"));
   return {
     workflow: wf.workflow!.id,
     connector: connector!.id,
@@ -315,5 +338,95 @@ describe("catalog.describe", () => {
     const [wf] = await ctx.db.select().from(workflows).where(eq(workflows.id, ids.workflow));
     expect(wf?.category).not.toBe("stale");
     expect(wf?.catalog_input_hash).toBeNull();
+  });
+});
+
+describe("what the model is shown as evidence", () => {
+  test("a text file reaches the model with its first lines", async () => {
+    const id = await seedFile(
+      "notes.md",
+      "text/markdown",
+      "# Refund notes\nRefunds close after 30 days.",
+    );
+    answer = () => ({ description: "Refund notes.", category: "billing" });
+    mockModel();
+    await describeOne({ tenant_id, kind: "file", id }, ctx.db);
+    const prompt = prompts.at(-1) ?? "";
+    expect(prompt).toContain("content_excerpt:");
+    expect(prompt).toContain("Refunds close after 30 days.");
+  });
+
+  test("a very short text file is marked as thin evidence, a longer one is not", async () => {
+    const tiny = await seedFile("tiny.md", "text/markdown", "Approval browser test.");
+    const long = await seedFile("long.md", "text/markdown", "Refund rules. ".repeat(40));
+    answer = () => ({ description: "A file.", category: "other" });
+    mockModel();
+    await describeOne({ tenant_id, kind: "file", id: tiny }, ctx.db);
+    expect(prompts.at(-1)).toContain("evidence: very little text (22 characters)");
+    await describeOne({ tenant_id, kind: "file", id: long }, ctx.db);
+    expect(prompts.at(-1)).not.toContain("very little text");
+  });
+
+  test("a binary file says that its content is not shown, and an empty one says it is empty", async () => {
+    const pdf = await seedFile("scan.pdf", "application/pdf", "%PDF-1.7 binary");
+    const empty = await seedFile("blank.txt", "text/plain", "");
+    answer = () => ({ description: "A file.", category: "other" });
+    mockModel();
+    await describeOne({ tenant_id, kind: "file", id: pdf }, ctx.db);
+    expect(prompts.at(-1)).toContain("(binary file — its content is not shown)");
+    expect(prompts.at(-1)).not.toContain("%PDF");
+    await describeOne({ tenant_id, kind: "file", id: empty }, ctx.db);
+    expect(prompts.at(-1)).toContain("(empty file)");
+  });
+
+  test("a secret inside the excerpt never reaches the model", async () => {
+    const id = await seedFile("deploy.txt", "text/plain", `token ${token}\nrotate monthly`);
+    answer = () => ({ description: "Deploy notes.", category: "ops" });
+    mockModel();
+    await describeOne({ tenant_id, kind: "file", id }, ctx.db);
+    expect(prompts.at(-1)).toContain("rotate monthly");
+    expect(prompts.at(-1)).not.toContain(token);
+  });
+
+  test("a file whose object cannot be read is retried later, never described from its name alone", async () => {
+    const id = await seedFile("gone.md", "text/markdown", null);
+    answer = () => ({ description: "Invented.", category: "ops" });
+    mockModel();
+    await expect(describeOne({ tenant_id, kind: "file", id }, ctx.db)).rejects.toThrow();
+    expect(prompts.filter((p) => p.includes("name: gone.md"))).toHaveLength(0);
+  });
+});
+
+describe("one connector in two environments", () => {
+  async function seedConnector(environment: "dev" | "prod", category: string, createdAt: string) {
+    const [row] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id,
+        slug: "family-api",
+        display_name: `Family API ${environment}`,
+        driver: "http",
+        environment,
+        auth_type: "bearer",
+        base_url: "https://family.example.test",
+        category,
+        category_source: "llm",
+        created_at: new Date(createdAt),
+      })
+      .returning();
+    return row!.id;
+  }
+
+  test("the younger one takes the category of the oldest, whatever the model proposes", async () => {
+    const older = await seedConnector("prod", "wikikit", "2026-01-01T00:00:00Z");
+    const younger = await seedConnector("dev", "other", "2026-02-01T00:00:00Z");
+    answer = () => ({ description: "Family API.", category: "mikebild-dev" });
+    mockModel();
+    await describeOne({ tenant_id, kind: "connector", id: younger }, ctx.db);
+    expect(prompts.at(-1)).toContain("category (fixed): wikikit");
+    const [row] = await ctx.db.select().from(connectors).where(eq(connectors.id, younger));
+    expect(row?.category).toBe("wikikit");
+    await describeOne({ tenant_id, kind: "connector", id: older }, ctx.db);
+    expect(prompts.at(-1)).not.toContain("category (fixed)");
   });
 });

@@ -100,6 +100,7 @@ import sql0079SkillCandidateContextStatus from "./0079_skill_candidate_context_s
 import sql0080SkillCandidateContextBackfill from "./0080_skill_candidate_context_backfill.sql" with { type: "text" };
 import sql0081FileReplacedAt from "./0081_file_replaced_at.sql" with { type: "text" };
 import sql0082CatalogMetadata from "./0082_catalog_metadata.sql" with { type: "text" };
+import sql0083CatalogDescribeRefresh from "./0083_catalog_describe_refresh.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -207,6 +208,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0080_skill_candidate_context_backfill": sql0080SkillCandidateContextBackfill,
   "0081_file_replaced_at": sql0081FileReplacedAt,
   "0082_catalog_metadata": sql0082CatalogMetadata,
+  "0083_catalog_describe_refresh": sql0083CatalogDescribeRefresh,
 };
 
 const journal = journalMeta as unknown as Journal;
