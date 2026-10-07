@@ -12498,6 +12498,13 @@
               "string",
               "null"
             ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeConnectorCandidate"
+            },
+            "description": "Enabled connectors of this template. Bound automatically only when the template has a fixed address and exactly one candidate exists; otherwise the caller picks one."
           }
         },
         "required": [
@@ -12505,7 +12512,27 @@
           "template",
           "template_name",
           "connector_id",
-          "connector_name"
+          "connector_name",
+          "candidates"
+        ]
+      },
+      "RecipeConnectorCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
         ]
       },
       "TemplateOAuthCredentialResponse": {

@@ -671,6 +671,7 @@ async function loadWorkflowSource(
     const connectors = known.items.map((item) => ({
       id: String(item.id),
       slug: String(item.slug),
+      template_slug: typeof item.template_slug === "string" ? item.template_slug : null,
     }));
     return recipeWorkflowSource(pack, String(args["from-recipe"]), binds, connectors);
   }

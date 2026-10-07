@@ -354,40 +354,66 @@ describe("solution recipes — several connectors per recipe", () => {
     }
   });
 
-  test("binding replaces each placeholder with the oldest connector of its template and names the missing ones", () => {
+  const connectorRow = (
+    id: string,
+    template_slug: string,
+    enabled = true,
+  ): {
+    id: string;
+    slug: string;
+    display_name: string;
+    template_slug: string;
+    enabled: boolean;
+  } => ({
+    id,
+    slug: `${template_slug}-${id.slice(0, 4)}`,
+    display_name: `${template_slug} ${id.slice(0, 4)}`,
+    template_slug,
+    enabled,
+  });
+  const reportTemplates = new Map([
+    ["google-analytics", { name: "Google Analytics 4", base_url: "https://analyticsdata.example" }],
+    ["google-gmail", { name: "Gmail", base_url: "https://gmail.example" }],
+  ]);
+  const ANALYTICS = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const SECOND = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  test("binding takes the one enabled connector of a template and names the missing ones", () => {
     const recipe = getSolutionRecipe("daily-analytics-report");
     if (!recipe) throw new Error("daily-analytics-report missing");
-    const names = new Map([
-      [
-        "google-analytics",
-        { name: "Google Analytics 4", base_url: "https://analyticsdata.example" },
-      ],
-      ["google-gmail", { name: "Gmail", base_url: "https://gmail.example" }],
-    ]);
-    const analytics = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const bound = bindRecipe(
       recipe,
       [
-        { id: analytics, display_name: "GA4 marketing", template_slug: "google-analytics" },
-        {
-          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-          display_name: "GA4 second",
-          template_slug: "google-analytics",
-        },
+        connectorRow(ANALYTICS, "google-analytics"),
+        connectorRow(SECOND, "google-analytics", false),
       ],
-      names,
+      reportTemplates,
     );
     expect(bound.connectors.map((c) => [c.template, c.connector_id, c.template_name])).toEqual([
-      ["google-analytics", analytics, "Google Analytics 4"],
+      ["google-analytics", ANALYTICS, "Google Analytics 4"],
       ["google-gmail", null, "Gmail"],
     ]);
+    expect(bound.connectors[0]?.candidates.map((c) => c.id)).toEqual([ANALYTICS]);
     const ids = connectorIdsOf(bound.workflow);
-    expect(ids).toContain(analytics);
+    expect(ids).toContain(ANALYTICS);
     expect(ids).toContain(recipe.required_connectors[1]?.placeholder ?? "missing");
-    expect(connectorIdsOf(recipe.workflow)).not.toContain(analytics);
+    expect(connectorIdsOf(recipe.workflow)).not.toContain(ANALYTICS);
   });
 
-  test("a placeholder whose template has no fixed address is never bound by template alone", () => {
+  test("two enabled connectors of one template are never bound; both are offered", () => {
+    const recipe = getSolutionRecipe("daily-analytics-report");
+    if (!recipe) throw new Error("daily-analytics-report missing");
+    const bound = bindRecipe(
+      recipe,
+      [connectorRow(ANALYTICS, "google-analytics"), connectorRow(SECOND, "google-analytics")],
+      reportTemplates,
+    );
+    expect(bound.connectors[0]?.connector_id).toBeNull();
+    expect(bound.connectors[0]?.candidates.map((c) => c.id)).toEqual([ANALYTICS, SECOND]);
+    expect(connectorIdsOf(bound.workflow)).not.toContain(ANALYTICS);
+  });
+
+  test("a placeholder whose template has no fixed address is offered, never bound", () => {
     const recipe = getSolutionRecipe("payment-grants-access");
     if (!recipe) throw new Error("payment-grants-access missing");
     const templates = new Map([
@@ -395,27 +421,19 @@ describe("solution recipes — several connectors per recipe", () => {
       ["http", { name: "HTTP", base_url: null }],
       ["google-gmail", { name: "Gmail", base_url: "https://gmail.googleapis.com/gmail/v1" }],
     ]);
+    const stripe = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const api = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const bound = bindRecipe(
       recipe,
-      [
-        {
-          id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-          display_name: "Stripe",
-          template_slug: "stripe",
-        },
-        {
-          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-          display_name: "Some API",
-          template_slug: "http",
-        },
-      ],
+      [connectorRow(stripe, "stripe"), connectorRow(api, "http")],
       templates,
     );
     expect(bound.connectors.map((c) => [c.template, c.connector_id])).toEqual([
-      ["stripe", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+      ["stripe", stripe],
       ["http", null],
       ["google-gmail", null],
     ]);
+    expect(bound.connectors[1]?.candidates.map((c) => c.id)).toEqual([api]);
   });
 
   test("no recipe reads input.scope in its output_transform_function, where only the last output arrives", () => {

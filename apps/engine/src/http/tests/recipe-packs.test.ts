@@ -28,6 +28,7 @@ interface PackEntry {
     template_name: string;
     connector_id: string | null;
     connector_name: string | null;
+    candidates: Array<{ id: string; slug: string; name: string }>;
   }>;
   sample_input: unknown;
   workflow: { name: string; steps: unknown[] };
@@ -69,6 +70,7 @@ describe("GET /v1/recipe-packs/solutions", () => {
         template_name: "Slack",
         connector_id: null,
         connector_name: null,
+        candidates: [],
       },
     ]);
     expect(slack?.sample_input).toEqual(expect.objectContaining({ level: "error" }));
@@ -91,6 +93,9 @@ describe("GET /v1/recipe-packs/solutions", () => {
     const connector = (await res.json()) as { id: string };
     const slack = (await solutions()).find((e) => e.recipe_slug === "webhook-to-slack");
     expect(slack?.connectors[0]?.connector_id).toBe(connector.id);
+    expect(slack?.connectors[0]?.candidates).toEqual([
+      { id: connector.id, slug: "team-slack", name: "Team Slack" },
+    ]);
     expect(JSON.stringify(slack?.workflow)).toContain(connector.id);
     expect(JSON.stringify(slack?.workflow)).not.toContain("54000000-0000-4000-8000-000000000001");
   });
