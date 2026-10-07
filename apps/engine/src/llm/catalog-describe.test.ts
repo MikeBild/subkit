@@ -1,12 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   buildDescribePrompt,
   type CatalogDescribeInput,
   catalogInputHash,
+  describeCatalogObject,
   GENERATED_DESCRIPTION_MAX_LENGTH,
   normalizeDescribeResult,
   renderCatalogInput,
 } from "./catalog-describe.ts";
+import { basePromptFor } from "./core/context-assembler/base-prompts.ts";
+import * as invokeModule from "./core/invoke.ts";
 
 const token = ["ghp", "_", "A".repeat(36)].join("");
 
@@ -120,5 +123,37 @@ describe("normalizeDescribeResult", () => {
     expect(out.description).not.toContain("\n");
     expect(out.description).not.toContain(token);
     expect(out.description.length).toBeLessThanOrEqual(GENERATED_DESCRIPTION_MAX_LENGTH);
+  });
+});
+
+describe("the flow that describes catalog objects", () => {
+  test("asks for the description and category the user message names, never for a schema and data envelope", async () => {
+    const base = await basePromptFor("catalog_describe");
+    expect(base.content).not.toMatch(/`schema`/);
+    expect(base.content).not.toMatch(/`data`/);
+    const extract = await basePromptFor("extract");
+    expect(extract.content).toMatch(/`schema`/);
+  });
+
+  test("runs under its own flow so the extract instructions never compete with the prompt", async () => {
+    const calls: string[] = [];
+    const spy = spyOn(invokeModule, "invoke").mockImplementation((async (p: { flow: string }) => {
+      calls.push(p.flow);
+      return {
+        object: { description: "Mails the weekly sales digest.", category: "reports" },
+        model_used: "mock",
+      };
+    }) as unknown as typeof invokeModule.invoke);
+    try {
+      const out = await describeCatalogObject({
+        tenant_id: "00000000-0000-0000-0000-000000000001",
+        input: workflow,
+        vocabulary,
+      });
+      expect(out?.category).toBe("reports");
+      expect(calls).toEqual(["catalog_describe"]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
