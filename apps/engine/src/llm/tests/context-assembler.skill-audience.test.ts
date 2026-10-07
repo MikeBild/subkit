@@ -59,7 +59,7 @@ describe.skipIf(skip)("context-assembler honours applies_to", () => {
   const base = {
     user_turns: [{ role: "user" as const, content: "hello" }],
     max_tokens: 60000,
-    model: "mock",
+    model: "claude-sonnet-4-6",
   };
 
   test("a chat turn carries the chat skill, not the drafting skill", async () => {
