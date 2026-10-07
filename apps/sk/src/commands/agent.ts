@@ -97,8 +97,41 @@ export function boundedFetch(timeout_ms: number, fetchImpl: FetchLike = fetch): 
   return (input, init) => fetchImpl(input, { ...init, signal: AbortSignal.timeout(timeout_ms) });
 }
 
-export function sessionDomains(declared: readonly string[], fromRepo: readonly string[]): string[] {
-  return [...(declared.length > 0 ? declared : fromRepo)];
+export type BriefingPlan =
+  | { kind: "explicit"; domains: string[] }
+  | { kind: "declared"; domains: string[] }
+  | { kind: "prompt"; prompt: string; declared: string[] }
+  | { kind: "repo" }
+  | { kind: "none" };
+
+export function planBriefing(p: {
+  explicit: readonly string[] | null;
+  declared: readonly string[];
+  hook: boolean;
+  prompt: string | null;
+}): BriefingPlan {
+  if (p.explicit && p.explicit.length > 0) return { kind: "explicit", domains: [...p.explicit] };
+  if (p.hook && p.prompt) {
+    return p.declared.length > 0
+      ? { kind: "prompt", prompt: p.prompt.slice(0, PROMPT_MAX_CHARS), declared: [...p.declared] }
+      : { kind: "none" };
+  }
+  if (p.declared.length > 0) return { kind: "declared", domains: [...p.declared] };
+  return p.hook ? { kind: "none" } : { kind: "repo" };
+}
+
+export function agentEngineClient(
+  profile: { engine_url: string; api_key: string; active_tenant_id: string | null },
+  hook: boolean,
+  fetchImpl?: FetchLike,
+): EngineClient | null {
+  if (hook && !profile.api_key) return null;
+  return new EngineClient({
+    engine_url: profile.engine_url,
+    api_key: profile.api_key,
+    tenant: profile.active_tenant_id,
+    ...(hook ? { fetchImpl: boundedFetch(HOOK_REQUEST_TIMEOUT_MS, fetchImpl) } : {}),
+  });
 }
 
 export function newPromptDomains(
@@ -138,7 +171,9 @@ export function recordBriefed(
   mkdirSync(dir, { recursive: true });
   for (const name of readdirSync(dir)) {
     const file = join(dir, name);
-    if (now - statSync(file).mtimeMs > BRIEFED_TTL_MS) rmSync(file, { force: true });
+    try {
+      if (now - statSync(file).mtimeMs > BRIEFED_TTL_MS) rmSync(file, { force: true });
+    } catch {}
   }
   const merged = [...new Set([...readBriefed(dir, session_id), ...domains])].sort();
   writeFileSync(briefedPath(dir, session_id), JSON.stringify(merged));
@@ -153,13 +188,13 @@ const briefingCommand = defineCommand({
     domains: {
       type: "string",
       description:
-        "Comma-separated domain slugs (default: .sk/agent.json of the repo, else the known domains the repository name names)",
+        "Comma-separated domain slugs (default: .sk/agent.json of the repo; without hooks, else the known domains the repository name names)",
     },
     budget: { type: "string", description: "Token budget for the briefing" },
     hook: {
       type: "boolean",
       description:
-        "Hook mode (SessionStart or UserPromptSubmit): read hook JSON from stdin, never fail; with a prompt, brief only the domains the prompt adds",
+        "Hook mode (SessionStart or UserPromptSubmit): read hook JSON from stdin, never fail; does nothing outside a repo with .sk/agent.json; with a prompt, brief only the domains the prompt adds",
       default: false,
     },
     json: { type: "boolean", description: "JSON output", default: false },
@@ -169,38 +204,35 @@ const briefingCommand = defineCommand({
       const payload = args.hook ? readHookPayload() : null;
       const startDir = payload?.cwd ?? process.cwd();
       const fromFile = args.domains ? null : findAgentFile(startDir);
-      const declared = fromFile?.config.domains ?? [];
       const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
-      const { engine_url, api_key, active_tenant_id } = resolveProfile();
-      if (args.hook && !api_key) return;
-      const client = new EngineClient({
-        engine_url,
-        api_key,
-        tenant: active_tenant_id,
-        ...(args.hook ? { fetchImpl: boundedFetch(HOOK_REQUEST_TIMEOUT_MS) } : {}),
+      const plan = planBriefing({
+        explicit: args.domains
+          ? args.domains
+              .split(",")
+              .map((d) => d.trim())
+              .filter(Boolean)
+          : null,
+        declared: fromFile?.config.domains ?? [],
+        hook: Boolean(args.hook),
+        prompt: payload?.prompt ?? null,
       });
-      const repo = basename(startDir);
-      let domains: string[];
-      if (args.domains) {
-        domains = args.domains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean);
-      } else if (payload?.prompt) {
-        const resolved = await client.resolveAgentDomains({
-          prompt: payload.prompt.slice(0, PROMPT_MAX_CHARS),
-          repo,
-        });
-        const briefed = payload.session_id ? readBriefed(briefedDir(), payload.session_id) : [];
-        domains = newPromptDomains(resolved.from_prompt, [
-          ...sessionDomains(declared, resolved.from_repo),
-          ...briefed,
-        ]);
+      if (plan.kind === "none" && args.hook) return;
+      const client =
+        plan.kind === "none" ? null : agentEngineClient(resolveProfile(), Boolean(args.hook));
+      if (plan.kind !== "none" && !client) return;
+      let domains: string[] = [];
+      if (plan.kind === "explicit" || plan.kind === "declared") {
+        domains = plan.domains;
+        if (payload?.session_id && plan.kind === "declared") {
+          forgetBriefed(briefedDir(), payload.session_id);
+        }
+      } else if (plan.kind === "prompt" && client) {
+        const resolved = await client.resolveAgentDomains({ prompt: plan.prompt });
+        const briefed = payload?.session_id ? readBriefed(briefedDir(), payload.session_id) : [];
+        domains = newPromptDomains(resolved.from_prompt, [...plan.declared, ...briefed]);
         if (domains.length === 0) return;
-      } else {
-        if (payload?.session_id) forgetBriefed(briefedDir(), payload.session_id);
-        domains =
-          declared.length > 0 ? declared : (await client.resolveAgentDomains({ repo })).from_repo;
+      } else if (plan.kind === "repo" && client) {
+        domains = (await client.resolveAgentDomains({ repo: basename(startDir) })).from_repo;
       }
       if (domains.length === 0) {
         if (!args.hook) {
@@ -211,6 +243,7 @@ const briefingCommand = defineCommand({
         }
         return;
       }
+      if (!client) return;
       const briefing = await client.getAgentBriefing({
         domains,
         ...(budget !== undefined && Number.isFinite(budget) ? { budget_tokens: budget } : {}),
@@ -286,8 +319,8 @@ const captureCommand = defineCommand({
       if (transcript.length > TRANSCRIPT_MAX_CHARS) {
         transcript = transcript.slice(transcript.length - TRANSCRIPT_MAX_CHARS);
       }
-      const { engine_url, api_key, active_tenant_id } = resolveProfile();
-      const client = new EngineClient({ engine_url, api_key, tenant: active_tenant_id });
+      const client = agentEngineClient(resolveProfile(), Boolean(args.hook));
+      if (!client) return;
       const sessionId = args["session-id"] ?? payload?.session_id;
       const result = await client.captureAgentSession({
         agent: args.agent,
@@ -369,8 +402,8 @@ export function codexHookSnippet(): string {
     "[features]",
     "hooks = true",
     "",
-    "# ~/.codex/hooks.json — Codex has no SessionEnd; Stop fires per turn and",
-    "# the capture endpoint dedups by learning fingerprint, so repeats are cheap.",
+    "# ~/.codex/hooks.json — Codex has no SessionEnd; Stop fires after every turn,",
+    "# so the capture below uploads the transcript and distils it once per turn.",
     JSON.stringify(
       {
         hooks: {
