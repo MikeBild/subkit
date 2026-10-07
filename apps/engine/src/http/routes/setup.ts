@@ -2,12 +2,12 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { createRoute, z } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getDb } from "../../db/client.ts";
-import type { LlmAccessProbe } from "../../llm/core/access-probe.ts";
 import {
   BOOTSTRAP_LLM_PROVIDERS,
   consume,
   isBootstrapPending,
   isBootstrapTokenExpired,
+  type LlmAccessProbe,
 } from "../../onboarding/index.ts";
 import { seedBuiltinRolesAndPermissions } from "../../rbac/index.ts";
 import type { AppEnv } from "../openapi.ts";
