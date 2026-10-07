@@ -3736,6 +3736,9 @@ const EN = {
   "create.solution.missingLine.other": "{names} still need a sign-in; the workflow waits for them.",
   "create.solution.allConnected": "All connectors are connected.",
   "create.solution.created": "{name} created · start a test run in Build",
+  "create.solution.address": "Address of {name}",
+  "create.solution.addressHelp":
+    "This connector points at a system of your own; SubKit adds it with this address.",
   "solution.invoices.title": "File invoices from Gmail",
   "solution.invoices.line":
     "Files PDF invoice attachments every evening, named alike, in Google Drive.",
@@ -7910,6 +7913,9 @@ const DE: Record<TranslationKey, string> = {
     "{names} brauchen noch eine Anmeldung; der Workflow wartet darauf.",
   "create.solution.allConnected": "Alle Konnektoren sind verbunden.",
   "create.solution.created": "{name} angelegt · im Aufbau einen Testlauf starten",
+  "create.solution.address": "Adresse von {name}",
+  "create.solution.addressHelp":
+    "Dieser Konnektor zeigt auf ein eigenes System; SubKit legt ihn mit dieser Adresse an.",
   "solution.invoices.title": "Rechnungen aus Gmail ablegen",
   "solution.invoices.line":
     "Legt PDF-Rechnungen jeden Abend einheitlich benannt in Google Drive ab.",

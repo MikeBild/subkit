@@ -15,12 +15,14 @@ import { LOCALE_TAGS, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { credentialBody } from "@/pages/connector-detail-model";
 import {
+  addressedConnectors,
   type ConnectorTemplate,
   joinNames,
   missingConnectors,
   SIGN_IN_LABEL,
   type SolutionEntry,
   type SolutionTrigger,
+  solutionAddressProblem,
   solutionBoundary,
   solutionDraftBody,
   solutionMatches,
@@ -113,7 +115,10 @@ export function useSolutionFlow(
   const navigate = useNavigate();
   const client = useQueryClient();
   const [query, setQuery] = useState("");
+  const [addresses, setAddresses] = useState<Record<string, string>>({});
   const pack = useQuery({ queryKey: SOLUTIONS_KEY, enabled: active, queryFn: fetchSolutions });
+  const catalog = useQuery({ queryKey: TEMPLATES_KEY, enabled: active, queryFn: fetchTemplates });
+  const addressed = (entry: SolutionEntry) => addressedConnectors(entry, catalog.data?.items ?? []);
   const entries = pack.data?.recipes ?? [];
   const tag = LOCALE_TAGS[locale];
   const find = (slug: string) => entries.find((entry) => entry.recipe_slug === slug) ?? null;
@@ -143,25 +148,26 @@ export function useSolutionFlow(
   }, [t, tag, dateTime]);
   const create = useMutation({
     mutationFn: async (slug: string) => {
-      let entry = find(slug);
+      const entry = find(slug);
       if (!entry) throw new Error(t("create.template.loadFailed"));
+      const created: Record<string, string> = {};
       const missing = missingConnectors(entry);
       if (missing.length > 0) {
-        const [templates, taken] = await Promise.all([fetchTemplates(), takenConnectorSlugs()]);
+        const [catalog, taken] = await Promise.all([fetchTemplates(), takenConnectorSlugs()]);
         for (const binding of missing) {
-          const template = templates.items.find((item) => item.slug === binding.template);
-          if (template) await createTemplateConnector(template, taken);
+          const template = catalog.items.find((item) => item.slug === binding.template);
+          if (!template) continue;
+          const connector = await createTemplateConnector(
+            template,
+            taken,
+            template.base_url ? undefined : addresses[binding.placeholder],
+          );
+          created[binding.placeholder] = connector.id;
         }
-        const fresh = await client.fetchQuery({
-          queryKey: SOLUTIONS_KEY,
-          queryFn: fetchSolutions,
-          staleTime: 0,
-        });
-        entry = fresh.recipes.find((item) => item.recipe_slug === slug) ?? entry;
       }
       const draft = await apiRequest<WorkflowDraft>("/v1/workflows/drafts", {
         method: "POST",
-        body: JSON.stringify(solutionDraftBody(entry)),
+        body: JSON.stringify(solutionDraftBody(entry, created)),
       });
       return { draft, title: solutionText(entry, t).title };
     },
@@ -169,6 +175,7 @@ export function useSolutionFlow(
       toast.success(t("create.solution.created", { name: title }));
       done();
       setQuery("");
+      setAddresses({});
       await refreshLookups(client);
       void navigate({ to: `${workflowHref(draft.workflow_id)}?tab=structure` });
     },
@@ -176,8 +183,16 @@ export function useSolutionFlow(
   });
   return {
     pending: create.isPending,
-    reset: () => setQuery(""),
-    submit: (slug) => create.mutate(slug),
+    reset: () => {
+      setQuery("");
+      setAddresses({});
+    },
+    submit: (slug) => {
+      const entry = find(slug);
+      const problem = entry ? solutionAddressProblem(addressed(entry), addresses) : null;
+      if (problem) return fail(t(problem));
+      create.mutate(slug);
+    },
     list: (onPick) => (
       <div className="grid gap-3" data-testid="create-solution-list">
         <SearchField id="create-solution-search" value={query} onChange={setQuery} />
@@ -255,6 +270,20 @@ export function useSolutionFlow(
                 },
               ]}
             />
+            {addressed(entry).map((connector) => (
+              <TextField
+                key={connector.placeholder}
+                id={`create-solution-address-${connector.placeholder}`}
+                type="url"
+                label={t("create.solution.address", { name: connector.template_name })}
+                help={t("create.solution.addressHelp")}
+                value={addresses[connector.placeholder] ?? ""}
+                onChange={(value) =>
+                  setAddresses((current) => ({ ...current, [connector.placeholder]: value }))
+                }
+                mono
+              />
+            ))}
             <p className="text-sm text-muted-foreground" data-testid="create-solution-line">
               {missing.length > 0
                 ? t(

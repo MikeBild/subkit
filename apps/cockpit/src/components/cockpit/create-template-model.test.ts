@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
+  addressedConnectors,
   type ConnectorTemplate,
   freeSlug,
   joinNames,
   missingConnectors,
   SIGN_IN_LABEL,
   type SolutionEntry,
+  solutionAddressProblem,
   solutionBoundary,
   solutionDraftBody,
   solutionMatches,
@@ -178,6 +180,35 @@ describe("solution templates: list, detail, create", () => {
     const definition = body.definition as { slug: string; steps: Array<{ connector_id?: string }> };
     expect(definition.slug).toBe("daily-analytics-report");
     expect(definition.steps[0]?.connector_id).toBe(BOUND_GA);
+  });
+
+  test("connectors created on Anlegen replace their placeholders in the draft", () => {
+    const body = solutionDraftBody(report(true), {
+      [GMAIL]: "gggggggg-gggg-4ggg-8ggg-gggggggggggg",
+    });
+    const steps = (body.definition as { steps: Array<{ connector_id?: string }> }).steps;
+    expect(steps.map((step) => step.connector_id)).toEqual([
+      BOUND_GA,
+      BOUND_GA,
+      undefined,
+      "gggggggg-gggg-4ggg-8ggg-gggggggggggg",
+    ]);
+  });
+
+  test("only a missing connector whose template has no address asks for one", () => {
+    const templates = [
+      { slug: "google-analytics", base_url: "https://analyticsdata.googleapis.com" },
+      { slug: "google-gmail", base_url: null },
+    ];
+    const needed = addressedConnectors(report(true), templates);
+    expect(needed.map((c) => c.template)).toEqual(["google-gmail"]);
+    expect(addressedConnectors(report(true), [])).toEqual([]);
+    expect(solutionAddressProblem(needed, {})).toBe("create.connector.addressInvalid");
+    expect(solutionAddressProblem(needed, { [GMAIL]: "http://insecure.example" })).toBe(
+      "create.connector.addressInvalid",
+    );
+    expect(solutionAddressProblem(needed, { [GMAIL]: " https://api.example.com " })).toBeNull();
+    expect(solutionAddressProblem([], {})).toBeNull();
   });
 
   test("search finds a solution by its title, its words and the connectors it needs", () => {

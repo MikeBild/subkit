@@ -28,6 +28,7 @@ import {
 import { pickId } from "../lib/pick.ts";
 import {
   createBodyFor,
+  parseBinds,
   recipeWorkflowSource,
   SOLUTIONS_VERTICAL,
   type WorkflowSource,
@@ -660,8 +661,18 @@ async function loadWorkflowSource(
   args: Record<string, unknown>,
 ): Promise<WorkflowSource> {
   if (args["from-recipe"]) {
-    const pack = await client.getRecipePack(SOLUTIONS_VERTICAL);
-    return recipeWorkflowSource(pack, String(args["from-recipe"]));
+    const binds = parseBinds(args.bind);
+    const [pack, known] = await Promise.all([
+      client.getRecipePack(SOLUTIONS_VERTICAL),
+      Object.keys(binds).length > 0
+        ? client.listConnectors({ limit: 1000 })
+        : Promise.resolve({ items: [] }),
+    ]);
+    const connectors = known.items.map((item) => ({
+      id: String(item.id),
+      slug: String(item.slug),
+    }));
+    return recipeWorkflowSource(pack, String(args["from-recipe"]), binds, connectors);
   }
   const { readFileSync } = await import("node:fs");
   return {
@@ -829,6 +840,11 @@ const createCommand = defineCommand({
       type: "string",
       description:
         "Slug of a solution recipe; its connectors are bound to the ones you already have",
+    },
+    bind: {
+      type: "string",
+      description:
+        "With --from-recipe: bind connectors yourself, as <template or placeholder>=<connector id or slug>[,…]; needed for templates without a fixed address such as http",
     },
     ...SAVE_ARGS,
     input: {
