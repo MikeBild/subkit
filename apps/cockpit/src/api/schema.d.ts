@@ -20780,6 +20780,7 @@ export interface components {
             placeholder: string;
             doc_url: string | null;
             secret: boolean;
+            header_name?: string;
         };
         ConnectorTemplateBaseUrlOption: {
             environment: string;

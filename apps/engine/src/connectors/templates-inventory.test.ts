@@ -13,6 +13,10 @@ const EXPECTED_INVENTORY = {
       rate_limits: { requests_per_second: 5, burst_size: 5, recommended_backoff_ms: 1000 },
     },
   },
+  anthropic: {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
+  },
   "appsync-cognito": {
     version: 1,
     capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
@@ -112,6 +116,10 @@ const EXPECTED_INVENTORY = {
       webhook_events: [],
       rate_limits: { requests_per_second: 17, burst_size: 5000, recommended_backoff_ms: 1000 },
     },
+  },
+  "google-analytics": {
+    version: 1,
+    capabilities: { webhooks: false, webhook_events: [], rate_limits: null },
   },
   "google-calendar": {
     version: 1,

@@ -799,5 +799,44 @@
       "https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow",
       "https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin"
     ]
+  },
+  "anthropic-basics": {
+    "title": "Anthropic Claude API Basics",
+    "body": "Authenticate with the API key in the x-api-key header (not a bearer token) and send anthropic-version: 2023-06-01 on every request. All requests go to https://api.anthropic.com/v1. POST /messages takes model, max_tokens and a messages array; the answer is in content[] as blocks, read the text blocks. Set max_llm_tokens_per_run on every workflow that calls Claude: SubKit counts each call against that per-run budget and stops the run before it is exceeded.",
+    "examples": [
+      "GET /v1/models — list the models this key can call",
+      "POST /v1/messages with {model, max_tokens, messages:[{role:'user', content:'...'}]} — one answer",
+      "POST /v1/messages with output_config.format {type:'json_schema', schema} — JSON that matches the schema"
+    ],
+    "best_practices": [
+      "Check stop_reason before reading content; refusal and max_tokens leave no usable answer",
+      "Use output_config.format json_schema when a later step parses the answer",
+      "Keep the prompt in the step body and the data in input placeholders so the boundary stays readable"
+    ],
+    "pitfalls": [
+      "Authorization: Bearer with an API key returns 401; the key belongs in x-api-key",
+      "A missing anthropic-version header returns 400",
+      "429 and 529 are retryable; other 4xx mean the request is wrong"
+    ],
+    "doc_refs": ["https://platform.claude.com/docs/en/api/messages"]
+  },
+  "google-analytics-basics": {
+    "title": "Google Analytics 4 Data API Basics",
+    "body": "Authenticate via OAuth 2.0 with the analytics.readonly scope. All requests go to https://analyticsdata.googleapis.com. Reports are POST /v1beta/properties/{property_id}:runReport with dateRanges, dimensions and metrics; the property id is the numeric id from the GA4 property settings, never the measurement id (G-...).",
+    "examples": [
+      "GET /v1beta/properties/0/metadata — dimensions and metrics every property shares",
+      "POST /v1beta/properties/123456789:runReport — totals with metrics activeUsers, sessions, screenPageViews",
+      "POST /v1beta/properties/123456789:runRealtimeReport — active users in the last 30 minutes"
+    ],
+    "best_practices": [
+      "End date ranges yesterday; today's numbers are still incomplete",
+      "Read values by index from dimensionHeaders and metricHeaders; metric values arrive as strings",
+      "Keep limit bounded and order by the metric you report"
+    ],
+    "pitfalls": [
+      "A 403 means the signed-in account has no access to that property, not that OAuth failed",
+      "The measurement id G-XXXX is not the property id"
+    ],
+    "doc_refs": ["https://developers.google.com/analytics/devguides/reporting/data/v1"]
   }
 }

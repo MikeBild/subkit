@@ -122,6 +122,7 @@ export const CredentialHintSchema = z
     placeholder: z.string().default(""),
     doc_url: z.string().nullable(),
     secret: z.boolean(),
+    header_name: z.string().regex(PROBE_HEADER_NAME_RE).optional(),
   })
   .openapi("ConnectorTemplateCredentialHint");
 export type CredentialHint = z.infer<typeof CredentialHintSchema>;
