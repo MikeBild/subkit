@@ -13,6 +13,7 @@ export interface AgentBriefing {
   workflows_omitted: number;
   connectors: string[];
   connectors_omitted: number;
+  guides: string[];
   proposed_candidates: number;
 }
 

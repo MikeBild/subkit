@@ -11,6 +11,8 @@ import { listWorkflowSummaries } from "../workflows/service.ts";
 
 export const DOMAIN_SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
+export const AGENT_GUIDE_TAG = "agent-briefing";
+
 export const DEFAULT_BRIEFING_BUDGET_TOKENS = 4000;
 export const MIN_BRIEFING_BUDGET_TOKENS = 500;
 export const MAX_BRIEFING_BUDGET_TOKENS = 16000;
@@ -46,6 +48,7 @@ export interface BriefingResult {
   workflows_omitted: number;
   connectors: string[];
   connectors_omitted: number;
+  guides: string[];
   proposed_candidates: number;
 }
 
@@ -85,6 +88,10 @@ function knowledgeIndexLine(src: KnowledgeSourceView): string {
   return `- **${src.name}** (\`${src.slug}\`)${desc}`;
 }
 
+function guideLine(skill: Skill): string {
+  return `- ${skill.title} — load via \`get_skill\`/\`find_skill\` (\`${skill.slug ?? skill.title}\`).`;
+}
+
 function catalogLine(entry: CatalogEntry): string {
   const desc = entry.description?.trim() ? ` — ${entry.description.trim()}` : "";
   return `- **${entry.name}** (\`${entry.slug}\`, ${entry.category})${desc}`;
@@ -97,6 +104,7 @@ export interface AssembleInput {
   includeKnowledgeIndex: boolean;
   workflows: CatalogEntry[];
   connectors: CatalogEntry[];
+  guides: Skill[];
   proposedCandidates: number;
 }
 
@@ -165,6 +173,11 @@ function assemble(input: AssembleInput, state: AssembleState): string {
     state.connectorCount,
     "call `find_connector` for the rest.",
   );
+
+  if (input.guides.length > 0) {
+    lines.push("", "## Working with sk");
+    for (const guide of input.guides) lines.push(guideLine(guide));
+  }
 
   if (input.proposedCandidates > 0) {
     lines.push(
@@ -254,6 +267,9 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
   const skills = allSkills
     .filter((s) => matchesDomain(s.tags, wanted))
     .sort((a, b) => a.title.localeCompare(b.title));
+  const guides = allSkills
+    .filter((s) => s.tags.includes(AGENT_GUIDE_TAG) && !matchesDomain(s.tags, wanted))
+    .sort((a, b) => a.title.localeCompare(b.title));
   const knowledge = allKnowledge
     .filter((k) => matchesDomain(k.tags, wanted))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -266,6 +282,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
       includeKnowledgeIndex: p.include_knowledge_index,
       workflows: catalog.workflows,
       connectors: catalog.connectors,
+      guides,
       proposedCandidates: proposed.length,
     },
     p.budget_tokens,
@@ -284,6 +301,7 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
     workflows_omitted: catalog.workflows.length - state.workflowCount,
     connectors: catalog.connectors.slice(0, state.connectorCount).map((c) => c.slug),
     connectors_omitted: catalog.connectors.length - state.connectorCount,
+    guides: guides.map((g) => g.slug ?? g.title),
     proposed_candidates: proposed.length,
   };
 }

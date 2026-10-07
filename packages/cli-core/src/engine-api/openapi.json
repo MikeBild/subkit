@@ -16862,6 +16862,13 @@
           "connectors_omitted": {
             "type": "integer"
           },
+          "guides": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slugs of the skills that teach how to work with sk, listed for every domain."
+          },
           "proposed_candidates": {
             "type": "integer"
           }
@@ -16879,6 +16886,7 @@
           "workflows_omitted",
           "connectors",
           "connectors_omitted",
+          "guides",
           "proposed_candidates"
         ]
       },
