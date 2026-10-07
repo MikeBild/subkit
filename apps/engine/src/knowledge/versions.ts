@@ -3,11 +3,16 @@ import { type Actor, actorFromColumns } from "../audit/actor.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { knowledgeSourceVersions } from "../db/schema/knowledge_sources.ts";
-import { canonicalBundleSerialization, parseBundle } from "./bundle.ts";
 import { getKnowledgeSource } from "./catalog.ts";
+import { KnowledgeVersionAlreadyCurrentError } from "./errors.ts";
 import { ingestKnowledgeSource } from "./service.ts";
 import type { KnowledgeSourceView } from "./types.ts";
-import { knowledgeVersionDocuments } from "./version-record.ts";
+import {
+  knowledgeContentHash,
+  knowledgeVersionDocuments,
+  knowledgeVersionUpload,
+  latestKnowledgeVersion,
+} from "./version-record.ts";
 
 export const KNOWLEDGE_HISTORY_DEFAULT_LIMIT = 50;
 export const KNOWLEDGE_HISTORY_MAX_LIMIT = 200;
@@ -25,17 +30,25 @@ export interface KnowledgeVersionDetail extends KnowledgeVersionView {
   documents: { path: string; content: string }[];
 }
 
-export class KnowledgeVersionAlreadyCurrentError extends Error {
-  readonly code = "version_already_current";
-  constructor(readonly version: number) {
-    super(`version ${version} is already the current content of this knowledge source`);
-    this.name = "KnowledgeVersionAlreadyCurrentError";
-  }
-}
+const versionMeta = {
+  version: knowledgeSourceVersions.version,
+  content_hash: knowledgeSourceVersions.content_hash,
+  author_user_id: knowledgeSourceVersions.author_user_id,
+  author_system_account_id: knowledgeSourceVersions.author_system_account_id,
+  note: knowledgeSourceVersions.note,
+  created_at: knowledgeSourceVersions.created_at,
+};
 
-type VersionRow = typeof knowledgeSourceVersions.$inferSelect;
+type VersionMeta = {
+  version: number;
+  content_hash: string;
+  author_user_id: string | null;
+  author_system_account_id: string | null;
+  note: string | null;
+  created_at: Date;
+};
 
-function toView(row: VersionRow, latest: number): KnowledgeVersionView {
+function toView(row: VersionMeta, latest: number): KnowledgeVersionView {
   return {
     version: row.version,
     content_hash: row.content_hash,
@@ -73,7 +86,7 @@ export async function listKnowledgeHistory(
   const offset = opts.offset ?? 0;
   const tenantConds = sourceVersionConds(tenant_id, knowledge_source_id);
   const rows = await db
-    .select({ row: knowledgeSourceVersions, total: totalOverWindow(), latest: latestVersion() })
+    .select({ ...versionMeta, total: totalOverWindow(), latest: latestVersion() })
     .from(knowledgeSourceVersions)
     .where(and(...tenantConds))
     .orderBy(desc(knowledgeSourceVersions.version))
@@ -86,7 +99,7 @@ export async function listKnowledgeHistory(
       .where(and(...tenantConds));
     return Number(row?.c ?? 0);
   });
-  return { rows: rows.map(({ row, latest }) => toView(row, Number(latest))), total };
+  return { rows: rows.map((row) => toView(row, Number(row.latest))), total };
 }
 
 async function loadVersion(
@@ -94,10 +107,11 @@ async function loadVersion(
   knowledge_source_id: string,
   version: number,
   db: Executor,
-): Promise<{ row: VersionRow; latest: number } | null> {
+) {
   const [found] = await db
     .select({
-      row: knowledgeSourceVersions,
+      ...versionMeta,
+      content: knowledgeSourceVersions.content,
       latest: sql<number>`(SELECT max(v.version)::int FROM knowledge_source_versions v WHERE v.tenant_id = ${tenant_id} AND v.knowledge_source_id = ${knowledge_source_id})`,
     })
     .from(knowledgeSourceVersions)
@@ -108,7 +122,7 @@ async function loadVersion(
       ),
     )
     .limit(1);
-  return found ? { row: found.row, latest: Number(found.latest) } : null;
+  return found ?? null;
 }
 
 export async function getKnowledgeVersion(
@@ -123,8 +137,8 @@ export async function getKnowledgeVersion(
   const found = await loadVersion(tenant_id, knowledge_source_id, version, db);
   if (!found) return null;
   return {
-    ...toView(found.row, found.latest),
-    documents: knowledgeVersionDocuments(found.row.content),
+    ...toView(found, Number(found.latest)),
+    documents: knowledgeVersionDocuments(found.content),
   };
 }
 
@@ -140,43 +154,29 @@ export async function restoreKnowledgeVersion(
   if (!source) return null;
   const found = await loadVersion(tenant_id, knowledge_source_id, version, db);
   if (!found) return null;
-  if (found.row.content_hash === source.version) {
+  const upload = knowledgeVersionUpload(found.content);
+  const latest = await latestKnowledgeVersion(db, tenant_id, knowledge_source_id);
+  if (latest?.content_hash === knowledgeContentHash(upload.text)) {
     throw new KnowledgeVersionAlreadyCurrentError(version);
   }
-  const content = found.row.content;
-  const restore = {
-    tenant_id,
-    knowledge_source_id,
-    actor,
-    expected_version: source.version,
-    restored_from: version,
-  };
-  const result =
-    content.kind === "bundle"
-      ? await ingestKnowledgeSource(
-          {
-            ...restore,
-            upload: {
-              buffer: Buffer.from(canonicalBundleSerialization(content.files), "utf8"),
-              filename: content.filename,
-              mime: "application/json",
-            },
-            parsed_chunks: parseBundle(content.files).chunks,
-          },
-          db,
-        )
-      : await ingestKnowledgeSource(
-          {
-            ...restore,
-            upload: {
-              buffer: Buffer.from(content.text, "utf8"),
-              filename: content.filename,
-              ...(content.mime ? { mime: content.mime } : {}),
-            },
-          },
-          db,
-        );
+  const result = await ingestKnowledgeSource(
+    {
+      tenant_id,
+      knowledge_source_id,
+      actor,
+      expected_version: source.version,
+      restored_from: version,
+      upload: {
+        buffer: Buffer.from(upload.text, "utf8"),
+        filename: upload.filename,
+        ...(upload.mime ? { mime: upload.mime } : {}),
+      },
+      ...(upload.parsed_chunks ? { parsed_chunks: upload.parsed_chunks } : {}),
+    },
+    db,
+  );
   const restored = await getKnowledgeSource(tenant_id, knowledge_source_id, db);
-  if (!restored || result.content_version === null) return null;
+  if (!restored) return null;
+  if (result.content_version === null) throw new KnowledgeVersionAlreadyCurrentError(version);
   return { knowledge_source: restored, version: result.content_version };
 }

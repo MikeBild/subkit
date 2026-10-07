@@ -54,8 +54,11 @@ export function versionWhy(
   return note;
 }
 
-export function previousVersion(version: number): number | null {
-  return version > 1 ? version - 1 : null;
+export function previousVersion(
+  kept: readonly Pick<KnowledgeVersion, "version">[],
+  version: number,
+): number | null {
+  return kept.some((entry) => entry.version === version - 1) ? version - 1 : null;
 }
 
 export function restoreHint(version: KnowledgeVersion, latest: number, t: Translate): string {
