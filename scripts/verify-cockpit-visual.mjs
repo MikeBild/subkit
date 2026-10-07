@@ -43,6 +43,7 @@ import {
   patternViewRoot,
   TRANSCRIPT,
 } from "./lib/cockpit-single-trigger.mjs";
+import { verifyTemplateLists } from "./lib/cockpit-template-lists.mjs";
 import { watchUnpromptedTooltips } from "./lib/cockpit-unprompted-tooltip.mjs";
 import { assertNoVisibleUuids } from "./lib/cockpit-visible-uuids.mjs";
 import { verifyWorkflowAuthorities } from "./lib/cockpit-workflow-authorities.mjs";
@@ -4321,6 +4322,10 @@ for (const locale of variants) {
       );
     if (standOn(verifyCreateConnector))
       await verifyCreateConnector(page, stand, locale.name, (state) =>
+        shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+      );
+    if (standOn(verifyTemplateLists))
+      await verifyTemplateLists(page, stand, (state) =>
         shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
       );
     if (standOn(verifyFirstClickOpens))
