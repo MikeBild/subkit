@@ -43,7 +43,9 @@ function servedOverHttps(requestUrl: string): boolean {
   return new URL(publicBaseUrl() || requestUrl).protocol === "https:";
 }
 
-const ApprovalGrantQuery = z.object({ grant: z.string().min(20) }).openapi("ApprovalGrantQuery");
+const ApprovalGrantQuery = z
+  .object({ grant: z.string().default("") })
+  .openapi("ApprovalGrantQuery");
 
 const approvalPortalPageRoute = createRoute({
   method: "get",
