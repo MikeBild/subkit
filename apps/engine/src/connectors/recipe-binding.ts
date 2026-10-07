@@ -5,6 +5,10 @@ import { connectors } from "../db/schema/index.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import type { ConnectorRecipe } from "./templates.ts";
 
+export const RecipeConnectorCandidateSchema = z
+  .object({ id: z.string(), slug: z.string(), name: z.string() })
+  .openapi("RecipeConnectorCandidate");
+
 export const RecipeConnectorBindingSchema = z
   .object({
     placeholder: z.string(),
@@ -12,14 +16,21 @@ export const RecipeConnectorBindingSchema = z
     template_name: z.string(),
     connector_id: z.string().nullable(),
     connector_name: z.string().nullable(),
+    candidates: z
+      .array(RecipeConnectorCandidateSchema)
+      .describe(
+        "Enabled connectors of this template. Bound automatically only when the template has a fixed address and exactly one candidate exists; otherwise the caller picks one.",
+      ),
   })
   .openapi("RecipeConnectorBinding");
 export type RecipeConnectorBinding = z.infer<typeof RecipeConnectorBindingSchema>;
 
 export interface TemplateConnector {
   id: string;
+  slug: string;
   display_name: string;
   template_slug: string;
+  enabled: boolean;
 }
 
 export interface BoundRecipe {
@@ -49,8 +60,10 @@ export async function listTemplateConnectors(
   const rows = await exec
     .select({
       id: connectors.id,
+      slug: connectors.slug,
       display_name: connectors.display_name,
       template_slug: connectors.template_slug,
+      enabled: connectors.enabled,
     })
     .from(connectors)
     .where(
@@ -62,9 +75,7 @@ export async function listTemplateConnectors(
     )
     .orderBy(asc(connectors.created_at), asc(connectors.id));
   return rows.flatMap((row) =>
-    row.template_slug
-      ? [{ id: row.id, display_name: row.display_name, template_slug: row.template_slug }]
-      : [],
+    row.template_slug ? [{ ...row, template_slug: row.template_slug }] : [],
   );
 }
 
@@ -85,9 +96,9 @@ export function bindRecipe(
   const bindings: Record<string, string> = {};
   const bound = recipe.required_connectors.map((required): RecipeConnectorBinding => {
     const template = templates.get(required.template);
-    const connector = bindsByTemplate(template)
-      ? (available.find((c) => c.template_slug === required.template) ?? null)
-      : null;
+    const candidates = available.filter((c) => c.enabled && c.template_slug === required.template);
+    const connector =
+      bindsByTemplate(template) && candidates.length === 1 ? (candidates[0] ?? null) : null;
     if (connector) bindings[required.placeholder] = connector.id;
     return {
       placeholder: required.placeholder,
@@ -95,6 +106,7 @@ export function bindRecipe(
       template_name: template?.name ?? required.template,
       connector_id: connector?.id ?? null,
       connector_name: connector?.display_name ?? null,
+      candidates: candidates.map((c) => ({ id: c.id, slug: c.slug, name: c.display_name })),
     };
   });
   const workflow = rebindConnectorIds(

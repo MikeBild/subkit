@@ -13,6 +13,7 @@ export interface WorkflowSource {
 export interface KnownConnector {
   id: string;
   slug: string;
+  template_slug: string | null;
 }
 
 export function parseBinds(raw: unknown): Record<string, string> {
@@ -53,6 +54,14 @@ export function recipeWorkflowSource(
     const known = entries.map((candidate) => candidate.recipe_slug).join(", ");
     throw new Error(`no solution recipe "${slug}"; available: ${known || "none"}`);
   }
+  const keys = new Set(entry.connectors.flatMap((c) => [c.placeholder, c.template]));
+  const unknown = Object.keys(binds).filter((key) => !keys.has(key));
+  if (unknown.length > 0) {
+    const valid = [...new Set(entry.connectors.map((c) => c.template))].join(", ");
+    throw new Error(
+      `--bind names ${unknown.map((key) => `"${key}"`).join(", ")}, which solution "${slug}" does not use; it needs: ${valid}`,
+    );
+  }
   const mapping: Record<string, string> = {};
   const missing: string[] = [];
   for (const binding of entry.connectors) {
@@ -61,16 +70,24 @@ export function recipeWorkflowSource(
     if (wanted) {
       const target = connectors.find((c) => c.id === wanted || c.slug === wanted);
       if (!target) throw new Error(`--bind names no connector "${wanted}"`);
+      if (target.template_slug !== binding.template) {
+        throw new Error(
+          `--bind ${binding.template}=${wanted}: that connector is ${target.template_slug ? `a ${target.template_slug} connector` : "not made from a template"}, not ${binding.template_name}`,
+        );
+      }
       mapping[current] = target.id;
     } else if (binding.connector_id === null) {
+      const pick = `--bind ${binding.template}=<connector id or slug>`;
       missing.push(
-        `${binding.template_name} (--bind ${binding.template}=<connector id or slug>, or sk connectors create --template ${binding.template})`,
+        binding.candidates.length > 0
+          ? `${binding.template_name}: choose one of ${binding.candidates.map((c) => c.slug).join(", ")} with ${pick}`
+          : `${binding.template_name}: ${pick}, or sk connectors create --template ${binding.template}`,
       );
     }
   }
   if (missing.length > 0) {
     throw new Error(
-      `solution "${slug}" needs a connector for ${missing.join(", ")}; then run this again`,
+      `solution "${slug}" needs a connector — ${missing.join("; ")}; then run this again`,
     );
   }
   return {

@@ -21057,6 +21057,13 @@ export interface components {
             template_name: string;
             connector_id: string | null;
             connector_name: string | null;
+            /** @description Enabled connectors of this template. Bound automatically only when the template has a fixed address and exactly one candidate exists; otherwise the caller picks one. */
+            candidates: components["schemas"]["RecipeConnectorCandidate"][];
+        };
+        RecipeConnectorCandidate: {
+            id: string;
+            slug: string;
+            name: string;
         };
         TemplateOAuthCredentialResponse: {
             id: string;

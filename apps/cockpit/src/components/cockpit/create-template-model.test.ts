@@ -46,6 +46,7 @@ function report(gaBound: boolean): SolutionEntry {
         template_name: "Google Analytics 4",
         connector_id: gaBound ? BOUND_GA : null,
         connector_name: gaBound ? "GA4 marketing" : null,
+        candidates: gaBound ? [{ id: BOUND_GA, slug: "ga4-marketing", name: "GA4 marketing" }] : [],
       },
       {
         placeholder: GMAIL,
@@ -53,6 +54,7 @@ function report(gaBound: boolean): SolutionEntry {
         template_name: "Gmail",
         connector_id: null,
         connector_name: null,
+        candidates: [],
       },
     ],
     sample_input: { property_id: "123456789" },
