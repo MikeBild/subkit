@@ -140,11 +140,46 @@ export function solutionMatches(
     .includes(needle);
 }
 
-export function solutionDraftBody(entry: SolutionEntry): Record<string, unknown> {
+function swapConnectorIds(value: unknown, mapping: Readonly<Record<string, string>>): unknown {
+  if (Array.isArray(value)) return value.map((item) => swapConnectorIds(item, mapping));
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, inner]) => [
+      key,
+      key === "connector_id" && typeof inner === "string" && Object.hasOwn(mapping, inner)
+        ? mapping[inner]
+        : swapConnectorIds(inner, mapping),
+    ]),
+  );
+}
+
+export function solutionDraftBody(
+  entry: SolutionEntry,
+  created: Readonly<Record<string, string>> = {},
+): Record<string, unknown> {
   return {
-    definition: { ...record(entry.workflow), slug: entry.recipe_slug },
+    definition: { ...record(swapConnectorIds(entry.workflow, created)), slug: entry.recipe_slug },
     recipe: { vertical: SOLUTIONS_VERTICAL, slug: entry.recipe_slug },
   };
+}
+
+export function addressedConnectors(
+  entry: SolutionEntry,
+  templates: readonly Pick<ConnectorTemplate, "slug" | "base_url">[],
+): SolutionConnector[] {
+  return missingConnectors(entry).filter((connector) => {
+    const template = templates.find((item) => item.slug === connector.template);
+    return Boolean(template) && !template?.base_url;
+  });
+}
+
+export function solutionAddressProblem(
+  needed: readonly SolutionConnector[],
+  addresses: Readonly<Record<string, string>>,
+): TranslationKey | null {
+  return needed.every((connector) => HTTPS.test((addresses[connector.placeholder] ?? "").trim()))
+    ? null
+    : "create.connector.addressInvalid";
 }
 
 export function templateSignIn(template: Pick<ConnectorTemplate, "auth_type">): TemplateSignIn {

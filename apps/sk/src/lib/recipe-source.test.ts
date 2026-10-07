@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { workflowsCommand } from "../commands/workflows.ts";
-import { createBodyFor, type RecipePackEntry, recipeWorkflowSource } from "./recipe-source.ts";
+import {
+  createBodyFor,
+  parseBinds,
+  type RecipePackEntry,
+  recipeWorkflowSource,
+} from "./recipe-source.ts";
 
 const SLACK = "54000000-0000-4000-8000-000000000001";
 
@@ -23,7 +28,10 @@ function entry(connector_id: string | null): RecipePackEntry {
       },
     ],
     sample_input: { level: "error", title: "Down" },
-    workflow: { name: "webhook-to-slack", steps: [{ id: "post", connector_id: connector_id }] },
+    workflow: {
+      name: "webhook-to-slack",
+      steps: [{ id: "post", connector_id: connector_id ?? SLACK }],
+    },
   };
 }
 
@@ -46,10 +54,45 @@ describe("sk workflows create --from-recipe", () => {
     });
   });
 
-  test("a solution with a missing connector names it and how to create it", () => {
+  test("a solution with a missing connector names it, how to bind it and how to create it", () => {
     expect(() => recipeWorkflowSource(pack(null), "webhook-to-slack")).toThrow(
-      'solution "webhook-to-slack" needs a connector for Slack (sk connectors create --template slack)',
+      'solution "webhook-to-slack" needs a connector for Slack (--bind slack=<connector id or slug>, or sk connectors create --template slack)',
     );
+  });
+
+  test("--bind fills a missing connector by template or placeholder, by id or slug", () => {
+    const known = [{ id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", slug: "team-slack" }];
+    for (const binds of [{ slack: "team-slack" }, { [SLACK]: known[0]?.id ?? "" }]) {
+      const source = recipeWorkflowSource(pack(null), "webhook-to-slack", binds, known);
+      expect(source.body.steps).toEqual([
+        { id: "post", connector_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" },
+      ]);
+    }
+  });
+
+  test("--bind overrides an automatic binding and refuses an unknown connector", () => {
+    const known = [{ id: "ffffffff-ffff-4fff-8fff-ffffffffffff", slug: "other-slack" }];
+    const source = recipeWorkflowSource(
+      pack("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+      "webhook-to-slack",
+      { slack: "other-slack" },
+      known,
+    );
+    expect(source.body.steps).toEqual([
+      { id: "post", connector_id: "ffffffff-ffff-4fff-8fff-ffffffffffff" },
+    ]);
+    expect(() =>
+      recipeWorkflowSource(pack(null), "webhook-to-slack", { slack: "nope" }, known),
+    ).toThrow('--bind names no connector "nope"');
+  });
+
+  test("--bind reads comma-separated pairs and refuses a malformed one", () => {
+    expect(parseBinds(undefined)).toEqual({});
+    expect(parseBinds("http=own-api, stripe = stripe-prod")).toEqual({
+      http: "own-api",
+      stripe: "stripe-prod",
+    });
+    expect(() => parseBinds("http")).toThrow("--bind expects");
   });
 
   test("an unknown slug lists the solutions that exist", () => {
