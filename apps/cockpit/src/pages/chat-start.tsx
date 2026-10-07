@@ -25,7 +25,12 @@ import { ChoiceCards } from "@/components/cockpit/patterns";
 import { LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { useWorkflowCategories } from "@/queries/mention-sources";
-import { chatStarters, type StarterIcon } from "./chat-start-model";
+import {
+  chatStarters,
+  retryStarterQuery,
+  type StarterIcon,
+  starterGates,
+} from "./chat-start-model";
 
 type RecipePack = components["schemas"]["RecipePackResponse"];
 
@@ -44,34 +49,30 @@ const ICONS: Record<StarterIcon, ReactNode> = {
 export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
   const { t, locale } = useI18n();
   const permissions = useSession().permissions;
-  const canWorkflows = permissions.includes("workflow:read");
+  const gates = starterGates(permissions);
   const attention = useAttention(permissions);
-  const catalog = useWorkflowCategories(canWorkflows);
+  const catalog = useWorkflowCategories(gates.workflows);
   const solutions = useQuery({
     queryKey: ["recipe-packs", "solutions"],
-    enabled: canWorkflows,
+    enabled: gates.solutions,
     staleTime: 300_000,
+    retry: retryStarterQuery,
     queryFn: () => apiRequest<RecipePack>("/v1/recipe-packs/solutions"),
   });
   const knowledge = useQuery({
     queryKey: ["chat", "starter-knowledge"],
-    enabled: permissions.includes("knowledge:read"),
+    enabled: gates.knowledge,
     staleTime: 300_000,
+    retry: retryStarterQuery,
     queryFn: () =>
       apiRequest<{ items: { slug: string; name: string }[] }>("/v1/knowledge-sources?limit=20"),
   });
-  if (
-    (attention.enabled && attention.query.isLoading) ||
-    catalog.isLoading ||
-    solutions.isLoading ||
-    knowledge.isLoading
-  )
-    return null;
+  if ((attention.enabled && attention.query.isLoading) || catalog.isLoading) return null;
   const tag = LOCALE_TAGS[locale];
   const starters = chatStarters(
     {
       attention: attention.query.data?.items ?? [],
-      usage: permissions.includes("stats:read"),
+      usage: gates.usage,
       solutions: (solutions.data?.recipes ?? []).map((entry) => {
         const text = solutionText(entry, t);
         return {
