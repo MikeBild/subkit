@@ -60,7 +60,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export const BOOTSTRAP_TIMEOUT_MS = 5000;
+
+export interface RequestLimits {
+  timeoutMs?: number;
+}
+
+function limitedSignal(
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number | undefined,
+): AbortSignal | undefined {
+  if (timeoutMs === undefined) return signal ?? undefined;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  limits: RequestLimits = {},
+): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
   headers.set("x-subkit-client", "cockpit");
@@ -70,8 +89,15 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
     headers.set("x-subkit-csrf", csrfToken);
   }
-  const response = await fetch(path, { ...init, credentials: "same-origin", headers });
+  const signal = limitedSignal(init.signal, limits.timeoutMs);
+  const response = await fetch(path, {
+    ...init,
+    ...(signal ? { signal } : {}),
+    credentials: "same-origin",
+    headers,
+  });
   const body = response.status === 204 ? null : await response.json().catch(() => null);
+  signal?.throwIfAborted();
   if (!response.ok) throw failure(response.status, body, response.headers.get("x-trace-id"));
   return body as T;
 }
@@ -120,7 +146,11 @@ export async function apiText(path: string): Promise<string> {
 }
 
 export async function bootstrap(): Promise<Bootstrap> {
-  const result = await apiRequest<Bootstrap>("/v1/cockpit/bootstrap");
+  const result = await apiRequest<Bootstrap>(
+    "/v1/cockpit/bootstrap",
+    {},
+    { timeoutMs: BOOTSTRAP_TIMEOUT_MS },
+  );
   csrfToken = result.csrf_token;
   return result;
 }
