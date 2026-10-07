@@ -170,10 +170,13 @@ export function SkillProposalSheet({
       {candidate ? (
         <ConfirmDialog
           open={rejecting}
-          onOpenChange={setRejecting}
-          object={candidate.title}
+          onOpenChange={(open) => !reject.isPending && setRejecting(open)}
+          object={t("skills.proposalObject")}
           verb={t("skills.reject")}
-          consequence={t("skills.rejectConsequence")}
+          consequence={t("skills.rejectConsequence", {
+            name: hideTechnicalIdentifiers(candidate.title, hidden),
+          })}
+          destructive
           pending={reject.isPending}
           onConfirm={() => reject.mutateAsync(candidate).then(() => undefined)}
           testId="skill-proposal-reject-confirm"
