@@ -289,4 +289,33 @@ describe.skipIf(skip)("a fact learning becomes knowledge", () => {
       "proposed",
     );
   });
+
+  test("a fact of several domains lands once and is found from every one of them", async () => {
+    const first = await propose(
+      "Shared on-call",
+      "Billing and support share the weekend on-call.",
+      {
+        domains: ["support", "billing"],
+      },
+    );
+    const out = await approve(first.candidate_id);
+    expect(out.knowledge?.slug).toBe("learnings-support");
+    const created = await getKnowledgeSourceBySlug(tenantId, "learnings-support", db);
+    expect(created?.tags.sort()).toEqual(["domain:billing", "domain:support"]);
+
+    const second = await propose("Refund window", "Refunds are possible for 14 days.", {
+      domains: ["support", "payments"],
+    });
+    await approve(second.candidate_id);
+    const merged = await getKnowledgeSourceBySlug(tenantId, "learnings-support", db);
+    expect(merged?.tags.sort()).toEqual(["domain:billing", "domain:payments", "domain:support"]);
+    for (const tag of ["domain:billing", "domain:payments", "domain:support"]) {
+      const hits = await searchKnowledge(
+        { tenant_id: tenantId, query: "refunds possible", tags: [tag] },
+        db,
+      );
+      expect(hits[0]?.knowledge_source_id).toBe(merged?.id);
+    }
+    expect(await getKnowledgeSourceBySlug(tenantId, "learnings-payments", db)).toBeNull();
+  });
 });
