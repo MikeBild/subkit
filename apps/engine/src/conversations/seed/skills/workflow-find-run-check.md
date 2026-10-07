@@ -1,7 +1,7 @@
 ---
 slug: workflow-find-run-check
 scope: global
-title: Find a Workflow, Run It, Check the Run
+title: Workflow finden, ausführen, Lauf prüfen
 description: The path from a request to a checked result with workflows that already exist — `find_workflow` to pick one, `run_workflow` (or its `wf_<slug>` tool) to start it, `get_execution` and `inspect_execution_step` to confirm what actually happened.
 activates_when: [{"kind":"intent_keyword","word":"run the workflow"},{"kind":"intent_keyword","word":"run workflow"},{"kind":"intent_keyword","word":"start the workflow"},{"kind":"intent_keyword","word":"starte den workflow"},{"kind":"intent_keyword","word":"führe den workflow"},{"kind":"intent_keyword","word":"check the run"},{"kind":"intent_keyword","word":"lauf prüfen"},{"kind":"intent_keyword","word":"find_workflow"},{"kind":"intent_keyword","word":"run_workflow"},{"kind":"intent_keyword","word":"get_execution"}]
 side_effects: read
@@ -11,7 +11,7 @@ tags: [workflows, execution, agent-briefing]
 version: 1
 ---
 
-# Find a Workflow, Run It, Check the Run
+# Workflow finden, ausführen, Lauf prüfen
 
 Most requests are already covered by a workflow someone built and approved.
 Running it is faster, governed and audited; rebuilding it is none of these.
@@ -45,7 +45,7 @@ Running it is faster, governed and audited; rebuilding it is none of these.
   read the step that produced it with `inspect_execution_step` (by `step_key`)
   before guessing. Its `output_preview` shows the real shape.
 - `failed`: report the failed step, its cause class and error code from
-  `outcome`, then follow the skill "When Something Is Stuck".
+  `outcome`, then follow the skill "Wenn etwas hakt" (`when-something-is-stuck`).
 - Answer with what the run produced and its execution id, so the person can
   open the run in the cockpit.
 
