@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { EMBEDDED_MIGRATIONS } from "../../db/migrations/embedded.ts";
-import { llmUsage, tenantLlmSettings, tenants, userLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, tenants, userLlmSettings } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import {
   checkAndDecrement,
@@ -63,7 +63,6 @@ afterEach(async () => {
   if (skip) return;
   await testDb.db.delete(llmUsage);
   await testDb.db.delete(userLlmSettings);
-  await testDb.db.delete(tenantLlmSettings);
   await setConfigKey("tokens.monthly_budget", 0, { tenantId, force: true });
 }, 30_000);
 

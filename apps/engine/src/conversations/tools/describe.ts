@@ -16,10 +16,5 @@ export function compileDescription(tool: ConversationTool): string {
     parts.push(`\n<requires_skill>${tool.requires_skill.trim()}</requires_skill>`);
   }
 
-  if (tool.example_input && Object.keys(tool.example_input).length > 0) {
-    const encoded = JSON.stringify(tool.example_input);
-    parts.push(`\n<example>\n${encoded}\n</example>`);
-  }
-
   return parts.join("\n").trim();
 }

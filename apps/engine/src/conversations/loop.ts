@@ -22,7 +22,11 @@ import {
   recordUsage,
 } from "../llm/accounting/index.ts";
 import { renderAuthoringContextBlock } from "../llm/core/authoring-context-block.ts";
-import { splitPromptIntoBlocks, toSystemMessages } from "../llm/core/cache-blocks.ts";
+import {
+  promptCacheSupported,
+  splitPromptIntoBlocks,
+  toSystemMessages,
+} from "../llm/core/cache-blocks.ts";
 import {
   assembleEnhancedPrompt,
   countSkillTokens,
@@ -474,7 +478,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   }
   const automationContext = await renderAutomationContext(
     p.tenant_id,
-    workflowIdForTurn,
+    workflowIdForTurn ??
+      (draft.summary?.active_target.kind === "workflow"
+        ? draft.summary.active_target.id
+        : undefined),
     p.principal,
     p.db,
   );
@@ -594,6 +601,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         ...(p.surface ? { surface: p.surface } : {}),
         ...(authoringContext ? { authoring_context: authoringContext } : {}),
         ...(automationContext ? { automation_context: automationContext } : {}),
+        ...(p.principal ? { principal: p.principal } : {}),
         ...(authoringHint ? { authoring_hint: authoringHint } : {}),
         ...(authoringConnectorIds.length > 0
           ? { authoring_connector_ids: authoringConnectorIds }
@@ -869,12 +877,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       turnAbortCtrl.signal,
       AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
     ]);
-    const cacheSupported =
-      (attemptProvider === "anthropic" ||
-        attemptProvider === "vertex" ||
-        attemptProvider === "bedrock" ||
-        attemptProvider === "gateway") &&
-      /claude/i.test(modelId);
+    const cacheSupported = promptCacheSupported(attemptProvider, modelId);
     const cacheBlocks = timePhase("converse.split_cache_blocks", () =>
       splitPromptIntoBlocks(prompt, "converse"),
     );
@@ -882,16 +885,6 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       enabled: cacheSupported,
       ttl: "1h",
     });
-    const liveAutomation = await renderAutomationContext(
-      p.tenant_id,
-      ctx.workflow_id ??
-        (draft.summary?.active_target.kind === "workflow"
-          ? draft.summary.active_target.id
-          : undefined),
-      p.principal,
-      p.db,
-    );
-    if (liveAutomation) systemMessages.push({ role: "system", content: liveAutomation });
     events.push({
       type: "activity",
       phase: "composing",

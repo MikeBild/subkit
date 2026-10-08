@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MockLanguageModelV4 } from "ai/test";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
 import {
   detectConfiguredProvider,
   initializeModel,
   ProviderMisconfiguredError,
+  sendsToolInputExamplesNatively,
+  withToolInputExamples,
 } from "../model-init.ts";
 
 const SAVED_ENV: Record<string, string | undefined> = {};
@@ -211,5 +214,93 @@ describe("initializeModel", () => {
     await setConfigKey("llm.api_key", "", { force: true });
 
     await expect(initializeModel()).rejects.toBeInstanceOf(ProviderMisconfiguredError);
+  });
+});
+
+type ModelObject = Pick<MockLanguageModelV4, "doGenerate">;
+type CallOptions = Parameters<ModelObject["doGenerate"]>[0];
+
+describe("withToolInputExamples", () => {
+  const EXAMPLE = { scope: "global", title: "Backoff on 429" };
+
+  function recordingModel(): { model: MockLanguageModelV4; seen: CallOptions[] } {
+    const seen: CallOptions[] = [];
+    const model = new MockLanguageModelV4({
+      provider: "mock-provider",
+      modelId: "mock-model",
+      doGenerate: async (options) => {
+        seen.push(options);
+        return {
+          content: [],
+          finishReason: { unified: "stop", raw: undefined },
+          usage: {
+            inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 1, text: 1, reasoning: 0 },
+          },
+          warnings: [],
+        };
+      },
+    });
+    return { model, seen };
+  }
+
+  function callWithExampleTool(): CallOptions {
+    return {
+      prompt: [{ role: "user", content: [{ type: "text", text: "propose a skill" }] }],
+      tools: [
+        {
+          type: "function",
+          name: "propose_skill",
+          description: "Propose a skill.",
+          inputSchema: { type: "object", properties: {} },
+          inputExamples: [{ input: EXAMPLE }],
+        },
+      ],
+    };
+  }
+
+  it("names the providers that send input_examples on the wire themselves", () => {
+    expect(sendsToolInputExamplesNatively("anthropic", "claude-sonnet-4-6")).toBe(true);
+    expect(sendsToolInputExamplesNatively("vertex", "claude-sonnet-4-6")).toBe(true);
+    expect(sendsToolInputExamplesNatively("vertex", "gemini-2.5-pro")).toBe(false);
+    expect(sendsToolInputExamplesNatively("bedrock", "anthropic.claude-sonnet-4-6")).toBe(false);
+    expect(sendsToolInputExamplesNatively("openai", "gpt-5.6")).toBe(false);
+    expect(sendsToolInputExamplesNatively("gemini", "gemini-2.5-pro")).toBe(false);
+    expect(sendsToolInputExamplesNatively("azure", "gpt-5.6")).toBe(false);
+  });
+
+  it("appends the example to the tool description for a provider without native support", async () => {
+    const { model, seen } = recordingModel();
+    const wrapped = withToolInputExamples(model, "openai", "gpt-5.6") as ModelObject;
+    expect(wrapped).not.toBe(model);
+
+    await wrapped.doGenerate(callWithExampleTool());
+
+    const sent = seen[0]!.tools?.[0];
+    expect(sent?.type).toBe("function");
+    if (sent?.type !== "function") throw new Error("expected a function tool");
+    expect(sent.description).toContain("Propose a skill.");
+    expect(sent.description).toContain("Input Examples:");
+    expect(sent.description).toContain(JSON.stringify(EXAMPLE));
+    expect(sent.inputExamples).toBeUndefined();
+  });
+
+  it("leaves an Anthropic model untouched so input_examples travel natively", async () => {
+    const { model, seen } = recordingModel();
+    const passedThrough = withToolInputExamples(model, "anthropic", "claude-sonnet-4-6");
+    expect(passedThrough).toBe(model);
+
+    await (passedThrough as ModelObject).doGenerate(callWithExampleTool());
+
+    const sent = seen[0]!.tools?.[0];
+    if (sent?.type !== "function") throw new Error("expected a function tool");
+    expect(sent.description).toBe("Propose a skill.");
+    expect(sent.inputExamples).toEqual([{ input: EXAMPLE }]);
+  });
+
+  it("returns a gateway model id unwrapped", () => {
+    expect(withToolInputExamples("anthropic/claude-sonnet-4-6", "gateway", "x")).toBe(
+      "anthropic/claude-sonnet-4-6",
+    );
   });
 });

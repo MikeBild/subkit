@@ -86,9 +86,10 @@ const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
 let heapSnapshotWritten = false;
 
 export function toInputExamples(
-  _example: Readonly<Record<string, unknown>> | undefined,
+  example: Readonly<Record<string, unknown>> | undefined,
 ): { inputExamples: Array<{ input: Record<string, unknown> }> } | Record<string, never> {
-  return {};
+  if (!example || Object.keys(example).length === 0) return {};
+  return { inputExamples: [{ input: { ...example } }] };
 }
 
 function committedWorkflowIdFromResult(result: ToolResult): string | null {

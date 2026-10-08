@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { SuggestNextKind, SuggestNextReason } from "@shared/suggest-next-reasons.ts";
-import { tenantLlmSettings } from "../../db/schema/index.ts";
+import { eq } from "drizzle-orm";
+import { tenants } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -11,21 +12,9 @@ beforeAll(async () => {
   resetMockProvider();
   srv = await createHttpTestServer("conv-client-suppress");
   await srv.db
-    .insert(tenantLlmSettings)
-    .values({
-      tenant_id: srv.tenantId,
-      llm_provider: "mock",
-      llm_primary_model: "client-suppress-primary",
-      llm_fallback_model: "client-suppress-fallback",
-    })
-    .onConflictDoUpdate({
-      target: tenantLlmSettings.tenant_id,
-      set: {
-        llm_provider: "mock",
-        llm_primary_model: "client-suppress-primary",
-        llm_fallback_model: "client-suppress-fallback",
-      },
-    });
+    .update(tenants)
+    .set({ llm_primary: "client-suppress-primary", llm_fallback: "client-suppress-fallback" })
+    .where(eq(tenants.id, srv.tenantId));
 });
 
 afterAll(async () => {

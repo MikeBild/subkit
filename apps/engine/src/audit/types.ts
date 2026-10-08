@@ -172,6 +172,7 @@ export const AuditAction = {
   CONVERSATION_TURN_FAILED: "conversation.turn_failed",
   CONVERSATION_PROBE_CONNECTOR: "conversation.probe_connector",
   CONVERSATION_DRY_RUN_TRANSFORM: "conversation.dry_run_transform",
+  CONVERSATION_PALETTE_SURFACE_ENFORCED: "conversation.palette_surface_enforced",
 
   FILE_DELETED: "file.deleted",
   FILE_CREATED: "file.created",

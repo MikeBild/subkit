@@ -5,7 +5,7 @@ import {
   conversationMessages,
   conversations,
   llmUsage,
-  tenantLlmSettings,
+  tenants,
 } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -16,24 +16,10 @@ beforeAll(async () => {
   process.env.LLM_PROVIDER = "mock";
   resetMockProvider();
   srv = await createHttpTestServer("conversation-llm-errors");
-  const [settings] = await srv.db
-    .insert(tenantLlmSettings)
-    .values({
-      tenant_id: srv.tenantId,
-      llm_provider: "mock",
-      llm_primary_model: "conv-quota-primary",
-      llm_fallback_model: "conv-quota-fallback",
-    })
-    .onConflictDoUpdate({
-      target: tenantLlmSettings.tenant_id,
-      set: {
-        llm_provider: "mock",
-        llm_primary_model: "conv-quota-primary",
-        llm_fallback_model: "conv-quota-fallback",
-      },
-    })
-    .returning();
-  void settings;
+  await srv.db
+    .update(tenants)
+    .set({ llm_primary: "conv-quota-primary", llm_fallback: "conv-quota-fallback" })
+    .where(eq(tenants.id, srv.tenantId));
 });
 
 afterAll(async () => {

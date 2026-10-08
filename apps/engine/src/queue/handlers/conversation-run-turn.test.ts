@@ -6,14 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
 import * as svc from "../../conversations/service.ts";
-import {
-  auditLog,
-  conversations,
-  mcpTasks,
-  tenantLlmSettings,
-  tenants,
-  users,
-} from "../../db/schema/index.ts";
+import { auditLog, conversations, mcpTasks, tenants, users } from "../../db/schema/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import {
   getMcpTask,
@@ -84,12 +77,10 @@ beforeAll(async () => {
     .returning();
   if (!u) throw new Error("seed user failed");
   userId = u.id;
-  await queue.testDb.db.insert(tenantLlmSettings).values({
-    tenant_id: tenantId,
-    llm_provider: "mock",
-    llm_primary_model: "runturn-primary",
-    llm_fallback_model: "runturn-fallback",
-  });
+  await queue.testDb.db
+    .update(tenants)
+    .set({ llm_primary: "runturn-primary", llm_fallback: "runturn-fallback" })
+    .where(eq(tenants.id, tenantId));
   await registerConversationRunTurnHandler({ boss: queue.boss, db: queue.testDb.db });
 });
 

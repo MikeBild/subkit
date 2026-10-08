@@ -24,7 +24,10 @@ afterAll(async () => {
 
 describe.skipIf(skip)("runtime-capability grounding — baseline", () => {
   test("the prompt-time snapshot grounds connector IDENTITY but not capability or access", async () => {
-    const block = renderTenantSummaryBlock(await loadTenantSummary(ctx.tenant_id, ctx.testDb.db));
+    const block = renderTenantSummaryBlock(
+      await loadTenantSummary(ctx.tenant_id, ctx.testDb.db),
+      new Set(),
+    );
     expect(block).not.toBeNull();
     const text = block!;
     expect(text).toContain("cap_baseline");

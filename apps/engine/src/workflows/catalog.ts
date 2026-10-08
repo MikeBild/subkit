@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import type { Db } from "../db/client.ts";
+import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
@@ -51,14 +51,22 @@ function toOutputSchema(
 }
 
 export interface ListWorkflowToolsParams {
-  db: Db;
+  db: Executor;
   principal: ResolvedPrincipal;
   limit?: number;
 }
 
-export async function listWorkflowToolsForTenant(
-  p: ListWorkflowToolsParams,
-): Promise<WorkflowToolDescriptor[]> {
+interface WorkflowToolRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  category: string;
+  current_version_id: string;
+  last_executed_at: Date | null;
+}
+
+async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<WorkflowToolRow[]> {
   const limit = p.limit ?? 40;
   const principal = p.principal;
   const allowlistSqlFilter =
@@ -97,7 +105,7 @@ export async function listWorkflowToolsForTenant(
     });
   }
 
-  const visibleRows = rows.filter((row) => {
+  return rows.filter((row): row is WorkflowToolRow => {
     if (!row.current_version_id) return false;
     if (
       principal.allowed_workflows &&
@@ -108,11 +116,23 @@ export async function listWorkflowToolsForTenant(
     }
     return true;
   });
+}
+
+export async function listWorkflowToolSlugs(
+  p: ListWorkflowToolsParams,
+): Promise<ReadonlySet<string>> {
+  const rows = await selectWorkflowToolRows(p);
+  return new Set(rows.map((row) => row.slug));
+}
+
+export async function listWorkflowToolsForTenant(
+  p: ListWorkflowToolsParams,
+): Promise<WorkflowToolDescriptor[]> {
+  const principal = p.principal;
+  const visibleRows = await selectWorkflowToolRows(p);
   if (visibleRows.length === 0) return [];
 
-  const versionIds = visibleRows
-    .map((r) => r.current_version_id)
-    .filter((id): id is string => id !== null);
+  const versionIds = visibleRows.map((r) => r.current_version_id);
   const versionRows = await p.db
     .select({ id: workflowVersions.id, dag: workflowVersions.dag })
     .from(workflowVersions)
@@ -131,7 +151,7 @@ export async function listWorkflowToolsForTenant(
     let effect: WorkflowToolDescriptor["effect"] = "irreversible_write";
     let inputSchema: WorkflowToolDescriptor["inputSchema"] = EMPTY_OBJECT_SCHEMA;
     let outputSchema: WorkflowToolDescriptor["outputSchema"];
-    const dag = row.current_version_id ? dagByVersionId.get(row.current_version_id) : undefined;
+    const dag = dagByVersionId.get(row.current_version_id);
     if (dag) {
       const parsed = WorkflowDefSchema.safeParse(dag);
       if (parsed.success) {

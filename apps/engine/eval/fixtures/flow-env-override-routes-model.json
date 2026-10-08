@@ -10,8 +10,7 @@
       "provider": "anthropic",
       "fallback_provider": "anthropic",
       "context_cap": 200000,
-      "monthly_budget": null,
-      "enable_prompt_cache": false
+      "monthly_budget": null
     },
     "env": { "EXTRACT_MODEL": "claude-haiku-4-5-20251001" },
     "target_flow": "extract",

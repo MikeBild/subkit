@@ -112,7 +112,10 @@ export async function loadTenantSummary(tenant_id: string, exec: Executor): Prom
   };
 }
 
-export function renderTenantSummaryBlock(summary: TenantSummary): string | null {
+export function renderTenantSummaryBlock(
+  summary: TenantSummary,
+  workflowToolSlugs: ReadonlySet<string>,
+): string | null {
   const lines: string[] = [];
   const workflowsTotal = Math.max(summary.workflows_total, summary.workflows.length);
   const workflowsShown = summary.workflows.slice(0, MAX_WORKFLOWS_IN_SUMMARY);
@@ -126,8 +129,11 @@ export function renderTenantSummaryBlock(summary: TenantSummary): string | null 
     }
     for (const w of workflowsShown) {
       const toolFlag = w.is_tool ? "" : " [authoring-only]";
+      const toolMarker = workflowToolSlugs.has(w.slug) ? ` [tool: wf_${w.slug}]` : "";
       const category = w.category ? ` [category=${w.category}]` : "";
-      lines.push(`- ${w.slug} (${w.lifecycle})${toolFlag} — ${w.name}${category} [id=${w.id}]`);
+      lines.push(
+        `- ${w.slug} (${w.lifecycle})${toolFlag}${toolMarker} — ${w.name}${category} [id=${w.id}]`,
+      );
     }
     if (!workflowsComplete) {
       lines.push(
@@ -193,7 +199,7 @@ export function renderTenantSummaryBlock(summary: TenantSummary): string | null 
     "- Use the ids and slugs above verbatim in tool calls. Never invent new ids. Never repeat a list_* call to 'double-check'.",
     "- Call get_workflow(id) / get_connector(id) only when you need fields beyond slug, name, lifecycle, driver, environment.",
     "- A plain enumeration reply is one short sentence plus bullet list of slug + name. No preamble, no follow-up questions.",
-    "- Each workflow above is also exposed as a `wf_<slug>` tool. To run, call `wf_<slug>(<inputs>)` directly — that is the one-tool-call path. Use `run_workflow(workflow=<slug>)` only as a fallback. Never call `dry_run_workflow` on a saved workflow.",
+    "- Workflows marked [tool: wf_<slug>] are callable directly as that tool; every other workflow runs via run_workflow(workflow=<slug>). Never call `dry_run_workflow` on a saved workflow.",
     "=== END TENANT SNAPSHOT ===",
   ].join("\n");
 }
