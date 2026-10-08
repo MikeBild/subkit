@@ -771,7 +771,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
     kind: "authoring",
     goal:
       "Author a workflow that fetches the 7-day forecast for Berlin (latitude 52.52, longitude 13.41) " +
-      "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min,time " +
+      "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min " +
       "and forecast_days=7. Use a single request step and no separate transform step. Shape the final output " +
       "with a JSONata output_transform expression (not output_transform_function) that produces a JSON object " +
       "with two fields: hottest_day (the date string from daily.time at the index of the maximum value in " +
