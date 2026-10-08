@@ -45,9 +45,12 @@ export function noticeSessionExpiry(status: number, code: string | null): void {
   for (const listener of sessionExpiryListeners) listener();
 }
 
+const RETRYABLE_CLIENT_STATUSES = new Set([408, 429]);
+
 export function retryQuery(failures: number, error: unknown): boolean {
-  if (error instanceof ApiError && isSessionExpiry(error.status, error.code)) return false;
-  return failures < 3;
+  if (failures >= 3) return false;
+  if (!(error instanceof ApiError)) return true;
+  return error.status >= 500 || RETRYABLE_CLIENT_STATUSES.has(error.status);
 }
 
 function failure(status: number, body: unknown, traceId: string | null): ApiError {
