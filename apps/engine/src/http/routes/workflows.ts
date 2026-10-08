@@ -338,16 +338,8 @@ const deleteScheduleRoute = createRoute({
   },
 });
 
-const ValidateBody = z
-  .object({
-    name: z.string().optional(),
-    slug: z.string().optional(),
-    description: z.string().optional(),
-    input_schema: z.record(z.string(), z.unknown()).optional(),
-    output_schema: z.record(z.string(), z.unknown()).optional(),
-    steps: z.array(z.record(z.string(), z.unknown())),
-    timeout_ms: z.number().int().positive().optional(),
-  })
+const ValidateBody = CreateBody.omit({ category: true })
+  .extend({ name: z.string().optional() })
   .openapi("ValidateWorkflowBody");
 
 const ValidateResponse = z
