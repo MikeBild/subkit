@@ -14,6 +14,14 @@ export interface OptimisticMessage {
   sentAt: string;
 }
 
+export type MessageAuthor = "user" | "assistant" | "system";
+
+export function messageAuthor(role: string): MessageAuthor {
+  if (role === "user") return "user";
+  if (role === "system") return "system";
+  return "assistant";
+}
+
 export function userMessageCount(messages: readonly Pick<UiMessage, "role">[]): number {
   return messages.filter((message) => message.role === "user").length;
 }

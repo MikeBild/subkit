@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { CATALOGS } from "@/lib/i18n";
 import { referencesFromPart } from "./chat-references";
 import {
   budgetPill,
   chatHeaderTitle,
   conversationOpenedByFailedSend,
   costPill,
+  messageAuthor,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
@@ -276,5 +278,23 @@ describe("header pills", () => {
     expect(budgetPill(undefined)).toBeNull();
     expect(budgetPill("tightening")).toBe("tightening");
     expect(budgetPill("critical")).toBe("critical");
+  });
+});
+
+describe("messageAuthor", () => {
+  test("a compaction note keeps its system author instead of speaking as the assistant", () => {
+    expect(messageAuthor("system")).toBe("system");
+    expect(messageAuthor("user")).toBe("user");
+    expect(messageAuthor("assistant")).toBe("assistant");
+    expect(messageAuthor("tool")).toBe("assistant");
+  });
+
+  test("every locale labels the system author distinctly from the assistant", () => {
+    for (const locale of ["en", "de"] as const) {
+      expect(CATALOGS[locale]["chat.role.system"]).toBe("System");
+      expect(CATALOGS[locale]["chat.role.system"]).not.toBe(
+        CATALOGS[locale]["chat.role.assistant"],
+      );
+    }
   });
 });
