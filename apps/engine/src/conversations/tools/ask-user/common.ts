@@ -3,6 +3,7 @@ import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { recordAuthoringGateBlock } from "../../../observability/instrumentation.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
 import { decidedByFor } from "../../decided-by.ts";
 import {
@@ -28,6 +29,11 @@ import {
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
 } from "./elicit-bridge.ts";
+import {
+  detectPlaceholderDestinationHint,
+  type PlaceholderDestinationHint,
+  placeholderDestinationHintMessage,
+} from "./placeholder-destination.ts";
 import { redactElicitationOutput } from "./redact-answer.ts";
 import { detectSecretElicitation, type SecretElicitationHit } from "./secret-detection.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
@@ -146,6 +152,37 @@ async function secretElicitationBlockedOverMcp(
   };
 }
 
+function placeholderDestinationRejected(
+  ctx: ToolContext,
+  p: { tool_name: AskUserToolName },
+  hint: PlaceholderDestinationHint,
+): ToolResult {
+  logger.warn({
+    module: "conversation",
+    action: "ask_user.placeholder_destination_rejected",
+    msg: "refused to show a placeholder destination as a hint or default — destinations come from the user",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    tool_name: p.tool_name,
+    field: hint.field,
+    attribute: hint.attribute,
+  });
+  recordAuthoringGateBlock({ code: "ask_placeholder_destination", tool: p.tool_name });
+  const message = placeholderDestinationHintMessage(hint);
+  return {
+    ok: false,
+    error_code: "ask_placeholder_destination",
+    message,
+    next_best_actions: [p.tool_name],
+    data: {
+      error_code: "ask_placeholder_destination",
+      field: hint.field,
+      attribute: hint.attribute,
+      match: hint.match,
+    },
+  };
+}
+
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
@@ -156,6 +193,8 @@ export async function pauseForUserInput(
     const unrenderable = unrenderableFormResult(p.input);
     if (unrenderable) return unrenderable;
   }
+  const placeholderHint = detectPlaceholderDestinationHint(p.tool_name, p.input);
+  if (placeholderHint) return placeholderDestinationRejected(ctx, p, placeholderHint);
   if (engineAuthorization && p.input && typeof p.input === "object" && !Array.isArray(p.input)) {
     p = { ...p, input: { ...p.input, authorization_url: engineAuthorization.authorizationUrl } };
   }
