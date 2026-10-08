@@ -135,7 +135,7 @@ export function findPlaceholderDestinations(text: string, tier: PlaceholderTier)
 }
 
 function placeholderDetail(match: string): string {
-  return `placeholder destination "${match}" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.`;
+  return `placeholder destination "${match}" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.`;
 }
 
 export function detectPlaceholderDestinations(

@@ -210,7 +210,7 @@ describe("detectPlaceholderDestinations · scanned sites and path names", () => 
         path: c.path,
         kind: c.kind,
         match: c.match,
-        message: `${c.path}: placeholder destination "${c.match}" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.`,
+        message: `${c.path}: placeholder destination "${c.match}" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.`,
       });
     });
   }
@@ -527,7 +527,7 @@ describe("placeholderDestinationErrors", () => {
     expect(errors[0]).toEqual({
       path: "steps.send.url",
       message:
-        'placeholder destination "api.example.com" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.',
+        'placeholder destination "api.example.com" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.',
     });
   });
 });
@@ -569,7 +569,7 @@ describe("validateWorkflowDef · destinationTier is opt-in", () => {
       {
         path: "steps.send.body.to",
         message:
-          'placeholder destination "REPLACE_ME" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.',
+          'placeholder destination "REPLACE_ME" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.',
       },
     ]);
   });

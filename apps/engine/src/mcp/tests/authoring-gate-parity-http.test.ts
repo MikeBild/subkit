@@ -20,7 +20,7 @@ type Surface = NonNullable<ToolContext["surface"]>;
 const LOOP_SURFACES: Surface[] = ["web", "sk_headless", "sk_interactive", "chat", "mcp"];
 
 const REPLACE_ME_SENTENCE =
-  'placeholder destination "REPLACE_ME" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.';
+  'placeholder destination "REPLACE_ME" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.';
 
 const PLACEHOLDER_PATCH = {
   step_patches: [{ step_id: "send", op: "replace", path: "/body/to", value: "REPLACE_ME" }],
