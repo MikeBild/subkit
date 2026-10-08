@@ -7,7 +7,7 @@ import {
 } from "../schema-normalizer.ts";
 
 describe("structuredOutcomeSchema", () => {
-  it("roots the outcome in a closed object with ok, nullable value and nullable reason", () => {
+  it("roots the outcome in a closed object with ok, nullable value and a described, non-empty reason", () => {
     const schema = structuredOutcomeSchema({
       type: "object",
       properties: { a: { type: "string" } },
@@ -16,8 +16,11 @@ describe("structuredOutcomeSchema", () => {
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toEqual(["ok", "value", "reason"]);
     const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.ok).toEqual({ type: "boolean" });
-    expect(props.reason).toEqual({ type: ["string", "null"] });
+    expect(props.ok).toMatchObject({ type: "boolean" });
+    expect(typeof props.ok!.description).toBe("string");
+    expect(props.reason).toMatchObject({ type: ["string", "null"], minLength: 1 });
+    expect(String(props.reason!.description)).toContain("what is missing or impossible");
+    expect(typeof props.value!.description).toBe("string");
     const anyOf = props.value!.anyOf as Array<Record<string, unknown>>;
     expect(anyOf).toHaveLength(2);
     expect(anyOf[0]).toEqual({
@@ -61,14 +64,14 @@ describe("readStructuredOutcome", () => {
     });
   });
 
-  it("returns the reason of a refused outcome and falls back to abort", () => {
+  it("returns the reason of a refused outcome and names a missing reason as such", () => {
     expect(readStructuredOutcome({ ok: false, value: null, reason: "nope" }, false)).toEqual({
       ok: false,
       reason: "nope",
     });
     expect(readStructuredOutcome({ ok: false, value: null, reason: "  " }, false)).toEqual({
       ok: false,
-      reason: "abort",
+      reason: "the model declined without giving a reason",
     });
   });
 
