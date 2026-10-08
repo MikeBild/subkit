@@ -67,6 +67,27 @@ describe("cockpit browser boundary", () => {
     expect(cached.status).toBe(304);
   });
 
+  test("a bundle file a stale tab still asks for is missing, not the page", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+
+    const response = await app.request("http://subkit.test/cockpit/assets/index-gone.js");
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).not.toContain("text/html");
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+  });
+
+  test("the app icon keeps no long cache because its name carries no content hash", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+
+    const icon = await app.request("http://subkit.test/cockpit/favicon.svg");
+
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("cache-control")).toBe("no-cache");
+  });
+
   test("serves the app icon under the cockpit base path, as an image", async () => {
     const app = createOpenApiApp();
     registerCockpitRoutes(app);
