@@ -26,7 +26,7 @@ function definition(slug: string, to: string, url = "https://api.acme.com/notify
 const PLACEHOLDER_ERROR = {
   path: "steps.send.body.to",
   message:
-    'placeholder destination "REPLACE_ME" — this value must come from the user (ask with ask_user_text or ask_user_form); never fill it with a placeholder.',
+    'placeholder destination "REPLACE_ME" — a reserved example or placeholder that cannot be delivered, even when the user typed it; ask the user for the real value with ask_user_text or ask_user_form and never fill it with a placeholder.',
 };
 
 describe("HTTP file authoring · placeholder destinations (tier tokens)", () => {

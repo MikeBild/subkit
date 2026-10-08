@@ -29,7 +29,7 @@ export function describePlaceholderDestinations(
     .join("; ");
   const more =
     violations.length > SHOWN_VIOLATIONS ? ` (+${violations.length - SHOWN_VIOLATIONS} more)` : "";
-  return `${violations.length} destination value(s) are placeholders: ${shown}${more} The real value must come from the user — ask with ask_user_text or ask_user_form, then apply the answer. The engine never previews, patches or saves a placeholder destination.`;
+  return `${violations.length} destination value(s) are placeholders: ${shown}${more} Reserved example or placeholder values cannot be delivered, even when the user typed them — ask the user for the real value with ask_user_text or ask_user_form, then apply the answer. The engine never previews, patches or saves a placeholder destination.`;
 }
 
 export function placeholderDestinationGateResult(
