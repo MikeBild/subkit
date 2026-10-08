@@ -674,6 +674,7 @@ describe("typed reply while an elicitation is pending (salvage)", () => {
     expect(row.status).toBe("resolved");
     expect(row.output).toEqual({ text: "Berlin" });
     expect(row.decided_by).toBe(ctx.user_id);
+    expect(row.decided_by_kind).toBe("user");
 
     expect(adapter.sends.some((d) => d.text?.includes(GUIDANCE_MARKER))).toBe(false);
     expect(adapter.sends.length).toBeGreaterThan(0);

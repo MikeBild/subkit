@@ -118,7 +118,7 @@ describe("deleteConversation", () => {
         tenant_id: ctx.tenant_id,
         conversation_id: id,
         kind: "append",
-        actor_id: ctx.user_id,
+        actor: { kind: "user", id: ctx.user_id },
         request_source: "mcp",
         user_message_id: null,
       },

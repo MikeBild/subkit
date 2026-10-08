@@ -463,7 +463,7 @@ describe("unsaved connector draft credential setup", () => {
         conversation_id: conversation.id,
         id: elicitation.id,
         output: { confirmed: true },
-        decided_by: server.userId,
+        decided_by: { kind: "user", id: server.userId },
         reason: "credential_setup_completed",
         transport: "succeeded",
       },

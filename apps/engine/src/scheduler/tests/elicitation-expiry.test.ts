@@ -152,6 +152,7 @@ async function seedCompletedMcpTask(
       turn_seq: 1,
       kind: "start",
       actor_id: srv.userId,
+      actor_kind: "user",
       request_source: "mcp",
       result: {
         conversation_id: conversationId,
@@ -228,6 +229,7 @@ describe("runElicitationExpiry — dead approval cascade", () => {
     expect(elicitation.status).toBe("timeout");
     expect(elicitation.decision_reason).toBe("approval_expired");
     expect(elicitation.decided_by).toBeNull();
+    expect(elicitation.decided_by_kind).toBeNull();
 
     expect(await readConversationStatus(conversationId)).toBe("active");
 
@@ -307,6 +309,7 @@ describe("runElicitationExpiry — expired draft credential setup", () => {
     expect(elicitation.status).toBe("timeout");
     expect(elicitation.decision_reason).toBe("credential_setup_expired");
     expect(elicitation.decided_by).toBeNull();
+    expect(elicitation.decided_by_kind).toBeNull();
     expect(await readConversationStatus(conversationId)).toBe("active");
     expect((await store.getTask(taskId))?.status).toBe("completed");
     const after = await handleConversationTool({
@@ -501,6 +504,7 @@ describe("runElicitationExpiry — plain prompts are bounded too", () => {
     expect(elicitation.status).toBe("timeout");
     expect(elicitation.decision_reason).toBe("prompt_expired");
     expect(elicitation.decided_by).toBeNull();
+    expect(elicitation.decided_by_kind).toBeNull();
     expect(await readConversationStatus(conversationId)).toBe("active");
   });
 });
