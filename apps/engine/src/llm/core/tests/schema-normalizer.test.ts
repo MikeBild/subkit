@@ -7,7 +7,7 @@ import {
 } from "../schema-normalizer.ts";
 
 describe("structuredOutcomeSchema", () => {
-  it("roots the outcome in a closed object with ok, nullable value and a described, non-empty reason", () => {
+  it("roots the outcome in a closed object with ok, nullable value and a required, described reason", () => {
     const schema = structuredOutcomeSchema({
       type: "object",
       properties: { a: { type: "string" } },
@@ -18,7 +18,7 @@ describe("structuredOutcomeSchema", () => {
     const props = schema.properties as Record<string, Record<string, unknown>>;
     expect(props.ok).toMatchObject({ type: "boolean" });
     expect(typeof props.ok!.description).toBe("string");
-    expect(props.reason).toMatchObject({ type: ["string", "null"], minLength: 1 });
+    expect(props.reason).toMatchObject({ type: "string", minLength: 1 });
     expect(String(props.reason!.description)).toContain("what is missing or impossible");
     expect(typeof props.value!.description).toBe("string");
     const anyOf = props.value!.anyOf as Array<Record<string, unknown>>;

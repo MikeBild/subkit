@@ -111,10 +111,10 @@ export function structuredOutcomeSchema(
         description: "The complete result when ok is true; null when ok is false.",
       },
       reason: {
-        type: ["string", "null"],
+        type: "string",
         minLength: 1,
         description:
-          "When ok is false: one or two sentences naming exactly what is missing or impossible, so the caller can fix it. null when ok is true.",
+          "When ok is false: one or two sentences naming exactly what is missing or impossible, so the caller can fix it. When ok is true: the single word complete.",
       },
     },
     required: ["ok", "value", "reason"],
