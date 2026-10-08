@@ -320,7 +320,7 @@ describe("confirm gate parity — one gate behind every entry point", () => {
     });
   });
 
-  test("MCP-direct dispatcher: the same call yields the same args_hash, APPROVAL_REQUESTED on mcp_tool_call and no conversation audit", async () => {
+  test("dispatcher without permission mode (category default): the same call yields the same args_hash, APPROVAL_REQUESTED on mcp_tool_call and no conversation audit", async () => {
     const requiredBefore = await confirmationRequiredCount();
     const { value: envelope, logs } = await gateDecisionLogs(() =>
       dispatchTool(
