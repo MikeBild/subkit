@@ -52,12 +52,11 @@ export interface BriefingResult {
   proposed_candidates: number;
 }
 
-function domainTags(domains: string[]): Set<string> {
-  return new Set(domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`));
-}
-
-function matchesDomain(tags: string[], wanted: Set<string>): boolean {
-  return tags.some((t) => wanted.has(t));
+export function inDomain(
+  item: { tags: string[]; category?: string | null },
+  domains: readonly string[],
+): boolean {
+  return domains.some((d) => item.tags.includes(`${DOMAIN_TAG_PREFIX}${d}`) || item.category === d);
 }
 
 export function catalogInDomain(entry: Pick<CatalogEntry, "slug" | "category">, domains: string[]) {
@@ -134,7 +133,7 @@ function assemble(input: AssembleInput, state: AssembleState): string {
     `# sk session briefing — domains: ${input.domains.join(", ")}`,
     "",
     "Grounding rule: for facts of these domains, look up instead of guessing —",
-    `call \`search_knowledge\` with \`tags: ["${[...domainTags(input.domains)].join('", "')}"]\`.`,
+    `call \`search_knowledge\` with \`tags: ["${input.domains.map((d) => `${DOMAIN_TAG_PREFIX}${d}`).join('", "')}"]\`.`,
     "If the search returns nothing, say so; do not invent domain internals.",
   ];
 
@@ -253,8 +252,6 @@ async function catalogFor(
 }
 
 export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingResult> {
-  const wanted = domainTags(p.domains);
-
   const [allSkills, allKnowledge, proposed, catalog] = await Promise.all([
     listSkills({ tenant_id: p.tenant_id, status: "active", limit: 500 }, p.db),
     p.include_knowledge_index
@@ -265,13 +262,13 @@ export async function buildAgentBriefing(p: BriefingParams): Promise<BriefingRes
   ]);
 
   const skills = allSkills
-    .filter((s) => matchesDomain(s.tags, wanted))
+    .filter((s) => inDomain(s, p.domains))
     .sort((a, b) => a.title.localeCompare(b.title));
   const guides = allSkills
-    .filter((s) => s.tags.includes(AGENT_GUIDE_TAG) && !matchesDomain(s.tags, wanted))
+    .filter((s) => s.tags.includes(AGENT_GUIDE_TAG) && !inDomain(s, p.domains))
     .sort((a, b) => a.title.localeCompare(b.title));
   const knowledge = allKnowledge
-    .filter((k) => matchesDomain(k.tags, wanted))
+    .filter((k) => inDomain(k, p.domains))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const { markdown, state } = trimToBudget(
