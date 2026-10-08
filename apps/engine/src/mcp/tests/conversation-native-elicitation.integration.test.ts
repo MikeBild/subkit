@@ -100,6 +100,7 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
         turn_seq: 1,
         kind: "start",
         actor_id: suite.http.userId,
+        actor_kind: "user",
         request_source: "mcp",
         result: { conversation_id: conversation.id, status: "awaiting_input", events: [] },
       })
@@ -590,6 +591,7 @@ describe("MCP conversation native elicitation — real Streamable HTTP", () => {
         turn_seq: 1,
         kind: "start",
         actor_id: suite.http.userId,
+        actor_kind: "user",
         request_source: "mcp",
         result: { conversation_id: conversation.id, status: "awaiting_input", events: [] },
       });

@@ -4,6 +4,7 @@ import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
+import { decidedByFor } from "../../decided-by.ts";
 import {
   DRAFT_CREDENTIAL_SETUP_KIND,
   isDraftCredentialSetupAuthType,
@@ -188,7 +189,7 @@ export async function pauseForUserInput(
             conversation_id: ctx.conversation_id,
             id: sensitiveRow.id,
             output: null,
-            decided_by: ctx.actor_id,
+            decided_by: decidedByFor(ctx.actor_id, ctx.principal),
             status: "cancelled",
             reason: "sensitive_field_requires_url_elicitation",
             transport: "failed",
@@ -284,7 +285,7 @@ export async function pauseForUserInput(
               conversation_id: ctx.conversation_id,
               id: row.id,
               output,
-              decided_by: ctx.actor_id,
+              decided_by: decidedByFor(ctx.actor_id, ctx.principal),
               status: "resolved",
               transport: "succeeded",
             },

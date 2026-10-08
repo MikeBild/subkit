@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { PgBoss } from "pg-boss";
+import { type Actor, actorOf } from "../audit/actor.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { executions, toolApprovals } from "../db/schema/index.ts";
@@ -82,7 +83,13 @@ export async function enqueueApprovalElicitationResume(
     });
     return false;
   }
-  const actor_id = runAs?.kind === "user" ? runAs.id : p.approver_user_id;
+  const actor: Actor | null =
+    runAs.kind === "user"
+      ? actorOf(runAs)
+      : p.approver_user_id
+        ? { kind: "user", id: p.approver_user_id }
+        : null;
+  const actor_id = actor?.id ?? null;
 
   let task_id: string;
   try {
@@ -91,7 +98,7 @@ export async function enqueueApprovalElicitationResume(
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
         kind: "respond_elicitation",
-        actor_id,
+        actor,
         request_source: "portal",
         user_message_id: null,
       },

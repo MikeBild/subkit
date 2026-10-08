@@ -1,3 +1,4 @@
+import { decidedByFor } from "../decided-by.ts";
 import { resolveElicitationAndReactivate } from "../elicitations.ts";
 import { ELICITATION_ALREADY_RESOLVED } from "./error-codes.ts";
 import type { ToolContext, ToolResult } from "./index.ts";
@@ -31,7 +32,7 @@ export async function resolveAndError(
       conversation_id: ctx.conversation_id,
       id: rowId,
       output: p.output ?? null,
-      decided_by: ctx.actor_id,
+      decided_by: decidedByFor(ctx.actor_id, ctx.principal),
       status: "cancelled",
       reason: p.reason,
       ...(p.transport ? { transport: p.transport } : {}),

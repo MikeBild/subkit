@@ -937,6 +937,7 @@ describe("conversation_get — derived status before any task settles", () => {
       turn_seq: 1,
       kind: "respond_elicitation",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
       result: {
         conversation_id: conv.id,
@@ -1041,6 +1042,7 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
       turn_seq: 1,
       kind: "respond_elicitation",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
       job_id: "job-inflight",
     });
@@ -1064,6 +1066,7 @@ describe("conversation_get — respond_elicitation in-flight vs crashed", () => 
       turn_seq: 1,
       kind: "respond_elicitation",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
 
@@ -1118,6 +1121,7 @@ describe("conversation_get — native MCP elicitation delivery", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
       result: { conversation_id: conv.id, status: "awaiting_input", events: [] },
     });
@@ -1211,6 +1215,7 @@ describe("conversation_get — working heartbeat", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
     await testDb.db.insert(conversationToolCalls).values({
@@ -1257,6 +1262,7 @@ describe("conversation_get — working heartbeat", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
     await testDb.db.insert(conversationToolCalls).values({
@@ -1293,6 +1299,7 @@ describe("conversation_get — working heartbeat", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
 
@@ -1328,6 +1335,7 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
     await testDb.db.insert(conversationToolCalls).values({
@@ -1375,6 +1383,7 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
 
@@ -1418,6 +1427,7 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
     });
     await testDb.db.insert(conversationToolCalls).values({
@@ -1455,6 +1465,7 @@ describe("conversation_get — worker-stamped heartbeat (Option-B)", () => {
       turn_seq: 1,
       kind: "start",
       actor_id: principal.id,
+      actor_kind: "user",
       request_source: "mcp",
       result: { conversation_id: conv.id, status: "committed", events: [] },
     });
