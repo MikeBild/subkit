@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import type { Db } from "../../db/client.ts";
+import { runConfirmGate } from "../confirmation.ts";
 import {
   decideToolMode,
   defaultModeForCategory,
@@ -6,6 +8,12 @@ import {
   resolveToolMode,
   type ToolPolicies,
 } from "../tool-policies.ts";
+
+const untouchableDb = new Proxy({} as Record<string, unknown>, {
+  get(_target, property) {
+    throw new Error(`the proceed path must not touch the database (accessed ${String(property)})`);
+  },
+}) as unknown as Db;
 
 describe("tool-policies resolver", () => {
   it("defaults tenant_write to confirm_before_execution", () => {
@@ -313,6 +321,49 @@ describe("resolveToolMode — yolo mode", () => {
         }),
       ).toBe("no_confirm");
     }
+  });
+
+  it("yolo on a dangerous tool resolves no_confirm by permission_mode and the gate records the bypass", async () => {
+    const args = { id: "00000000-0000-0000-0000-000000000000" };
+    expect(
+      decideToolMode({
+        tool: "delete_workflow",
+        category: "tenant_write",
+        input: args,
+        overrides: {},
+        permission_mode: "yolo",
+      }),
+    ).toEqual({ mode: "no_confirm", rule: "permission_mode" });
+
+    const gate = await runConfirmGate({
+      tool: "delete_workflow",
+      category: "tenant_write",
+      surface: "chat",
+      args,
+      overrides: {},
+      permission_mode: "yolo",
+      db: untouchableDb,
+      tenant_id: "00000000-0000-0000-0000-000000000002",
+      principal: null,
+      approval_tool: "delete_workflow",
+      via: "chat",
+      record_surface: "web",
+      conversation_id: "00000000-0000-0000-0000-000000000003",
+      actor_id: null,
+      execution_mode: null,
+      precheck: null,
+      pause_blocked: false,
+      confirmation_kind: "external_write",
+    });
+    expect(gate.kind).toBe("proceed");
+    expect(gate.record).toMatchObject({
+      tool: "delete_workflow",
+      outcome: "proceed",
+      mode: "no_confirm",
+      rule: "permission_mode",
+      bypassed_confirmation: true,
+      surface: "web",
+    });
   });
 
   it("yolo bypasses the per-tool default for tenant_write tools", () => {

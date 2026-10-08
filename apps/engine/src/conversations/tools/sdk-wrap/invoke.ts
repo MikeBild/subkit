@@ -1,7 +1,6 @@
 import type { z } from "@hono/zod-openapi";
 import { type Tool, tool } from "ai";
 import { and, eq } from "drizzle-orm";
-import { recordToolPolicyConfirmationRequired } from "../../../audit/recorders/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { conversations } from "../../../db/schema/index.ts";
 import { log, logger } from "../../../logging/logger.ts";
@@ -13,7 +12,7 @@ import {
 import { startToolSpan } from "../../../observability/langfuse-spans.ts";
 import { readMemoryUsage } from "../../../observability/runtime-telemetry.ts";
 import { skillAudienceForAuthoringMode } from "../../../skills/types.ts";
-import { requestApproval } from "../../../tools/approval.ts";
+import { stripConfirmMarkers } from "../../../tools/approval.ts";
 import { listWorkflowsUsingConnector } from "../../../workflows/connector-refs.ts";
 import {
   FileNotFoundError,
@@ -21,8 +20,7 @@ import {
   resolveAttachmentSlugsInArgs,
   walkAndResolve,
 } from "../../attachments.ts";
-import { recordTransition } from "../../confirmation.ts";
-import { isDangerousTool } from "../../dangerous-tools.ts";
+import { recordTransition, runConfirmGate } from "../../confirmation.ts";
 import { createDraftSnapshot } from "../../draft-checkpoints.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { parseLoadedSkills } from "../../loop/skill-recency.ts";
@@ -39,7 +37,6 @@ import {
 import { computeLineDiff } from "../../text-line-diff.ts";
 import {
   buildPendingOutputForTool,
-  decideToolMode,
   type PermissionMode,
   prerequisitesForTool,
   type ToolPolicies,
@@ -56,7 +53,6 @@ import {
 } from "../permission-gate.ts";
 import { normalizeToolResultPayload, toolCallOutcome } from "../result-payload.ts";
 import { truncateForLlm } from "../truncate.ts";
-import { decideConfirm } from "./confirm-decision.ts";
 import { buildCapAlternatives } from "./error-recovery-hints.ts";
 import { jsonSafeModelOutput } from "./json-safe-output.ts";
 import {
@@ -537,56 +533,10 @@ export function wrapOne(
           },
         };
 
-        const policyDecision = decideToolMode({
-          tool: inner.name,
-          category: inner.category,
-          input: rawArgs,
-          overrides: toolPolicies,
-          permission_mode: permissionMode,
-        });
-        const resolvedMode = policyDecision.mode;
         const policyEnvironment =
           typeof (rawArgs as { environment?: unknown }).environment === "string"
             ? (rawArgs as { environment: string }).environment
             : undefined;
-        logger.debug({
-          module: "conversation_loop",
-          action: "tool_policy.resolved",
-          msg: "resolved tool execution mode",
-          conversation_id: ctx.conversation_id,
-          tenant_id: ctx.tenant_id,
-          tool: inner.name,
-          mode: resolvedMode,
-          rule: policyDecision.rule,
-        });
-        const pregate =
-          resolvedMode === "confirm_before_execution"
-            ? await checkBeforeGate(inner, perCallCtx, rawArgs)
-            : null;
-        const pregateRefusal = pregate && !pregate.ok ? pregate.result : null;
-        const gatedEffect = pregate?.ok ? (pregate.effect ?? null) : null;
-        if (resolvedMode === "confirm_before_execution" && !pregateRefusal) {
-          await recordToolPolicyConfirmationRequired({
-            tenant_id: ctx.tenant_id,
-            actor_id: ctx.actor_id ?? null,
-            executor: db,
-            conversation_id: ctx.conversation_id,
-            tool: inner.name,
-            mode: resolvedMode,
-            confirmation_kind: topLevelElicitationKindForTool(inner.name),
-            resolver_reason: policyDecision.rule,
-            ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
-          }).catch((err: unknown) => {
-            logger.warn({
-              module: "conversation_loop",
-              action: "tool_policy.audit_failed",
-              msg: "failed to record tool_policy.confirmation_required audit",
-              conversation_id: ctx.conversation_id,
-              tool: inner.name,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
         const intentKindForCurrentTool = mapToolToCommitIntentKind(inner.name);
         let priorApproval = false;
         if (inner.name === "save_workflow_draft") {
@@ -604,20 +554,33 @@ export function wrapOne(
             }
           } catch {}
         }
-        const confirmDecision = decideConfirm({
-          resolvedMode,
-          priorApproval,
-          category: inner.category,
+        const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
+        const pendingElicitationBeforeGate = signals.pendingElicitation;
+        const gate = await runConfirmGate({
           tool: inner.name,
-          resolverRule: policyDecision.rule,
-          ...(ctx.surface !== undefined ? { surface: ctx.surface } : {}),
+          category: inner.category,
+          surface: "chat",
+          args: stripConfirmMarkers(rawArgs),
+          overrides: toolPolicies,
+          permission_mode: permissionMode,
+          prior_approval: priorApproval,
+          db,
+          tenant_id: ctx.tenant_id,
+          principal,
+          approval_tool: inner.name,
+          via: "chat",
+          record_surface: ctx.surface ?? "api",
+          conversation_id: ctx.conversation_id,
+          actor_id: ctx.actor_id ?? null,
+          execution_mode:
+            policyEnvironment === "prod" || policyEnvironment === "dev" ? policyEnvironment : null,
+          precheck: () => checkBeforeGate(inner, perCallCtx, rawArgs),
+          pause_blocked: pendingElicitationBeforeGate !== undefined,
+          confirmation_kind: topLevelElicitationKindForTool(inner.name),
+          ...(policyEnvironment !== undefined ? { environment: policyEnvironment } : {}),
         });
-        const needsPreConfirmation = confirmDecision.pause && !pregateRefusal;
-        if (
-          resolvedMode === "confirm_before_execution" &&
-          !needsPreConfirmation &&
-          !pregateRefusal
-        ) {
+        const resolvedMode = gate.record.mode;
+        if (gate.kind === "proceed" && resolvedMode === "confirm_before_execution") {
           logger.info({
             module: "conversation_tool",
             action: "policy.gate_skipped",
@@ -626,24 +589,13 @@ export function wrapOne(
             conversation_id: ctx.conversation_id,
             tool: inner.name,
             category: inner.category,
-            skip_reason: confirmDecision.reason,
+            skip_reason: gate.decision.skip_reason,
             ...(intentKindForCurrentTool ? { intent_kind: intentKindForCurrentTool } : {}),
           });
         }
-        const bypassedConfirmation = permissionMode === "yolo" && isDangerousTool(inner.name);
-        if (bypassedConfirmation) {
-          logger.warn({
-            module: "tool",
-            action: "tool.executed_yolo",
-            msg: "dangerous tool executed under yolo — confirmation gate bypassed",
-            tenant_id: ctx.tenant_id,
-            conversation_id: ctx.conversation_id,
-            tool_call_id: toolCallId,
-            tool: inner.name,
-            permission_mode: "yolo",
-            bypassed_confirmation: true,
-          });
-        }
+        const pregateRefusal = gate.kind === "refused" ? gate.result : null;
+        const gatedEffect = gate.kind === "needs_confirm" ? gate.effect : null;
+        const bypassedConfirmation = gate.record.bypassed_confirmation;
 
         if (inner.category === "tenant_write" && !pregateRefusal) {
           await recordTransition(db, {
@@ -660,30 +612,64 @@ export function wrapOne(
           });
         }
 
-        if (needsPreConfirmation) {
-          if (signals.pendingElicitation) {
-            const dupOutput = {
-              error: "duplicate_pending_elicitation_in_turn",
-              note: "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
-              existing_elicitation_id: signals.pendingElicitation.elicitation_id,
-              existing_tool: signals.pendingElicitation.tool_name,
-            };
-            await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
-            events.push({
-              type: "tool_result",
-              call_id: toolCallId,
-              tool: inner.name,
-              output: dupOutput,
-              parent_message_id: assistantMessageId,
-            });
-            recordConversationToolCall({
-              category: inner.category,
-              tool: inner.name,
-              outcome: "denied",
-              duration_ms: Date.now() - startedAt,
-            });
-            return { ok: false, data: dupOutput };
-          }
+        if (gate.kind === "duplicate_pending") {
+          const dupOutput = {
+            error: "duplicate_pending_elicitation_in_turn",
+            note: "Another tool call in this turn already staged an ask_user_confirm. Wait for the user to resolve that one, then re-issue this call after the user confirms.",
+            existing_elicitation_id: pendingElicitationBeforeGate?.elicitation_id,
+            existing_tool: pendingElicitationBeforeGate?.tool_name,
+          };
+          await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output: dupOutput,
+            parent_message_id: assistantMessageId,
+          });
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "denied",
+            duration_ms: Date.now() - startedAt,
+          });
+          return { ok: false, data: dupOutput };
+        }
+
+        if (gate.kind === "approval_failed" || gate.kind === "unavailable") {
+          const failure = {
+            ok: false as const,
+            data:
+              gate.kind === "approval_failed"
+                ? {
+                    error_code: "approval_request_failed",
+                    message: `${inner.name} requires the operator's confirmation, and the engine could not open one. Nothing ran. Tell the user, and retry only if they ask again.`,
+                    reason: "approval_request_failed",
+                  }
+                : {
+                    error_code: "not_available_on_surface",
+                    message: gate.reason,
+                    reason: "not_available_on_surface",
+                  },
+          };
+          await updateToolCallOutput(db, toolCallId, failure.data, "error");
+          events.push({
+            type: "tool_result",
+            call_id: toolCallId,
+            tool: inner.name,
+            output: failure.data,
+            parent_message_id: assistantMessageId,
+          });
+          recordConversationToolCall({
+            category: inner.category,
+            tool: inner.name,
+            outcome: "error",
+            duration_ms: Date.now() - startedAt,
+          });
+          return failure;
+        }
+
+        if (gate.kind === "needs_confirm") {
           const pendingOutput = buildPendingOutputForTool(inner.name, rawArgs);
           const buildPolicyGateSummary = (): string => {
             if (inner.name === "run_workflow") {
@@ -716,74 +702,11 @@ export function wrapOne(
           const policyGateSummary = buildPolicyGateSummary();
           const topLevelKind = topLevelElicitationKindForTool(inner.name);
           let policyCommitIntent = buildPolicyGateCommitIntent(inner.name, rawArgs);
-          let policyApprovalUrl: string | null = null;
-          {
-            const principal = ctx.principal ?? (await resolveConversationPrincipal(perCallCtx));
-            if (!principal) {
-              logger.warn({
-                module: "conversation_tool",
-                action: "policy.gate_no_principal",
-                msg: "policy gate paused a tool with no resolvable principal — no approval could be minted, so the operator's confirmation cannot release it",
-                tenant_id: ctx.tenant_id,
-                conversation_id: ctx.conversation_id,
-                tool: inner.name,
-              });
-            } else {
-              const approvalId = crypto.randomUUID();
-              try {
-                const requested = await requestApproval({
-                  db,
-                  principal,
-                  approval_id: approvalId,
-                  tool: inner.name,
-                  surface: "chat",
-                  via: "chat",
-                  reason: policyDecision.rule,
-                  execution_mode:
-                    policyEnvironment === "prod" || policyEnvironment === "dev"
-                      ? policyEnvironment
-                      : null,
-                  args: rawArgs,
-                });
-                policyApprovalUrl = requested.approval_url;
-                policyCommitIntent = policyCommitIntent
-                  ? withApprovalHandle(policyCommitIntent, approvalId)
-                  : buildConfirmedToolCallIntent(inner.name, approvalId);
-              } catch (err) {
-                logger.error({
-                  module: "conversation_tool",
-                  action: "policy.gate_approval_failed",
-                  msg: "could not persist the approval for a policy-gated tool call; nothing ran",
-                  tenant_id: ctx.tenant_id,
-                  conversation_id: ctx.conversation_id,
-                  tool: inner.name,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-                const failure = {
-                  ok: false as const,
-                  data: {
-                    error_code: "approval_request_failed",
-                    message: `${inner.name} requires the operator's confirmation, and the engine could not open one. Nothing ran. Tell the user, and retry only if they ask again.`,
-                    reason: "approval_request_failed",
-                  },
-                };
-                await updateToolCallOutput(db, toolCallId, failure.data, "error");
-                events.push({
-                  type: "tool_result",
-                  call_id: toolCallId,
-                  tool: inner.name,
-                  output: failure.data,
-                  parent_message_id: assistantMessageId,
-                });
-                recordConversationToolCall({
-                  category: inner.category,
-                  tool: inner.name,
-                  outcome: "error",
-                  duration_ms: Date.now() - startedAt,
-                });
-                return failure;
-              }
-            }
+          const policyApprovalUrl = gate.approval_url;
+          if (gate.approval_id) {
+            policyCommitIntent = policyCommitIntent
+              ? withApprovalHandle(policyCommitIntent, gate.approval_id)
+              : buildConfirmedToolCallIntent(inner.name, gate.approval_id);
           }
           let connectorDeleteDependents: Array<{ id: string; slug: string; name: string }> = [];
           if (inner.name === "delete_connector") {
@@ -913,7 +836,7 @@ export function wrapOne(
             db,
             tenant_id: ctx.tenant_id,
             conversation_id: ctx.conversation_id,
-            principal: ctx.principal ?? (await resolveConversationPrincipal(perCallCtx)),
+            principal,
           });
           resolvedArgs = await walkAndResolve(
             pinnedArgs,

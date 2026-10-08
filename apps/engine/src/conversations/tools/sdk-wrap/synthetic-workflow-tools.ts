@@ -8,16 +8,23 @@ import { HELD_PREVIEW_WARNING_CODE } from "../../../execution/types.ts";
 import { admitWorkflowRun } from "../../../execution/workflow-run-admission.ts";
 import { logger } from "../../../logging/logger.ts";
 import { recordConversationToolCall } from "../../../observability/instrumentation.ts";
-import { requestApproval, stripConfirmMarkers } from "../../../tools/approval.ts";
+import { stripConfirmMarkers } from "../../../tools/approval.ts";
+import { policyDecide } from "../../../tools/policy.ts";
 import {
   listWorkflowToolsForTenant,
   type WorkflowToolDescriptor,
 } from "../../../workflows/catalog.ts";
 import { workflowExecutionEnvironment } from "../../../workflows/execution-environment.ts";
 import { gateWorkflowRunRbac } from "../../../workflows/rbac.ts";
+import {
+  type GateRecordInput,
+  gateRecordFor,
+  logGateDecision,
+  openHeldWritesApproval,
+} from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
-import { decideToolMode, type PermissionMode, type ToolPolicies } from "../../tool-policies.ts";
+import type { PermissionMode, ToolPolicies } from "../../tool-policies.ts";
 import type { TurnEvent } from "../../types.ts";
 import { withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { WORKFLOW_TOOL_PREFIX as TOOL_PREFIX } from "../authoring-palette.ts";
@@ -159,13 +166,25 @@ async function executeSyntheticRun(
     ctx.onLog?.("info", `running workflow ${entry.slug} in env=${environment}`);
     const policies = p.toolPolicies ?? {};
     const specificPolicy = policies[name] ?? policies.run_workflow;
-    const decision = decideToolMode({
+    const permissionMode = p.permissionMode ?? ctx.permission_mode ?? null;
+    const decision = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
-      input: { environment },
+      surface: "chat",
+      args: { environment },
       overrides: specificPolicy ? { run_workflow: specificPolicy } : {},
-      permission_mode: p.permissionMode ?? ctx.permission_mode ?? null,
+      permission_mode: permissionMode,
     });
+    const gateRecordInput: GateRecordInput = {
+      approval_tool: name,
+      category: "tenant_write",
+      record_surface: ctx.surface ?? "api",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      permission_mode: permissionMode,
+    };
+    const holdWrites = decision.mode !== "no_confirm";
+    if (!holdWrites) logGateDecision(gateRecordFor(gateRecordInput, decision, "proceed"));
     const admitted = await admitWorkflowRun(
       {
         tenant_id: ctx.tenant_id,
@@ -173,7 +192,7 @@ async function executeSyntheticRun(
         execution_environment: environment,
         request_source: "chat",
         input: inputForRun,
-        ...(decision.mode !== "no_confirm" ? { hold_writes: true } : {}),
+        ...(holdWrites ? { hold_writes: true } : {}),
       },
       db,
     );
@@ -222,6 +241,7 @@ async function executeSyntheticRun(
     const ok = result.status === "succeeded";
     const heldPreview = result.warnings?.find((w) => w.code === HELD_PREVIEW_WARNING_CODE);
     if (heldPreview && signals.pendingElicitation) {
+      logGateDecision(gateRecordFor(gateRecordInput, decision, "duplicate_pending"));
       const dupOutput: Record<string, unknown> = {
         ok: false,
         status: result.status,
@@ -255,21 +275,23 @@ async function executeSyntheticRun(
     let approvalId: string | null = null;
     let approvalUrl: string | null = null;
     if (heldPreview) {
-      approvalId = crypto.randomUUID();
-      const requested = await requestApproval({
+      const opened = await openHeldWritesApproval({
         db,
         principal,
-        approval_id: approvalId,
         tool: name,
-        surface: "chat",
-        via: "chat",
-        reason: "held_writes",
-        execution_mode: environment,
         args: workflowInput,
+        environment,
         prepared_execution_id: result.execution_id,
         preview: heldDetails,
+        conversation_id: ctx.conversation_id,
+        actor_id: ctx.actor_id,
+        record_surface: gateRecordInput.record_surface,
+        decision,
       });
-      approvalUrl = requested.approval_url ?? null;
+      approvalId = opened.approval_id;
+      approvalUrl = opened.approval_url;
+    } else if (holdWrites) {
+      logGateDecision(gateRecordFor(gateRecordInput, decision, "proceed"));
     }
     const output: Record<string, unknown> = {
       ok: heldPreview ? false : ok,

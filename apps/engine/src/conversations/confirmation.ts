@@ -1,7 +1,21 @@
 import { and, eq, sql } from "drizzle-orm";
+import { recordToolPolicyConfirmationRequired } from "../audit/recorders/index.ts";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
+import { logger } from "../logging/logger.ts";
 import { recordConfirmationTransition } from "../observability/instrumentation.ts";
+import {
+  type ApprovalExecutionMode,
+  type ApprovalVia,
+  requestApproval,
+} from "../tools/approval.ts";
+import { type PolicyDecideInput, type PolicyDecision, policyDecide } from "../tools/policy.ts";
+import type { ConfirmReason, ToolCategory } from "../tools/types.ts";
+import { isDangerousTool } from "./dangerous-tools.ts";
+import type { ConversationSurface } from "./lifecycle-view.ts";
+import type { PermissionMode, ToolModeRule, ToolPolicyMode } from "./tool-policies.ts";
+import type { ToolEffect, ToolPrecheck, ToolResult } from "./tools/index.ts";
 
 export type ConfirmationState =
   | "proposed"
@@ -119,4 +133,307 @@ export function isTerminalState(s: ConfirmationState): boolean {
     s === "oauth_success" ||
     s === "oauth_failure"
   );
+}
+
+export type GateOutcome =
+  | "proceed"
+  | "confirm"
+  | "refused"
+  | "unavailable"
+  | "duplicate_pending"
+  | "approval_failed";
+
+export interface GateRecord {
+  readonly tool: string;
+  readonly category: ToolCategory;
+  readonly rule: ConfirmReason;
+  readonly mode: ToolPolicyMode;
+  readonly outcome: GateOutcome;
+  readonly surface: ConversationSurface;
+  readonly bypassed_confirmation: boolean;
+  readonly tenant_id: string;
+  readonly conversation_id: string | null;
+}
+
+export interface ConfirmGateInput extends PolicyDecideInput {
+  readonly db: Db;
+  readonly tenant_id: string;
+  readonly principal: ResolvedPrincipal | null;
+  readonly approval_tool: string;
+  readonly via: ApprovalVia;
+  readonly record_surface: ConversationSurface;
+  readonly conversation_id: string | null;
+  readonly actor_id: string | null;
+  readonly execution_mode: ApprovalExecutionMode | null;
+  readonly precheck: (() => Promise<ToolPrecheck>) | null;
+  readonly pause_blocked: boolean;
+  readonly confirmation_kind: string | null;
+  readonly environment?: string;
+}
+
+export type ConfirmGateResult =
+  | { kind: "proceed"; decision: Extract<PolicyDecision, { kind: "proceed" }>; record: GateRecord }
+  | { kind: "unavailable"; reason: string; record: GateRecord }
+  | { kind: "refused"; result: ToolResult; record: GateRecord }
+  | { kind: "duplicate_pending"; record: GateRecord }
+  | {
+      kind: "needs_confirm";
+      approval_id: string | null;
+      approval_url: string | null;
+      effect: ToolEffect | null;
+      rule: ToolModeRule;
+      record: GateRecord;
+    }
+  | { kind: "approval_failed"; error: unknown; record: GateRecord };
+
+export type GateRecordInput = Pick<
+  ConfirmGateInput,
+  "approval_tool" | "category" | "record_surface" | "tenant_id" | "conversation_id"
+> & { readonly permission_mode: PermissionMode | null };
+
+export function gateRecordFor(
+  input: GateRecordInput,
+  decision: PolicyDecision,
+  outcome: GateOutcome,
+  rule: ConfirmReason = decision.rule,
+): GateRecord {
+  return {
+    tool: input.approval_tool,
+    category: input.category,
+    rule,
+    mode: decision.mode,
+    outcome,
+    surface: input.record_surface,
+    bypassed_confirmation:
+      input.permission_mode === "yolo" &&
+      decision.mode === "no_confirm" &&
+      decision.rule === "permission_mode" &&
+      isDangerousTool(input.approval_tool),
+    tenant_id: input.tenant_id,
+    conversation_id: input.conversation_id,
+  };
+}
+
+export function logGateDecision(record: GateRecord): void {
+  logger.debug({
+    module: "conversation_loop",
+    action: "tool_policy.resolved",
+    msg: "resolved tool execution mode",
+    tenant_id: record.tenant_id,
+    ...(record.conversation_id ? { conversation_id: record.conversation_id } : {}),
+    tool: record.tool,
+    category: record.category,
+    mode: record.mode,
+    rule: record.rule,
+    outcome: record.outcome,
+    surface: record.surface,
+  });
+  if (record.bypassed_confirmation) {
+    logger.warn({
+      module: "tool",
+      action: "tool.executed_yolo",
+      msg: "dangerous tool executed under yolo — confirmation gate bypassed",
+      tenant_id: record.tenant_id,
+      ...(record.conversation_id ? { conversation_id: record.conversation_id } : {}),
+      tool: record.tool,
+      permission_mode: "yolo",
+      bypassed_confirmation: true,
+    });
+  }
+}
+
+function emitted<T extends ConfirmGateResult>(result: T): T {
+  logGateDecision(result.record);
+  return result;
+}
+
+async function recordConfirmationRequired(p: {
+  db: Db;
+  tenant_id: string;
+  actor_id: string | null;
+  conversation_id: string;
+  tool: string;
+  mode: ToolPolicyMode;
+  confirmation_kind: string | null;
+  resolver_reason: ConfirmReason;
+  environment: string | undefined;
+}): Promise<void> {
+  await recordToolPolicyConfirmationRequired({
+    tenant_id: p.tenant_id,
+    actor_id: p.actor_id,
+    executor: p.db,
+    conversation_id: p.conversation_id,
+    tool: p.tool,
+    mode: p.mode,
+    confirmation_kind: p.confirmation_kind,
+    resolver_reason: p.resolver_reason,
+    ...(p.environment !== undefined ? { environment: p.environment } : {}),
+  }).catch((err: unknown) => {
+    logger.warn({
+      module: "conversation_loop",
+      action: "tool_policy.audit_failed",
+      msg: "failed to record tool_policy.confirmation_required audit",
+      tenant_id: p.tenant_id,
+      conversation_id: p.conversation_id,
+      tool: p.tool,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+}
+
+export async function runConfirmGate(input: ConfirmGateInput): Promise<ConfirmGateResult> {
+  const decision = policyDecide(input);
+  const recordInput: GateRecordInput = {
+    approval_tool: input.approval_tool,
+    category: input.category,
+    record_surface: input.record_surface,
+    tenant_id: input.tenant_id,
+    conversation_id: input.conversation_id,
+    permission_mode: input.permission_mode ?? null,
+  };
+  const record = (outcome: GateOutcome): GateRecord =>
+    gateRecordFor(recordInput, decision, outcome);
+
+  if (decision.kind === "not_available_on_surface") {
+    return emitted({ kind: "unavailable", reason: decision.reason, record: record("unavailable") });
+  }
+  if (decision.kind === "proceed") {
+    return emitted({ kind: "proceed", decision, record: record("proceed") });
+  }
+
+  let effect: ToolEffect | null = null;
+  if (input.precheck) {
+    const checked = await input.precheck();
+    if (!checked.ok) {
+      return emitted({ kind: "refused", result: checked.result, record: record("refused") });
+    }
+    effect = checked.effect ?? null;
+  }
+
+  if (input.pause_blocked) {
+    return emitted({ kind: "duplicate_pending", record: record("duplicate_pending") });
+  }
+
+  if (input.conversation_id !== null) {
+    await recordConfirmationRequired({
+      db: input.db,
+      tenant_id: input.tenant_id,
+      actor_id: input.actor_id,
+      conversation_id: input.conversation_id,
+      tool: input.approval_tool,
+      mode: decision.mode,
+      confirmation_kind: input.confirmation_kind,
+      resolver_reason: decision.rule,
+      environment: input.environment,
+    });
+  }
+
+  if (!input.principal) {
+    logger.warn({
+      module: "conversation_tool",
+      action: "policy.gate_no_principal",
+      msg: "policy gate paused a tool with no resolvable principal — no approval could be minted, so the operator's confirmation cannot release it",
+      tenant_id: input.tenant_id,
+      ...(input.conversation_id ? { conversation_id: input.conversation_id } : {}),
+      tool: input.approval_tool,
+    });
+    return emitted({
+      kind: "needs_confirm",
+      approval_id: null,
+      approval_url: null,
+      effect,
+      rule: decision.rule,
+      record: record("confirm"),
+    });
+  }
+
+  const approval_id = crypto.randomUUID();
+  try {
+    const requested = await requestApproval({
+      db: input.db,
+      principal: input.principal,
+      approval_id,
+      tool: input.approval_tool,
+      surface: input.surface,
+      via: input.via,
+      reason: decision.rule,
+      execution_mode: input.execution_mode,
+      args: input.args,
+    });
+    return emitted({
+      kind: "needs_confirm",
+      approval_id,
+      approval_url: requested.approval_url,
+      effect,
+      rule: decision.rule,
+      record: record("confirm"),
+    });
+  } catch (error) {
+    logger.error({
+      module: "conversation_tool",
+      action: "policy.gate_approval_failed",
+      msg: "could not persist the approval for a policy-gated tool call; nothing ran",
+      tenant_id: input.tenant_id,
+      ...(input.conversation_id ? { conversation_id: input.conversation_id } : {}),
+      tool: input.approval_tool,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return emitted({ kind: "approval_failed", error, record: record("approval_failed") });
+  }
+}
+
+export async function openHeldWritesApproval(p: {
+  readonly db: Db;
+  readonly principal: ResolvedPrincipal;
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+  readonly environment: ApprovalExecutionMode;
+  readonly prepared_execution_id: string;
+  readonly preview: { readonly would_write?: unknown } | undefined;
+  readonly conversation_id: string;
+  readonly actor_id: string | null;
+  readonly record_surface: ConversationSurface;
+  readonly decision: PolicyDecision;
+}): Promise<{ approval_id: string; approval_url: string | null; record: GateRecord }> {
+  const recordInput: GateRecordInput = {
+    approval_tool: p.tool,
+    category: "tenant_write",
+    record_surface: p.record_surface,
+    tenant_id: p.principal.tenant_id,
+    conversation_id: p.conversation_id,
+    permission_mode: null,
+  };
+  await recordConfirmationRequired({
+    db: p.db,
+    tenant_id: p.principal.tenant_id,
+    actor_id: p.actor_id,
+    conversation_id: p.conversation_id,
+    tool: p.tool,
+    mode: p.decision.mode,
+    confirmation_kind: "external_write",
+    resolver_reason: "held_writes",
+    environment: p.environment,
+  });
+  const approval_id = crypto.randomUUID();
+  try {
+    const requested = await requestApproval({
+      db: p.db,
+      principal: p.principal,
+      approval_id,
+      tool: p.tool,
+      surface: "chat",
+      via: "chat",
+      reason: "held_writes",
+      execution_mode: p.environment,
+      args: p.args,
+      prepared_execution_id: p.prepared_execution_id,
+      preview: p.preview,
+    });
+    const record = gateRecordFor(recordInput, p.decision, "confirm", "held_writes");
+    logGateDecision(record);
+    return { approval_id, approval_url: requested.approval_url ?? null, record };
+  } catch (error) {
+    logGateDecision(gateRecordFor(recordInput, p.decision, "approval_failed", "held_writes"));
+    throw error;
+  }
 }

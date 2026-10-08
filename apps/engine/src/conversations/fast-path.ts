@@ -21,15 +21,15 @@ import {
   grantApproval,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
-  requestApproval,
 } from "../tools/approval.ts";
-import { policyDecide } from "../tools/policy.ts";
+import { confirmEnvelopeFor } from "../tools/policy.ts";
 import type { ToolSurface } from "../tools/types.ts";
 import { resolveWorkflowInputContract } from "../workflows/input-schema-synth.ts";
 import { resolveWorkflowByIdOrSlug } from "../workflows/lookup.ts";
 import { gateWorkflowRunRbac } from "../workflows/rbac.ts";
 import { getWorkflow } from "../workflows/service.ts";
 import type { AnswerActor } from "./answer-actor.ts";
+import { runConfirmGate } from "./confirmation.ts";
 import {
   type RenderPayload,
   type ReplyLanguage,
@@ -709,24 +709,40 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
         };
       }
       const runArgs = { workflow: resolved.slug, environment: "dev" };
-      const gate = policyDecide({
+      const gate = await runConfirmGate({
         tool: "run_workflow",
         category: "tenant_write",
         surface: gateSurface,
         args: runArgs,
+        db: p.db,
+        tenant_id: p.tenant_id,
+        principal: p.principal,
+        approval_tool: "run_workflow",
+        via: "fast_path",
+        record_surface: p.surface ?? "api",
+        conversation_id: p.conversation_id,
+        actor_id: p.actor_id,
+        execution_mode: "dev",
+        precheck: null,
+        pause_blocked: false,
+        confirmation_kind: null,
+        environment: "dev",
       });
+      if (gate.kind === "approval_failed") throw gate.error;
       if (gate.kind === "needs_confirm") {
-        const confirm_id = gate.envelope.tool_call_id;
-        await requestApproval({
-          db: p.db,
-          principal: p.principal,
-          approval_id: confirm_id,
+        if (gate.approval_id === null) {
+          throw new Error(
+            "fast path paused a run without an approval although its principal is known",
+          );
+        }
+        const confirm_id = gate.approval_id;
+        const envelope = confirmEnvelopeFor({
           tool: "run_workflow",
-          surface: gateSurface,
-          via: "fast_path",
-          reason: gate.envelope.reason,
-          execution_mode: "dev",
           args: runArgs,
+          rule: gate.rule,
+          approval_id: confirm_id,
+          approval_url: gate.approval_url,
+          surface: gateSurface,
         });
         const persisted = await persistFastPathTurn(
           p,
@@ -738,7 +754,7 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
             status: "awaiting_confirmation",
             policy_mode: "confirm_before_execution",
             confirm_required: true,
-            pending_output: gate.envelope.pending_output,
+            pending_output: envelope.pending_output,
             resume: `A person must approve this by replying "yes" here — the engine replays the arguments it already holds. Nothing runs until they do; you cannot approve on their behalf.`,
             skipped_llm: true,
             suggested_command: `/workflows run ${resolved.slug}`,
@@ -759,6 +775,9 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           fast_path_tool: "run_workflow",
           assistant_text: `Confirm: run ${resolved.slug} in dev?`,
         };
+      }
+      if (gate.kind !== "proceed") {
+        throw new Error(`fast path cannot shape a ${gate.kind} confirm gate outcome`);
       }
       const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
       const persisted = await persistFastPathTurn(

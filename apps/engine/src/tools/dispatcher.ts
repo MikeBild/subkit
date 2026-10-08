@@ -2,8 +2,9 @@ import type { z } from "@hono/zod-openapi";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
+import { runConfirmGate } from "../conversations/confirmation.ts";
 import type { PermissionMode } from "../conversations/tool-policies.ts";
-import type { ToolContext, ToolResult } from "../conversations/tools/index.ts";
+import type { ToolContext, ToolPrecheck, ToolResult } from "../conversations/tools/index.ts";
 import { checkBeforeGate } from "../conversations/tools/sdk-wrap/pregate.ts";
 import type { Db } from "../db/client.ts";
 import { logger } from "../logging/logger.ts";
@@ -17,21 +18,20 @@ import {
   hashToolArgs,
   recordApprovalApproved,
   recordApprovalUnfulfilled,
-  requestApproval,
 } from "./approval.ts";
 import { isDirectConnectorTool } from "./direct-connector-binding.ts";
 import {
+  confirmEnvelopeFor,
   confirmIdFromArgs,
   DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
   isConfirmedRequest,
-  policyDecide,
   SK_CONFIRM_ID_META_KEY,
   SK_CONFIRM_META_KEY,
 } from "./policy.ts";
 import type { ConversationProviderEntry } from "./providers/conversation.ts";
 import type { StaticProviderEntry } from "./providers/static.ts";
 import type { ToolRegistry } from "./registry.ts";
-import type { ConfirmEnvelope, ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
+import type { ToolEnvelope, ToolInvocation, ToolSurface } from "./types.ts";
 
 export interface DispatchDeps {
   readonly registry: ToolRegistry;
@@ -147,27 +147,6 @@ async function emitPolicyDenied(
   );
 }
 
-async function gateConfirm(
-  deps: DispatchDeps,
-  toolName: string,
-  invocation: ToolInvocation,
-  confirm: ConfirmEnvelope,
-  args: { execArgs: Record<string, unknown> },
-): Promise<ToolEnvelope> {
-  const { approval_url } = await requestApproval({
-    db: deps.db,
-    principal: deps.principal,
-    approval_id: confirm.tool_call_id,
-    tool: toolName,
-    surface: invocation.surface,
-    via: invocation.surface,
-    reason: confirm.reason,
-    execution_mode: null,
-    args: args.execArgs,
-  });
-  return { status: "needs_confirm", confirm: { ...confirm, approval_url } };
-}
-
 function executionCtx(
   deps: DispatchDeps,
   invocation: ToolInvocation,
@@ -178,18 +157,17 @@ function executionCtx(
     : (deps.buildMcpStubCtx?.(toolName) ?? deps.conversationCtx);
 }
 
-async function refusalBeforeGate(
+function precheckBeforeGate(
   deps: DispatchDeps,
   executor: unknown,
   invocation: ToolInvocation,
   execArgs: Record<string, unknown>,
-): Promise<ToolResult | null> {
+): (() => Promise<ToolPrecheck>) | null {
   const tool = isConversationExecutor(executor) ? executor.tool : undefined;
   if (!tool) return null;
   const ctx = executionCtx(deps, invocation, tool.name);
   if (!ctx) return null;
-  const checked = await checkBeforeGate(tool, { ...ctx, principal: deps.principal }, execArgs);
-  return checked.ok ? null : checked.result;
+  return () => checkBeforeGate(tool, { ...ctx, principal: deps.principal }, execArgs);
 }
 
 export async function dispatchTool(
@@ -340,7 +318,7 @@ export async function dispatchTool(
       const policyMeta = confirmed
         ? { ...(invocation.meta ?? {}), [SK_CONFIRM_META_KEY]: true }
         : invocation.meta;
-      const policy = policyDecide({
+      const gate = await runConfirmGate({
         tool: entry.descriptor.name,
         category: entry.descriptor.category,
         surface: invocation.surface,
@@ -349,9 +327,23 @@ export async function dispatchTool(
         ...(deps.permissionMode !== undefined && deps.permissionMode !== null
           ? { permission_mode: deps.permissionMode }
           : {}),
+        db: deps.db,
+        tenant_id: deps.principal.tenant_id,
+        principal: deps.principal,
+        approval_tool: entry.descriptor.name,
+        via: invocation.surface,
+        record_surface:
+          invocation.surface === "mcp" ? "mcp" : (deps.conversationCtx?.surface ?? "api"),
+        conversation_id:
+          invocation.surface === "chat" ? (deps.conversationCtx?.conversation_id ?? null) : null,
+        actor_id: invocation.surface === "chat" ? (deps.conversationCtx?.actor_id ?? null) : null,
+        execution_mode: null,
+        precheck: precheckBeforeGate(deps, entry.executor, invocation, execArgs),
+        pause_blocked: false,
+        confirmation_kind: null,
       });
 
-      if (policy.kind === "not_available_on_surface") {
+      if (gate.kind === "unavailable") {
         if (claimed !== null) {
           await recordApprovalUnfulfilled({
             db: deps.db,
@@ -359,24 +351,39 @@ export async function dispatchTool(
             claim: claimed,
             tool: entry.descriptor.name,
             via: invocation.surface,
-            reason: policy.reason,
+            reason: gate.reason,
           });
         }
-        envelope = { status: "not_available_on_surface", reason: policy.reason };
+        envelope = { status: "not_available_on_surface", reason: gate.reason };
         decisionLabel = "not_available_on_surface";
         halted = true;
-      } else if (policy.kind === "needs_confirm") {
-        const refusal = await refusalBeforeGate(deps, entry.executor, invocation, execArgs);
-        if (refusal) {
-          envelope = normalizeConversationResult(refusal);
-          decisionLabel = "refused_before_gate";
-        } else {
-          envelope = await gateConfirm(deps, entry.descriptor.name, invocation, policy.envelope, {
-            execArgs,
-          });
-          decisionLabel = "needs_confirm";
-        }
+      } else if (gate.kind === "refused") {
+        envelope = normalizeConversationResult(gate.result);
+        decisionLabel = "refused_before_gate";
         halted = true;
+      } else if (gate.kind === "needs_confirm") {
+        if (gate.approval_id === null) {
+          throw new Error(
+            "dispatcher paused a tool without an approval although its principal is known",
+          );
+        }
+        envelope = {
+          status: "needs_confirm",
+          confirm: confirmEnvelopeFor({
+            tool: entry.descriptor.name,
+            args: execArgs,
+            rule: gate.rule,
+            approval_id: gate.approval_id,
+            approval_url: gate.approval_url,
+            surface: invocation.surface,
+          }),
+        };
+        decisionLabel = "needs_confirm";
+        halted = true;
+      } else if (gate.kind === "approval_failed") {
+        throw gate.error;
+      } else if (gate.kind === "duplicate_pending") {
+        throw new Error("dispatcher gate reported a pending elicitation although it declared none");
       }
 
       if (halted) {
