@@ -20,7 +20,7 @@ import {
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
-import { proposeDryRunRepairs } from "../dry-run-repair.ts";
+import { proposeDryRunRepairs, workflowOutputSite } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
 import type { PreviewJudgeOutcome } from "../preview-judge.ts";
 import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
@@ -297,10 +297,6 @@ export const dryRunWorkflowTool: ConversationTool = {
       ...validation.workflow,
       name: draft.name ?? "draft",
       steps,
-      ...(typeof draft.output_transform === "string" && draft.output_transform.length > 0
-        ? { output_transform: draft.output_transform }
-        : {}),
-      ...(draft.output_schema ? { output_schema: draft.output_schema } : {}),
     };
     const signal = ctx.abortSignal;
 
@@ -864,7 +860,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       steps,
       runWarnings,
       runError: run.error ?? null,
-      output_transform: draft.output_transform,
+      output: workflowOutputSite(definition),
       previewScope,
       input: previewInput ?? null,
       tenant_id: ctx.tenant_id,
