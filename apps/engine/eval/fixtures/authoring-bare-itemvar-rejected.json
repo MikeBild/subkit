@@ -9,7 +9,7 @@
           "id": "fetch",
           "kind": "request",
           "method": "GET",
-          "url": "https://api.example.com/projects"
+          "url": "https://jsonplaceholder.typicode.com/users"
         },
         { "id": "each", "kind": "loop", "over": "$scope.fetch.data.projects", "body": ["gate"] },
         {
@@ -25,7 +25,7 @@
           "id": "fetch",
           "kind": "request",
           "method": "GET",
-          "url": "https://api.example.com/projects"
+          "url": "https://jsonplaceholder.typicode.com/users"
         },
         {
           "id": "each",
