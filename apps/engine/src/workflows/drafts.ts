@@ -93,7 +93,9 @@ export async function saveWorkflowDraft(
   input: SaveWorkflowDraftInput,
   exec: Executor = getDb(),
 ): Promise<SaveWorkflowDraftResult> {
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec, {
+    destinationTier: "tokens",
+  });
   if (!validation.ok || !validation.workflow) {
     return {
       code: "invalid_definition",
