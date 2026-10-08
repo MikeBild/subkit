@@ -4,6 +4,7 @@ import type {
   LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import { MockLanguageModelV4, simulateReadableStream } from "ai/test";
+import { PROVIDER_RESPONSE_TIMEOUT_MS, responseTimeoutError } from "./core/response-timeout.ts";
 import { LlmProviderError } from "./errors.ts";
 import { getMockProvider } from "./mock-provider.ts";
 
@@ -137,6 +138,9 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
             `mock: context too large on ${modelId}`,
             { tokens: countPromptTextTokens(options.prompt) },
           );
+        }
+        if (primed === "response_never_arrives") {
+          throw responseTimeoutError(PROVIDER_RESPONSE_TIMEOUT_MS);
         }
         if (primed === "stream_never_answers") {
           const abortSignal = options.abortSignal;

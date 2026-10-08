@@ -36,6 +36,7 @@ import { recordConversationBudgetReport } from "../llm/core/conversation-budget-
 import { resolveModelRoute } from "../llm/core/invoke.ts";
 import { anthropicWebSearchApplies, buildAnthropicWebSearchTool } from "../llm/core/model-init.ts";
 import { repairToolCall as repairToolCallHandler } from "../llm/core/repair-tool-call.ts";
+import { PROVIDER_RESPONSE_TIMEOUT_MS } from "../llm/core/response-timeout.ts";
 import {
   prepareStep as routerPrepareStep,
   type StepRouterSignals,
@@ -138,11 +139,11 @@ import {
 } from "./tools/authoring-palette.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
-import { LlmTimeoutError, timeoutPhaseOf } from "./turn-failure.ts";
+import { LlmTimeoutError, timeoutBudgetOf, timeoutPhaseOf } from "./turn-failure.ts";
 import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
-export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = 120_000;
+export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_RESPONSE_TIMEOUT_MS;
 
 let firstChunkTimeoutMsOverride: number | null = null;
 export function _setConverseFirstChunkTimeoutMsForTests(ms: number | null): void {
@@ -1399,8 +1400,16 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       await result.finishReason;
     } catch (err) {
       if (streamTimeout.error) throw streamTimeout.error;
-      if (capturedError) throw capturedError;
-      throw err;
+      const thrown = capturedError ?? err;
+      const phase = thrown instanceof LlmTimeoutError ? null : timeoutPhaseOf(thrown);
+      if (phase) {
+        recordLlmStepTimeout({ phase });
+        const budget =
+          timeoutBudgetOf(thrown) ??
+          (phase === "total" ? turnBudgetMs : phase === "first_chunk" ? firstChunkTimeoutMs : null);
+        if (budget !== null) throw new LlmTimeoutError(phase, budget, { cause: thrown });
+      }
+      throw thrown;
     }
     if (streamTimeout.error) throw streamTimeout.error;
   }
