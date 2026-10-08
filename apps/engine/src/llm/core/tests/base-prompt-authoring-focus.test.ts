@@ -49,6 +49,9 @@ describe("converse base prompt — authoring focus blocks", () => {
     expect(prompt.content).toContain(
       "never substitute a placeholder — the engine rejects placeholder destinations",
     );
+    expect(prompt.content).toContain(
+      "The question itself (labels, hints, defaults, options) never shows an example address, channel or URL",
+    );
     expect(prompt.volatile ?? "").not.toContain("the engine rejects placeholder destinations");
   });
 

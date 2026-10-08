@@ -547,6 +547,7 @@ const AUTHORING_GATE_CODES = new Set<string>([
   "workflow_placeholder_destination",
   "jsonata_unknown_function",
   "workflow_unsupported_placeholder",
+  "ask_placeholder_destination",
 ]);
 const AUTHORING_GATE_TOOLS = new Set<string>([
   "author_workflow",
@@ -554,6 +555,8 @@ const AUTHORING_GATE_TOOLS = new Set<string>([
   "dry_run_workflow",
   "run_workflow",
   "save_workflow_draft",
+  "ask_user_text",
+  "ask_user_form",
 ]);
 
 const TOOL_CIRCUIT_REASONS = new Set<string>([
