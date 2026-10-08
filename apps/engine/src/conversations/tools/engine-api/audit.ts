@@ -7,6 +7,8 @@ const QueryInput = z
     resource_type: z.string().optional(),
     resource_id: z.string().optional(),
     action: z.string().optional(),
+    actor_id: z.string().uuid().optional(),
+    trace_id: z.string().min(1).max(128).optional(),
     limit: z.number().int().min(1).max(100).optional(),
     cursor: z.string().min(1).max(128).optional(),
   })
@@ -16,7 +18,7 @@ const GetInput = z.object({ id: z.string().uuid() }).openapi("GetAuditEntryToolI
 export const queryAuditTool: ConversationTool = {
   name: "list_audit",
   description:
-    "Query the audit log for the tenant, newest first. Optional filters by resource_type, resource_id, and action. A full page returns `next_cursor`; pass it back verbatim as `cursor` for the next page (null means no more entries).",
+    "Query the audit log for the tenant, newest first. Optional filters by resource_type, resource_id, action, actor_id (who acted — a run's `caller.principal_id`) and trace_id (one request across channels). A full page returns `next_cursor`; pass it back verbatim as `cursor` for the next page (null means no more entries).",
   inputSchema: QueryInput,
   category: "tenant_read",
   async execute(ctx, args: z.infer<typeof QueryInput>) {
@@ -24,6 +26,8 @@ export const queryAuditTool: ConversationTool = {
     if (args.resource_type) filters.resource_type = args.resource_type;
     if (args.resource_id) filters.resource_id = args.resource_id;
     if (args.action) filters.actions = [args.action];
+    if (args.actor_id) filters.actor_id = args.actor_id;
+    if (args.trace_id) filters.trace_id = args.trace_id;
     const { items, next_cursor } = await ctx.engineClient.audit.query(filters, {
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),

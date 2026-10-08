@@ -6,6 +6,7 @@ export {
 } from "./authority-admission.ts";
 export { authorizationContextFromPrincipal } from "./authorization-context.ts";
 export { assertCallerExecutionSource } from "./caller-context.ts";
+export * from "./caller-summary.ts";
 export { PREVIEW_CLASSIFICATIONS, type PreviewClassification } from "./classify.ts";
 export * from "./engine.ts";
 export { executionVisibilityFilter, executionVisibleToPrincipal } from "./execution-owner.ts";

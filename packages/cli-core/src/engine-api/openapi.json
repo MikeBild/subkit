@@ -10359,6 +10359,69 @@
           }
         ]
       },
+      "ExecutionCaller": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account",
+              "engine"
+            ]
+          },
+          "principal_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "product_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "verified_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "api_key",
+              "browser_session",
+              "mcp_oauth",
+              "token_exchange",
+              null
+            ]
+          },
+          "channel": {
+            "type": "string"
+          },
+          "origin_execution_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "principal_id",
+          "provider",
+          "product_id",
+          "verified_by",
+          "channel",
+          "origin_execution_id"
+        ]
+      },
       "Execution": {
         "type": "object",
         "properties": {
@@ -10414,6 +10477,9 @@
           "request_source": {
             "type": "string"
           },
+          "caller": {
+            "$ref": "#/components/schemas/ExecutionCaller"
+          },
           "parent_execution_id": {
             "type": [
               "string",
@@ -10447,6 +10513,7 @@
           "source_ref",
           "status",
           "request_source",
+          "caller",
           "parent_execution_id",
           "started_at",
           "finished_at",

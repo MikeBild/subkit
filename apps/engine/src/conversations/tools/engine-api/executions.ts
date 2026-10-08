@@ -1,7 +1,11 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { executionStatusEnum, executions } from "../../../db/schema/index.ts";
-import { executionVisibilityFilter, isSensitivePayload } from "../../../execution/index.ts";
+import {
+  describeExecutionCaller,
+  executionVisibilityFilter,
+  isSensitivePayload,
+} from "../../../execution/index.ts";
 import { listExecutions } from "../../../execution/list.ts";
 import type { ConversationTool } from "../index.ts";
 
@@ -70,7 +74,7 @@ export const listExecutionsTool: ConversationTool = {
 export const getExecutionTool: ConversationTool = {
   name: "get_execution",
   description:
-    "Fetch one execution by id (full row including status and timestamps) plus its structured `outcome`: kind (succeeded / failed / held = writes held in a preview, nothing written / partial = a tolerated step failure / running), the failed step, its cause class and error code, step counts, and the output-contract verdict.",
+    "Fetch one execution by id (full row including status, timestamps and `caller`: who started it, how SubKit verified them, over which channel, and the originating run for nested runs) plus its structured `outcome`: kind (succeeded / failed / held = writes held in a preview, nothing written / partial = a tolerated step failure / running), the failed step, its cause class and error code, step counts, and the output-contract verdict.",
   inputSchema: GetInput,
   category: "tenant_read",
   permission: { action: "execution:read", resourceType: "execution", resourceIdArg: "id" },
@@ -99,6 +103,7 @@ export const getExecutionTool: ConversationTool = {
           workflow_version_id: e.workflow_version_id,
           status: e.status,
           request_source: e.request_source,
+          caller: describeExecutionCaller(e),
           parent_execution_id: e.parent_execution_id,
           input: isSensitivePayload(e.input) ? null : e.input,
           started_at: e.started_at,

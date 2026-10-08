@@ -1,7 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
-import { PREVIEW_CLASSIFICATIONS, RequestMetaSchema } from "../../../execution/index.ts";
+import {
+  describeExecutionCaller,
+  ExecutionCallerSchema,
+  PREVIEW_CLASSIFICATIONS,
+  RequestMetaSchema,
+} from "../../../execution/index.ts";
 import {
   ReportDeliveryRefusalSchema,
   ResponseFilterSchema,
@@ -21,6 +26,7 @@ export const ExecSchema = z
     source_ref: z.record(z.string(), z.unknown()).nullable(),
     status: z.string(),
     request_source: z.string(),
+    caller: ExecutionCallerSchema,
     parent_execution_id: z.string().nullable(),
     input: z.unknown().nullable(),
     started_at: z.string().nullable(),
@@ -327,6 +333,7 @@ export function serializeExec(
     source_ref: row.source_ref ?? null,
     status: row.status,
     request_source: row.request_source,
+    caller: describeExecutionCaller(row),
     parent_execution_id: row.parent_execution_id ?? null,
     input: row.input ?? null,
     started_at: row.started_at ? row.started_at.toISOString() : null,
