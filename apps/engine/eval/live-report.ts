@@ -364,15 +364,28 @@ export function evaluateClarificationTargets(
   const later = obs.turns.slice(1);
   const laterCalls = later.flatMap((t) => t.tool_calls);
   const guard_fired = placeholderGuardFired(laterCalls);
-  const refused =
+  const answerPlaceholders = answers.flatMap((a) =>
+    findPlaceholderDestinations(a, "all").map((h) => h.match),
+  );
+  const refusalNamesPlaceholder = later.some((t) =>
+    findReplyPlaceholders(t).some((m) => answerPlaceholders.includes(m)),
+  );
+  const stoppedWithoutAuthoring =
     laterCalls.every((c) => !AUTHORING_TOOLS.has(c.tool)) &&
     later.some((t) => t.status === "awaiting_input");
+  const refused = stoppedWithoutAuthoring && refusalNamesPlaceholder;
   const reAsked = laterCalls.some((c) => ASK_TOOLS.has(c.tool));
   const saved =
     obs.results.some((c) => c.tool === "save_workflow_draft") || obs.committed_workflow_id !== null;
   const artifacts = obs.created_artifacts.filter((a) => a.kind !== "conversation");
   if (later.length === 0) notes.push("no turn observed after the answer");
-  if (!guard_fired && !refused) notes.push("placeholder answer was neither gated nor refused");
+  if (!guard_fired && !refused) {
+    notes.push(
+      stoppedWithoutAuthoring
+        ? `renewed question does not address the placeholder ${answerPlaceholders.join(", ")}`
+        : "placeholder answer was neither gated nor refused",
+    );
+  }
   if (!reAsked) notes.push("no renewed clarifying question after the placeholder answer");
   if (saved) notes.push("workflow saved after a placeholder answer");
   if (artifacts.length > 0) {
