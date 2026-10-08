@@ -20775,6 +20775,18 @@ export interface components {
                 } | null;
             } | null;
         };
+        ExecutionCaller: {
+            /** @enum {string} */
+            kind: "user" | "system_account" | "engine";
+            principal_id: string | null;
+            provider: string | null;
+            product_id: string | null;
+            /** @enum {string|null} */
+            verified_by: "api_key" | "browser_session" | "mcp_oauth" | "token_exchange" | null;
+            channel: string;
+            /** Format: uuid */
+            origin_execution_id: string | null;
+        };
         Execution: {
             id: string;
             workflow_id: string | null;
@@ -20790,6 +20802,7 @@ export interface components {
             } | null;
             status: string;
             request_source: string;
+            caller: components["schemas"]["ExecutionCaller"];
             parent_execution_id: string | null;
             input?: unknown;
             started_at: string | null;
