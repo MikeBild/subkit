@@ -384,12 +384,14 @@ describe("detectPlaceholderDestinations · tier all (LLM paths)", () => {
     expect(violations.map((v) => [v.kind, v.match])).toEqual([["placeholder_email", email]]);
   });
 
-  test.each(["ops@acme.com", "mike@mikebild.com", "billing+2026@shop.io", "team.lead@acme.co.uk"])(
-    "%s is a real address",
-    (email) => {
-      expect(detect(requestWith({ body: { to: email } }))).toEqual([]);
-    },
-  );
+  test.each([
+    "ops@acme.com",
+    "anna.schmidt@contoso.de",
+    "billing+2026@shop.io",
+    "team.lead@acme.co.uk",
+  ])("%s is a real address", (email) => {
+    expect(detect(requestWith({ body: { to: email } }))).toEqual([]);
+  });
 
   test.each([
     ["https://api.example.com/repos", "api.example.com"],
