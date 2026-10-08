@@ -1,9 +1,5 @@
 import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
-import {
-  compile as compileJsonata,
-  findUnboundFunctionCalls,
-} from "../execution/jsonata-engine.ts";
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
@@ -15,6 +11,7 @@ import {
 } from "./destination-placeholders.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
+import { jsonataSiteErrors } from "./jsonata-sites.ts";
 import { suggestClosest } from "./levenshtein.ts";
 import { retiredItemVarIssues } from "./stored-definition.ts";
 import { type StepDef, type WorkflowDef, WorkflowDefSchema } from "./types.ts";
@@ -186,20 +183,6 @@ export function validateWorkflowDef(
       }
     }
     if (step.kind === "branch") {
-      try {
-        compileJsonata(step.when);
-        for (const finding of findUnboundFunctionCalls(step.when)) {
-          errors.push({
-            path: `steps.${step.id}.when`,
-            message: `JSONata function \`${finding.name}(...)\` is not bound; use \`${finding.suggestion}(...)\``,
-          });
-        }
-      } catch (e) {
-        errors.push({
-          path: `steps.${step.id}.when`,
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
       for (const ref of step.then_steps) {
         if (!ids.has(ref)) {
           if (allowForwardRefs) {
@@ -269,6 +252,7 @@ export function validateWorkflowDef(
       }
     }
   }
+  errors.push(...jsonataSiteErrors(wf));
   const containedStepIds = new Set<string>();
   for (const step of wf.steps) {
     if (step.kind === "loop") {

@@ -2,6 +2,8 @@ import { z } from "@hono/zod-openapi";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
+  describeUnknownFunction,
+  findUnknownFunctionCalls,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
 import { logger } from "../logging/logger.ts";
@@ -309,6 +311,16 @@ export async function evaluateJsonataSite(
       status: "compile_error",
       message: e.message,
       ...(e.position !== undefined ? { position: e.position } : {}),
+    };
+  }
+  const [unknownFunction] = findUnknownFunctionCalls(site.expression);
+  if (unknownFunction) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "compile_error",
+      message: describeUnknownFunction(unknownFunction),
+      ...(unknownFunction.position !== undefined ? { position: unknownFunction.position } : {}),
     };
   }
 

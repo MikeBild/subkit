@@ -296,13 +296,16 @@ Runs once, at the very end, to shape the caller's view. Two forms — pick
 exactly one (the schema rejects setting both):
 
 - **`output_transform_function`** — JS function body, preferred for new
-  workflows. Same contract as JS transform steps: one `input` global
-  (`input.scope.<step_id>.data…`, `input.input`), explicit `return`.
-- **`output_transform`** — JSONata, legacy/compat.
+  workflows. Its single `input` IS the workflow's final value — the last
+  step's `.data`, exactly what the caller would receive without a transform.
+  There is NO `input.scope` and NO `input.input` here: reshape everything the
+  output needs in the last step, then project it with an explicit `return`.
+- **`output_transform`** — JSONata, legacy/compat. The root value is the same
+  final value; `$scope.<step_id>.data` and `$input` are additionally bound.
 
 ```json
 {
-  "output_transform_function": "return { rows: input.scope.report_rows.data, row_count: input.scope.report_rows.data.length };"
+  "output_transform_function": "return { rows: input, row_count: input.length };"
 }
 ```
 

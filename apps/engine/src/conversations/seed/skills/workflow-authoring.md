@@ -561,7 +561,7 @@ Three places to reshape data — pick the smallest one that fits:
 
 - **Step-level `data_selector`** — trim a step's `.data` for downstream consumers (drop heavy fields).
 - **`transform` step** — reshape across multiple upstream steps, or compute derived values. JavaScript by default (see "Transforms — JavaScript first").
-- **`output_transform_function`** (JS, preferred for new workflows) or **`output_transform`** (JSONata, legacy) — workflow-level final payload the caller sees (hide internals). Pick exactly one — the schema rejects setting both. Same affordance pattern as `validation_expression` (JSONata) vs `validation_function` (JS).
+- **`output_transform_function`** (JS, preferred for new workflows) or **`output_transform`** (JSONata, legacy) — workflow-level final payload the caller sees (hide internals). Both receive the workflow's FINAL value — the last step's `.data`, not the step scope: in `output_transform_function` the single `input` IS that value (there is no `input.scope` and no `input.input`); in `output_transform` it is the root value, with `$scope.<step_id>.data` and `$input` additionally bound. Pick exactly one — the schema rejects setting both. Same affordance pattern as `validation_expression` (JSONata) vs `validation_function` (JS).
 
 See `data-handling.md` for full examples.
 
