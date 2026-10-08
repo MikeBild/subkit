@@ -455,6 +455,59 @@ describe("scoreScenario · clarification", () => {
     expect(clarificationTargets(inForm).no_placeholder_in_reply).toBe("FAIL");
   });
 
+  test("the placeholder attribute of ask_user_text and of a form field is scored like default", () => {
+    const inTextPlaceholder = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_text", {
+              question: "Which address should receive the report, built from which data?",
+              placeholder: "user@example.com",
+            }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(inTextPlaceholder).no_placeholder_in_reply).toBe("FAIL");
+    expect(inTextPlaceholder.notes.join(" ")).toContain("user@example.com");
+
+    const inFieldPlaceholder = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_form", {
+              question: "Recipient e-mail and data source?",
+              fields: [
+                { name: "to", label: "Recipient", type: "text", placeholder: "user@example.com" },
+              ],
+            }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(inFieldPlaceholder).no_placeholder_in_reply).toBe("FAIL");
+
+    const neutral = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_text", {
+              ...ASK_RECIPIENT_AND_SOURCE,
+              placeholder: "name@company.tld",
+            }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(neutral).no_placeholder_in_reply).toBe("PASS");
+  });
+
   test("a real address in the reply is not a placeholder", () => {
     expect(
       findReplyPlaceholders(

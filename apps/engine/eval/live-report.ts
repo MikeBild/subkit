@@ -264,12 +264,14 @@ function askTexts(calls: ObservedToolCall[]): string[] {
     const input = asRecord(call.input);
     if (!input) continue;
     if (typeof input.question === "string") texts.push(input.question);
+    if (typeof input.placeholder === "string") texts.push(input.placeholder);
     if (typeof input.default === "string") texts.push(input.default);
     const fields = Array.isArray(input.fields) ? input.fields : [];
     for (const f of fields) {
       const field = asRecord(f);
       if (!field) continue;
       if (typeof field.label === "string") texts.push(field.label);
+      if (typeof field.placeholder === "string") texts.push(field.placeholder);
       if (typeof field.default === "string") texts.push(field.default);
     }
     const options = Array.isArray(input.options) ? input.options : [];
