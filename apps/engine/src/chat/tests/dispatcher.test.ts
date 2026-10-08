@@ -122,6 +122,7 @@ describe("chat dispatcher", () => {
       .where(eq(conversations.id, card.conversation_id))
       .limit(1);
     expect(pendingConversation[0]?.status).toBe("awaiting_input");
+    expect(pendingConversation[0]?.origin_client).toBe("chat:slack");
 
     const interaction: ChatEvent = {
       platform: "slack",

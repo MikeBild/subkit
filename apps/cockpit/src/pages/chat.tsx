@@ -218,7 +218,19 @@ function localizedTarget(value: string | null | undefined, t: Translate): string
   return hideTechnicalIdentifiers(value, t("tool.referenceHiddenInline"));
 }
 
-function surfaceLabel(t: Translate, surface: string | null | undefined): string | null {
+const CHAT_PLATFORM_LABELS = {
+  "chat:slack": "chat.origin.slack",
+  "chat:teams": "chat.origin.teams",
+  "chat:google_chat": "chat.origin.google_chat",
+} as const;
+
+function surfaceLabel(
+  t: Translate,
+  surface: string | null | undefined,
+  client?: string | null,
+): string | null {
+  if (surface === "chat" && client && client in CHAT_PLATFORM_LABELS)
+    return t(CHAT_PLATFORM_LABELS[client as keyof typeof CHAT_PLATFORM_LABELS]);
   switch (surface) {
     case "web":
       return t("chat.origin.web");
@@ -242,6 +254,7 @@ export function originLine(
   locale: Parameters<typeof formatRelativeTime>[0],
   input: {
     surface?: string | null;
+    client?: string | null;
     owner?: { id: string; name: string } | null;
     viewerId: string | null;
     at?: string | null;
@@ -250,7 +263,7 @@ export function originLine(
   const who =
     input.owner && input.owner.id !== input.viewerId && input.owner.name ? input.owner.name : null;
   return [
-    surfaceLabel(t, input.surface),
+    surfaceLabel(t, input.surface, input.client),
     who,
     input.at ? formatRelativeTime(locale, input.at) : null,
   ]
@@ -1827,6 +1840,7 @@ export function ChatPage() {
   const origin = current
     ? originLine(t, locale, {
         surface: current.surface,
+        client: current.origin_client ?? null,
         owner: detail.data?.owner ?? null,
         viewerId: session.principal.id ?? null,
         at: activeRow?.last_activity_at ?? current.updated_at,

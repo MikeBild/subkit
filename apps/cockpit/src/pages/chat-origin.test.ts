@@ -9,6 +9,8 @@ const t = ((key: string) =>
     "chat.origin.sk_interactive": "sk",
     "chat.origin.mcp": "MCP",
     "chat.origin.chat": "Chat",
+    "chat.origin.slack": "Slack",
+    "chat.origin.google_chat": "Google Chat",
     "chat.origin.sk_headless": "sk (headless)",
   })[key] ?? key) as never;
 
@@ -68,5 +70,21 @@ describe("formatShortRelativeTime", () => {
 
   test("an unparsable stamp is empty rather than NaN", () => {
     expect(formatShortRelativeTime("en", "not a date", "now", now)).toBe("");
+  });
+
+  test("a conversation from a chat channel names the platform it came from", () => {
+    const line = originLine(t, "en", {
+      surface: "chat",
+      client: "chat:google_chat",
+      viewerId: null,
+    });
+    expect(line).toBe("Google Chat");
+  });
+
+  test("a chat conversation without a known platform still reads as a chat channel", () => {
+    expect(originLine(t, "en", { surface: "chat", client: null, viewerId: null })).toBe("Chat");
+    expect(originLine(t, "en", { surface: "web", client: "chat:slack", viewerId: null })).toBe(
+      "Cockpit",
+    );
   });
 });

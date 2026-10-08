@@ -693,7 +693,7 @@ async function handleChatEventImpl(
         tenant_id,
         actor_id: user_id,
         initial_message: prompt,
-        origin_client: principalOrigin(chatPrincipal),
+        origin_client: principalOrigin(chatPrincipal) ?? `chat:${ev.platform}`,
         surface: "chat",
       },
       db,
