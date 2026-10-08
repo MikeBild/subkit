@@ -413,6 +413,11 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
   } | null = null;
   const skippedStepIds = new Set<string>();
   const heldOrSkippedStepIds = new Set<string>();
+  const skipUntakenArm = (branchStep: BranchStep, output: unknown): void => {
+    const arm = (output as { arm?: string } | null | undefined)?.arm;
+    const skip = arm === "then" ? (branchStep.else_steps ?? []) : (branchStep.then_steps ?? []);
+    for (const skipId of skip) skippedStepIds.add(skipId);
+  };
   const warningsAccum: NonNullable<RunResult["warnings"]> = [];
 
   const dag = buildStepDag(def);
@@ -481,6 +486,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       const fixtureData = (envObj as { data?: unknown }).data;
       scope[step.id] = fixtureEnvelope;
       lastOutput = fixtureData;
+      if (step.kind === "branch") skipUntakenArm(step as BranchStep, fixtureData);
       stepSummaries.push({
         step_key: step.id,
         step_index: i,
@@ -996,12 +1002,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
     }
 
     if (step.kind === "branch" && outcome.result.status === "succeeded") {
-      const arm = (outcome.result.output as { arm?: string })?.arm;
-      const branchStep = step as BranchStep;
-      const skip = arm === "then" ? (branchStep.else_steps ?? []) : (branchStep.then_steps ?? []);
-      for (const skipId of skip) {
-        skippedStepIds.add(skipId);
-      }
+      skipUntakenArm(step as BranchStep, outcome.result.output);
     }
 
     if (step.kind === "loop" && outcome.result.status === "succeeded") {
