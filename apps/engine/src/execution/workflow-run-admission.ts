@@ -64,6 +64,7 @@ export async function admitWorkflowRun(
       "a preparation request cannot also select a live authority",
     );
   }
+  let downgraded_from: { code: string; message: string } | undefined;
   if (input.hold_writes !== true) {
     const { hold_writes: _hold, ...authorityInput } = input;
     try {
@@ -88,6 +89,7 @@ export async function admitWorkflowRun(
         ].includes(code ?? "")
       )
         throw error;
+      downgraded_from = { code: code ?? "", message: (error as Error).message };
     }
   }
   if (resolved.def.input_schema) {
@@ -136,6 +138,7 @@ export async function admitWorkflowRun(
           status: existing.status,
           replayed: true,
           hold_writes: true,
+          ...(downgraded_from ? { downgraded_from } : {}),
         };
       }
     }
@@ -163,6 +166,7 @@ export async function admitWorkflowRun(
       status: "queued" as const,
       replayed: false,
       hold_writes: true,
+      ...(downgraded_from ? { downgraded_from } : {}),
     };
   });
 }

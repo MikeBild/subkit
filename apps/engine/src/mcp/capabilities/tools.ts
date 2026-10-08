@@ -14,24 +14,17 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { registerNativeUrlElicitationCompletion } from "../../conversations/native-url-elicitation.ts";
 import type { Db } from "../../db/client.ts";
-import { executions, workflows, workflowVersions } from "../../db/schema/index.ts";
+import { executions } from "../../db/schema/index.ts";
 import { cancel } from "../../execution/abort.ts";
-import { authorizationContextFromPrincipal } from "../../execution/authorization-context.ts";
-import { callerFromPrincipal } from "../../execution/caller-context.ts";
-import {
-  admitAuthorizedWorkflowExecution,
-  auditAdmissionRefusal,
-  createExecution,
-  runExecution,
-} from "../../execution/index.ts";
+import { auditAdmissionRefusal, resolveDefinition, runExecution } from "../../execution/index.ts";
 import { previewOf } from "../../execution/offload.ts";
+import { admitWorkflowRun } from "../../execution/workflow-run-admission.ts";
 import { logger } from "../../logging/logger.ts";
 import { globalEmitter } from "../../pubsub/emitter.ts";
 import type { EventEnvelope } from "../../pubsub/types.ts";
 import { CONVERSATION_TOOL_MCP_UNAVAILABLE_REASON, getUnifiedRegistry } from "../../tools/index.ts";
 import type { ToolInvocation } from "../../tools/types.ts";
 import { gateWorkflowRunRbac } from "../../workflows/rbac.ts";
-import { executableDefinition } from "../../workflows/stored-definition.ts";
 import { callToolViaDispatcher } from "../adapter.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { MCP_CORE_TOOL_NAMES, modeFlags, resolveMcpMode } from "../mode-resolver.ts";
@@ -464,81 +457,34 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     throw err;
   }
 
-  const wfRows = await db
-    .select({ current_version_id: workflows.current_version_id })
-    .from(workflows)
-    .where(and(eq(workflows.tenant_id, principal.tenant_id), eq(workflows.id, wf.id)))
-    .limit(1);
-  const vId = wfRows[0]?.current_version_id;
-  if (!vId) throw new Error("workflow version unavailable");
-  const vRows = await db
-    .select({ dag: workflowVersions.dag })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, principal.tenant_id),
-        eq(workflowVersions.workflow_id, wf.id),
-        eq(workflowVersions.id, vId),
-      ),
-    )
-    .limit(1);
-  const definition = executableDefinition(vRows[0]?.dag);
-  const caller = callerFromPrincipal(
-    principal,
-    principal.tenant_id,
-    definition.product_id,
-    definition.required_caller_kind,
-  );
+  const resolved = await resolveDefinition(db, principal.tenant_id, {
+    kind: "saved",
+    workflow_id: wf.id,
+  });
+  const definition = resolved.def;
   const totalSteps = definition.steps.length;
   const outputSchemaDeclared = definition.output_schema != null;
-  let executionId: string;
-  let preparation = false;
-  try {
-    const admitted = await admitAuthorizedWorkflowExecution(
-      {
-        tenant_id: principal.tenant_id,
-        workflow_id: wf.id,
-        workflow_version_id: vId,
-        execution_environment: execution_mode,
-        request_source: "mcp",
-        input: args,
-      },
-      db,
-      caller,
-      authorizationContextFromPrincipal(principal),
-    );
-    executionId = admitted.execution_id;
-  } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (
-      !code ||
-      ![
-        "execution_authority_required",
-        "execution_authority_unavailable",
-        "execution_authority_changed",
-        "workflow_version_not_active",
-      ].includes(code)
-    )
-      throw error;
-    preparation = true;
-    executionId = await createExecution(db, {
+  const admitted = await admitWorkflowRun(
+    {
       tenant_id: principal.tenant_id,
       workflow_id: wf.id,
-      workflow_version_id: vId,
-      execution_mode,
-      source_kind: "saved",
-      source_ref: null,
-      input: args,
-      caller_context: caller,
-      authorization_context: authorizationContextFromPrincipal(principal),
-      hold_writes: true,
+      workflow_version_id: resolved.workflow_version_id,
+      execution_environment: execution_mode,
       request_source: "mcp",
-    });
+      input: args,
+    },
+    db,
+    principal,
+  );
+  const executionId = admitted.execution_id;
+  const preparation = admitted.hold_writes;
+  const downgrade = "downgraded_from" in admitted ? admitted.downgraded_from : undefined;
+  if (downgrade) {
     await auditAdmissionRefusal(
       {
         tenant_id: principal.tenant_id,
-        reason: code,
-        message: (error as Error).message,
+        reason: downgrade.code,
+        message: downgrade.message,
         workflow_id: wf.id,
         execution_id: executionId,
         request_source: "mcp",
@@ -584,8 +530,8 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
   const runPromise = runExecution({
     db,
     tenant_id: principal.tenant_id,
-    source: { kind: "saved", workflow_id: wf.id, version_id: vId },
-    input: args,
+    source: { kind: "saved", workflow_id: wf.id, version_id: admitted.workflow_version_id },
+    input: admitted.input,
     options: {
       existing_execution_id: executionId,
       ...(preparation ? { hold_writes: true, self_healing: { enabled: false } } : {}),
