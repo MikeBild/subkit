@@ -2,80 +2,147 @@ import { describe, expect, test } from "bun:test";
 import {
   aggregateTrials,
   BENCHMARK_TARGETS,
+  bindScenarioInputs,
   buildLiveReport,
+  type ClarificationTargets,
   evaluateBenchmarkTargets,
   extractJudgeVerdict,
   extractLlmPasses,
   extractPreviews,
+  findReplyPlaceholders,
   LIVE_SCENARIOS,
+  type LiveScenarioScore,
   type LiveScenarioSpec,
+  type ObservedToolCall,
+  type ObservedTurn,
+  previewWasAutoRepaired,
   runContentChecks,
   type ScenarioObservation,
   scenarioPassed,
   scoreScenario,
+  specNeedsRecipient,
 } from "../live-report.ts";
 
 const SPEC: LiveScenarioSpec = {
   slug: "droplet-specs-email",
-  goal: "Email me the droplet specs.",
+  kind: "authoring",
+  goal: "Email ops@acme.test the droplet specs.",
   connectors: ["digitalocean", "gmail"],
-  expect_judge_block: false,
   content_checks: [
-    { name: "recipient", pattern: "user@example\\.com" },
+    { name: "recipient", pattern: "ops@acme\\.test" },
     { name: "specs", pattern: "vcpu", flags: "i" },
   ],
 };
 
-const BLOCK_SPEC: LiveScenarioSpec = {
-  slug: "underspecified-judge-block",
-  goal: "Email the report.",
+const CLARIFY_SPEC: LiveScenarioSpec = {
+  slug: "underspecified-asks-first",
+  kind: "clarification",
+  goal: "Author a workflow that emails the report. Preview it and save it.",
   connectors: [],
-  expect_judge_block: true,
-  content_checks: [],
+  content_checks: [
+    {
+      name: "asks for the recipient",
+      pattern: "recipient|address|e-?mail|to whom|empf",
+      flags: "i",
+    },
+    {
+      name: "asks for the source",
+      pattern: "source|data|which report|from|quelle|woher",
+      flags: "i",
+    },
+  ],
+};
+
+const NEGATIVE_SPEC: LiveScenarioSpec = {
+  ...CLARIFY_SPEC,
+  slug: "underspecified-placeholder-rejected",
+  answer_turns: [
+    "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+  ],
+};
+
+let callSeq = 0;
+function call(tool: string, input: unknown = {}, output: unknown = { ok: true }): ObservedToolCall {
+  callSeq += 1;
+  return { tool, input, output, call_id: `call_${callSeq}` };
+}
+
+function turn(
+  tool_calls: ObservedToolCall[],
+  status: string,
+  assistant_text = "",
+  pending_elicitation_id: string | null = status === "awaiting_input" ? "elic_1" : null,
+): ObservedTurn {
+  return { tool_calls, assistant_text, status, pending_elicitation_id };
+}
+
+function observation(
+  spec: LiveScenarioSpec,
+  turns: ObservedTurn[],
+  extra: Partial<ScenarioObservation> = {},
+): ScenarioObservation {
+  const results = turns.flatMap((t) => t.tool_calls);
+  return {
+    scenario: spec.slug,
+    tool_calls: results.length,
+    results,
+    turns,
+    committed_workflow_id: null,
+    created_artifacts: [{ kind: "conversation", id: "conv_1" }],
+    status: turns[turns.length - 1]?.status ?? "unknown",
+    wall_ms: 1,
+    ...extra,
+  };
+}
+
+const ASK_RECIPIENT_AND_SOURCE = {
+  question:
+    "Who should receive the report (e-mail address), and which data is the report built from?",
 };
 
 function happyObservation(): ScenarioObservation {
-  return {
-    scenario: SPEC.slug,
-    tool_calls: 4,
-    results: [
-      { tool: "author_workflow", output: { attempts: 1, next: "dry_run_workflow" } },
-      {
-        tool: "dry_run_workflow",
-        output: {
-          judge: { verdict: "passes", reason: "ok", missing: [] },
-          step_trace: [
-            {
-              step_id: "send",
-              held: true,
-              held_request: {
-                body: { to: "user@example.com", html: "<p>web — 2 vCPU / 4GB / 80GB</p>" },
+  return observation(SPEC, [
+    turn(
+      [
+        call("author_workflow", { goal: "x" }, { attempts: 1, next: "dry_run_workflow" }),
+        call(
+          "dry_run_workflow",
+          {},
+          {
+            judge: { verdict: "passes", reason: "ok", missing: [] },
+            step_trace: [
+              {
+                step_id: "send",
+                held: true,
+                held_request: {
+                  body: { to: "ops@acme.test", html: "<p>web — 2 vCPU / 4GB / 80GB</p>" },
+                },
               },
-            },
-          ],
-        },
-      },
-    ],
-    status: "committed",
-    wall_ms: 42_000,
-    tokens: 18_500,
-  };
+            ],
+          },
+        ),
+        call("save_workflow_draft", {}, { ok: true, data: { workflow_id: "wf_1" } }),
+        call("list_connectors"),
+      ],
+      "committed",
+    ),
+  ]);
 }
 
 describe("extraction helpers", () => {
   test("extractLlmPasses reads attempts off the author_workflow envelope (bare or {ok,data}-wrapped)", () => {
-    expect(extractLlmPasses([{ tool: "author_workflow", output: { attempts: 2 } }])).toBe(2);
+    expect(extractLlmPasses([call("author_workflow", {}, { attempts: 2 })])).toBe(2);
     expect(
-      extractLlmPasses([{ tool: "author_workflow", output: { ok: true, data: { attempts: 1 } } }]),
+      extractLlmPasses([call("author_workflow", {}, { ok: true, data: { attempts: 1 } })]),
     ).toBe(1);
-    expect(extractLlmPasses([{ tool: "dry_run_workflow", output: { attempts: 9 } }])).toBeNull();
+    expect(extractLlmPasses([call("dry_run_workflow", {}, { attempts: 9 })])).toBeNull();
   });
 
   test("extractPreviews keeps dry_run_workflow envelopes in call order", () => {
     const previews = extractPreviews([
-      { tool: "dry_run_workflow", output: { judge: { verdict: "failed" } } },
-      { tool: "list_connectors", output: {} },
-      { tool: "dry_run_workflow", output: { judge: { verdict: "passes" } } },
+      call("dry_run_workflow", {}, { judge: { verdict: "failed" } }),
+      call("list_connectors"),
+      call("dry_run_workflow", {}, { judge: { verdict: "passes" } }),
     ]);
     expect(previews).toHaveLength(2);
     expect(extractJudgeVerdict(previews[0])).toBe("failed");
@@ -90,16 +157,58 @@ describe("extraction helpers", () => {
     expect(pass).toBe(false);
     expect(failed).toEqual(["has specs"]);
   });
+
+  test("previewWasAutoRepaired reads the preview.auto_repaired warning or the auto_repair block", () => {
+    expect(
+      previewWasAutoRepaired({
+        warnings: [{ step_key: "$output", code: "preview.auto_repaired", message: "m" }],
+      }),
+    ).toBe(true);
+    expect(previewWasAutoRepaired({ auto_repair: { site: "output_transform", attempts: 1 } })).toBe(
+      true,
+    );
+    expect(previewWasAutoRepaired({ warnings: [{ code: "scope.drift" }] })).toBe(false);
+    expect(previewWasAutoRepaired(undefined)).toBe(false);
+  });
 });
 
-describe("benchmark targets", () => {
+describe("bindScenarioInputs", () => {
+  const TEMPLATE: LiveScenarioSpec = {
+    slug: "t",
+    kind: "authoring",
+    goal: "Email {recipient} the report.",
+    answer_turns: ["Send it to {recipient}."],
+    connectors: [],
+    content_checks: [{ name: "recipient present", pattern: "{recipient}" }],
+  };
+
+  test("replaces {recipient} in goal and answer turns verbatim, in patterns regex-escaped", () => {
+    const bound = bindScenarioInputs(TEMPLATE, { recipient: "ops+eval@acme.test" });
+    expect(bound.goal).toBe("Email ops+eval@acme.test the report.");
+    expect(bound.answer_turns).toEqual(["Send it to ops+eval@acme.test."]);
+    expect(bound.content_checks[0]?.pattern).toBe("ops\\+eval@acme\\.test");
+    expect(new RegExp(bound.content_checks[0]?.pattern ?? "").test("to ops+eval@acme.test")).toBe(
+      true,
+    );
+    expect(new RegExp(bound.content_checks[0]?.pattern ?? "").test("opsXeval@acmeXtest")).toBe(
+      false,
+    );
+  });
+
+  test("leaves the source spec untouched and reports which specs need a recipient", () => {
+    bindScenarioInputs(TEMPLATE, { recipient: "a@b.test" });
+    expect(TEMPLATE.goal).toContain("{recipient}");
+    expect(specNeedsRecipient(TEMPLATE)).toBe(true);
+    expect(specNeedsRecipient(CLARIFY_SPEC)).toBe(false);
+  });
+});
+
+describe("benchmark targets (authoring)", () => {
   const base = {
     llm_passes: 1,
     previews: 1,
     tool_calls: 10,
     first_preview_content_pass: true,
-    expect_judge_block: false,
-    judge: "passes" as string | null,
   };
 
   test("all targets PASS on the happy shape", () => {
@@ -138,34 +247,23 @@ describe("benchmark targets", () => {
     ).toBe("FAIL");
     expect(evaluateBenchmarkTargets({ ...base, tool_calls: 0 }).tool_calls_le_15).toBe("FAIL");
   });
-
-  test("under-specified scenario inverts the content target: a BLOCKING verdict passes, a green pass fails", () => {
-    const blockBase = { ...base, expect_judge_block: true, first_preview_content_pass: false };
-    expect(
-      evaluateBenchmarkTargets({ ...blockBase, judge: "failed" }).content_correct_first_preview,
-    ).toBe("PASS");
-    expect(
-      evaluateBenchmarkTargets({ ...blockBase, judge: "partial" }).content_correct_first_preview,
-    ).toBe("PASS");
-    expect(
-      evaluateBenchmarkTargets({ ...blockBase, judge: "passes" }).content_correct_first_preview,
-    ).toBe("FAIL");
-  });
 });
 
-describe("scoreScenario", () => {
+describe("scoreScenario · authoring", () => {
   test("happy path: stable row shape with every target PASS", () => {
     const score = scoreScenario(SPEC, happyObservation());
     expect(score).toMatchObject({
       scenario: "droplet-specs-email",
+      kind: "authoring",
       tool_calls: 4,
       llm_passes: 1,
       judge: "passes",
-      wall_ms: 42_000,
+      wall_ms: 1,
       content_pass: true,
-      tokens: 18_500,
       previews: 1,
       first_preview_content_pass: true,
+      guard_fired: null,
+      auto_repaired_first_preview: false,
     });
     expect(Object.values(score.targets)).toEqual(["PASS", "PASS", "PASS", "PASS"]);
     expect(scenarioPassed(score)).toBe(true);
@@ -173,41 +271,31 @@ describe("scoreScenario", () => {
 
   test("content failure on the first preview fails content_pass even when the judge passed", () => {
     const obs = happyObservation();
-    const preview = obs.results[1]!.output as Record<string, unknown>;
+    const preview = obs.results[1]?.output as Record<string, unknown>;
     preview.step_trace = [{ step_id: "send", held_request: { body: { to: "", html: "" } } }];
     const score = scoreScenario(SPEC, obs);
     expect(score.content_pass).toBe(false);
     expect(score.first_preview_content_pass).toBe(false);
-    expect(score.targets.content_correct_first_preview).toBe("FAIL");
+    expect(score.targets).toMatchObject({ content_correct_first_preview: "FAIL" });
     expect(score.notes.join(" ")).toContain("failed content checks");
     expect(scenarioPassed(score)).toBe(false);
   });
 
-  test("judge-block scenario: a blocked first preview is the success condition", () => {
-    const score = scoreScenario(BLOCK_SPEC, {
-      scenario: BLOCK_SPEC.slug,
-      tool_calls: 5,
-      results: [
-        { tool: "author_workflow", output: { attempts: 1 } },
-        {
-          tool: "dry_run_workflow",
-          output: { judge: { verdict: "failed", reason: "no recipient", missing: ["recipient"] } },
-        },
-      ],
-      status: "active",
-      wall_ms: 30_000,
-    });
-    expect(score.content_pass).toBe(true);
-    expect(score.judge).toBe("failed");
-    expect(score.targets.content_correct_first_preview).toBe("PASS");
+  test("an auto-repaired first preview is recorded on the score and noted as AUTO-REPAIRED", () => {
+    const obs = happyObservation();
+    const preview = obs.results[1]?.output as Record<string, unknown>;
+    preview.warnings = [
+      { step_key: "$output", code: "preview.auto_repaired", message: "repaired" },
+    ];
+    const score = scoreScenario(SPEC, obs);
+    expect(score.auto_repaired_first_preview).toBe(true);
+    expect(score.notes.some((n) => n.startsWith("AUTO-REPAIRED"))).toBe(true);
     expect(scenarioPassed(score)).toBe(true);
   });
 
   test("errored run scores as failed with the error in notes and no crash", () => {
     const score = scoreScenario(SPEC, {
-      scenario: SPEC.slug,
-      tool_calls: 0,
-      results: [],
+      ...observation(SPEC, []),
       status: "error",
       wall_ms: 12,
       error: "connect ECONNREFUSED",
@@ -220,110 +308,489 @@ describe("scoreScenario", () => {
   });
 });
 
-describe("buildLiveReport", () => {
-  test("aggregates pass/fail and keeps the stable per-scenario keys", () => {
-    const good = scoreScenario(SPEC, happyObservation());
-    const bad = scoreScenario(SPEC, {
-      scenario: SPEC.slug,
-      tool_calls: 0,
-      results: [],
-      status: "error",
-      wall_ms: 1,
-      error: "boom",
+describe("scoreScenario · clarification", () => {
+  const clarificationTargets = (score: LiveScenarioScore): ClarificationTargets =>
+    score.targets as ClarificationTargets;
+
+  test("happy path: one ask_user_text naming recipient and source, awaiting_input, nothing authored", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [call("list_connectors"), call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)],
+          "awaiting_input",
+          "Before I build this I need two details.",
+        ),
+      ]),
+    );
+    expect(score.kind).toBe("clarification");
+    expect(clarificationTargets(score)).toEqual({
+      single_clarifying_question: "PASS",
+      no_authoring_before_answer: "PASS",
+      question_names_missing_inputs: "PASS",
+      no_placeholder_in_reply: "PASS",
     });
+    expect(score.guard_fired).toBeNull();
+    expect(score.previews).toBe(0);
+    expect(score.llm_passes).toBeNull();
+    expect(score.content_pass).toBe(true);
+    expect(scenarioPassed(score)).toBe(true);
+  });
+
+  test("ask_user_form counts as the clarifying question; checks run over its fields", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_form", {
+              question: "Two details are missing",
+              fields: [
+                { name: "to", label: "Recipient e-mail address", type: "text", required: true },
+                { name: "source", label: "Which data is the report built from?", type: "text" },
+              ],
+            }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(score).single_clarifying_question).toBe("PASS");
+    expect(clarificationTargets(score).question_names_missing_inputs).toBe("PASS");
+    expect(scenarioPassed(score)).toBe(true);
+  });
+
+  test("two questions in the first turn fail single_clarifying_question", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_text", { question: "Which e-mail address should receive it?" }),
+            call("ask_user_text", { question: "Which data source is the report built from?" }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(score).single_clarifying_question).toBe("FAIL");
+    expect(clarificationTargets(score).question_names_missing_inputs).toBe("PASS");
+    expect(scenarioPassed(score)).toBe(false);
+  });
+
+  test("authoring before the question fails no_authoring_before_answer", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("author_workflow", { goal: "emails the report" }, { ok: false }),
+            call("ask_user_text", ASK_RECIPIENT_AND_SOURCE),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(score).no_authoring_before_answer).toBe("FAIL");
+    expect(clarificationTargets(score).single_clarifying_question).toBe("PASS");
+    expect(score.notes.join(" ")).toContain("author_workflow");
+  });
+
+  test("only an ask_user_confirm is not a clarifying question", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [call("ask_user_confirm", { question: "Shall I e-mail the report to the recipient?" })],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(score).single_clarifying_question).toBe("FAIL");
+    expect(clarificationTargets(score).question_names_missing_inputs).toBe("FAIL");
+  });
+
+  test("a question that only asks for the recipient fails question_names_missing_inputs", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn([call("ask_user_text", { question: "Which e-mail address?" })], "awaiting_input"),
+      ]),
+    );
+    expect(clarificationTargets(score).question_names_missing_inputs).toBe("FAIL");
+    expect(score.notes.join(" ")).toContain("asks for the source");
+    expect(score.content_pass).toBe(false);
+  });
+
+  test("a placeholder address in the reply text or the ask input fails no_placeholder_in_reply", () => {
+    const inText = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)],
+          "awaiting_input",
+          "I will send it to user@example.com unless you tell me otherwise.",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(inText).no_placeholder_in_reply).toBe("FAIL");
+    expect(inText.notes.join(" ")).toContain("user@example.com");
+
+    const inForm = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("ask_user_form", {
+              question: "Recipient e-mail and data source?",
+              fields: [
+                { name: "to", label: "Recipient", type: "text", default: "user@example.com" },
+              ],
+            }),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(inForm).no_placeholder_in_reply).toBe("FAIL");
+  });
+
+  test("a real address in the reply is not a placeholder", () => {
+    expect(
+      findReplyPlaceholders(
+        turn(
+          [call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)],
+          "awaiting_input",
+          "Should it go to ops@acme-reports.io like last time?",
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("five tool calls in the first turn exceed the clarification budget", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [
+            call("list_connectors"),
+            call("find_connector"),
+            call("list_workflows"),
+            call("search_knowledge"),
+            call("ask_user_text", ASK_RECIPIENT_AND_SOURCE),
+          ],
+          "awaiting_input",
+        ),
+      ]),
+    );
+    expect(clarificationTargets(score).single_clarifying_question).toBe("FAIL");
+    expect(score.notes.join(" ")).toContain("5 tool calls");
+  });
+
+  test("a first turn that ends active instead of awaiting_input fails single_clarifying_question", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn([call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)], "active", "", null),
+      ]),
+    );
+    expect(clarificationTargets(score).single_clarifying_question).toBe("FAIL");
+  });
+
+  test("no turns at all: the question targets fail and the scenario fails without crashing", () => {
+    const score = scoreScenario(CLARIFY_SPEC, {
+      ...observation(CLARIFY_SPEC, []),
+      status: "error",
+      error: "connect ECONNREFUSED",
+    });
+    expect(clarificationTargets(score)).toMatchObject({
+      single_clarifying_question: "FAIL",
+      question_names_missing_inputs: "FAIL",
+    });
+    expect(score.content_pass).toBe(false);
+    expect(scenarioPassed(score)).toBe(false);
+    expect(score.notes.join(" ")).toContain("ECONNREFUSED");
+  });
+});
+
+describe("scoreScenario · placeholder answer (negative scenario)", () => {
+  const firstTurn = () =>
+    turn(
+      [call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)],
+      "awaiting_input",
+      "I need the recipient and the data source first.",
+    );
+  const gatedAuthor = () =>
+    call(
+      "author_workflow",
+      { goal: "email droplets to test@example.com" },
+      {
+        ok: false,
+        data: {
+          error_code: "authoring_definition_invalid",
+          requires_user_input: true,
+          placeholder_destinations: [
+            { step_id: "send", path: "steps.send.body.to", kind: "placeholder_email" },
+          ],
+        },
+      },
+    );
+  const reAsk = () =>
+    call("ask_user_text", {
+      question: "test@example.com is a placeholder — which real e-mail address should receive it?",
+    });
+
+  test("gate fired, renewed question, no save, no artifacts → PASS with guard_fired=true", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn([gatedAuthor(), reAsk()], "awaiting_input", "", "elic_2"),
+      ]),
+    );
+    const targets = score.targets as ClarificationTargets;
+    expect(targets.placeholder_rejected_after_answer).toBe("PASS");
+    expect(score.guard_fired).toBe(true);
+    expect(score.notes).toContain("guard_fired=true");
+    expect(scenarioPassed(score)).toBe(true);
+  });
+
+  test("the dedicated gate code workflow_placeholder_destination also counts as the guard", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn(
+          [
+            call(
+              "edit_workflow_patch",
+              {},
+              { ok: false, error_code: "workflow_placeholder_destination" },
+            ),
+            reAsk(),
+          ],
+          "awaiting_input",
+          "",
+          "elic_2",
+        ),
+      ]),
+    );
+    expect(score.guard_fired).toBe(true);
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("PASS");
+  });
+
+  test("model refuses without touching an authoring tool and asks again → PASS, guard_fired=false", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn([reAsk()], "awaiting_input", "That looks like a placeholder address.", "elic_2"),
+      ]),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("PASS");
+    expect(score.guard_fired).toBe(false);
+    expect(score.notes).toContain("guard_fired=false");
+    expect(scenarioPassed(score)).toBe(true);
+  });
+
+  test("a save after the placeholder answer fails even when the gate fired earlier", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(
+        NEGATIVE_SPEC,
+        [
+          firstTurn(),
+          turn(
+            [
+              gatedAuthor(),
+              call("author_workflow", {}, { attempts: 1 }),
+              call("dry_run_workflow", {}, { judge: { verdict: "passes" } }),
+              call("save_workflow_draft", {}, { ok: true, data: { workflow_id: "wf_9" } }),
+            ],
+            "committed",
+          ),
+        ],
+        { committed_workflow_id: "wf_9" },
+      ),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("FAIL");
+    expect(score.guard_fired).toBe(true);
+    expect(score.notes.join(" ")).toContain("saved after a placeholder answer");
+    expect(scenarioPassed(score)).toBe(false);
+  });
+
+  test("authoring went through without gate or renewed question → FAIL", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn(
+          [
+            call("author_workflow", {}, { attempts: 1 }),
+            call("dry_run_workflow", {}, { judge: { verdict: "passes" } }),
+          ],
+          "active",
+          "Here is the preview.",
+          null,
+        ),
+      ]),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("FAIL");
+    expect(score.guard_fired).toBe(false);
+    expect(score.notes.join(" ")).toContain("neither gated nor refused");
+  });
+
+  test("created artifacts after the answer fail the target even with gate and renewed question", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [firstTurn(), turn([gatedAuthor(), reAsk()], "awaiting_input")], {
+        created_artifacts: [
+          { kind: "conversation", id: "conv_1" },
+          { kind: "knowledge_source", id: "ks_1" },
+        ],
+      }),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("FAIL");
+    expect(score.notes.join(" ")).toContain("knowledge_source:ks_1");
+  });
+
+  test("no turn after the answer → FAIL", () => {
+    const score = scoreScenario(NEGATIVE_SPEC, observation(NEGATIVE_SPEC, [firstTurn()]));
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("FAIL");
+    expect(score.notes.join(" ")).toContain("no turn observed after the answer");
+  });
+
+  test("a scenario without answer_turns never carries the negative target", () => {
+    const score = scoreScenario(CLARIFY_SPEC, observation(CLARIFY_SPEC, [firstTurn()]));
+    expect("placeholder_rejected_after_answer" in score.targets).toBe(false);
+  });
+});
+
+describe("buildLiveReport", () => {
+  test("aggregates pass/fail, keeps the stable per-scenario keys and carries trials and cleanup", () => {
+    const good = scoreScenario(SPEC, happyObservation());
+    const bad = scoreScenario(SPEC, { ...observation(SPEC, []), status: "error", error: "boom" });
     const report = buildLiveReport({
       scores: [good, bad],
       engine_host: "engine.example.com",
       started_at: "2026-06-12T00:00:00.000Z",
       finished_at: "2026-06-12T00:05:00.000Z",
+      trials: [aggregateTrials([good, bad])],
+      cleanup: { deleted: 3, failures: [] },
     });
     expect(report.total).toBe(2);
     expect(report.passed).toBe(1);
     expect(report.failed).toBe(1);
+    expect(report.trials?.[0]?.pass_rate).toBeCloseTo(0.5, 5);
+    expect(report.cleanup).toEqual({ deleted: 3, failures: [] });
     for (const key of [
       "scenario",
+      "kind",
       "tool_calls",
       "llm_passes",
       "judge",
       "wall_ms",
       "content_pass",
       "previews",
+      "guard_fired",
+      "auto_repaired_first_preview",
       "targets",
     ]) {
-      expect(Object.keys(report.scenarios[0]!)).toContain(key);
+      expect(Object.keys(report.scenarios[0] ?? {})).toContain(key);
     }
   });
 });
 
 describe("live scenario specs", () => {
-  test("curated estate scenarios + bounded probe scenarios, exactly one judge-block probe, valid regexes", () => {
+  test("bounded set, unique slugs, exactly two clarification scenarios of which one answers with a placeholder", () => {
     expect(LIVE_SCENARIOS.length).toBeGreaterThanOrEqual(3);
-    expect(LIVE_SCENARIOS.length).toBeLessThanOrEqual(8);
-    expect(LIVE_SCENARIOS.filter((s) => s.expect_judge_block)).toHaveLength(1);
-    for (const spec of LIVE_SCENARIOS) {
+    expect(LIVE_SCENARIOS.length).toBeLessThanOrEqual(10);
+    expect(new Set(LIVE_SCENARIOS.map((s) => s.slug)).size).toBe(LIVE_SCENARIOS.length);
+    const clarifications = LIVE_SCENARIOS.filter((s) => s.kind === "clarification");
+    expect(clarifications.map((s) => s.slug).sort()).toEqual([
+      "underspecified-asks-first",
+      "underspecified-placeholder-rejected",
+    ]);
+    expect(
+      clarifications.filter((s) => (s.answer_turns?.length ?? 0) > 0).map((s) => s.slug),
+    ).toEqual(["underspecified-placeholder-rejected"]);
+    expect(LIVE_SCENARIOS.some((s) => s.slug === "underspecified-judge-block")).toBe(false);
+  });
+
+  test("every content check compiles once {recipient} is bound", () => {
+    for (const raw of LIVE_SCENARIOS) {
+      const spec = bindScenarioInputs(raw, { recipient: "ops@acme.test" });
       for (const check of spec.content_checks) {
         expect(() => new RegExp(check.pattern, check.flags ?? "")).not.toThrow();
       }
     }
   });
 
-  test("the droplet-specs scenario goal names the recipient (fabricated-recipient regression)", () => {
+  test("the droplet-specs scenario takes its recipient from the runner, never a fabricated address", () => {
     const spec = LIVE_SCENARIOS.find((s) => s.slug === "droplet-specs-email");
-    expect(spec?.goal).toContain("user@example.com");
+    expect(spec?.goal).toContain("{recipient}");
+    expect(spec?.goal).not.toContain("example.com");
+    expect(specNeedsRecipient(spec as LiveScenarioSpec)).toBe(true);
+    expect(LIVE_SCENARIOS.filter(specNeedsRecipient).map((s) => s.slug)).toEqual([
+      "droplet-specs-email",
+    ]);
+  });
+
+  test("the placeholder-rejected scenario answers with the placeholder the engine must refuse", () => {
+    const spec = LIVE_SCENARIOS.find((s) => s.slug === "underspecified-placeholder-rejected");
+    expect(spec?.answer_turns).toEqual([
+      "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+    ]);
+    expect(spec?.connectors).toEqual([]);
   });
 });
 
 describe("scoreScenario · convergence metric (previews_to_pass / converged)", () => {
   const FINAL_SPEC: LiveScenarioSpec = {
     slug: "conv-probe",
+    kind: "authoring",
     goal: "return an object with spread_c",
     connectors: ["open-meteo"],
-    expect_judge_block: false,
     content_source: "final_output",
     content_checks: [{ name: "spread numeric", pattern: '"spread_c"\\s*:\\s*-?\\d+(\\.\\d+)?' }],
   };
-  const preview = (final_output: unknown) => ({
-    tool: "dry_run_workflow",
-    output: { final_output },
-  });
+  const preview = (final_output: unknown) => call("dry_run_workflow", {}, { final_output });
 
   test("first preview wrong, second correct → converged, previews_to_pass=2, first-shot still false", () => {
-    const score = scoreScenario(FINAL_SPEC, {
-      scenario: FINAL_SPEC.slug,
-      tool_calls: 6,
-      status: "committed",
-      wall_ms: 1,
-      results: [
-        { tool: "author_workflow", output: { attempts: 1 } },
-        preview({ spread_c: null }),
-        preview({ spread_c: 3.4 }),
-      ],
-    });
+    const score = scoreScenario(
+      FINAL_SPEC,
+      observation(FINAL_SPEC, [
+        turn(
+          [
+            call("author_workflow", {}, { attempts: 1 }),
+            preview({ spread_c: null }),
+            preview({ spread_c: 3.4 }),
+          ],
+          "committed",
+        ),
+      ]),
+    );
     expect(score.first_preview_content_pass).toBe(false);
     expect(score.converged).toBe(true);
     expect(score.previews_to_pass).toBe(2);
   });
 
   test("all previews wrong → not converged, previews_to_pass null", () => {
-    const score = scoreScenario(FINAL_SPEC, {
-      scenario: FINAL_SPEC.slug,
-      tool_calls: 4,
-      status: "awaiting_input",
-      wall_ms: 1,
-      results: [preview({ spread_c: null }), preview({ spread_c: null })],
-    });
+    const score = scoreScenario(
+      FINAL_SPEC,
+      observation(FINAL_SPEC, [
+        turn([preview({ spread_c: null }), preview({ spread_c: null })], "awaiting_input"),
+      ]),
+    );
     expect(score.converged).toBe(false);
     expect(score.previews_to_pass).toBeNull();
   });
 
   test("right first shot → previews_to_pass=1", () => {
-    const score = scoreScenario(FINAL_SPEC, {
-      scenario: FINAL_SPEC.slug,
-      tool_calls: 2,
-      status: "committed",
-      wall_ms: 1,
-      results: [preview({ spread_c: 5.5 })],
-    });
+    const score = scoreScenario(
+      FINAL_SPEC,
+      observation(FINAL_SPEC, [turn([preview({ spread_c: 5.5 })], "committed")]),
+    );
     expect(score.previews_to_pass).toBe(1);
     expect(score.converged).toBe(true);
     expect(score.first_preview_content_pass).toBe(true);
@@ -333,18 +800,18 @@ describe("scoreScenario · convergence metric (previews_to_pass / converged)", (
 describe("scoreScenario · trajectory metrics (probe_before_author / dry_run_before_save)", () => {
   const SPEC2: LiveScenarioSpec = {
     slug: "traj",
+    kind: "authoring",
     goal: "build something",
     connectors: ["x"],
-    expect_judge_block: false,
     content_checks: [],
   };
-  const obs = (tools: string[]): ScenarioObservation => ({
-    scenario: SPEC2.slug,
-    tool_calls: tools.length,
-    status: "committed",
-    wall_ms: 1,
-    results: tools.map((t) => ({ tool: t, output: {} })),
-  });
+  const obs = (tools: string[]): ScenarioObservation =>
+    observation(SPEC2, [
+      turn(
+        tools.map((t) => call(t)),
+        "committed",
+      ),
+    ]);
 
   test("probe before author → true", () => {
     expect(
@@ -376,11 +843,18 @@ describe("scoreScenario · trajectory metrics (probe_before_author / dry_run_bef
       scoreScenario(SPEC2, obs(["author_workflow", "dry_run_workflow"])).dry_run_before_save,
     ).toBe(true);
   });
+  test("edit before the first preview marks the trial NON-ISOLATED", () => {
+    expect(
+      scoreScenario(SPEC2, obs(["author_workflow", "edit_workflow_patch", "dry_run_workflow"]))
+        .notes,
+    ).toContainEqual(expect.stringContaining("NON-ISOLATED"));
+  });
 });
 
 describe("aggregateTrials · rates, not a single run", () => {
   const mk = (over: Partial<LiveScenarioScore>): LiveScenarioScore => ({
     scenario: "s",
+    kind: "authoring",
     tool_calls: 10,
     llm_passes: 1,
     judge: "passes",
@@ -392,7 +866,8 @@ describe("aggregateTrials · rates, not a single run", () => {
     previews_to_pass: 1,
     probe_before_author: true,
     dry_run_before_save: true,
-    expect_judge_block: false,
+    guard_fired: null,
+    auto_repaired_first_preview: false,
     status: "committed",
     targets: {
       pipeline_llm_calls_le_3: "PASS",
@@ -414,8 +889,10 @@ describe("aggregateTrials · rates, not a single run", () => {
     expect(agg.n_trials).toBe(3);
     expect(agg.excluded_non_isolated).toBe(1);
     expect(agg.content_pass_rate).toBeCloseTo(2 / 3, 5);
+    expect(agg.pass_rate).toBeCloseTo(2 / 3, 5);
     expect(agg.converged_rate).toBeCloseTo(2 / 3, 5);
     expect(agg.median_previews_to_pass).toBe(2);
+    expect(agg.guard_fired_rate).toBeNull();
   });
 
   test("probe_before_author_rate counts only non-null (authored) trials", () => {
@@ -425,5 +902,40 @@ describe("aggregateTrials · rates, not a single run", () => {
       mk({ probe_before_author: null }),
     ]);
     expect(agg.probe_before_author_rate).toBeCloseTo(1 / 2, 5);
+  });
+
+  test("three clarification trials: pass_rate from scenarioPassed, guard_fired_rate over trials that record it", () => {
+    const clarify = (over: Partial<LiveScenarioScore>, targets: ClarificationTargets) =>
+      mk({
+        kind: "clarification",
+        llm_passes: null,
+        judge: null,
+        previews: 0,
+        first_preview_content_pass: false,
+        converged: false,
+        previews_to_pass: null,
+        probe_before_author: null,
+        targets,
+        ...over,
+      });
+    const pass: ClarificationTargets = {
+      single_clarifying_question: "PASS",
+      no_authoring_before_answer: "PASS",
+      question_names_missing_inputs: "PASS",
+      no_placeholder_in_reply: "PASS",
+      placeholder_rejected_after_answer: "PASS",
+    };
+    const agg = aggregateTrials([
+      clarify({ guard_fired: true }, pass),
+      clarify({ guard_fired: false }, pass),
+      clarify(
+        { guard_fired: true, content_pass: false },
+        { ...pass, question_names_missing_inputs: "FAIL" },
+      ),
+    ]);
+    expect(agg.n_trials).toBe(3);
+    expect(agg.pass_rate).toBeCloseTo(2 / 3, 5);
+    expect(agg.guard_fired_rate).toBeCloseTo(2 / 3, 5);
+    expect(agg.median_previews_to_pass).toBeNull();
   });
 });

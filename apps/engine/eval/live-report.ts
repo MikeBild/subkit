@@ -1,8 +1,38 @@
+import { findPlaceholderDestinations } from "../src/workflows/destination-placeholders.ts";
+
 export const BENCHMARK_TARGETS = {
   pipeline_llm_calls_max: 3,
   previews_expected: 1,
   tool_calls_max: 15,
+  clarification_tool_calls_max: 4,
 } as const;
+
+export const EVAL_LIVE_TITLE_PREFIX = "eval-live · ";
+
+export const RECIPIENT_TEMPLATE = "{recipient}";
+
+export const ASK_TOOLS: ReadonlySet<string> = new Set([
+  "ask_user_text",
+  "ask_user_form",
+  "ask_user_choice",
+  "ask_user_multi",
+]);
+
+export const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
+  "author_workflow",
+  "edit_workflow_patch",
+  "dry_run_workflow",
+  "save_workflow_draft",
+]);
+
+export const PLACEHOLDER_GATE_ERROR_CODES: ReadonlySet<string> = new Set([
+  "workflow_placeholder_destination",
+  "authoring_definition_invalid",
+]);
+
+export const AUTO_REPAIRED_WARNING_CODE = "preview.auto_repaired";
+
+export type ScenarioKind = "authoring" | "clarification";
 
 export interface ContentCheck {
   name: string;
@@ -12,23 +42,42 @@ export interface ContentCheck {
 
 export interface LiveScenarioSpec {
   slug: string;
+  kind: ScenarioKind;
   goal: string;
   follow_up_turns?: string[];
+  answer_turns?: string[];
   connectors: string[];
-  expect_judge_block: boolean;
   content_checks: ContentCheck[];
   content_source?: "envelope" | "final_output";
 }
 
 export interface ObservedToolCall {
   tool: string;
+  input: unknown;
   output: unknown;
+  call_id: string;
+}
+
+export interface ObservedTurn {
+  tool_calls: ObservedToolCall[];
+  assistant_text: string;
+  status: string;
+  pending_elicitation_id: string | null;
+}
+
+export interface CreatedArtifact {
+  kind: "workflow" | "knowledge_source" | "connector" | "conversation";
+  id: string;
+  slug?: string;
 }
 
 export interface ScenarioObservation {
   scenario: string;
   tool_calls: number;
   results: ObservedToolCall[];
+  turns: ObservedTurn[];
+  committed_workflow_id: string | null;
+  created_artifacts: CreatedArtifact[];
   status: string;
   wall_ms: number;
   tokens?: number;
@@ -37,15 +86,26 @@ export interface ScenarioObservation {
 
 export type TargetVerdict = "PASS" | "FAIL";
 
-export interface ScenarioTargets {
+export interface AuthoringTargets {
   pipeline_llm_calls_le_3: TargetVerdict;
   single_preview: TargetVerdict;
   tool_calls_le_15: TargetVerdict;
   content_correct_first_preview: TargetVerdict;
 }
 
+export interface ClarificationTargets {
+  single_clarifying_question: TargetVerdict;
+  no_authoring_before_answer: TargetVerdict;
+  question_names_missing_inputs: TargetVerdict;
+  no_placeholder_in_reply: TargetVerdict;
+  placeholder_rejected_after_answer?: TargetVerdict;
+}
+
+export type ScenarioTargets = AuthoringTargets | ClarificationTargets;
+
 export interface LiveScenarioScore {
   scenario: string;
+  kind: ScenarioKind;
   tool_calls: number;
   llm_passes: number | null;
   judge: string | null;
@@ -58,7 +118,8 @@ export interface LiveScenarioScore {
   previews_to_pass: number | null;
   probe_before_author: boolean | null;
   dry_run_before_save: boolean;
-  expect_judge_block: boolean;
+  guard_fired: boolean | null;
+  auto_repaired_first_preview: boolean;
   status: string;
   targets: ScenarioTargets;
   notes: string[];
@@ -72,6 +133,8 @@ export interface LiveAuthoringReport {
   passed: number;
   failed: number;
   scenarios: LiveScenarioScore[];
+  trials?: TrialAggregate[];
+  cleanup?: { deleted: number; failures: string[] };
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -85,6 +148,44 @@ function envelopeOf(output: unknown): Record<string, unknown> | null {
   if (!rec) return null;
   const inner = asRecord(rec.data);
   return inner ?? rec;
+}
+
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function bindText(text: string, recipient: string): string {
+  return text.split(RECIPIENT_TEMPLATE).join(recipient);
+}
+
+export function bindScenarioInputs(
+  spec: LiveScenarioSpec,
+  inputs: { recipient: string },
+): LiveScenarioSpec {
+  const recipient = inputs.recipient;
+  return {
+    ...spec,
+    goal: bindText(spec.goal, recipient),
+    ...(spec.follow_up_turns
+      ? { follow_up_turns: spec.follow_up_turns.map((t) => bindText(t, recipient)) }
+      : {}),
+    ...(spec.answer_turns
+      ? { answer_turns: spec.answer_turns.map((t) => bindText(t, recipient)) }
+      : {}),
+    content_checks: spec.content_checks.map((c) => ({
+      ...c,
+      pattern: bindText(c.pattern, escapeRegExp(recipient)),
+    })),
+  };
+}
+
+export function specNeedsRecipient(spec: LiveScenarioSpec): boolean {
+  return [
+    spec.goal,
+    ...(spec.follow_up_turns ?? []),
+    ...(spec.answer_turns ?? []),
+    ...spec.content_checks.map((c) => c.pattern),
+  ].some((t) => t.includes(RECIPIENT_TEMPLATE));
 }
 
 export function extractLlmPasses(results: ObservedToolCall[]): number | null {
@@ -108,6 +209,13 @@ export function extractJudgeVerdict(preview: Record<string, unknown> | undefined
   return judge && typeof judge.verdict === "string" ? judge.verdict : null;
 }
 
+export function previewWasAutoRepaired(preview: Record<string, unknown> | undefined): boolean {
+  if (!preview) return false;
+  if (asRecord(preview.auto_repair)) return true;
+  const warnings = Array.isArray(preview.warnings) ? preview.warnings : [];
+  return warnings.some((w) => asRecord(w)?.code === AUTO_REPAIRED_WARNING_CODE);
+}
+
 export function runContentChecks(
   corpus: string,
   checks: ContentCheck[],
@@ -120,24 +228,12 @@ export function runContentChecks(
   return { pass: failed.length === 0, failed };
 }
 
-function isBlockingVerdict(verdict: string | null): boolean {
-  return verdict === "partial" || verdict === "failed";
-}
-
 export function evaluateBenchmarkTargets(
   score: Pick<
     LiveScenarioScore,
-    | "llm_passes"
-    | "previews"
-    | "tool_calls"
-    | "first_preview_content_pass"
-    | "expect_judge_block"
-    | "judge"
+    "llm_passes" | "previews" | "tool_calls" | "first_preview_content_pass"
   >,
-): ScenarioTargets {
-  const contentTarget = score.expect_judge_block
-    ? isBlockingVerdict(score.judge)
-    : score.first_preview_content_pass;
+): AuthoringTargets {
   return {
     pipeline_llm_calls_le_3:
       score.llm_passes !== null &&
@@ -150,8 +246,142 @@ export function evaluateBenchmarkTargets(
       score.tool_calls > 0 && score.tool_calls <= BENCHMARK_TARGETS.tool_calls_max
         ? "PASS"
         : "FAIL",
-    content_correct_first_preview: contentTarget ? "PASS" : "FAIL",
+    content_correct_first_preview: score.first_preview_content_pass ? "PASS" : "FAIL",
   };
+}
+
+function askCorpus(calls: ObservedToolCall[]): string {
+  return calls
+    .filter((c) => ASK_TOOLS.has(c.tool))
+    .map((c) => JSON.stringify(c.input) ?? "")
+    .join("\n");
+}
+
+function askTexts(calls: ObservedToolCall[]): string[] {
+  const texts: string[] = [];
+  for (const call of calls) {
+    if (!ASK_TOOLS.has(call.tool)) continue;
+    const input = asRecord(call.input);
+    if (!input) continue;
+    if (typeof input.question === "string") texts.push(input.question);
+    if (typeof input.default === "string") texts.push(input.default);
+    const fields = Array.isArray(input.fields) ? input.fields : [];
+    for (const f of fields) {
+      const field = asRecord(f);
+      if (!field) continue;
+      if (typeof field.label === "string") texts.push(field.label);
+      if (typeof field.default === "string") texts.push(field.default);
+    }
+    const options = Array.isArray(input.options) ? input.options : [];
+    for (const o of options) {
+      if (typeof o === "string") texts.push(o);
+      const opt = asRecord(o);
+      if (opt && typeof opt.label === "string") texts.push(opt.label);
+      if (opt && typeof opt.value === "string") texts.push(opt.value);
+    }
+  }
+  return texts;
+}
+
+export function findReplyPlaceholders(turn: ObservedTurn): string[] {
+  const corpus = [turn.assistant_text, ...askTexts(turn.tool_calls)].join("\n");
+  return findPlaceholderDestinations(corpus, "all").map((h) => h.match);
+}
+
+function errorCodeOf(output: unknown): string | null {
+  const rec = asRecord(output);
+  if (!rec) return null;
+  if (typeof rec.error_code === "string") return rec.error_code;
+  const data = asRecord(rec.data);
+  return data && typeof data.error_code === "string" ? data.error_code : null;
+}
+
+function hasPlaceholderDestinations(output: unknown): boolean {
+  const rec = asRecord(output);
+  if (!rec) return false;
+  const direct = rec.placeholder_destinations;
+  const nested = asRecord(rec.data)?.placeholder_destinations;
+  return (
+    (Array.isArray(direct) && direct.length > 0) || (Array.isArray(nested) && nested.length > 0)
+  );
+}
+
+export function placeholderGuardFired(calls: ObservedToolCall[]): boolean {
+  return calls.some((c) => {
+    const code = errorCodeOf(c.output);
+    if (code === "workflow_placeholder_destination") return true;
+    if (code === "authoring_definition_invalid") return hasPlaceholderDestinations(c.output);
+    return false;
+  });
+}
+
+export function evaluateClarificationTargets(
+  spec: LiveScenarioSpec,
+  obs: ScenarioObservation,
+): { targets: ClarificationTargets; guard_fired: boolean | null; notes: string[] } {
+  const notes: string[] = [];
+  const first: ObservedTurn = obs.turns[0] ?? {
+    tool_calls: [],
+    assistant_text: "",
+    status: obs.status,
+    pending_elicitation_id: null,
+  };
+  const asks = first.tool_calls.filter((c) => ASK_TOOLS.has(c.tool));
+  const singleAsk = asks.length === 1;
+  const awaiting = first.status === "awaiting_input";
+  const bounded = first.tool_calls.length <= BENCHMARK_TARGETS.clarification_tool_calls_max;
+  if (!singleAsk) notes.push(`first turn asked ${asks.length} clarifying question(s), expected 1`);
+  if (!awaiting)
+    notes.push(`first turn ended with status ${first.status}, expected awaiting_input`);
+  if (!bounded) {
+    notes.push(
+      `first turn made ${first.tool_calls.length} tool calls, max ${BENCHMARK_TARGETS.clarification_tool_calls_max}`,
+    );
+  }
+  const authoredFirst = first.tool_calls.filter((c) => AUTHORING_TOOLS.has(c.tool));
+  if (authoredFirst.length > 0) {
+    notes.push(`authoring before the answer: ${authoredFirst.map((c) => c.tool).join(", ")}`);
+  }
+  const questionChecks = runContentChecks(askCorpus(asks), spec.content_checks);
+  if (asks.length > 0 && !questionChecks.pass) {
+    notes.push(`question does not name missing inputs: ${questionChecks.failed.join(", ")}`);
+  }
+  const placeholders = findReplyPlaceholders(first);
+  if (placeholders.length > 0) notes.push(`placeholder in reply: ${placeholders.join(", ")}`);
+
+  const targets: ClarificationTargets = {
+    single_clarifying_question: singleAsk && awaiting && bounded ? "PASS" : "FAIL",
+    no_authoring_before_answer: authoredFirst.length === 0 ? "PASS" : "FAIL",
+    question_names_missing_inputs: asks.length > 0 && questionChecks.pass ? "PASS" : "FAIL",
+    no_placeholder_in_reply: placeholders.length === 0 ? "PASS" : "FAIL",
+  };
+
+  const answers = spec.answer_turns ?? [];
+  if (answers.length === 0) return { targets, guard_fired: null, notes };
+
+  const later = obs.turns.slice(1);
+  const laterCalls = later.flatMap((t) => t.tool_calls);
+  const guard_fired = placeholderGuardFired(laterCalls);
+  const refused =
+    laterCalls.every((c) => !AUTHORING_TOOLS.has(c.tool)) &&
+    later.some((t) => t.status === "awaiting_input");
+  const reAsked = laterCalls.some((c) => ASK_TOOLS.has(c.tool));
+  const saved =
+    obs.results.some((c) => c.tool === "save_workflow_draft") || obs.committed_workflow_id !== null;
+  const artifacts = obs.created_artifacts.filter((a) => a.kind !== "conversation");
+  if (later.length === 0) notes.push("no turn observed after the answer");
+  if (!guard_fired && !refused) notes.push("placeholder answer was neither gated nor refused");
+  if (!reAsked) notes.push("no renewed clarifying question after the placeholder answer");
+  if (saved) notes.push("workflow saved after a placeholder answer");
+  if (artifacts.length > 0) {
+    notes.push(`artifacts created: ${artifacts.map((a) => `${a.kind}:${a.id}`).join(", ")}`);
+  }
+  notes.push(`guard_fired=${guard_fired}`);
+  targets.placeholder_rejected_after_answer =
+    later.length > 0 && (guard_fired || refused) && reAsked && !saved && artifacts.length === 0
+      ? "PASS"
+      : "FAIL";
+  return { targets, guard_fired, notes };
 }
 
 export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation): LiveScenarioScore {
@@ -159,13 +389,8 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   if (obs.error) notes.push(`run error: ${obs.error}`);
 
   const llm_passes = extractLlmPasses(obs.results);
-  if (llm_passes === null) notes.push("author_workflow result envelope not observed");
-
   const previews = extractPreviews(obs.results);
-  if (previews.length === 0) notes.push("no dry_run_workflow preview observed");
-
   const firstPreview = previews[0];
-  let firstCorpus = "";
   const corpusOf = (pv: Record<string, unknown>): string => {
     if (spec.content_source === "final_output") {
       const fo = pv.final_output;
@@ -173,32 +398,23 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
     }
     return JSON.stringify(pv) ?? "";
   };
-  if (firstPreview) firstCorpus = corpusOf(firstPreview);
-  const firstContent = runContentChecks(firstCorpus, spec.content_checks);
-  if (!firstContent.pass && firstPreview) {
-    notes.push(`first preview failed content checks: ${firstContent.failed.join(", ")}`);
-  }
+  const firstContent = runContentChecks(
+    firstPreview ? corpusOf(firstPreview) : "",
+    spec.content_checks,
+  );
   const first_preview_content_pass = previews.length > 0 && firstContent.pass;
-
-  let previews_to_pass: number | null = null;
-  if (!spec.expect_judge_block) {
-    const idx = previews.findIndex(
-      (pv) => runContentChecks(corpusOf(pv), spec.content_checks).pass,
-    );
-    previews_to_pass = idx >= 0 ? idx + 1 : null;
-  }
-  const converged = previews_to_pass !== null;
+  const passIdx = previews.findIndex(
+    (pv) => runContentChecks(corpusOf(pv), spec.content_checks).pass,
+  );
+  const previews_to_pass = passIdx >= 0 ? passIdx + 1 : null;
+  const auto_repaired_first_preview = previewWasAutoRepaired(firstPreview);
+  if (auto_repaired_first_preview) notes.push("AUTO-REPAIRED: first preview output site");
 
   const firstPreviewIdx = obs.results.findIndex((r) => r.tool === "dry_run_workflow");
   const editedBeforePreview = obs.results
     .slice(0, firstPreviewIdx < 0 ? obs.results.length : firstPreviewIdx)
-    .some((r) => ["edit_workflow_patch"].includes(r.tool));
-  if (editedBeforePreview) {
-    notes.push("NON-ISOLATED: edit tool fired before first preview — exclude trial");
-  }
-
-  const AUTHOR_TOOLS = ["author_workflow"];
-  const authorIdx = obs.results.findIndex((r) => AUTHOR_TOOLS.includes(r.tool));
+    .some((r) => r.tool === "edit_workflow_patch");
+  const authorIdx = obs.results.findIndex((r) => r.tool === "author_workflow");
   const probe_before_author =
     authorIdx < 0
       ? null
@@ -208,41 +424,57 @@ export function scoreScenario(spec: LiveScenarioSpec, obs: ScenarioObservation):
   const saveIdx = obs.results.findIndex((r) => r.tool === "save_workflow_draft");
   const dry_run_before_save =
     saveIdx < 0 ? true : obs.results.slice(0, saveIdx).some((r) => r.tool === "dry_run_workflow");
-
   const firstVerdict = extractJudgeVerdict(firstPreview);
-  const lastVerdict = extractJudgeVerdict(previews[previews.length - 1]);
-  const judge = spec.expect_judge_block ? firstVerdict : (lastVerdict ?? firstVerdict);
+  const judge = extractJudgeVerdict(previews[previews.length - 1]) ?? firstVerdict;
 
-  const content_pass = spec.expect_judge_block
-    ? isBlockingVerdict(firstVerdict)
-    : first_preview_content_pass;
-
-  const partial = {
-    llm_passes,
-    previews: previews.length,
-    tool_calls: obs.tool_calls,
-    first_preview_content_pass,
-    expect_judge_block: spec.expect_judge_block,
-    judge,
-  };
-
-  return {
+  const base = {
     scenario: spec.slug,
+    kind: spec.kind,
     tool_calls: obs.tool_calls,
     llm_passes,
     judge,
     wall_ms: obs.wall_ms,
-    content_pass,
     ...(obs.tokens !== undefined ? { tokens: obs.tokens } : {}),
     previews: previews.length,
     first_preview_content_pass,
-    converged,
+    converged: previews_to_pass !== null,
     previews_to_pass,
     probe_before_author,
     dry_run_before_save,
-    expect_judge_block: spec.expect_judge_block,
+    auto_repaired_first_preview,
     status: obs.status,
-    targets: evaluateBenchmarkTargets(partial),
+  };
+
+  if (spec.kind === "clarification") {
+    const clarification = evaluateClarificationTargets(spec, obs);
+    notes.push(...clarification.notes);
+    return {
+      ...base,
+      content_pass: clarification.targets.question_names_missing_inputs === "PASS",
+      guard_fired: clarification.guard_fired,
+      targets: clarification.targets,
+      notes,
+    };
+  }
+
+  if (llm_passes === null) notes.push("author_workflow result envelope not observed");
+  if (previews.length === 0) notes.push("no dry_run_workflow preview observed");
+  if (!firstContent.pass && firstPreview) {
+    notes.push(`first preview failed content checks: ${firstContent.failed.join(", ")}`);
+  }
+  if (editedBeforePreview) {
+    notes.push("NON-ISOLATED: edit tool fired before first preview — exclude trial");
+  }
+  return {
+    ...base,
+    content_pass: first_preview_content_pass,
+    guard_fired: null,
+    targets: evaluateBenchmarkTargets({
+      llm_passes,
+      previews: previews.length,
+      tool_calls: obs.tool_calls,
+      first_preview_content_pass,
+    }),
     notes,
   };
 }
@@ -255,10 +487,12 @@ export interface TrialAggregate {
   scenario: string;
   n_trials: number;
   excluded_non_isolated: number;
+  pass_rate: number;
   content_pass_rate: number;
   converged_rate: number;
   probe_before_author_rate: number;
   dry_run_before_save_rate: number;
+  guard_fired_rate: number | null;
   median_previews_to_pass: number | null;
   median_tool_calls: number | null;
 }
@@ -277,10 +511,12 @@ export function aggregateTrials(scores: LiveScenarioScore[]): TrialAggregate {
   const rate = (pred: (s: LiveScenarioScore) => boolean): number =>
     n === 0 ? 0 : isolated.filter(pred).length / n;
   const probeEligible = isolated.filter((s) => s.probe_before_author !== null);
+  const guardEligible = isolated.filter((s) => s.guard_fired !== null);
   return {
     scenario,
     n_trials: n,
     excluded_non_isolated: scores.length - n,
+    pass_rate: rate(scenarioPassed),
     content_pass_rate: rate((s) => s.content_pass),
     converged_rate: rate((s) => s.converged),
     probe_before_author_rate:
@@ -288,6 +524,10 @@ export function aggregateTrials(scores: LiveScenarioScore[]): TrialAggregate {
         ? 0
         : probeEligible.filter((s) => s.probe_before_author === true).length / probeEligible.length,
     dry_run_before_save_rate: rate((s) => s.dry_run_before_save),
+    guard_fired_rate:
+      guardEligible.length === 0
+        ? null
+        : guardEligible.filter((s) => s.guard_fired === true).length / guardEligible.length,
     median_previews_to_pass: median(
       isolated.map((s) => s.previews_to_pass).filter((p): p is number => p !== null),
     ),
@@ -300,6 +540,8 @@ export function buildLiveReport(args: {
   engine_host: string;
   started_at: string;
   finished_at: string;
+  trials?: TrialAggregate[];
+  cleanup?: { deleted: number; failures: string[] };
 }): LiveAuthoringReport {
   const passed = args.scores.filter(scenarioPassed).length;
   return {
@@ -310,20 +552,93 @@ export function buildLiveReport(args: {
     passed,
     failed: args.scores.length - passed,
     scenarios: args.scores,
+    ...(args.trials ? { trials: args.trials } : {}),
+    ...(args.cleanup ? { cleanup: args.cleanup } : {}),
   };
+}
+
+function artifactKey(a: CreatedArtifact): string {
+  return `${a.kind}:${a.id}`;
+}
+
+function stringAt(rec: Record<string, unknown> | null, key: string): string | undefined {
+  const v = rec?.[key];
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+export function artifactsFromToolResult(call: ObservedToolCall): CreatedArtifact[] {
+  const out: CreatedArtifact[] = [];
+  const outer = asRecord(call.output);
+  const env = envelopeOf(call.output);
+  if (call.tool === "save_workflow_draft") {
+    const target = asRecord(env?.draft_target);
+    const id =
+      stringAt(outer, "committed_workflow_id") ??
+      stringAt(env, "workflow_id") ??
+      stringAt(target, "id");
+    if (id) {
+      const slug = stringAt(env, "slug") ?? stringAt(target, "slug");
+      out.push({ kind: "workflow", id, ...(slug ? { slug } : {}) });
+    }
+  }
+  if (call.tool === "create_knowledge_source") {
+    const ks = asRecord(env?.knowledge_source);
+    const id = stringAt(ks, "id");
+    if (id) {
+      const slug = stringAt(ks, "slug");
+      out.push({ kind: "knowledge_source", id, ...(slug ? { slug } : {}) });
+    }
+  }
+  if (call.tool === "save_connector_draft") {
+    const connector = asRecord(env?.connector);
+    const id = stringAt(connector, "id") ?? stringAt(env, "connector_id");
+    if (id) {
+      const slug = stringAt(connector, "slug") ?? stringAt(env, "slug");
+      out.push({ kind: "connector", id, ...(slug ? { slug } : {}) });
+    }
+  }
+  return out;
+}
+
+export function collectCreatedArtifacts(obs: ScenarioObservation): CreatedArtifact[] {
+  const found = new Map<string, CreatedArtifact>();
+  const add = (a: CreatedArtifact) => {
+    const key = artifactKey(a);
+    const prev = found.get(key);
+    if (!prev) found.set(key, a);
+    else if (!prev.slug && a.slug) found.set(key, { ...prev, slug: a.slug });
+  };
+  for (const a of obs.created_artifacts) add(a);
+  if (obs.committed_workflow_id) add({ kind: "workflow", id: obs.committed_workflow_id });
+  for (const call of obs.results) for (const a of artifactsFromToolResult(call)) add(a);
+  return deletionOrder([...found.values()]);
+}
+
+const DELETION_RANK: Record<CreatedArtifact["kind"], number> = {
+  workflow: 0,
+  knowledge_source: 1,
+  connector: 2,
+  conversation: 3,
+};
+
+export function deletionOrder(artifacts: CreatedArtifact[]): CreatedArtifact[] {
+  return artifacts
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => DELETION_RANK[x.a.kind] - DELETION_RANK[y.a.kind] || x.i - y.i)
+    .map(({ a }) => a);
 }
 
 export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   {
     slug: "droplet-specs-email",
+    kind: "authoring",
     goal:
-      "Author a workflow that emails user@example.com a report of my DigitalOcean projects: " +
+      "Author a workflow that emails {recipient} a report of my DigitalOcean projects: " +
       "for every project list its name and the specs of every droplet in it (vCPUs, memory, disk). " +
       "Use the digitalocean and gmail connectors, preview it, and save it when the preview is correct.",
     connectors: ["digitalocean", "gmail"],
-    expect_judge_block: false,
     content_checks: [
-      { name: "recipient present", pattern: "user@example\\.com" },
+      { name: "recipient present", pattern: "{recipient}" },
       { name: "project names non-empty", pattern: '"name"\\s*:\\s*"[^"]+"' },
       { name: "cpu spec present", pattern: "vcpu|cpu", flags: "i" },
       { name: "memory spec present", pattern: "memory|ram|_gb|gb\\b", flags: "i" },
@@ -332,12 +647,12 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   },
   {
     slug: "gh-org-top-repos-table",
+    kind: "authoring",
     goal:
       "Author a workflow that returns a markdown table of the top 5 repositories of my GitHub " +
       "organization ranked by stars, with columns rank, repository and stars. " +
       "Use the github connector, preview it, and save it when the preview is correct.",
     connectors: ["github"],
-    expect_judge_block: false,
     content_checks: [
       { name: "markdown table row", pattern: "\\|[^|\\n]+\\|" },
       { name: "markdown table separator", pattern: "\\|\\s*:?-{3,}" },
@@ -346,25 +661,58 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   },
   {
     slug: "berlin-weather-summary",
+    kind: "authoring",
     goal:
       "Author a workflow that returns tomorrow's weather for Berlin as a short summary with the " +
       "minimum and maximum temperature in degrees Celsius. Preview it and save it when the preview is correct.",
     connectors: ["open-meteo"],
-    expect_judge_block: false,
     content_checks: [
       { name: "temperature digits", pattern: "-?\\d+(\\.\\d+)?" },
       { name: "min/max present", pattern: "min|max|tmin|tmax", flags: "i" },
     ],
   },
   {
-    slug: "underspecified-judge-block",
+    slug: "underspecified-asks-first",
+    kind: "clarification",
     goal: "Author a workflow that emails the report. Preview it and save it.",
     connectors: [],
-    expect_judge_block: true,
-    content_checks: [],
+    content_checks: [
+      {
+        name: "asks for the recipient",
+        pattern: "recipient|address|e-?mail|to whom|empf",
+        flags: "i",
+      },
+      {
+        name: "asks for the source",
+        pattern: "source|data|which report|from|quelle|woher",
+        flags: "i",
+      },
+    ],
+  },
+  {
+    slug: "underspecified-placeholder-rejected",
+    kind: "clarification",
+    goal: "Author a workflow that emails the report. Preview it and save it.",
+    answer_turns: [
+      "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+    ],
+    connectors: [],
+    content_checks: [
+      {
+        name: "asks for the recipient",
+        pattern: "recipient|address|e-?mail|to whom|empf",
+        flags: "i",
+      },
+      {
+        name: "asks for the source",
+        pattern: "source|data|which report|from|quelle|woher",
+        flags: "i",
+      },
+    ],
   },
   {
     slug: "weather-ranking-table",
+    kind: "authoring",
     goal:
       "Author a workflow that compares the 7-day maximum-temperature forecast for two cities — " +
       "Berlin (latitude 52.52, longitude 13.41) and Hamburg (latitude 53.55, longitude 9.99). " +
@@ -374,7 +722,6 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       "cities by their warmest day hottest-first, with columns rank, city, warmest_day and " +
       "max_temp_c. Preview it and save it when the preview is correct.",
     connectors: ["open-meteo"],
-    expect_judge_block: false,
     content_checks: [
       { name: "berlin present", pattern: "Berlin", flags: "i" },
       { name: "hamburg present", pattern: "Hamburg", flags: "i" },
@@ -386,6 +733,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   },
   {
     slug: "ta-js-transform-input-scope",
+    kind: "authoring",
     goal:
       "Author a workflow that fetches the 7-day forecast for Berlin (latitude 52.52, longitude 13.41) " +
       "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min " +
@@ -396,7 +744,6 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       "workflow returns a JSON object with fields highest_max_c, lowest_min_c, and spread_c " +
       "(all numbers rounded to one decimal place). Preview it and save it when the preview is correct.",
     connectors: ["open-meteo"],
-    expect_judge_block: false,
     content_source: "final_output",
     content_checks: [
       { name: "spread_c numeric", pattern: '"spread_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },
@@ -406,6 +753,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
   },
   {
     slug: "ta-jsonata-variable-block",
+    kind: "authoring",
     goal:
       "Author a workflow that fetches the 7-day forecast for Berlin (latitude 52.52, longitude 13.41) " +
       "from the open-meteo connector's /v1/forecast endpoint using daily=temperature_2m_max,temperature_2m_min,time " +
@@ -415,7 +763,6 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       "daily.temperature_2m_max) and hottest_temp_c (the maximum value in daily.temperature_2m_max). " +
       "Preview it and save it when the preview is correct.",
     connectors: ["open-meteo"],
-    expect_judge_block: false,
     content_source: "final_output",
     content_checks: [
       { name: "hottest_temp_c numeric", pattern: '"hottest_temp_c"\\s*:\\s*-?\\d+(\\.\\d+)?' },

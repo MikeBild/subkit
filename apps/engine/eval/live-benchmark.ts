@@ -1,4 +1,9 @@
-import type { LiveAuthoringReport, LiveScenarioScore, TargetVerdict } from "./live-report.ts";
+import type {
+  LiveAuthoringReport,
+  LiveScenarioScore,
+  ScenarioTargets,
+  TargetVerdict,
+} from "./live-report.ts";
 
 export interface LiveBenchmarkThresholds {
   wall_ms_ratio: number;
@@ -122,14 +127,32 @@ function addNumericDeltaChange(args: {
   });
 }
 
+function targetVerdictAt(targets: ScenarioTargets, key: string): TargetVerdict | null {
+  const value = (targets as unknown as Record<string, TargetVerdict | undefined>)[key];
+  return value === "PASS" || value === "FAIL" ? value : null;
+}
+
 function addTargetChange(args: {
   changes: LiveBenchmarkChange[];
   scenario: string;
   target: string;
-  baseline: TargetVerdict;
-  current: TargetVerdict;
+  baseline: TargetVerdict | null;
+  current: TargetVerdict | null;
 }): void {
   if (args.baseline === args.current) return;
+  if (args.baseline === null || args.current === null) {
+    args.changes.push({
+      scenario: args.scenario,
+      metric: `target.${args.target}`,
+      baseline: args.baseline,
+      current: args.current,
+      severity: "info",
+      message: `${args.target} only ${args.baseline === null ? "in current" : "in baseline"} (${
+        args.baseline ?? "absent"
+      } -> ${args.current ?? "absent"})`,
+    });
+    return;
+  }
   const regression = args.baseline === "PASS" && args.current === "FAIL";
   args.changes.push({
     scenario: args.scenario,
@@ -138,6 +161,42 @@ function addTargetChange(args: {
     current: args.current,
     severity: regression ? "regression" : "improvement",
     message: `${args.target} ${args.baseline} -> ${args.current}`,
+  });
+}
+
+export function compareTargets(
+  scenario: string,
+  baseline: ScenarioTargets,
+  current: ScenarioTargets,
+): LiveBenchmarkChange[] {
+  const changes: LiveBenchmarkChange[] = [];
+  const keys = [...new Set([...Object.keys(baseline), ...Object.keys(current)])].sort();
+  for (const key of keys) {
+    addTargetChange({
+      changes,
+      scenario,
+      target: key,
+      baseline: targetVerdictAt(baseline, key),
+      current: targetVerdictAt(current, key),
+    });
+  }
+  return changes;
+}
+
+function addGuardChange(args: {
+  changes: LiveBenchmarkChange[];
+  scenario: string;
+  baseline: boolean | null;
+  current: boolean | null;
+}): void {
+  if (args.baseline === args.current || args.baseline === null || args.current === null) return;
+  args.changes.push({
+    scenario: args.scenario,
+    metric: "guard_fired",
+    baseline: String(args.baseline),
+    current: String(args.current),
+    severity: args.baseline ? "regression" : "improvement",
+    message: `guard_fired ${args.baseline} -> ${args.current}`,
   });
 }
 
@@ -222,17 +281,23 @@ export function compareLiveAuthoringReports(
         }`,
       });
     }
-    for (const key of Object.keys(baselineScore.targets) as Array<
-      keyof LiveScenarioScore["targets"]
-    >) {
-      addTargetChange({
-        changes,
+    if (baselineScore.kind !== currentScore.kind) {
+      changes.push({
         scenario,
-        target: key,
-        baseline: baselineScore.targets[key],
-        current: currentScore.targets[key],
+        metric: "kind",
+        baseline: baselineScore.kind,
+        current: currentScore.kind,
+        severity: "info",
+        message: `scenario kind ${baselineScore.kind} -> ${currentScore.kind}`,
       });
     }
+    addGuardChange({
+      changes,
+      scenario,
+      baseline: baselineScore.guard_fired,
+      current: currentScore.guard_fired,
+    });
+    changes.push(...compareTargets(scenario, baselineScore.targets, currentScore.targets));
   }
 
   const regressions = changes.filter((c) => c.severity === "regression");
