@@ -263,6 +263,70 @@ describe("detectPlaceholderDestinations · tier tokens (always invalid)", () => 
     ).toEqual(["<recipient>", "REPLACE_ME", "{{channel}}"]);
   });
 
+  test.each([
+    ["{{recipient}}", "{{recipient}}"],
+    ["{{ email }}", "{{ email }}"],
+    ["{{YOUR_WEBHOOK_URL}}", "{{YOUR_WEBHOOK_URL}}"],
+    ["post to {{channel}} now", "{{channel}}"],
+  ])(
+    "%s names a destination in Mustache syntax and is a template in BOTH tiers",
+    (value, match) => {
+      const def = requestWith({ body: { to: value } });
+      for (const tier of ["tokens", "all"] as const) {
+        expect(detect(def, tier).map((v) => [v.kind, v.match])).toEqual([["template", match]]);
+      }
+    },
+  );
+
+  test("a downstream template variable that is not a destination passes on both tiers", () => {
+    const def = requestWith({
+      body: {
+        personalizations: [
+          {
+            to: [{ email: "ops@acme.com" }],
+            dynamic_template_data: { subject: "Hello {{first_name}}" },
+          },
+        ],
+        text: "{{#if premium}}Thanks{{/if}} {{ order.total }} {{}}",
+      },
+    });
+    expect(detect(def, "tokens")).toEqual([]);
+    expect(detect(def, "all")).toEqual([]);
+  });
+
+  test("nested braces in JSONata and JavaScript code sites are code, not templates", () => {
+    const def = parse({
+      name: "t",
+      steps: [
+        {
+          id: "fetch",
+          kind: "request",
+          method: "GET",
+          url: "https://jsonplaceholder.typicode.com/users",
+        },
+        {
+          id: "shape",
+          kind: "transform",
+          language: "javascript",
+          expression:
+            "const out = []; for (const x of input.input.items) {{ out.push(x); }} return out;",
+        },
+      ],
+      output_transform: '$map($scope.fetch.data, function($v){{"name": $v.name}})',
+    });
+    const withJsOutput = parse({
+      ...def,
+      output_transform: undefined,
+      output_transform_function: "if (input) {{ return { names: input.map((v) => v.name) }; }}",
+    });
+    for (const candidate of [def, withJsOutput]) {
+      expect(detect(candidate, "tokens")).toEqual([]);
+      expect(detect(candidate, "all")).toEqual([]);
+      expect(validateWorkflowDef(candidate, { destinationTier: "tokens" }).ok).toBe(true);
+      expect(validateWorkflowDef(candidate, { destinationTier: "all" }).ok).toBe(true);
+    }
+  });
+
   test("lowercase or embedded words are not tokens", () => {
     const def = requestWith({
       body: {

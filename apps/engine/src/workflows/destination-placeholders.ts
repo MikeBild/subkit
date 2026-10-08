@@ -27,9 +27,9 @@ interface PlaceholderHit {
 }
 
 const TOKEN_RE = /\b(?:REPLACE_ME|CHANGE_ME|TODO|FIXME|TBD)\b/g;
-const ANGLE_PLACEHOLDER_RE =
-  /<(?:recipient|email|address|channel|webhook|url|your[_-][a-z0-9_-]+)>/gi;
-const MUSTACHE_RE = /\{\{[^{}]*\}\}/g;
+const DESTINATION_NAME = "recipient|email|address|channel|webhook|url|your[_-][a-z0-9_-]+";
+const ANGLE_PLACEHOLDER_RE = new RegExp(`<(?:${DESTINATION_NAME})>`, "gi");
+const MUSTACHE_RE = new RegExp(`\\{\\{\\s*(?:${DESTINATION_NAME})\\s*\\}\\}`, "gi");
 const PHONE_RES: readonly RegExp[] = [
   /(?<!\d)(?:\+?1[-. ]?)?\(?555\)?[-. ]?01\d{2}(?!\d)/g,
   /(?<!\d)123[-. ]?456[-. ]?7890(?!\d)/g,
