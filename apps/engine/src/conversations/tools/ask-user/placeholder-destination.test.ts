@@ -137,4 +137,23 @@ describe("describeDroppedHints", () => {
       ]),
     ).toBe('recipient_email.placeholder="you@example.com", question.default="user@example.com"');
   });
+  test("drops the example hints the live model actually wrote and keeps the question", () => {
+    for (const hint of [
+      "you@example.com",
+      "reports@example.com",
+      "name@example.com",
+      "alice@example.com",
+    ]) {
+      const { input, dropped } = stripPlaceholderDestinationHints("ask_user_form", {
+        question: "Who receives the report and where does the data come from?",
+        fields: [
+          { name: "recipient", label: "Recipient email", type: "text", placeholder: hint },
+          { name: "source", label: "Data source", type: "text" },
+        ],
+      });
+      expect(dropped).toEqual([{ field: "recipient", attribute: "placeholder", match: hint }]);
+      expect(JSON.stringify(input)).not.toContain(hint);
+      expect((input as { fields: unknown[] }).fields).toHaveLength(2);
+    }
+  });
 });
