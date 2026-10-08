@@ -33,11 +33,7 @@ import {
   ProviderMisconfiguredError,
   type ResolvedModel,
 } from "./model-init.ts";
-import {
-  normalizeSchema,
-  readStructuredOutcome,
-  structuredOutcomeSchema,
-} from "./schema-normalizer.ts";
+import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
 
 export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
@@ -329,10 +325,9 @@ export class AiSdkModel implements SubkitLlm {
   async generateObject<T>(
     input: SubkitLlmObjectGeneratorInput & { metadata?: SubkitLlmTelemetryMetadata },
   ): Promise<SubkitLlmObjectResponse<T>> {
-    const { wrappedInResult } = normalizeSchema(input.schema);
-    const outcomeSchema = structuredOutcomeSchema(input.schema);
+    const { schema, wrappedInResult } = normalizeSchema(input.schema);
     const output = Output.object({
-      schema: jsonSchema(outcomeSchema as Parameters<typeof jsonSchema>[0]),
+      schema: jsonSchema(schema as Parameters<typeof jsonSchema>[0]),
     });
 
     const isOModel = this.modelId.startsWith("o");
@@ -340,15 +335,12 @@ export class AiSdkModel implements SubkitLlm {
     const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
 
     const seeded = withCurrentDate(input.messages);
-    const extraTools = this.buildExtraTools(input.tools);
     const cwfParams: Parameters<typeof this.callWithFallback>[0] = {
       messages: seeded,
       output,
+      tools: { ...(this.buildExtraTools(input.tools) ?? {}), [ABORT_TOOL_NAME]: abortTool() },
+      stopWhen: stepCountIs(maxAttempts),
     };
-    if (extraTools) {
-      cwfParams.tools = extraTools;
-      cwfParams.stopWhen = stepCountIs(maxAttempts);
-    }
     if (temperature !== undefined) cwfParams.temperature = temperature;
     if (input.metadata) cwfParams.metadata = input.metadata;
     if (input.signal) cwfParams.signal = input.signal;
@@ -375,9 +367,23 @@ export class AiSdkModel implements SubkitLlm {
       []) as unknown as SubkitLlmMessage[];
     const messages = [...seeded, ...responseMessages];
     const usage = usageOf(result.usage, result.providerMetadata);
+    const steps = result.steps?.length ?? 1;
+
+    const refusal = refusalReason(result.toolCalls);
+    if (refusal !== null) {
+      logger.warn({
+        module: "llm",
+        action: "structured.refused",
+        msg: "model called the abort tool instead of producing the object",
+        model: answeredBy.model_used,
+        reason: refusal,
+        steps,
+        output_tokens: usage.output_tokens,
+      });
+      return { success: false, response: refusal, messages, usage, ...answeredBy };
+    }
 
     if (result.finishReason !== "stop") {
-      const steps = result.steps?.length ?? 1;
       return {
         success: false,
         response:
@@ -390,22 +396,44 @@ export class AiSdkModel implements SubkitLlm {
       };
     }
 
-    const outcome = readStructuredOutcome<T>(result.output, wrappedInResult);
-    if (!outcome.ok) {
-      logger.warn({
-        module: "llm",
-        action: "structured.refused",
-        msg: "model returned a structured outcome with ok=false",
-        model: answeredBy.model_used,
-        reason: outcome.reason,
-        finish_reason: result.finishReason,
-        steps: result.steps?.length ?? 1,
-        output_tokens: usage.output_tokens,
-      });
-      return { success: false, response: outcome.reason, messages, usage, ...answeredBy };
+    const value = unwrapResult<T>(result.output, wrappedInResult);
+    if (value === null || value === undefined) {
+      return { success: false, response: "empty_value", messages, usage, ...answeredBy };
     }
-    return { success: true, response: outcome.value, messages, usage, ...answeredBy };
+    return { success: true, response: value, messages, usage, ...answeredBy };
   }
+}
+
+const ABORT_TOOL_NAME = "abort";
+
+function abortTool(): Tool {
+  return tool({
+    description:
+      "Call this instead of producing the object when the task cannot be fulfilled from the given context. Name exactly what is missing or impossible so the caller can fix it.",
+    inputSchema: jsonSchema<{ reason: string }>({
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          minLength: 1,
+          description: "What is missing or impossible, in one or two sentences.",
+        },
+      },
+      required: ["reason"],
+      additionalProperties: false,
+    }),
+  });
+}
+
+function refusalReason(
+  toolCalls: ReadonlyArray<{ toolName: string; input: unknown }> | undefined,
+): string | null {
+  const call = toolCalls?.find((c) => c.toolName === ABORT_TOOL_NAME);
+  if (!call) return null;
+  const reason = (call.input as { reason?: unknown } | null | undefined)?.reason;
+  return typeof reason === "string" && reason.trim() !== ""
+    ? reason
+    : "the model declined without giving a reason";
 }
 
 export function extractCacheRead(meta: unknown): number {

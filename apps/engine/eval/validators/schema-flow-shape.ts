@@ -11,7 +11,8 @@ interface ObservedCall {
 export async function validate(fixture: FixtureRecord): Promise<ValidationResult> {
   const input = fixture.input as {
     expected_output: string;
-    expected_outcome_keys: string[];
+    expected_value_keys: string[];
+    required_tools: string[];
     forbidden_tools: string[];
     flows: string[];
   };
@@ -27,16 +28,16 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       toolChoice: callOpts.toolChoice,
       toolNames: callOpts.tools ? Object.keys(callOpts.tools as Record<string, unknown>) : [],
     };
-    const outcome = { ok: true, value: { ok: true }, reason: null };
+    const value = { ok: true };
     return {
-      text: JSON.stringify(outcome),
+      text: JSON.stringify(value),
       toolCalls: [],
       toolResults: [],
       finishReason: "stop",
       usage: { inputTokens: 5, outputTokens: 1 },
-      response: { messages: [{ role: "assistant", content: JSON.stringify(outcome) }] },
+      response: { messages: [{ role: "assistant", content: JSON.stringify(value) }] },
       providerMetadata: {},
-      output: outcome,
+      output: value,
     };
   };
   const model = new AiSdkModel({
@@ -67,13 +68,24 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
     return { pass: false, reason: "structured output schema is not an object-rooted json format" };
   }
   const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
-  for (const key of input.expected_outcome_keys) {
+  for (const key of input.expected_value_keys) {
     if (!required.includes(key)) {
-      return { pass: false, reason: `outcome key '${key}' missing from required [${required}]` };
+      return { pass: false, reason: `value key '${key}' missing from required [${required}]` };
     }
+  }
+  if ("ok" in schema && "value" in (schema.properties as Record<string, unknown>)) {
+    return { pass: false, reason: "structured output is wrapped in an outcome object again" };
   }
   if (call.toolChoice !== undefined) {
     return { pass: false, reason: `toolChoice=${String(call.toolChoice)}, expected unset` };
+  }
+  for (const needed of input.required_tools) {
+    if (!call.toolNames.includes(needed)) {
+      return {
+        pass: false,
+        reason: `tool '${needed}' missing from the palette [${call.toolNames}]`,
+      };
+    }
   }
   for (const forbidden of input.forbidden_tools) {
     if (call.toolNames.includes(forbidden)) {

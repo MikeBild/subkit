@@ -5,27 +5,27 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   const input = fixture.input as {
     schema: Record<string, unknown>;
     value: Record<string, unknown>;
+    refusal: string;
   };
   let steps = 0;
-  const stub = async () => {
+  const answering = async () => {
     steps += 1;
-    const outcome = { ok: true, value: input.value, reason: null };
     return {
-      text: JSON.stringify(outcome),
+      text: JSON.stringify(input.value),
       toolCalls: [],
       toolResults: [],
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 2 },
-      response: { messages: [{ role: "assistant", content: JSON.stringify(outcome) }] },
+      response: { messages: [{ role: "assistant", content: JSON.stringify(input.value) }] },
       providerMetadata: {},
       steps: [{}],
-      output: outcome,
+      output: input.value,
     };
   };
   const model = new AiSdkModel({
     defaultModel: "claude-sonnet-4-5",
     // biome-ignore lint/suspicious/noExplicitAny: eval stub
-    generateTextFn: stub as any,
+    generateTextFn: answering as any,
   });
   const result = await model.generateObject({
     messages: [{ role: "user", content: "x" }],
@@ -44,6 +44,30 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
   }
   if (steps !== 1) {
     return { pass: false, reason: `expected one model call per structured answer, saw ${steps}` };
+  }
+
+  const refusing = async () => ({
+    text: "",
+    toolCalls: [{ toolCallId: "c1", toolName: "abort", input: { reason: input.refusal } }],
+    toolResults: [],
+    finishReason: "tool-calls",
+    usage: { inputTokens: 10, outputTokens: 2 },
+    response: { messages: [] },
+    providerMetadata: {},
+    steps: [{}],
+  });
+  const refusingModel = new AiSdkModel({
+    defaultModel: "claude-sonnet-4-5",
+    // biome-ignore lint/suspicious/noExplicitAny: eval stub
+    generateTextFn: refusing as any,
+  });
+  const refused = await refusingModel.generateObject({
+    messages: [{ role: "user", content: "x" }],
+    schema: input.schema,
+  });
+  if (refused.success) return { pass: false, reason: "an abort tool call was read as a success" };
+  if (refused.response !== input.refusal) {
+    return { pass: false, reason: `refusal reason lost: got ${JSON.stringify(refused.response)}` };
   }
   return {
     pass: true,
