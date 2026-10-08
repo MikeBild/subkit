@@ -48,6 +48,7 @@
     "eval:baseline": "bun run apps/engine/eval/runner.ts --write-baseline",
     "eval:judge": "bun run apps/engine/eval/judge-calibration.ts",
     "eval:live": "bun run apps/engine/eval/live-authoring.ts",
+    "eval:live:sweep": "bun run apps/engine/eval/live-sweep.ts",
     "format": "biome format --write .",
     "gen:cockpit": "bun run scripts/gen-embedded-cockpit.ts",
     "gen:config-example": "bun run apps/engine/scripts/gen-config-example.ts > subkit.config.example.json",
