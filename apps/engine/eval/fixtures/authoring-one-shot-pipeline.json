@@ -13,7 +13,7 @@
           "id": "fetch_repos",
           "kind": "request",
           "method": "GET",
-          "url": "https://api.example.com/repos"
+          "url": "https://jsonplaceholder.typicode.com/posts"
         },
         {
           "id": "shape_repos",

@@ -20,7 +20,7 @@ export async function validate(fixture: FixtureRecord): Promise<ValidationResult
       id: "fetch",
       kind: "request",
       method: "GET",
-      url: "https://api.example.com/items",
+      url: "https://jsonplaceholder.typicode.com/todos",
     };
     const brokenShape = {
       id: "shape",

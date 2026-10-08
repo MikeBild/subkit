@@ -16,7 +16,7 @@
         "id": "send",
         "kind": "request",
         "method": "POST",
-        "url": "https://mail.example.test/send",
+        "url": "https://jsonplaceholder.typicode.com/posts",
         "body": {
           "to": "${scope.compose.data.to}",
           "subject": "${scope.compose.data.subject}",
