@@ -1,0 +1,49 @@
+{
+  "name": "authoring-jsonata-unknown-function-rejected",
+  "description": "author_workflow rejects a JavaScript method called as a JSONata function (`$indexOf` in output_transform) statically in pass 1: the finding names the site and the idiom, the regenerate pass receives it verbatim under 'Findings from the previous attempt', the first definition is never stashed, and the file-authoring validator and the verifier produce the identical message (one message on every surface). Zero egress.",
+  "flow": "generate",
+  "input": {
+    "goal": "Return the hottest day from the forecast",
+    "first_definition": {
+      "name": "Hottest day",
+      "slug": "hottest-day",
+      "description": "Pick the day with the highest maximum temperature.",
+      "steps": [
+        {
+          "id": "forecast",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://jsonplaceholder.typicode.com/todos"
+        }
+      ],
+      "output_transform": "($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); { \"hottest_day\": $scope.forecast.data.daily.time[$indexOf($t, $m)], \"max_temp\": $m })"
+    },
+    "second_definition": {
+      "name": "Hottest day",
+      "slug": "hottest-day",
+      "description": "Pick the day with the highest maximum temperature.",
+      "steps": [
+        {
+          "id": "forecast",
+          "kind": "request",
+          "method": "GET",
+          "url": "https://jsonplaceholder.typicode.com/todos"
+        }
+      ],
+      "output_transform": "($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { \"hottest_day\": $scope.forecast.data.daily.time[$idx], \"max_temp\": $m })"
+    },
+    "expect": {
+      "attempts": 2,
+      "finding_path": "output_transform",
+      "finding_message": "JSONata has no function `$indexOf`; use `($arr#$i[$ = value].$i)[0]` — bind the array with `:=` first; `#$i` exposes the index",
+      "second_prompt_must_contain": [
+        "## Findings from the previous attempt (fix ALL of these)",
+        "- output_transform: JSONata has no function `$indexOf`"
+      ],
+      "first_prompt_must_contain": [
+        "JSONata has NO JavaScript array/string methods",
+        "Argmax (index of the maximum) — verified idiom"
+      ]
+    }
+  }
+}

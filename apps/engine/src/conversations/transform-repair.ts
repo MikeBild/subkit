@@ -3,6 +3,8 @@ import type { Executor } from "../db/client.ts";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
+  describeUnknownFunction,
+  findUnknownFunctionCalls,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
 import { invoke } from "../llm/core/invoke.ts";
@@ -61,15 +63,26 @@ function renderScopeSample(scope: Record<string, unknown>): string {
 
 function buildRepairPrompt(params: RepairTransformParams, lastError: string): string {
   const javascript = params.language === "javascript";
+  const workflowOutput =
+    params.site === "output_transform" || params.site === "output_transform_function";
   const lines: string[] = javascript
     ? [
-        "A JavaScript transform in a workflow draft failed. Propose a corrected function body that preserves the author's intent.",
+        workflowOutput
+          ? "A JavaScript `output_transform_function` in a workflow draft failed. Propose a corrected function body that preserves the author's intent."
+          : "A JavaScript transform in a workflow draft failed. Propose a corrected function body that preserves the author's intent.",
         "",
         "Execution contract (QuickJS sandbox, no host globals — no fetch, no process, no require, no network):",
         "- The code is a FUNCTION BODY (not a module, not an arrow function). It must `return` its result; a trailing expression also works.",
-        "- It receives exactly one value, `input`:",
-        "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
-        "  - `input.input` — the workflow input",
+        ...(workflowOutput
+          ? [
+              "- It receives exactly one value, `input`: the workflow's final output — the last step's `.data`, exactly what the caller would receive without a transform.",
+              "- There is NO `input.scope` and NO `input.input` here; upstream steps are not addressable from this body. Reshape what the output needs in the last step, then project it here.",
+            ]
+          : [
+              "- It receives exactly one value, `input`:",
+              "  - `input.scope.<step_id>.data` — recorded output of each upstream step",
+              "  - `input.input` — the workflow input",
+            ]),
         "",
         "Failed function body:",
         "```js",
@@ -80,7 +93,17 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
         lastError,
       ]
     : [
-        "A JSONata expression in a workflow draft failed. Propose a corrected JSONata expression that preserves the author's intent.",
+        workflowOutput
+          ? "A JSONata `output_transform` in a workflow draft failed. Propose a corrected JSONata expression that preserves the author's intent."
+          : "A JSONata expression in a workflow draft failed. Propose a corrected JSONata expression that preserves the author's intent.",
+        ...(workflowOutput
+          ? [
+              "",
+              "Evaluation contract:",
+              "- The root value (`$`, bare paths) is the workflow's final output — the last step's `.data`.",
+              "- Upstream steps are addressable as `$scope.<step_id>.data`, the workflow input as `$input`.",
+            ]
+          : []),
         "",
         "Failed expression:",
         "```",
@@ -91,15 +114,14 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
         lastError,
       ];
   if (params.scopeSample && Object.keys(params.scopeSample).length > 0) {
-    lines.push(
-      "",
-      javascript
-        ? "Recorded upstream scope the body runs against (this object is `input.scope`; addressing: `input.scope.<step_id>.data`):"
-        : "Recorded upstream scope the expression evaluates against (root object; addressing: `$scope.<step_id>.data` — bare `<step_id>.data` also resolves):",
-      "```json",
-      renderScopeSample(params.scopeSample),
-      "```",
-    );
+    const scopeHeading = javascript
+      ? workflowOutput
+        ? "Recorded upstream step outputs, for reference only — this body does NOT see them as `input.scope`; its `input` is the last step's `.data`:"
+        : "Recorded upstream scope the body runs against (this object is `input.scope`; addressing: `input.scope.<step_id>.data`):"
+      : workflowOutput
+        ? "Recorded upstream step outputs (addressing: `$scope.<step_id>.data`):"
+        : "Recorded upstream scope the expression evaluates against (root object; addressing: `$scope.<step_id>.data` — bare `<step_id>.data` also resolves):";
+    lines.push("", scopeHeading, "```json", renderScopeSample(params.scopeSample), "```");
   }
   if (params.pathCandidates && params.pathCandidates.length > 0) {
     lines.push(
@@ -121,6 +143,7 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
       ? []
       : [
           "- JSONata variables are `$`-prefixed; variable binding is `$name := value` inside a `( … )` block.",
+          "- Only JSONata built-ins and functions bound with `$name := function($x) { … }` are callable — JSONata has NO JavaScript array/string methods (`$indexOf`, `$find`, `$includes`, `$slice`, `$toFixed` do not exist and throw at runtime).",
         ]),
     (javascript
       ? "- The corrected body must parse and run without throwing"
@@ -162,6 +185,8 @@ async function verifyCandidate(
   } catch (err) {
     return { ok: false, error: formatJsonataError(err, candidate).message };
   }
+  const [unknownFunction] = findUnknownFunctionCalls(candidate);
+  if (unknownFunction) return { ok: false, error: describeUnknownFunction(unknownFunction) };
   if (!scope || finding.kind === "compile_error") return { ok: true };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

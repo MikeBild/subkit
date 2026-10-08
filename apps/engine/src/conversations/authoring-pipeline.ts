@@ -42,6 +42,10 @@ import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
+import {
+  JSONATA_BUILTIN_FUNCTIONS,
+  JSONATA_FUNCTION_SUGGESTIONS,
+} from "../execution/jsonata-engine.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
@@ -84,6 +88,20 @@ const DOCS_EXCERPT_CAP_CHARS = 1_500;
 const DOCS_SNIPPETS_PER_CONNECTOR = 4;
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
 const DISCOVERED_ENDPOINTS_PER_CONNECTOR = 40;
+
+export const JSONATA_ARGMAX_IDIOM =
+  '($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { "hottest_day": $scope.forecast.data.daily.time[$idx], "max_temp": $m })';
+
+const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
+  "## JSONata contract — `loop.over`, `branch.when`, `output_transform`, `validation_expression`",
+  "- JSONata has NO JavaScript array/string methods — `$indexOf`, `$find`, `$includes`, `$slice`, `$toFixed` do not exist and throw at runtime. Only the built-ins below and functions bound with `$name := function($x) { … }` are callable; the validator rejects every other `$name(...)` call.",
+  `- Built-ins: ${[...JSONATA_BUILTIN_FUNCTIONS].map((name) => `$${name}`).join(" ")}.`,
+  `- JavaScript idiom → JSONata: ${Object.entries(JSONATA_FUNCTION_SUGGESTIONS)
+    .map(([method, idiom]) => `${method} → ${idiom}`)
+    .join("; ")}.`,
+  `- Argmax (index of the maximum) — verified idiom: \`${JSONATA_ARGMAX_IDIOM}\`.`,
+  "- `output_transform` (JSONata) runs once at the end: its root value is the last step's `.data`, with `$scope.<step_id>.data` and `$input` bound. `output_transform_function` is the JavaScript alternative — a FUNCTION BODY whose single `input` IS that final value (there is NO `input.scope` and NO `input.input` there). Set exactly one of the two.",
+];
 
 function formatDiscoveredEndpoints(
   connectors: GroundedConnector[],
@@ -332,6 +350,8 @@ export function buildGenerationPrompt(args: {
     "  - `input.input` — the workflow input",
     "  - `input.scope.$item` / `input.scope.$loop_index` — inside a loop body",
     "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
+    "",
+    ...JSONATA_CONTRACT_LINES,
     "",
     "## Design rules",
     "- Prefer ONE bulk list endpoint over a nested per-item loop: when the vendor offers an endpoint that returns the collection with the fields you need, fetch it once and reshape with a single transform instead of looping a detail endpoint per item.",
