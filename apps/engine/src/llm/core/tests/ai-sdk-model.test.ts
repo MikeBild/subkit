@@ -312,14 +312,14 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
       properties: {
         ok: { type: string };
         value: { anyOf: Array<Record<string, unknown>> };
-        reason: { type: string[] };
+        reason: { type: string; minLength: number };
       };
     };
     expect(schema.type).toBe("object");
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toEqual(["ok", "value", "reason"]);
     expect(schema.properties.ok).toMatchObject({ type: "boolean" });
-    expect(schema.properties.reason).toMatchObject({ type: ["string", "null"] });
+    expect(schema.properties.reason).toMatchObject({ type: "string", minLength: 1 });
     expect(schema.properties.value.anyOf).toHaveLength(2);
     expect(schema.properties.value.anyOf[0]).toMatchObject({
       type: "object",
