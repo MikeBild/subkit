@@ -106,7 +106,7 @@ describe("repairTransformExpression — javascript function bodies", () => {
       expression: "return input.scope.fetch.data.wrong_field;",
       language: "javascript",
       finding: { kind: "empty_result", message: "function body returned an empty result" },
-      scopeSample: RECORDED_SCOPE,
+      evaluation: { kind: "step_scope", scope: RECORDED_SCOPE, input: null },
       pathCandidates: ["input.scope.fetch.data.items"],
       tenant_id,
       db: ctx.db,
@@ -126,7 +126,7 @@ describe("repairTransformExpression — javascript function bodies", () => {
       expression: "return input.scope.fetch.data.missing.map((i) => i.name);",
       language: "javascript",
       finding: { kind: "eval_error", message: "TypeError: cannot read property 'map'" },
-      scopeSample: RECORDED_SCOPE,
+      evaluation: { kind: "step_scope", scope: RECORDED_SCOPE, input: null },
       tenant_id,
       db: ctx.db,
     });
@@ -147,7 +147,7 @@ describe("repairTransformExpression — javascript function bodies", () => {
       expression: "return input.scope.fetch.data.wrong_field;",
       language: "javascript",
       finding: { kind: "empty_result", message: "function body returned an empty result" },
-      scopeSample: RECORDED_SCOPE,
+      evaluation: { kind: "step_scope", scope: RECORDED_SCOPE, input: null },
       tenant_id,
       db: ctx.db,
     });
@@ -155,6 +155,44 @@ describe("repairTransformExpression — javascript function bodies", () => {
     if (outcome.repaired) throw new Error("unreachable");
     expect(outcome.attempts).toBe(MAX_REPAIR_ATTEMPTS);
     expect(outcome.last_error.length).toBeGreaterThan(0);
+  });
+});
+
+describe("repairTransformExpression — output_transform_function verifies against the final value as `input`", () => {
+  const ROOT = { items: [{ name: "Ada" }, { name: "Grace" }] };
+
+  test("a body reaching for input.scope is rejected (the engine passes the last step's data, not {scope,input}); a body projecting `input` wins", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.repair = () => {
+      calls += 1;
+      return calls === 1
+        ? { expression: "return { names: input.scope.fetch.data.items.map((i) => i.name) };" }
+        : { expression: "return { names: input.items.map((i) => i.name) };" };
+    };
+    const outcome = await repairTransformExpression({
+      expression: "return { names: input.scope.fetch.data.items.map((i) => i.name).join() };",
+      language: "javascript",
+      finding: { kind: "eval_error", message: "output_transform_function threw: TypeError" },
+      evaluation: {
+        kind: "workflow_output",
+        root: ROOT,
+        scope: RECORDED_SCOPE,
+        input: null,
+        output_schema: { type: "object", required: ["names"] },
+      },
+      site: "output_transform_function",
+      tenant_id,
+      db: ctx.db,
+    });
+    expect(outcome.repaired).toBe(true);
+    if (!outcome.repaired) throw new Error("unreachable");
+    expect(outcome.attempts).toBe(2);
+    expect(outcome.after).toBe("return { names: input.items.map((i) => i.name) };");
+    const prompts = getMockProvider()
+      .calls.filter((c) => c.flow === "repair")
+      .map((c) => c.last_user);
+    expect(prompts[0]).toContain("Recorded final value this body receives as `input`");
+    expect(prompts[1]).toContain("candidate failed against the recorded final value");
   });
 });
 

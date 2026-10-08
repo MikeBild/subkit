@@ -3,7 +3,11 @@ import { deriveOutputBehavior } from "../workflows/output-behavior.ts";
 import type { WorkflowDef } from "../workflows/types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
 import { MAX_PIPELINE_REPAIRS } from "./recorded-eval.ts";
-import { repairTransformExpression, type TransformRepairLanguage } from "./transform-repair.ts";
+import {
+  repairTransformExpression,
+  type TransformEvaluation,
+  type TransformRepairLanguage,
+} from "./transform-repair.ts";
 
 export interface DryRunRepairProposal {
   step_id: string | null;
@@ -56,13 +60,25 @@ export async function proposeDryRunRepairs(opts: {
   runWarnings: RunWarningLike[];
   runError: { code: string; message: string } | null | undefined;
   output: WorkflowOutputSite | null;
+  outputEvaluation: TransformEvaluation | null;
   previewScope: Record<string, unknown>;
   input: unknown;
   tenant_id: string;
   db: Db;
   signal?: AbortSignal;
 }): Promise<DryRunRepairProposal[]> {
-  const { steps, runWarnings, runError, output, previewScope, input, tenant_id, db, signal } = opts;
+  const {
+    steps,
+    runWarnings,
+    runError,
+    output,
+    outputEvaluation,
+    previewScope,
+    input,
+    tenant_id,
+    db,
+    signal,
+  } = opts;
   const proposals: DryRunRepairProposal[] = [];
   let repairBudget = MAX_PIPELINE_REPAIRS;
 
@@ -106,8 +122,7 @@ export async function proposeDryRunRepairs(opts: {
           kind: w.code === "transform_empty_extraction" ? "empty_result" : "eval_error",
           message: w.message,
         },
-        scopeSample: previewScope,
-        input,
+        evaluation: { kind: "step_scope", scope: previewScope, input },
         site: `steps.${stepId}.expression`,
         tenant_id,
         db,
@@ -124,7 +139,7 @@ export async function proposeDryRunRepairs(opts: {
         expression: output.expression,
         language: output.language,
         finding: { kind: "eval_error", message: runError.message },
-        ...(output.language === "jsonata" ? { scopeSample: previewScope, input } : {}),
+        ...(outputEvaluation ? { evaluation: outputEvaluation } : {}),
         site: output.site,
         tenant_id,
         db,
