@@ -155,6 +155,15 @@ describe("setConfigKey", () => {
     ).rejects.toBeInstanceOf(ScopeViolationError);
   });
 
+  test("the sandbox ceiling is operator-only: a tenant cannot raise sandbox.max_transform_wall_ms", async () => {
+    await expect(
+      setConfigKey("sandbox.max_transform_wall_ms", 900_000, { tenantId: "tenant-x" }),
+    ).rejects.toBeInstanceOf(ScopeViolationError);
+    const r = await setConfigKey("sandbox.max_transform_wall_ms", 120_000);
+    expect(r.after).toBe(120_000);
+    expect(getConfig().sandbox.max_transform_wall_ms).toBe(120_000);
+  });
+
   test("validation failure surfaces ValidationError with path + expected", async () => {
     let caught: ValidationError | undefined;
     try {

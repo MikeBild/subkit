@@ -66,14 +66,14 @@ afterAll(async () => {
   if (!skip && dbCtx?.cleanup) await dbCtx.cleanup();
 }, 30_000);
 
-describe("loadEmbeddedKnowledgeSeeds — all 7 embedded files", () => {
-  test("parses all 7 files with 0 errors", () => {
+describe("loadEmbeddedKnowledgeSeeds — all 8 embedded files", () => {
+  test("parses all 8 files with 0 errors", () => {
     const r = loadEmbeddedKnowledgeSeeds();
     const reason = r.errors.length === 0 ? "" : `seed parse errors: ${JSON.stringify(r.errors)}`;
     expect(reason).toBe("");
     expect(r.errors).toEqual([]);
-    expect(r.knowledge.length).toBe(7);
-    expect(r.embedded_count).toBe(7);
+    expect(r.knowledge.length).toBe(8);
+    expect(r.embedded_count).toBe(8);
   });
 
   test("every embedded knowledge seed has scope 'global'", () => {
@@ -485,7 +485,7 @@ describe.skipIf(skip)("searchKnowledge — FTS over seeded sk-platform-reference
 
     const { knowledge } = loadEmbeddedKnowledgeSeeds();
     const outcome = await applyKnowledgeSeeds(knowledge, searchTenantId, dbCtx.db);
-    expect(outcome.inserted).toBe(7);
+    expect(outcome.inserted).toBe(8);
   }, TEST_DB_HOOK_TIMEOUT);
 
   test("'login' returns at least one hit (sk-ref-cli covers sk login command)", async () => {

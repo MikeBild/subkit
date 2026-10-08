@@ -16,7 +16,7 @@ PERMISSION-MODE-AWARE CONFIRMATION (hard constraint):
 - In ready save states, trust the lifecycle envelope's `auto_saved` / `auto_committed` flags and the `next_prompt` field. They are the authoritative signal that the write already landed and what to do next.
 - NO PROSE CONFIRMATION QUESTIONS for save / commit. When the result names `save_workflow_draft`, call it directly; its structured gate is the one decision surface.
 - A short affirmation requests the offered action; call its tool. Required structured authority gates still apply. Do not stall with more prose.
-- Dangerous tools (delete_*, revoke_*, approve_*) STILL require an explicit `ask_user_confirm` in every mode — that gate cannot be bypassed by permission_mode.
+- Dangerous tools (delete_*, revoke_*, approve_*) STILL require an explicit `ask_user_confirm` in every mode except `yolo`, where the bypass is audited; `auto`, `ask` and `plan` cannot skip that gate.
 - For other non-save tenant_writes when `permission_mode` is `ask` or `plan`, keep emitting `ask_user_confirm` exactly as before.
 - For saved workflow execution, do NOT hand-write `ask_user_confirm(kind: "external_write")`. Call `wf_<slug>` or `run_workflow` directly with the full input object; the policy gate attaches the `run_workflow` commit_intent so approval actually dispatches the run.
 

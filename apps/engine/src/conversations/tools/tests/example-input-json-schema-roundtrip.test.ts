@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { zodSchema } from "ai";
 import Ajv from "ajv";
+import { compileDescription } from "../describe.ts";
 import { listTools } from "../index.ts";
+import { toInputExamples } from "../sdk-wrap/invoke.ts";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -35,7 +37,7 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
     expect(failures).toEqual([]);
   });
 
-  it("reports JSON-Schema-projection round-trip status for every tool with an example", () => {
+  it("every example validates against the sealed JSON-Schema projection the provider checks", () => {
     const compatible: string[] = [];
     const incompatible: { name: string; reasons: string[] }[] = [];
 
@@ -48,8 +50,19 @@ describe("tool example_input ↔ inputSchema round-trip (post-incident guard)", 
     }
 
     expect(compatible).toContain("propose_skill");
+    expect(compatible).toContain("probe_connector");
+    expect(incompatible).toEqual([]);
+  });
 
-    expect(incompatible.map((t) => t.name).sort()).toEqual(["probe_connector"]);
+  it("the example travels as a tool input example, not inside the description", () => {
+    const withExamples = listTools().filter((t) => t.example_input);
+    expect(withExamples.length).toBeGreaterThan(0);
+    for (const t of withExamples) {
+      expect(toInputExamples(t.example_input)).toEqual({
+        inputExamples: [{ input: t.example_input as Record<string, unknown> }],
+      });
+      expect(compileDescription(t)).not.toContain("<example>");
+    }
   });
 
   it("no example carries an id-shaped value the model could copy as a real id", () => {

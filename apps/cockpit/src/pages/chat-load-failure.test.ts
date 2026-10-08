@@ -34,3 +34,23 @@ describe("a conversation that cannot be opened", () => {
     expect(translate("de", "chat.notFound")).not.toMatch(/Lad die Seite neu|erneut/i);
   });
 });
+
+describe("a turn that timed out", () => {
+  test("says how long it waited, in the reader's language, with the engine's wording", () => {
+    expect(translate("de", "chat.cause.provider_timeout", { seconds: 30 })).toBe(
+      "Zeitüberschreitung nach 30 s",
+    );
+    expect(translate("en", "chat.cause.provider_timeout", { seconds: 30 })).toBe(
+      "Timed out after 30 s",
+    );
+  });
+
+  test("without a known budget it still names the cause", () => {
+    expect(translate("de", "chat.cause.provider_timeoutUnknown")).toBe(
+      "Der KI-Anbieter hat nicht rechtzeitig geantwortet.",
+    );
+    expect(translate("en", "chat.cause.provider_timeoutUnknown")).toBe(
+      "The AI provider did not answer in time.",
+    );
+  });
+});

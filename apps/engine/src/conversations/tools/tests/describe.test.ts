@@ -54,14 +54,14 @@ describe("compileDescription — renders each section", () => {
     expect(out).toContain("<requires_skill>self-healing</requires_skill>");
   });
 
-  test("example_input renders as single-line JSON inside <example>", () => {
+  test("example_input is not part of the description; it travels as a tool input example", () => {
     const out = compileDescription(mkTool({ example_input: { id: "abc", limit: 10 } }));
-    expect(out).toContain("<example>");
-    expect(out).toContain('{"id":"abc","limit":10}');
-    expect(out).toContain("</example>");
+    expect(out).toBe("Base description.");
+    expect(out).not.toContain("<example>");
+    expect(out).not.toContain('"limit":10');
   });
 
-  test("all four channels render in a stable order", () => {
+  test("the three description channels render in a stable order", () => {
     const out = compileDescription(
       mkTool({
         use_case: "UC",
@@ -73,11 +73,10 @@ describe("compileDescription — renders each section", () => {
     const uc = out.indexOf("<use_case>");
     const in_ = out.indexOf("<important_notes>");
     const rs = out.indexOf("<requires_skill>");
-    const ex = out.indexOf("<example>");
     expect(uc).toBeGreaterThan(0);
     expect(in_).toBeGreaterThan(uc);
     expect(rs).toBeGreaterThan(in_);
-    expect(ex).toBeGreaterThan(rs);
+    expect(out.indexOf("<example>")).toBe(-1);
   });
 });
 

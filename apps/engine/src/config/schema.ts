@@ -851,6 +851,16 @@ const SandboxSection = z
           "Long synchronous transforms block the worker — chunk via for_each instead of raising. Default 60 s.",
       )
       .meta(global()),
+    max_transform_wall_ms: z
+      .number()
+      .int()
+      .positive()
+      .default(300_000)
+      .describe(
+        "Operator ceiling for a transform step's wall-clock, in ms. A step timeout_ms above it runs " +
+          "with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min.",
+      )
+      .meta(global()),
   })
   .prefault({})
   .describe("QuickJS JS sandbox limits");

@@ -48,8 +48,11 @@ export {
 } from "./tools/import-connector-from-spec.ts";
 export {
   describeTurnFailure,
+  LlmTimeoutError,
+  type TimeoutPhase,
   type TurnFailure,
   type TurnFailureCode,
+  timeoutPhaseOf,
   turnFailureFramePayload,
 } from "./turn-failure.ts";
 export * from "./types.ts";

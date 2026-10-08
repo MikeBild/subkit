@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import {
   connectors,
   schemaVersions,
@@ -217,6 +218,41 @@ describe.skipIf(skip)("assembler render order — recipe bodies + skill candidat
     expect(SECTION_SKILL_CANDIDATES).toBe("skill_candidates");
     expect(SECTION_CONNECTOR_RECIPE_BODIES).toBe("connector_recipe_bodies");
     expect(SECTION_CONNECTOR_RECIPES).toBe("connector_recipes");
+  });
+
+  test("the tenant snapshot renders once, as a volatile section after the failures", async () => {
+    const principal: ResolvedPrincipal = {
+      provider: "test",
+      kind: "user",
+      id: "u-render-order",
+      tenant_id,
+      roles: ["admin"],
+    };
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id,
+        flow: "converse",
+        connector_id,
+        principal,
+        user_turns: [{ role: "user", content: "stripe charge webhook" }],
+        max_tokens: 50_000,
+        model: "mock",
+        prior_failures: [{ step_id: "notify", error: "render-order failure sentinel" }],
+      },
+      ctx.db,
+    );
+    const sections = prompt.system_sections ?? [];
+    const snapshotSections = sections.filter((s) => s.text.startsWith("=== TENANT SNAPSHOT"));
+    expect(snapshotSections).toHaveLength(1);
+    expect(snapshotSections[0]!.volatile).toBe(true);
+    const snapshotIdx = sections.findIndex((s) => s.text.startsWith("=== TENANT SNAPSHOT"));
+    const failureIdx = sections.findIndex((s) => s.text.includes("render-order failure sentinel"));
+    expect(failureIdx).toBeGreaterThan(-1);
+    expect(snapshotIdx).toBeGreaterThan(failureIdx);
+    expect(prompt.system).toContain(
+      "- render-order-test-workflow (draft) — Render Order Test Workflow",
+    );
+    expect(prompt.system).not.toContain("[tool: wf_render-order-test-workflow]");
   });
 });
 
@@ -471,7 +507,7 @@ describe.skipIf(skip)("drop ladder — deterministic overflow (heavy seed)", () 
         flow: "converse",
         connector_id: heavyConnectorId,
         user_turns: [{ role: "user", content: "stripe charge heavy" }],
-        max_tokens: 10_000,
+        max_tokens: 9_600,
         model: "mock",
       },
       heavyCtx.db,

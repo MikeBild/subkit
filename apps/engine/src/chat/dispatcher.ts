@@ -13,6 +13,7 @@ import {
   respondElicitation,
   runConversationTurn,
 } from "../conversations/service.ts";
+import { describeTurnFailure, type TurnFailure } from "../conversations/turn-failure.ts";
 import type { Db } from "../db/client.ts";
 import { chatIdentities, chatSessions, chatWorkspaces, conversations } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
@@ -219,6 +220,19 @@ export function extractAssistantText(outcome: RunLoopResult): string | null {
     return joined || null;
   }
   return null;
+}
+
+type ChannelTurn = { outcome: RunLoopResult } | { failure: TurnFailure };
+
+async function runTurnForChannel(run: () => Promise<RunLoopResult>): Promise<ChannelTurn> {
+  try {
+    return { outcome: await run() };
+  } catch (err) {
+    if (err instanceof PendingElicitationBlockedError) throw err;
+    const failure = describeTurnFailure(err);
+    if (failure.code === "internal") throw err;
+    return { failure };
+  }
 }
 
 export async function handleChatEvent(
@@ -626,36 +640,38 @@ async function handleChatEventImpl(
   const chatPrincipal = await resolveChatPrincipal(db, tenant_id, user_id);
 
   let conversation_id: string;
-  let outcome: RunLoopResult;
+  let turn: ChannelTurn;
   if (existing) {
     conversation_id = existing.conversation_id;
     try {
-      outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
-        const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-        try {
-          const appended = await appendUserMessage(
-            { tenant_id, conversation_id, actor_id: user_id, message: prompt },
-            db,
-          );
-          const turn = await runConversationTurn(
-            {
-              tenant_id,
-              conversation_id,
-              actor_id: user_id,
-              principal: chatPrincipal,
-              user_message: appended.message,
-              answer_actor: humanChatAnswer(chatPrincipal),
-              user_memory: appended.user_memory,
-              turn_abort_ctrl: turnAbortCtrl,
-              surface: "chat",
-            },
-            db,
-          );
-          return turn.result;
-        } finally {
-          unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-        }
-      });
+      turn = await runTurnForChannel(() =>
+        withConversationTurnLock(tenant_id, conversation_id, async () => {
+          const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+          try {
+            const appended = await appendUserMessage(
+              { tenant_id, conversation_id, actor_id: user_id, message: prompt },
+              db,
+            );
+            const result = await runConversationTurn(
+              {
+                tenant_id,
+                conversation_id,
+                actor_id: user_id,
+                principal: chatPrincipal,
+                user_message: appended.message,
+                answer_actor: humanChatAnswer(chatPrincipal),
+                user_memory: appended.user_memory,
+                turn_abort_ctrl: turnAbortCtrl,
+                surface: "chat",
+              },
+              db,
+            );
+            return result.result;
+          } finally {
+            unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+          }
+        }),
+      );
     } catch (err) {
       if (!(err instanceof PendingElicitationBlockedError)) throw err;
       const resumed = await salvageTypedReplyToPendingElicitation({
@@ -669,7 +685,7 @@ async function handleChatEventImpl(
         principal: chatPrincipal,
       });
       if (resumed === null) return { status: "ok", conversation_id };
-      outcome = resumed;
+      turn = { outcome: resumed };
     }
   } else {
     const created = await createConversation(
@@ -689,29 +705,61 @@ async function handleChatEventImpl(
       thread_id: threadKey,
       conversation_id,
     });
-    outcome = await withConversationTurnLock(tenant_id, conversation_id, async () => {
-      const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
-      try {
-        const turn = await runConversationTurn(
-          {
-            tenant_id,
-            conversation_id,
-            actor_id: user_id,
-            principal: chatPrincipal,
-            user_message: created.initial_message ?? "",
-            answer_actor: humanChatAnswer(chatPrincipal),
-            user_memory: created.user_memory,
-            turn_abort_ctrl: turnAbortCtrl,
-            surface: "chat",
-          },
-          db,
-        );
-        return turn.result;
-      } finally {
-        unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
-      }
-    });
+    turn = await runTurnForChannel(() =>
+      withConversationTurnLock(tenant_id, conversation_id, async () => {
+        const turnAbortCtrl = registerConversationAbort(tenant_id, conversation_id);
+        try {
+          const result = await runConversationTurn(
+            {
+              tenant_id,
+              conversation_id,
+              actor_id: user_id,
+              principal: chatPrincipal,
+              user_message: created.initial_message ?? "",
+              answer_actor: humanChatAnswer(chatPrincipal),
+              user_memory: created.user_memory,
+              turn_abort_ctrl: turnAbortCtrl,
+              surface: "chat",
+            },
+            db,
+          );
+          return result.result;
+        } finally {
+          unregisterConversationAbort(tenant_id, conversation_id, turnAbortCtrl);
+        }
+      }),
+    );
   }
+
+  if ("failure" in turn) {
+    logger.warn({
+      module: "chat",
+      action: "dispatcher.turn_failed_reply",
+      msg: "turn failed before an answer; the failure text is the channel reply",
+      tenant_id,
+      conversation_id,
+      failure_code: turn.failure.code,
+      ...(turn.failure.timeout ? { timeout_phase: turn.failure.timeout.phase } : {}),
+    });
+    if (opts.replyDelivery === "capture") {
+      return {
+        status: "ok",
+        conversation_id,
+        approval_sent: false,
+        reply_text: turn.failure.message,
+      };
+    }
+    await sendTracked(adapter, ev.platform, {
+      tenant_id,
+      workspace_id: ev.workspace_id,
+      channel_id: ev.channel_id,
+      ...(ev.thread_id ? { thread_id: ev.thread_id } : {}),
+      kind: "message",
+      text: turn.failure.message,
+    });
+    return { status: "ok", conversation_id, approval_sent: false, reply_text: null };
+  }
+  const outcome = turn.outcome;
 
   let approval_sent = false;
   let captured_reply_text: string | null = null;

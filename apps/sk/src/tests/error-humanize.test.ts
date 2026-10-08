@@ -51,6 +51,19 @@ describe("humanizeValidationError", () => {
     expect(classifyEngineError({ path: "not_found", message: "missing" })).toBeNull();
   });
 
+  it("recognises the typed llm_timeout code and the engine's timeout wording", () => {
+    const typed = humanizeValidationError({
+      path: "llm_timeout",
+      message: "Timed out after 120 s",
+    });
+    expect(typed.label).toBe("LLM provider timed out");
+    expect(typed.detail).toBe("Timed out after 120 s");
+    expect(typed.hint).toContain("retry");
+    expect(classifyEngineError({ path: "internal", message: "Timed out after 30 s" })).toBe(
+      "provider_timeout",
+    );
+  });
+
   it("handles a step-root error without losing the message", () => {
     const r = humanizeValidationError({
       path: "steps.2",
@@ -218,6 +231,18 @@ describe("humanizeRequestError surfaces hints", () => {
     });
     const out = humanizeRequestError(err);
     expect(out).toContain("provider temporarily unavailable");
+  });
+
+  test("timeout errors keep the engine's wording and say how long the model had", () => {
+    const err = new EngineError(504, {
+      code: "llm_timeout",
+      message: "Timed out after 120 s",
+      details: { phase: "first_chunk", timeout_ms: 120_000 },
+    });
+    const out = humanizeRequestError(err);
+    expect(out).toContain("HTTP 504 llm_timeout");
+    expect(out).toContain("Timed out after 120 s");
+    expect(out).toContain("did not answer within 120 s");
   });
 
   test("pending elicitation conflicts explain that the open dialog must be resolved", () => {

@@ -1,5 +1,8 @@
 import type { Tool } from "ai";
-import { recordMcpExternalToolPaletteAssemblyFailed } from "../../audit/recorders/index.ts";
+import {
+  recordChatPaletteSurfaceEnforced,
+  recordMcpExternalToolPaletteAssemblyFailed,
+} from "../../audit/recorders/index.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
@@ -34,14 +37,26 @@ export async function wrapTools(
   principal: ResolvedPrincipal | null = null,
 ): Promise<Record<string, Tool<Record<string, unknown>, WrappedToolOutput>>> {
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
-  const isChatSurface = ctx.surface === "chat";
-  if (!isChatSurface && principal?.provider === "chat") {
-    logger.warn({
-      module: "conversation_tool",
-      action: "palette.chat_surface_missing",
-      msg: "chat-provider principal is running a turn without surface=chat — palette restriction not applied; check the caller's surface threading",
-      tenant_id: ctx.tenant_id,
-    });
+  const isChatSurface = ctx.surface === "chat" || principal?.provider === "chat";
+  if (ctx.surface !== "chat" && principal?.provider === "chat") {
+    try {
+      await recordChatPaletteSurfaceEnforced({
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.actor_id,
+        conversation_id: ctx.conversation_id,
+        request_source: "chat",
+        executor: db,
+      });
+    } catch (auditErr) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "chat_palette.surface_enforced_audit_failed",
+        msg: "failed to audit the chat palette enforcement; the read-only palette still applies",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
   const loadedSkillSet = new Set(loadedSkills);
   const visibleTools = isChatSurface

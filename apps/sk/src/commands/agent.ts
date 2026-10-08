@@ -18,6 +18,10 @@ import { debugLog } from "../debug.ts";
 import { EngineClient, type FetchLike } from "../engine-client.ts";
 
 export const AGENT_FILE_RELPATH = join(".sk", "agent.json");
+const CLAUDE_SETTINGS_RELPATH = join(".claude", "settings.json");
+const CODEX_HOOKS_RELPATH = join(".codex", "hooks.json");
+const SESSION_START_MATCHER = "startup|resume|clear|compact";
+const CODEX_CONTEXT_UNLIMITED = 0;
 const HOOK_COMMAND = "sk agent briefing --hook";
 const CAPTURE_HOOK_COMMAND = "sk agent capture --hook";
 const HOOK_TIMEOUT_SECONDS = 30;
@@ -349,7 +353,27 @@ const captureCommand = defineCommand({
 
 interface ClaudeHookEntry {
   matcher?: string;
-  hooks?: Array<{ type?: string; command?: string; timeout?: number }>;
+  hooks?: Array<{
+    type?: string;
+    command?: string;
+    timeout?: number;
+    additionalContextLimit?: number;
+  }>;
+}
+
+function userHome(): string {
+  return process.env.HOME || homedir();
+}
+
+function readJsonFile(path: string): Record<string, unknown> {
+  return existsSync(path)
+    ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>)
+    : {};
+}
+
+function writeJsonFile(path: string, value: Record<string, unknown>): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 function eventWired(hooks: Record<string, unknown>, event: string, command: string): boolean {
@@ -373,7 +397,7 @@ export function wireClaudeHooks(settings: Record<string, unknown>): Record<strin
   let changed = false;
   if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
     hooks = appendHookEntry(hooks, "SessionStart", {
-      matcher: "startup|resume|compact",
+      matcher: SESSION_START_MATCHER,
       hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
     });
     changed = true;
@@ -396,30 +420,55 @@ export function wireClaudeHooks(settings: Record<string, unknown>): Record<strin
   return { ...settings, hooks };
 }
 
+export function wireCodexHooks(config: Record<string, unknown>): Record<string, unknown> | null {
+  let hooks = (config.hooks ?? {}) as Record<string, unknown>;
+  let changed = false;
+  if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
+    hooks = appendHookEntry(hooks, "SessionStart", {
+      matcher: SESSION_START_MATCHER,
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: HOOK_TIMEOUT_SECONDS,
+          additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
+        },
+      ],
+    });
+    changed = true;
+  }
+  if (!eventWired(hooks, "UserPromptSubmit", HOOK_COMMAND)) {
+    hooks = appendHookEntry(hooks, "UserPromptSubmit", {
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: PROMPT_HOOK_TIMEOUT_SECONDS,
+          additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
+        },
+      ],
+    });
+    changed = true;
+  }
+  if (!changed) return null;
+  return { ...config, hooks };
+}
+
 export function codexHookSnippet(): string {
   return [
-    "# ~/.codex/config.toml — enable hooks, then add the hooks below:",
+    "# ~/.codex/config.toml — hooks run only with the feature enabled:",
     "[features]",
     "hooks = true",
     "",
-    "# ~/.codex/hooks.json — Codex has no SessionEnd; Stop fires after every turn,",
-    "# so the capture below uploads the transcript and distils it once per turn.",
+    "# Then open `codex`, run /hooks and trust the sk entries; Codex skips edited hooks until trusted.",
+    "# The briefing hooks pass their full text to the model (additionalContextLimit 0),",
+    "# because Codex otherwise spills anything above its default limit into a file.",
+    "",
+    "# Optional capture — Codex has no SessionEnd; Stop fires after every turn,",
+    "# so this uploads the transcript and distils it once per turn. Add it only if you want that:",
     JSON.stringify(
       {
         hooks: {
-          SessionStart: [
-            {
-              matcher: "startup|resume|compact",
-              hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
-            },
-          ],
-          UserPromptSubmit: [
-            {
-              hooks: [
-                { type: "command", command: HOOK_COMMAND, timeout: PROMPT_HOOK_TIMEOUT_SECONDS },
-              ],
-            },
-          ],
           Stop: [
             {
               hooks: [
@@ -466,6 +515,11 @@ const initCommand = defineCommand({
       description: "Do not touch ~/.claude/settings.json",
       default: false,
     },
+    "skip-codex": {
+      type: "boolean",
+      description: "Do not touch ~/.codex/hooks.json",
+      default: false,
+    },
   },
   async run({ args }) {
     const out = (line: string) => process.stdout.write(`${line}\n`);
@@ -491,14 +545,10 @@ const initCommand = defineCommand({
       out(`${pc.green("✓")} wrote ${agentPath}`);
 
       if (!args["skip-claude"]) {
-        const settingsPath = join(homedir(), ".claude", "settings.json");
-        const existing: Record<string, unknown> = existsSync(settingsPath)
-          ? (JSON.parse(readFileSync(settingsPath, "utf8")) as Record<string, unknown>)
-          : {};
-        const updated = wireClaudeHooks(existing);
+        const settingsPath = join(userHome(), CLAUDE_SETTINGS_RELPATH);
+        const updated = wireClaudeHooks(readJsonFile(settingsPath));
         if (updated) {
-          mkdirSync(dirname(settingsPath), { recursive: true });
-          writeFileSync(settingsPath, `${JSON.stringify(updated, null, 2)}\n`);
+          writeJsonFile(settingsPath, updated);
           out(
             `${pc.green("✓")} wired SessionStart + UserPromptSubmit + SessionEnd hooks in ${settingsPath}`,
           );
@@ -507,9 +557,22 @@ const initCommand = defineCommand({
         }
       }
 
+      if (!args["skip-codex"]) {
+        const hooksPath = join(userHome(), CODEX_HOOKS_RELPATH);
+        const updated = wireCodexHooks(readJsonFile(hooksPath));
+        if (updated) {
+          writeJsonFile(hooksPath, updated);
+          out(
+            `${pc.green("✓")} wired SessionStart + UserPromptSubmit briefing hooks in ${hooksPath}`,
+          );
+        } else {
+          out(`${pc.dim("•")} Codex hooks already wired`);
+        }
+      }
+
       const { engine_url } = resolveProfile();
       out("");
-      out(pc.bold("Codex (manual, feature-gated):"));
+      out(pc.bold("Codex (finish by hand):"));
       out(codexHookSnippet());
       out("");
       out(pc.bold("Hermes (manual):"));

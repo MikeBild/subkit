@@ -10,7 +10,6 @@ const BASE_ROUTE: ModelRoute = {
   fallback_provider: "anthropic",
   context_cap: 200_000,
   monthly_budget: null,
-  enable_prompt_cache: false,
 };
 
 interface EnvSnapshot {

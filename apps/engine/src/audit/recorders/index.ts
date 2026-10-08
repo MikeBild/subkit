@@ -72,7 +72,9 @@ export {
   recordMcpExternalToolPaletteAssemblyFailed,
 } from "./mcp-server.ts";
 export {
+  type RecordChatPaletteSurfaceEnforcedParams,
   type RecordToolPolicyConfirmationRequiredParams,
+  recordChatPaletteSurfaceEnforced,
   recordToolPolicyConfirmationRequired,
 } from "./policy.ts";
 export type { AuditOutcome, RecordedEntry, RecorderBase } from "./types.ts";

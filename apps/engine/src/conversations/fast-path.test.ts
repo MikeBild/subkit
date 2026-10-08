@@ -780,13 +780,13 @@ describe("tryFastPath — one catalog block", () => {
 
   test("the LLM path's snapshot names the block past the row cap and admits it is partial", async () => {
     await seedCategoryCatalog();
-    const summary = await loadTenantSummary(tenantId, tdb.db);
+    const summary = await loadTenantSummary(makePrincipal(), tdb.db);
     expect(summary.workflows.some((w) => w.slug.startsWith("notion-"))).toBe(false);
-    const text = renderTenantSummaryBlock(summary) ?? "";
+    const text = renderTenantSummaryBlock(summary, new Set()) ?? "";
     expect(text).toContain("notion (4)");
     expect(text).toContain("PARTIAL LIVE LIST");
     expect(text).not.toContain("DO NOT call list_workflows");
-    expect(await loadSnapshotCoverage(tenantId, tdb.db)).toEqual({
+    expect(await loadSnapshotCoverage(makePrincipal(), tdb.db)).toEqual({
       workflows_complete: false,
       connectors_complete: true,
     });
@@ -837,18 +837,18 @@ describe("tryFastPath — one catalog block", () => {
   test("the enumeration steering sees a named workflow and a trimmed catalog", async () => {
     await seedCategoryCatalog();
     expect(
-      await loadEnumerationCoverage(tenantId, "wie viele Schritte hat notion-sync?", tdb.db),
+      await loadEnumerationCoverage(makePrincipal(), "wie viele Schritte hat notion-sync?", tdb.db),
     ).toEqual({
       workflows_complete: false,
       connectors_complete: true,
       names_existing_workflow: true,
     });
     expect(
-      (await loadEnumerationCoverage(tenantId, "Zeig mir die notion-Workflows", tdb.db))
+      (await loadEnumerationCoverage(makePrincipal(), "Zeig mir die notion-Workflows", tdb.db))
         .names_existing_workflow,
     ).toBe(false);
     expect(
-      (await loadEnumerationCoverage(tenantId, "workflow notion-retired", tdb.db))
+      (await loadEnumerationCoverage(makePrincipal(), "workflow notion-retired", tdb.db))
         .names_existing_workflow,
     ).toBe(false);
   });

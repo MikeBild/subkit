@@ -5,7 +5,7 @@ import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
 import { buildToolAnnotations } from "../../mcp/capabilities/tool-meta.ts";
-import { policyDecide } from "../../tools/policy.ts";
+import { confirmEnvelopeFor, policyDecide } from "../../tools/policy.ts";
 import { getElicitation } from "../elicitations.ts";
 import type { ToolPolicies } from "../tool-policies.ts";
 import {
@@ -197,16 +197,28 @@ describe("confirm gate — both surfaces require locally verifiable human approv
       },
       { run_workflow: "confirm_before_execution" },
     );
+    const mcpArgs = { workflow: "render-upload-slides", environment: "prod", execute_writes: true };
     const mcp = policyDecide({
       tool: "run_workflow",
       category: "tenant_write",
       surface: "mcp",
-      args: { workflow: "render-upload-slides", environment: "prod", execute_writes: true },
+      args: mcpArgs,
       overrides: { run_workflow: "confirm_before_execution" },
     });
     expect(Boolean(loop.pause)).toBe(true);
     expect(mcp.kind).toBe("needs_confirm");
-    if (mcp.kind === "needs_confirm") expect(mcp.envelope.resume).toContain("confirm_tool_call");
+    if (mcp.kind === "needs_confirm") {
+      expect(
+        confirmEnvelopeFor({
+          tool: "run_workflow",
+          args: mcpArgs,
+          rule: mcp.rule,
+          approval_id: APPROVAL_ID,
+          approval_url: null,
+          surface: "mcp",
+        }).resume,
+      ).toContain("confirm_tool_call");
+    }
     expect(buildToolAnnotations("workflow_run", "run_workflow").destructiveHint).toBe(true);
   });
 

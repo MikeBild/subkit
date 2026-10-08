@@ -614,8 +614,15 @@
     {
       "idx": 87,
       "version": "7",
-      "when": 1791372840263,
-      "tag": "0087_exotic_maelstrom",
+      "when": 1791450722727,
+      "tag": "0087_tenant_llm_settings_dropped",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1791469705572,
+      "tag": "0088_absent_sugar_man",
       "breakpoints": true
     }
   ]

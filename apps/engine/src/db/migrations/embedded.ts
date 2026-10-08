@@ -104,7 +104,8 @@ import sql0083CatalogDescribeRefresh from "./0083_catalog_describe_refresh.sql" 
 import sql0084KnowledgeSourceVersions from "./0084_knowledge_source_versions.sql" with { type: "text" };
 import sql0085KnowledgeLearningProposer from "./0085_knowledge_learning_proposer.sql" with { type: "text" };
 import sql0086InboundHookSlugGlobalUnique from "./0086_inbound_hook_slug_global_unique.sql" with { type: "text" };
-import sql0087ExoticMaelstrom from "./0087_exotic_maelstrom.sql" with { type: "text" };
+import sql0087TenantLlmSettingsDropped from "./0087_tenant_llm_settings_dropped.sql" with { type: "text" };
+import sql0088AbsentSugarMan from "./0088_absent_sugar_man.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -216,7 +217,8 @@ const SQL_BY_TAG: Record<string, string> = {
   "0084_knowledge_source_versions": sql0084KnowledgeSourceVersions,
   "0085_knowledge_learning_proposer": sql0085KnowledgeLearningProposer,
   "0086_inbound_hook_slug_global_unique": sql0086InboundHookSlugGlobalUnique,
-  "0087_exotic_maelstrom": sql0087ExoticMaelstrom,
+  "0087_tenant_llm_settings_dropped": sql0087TenantLlmSettingsDropped,
+  "0088_absent_sugar_man": sql0088AbsentSugarMan,
 };
 
 const journal = journalMeta as unknown as Journal;

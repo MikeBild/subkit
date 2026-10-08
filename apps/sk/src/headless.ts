@@ -1,6 +1,7 @@
 import { isEngineError, isTransportError } from "@cli-core/errors.ts";
 import {
   applyTurnEvent,
+  errorFrameToEvents,
   initialSessionState,
   lastAssistantText,
   lastExecutionResult,
@@ -22,6 +23,7 @@ import { EngineClient } from "./engine-client.ts";
 import { formatCitationsFooter, terminalAssistantCitations } from "./lib/citations-footer.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
+import { humanizeValidationError } from "./repl/error-humanize.ts";
 import { saveSessionMetadata } from "./sessions.ts";
 import { loadSettings } from "./settings.ts";
 
@@ -53,6 +55,17 @@ export interface HeadlessRunResult {
 
 function writeLine(stream: { write: (s: string) => void } | undefined, line: string): void {
   (stream ?? process.stdout).write(`${line}\n`);
+}
+
+function formatTurnErrors(errors: SkSessionState["validationErrors"]): string {
+  return errors
+    .map((e) => {
+      const h = humanizeValidationError(e);
+      const detail = h.detail && h.detail !== h.label ? ` — ${h.detail}` : "";
+      const hint = h.hint ? `\n  ↳ ${h.hint}` : "";
+      return `sk: ${h.label}${detail}${hint}`;
+    })
+    .join("\n");
 }
 
 function attachmentSlug(filename: string): string | null {
@@ -506,6 +519,36 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
       return true;
     }
     if (frame.event === "outcome") return false;
+    if (frame.event === "error") {
+      let payload: { code: string; message: string; details?: unknown };
+      try {
+        payload = JSON.parse(frame.data) as { code: string; message: string; details?: unknown };
+      } catch (err) {
+        debugLog(
+          "dialog.error",
+          {
+            input_kind: "prompt",
+            stage: "sse_error_frame_parse",
+            ...(verbose ? { raw_frame: frame.data } : {}),
+            error: serializeDebugError(err),
+          },
+          traceContext(),
+        );
+        payload = { code: "error", message: frame.data };
+      }
+      for (const synthetic of errorFrameToEvents(payload)) {
+        debugLog(
+          "dialog.turn_event",
+          verbose ? { event: synthetic } : { event_type: synthetic.type },
+          traceContext(),
+        );
+        if (opts.output === "stream-json") {
+          writeLine(stdout, JSON.stringify(synthetic));
+        }
+        streamState = applyTurnEvent(streamState, synthetic);
+      }
+      return false;
+    }
     let ev: TurnEvent;
     try {
       ev = JSON.parse(frame.data) as TurnEvent;
@@ -544,11 +587,15 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   const assistantText = lastAssistantText(streamState);
   if (opts.output === "text") {
     const text = assistantText.trim();
+    const turnErrors = streamState.status === "error" ? streamState.validationErrors : [];
+    if (turnErrors.length > 0) {
+      stderr.write(`${formatTurnErrors(turnErrors)}\n`);
+    }
     if (text) {
       writeLine(stdout, text);
       const footer = formatCitationsFooter(terminalAssistantCitations(streamState.messages));
       if (footer) writeLine(stdout, footer);
-    } else {
+    } else if (turnErrors.length === 0) {
       const exec = lastExecutionResult(streamState);
       if (exec) {
         writeLine(stdout, renderExecutionOutput(exec));

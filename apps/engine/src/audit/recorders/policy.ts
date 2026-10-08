@@ -1,6 +1,35 @@
+import type { RequestSource } from "../../observability/service-metadata.ts";
 import { auditAwait } from "../audit.ts";
 import { AuditAction } from "../types.ts";
 import { type RecordedEntry, type RecorderBase, resolveActorType } from "./types.ts";
+
+export interface RecordChatPaletteSurfaceEnforcedParams extends RecorderBase {
+  conversation_id: string;
+  request_source: RequestSource;
+}
+
+export async function recordChatPaletteSurfaceEnforced(
+  p: RecordChatPaletteSurfaceEnforcedParams,
+): Promise<RecordedEntry> {
+  return auditAwait(
+    {
+      tenant_id: p.tenant_id,
+      actor_type: resolveActorType(p),
+      actor_id: p.actor_id,
+      action: AuditAction.CONVERSATION_PALETTE_SURFACE_ENFORCED,
+      resource_type: "conversation",
+      resource_id: p.conversation_id,
+      result: "success",
+      reason: "chat_provider_without_chat_surface",
+      metadata: {
+        conversation_id: p.conversation_id,
+        request_source: p.request_source,
+        palette: "chat_read_only",
+      },
+    },
+    p.executor,
+  );
+}
 
 export interface RecordToolPolicyConfirmationRequiredParams extends RecorderBase {
   conversation_id: string;

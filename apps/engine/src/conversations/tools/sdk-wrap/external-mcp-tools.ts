@@ -19,15 +19,14 @@ import { can } from "../../../rbac/evaluator.ts";
 import {
   consumeApproval,
   recordApprovalApproved,
-  requestApproval,
   stripConfirmMarkers,
 } from "../../../tools/approval.ts";
 import {
   confirmIdFromArgs,
   isConfirmedRequest,
-  policyDecide,
   withConfirmMarkerProperties,
 } from "../../../tools/policy.ts";
+import { runConfirmGate } from "../../confirmation.ts";
 import { createElicitation } from "../../elicitations.ts";
 import { appendMessage, insertToolCall, updateToolCallOutput } from "../../persist.ts";
 import type { TurnEvent } from "../../types.ts";
@@ -419,57 +418,63 @@ async function executeExternalMcpTool(
     (await readMcpToolsWithoutConfirmation(db, ctx.tenant_id, connector_id)).includes(
       resolved.call.tool,
     );
+  const pendingElicitationBeforeGate = signals.pendingElicitation;
   const gate = claim
     ? null
-    : policyDecide({
+    : await runConfirmGate({
         tool: name,
         category: "tenant_write",
         surface: "chat",
         args: effectiveInput,
         ...(ctx.permission_mode === "plan" ? { permission_mode: "plan" as const } : {}),
         ...(trustedByOperator ? { connector_trust: true } : {}),
+        db,
+        tenant_id: ctx.tenant_id,
+        principal,
+        approval_tool: name,
+        via: "chat",
+        record_surface: ctx.surface ?? "api",
+        conversation_id: ctx.conversation_id,
+        actor_id: ctx.actor_id,
+        execution_mode: null,
+        precheck: null,
+        pause_blocked: pendingElicitationBeforeGate !== undefined,
+        confirmation_kind: "external_write",
       });
   const gateRule =
-    gate?.kind === "proceed" && trustedByOperator ? ("connector_trust" as const) : undefined;
+    gate?.kind === "proceed" && gate.decision.rule === "connector_trust"
+      ? ("connector_trust" as const)
+      : undefined;
   if (gate && !gateRule) {
-    if (gate.kind === "needs_confirm") {
-      if (signals.pendingElicitation) {
-        const dupOutput: Record<string, unknown> = {
-          ok: false,
-          status: "failed",
-          error_code: "duplicate_pending_elicitation_in_turn",
-          error: `Another tool call in this turn already staged an ask_user_confirm (${signals.pendingElicitation.tool_name}). Wait for the operator to resolve it, then re-issue ${name}.`,
-          connector_slug,
-          remote_tool: spec.target,
-        };
-        await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
-        events.push({
-          type: "tool_result",
-          call_id: toolCallId,
-          tool: name,
-          output: dupOutput,
-          parent_message_id: assistantMessageId,
-        });
-        recordConversationToolCall({
-          category: "tenant_write",
-          tool: name,
-          outcome: "denied",
-          duration_ms: Date.now() - startedAt,
-        });
-        return { ok: false, data: dupOutput };
-      }
-      const confirm_id = gate.envelope.tool_call_id;
-      const requested = await requestApproval({
-        db,
-        principal,
-        approval_id: confirm_id,
+    if (gate.kind === "approval_failed") throw gate.error;
+    if (gate.kind === "duplicate_pending") {
+      const dupOutput: Record<string, unknown> = {
+        ok: false,
+        status: "failed",
+        error_code: "duplicate_pending_elicitation_in_turn",
+        error: `Another tool call in this turn already staged an ask_user_confirm (${pendingElicitationBeforeGate?.tool_name}). Wait for the operator to resolve it, then re-issue ${name}.`,
+        connector_slug,
+        remote_tool: spec.target,
+      };
+      await updateToolCallOutput(db, toolCallId, dupOutput, "denied");
+      events.push({
+        type: "tool_result",
+        call_id: toolCallId,
         tool: name,
-        surface: "chat",
-        via: "chat",
-        reason: gate.envelope.reason,
-        execution_mode: null,
-        args: effectiveInput,
+        output: dupOutput,
+        parent_message_id: assistantMessageId,
       });
+      recordConversationToolCall({
+        category: "tenant_write",
+        tool: name,
+        outcome: "denied",
+        duration_ms: Date.now() - startedAt,
+      });
+      return { ok: false, data: dupOutput };
+    }
+    if (gate.kind === "needs_confirm" && gate.approval_id !== null) {
+      const confirm_id = gate.approval_id;
+      const approvalUrl = gate.approval_url;
       const inputKeys = Object.keys(effectiveInput).sort();
       const elicitationInput: Record<string, unknown> = {
         kind: "external_write",
@@ -486,7 +491,7 @@ async function executeExternalMcpTool(
           payload: { tool: name, approval_id: confirm_id },
           description: `Lets the tool "${spec.suffix}" on ${connector_name} run once.`,
         },
-        ...(requested.approval_url ? { approval_url: requested.approval_url } : {}),
+        ...(approvalUrl ? { approval_url: approvalUrl } : {}),
       };
       const elicitationSummary = `Run "${spec.suffix}" on ${connector_name}`;
       const elicitation = await createElicitation(
@@ -513,7 +518,7 @@ async function executeExternalMcpTool(
         confirm_id,
         elicitation_id: elicitation.id,
         note: `Nothing ran. The operator must approve ${name} before it runs — they will see a confirmation in chat${
-          requested.approval_url ? ` (or open ${requested.approval_url})` : ""
+          approvalUrl ? ` (or open ${approvalUrl})` : ""
         }. After they approve, re-issue ${name} with __policy_confirmed: true and __policy_confirm_id: "${confirm_id}" to perform it — the engine replays the arguments it already holds. You cannot approve on their behalf.`,
         connector_slug,
         remote_tool: spec.target,
