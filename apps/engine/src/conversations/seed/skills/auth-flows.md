@@ -19,6 +19,8 @@ connector itself plus the **multi-step pattern** for everything else
 
 ## First-class modes
 
+These modes authenticate outbound connector requests. They do not establish the workflow's `$caller`, grant workflow access or approve side effects. SubKit derives caller from the authenticated invocation; RBAC/resource grants authorize access, and a human separately approves the effect boundary. A person can approve a scheduled or webhook run that remains callerless (`$caller = null`). HTTP/MCP callers and inherited child callers retain their authenticated identity independently of the connector's credential. Never pass an inbound token as ordinary workflow input to manufacture identity. See subkit-concepts and workflow-authoring for the caller contract, and REST API knowledge for inspection limits.
+
 Set on `connector.auth_type` and configured via the credential row:
 
 | `auth_type` | What it does | When to pick it |
@@ -126,8 +128,7 @@ Built-in templates: `appsync-iam` (GraphQL), `aws-apigw-iam` (REST).
 ## The multi-step pattern (everything else)
 
 When the upstream needs a custom dance sk doesn't speak natively
-(SAML-to-JWT exchanges, "POST creds to /login, then use cookie", legacy
-session tokens), author it as **two workflow steps**: one to mint the
+(SAML-to-JWT exchanges or nonstandard bearer token endpoints), author it as **two workflow steps**: one to mint the
 token, one to use it. This is the standard pattern for every auth
 flow.
 
@@ -160,9 +161,7 @@ flow.
 }
 ```
 
-The IdP connector is `auth_type: "none"` (no auth on the login call
-itself); the API connector is also `auth_type: "none"` because the
-auth header comes from the workflow scope, not the credential store.
+The IdP connector is `auth_type: "none"` when the login call requires no connector authentication. The API connector can use `none`, or compatible saved `header`/`query` credentials for a separate service credential, only when tenant-scoped validation confirms that its current configuration and credential do not own `Authorization`. The engine checks again before dispatch. Never override any saved header, including `x-subkit-token`; header names are compared case-insensitively. `Cookie`, `Proxy-Authorization` and duplicate case variants are forbidden. Keep token-mint runs sensitive and bounded; this pattern does not authorize passing an app user JWT through ordinary workflow input.
 
 When to prefer multi-step over a first-class auth mode:
 - The token endpoint isn't OAuth-spec-compliant AND the upstream isn't

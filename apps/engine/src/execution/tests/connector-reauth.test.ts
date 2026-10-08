@@ -378,15 +378,20 @@ describe("connector re-auth — only the stored credential's success clears", ()
     });
   }
 
-  test("an HTTP step that sends its own Authorization leaves the flag standing", async () => {
+  test("an HTTP Authorization collision fails before dispatch and leaves reauth standing", async () => {
     await flag(connectorId);
+    const before = mock.callCount();
     const result = await run("reauth-step-own-authorization", {
       method: "GET",
       connector_id: connectorId,
       path: "/ok",
       headers: { Authorization: "Bearer fixture-step-token-not-real" },
     });
-    expect(result.status).toBe("succeeded");
+    expect(result.status).toBe("failed");
+    expect(result.steps[0]?.error).toMatchObject({
+      message: "request headers conflict with connector authentication",
+    });
+    expect(mock.callCount()).toBe(before);
     expect(await needsReauth(connectorId)).toBe(true);
   });
 

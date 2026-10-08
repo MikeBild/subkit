@@ -297,13 +297,17 @@ export async function verifyChatDecidedApproval(page, stand, conversation, local
     await capture("gated-ready");
     decided = true;
     await card.waitFor({ state: "hidden", timeout: 15_000 });
+    const verdict = locale === "de" ? "Deine Entscheidung: Freigegeben" : "Your decision: Approved";
+    await page
+      .getByTestId("chat-message-1-decision")
+      .getByText(verdict, { exact: true })
+      .waitFor({ state: "visible", timeout: 15_000 });
     const status = page.getByTestId("chat-status");
     if ((await status.count()) && (await status.innerText()).includes(waitingLabel))
       throw new Error("A decision made elsewhere still shows the conversation as waiting");
     if (await page.getByTestId(/-approval-approve$/).count())
       throw new Error("A decided approval still offers its buttons");
     const transcript = await page.getByTestId("chat-transcript").innerText();
-    const verdict = locale === "de" ? "Deine Entscheidung: Freigegeben" : "Your decision: Approved";
     if (!transcript.includes(verdict)) throw new Error("The recorded decision is not shown");
     for (const raw of ["call_connector", "✓ Approved"])
       if (transcript.includes(raw)) throw new Error(`Transcript shows engine wording: ${raw}`);

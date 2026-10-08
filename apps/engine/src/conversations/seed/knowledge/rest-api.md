@@ -104,6 +104,21 @@ Product S3 requests require literal `s3.scope.key_prefix: "products/<product-id>
 
 `execution_privacy: "sensitive"` encrypts input/result persistence. Sensitive runs are refused in chat and `dry_run_workflow` and cannot expose payload through inspection or sample tools; persistent state, event waits/signals, pagination and prepared fixture replay are unsupported. An ordinary parent cannot call a sensitive child. Schema validation does not fabricate identity or prove private live execution. `GET /v1/executions/{id}/result` returns the decrypted result only to the original authenticated caller, with live principal validation; another authentication provider for the same user is refused with audited 403 `sensitive_resume_forbidden`. Generic opaque portal callers cannot resume sensitive execution. Build integrations with these public APIs, never deployment database objects, files or queues.
 
+## Identity and execution evidence
+
+Authentication supplies `$caller`; encrypted connector credentials supply upstream authentication; RBAC/resource grants authorize access; human approval permits a reviewed effect boundary. The approver need not be the caller. HTTP and MCP use the authenticated invocation principal. Trusted callerless schedules/webhooks receive null, and child runs retain their parent caller. Source labels and input context are not proof of identity or permission.
+
+Execution inspection reports `request_source`, source kind/reference, status, workflow version, execution authority, parent execution and available step evidence. Although execution `caller_context` is persisted for enforcement, HTTP execution serialization and `get_execution` do not return it; do not promise a caller filter or caller identity field on those responses. Audit actor fields and trace metadata, where recorded, help correlate actions with runs, but this is partial correlation rather than a complete per-caller history. MCP inspection supports fewer filters than the HTTP surface. Use the actual route/tool schema and permitted run/audit reads, not private persistence access, when investigating an invocation. Sensitive execution restrictions still apply.
+
+| Evidence | HTTP | MCP |
+|---|---|---|
+| Run history and outcome | `GET /v1/executions`, `GET /v1/executions/{id}` | `list_executions`, `get_execution`, `inspect_execution` |
+| Step evidence | `GET /v1/executions/{id}/steps` | `inspect_execution_step` |
+| Audit records | `GET /v1/audit-log`, `GET /v1/audit-log/{id}` | `list_audit`, `get_audit_entry` |
+| Runtime error diagnostics | `GET /v1/diagnostics/errors` | Do not assume a complete server-log tool; discover the actual catalog. |
+
+HTTP audit queries can filter by actor and trace ID; `list_audit` currently accepts resource type, resource ID, action, limit and cursor, not actor/trace filters. Step evidence can include timings, retries, errors, permitted previews and recorded request metadata; it is not a guarantee that full request/response bodies or every authentication decision were retained. A missing or null actor ID does not prove there was no caller, including opaque portal identities. Authentication, tenant scope, resource permissions, execution visibility and sensitive-payload restrictions apply to these reads. Do not log or request raw tokens and connector secrets. A connector probe or an approval proves neither dispatch nor successful external modification; confirm the actual run outcome and, when necessary, the target's response or a read-back check.
+
 ## Saved run
 
 ```json

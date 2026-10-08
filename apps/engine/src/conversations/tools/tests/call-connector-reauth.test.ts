@@ -123,17 +123,27 @@ describe("call_connector tool — the re-auth clearing edge", () => {
     expect(await flagged(connector_id)).toBe(false);
   });
 
-  test("a 2xx under the caller's own Authorization leaves the flag standing", async () => {
+  test("a caller Authorization collision is refused before dispatch and leaves reauth standing", async () => {
     authorizationSeen = [];
     const connector_id = await seedFlagged("reauth-caller-auth");
+    const before = home.callCount();
     const result = await callConnectorTool.execute(toolContext(), {
       connector_id,
       method: "GET",
       path: "/items",
       headers: { authorization: `Bearer ${CALLER_TOKEN}` },
     });
-    expect(result.ok).toBe(true);
-    expect(authorizationSeen).toEqual([`Bearer ${CALLER_TOKEN}`]);
+    expect(result).toMatchObject({
+      ok: false,
+      data: {
+        error: {
+          code: "call_failed",
+          message: "request headers conflict with connector authentication",
+        },
+      },
+    });
+    expect(authorizationSeen).toEqual([]);
+    expect(home.callCount()).toBe(before);
     expect(await flagged(connector_id)).toBe(true);
   });
 

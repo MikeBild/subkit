@@ -118,6 +118,37 @@ describe("onboarding policy", () => {
     expect(a.kind).toBe("workflow_goal");
   });
 
+  test("workflow onboarding explains the initiator within its existing goal question", () => {
+    const input = { draft: draft({ mode: "workflow_authoring" }) };
+    const question = nextQuestion(input);
+    expect(question?.subject).toBe("workflow_goal");
+    expect(question?.kind).toBe("text");
+    expect(question?.prompt).toContain("who or what starts it");
+    expect(question?.prompt).toContain("whose data it may access");
+    expect(question?.prompt).toContain("do not put login tokens");
+    expect(nextRecommendedAction(input).summary).toContain("human approval");
+  });
+
+  test("connector sign-in guidance does not imply workflow identity or approval", () => {
+    const question = nextQuestion({
+      draft: draft({
+        mode: "connector_authoring",
+        connector: { name: "Reporting service", driver: "http" },
+      }),
+    });
+    expect(question?.subject).toBe("connector_auth_method");
+    expect(question?.kind).toBe("choice");
+    expect(question?.options?.map((option) => option.id)).toEqual([
+      "none",
+      "bearer",
+      "basic",
+      "oauth2",
+      "custom",
+    ]);
+    expect(question?.prompt).toContain("does not identify the person");
+    expect(question?.prompt).toContain("approve its actions");
+  });
+
   test("workflow with steps but no preview → recommend preview", () => {
     const a = nextRecommendedAction({
       draft: draft({

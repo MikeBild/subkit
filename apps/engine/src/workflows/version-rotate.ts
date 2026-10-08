@@ -8,9 +8,9 @@ import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { validateBareIterationIdentifiers } from "./reference-validator.ts";
 import { emitWorkflowLifecycle } from "./service.ts";
+import { validateTenantWorkflowDef } from "./tenant-validator.ts";
 import { triggerOf } from "./trigger-bindings.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
-import { validateWorkflowDef } from "./validator.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface RotateWorkflowVersionInternalInput {
@@ -25,7 +25,7 @@ export async function rotateWorkflowVersionInternal(
   input: RotateWorkflowVersionInternalInput,
   exec: Executor,
 ): Promise<{ version: number; version_id: string }> {
-  const validation = validateWorkflowDef(input.def);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec);
   if (!validation.ok || !validation.workflow) {
     throw new Error(
       `rotateWorkflowVersionInternal: definition failed validation: ${validation.errors

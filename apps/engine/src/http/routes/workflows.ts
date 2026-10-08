@@ -22,7 +22,7 @@ import {
   loadCategoryVocabulary,
   resolveWorkflowInputSchema,
   TriggerSchema,
-  validateWorkflowDef,
+  validateTenantWorkflowDef,
 } from "../../workflows/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -681,9 +681,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   });
 
   app.openapi(validateRoute, async (c) => {
-    requireAuth(c);
+    const principal = requireAuth(c);
     const body = c.req.valid("json");
-    const res = validateWorkflowDef(body);
+    const res = await validateTenantWorkflowDef(body, principal.tenant_id, c.get("db"));
     if (res.ok) return c.json({ ok: true }, 200);
     return c.json({ ok: false, errors: res.errors }, 200);
   });

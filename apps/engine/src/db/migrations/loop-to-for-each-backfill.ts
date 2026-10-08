@@ -29,7 +29,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { logger } from "../../logging/logger.ts";
-import { rewriteLoopsToForEach } from "../../workflows/migrate-loop-to-for-each.ts";
+import {
+  rewriteLoopsToForEach,
+  type WorkflowLoopToForEachRewrite,
+} from "../../workflows/migrate-loop-to-for-each.ts";
+import { loadTenantWorkflowHeaderPolicies } from "../../workflows/tenant-validator.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
 import { rotateWorkflowVersionInternal } from "../../workflows/version-rotate.ts";
 import type { Db, Executor } from "../client.ts";
@@ -156,7 +160,17 @@ export async function runLoopToForEachBackfill(db: Db): Promise<LoopToForEachBac
     const hasLoop = def.steps.some((s) => s.kind === "loop");
     if (!hasLoop) continue;
 
-    const rewrite = rewriteLoopsToForEach(def);
+    let rewrite: WorkflowLoopToForEachRewrite;
+    try {
+      const connectorHeaderPolicies = await loadTenantWorkflowHeaderPolicies(
+        def,
+        row.tenant_id,
+        db,
+      );
+      rewrite = rewriteLoopsToForEach(def, { connectorHeaderPolicies });
+    } catch {
+      rewrite = { ok: false, reason: "connector authentication could not be validated" };
+    }
 
     if (!rewrite.ok) {
       // Hard structural error (e.g. body step missing) — flag as needs_review.

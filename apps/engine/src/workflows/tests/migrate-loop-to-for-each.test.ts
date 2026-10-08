@@ -10,6 +10,65 @@ function mkDef(overrides: Partial<WorkflowDef> & { steps: WorkflowDef["steps"] }
 }
 
 describe("rewriteLoopsToForEach", () => {
+  test("verified connector policies preserve dynamic Authorization during rewriting", () => {
+    const connectorId = "00000000-0000-4000-8000-000000000081";
+    const def = mkDef({
+      steps: [
+        { id: "each", kind: "loop", over: "rows", body: ["request"] },
+        {
+          id: "request",
+          kind: "request",
+          method: "GET",
+          connector_id: connectorId,
+          path: "/items",
+          headers: { Authorization: "Bearer transient-fixture" },
+        },
+      ],
+    });
+    expect(rewriteLoopsToForEach(def).ok).toBe(false);
+    const result = rewriteLoopsToForEach(def, {
+      connectorHeaderPolicies: new Map([
+        [connectorId, { allowAuthorization: true, ownedHeaders: new Set(["x-subkit-token"]) }],
+      ]),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.changed).toBe(true);
+    expect(result.def.steps).toHaveLength(1);
+    expect(result.def.steps[0]).toMatchObject({
+      ...def.steps[1],
+      for_each: "(sourceData) => sourceData.rows",
+    });
+  });
+
+  test.each(["Authorization", "X-Subkit-Token", "Cookie", "Proxy-Authorization"])(
+    "rewriting cannot bypass protected header %s",
+    (header) => {
+      const connectorId = "00000000-0000-4000-8000-000000000082";
+      const result = rewriteLoopsToForEach(
+        mkDef({
+          steps: [
+            { id: "each", kind: "loop", over: "rows", body: ["request"] },
+            {
+              id: "request",
+              kind: "request",
+              method: "GET",
+              connector_id: connectorId,
+              path: "/items",
+              headers: { [header]: "fixture" },
+            },
+          ],
+        }),
+        {
+          connectorHeaderPolicies: new Map([
+            [connectorId, { allowAuthorization: false, ownedHeaders: new Set(["x-subkit-token"]) }],
+          ]),
+        },
+      );
+      expect(result.ok).toBe(false);
+    },
+  );
+
   test("no loops → unchanged", () => {
     const def = mkDef({
       steps: [

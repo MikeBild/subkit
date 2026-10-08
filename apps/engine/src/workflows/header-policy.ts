@@ -1,6 +1,5 @@
+import { type ConnectorHeaderPolicy, requestHeaderViolations } from "../connectors/index.ts";
 import type { StepDef } from "./types.ts";
-
-const RESERVED_HEADER_NAMES = ["authorization", "cookie", "proxy-authorization"] as const;
 
 export interface ReservedAuthHeaderViolation {
   step_id: string;
@@ -10,14 +9,13 @@ export interface ReservedAuthHeaderViolation {
 }
 
 export interface DetectReservedAuthHeadersOptions {
-  noneAuthConnectorIds?: ReadonlySet<string>;
+  connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
 }
 
 export function detectReservedAuthHeaders(
   steps: ReadonlyArray<StepDef> | ReadonlyArray<unknown>,
   opts: DetectReservedAuthHeadersOptions = {},
 ): ReservedAuthHeaderViolation[] {
-  const noneAuth = opts.noneAuthConnectorIds ?? new Set<string>();
   const violations: ReservedAuthHeaderViolation[] = [];
   for (const rawStep of steps) {
     if (!rawStep || typeof rawStep !== "object") continue;
@@ -25,25 +23,23 @@ export function detectReservedAuthHeaders(
     if (step.kind !== "request") continue;
     const connectorId = step.connector_id;
     if (typeof connectorId !== "string") continue;
-    if (noneAuth.has(connectorId)) continue;
     const headers = step.headers;
     if (!headers || typeof headers !== "object" || Array.isArray(headers)) continue;
     const stepId = typeof step.id === "string" ? step.id : "?";
-    for (const headerName of Object.keys(headers as Record<string, unknown>)) {
-      const lower = headerName.toLowerCase();
-      if ((RESERVED_HEADER_NAMES as readonly string[]).includes(lower)) {
-        violations.push({
-          step_id: stepId,
-          header_name: headerName,
-          path: `steps.${stepId}.headers.${headerName}`,
-          message:
-            `do not set a ${headerName} header on a request step that has connector_id — ` +
-            `the connector injects auth from its saved credential. Remove the header ` +
-            `(the connector's auth_type drives Authorization automatically). ` +
-            `For multi-step token forwarding, point connector_id at a connector with ` +
-            `auth_type: "none" and reference the upstream login step's token.`,
-        });
-      }
+    for (const headerName of requestHeaderViolations(
+      headers as Record<string, unknown>,
+      opts.connectorHeaderPolicies?.get(connectorId),
+    )) {
+      violations.push({
+        step_id: stepId,
+        header_name: headerName,
+        path: `steps.${stepId}.headers.${headerName}`,
+        message:
+          `do not set a ${headerName} header on a request step that has connector_id — ` +
+          `the connector injects auth from its saved credential. Saved headers cannot be overridden; ` +
+          `Cookie, Proxy-Authorization and duplicate header names are forbidden. ` +
+          `Authorization forwarding requires verified connector authentication that does not own it.`,
+      });
     }
   }
   return violations;

@@ -38,8 +38,7 @@ describe("e2e: sk cold start", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "banner" },
-          { kind: "send", text: "\x03" },
-          { kind: "sleep", ms: 50 },
+          { kind: "ready" },
           { kind: "send", text: "\x03" },
         ],
         { persona: env.personas.admin, engineUrl: env.baseUrl },

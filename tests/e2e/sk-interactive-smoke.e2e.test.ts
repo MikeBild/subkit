@@ -1,137 +1,30 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { type ExpectStep, runPtyScenario } from "./_helpers/pty.ts";
 import { boot, type E2EEnv, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
-
 beforeAll(async () => {
   env = await boot("sk-interactive-smoke", { llm: "mock" });
-}, 90_000);
-
+}, 90000);
 afterAll(async () => {
   await shutdown(env);
-}, 30_000);
-
-const REPO_ROOT = path.resolve(import.meta.dir, "../..");
-const SK_BIN = path.join(REPO_ROOT, "dist/sk");
+}, 30000);
 const EXPECT_BIN = Bun.which("expect");
-const ESC = String.fromCharCode(27);
-const BEL = String.fromCharCode(7);
-const ANSI_ESCAPE_RE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, "g");
-const ANSI_SINGLE_RE = new RegExp(`${ESC}[@-_]`, "g");
-const BELL_RE = new RegExp(BEL, "g");
-
-interface ExpectWaitStep {
-  kind: "wait";
-  pattern: string;
-  label?: string;
-}
-
-interface ExpectSendStep {
-  kind: "send";
-  text: string;
-}
-
-interface ExpectSleepStep {
-  kind: "sleep";
-  ms: number;
-}
-
-type ExpectStep = ExpectWaitStep | ExpectSendStep | ExpectSleepStep;
-
-function tclQuote(value: string): string {
-  return `"${value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\$/g, "\\$")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")}"`;
-}
-
-function tclRegex(value: string): string {
-  return `{${value.replace(/\}/g, "\\}")}}`;
-}
-
-function buildExpectScript(steps: readonly ExpectStep[]): string {
-  const lines = [
-    "set timeout 20",
-    "match_max 100000",
-    "log_user 1",
-    `spawn -noecho ${tclQuote(SK_BIN)}`,
-  ];
-
-  for (const step of steps) {
-    if (step.kind === "wait") {
-      const label = step.label ?? step.pattern;
-      lines.push("expect {");
-      lines.push(`  -re ${tclRegex(step.pattern)} { puts ${tclQuote(`__MATCH__ ${label}`)} }`);
-      lines.push(
-        `  timeout { puts stderr ${tclQuote(`Timed out waiting for ${step.pattern}`)}; exit 1 }`,
-      );
-      lines.push(
-        `  eof { puts stderr ${tclQuote(`Process exited while waiting for ${step.pattern}`)}; exit 1 }`,
-      );
-      lines.push("}");
-      continue;
-    }
-
-    if (step.kind === "send") {
-      lines.push(`send -- ${tclQuote(step.text)}`);
-      continue;
-    }
-
-    lines.push(`after ${step.ms}`);
-  }
-
-  lines.push("expect eof");
-  return lines.join("\n");
-}
-
-function stripTerminal(text: string): string {
-  return text
-    .replace(ANSI_ESCAPE_RE, "")
-    .replace(ANSI_SINGLE_RE, "")
-    .replace(/\r/g, "")
-    .replace(BELL_RE, "");
-}
-
-async function runInteractiveScenario(steps: readonly ExpectStep[]): Promise<string> {
-  if (!EXPECT_BIN) throw new Error("missing `expect` command for PTY smoke test");
-  const persona = env.personas.admin;
-  const proc = Bun.spawn([EXPECT_BIN, "-c", buildExpectScript(steps)], {
-    cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      SUBKIT_ENGINE_URL: env.baseUrl,
-      SUBKIT_API_KEY: persona.apiKey,
-      SUBKIT_TENANT: persona.tenantId,
-      HOME: persona.homeDir,
-      XDG_CONFIG_HOME: persona.homeDir,
-      TERM: "xterm-256color",
-      CI: "1",
-      NO_COLOR: "1",
-      NO_UPDATE_CHECK: "1",
-      SK_ALT_SCREEN: "never",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
+async function runInteractiveScenario(
+  steps: readonly ExpectStep[],
+  debugFile?: string,
+): Promise<string> {
+  const result = await runPtyScenario(steps, {
+    persona: env.personas.admin,
+    engineUrl: env.baseUrl,
+    ...(debugFile ? { env: { SK_DEBUG_FILE: debugFile } } : {}),
   });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  const visible = stripTerminal(stdout);
-  if (exitCode !== 0) {
-    throw new Error(
-      `expect exited ${exitCode}\nstdout:\n${visible.slice(-4000)}\n` +
-        `stderr:\n${stripTerminal(stderr).slice(-1000)}`,
-    );
-  }
-  return visible;
+  expect(result.exitCode).toBe(0);
+  return result.visible.replace(/\s+/g, " ");
 }
-
 const SK_RUN_STARTER_E2E = process.env.SK_RUN_STARTER_E2E === "1";
 const skipStarter = !SK_RUN_STARTER_E2E;
 
@@ -142,88 +35,84 @@ describe("sk interactive smoke", () => {
       if (!EXPECT_BIN) return;
       const visible = await runInteractiveScenario([
         { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+        { kind: "sleep", ms: 1000 },
         { kind: "wait", pattern: "v", label: "banner" },
-        { kind: "send", text: "/exit\r" },
+        { kind: "send", text: "\u0004" },
       ]);
       expect(visible).not.toContain("HTTP 500 internal_error");
       expect(visible).not.toContain("trace_id");
-      expect(true).toBe(true);
+      expect(visible).toContain("session new");
     },
     40_000,
   );
 
   test.skipIf(skipStarter)(
-    "starter action 2 seeds the guided connector onboarding prompt",
+    "starter action 2 seeds guided connector onboarding",
     async () => {
-      if (!EXPECT_BIN) return;
-      await runInteractiveScenario([
-        { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+      const visible = await runInteractiveScenario([
+        { kind: "wait", pattern: "Resume work, create a connector" },
+        { kind: "sleep", ms: 1000 },
         { kind: "send", text: "2" },
-        { kind: "wait", pattern: "I want to connect a system\\.", label: "connector-starter" },
-        {
-          kind: "wait",
-          pattern: "Suggest a template only if it clearly helps",
-          label: "connector-guidance",
-        },
-        { kind: "send", text: "/exit\r" },
+        { kind: "sleep", ms: 500 },
+        { kind: "send", text: "\u0004" },
       ]);
-      expect(true).toBe(true);
+      expect(visible).toContain("I want to create a connector.");
+      expect(visible).toContain("Suggest a template only if it clearly helps");
+      expect(visible).toContain(
+        "Ask me one high-signal question at a time and probe before saving.",
+      );
     },
-    40_000,
+    40000,
   );
-
   test.skipIf(skipStarter)(
-    "starter action 3 seeds the guided workflow authoring prompt",
+    "starter action 3 seeds guided workflow authoring",
     async () => {
-      if (!EXPECT_BIN) return;
-      await runInteractiveScenario([
-        { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+      const visible = await runInteractiveScenario([
+        { kind: "wait", pattern: "Resume work, create a connector" },
+        { kind: "sleep", ms: 1000 },
         { kind: "send", text: "3" },
-        { kind: "wait", pattern: "I want to build a workflow\\.", label: "workflow-starter" },
-        { kind: "wait", pattern: "Preview before commit", label: "workflow-guidance" },
-        { kind: "send", text: "/exit\r" },
+        { kind: "sleep", ms: 500 },
+        { kind: "send", text: "\u0004" },
       ]);
-      expect(true).toBe(true);
+      expect(visible).toContain("I want to build a workflow.");
+      expect(visible).toContain("Preview before commit");
     },
-    40_000,
+    40000,
   );
-
   test.skipIf(skipStarter)(
-    "starter action 4 seeds the docs-first import prompt",
+    "starter action 4 seeds inspection of actual tenant resources",
     async () => {
-      if (!EXPECT_BIN) return;
-      await runInteractiveScenario([
-        { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+      const visible = await runInteractiveScenario([
+        { kind: "wait", pattern: "Resume work, create a connector" },
+        { kind: "sleep", ms: 1000 },
         { kind: "send", text: "4" },
-        { kind: "wait", pattern: "I want to import docs or an API spec", label: "import-starter" },
-        {
-          kind: "wait",
-          pattern: "Guide me through the minimum information you need",
-          label: "import-guidance",
-        },
-        { kind: "send", text: "/exit\r" },
+        { kind: "sleep", ms: 500 },
+        { kind: "send", text: "\u0004" },
       ]);
-      expect(true).toBe(true);
+      expect(visible).toContain("I want to inspect or manage existing tenant resources.");
+      expect(visible).toContain(
+        "Ground me in the workflows, connectors, runs, or credentials that actually exist first.",
+      );
     },
-    40_000,
+    40000,
   );
-
   test.skipIf(skipStarter)(
-    "renders quick-start onboarding and opens help from starter action 5",
+    "starter action 5 seeds API and MCP surface guidance",
     async () => {
-      if (!EXPECT_BIN) return;
-      await runInteractiveScenario([
-        { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+      const visible = await runInteractiveScenario([
+        { kind: "wait", pattern: "Resume work, create a connector" },
+        { kind: "sleep", ms: 1000 },
         { kind: "send", text: "5" },
-        { kind: "wait", pattern: "sk . slash commands", label: "help-pane" },
-        { kind: "wait", pattern: "/help", label: "help-command" },
-        { kind: "send", text: "/exit\r" },
+        { kind: "sleep", ms: 500 },
+        { kind: "send", text: "\u0004" },
       ]);
-      expect(true).toBe(true);
+      expect(visible).toContain(
+        "I want help using sk surfaces - the CLI, MCP, the HTTP API, schedules, or Google Chat.",
+      );
+      expect(visible).toContain("Answer from actual engine behavior and exposed routes only.");
     },
-    40_000,
+    40000,
   );
-
   test.skipIf(skipStarter)(
     "starter action 1 opens the richer /resume browser and attaches to the picked conversation",
     async () => {
@@ -239,17 +128,59 @@ describe("sk interactive smoke", () => {
       expect(create.status).toBe(201);
       const body = (await create.json()) as { conversation: { id: string } };
       const shortId = body.conversation.id.slice(0, 8);
+      const listed = await fetch(`${env.baseUrl}/v1/conversations?owner=me&limit=25`, {
+        headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },
+      });
+      expect(listed.status).toBe(200);
+      const listing = (await listed.json()) as { items: Array<{ id: string; title: string }> };
+      expect(listing.items.some((item) => item.id === body.conversation.id)).toBe(true);
 
-      await runInteractiveScenario([
-        { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+      const browserVisible = await runInteractiveScenario([
+        { kind: "wait", pattern: "Resume work, create a connector" },
+        { kind: "sleep", ms: 1000 },
         { kind: "send", text: "1" },
-        { kind: "wait", pattern: "(?i)resume conversation", label: "resume-browser" },
-        { kind: "wait", pattern: "interactive resume smoke", label: "resume-title" },
-        { kind: "send", text: "\r" },
-        { kind: "wait", pattern: `session ${shortId}`, label: "attached-session" },
-        { kind: "send", text: "/exit\r" },
+        { kind: "sleep", ms: 1000 },
+        { kind: "ready" },
+        { kind: "send", text: "\u0004" },
       ]);
-      expect(true).toBe(true);
+      expect(browserVisible.toLowerCase()).toContain("resume conversation");
+      expect(browserVisible).toContain("interactive resume smoke");
+
+      const debugFile = path.join(
+        mkdtempSync(path.join(tmpdir(), "sk-resume-review-")),
+        "debug.log",
+      );
+      const visible = await runInteractiveScenario(
+        [
+          { kind: "wait", pattern: "Resume work, create a connector", label: "quick-start" },
+          { kind: "sleep", ms: 1000 },
+          { kind: "send", text: "1" },
+          { kind: "sleep", ms: 1000 },
+          { kind: "ready" },
+
+          { kind: "send", text: "\r" },
+          { kind: "sleep", ms: 1000 },
+          { kind: "send", text: "synthetic resume verification" },
+          { kind: "sleep", ms: 100 },
+          { kind: "send", text: "\r" },
+          { kind: "sleep", ms: 2000 },
+          { kind: "send", text: "\u0004" },
+        ],
+        debugFile,
+      );
+      const records = readFileSync(debugFile, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(
+        records.some(
+          (record) =>
+            record.kind === "http.request" &&
+            record.method === "POST" &&
+            record.path === `/v1/conversations/${body.conversation.id}/messages`,
+        ),
+      ).toBe(true);
+      expect(visible).toContain(`session ${shortId}`);
     },
     40_000,
   );

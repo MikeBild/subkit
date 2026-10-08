@@ -2,8 +2,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { executableDefinition } from "../workflows/stored-definition.ts";
+import { validateTenantWorkflowDef } from "../workflows/tenant-validator.ts";
 import type { StepDef, WorkflowDef } from "../workflows/types.ts";
-import { validateWorkflowDef } from "../workflows/validator.ts";
 
 export type RunExecutionSource =
   | { kind: "saved"; workflow_id: string; version_id?: string }
@@ -90,8 +90,13 @@ async function resolveSaved(
   };
 }
 
-function resolveDraft(definition: unknown, name: string | undefined): ResolvedDefinition {
-  const validation = validateWorkflowDef(definition);
+async function resolveDraft(
+  db: Executor,
+  tenant_id: string,
+  definition: unknown,
+  name: string | undefined,
+): Promise<ResolvedDefinition> {
+  const validation = await validateTenantWorkflowDef(definition, tenant_id, db);
   if (!validation.ok || !validation.workflow) {
     const msg = validation.errors.map((e) => e.message).join("; ") || "invalid draft";
     throw Object.assign(new Error(msg), {
@@ -114,12 +119,17 @@ function resolveDraft(definition: unknown, name: string | undefined): ResolvedDe
   };
 }
 
-function resolveStep(step: unknown, workflow_slug: string | undefined): ResolvedDefinition {
+async function resolveStep(
+  db: Executor,
+  tenant_id: string,
+  step: unknown,
+  workflow_slug: string | undefined,
+): Promise<ResolvedDefinition> {
   const synthetic = {
     name: workflow_slug ?? "step-run",
     steps: [step],
   };
-  const validation = validateWorkflowDef(synthetic);
+  const validation = await validateTenantWorkflowDef(synthetic, tenant_id, db);
   if (!validation.ok || !validation.workflow) {
     const msg = validation.errors.map((e) => e.message).join("; ") || "invalid step";
     throw Object.assign(new Error(msg), {
@@ -152,8 +162,8 @@ export async function resolveDefinition(
     case "saved":
       return resolveSaved(db, tenant_id, source.workflow_id, source.version_id);
     case "draft":
-      return resolveDraft(source.definition, source.name);
+      return resolveDraft(db, tenant_id, source.definition, source.name);
     case "step":
-      return resolveStep(source.step, source.workflow_slug);
+      return resolveStep(db, tenant_id, source.step, source.workflow_slug);
   }
 }

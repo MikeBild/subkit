@@ -1,5 +1,5 @@
 import type { LoopStep, StepDef, WorkflowDef } from "./types.ts";
-import { validateWorkflowDef } from "./validator.ts";
+import { type ValidateOptions, validateWorkflowDef } from "./validator.ts";
 
 export interface LoopToForEachChange {
   loop_step_id: string;
@@ -26,7 +26,10 @@ function stepReferencesLoopId(step: StepDef, loopStepId: string): boolean {
   return hay.includes(loopStepId);
 }
 
-export function rewriteLoopsToForEach(def: WorkflowDef): WorkflowLoopToForEachRewrite {
+export function rewriteLoopsToForEach(
+  def: WorkflowDef,
+  options: ValidateOptions = {},
+): WorkflowLoopToForEachRewrite {
   const loops = def.steps.filter((s): s is LoopStep => s.kind === "loop");
   if (loops.length === 0) {
     return { ok: true, changed: false, def, changes: [] };
@@ -100,7 +103,7 @@ export function rewriteLoopsToForEach(def: WorkflowDef): WorkflowLoopToForEachRe
 
   const newDef: WorkflowDef = { ...def, steps: filteredSteps };
 
-  const validation = validateWorkflowDef(newDef);
+  const validation = validateWorkflowDef(newDef, options);
   if (!validation.ok || !validation.workflow) {
     return {
       ok: false,

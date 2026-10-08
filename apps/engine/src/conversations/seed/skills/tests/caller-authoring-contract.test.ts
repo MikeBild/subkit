@@ -9,6 +9,7 @@ import { loadEmbeddedSkillSeeds } from "../../../../skills/seed.ts";
 import { validateWorkflowDef } from "../../../../workflows/validator.ts";
 import { loadAgentSkills } from "../../../agent/skills/index.ts";
 import { buildGenerationPrompt } from "../../../authoring-pipeline.ts";
+import { autoloadForToolCall, autoloadForUserTurn } from "../../../skill-autoload.ts";
 
 const skills = loadEmbeddedSkillSeeds();
 const knowledge = loadEmbeddedKnowledgeSeeds();
@@ -26,6 +27,66 @@ const tenant = "00000000-0000-4000-8000-000000000031";
 const principalId = "00000000-0000-4000-8000-000000000032";
 
 describe("loaded caller authoring contract", () => {
+  test("existing conversations discover generic caller guidance without an authoring tool call", () => {
+    for (const user_text of [
+      "Was bedeutet $caller für einen Zeitplan?",
+      "Explain caller identity for a webhook",
+      "Erkläre Aufruferidentität und Berechtigungen",
+    ]) {
+      const selected = autoloadForUserTurn(
+        { user_text, first_turn: false, surface: "cockpit" },
+        skills.skills,
+        [],
+      );
+      expect(selected).toContain("subkit-concepts");
+      const loaded = skills.skills.filter((skill) => selected.includes(skill.slug));
+      expect(loaded.some((skill) => skill.body.includes("input.scope.$caller"))).toBe(true);
+      expect(
+        autoloadForUserTurn(
+          { user_text, first_turn: false, surface: "cockpit" },
+          skills.skills,
+          selected,
+        ),
+      ).not.toContain("subkit-concepts");
+    }
+    for (const tool of ["author_workflow", "edit_workflow_patch"]) {
+      expect(autoloadForToolCall({ tool, input: {} }, skills.skills, [])).toContain(
+        "workflow-authoring",
+      );
+    }
+  });
+
+  test("generic generation keeps invocation identity separate from upstream credentials and authority", () => {
+    const genericPrompt = buildGenerationPrompt({
+      goal: "Send a weekly inventory report",
+      connectors: [],
+      docsByConnector: new Map(),
+      samplesSection: null,
+    });
+    const trust = genericPrompt.split("\n").find((line) => line.startsWith("- Execution trust"));
+    expect(trust).toBeDefined();
+    expect(trust).toContain("caller identity");
+    expect(trust).toContain("connector credentials");
+    expect(trust).toContain("permissions");
+    expect(trust).toContain("human approval");
+    expect(trust).toContain("None substitutes for another");
+    expect(trust?.length ?? 0).toBeLessThan(800);
+    const auth = skills.skills.find((skill) => skill.slug === "auth-flows");
+    expect(auth?.body).toContain("They do not establish the workflow's `$caller`");
+    expect(api).toContain("do not return it");
+    expect(api).toContain("partial correlation");
+  });
+
+  test("Supabase RPC guidance separates service authentication from caller identity", () => {
+    expect(authoring).toContain("## Supabase-backed caller workflows");
+    expect(authoring).toContain("x-subkit-token");
+    expect(authoring).toContain('status: "reserved"');
+    expect(authoring).toContain("never fail open");
+    expect(authoring).toContain(
+      "derive tenant, product, principal kind and principal ID exclusively from `$caller`",
+    );
+  });
+
   test("embedded skills, knowledge, immutable instructions and generation expose the trusted surfaces", () => {
     expect(skills.errors).toEqual([]);
     expect(knowledge.errors).toEqual([]);
@@ -83,12 +144,27 @@ describe("loaded caller authoring contract", () => {
       { kind: "system_account" as const, provider: "api_key", id: principalId },
       { kind: "user" as const, provider: "portal_token", id: "external-contact" },
     ]) {
-      const caller = callerFromPrincipal({ ...identity, tenant_id: tenant, roles: [] }, tenant);
+      const caller = callerFromPrincipal(
+        { ...identity, tenant_id: tenant, roles: ["admin"] },
+        tenant,
+      );
+      expect(caller).toEqual({
+        tenantId: tenant,
+        principalId: identity.id,
+        principalKind: identity.kind,
+        provider: identity.provider,
+        productId: null,
+      });
       const result = await runJs({
         code: step.expression,
         input: {
           scope: { $caller: caller },
-          input: { text: "grounded business input", $caller: { principalId: "spoofed" } },
+          input: {
+            text: "grounded business input",
+            $caller: { principalId: "spoofed", roles: ["admin"] },
+            caller: { principalId: "another-owner" },
+            context: { clientContext: { roles: ["admin"], tenantId: "another-tenant" } },
+          },
         },
         clock: null,
       });

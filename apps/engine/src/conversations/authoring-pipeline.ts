@@ -47,13 +47,13 @@ import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatte
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
+import { type ValidationError, validateTenantWorkflowDef } from "../workflows/index.ts";
 import {
   ResponseFilterSchema,
   TriggerSchema,
   WorkflowDefSchema,
   WorkflowRuntimeSchema,
 } from "../workflows/types.ts";
-import { type ValidationError, validateWorkflowDef } from "../workflows/validator.ts";
 import { runCriticAgent } from "./authoring-critic/critic-agent.ts";
 import { shouldRunCritic } from "./authoring-critic/gating.ts";
 import { withWorkflowDraft } from "./authoring-state.ts";
@@ -280,7 +280,7 @@ export function buildGenerationPrompt(args: {
       lines.push(
         `- \`${c.slug}\` (connector_id: ${c.id}) — driver ${c.driver}, base_url ${c.base_url ?? "(none)"}, auth ${c.auth_type}.` +
           (c.auth_type !== "none"
-            ? " The engine injects the saved credential at execution time — request steps with `connector_id` must NOT declare an Authorization header."
+            ? " The engine injects saved authentication headers; never override them. Authorization forwarding is permitted only when tenant-scoped validation verifies that current connector authentication does not own Authorization. Cookie and Proxy-Authorization are forbidden."
             : "") +
           (c.description ? ` ${c.description}` : ""),
       );
@@ -306,6 +306,7 @@ export function buildGenerationPrompt(args: {
   lines.push(
     "",
     "## Step shape contract",
+    "- Execution trust is general workflow behavior, not specific to AI: authenticated caller identity identifies the initiator; connector credentials authenticate the engine to an external service; permissions authorize access; human approval allows reviewed effects for an environment. None substitutes for another. Preserve the original caller through child calls and resume; the approver is separate. A client-supplied context or object ID still needs an authoritative access check.",
     "- `steps` is a flat array of `{ id, kind, … }`; kinds: `request`, `transform`, `call`, `wait`, `branch`, `parallel`, `loop`.",
     "- Request steps are FLATTENED: `connector_id`, `method`, `path` (or absolute `url`), `query`, `headers`, `body` live directly on the step — never inside a `config` wrapper.",
     '- Loop: `{ "id": "...", "kind": "loop", "over": "<JSONata over $scope.<step_id>.data…>", "body": ["<sibling_step_id>", …] }`. `body` is an ARRAY of sibling step ids (the body steps live in the same top-level `steps` array). `item_var` is retired — never emit it.',
@@ -615,7 +616,7 @@ export async function runAuthoringPipeline(
     }
 
     if (candidate) {
-      const validation = validateWorkflowDef(candidate);
+      const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db);
       const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
       const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
         path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
@@ -702,7 +703,7 @@ export async function runAuthoringPipeline(
   }
 
   const workflowDraft = toWorkflowDraftDocument(definition);
-  const structural = validateWorkflowDef(workflowDraft);
+  const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
   if (!structural.ok) {
     logger.warn({
       module: "conversations",
