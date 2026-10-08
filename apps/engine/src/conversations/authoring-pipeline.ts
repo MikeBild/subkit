@@ -43,6 +43,7 @@ import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
 import {
+  findUnknownFunctionCalls,
   JSONATA_BUILTIN_FUNCTIONS,
   JSONATA_FUNCTION_SUGGESTIONS,
 } from "../execution/jsonata-engine.ts";
@@ -57,9 +58,11 @@ import {
   type ValidationError,
   validateTenantWorkflowDef,
 } from "../workflows/index.ts";
+import { workflowJsonataSites } from "../workflows/jsonata-sites.ts";
 import {
   ResponseFilterSchema,
   TriggerSchema,
+  type WorkflowDef,
   WorkflowDefSchema,
   WorkflowRuntimeSchema,
 } from "../workflows/types.ts";
@@ -129,6 +132,16 @@ function formatDiscoveredEndpoints(
     "The connector(s) below publish a machine-readable spec. These are the ONLY routes they expose. Bind every request step to one of these EXACT `method` + `path` pairs — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
     ...blocks,
   ].join("\n");
+}
+
+function callsUnknownJsonataFunction(candidate: GeneratedWorkflow): boolean {
+  return workflowJsonataSites(candidate as unknown as WorkflowDef).some((site) => {
+    try {
+      return findUnknownFunctionCalls(site.expression).length > 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export const GeneratedWorkflowSchema = z.object({
@@ -678,6 +691,9 @@ export async function runAuthoringPipeline(
           unresolved_connectors: unresolved,
         };
       }
+      if (callsUnknownJsonataFunction(candidate)) {
+        recordAuthoringGateBlock({ code: "jsonata_unknown_function", tool: "author_workflow" });
+      }
       const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
       const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
         path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
@@ -822,6 +838,9 @@ export async function runAuthoringPipeline(
       steps: definition.steps,
       ...(definition.output_transform !== undefined
         ? { output_transform: definition.output_transform }
+        : {}),
+      ...(definition.output_schema !== undefined
+        ? { output_schema: definition.output_schema }
         : {}),
     },
     {
