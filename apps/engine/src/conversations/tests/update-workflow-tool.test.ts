@@ -321,10 +321,17 @@ describe("update_workflow tool — chat-native metadata patch", () => {
     const { listWorkflowToolsForTenant } = await import("../../workflows/catalog.ts");
     const catalog = await listWorkflowToolsForTenant({
       db: ctx.testDb.db,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal principal stub
-      principal: { tenant_id: ctx.tenant_id, allowed_workflows: "all" } as any,
+      principal: {
+        tenant_id: ctx.tenant_id,
+        kind: "user",
+        id: ctx.user_id,
+        provider: "test",
+        roles: ["admin"],
+        allowed_workflows: "all",
+      },
     });
     const entry = catalog.find((c) => c.slug === "describe-me-uw");
+    expect(entry).toBeDefined();
     expect(entry?.description).toBe(richDescription);
 
     const auditRows = await ctx.testDb.db
