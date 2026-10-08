@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-structured-outcome",
-  "description": "AiSdkModel.generateObject reads the { ok, value, reason } structured output in one model call and threads the value schema correctly (mocked generateText).",
+  "description": "AiSdkModel.generateObject reads the structured output as the value itself in one model call, and reports a call of the abort tool as a refusal that carries the model's reason (mocked generateText).",
   "flow": "generate",
   "input": {
     "schema": {
@@ -11,6 +11,7 @@
       },
       "required": ["slug", "steps"]
     },
-    "value": { "slug": "generated-abc", "steps": [{ "id": "step-1" }] }
+    "value": { "slug": "generated-abc", "steps": [{ "id": "step-1" }] },
+    "refusal": "the connector exposes no forecast endpoint"
   }
 }

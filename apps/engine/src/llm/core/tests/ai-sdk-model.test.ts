@@ -68,11 +68,11 @@ function makeStub(result: GenerateTextStubResult) {
   return { fn, calls };
 }
 
-function outcome(value: unknown, text = JSON.stringify({ ok: true, value, reason: null })) {
+function outcome(value: unknown, text = JSON.stringify(value)) {
   return {
     text,
     finishReason: "stop",
-    output: { ok: true, value, reason: null },
+    output: value,
   } satisfies GenerateTextStubResult;
 }
 
@@ -251,7 +251,7 @@ describe("AiSdkModel.generateText", () => {
 describe("AiSdkModel.generateObject — structured outcome", () => {
   const keySchema = { type: "object", properties: { key: { type: "string" } } };
 
-  it("returns the value of an ok outcome from a single model call", async () => {
+  it("returns the parsed value from a single model call and always offers the abort tool", async () => {
     const stub = makeStub(outcome({ key: "value" }));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -267,8 +267,8 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
 
     const call = stub.calls[0] as StructuredCall;
     expect(call.toolChoice).toBeUndefined();
-    expect(call.tools).toBeUndefined();
-    expect(call.stopWhen).toBeUndefined();
+    expect(Object.keys(call.tools ?? {})).toEqual(["abort"]);
+    expect(typeof call.stopWhen).toBe("function");
     expect(call.output?.name).toBe("object");
   });
 
@@ -292,7 +292,7 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(plain.providerOptions).toBeUndefined();
   });
 
-  it("sends an object-rooted { ok, value, reason } schema on the wire", async () => {
+  it("sends the value schema itself on the wire and an abort tool that demands a reason", async () => {
     const stub = makeStub(outcome({ key: "value" }));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -305,27 +305,19 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     const call = stub.calls[0] as StructuredCall;
     const format = await call.output!.responseFormat;
     expect(format.type).toBe("json");
-    const schema = format.schema as {
-      type: string;
-      required: string[];
-      additionalProperties: boolean;
-      properties: {
-        ok: { type: string };
-        value: { anyOf: Array<Record<string, unknown>> };
-        reason: { type: string; minLength: number };
-      };
-    };
-    expect(schema.type).toBe("object");
-    expect(schema.additionalProperties).toBe(false);
-    expect(schema.required).toEqual(["ok", "value", "reason"]);
-    expect(schema.properties.ok).toMatchObject({ type: "boolean" });
-    expect(schema.properties.reason).toMatchObject({ type: "string", minLength: 1 });
-    expect(schema.properties.value.anyOf).toHaveLength(2);
-    expect(schema.properties.value.anyOf[0]).toMatchObject({
+    expect(format.schema).toEqual({
       type: "object",
+      properties: { key: { type: "string" } },
       additionalProperties: false,
     });
-    expect(schema.properties.value.anyOf[1]).toEqual({ type: "null" });
+    const abort = (call.tools as Record<string, { description?: string; inputSchema: unknown }>)
+      .abort!;
+    expect(abort.description).toContain("cannot be fulfilled");
+    const abortSchema = (
+      abort.inputSchema as { jsonSchema: { required: string[]; properties: { reason: unknown } } }
+    ).jsonSchema;
+    expect(abortSchema.required).toEqual(["reason"]);
+    expect(abortSchema.properties.reason).toMatchObject({ type: "string", minLength: 1 });
   });
 
   it("unwraps { result: [...] } when the value schema is array-rooted", async () => {
@@ -342,11 +334,11 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(r.response).toEqual([1, 2, 3]);
   });
 
-  it("returns success=false with the reason of a refused outcome", async () => {
+  it("returns success=false with the reason when the model calls the abort tool", async () => {
     const stub = makeStub({
-      text: JSON.stringify({ ok: false, value: null, reason: "no can do" }),
-      finishReason: "stop",
-      output: { ok: false, value: null, reason: "no can do" },
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [{ toolCallId: "c1", toolName: "abort", input: { reason: "no can do" } }],
     });
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -360,7 +352,7 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(r.response).toBe("no can do");
   });
 
-  it("treats an ok outcome without a value as empty_value", async () => {
+  it("treats a null object as empty_value", async () => {
     const stub = makeStub(outcome(null));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -489,7 +481,7 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(r.response).toEqual({ ok: true });
     expect(stub.calls.length).toBe(1);
     const call = stub.calls[0] as StructuredCall;
-    expect(Object.keys(call.tools ?? {})).toEqual(["echo"]);
+    expect(Object.keys(call.tools ?? {})).toEqual(["echo", "abort"]);
     expect(call.toolChoice).toBeUndefined();
     expect(typeof call.stopWhen).toBe("function");
     const stop = call.stopWhen as (o: { steps: unknown[] }) => boolean;

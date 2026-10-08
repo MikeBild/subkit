@@ -27,10 +27,6 @@ export interface SubkitLlmObjectResponse<T> extends SubkitLlmAnsweredBy {
   usage: SubkitLlmUsage;
 }
 
-export type StructuredOutcome<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly reason: string };
-
 export interface SubkitLlmUsage {
   input_tokens: number;
   output_tokens: number;
