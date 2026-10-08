@@ -195,6 +195,7 @@ import {
   chatHeaderTitle,
   conversationOpenedByFailedSend,
   costPill,
+  messageAuthor,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
@@ -870,7 +871,7 @@ function ChatMessage({
   onOpenFile?: (fileId: string) => void;
 }) {
   const { t, locale } = useI18n();
-  const from = message.role === "user" ? "user" : "assistant";
+  const from = messageAuthor(message.role);
   const groups = groupMessageParts(message.parts, pendingApprovalId).filter(
     (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
   );
@@ -884,7 +885,13 @@ function ChatMessage({
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
         <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
-          {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
+          {t(
+            from === "user"
+              ? "chat.role.you"
+              : from === "system"
+                ? "chat.role.system"
+                : "chat.role.assistant",
+          )}
           {answersQuestion ? (
             <span
               className="ml-1 font-normal text-muted-foreground"
