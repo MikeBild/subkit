@@ -7,6 +7,12 @@ import {
 import { compileOutputContractSchema } from "../execution/output-contract.ts";
 import { compileSelector } from "../execution/selectors.ts";
 import { parsePlaceholders } from "../llm/substitution/parser.ts";
+import {
+  type DestinationPlaceholderViolation,
+  detectPlaceholderDestinations,
+  type PlaceholderTier,
+  placeholderDestinationErrors,
+} from "./destination-placeholders.ts";
 import { detectReservedAuthHeaders } from "./header-policy.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { suggestClosest } from "./levenshtein.ts";
@@ -52,6 +58,7 @@ export interface ValidationError {
 export interface ValidateOptions {
   allowForwardRefs?: boolean;
   connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
+  destinationTier?: PlaceholderTier;
 }
 
 export interface ForwardRef {
@@ -60,15 +67,18 @@ export interface ForwardRef {
   ref: string;
 }
 
-export function validateWorkflowDef(
-  input: unknown,
-  options: ValidateOptions = {},
-): {
+export interface ValidateWorkflowDefResult {
   ok: boolean;
   workflow?: WorkflowDef;
   errors: ValidationError[];
   forward_refs?: ForwardRef[];
-} {
+  placeholder_destinations?: DestinationPlaceholderViolation[];
+}
+
+export function validateWorkflowDef(
+  input: unknown,
+  options: ValidateOptions = {},
+): ValidateWorkflowDefResult {
   const parsed = WorkflowDefSchema.safeParse(input);
   const retiredItemVar = retiredItemVarIssues(input).map(({ path, step_id, message }) => ({
     path: step_id === null ? path : `steps.${step_id}.item_var`,
@@ -84,6 +94,7 @@ export function validateWorkflowDef(
           message: typeof i.message === "string" ? i.message : JSON.stringify(i.message),
         })),
       ],
+      ...(options.destinationTier ? { placeholder_destinations: [] } : {}),
     };
   }
   const wf = parsed.data;
@@ -334,14 +345,18 @@ export function validateWorkflowDef(
     }
   }
 
-  if (errors.length > 0) {
-    return forwardRefs.length > 0
-      ? { ok: false, errors, forward_refs: forwardRefs }
-      : { ok: false, errors };
-  }
-  return forwardRefs.length > 0
-    ? { ok: true, workflow: wf, errors: [], forward_refs: forwardRefs }
-    : { ok: true, workflow: wf, errors: [] };
+  const placeholderDestinations = options.destinationTier
+    ? detectPlaceholderDestinations(wf, { tier: options.destinationTier })
+    : null;
+  if (placeholderDestinations)
+    errors.push(...placeholderDestinationErrors(placeholderDestinations));
+
+  const details = {
+    ...(forwardRefs.length > 0 ? { forward_refs: forwardRefs } : {}),
+    ...(placeholderDestinations ? { placeholder_destinations: placeholderDestinations } : {}),
+  };
+  if (errors.length > 0) return { ok: false, errors, ...details };
+  return { ok: true, workflow: wf, errors: [], ...details };
 }
 
 function stepReferencesCanonicalItem(step: StepDef): boolean {

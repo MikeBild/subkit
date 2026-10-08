@@ -48,7 +48,7 @@ export async function validateTenantWorkflowDef(
   input: unknown,
   tenantId: string,
   db: Executor,
-  options: Pick<ValidateOptions, "allowForwardRefs"> = {},
+  options: Pick<ValidateOptions, "allowForwardRefs" | "destinationTier"> = {},
 ) {
   const policies = await loadTenantWorkflowHeaderPolicies(input, tenantId, db);
   return validateWorkflowDef(input, { ...options, connectorHeaderPolicies: policies });
