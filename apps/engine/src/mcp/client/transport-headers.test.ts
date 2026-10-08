@@ -14,6 +14,7 @@ describe("requests to an external MCP server", () => {
   test("the wire carries identity, so a cut-off compressed stream never reaches the decompressor", async () => {
     const seen: (string | null)[] = [];
     const server = Bun.serve({
+      hostname: "127.0.0.1",
       port: 0,
       fetch(req) {
         seen.push(req.headers.get("accept-encoding"));
