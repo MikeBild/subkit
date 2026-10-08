@@ -101,9 +101,21 @@ export function structuredOutcomeSchema(
   return {
     type: "object",
     properties: {
-      ok: { type: "boolean" },
-      value: { anyOf: [normalizeSchema(valueSchema).schema, { type: "null" }] },
-      reason: { type: ["string", "null"] },
+      ok: {
+        type: "boolean",
+        description:
+          "true when value holds the complete result that satisfies its schema; false only when the task cannot be fulfilled from the given context.",
+      },
+      value: {
+        anyOf: [normalizeSchema(valueSchema).schema, { type: "null" }],
+        description: "The complete result when ok is true; null when ok is false.",
+      },
+      reason: {
+        type: ["string", "null"],
+        minLength: 1,
+        description:
+          "When ok is false: one or two sentences naming exactly what is missing or impossible, so the caller can fix it. null when ok is true.",
+      },
     },
     required: ["ok", "value", "reason"],
     additionalProperties: false,
@@ -125,6 +137,8 @@ export function readStructuredOutcome<T>(
     return { ok: true, value: unwrapResult<T>(outcome.value, wrappedInResult) };
   }
   const reason =
-    typeof outcome.reason === "string" && outcome.reason.trim() !== "" ? outcome.reason : "abort";
+    typeof outcome.reason === "string" && outcome.reason.trim() !== ""
+      ? outcome.reason
+      : "the model declined without giving a reason";
   return { ok: false, reason };
 }
