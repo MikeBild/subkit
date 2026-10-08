@@ -40,6 +40,18 @@ describe("converse base prompt — authoring focus blocks", () => {
     expect(prompt.content).toContain("Editing a description is never a reason to run or preview");
   });
 
+  it("asks for a missing destination before author_workflow and never substitutes a placeholder", async () => {
+    const prompt = await basePromptFor("converse", "sk_interactive");
+    expect(prompt.content).toContain("BUSINESS DIALOGUE");
+    expect(prompt.content).toContain(
+      "ask for exactly those with ONE ask_user_text/ask_user_form BEFORE author_workflow",
+    );
+    expect(prompt.content).toContain(
+      "never substitute a placeholder — the engine rejects placeholder destinations",
+    );
+    expect(prompt.volatile ?? "").not.toContain("the engine rejects placeholder destinations");
+  });
+
   it("renders the connector focus block when connector authoring is active", async () => {
     const prompt = await basePromptFor(
       "converse",

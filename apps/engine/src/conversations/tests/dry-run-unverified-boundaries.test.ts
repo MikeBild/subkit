@@ -47,14 +47,14 @@ test("a bounded step skipped behind a held write is reported as unverified", asy
             id: "publish",
             kind: "request",
             method: "POST",
-            url: "https://api.example.test/publish",
+            url: "https://jsonplaceholder.typicode.com/posts",
             body: { a: 1 },
           },
           {
             id: "announce",
             kind: "request",
             method: "POST",
-            url: "https://api.example.test/announce",
+            url: "https://jsonplaceholder.typicode.com/comments",
             // biome-ignore lint/suspicious/noTemplateCurlyInString: authored placeholder
             body: { id: "${scope.publish.data.id}" },
             boundary: { variables: {}, max_body_bytes: 64, max_calls: 1 },

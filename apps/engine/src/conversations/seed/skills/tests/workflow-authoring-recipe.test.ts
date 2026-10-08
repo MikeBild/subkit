@@ -9,6 +9,24 @@ const ROOT = join(import.meta.dir, "..");
 const workflowAuthoring = readFileSync(join(ROOT, "workflow-authoring.md"), "utf-8");
 const errorRecovery = readFileSync(join(ROOT, "error-recovery.md"), "utf-8");
 const dataHandling = readFileSync(join(ROOT, "data-handling.md"), "utf-8");
+const conversationalAuthoring = readFileSync(
+  join(import.meta.dir, "../../../agent/skills/content/conversational-authoring.md"),
+  "utf-8",
+);
+
+describe("conversational-authoring.md · ask-first for destinations (step 4)", () => {
+  test("step 4 asks for a missing destination before author_workflow and names the engine gate", () => {
+    const step4 = conversationalAuthoring
+      .split("\n")
+      .find((line) => line.startsWith("4. Build the workflow second."));
+    expect(step4).toBeDefined();
+    expect(step4).toContain(
+      "ask for it with one `ask_user_text`/`ask_user_form` BEFORE `author_workflow`",
+    );
+    expect(step4).toContain("the engine rejects placeholder destinations");
+    expect(step4).toContain("`requires_user_input: true`");
+  });
+});
 
 describe("workflow-authoring.md · Build Recipe (mandatory preflight)", () => {
   test("declares the recipe is mandatory before author_workflow / edit_workflow_patch", () => {
