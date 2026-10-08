@@ -199,6 +199,17 @@ describe("failure cause", () => {
     expect(turnFailureCause({ code: "internal" })).toBeNull();
     expect(turnFailureCause(null)).toBeNull();
   });
+
+  test("a timed-out turn names the budget it ran out of", () => {
+    expect(turnFailureCause({ code: "llm_timeout", timeout_ms: 120_000 })).toEqual({
+      kind: "provider_timeout",
+      timeoutMs: 120_000,
+    });
+    expect(turnFailureCause({ code: "llm_timeout" })).toEqual({
+      kind: "provider_timeout",
+      timeoutMs: null,
+    });
+  });
 });
 
 describe("header title", () => {

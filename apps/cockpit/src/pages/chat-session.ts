@@ -48,18 +48,23 @@ export function conversationOpenedByFailedSend(input: {
   return fresh.length === 1 ? (fresh[0]?.id ?? null) : null;
 }
 
-export type TurnFailureCause = {
-  kind:
-    | "provider_quota_exhausted"
-    | "provider_rate_limited"
-    | "provider_overloaded"
-    | "provider_unreachable"
-    | "provider_context_too_large"
-    | "tenant_budget_exhausted";
-  retryAt: string | null;
-};
+export type TurnFailureCause =
+  | {
+      kind:
+        | "provider_quota_exhausted"
+        | "provider_rate_limited"
+        | "provider_overloaded"
+        | "provider_unreachable"
+        | "provider_context_too_large"
+        | "tenant_budget_exhausted";
+      retryAt: string | null;
+    }
+  | { kind: "provider_timeout"; timeoutMs: number | null };
 
-function causeKind(code: string, kind: unknown): TurnFailureCause["kind"] | null {
+function causeKind(
+  code: string,
+  kind: unknown,
+): Exclude<TurnFailureCause, { kind: "provider_timeout" }>["kind"] | null {
   switch (code) {
     case "llm_provider_limited":
       return kind === "quota_exhausted" ? "provider_quota_exhausted" : "provider_rate_limited";
@@ -75,8 +80,17 @@ function causeKind(code: string, kind: unknown): TurnFailureCause["kind"] | null
 }
 
 export function turnFailureCause(
-  failure: { code?: string | null; kind?: unknown; retry_at?: unknown } | null | undefined,
+  failure:
+    | { code?: string | null; kind?: unknown; retry_at?: unknown; timeout_ms?: unknown }
+    | null
+    | undefined,
 ): TurnFailureCause | null {
+  if (failure?.code === "llm_timeout") {
+    return {
+      kind: "provider_timeout",
+      timeoutMs: typeof failure.timeout_ms === "number" ? failure.timeout_ms : null,
+    };
+  }
   const kind = failure?.code ? causeKind(failure.code, failure.kind) : null;
   if (!kind) return null;
   const retryAt = typeof failure?.retry_at === "string" ? failure.retry_at : null;

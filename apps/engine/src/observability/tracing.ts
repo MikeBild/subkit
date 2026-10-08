@@ -1,4 +1,5 @@
 import { OpenTelemetry } from "@ai-sdk/otel";
+import { trace } from "@opentelemetry/api";
 import type { SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { registerTelemetry } from "ai";
 import { getConfig } from "../config/loader.ts";
@@ -15,6 +16,34 @@ export function langfuseEnrich(options: {
   if (rc.provider) attrs["langfuse.trace.metadata.provider"] = String(rc.provider);
   if (rc.model) attrs["langfuse.trace.metadata.model"] = String(rc.model);
   return Object.keys(attrs).length > 0 ? attrs : undefined;
+}
+
+export function toolSpanAttributes(p: {
+  rule?: string;
+  mode?: string;
+  duration_ms?: number;
+}): Record<string, string | number> {
+  const attrs: Record<string, string | number> = {};
+  if (p.rule !== undefined) attrs["tool_policy.rule"] = p.rule;
+  if (p.mode !== undefined) attrs["tool_policy.mode"] = p.mode;
+  if (p.duration_ms !== undefined && Number.isFinite(p.duration_ms)) {
+    attrs["tool.duration_ms"] = Math.round(p.duration_ms);
+  }
+  return attrs;
+}
+
+export function enrichActiveSpan(attrs: Record<string, string | number>): void {
+  if (Object.keys(attrs).length === 0) return;
+  try {
+    trace.getActiveSpan()?.setAttributes(attrs);
+  } catch (err) {
+    logger.debug({
+      module: "observability",
+      action: "tracing.enrich_failed",
+      msg: "active span attribute write threw — ignoring",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 let telemetryIntegrationRegistered = false;

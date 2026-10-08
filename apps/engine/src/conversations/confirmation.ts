@@ -4,7 +4,11 @@ import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
 import { conversationMessages, conversationToolCalls } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
-import { recordConfirmationTransition } from "../observability/instrumentation.ts";
+import {
+  recordConfirmationTransition,
+  recordToolPolicyDecision,
+} from "../observability/instrumentation.ts";
+import { enrichActiveSpan, toolSpanAttributes } from "../observability/tracing.ts";
 import {
   type ApprovalExecutionMode,
   type ApprovalVia,
@@ -228,6 +232,8 @@ export function logGateDecision(record: GateRecord): void {
     outcome: record.outcome,
     surface: record.surface,
   });
+  recordToolPolicyDecision(record);
+  enrichActiveSpan(toolSpanAttributes({ rule: record.rule, mode: record.mode }));
   if (record.bypassed_confirmation) {
     logger.warn({
       module: "tool",

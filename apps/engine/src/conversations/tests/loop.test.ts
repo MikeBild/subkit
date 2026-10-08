@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { conversationDrafts, workflows } from "../../db/schema/index.ts";
+import {
+  getMetrics,
+  METRIC_NAMES,
+  resetMetricsRegistryForTests,
+} from "../../observability/metrics.ts";
 import { getConversation } from "../service.ts";
 import {
   appendMessageWithTurn,
@@ -22,6 +27,7 @@ afterAll(async () => {
 
 describe("conversations/loop", () => {
   test("drives the full list-users tool trace with validation feedback, approval, commit", async () => {
+    resetMetricsRegistryForTests();
     const outcome = await createConversationWithTurn(
       {
         tenant_id: ctx.tenant_id,
@@ -55,6 +61,20 @@ describe("conversations/loop", () => {
 
     const editResult = toolResultEvents.find((e) => e.tool === "edit_workflow_patch");
     expect(editResult).toBeDefined();
+
+    expect(getMetrics().counterSum(METRIC_NAMES.CONVERSATION_STEP_TOTAL)).toBe(
+      toolCallEvents.length,
+    );
+    const durationCounts = (
+      getMetrics()
+        .snapshot()
+        .find((s) => s.name === METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS)?.samples ?? []
+    ).filter((s) => s.name === `${METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS}_count`);
+    for (const tool of toolCallEvents.map((e) => e.tool).filter((t) => t !== "ask_user_confirm")) {
+      const observed = durationCounts.filter((s) => s.labels.tool === tool);
+      expect(observed.reduce((sum, s) => sum + s.value, 0)).toBe(1);
+      expect(observed.every((s) => s.labels.outcome !== "")).toBe(true);
+    }
 
     const snapshots = await ctx.testDb.db
       .select()

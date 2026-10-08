@@ -54,15 +54,17 @@ import {
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { log, logger } from "../logging/logger.ts";
 import {
+  recordConversationRepair,
+  recordConversationStep,
   recordLlmQuotaExhausted,
+  recordLlmStepTimeout,
   recordLlmTokens,
   recordToolHallucinatedAbsence,
 } from "../observability/instrumentation.ts";
 import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/runtime-telemetry.ts";
-import { isTracingActive } from "../observability/tracing.ts";
+import { enrichActiveSpan, isTracingActive, toolSpanAttributes } from "../observability/tracing.ts";
 import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import { now } from "../utils/clock.ts";
-import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
 import { expandPriorFailuresFromToolCalls } from "./authoring-critic/prior-failures.ts";
@@ -135,8 +137,16 @@ import {
 } from "./tools/authoring-palette.ts";
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
+import { LlmTimeoutError, timeoutPhaseOf } from "./turn-failure.ts";
 import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
+
+export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = 120_000;
+
+let firstChunkTimeoutMsOverride: number | null = null;
+export function _setConverseFirstChunkTimeoutMsForTests(ms: number | null): void {
+  firstChunkTimeoutMsOverride = ms;
+}
 
 export interface RunLoopParams {
   db: Db;
@@ -873,10 +883,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }));
     let capturedError: unknown;
     const resolvedModel = await resolveLanguageModel(attemptProvider, modelId, p.tenant_id);
-    const streamAbortSignal = mergeAbortSignals([
-      turnAbortCtrl.signal,
-      AbortSignal.timeout(Math.min(10 * 60_000, 30_000 * budget)),
-    ]);
+    const turnBudgetMs = Math.min(10 * 60_000, 30_000 * budget);
+    const firstChunkTimeoutMs = firstChunkTimeoutMsOverride ?? CONVERSE_FIRST_CHUNK_TIMEOUT_MS;
+    const streamStartedAt = now();
+    const streamTimeout: { error: LlmTimeoutError | null } = { error: null };
     const cacheSupported = promptCacheSupported(attemptProvider, modelId);
     const cacheBlocks = timePhase("converse.split_cache_blocks", () =>
       splitPromptIntoBlocks(prompt, "converse"),
@@ -963,6 +973,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         system: callSystem,
       }) => {
         if (turnRepairCount >= MAX_REPAIRS_PER_TURN) {
+          recordConversationRepair({ kind: "capped" });
           logger.warn({
             module: "llm",
             action: "repair_tool_call.capped",
@@ -988,6 +999,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             db: p.db,
           },
           onRepair: () => {
+            recordConversationRepair({ kind: "repaired" });
             stepRouterSignals.hadRepairThisTurn = true;
             const errKind =
               error && typeof error === "object" && "name" in (error as object)
@@ -1140,7 +1152,36 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         noProgressRepairStopCondition,
       ],
       maxRetries: 2,
-      abortSignal: streamAbortSignal,
+      abortSignal: turnAbortCtrl.signal,
+      timeout: { totalMs: turnBudgetMs, firstChunkMs: firstChunkTimeoutMs },
+      onAbort: (event) => {
+        if (turnAbortCtrl.signal.aborted || streamTimeout.error) return;
+        const reason = (event as { reason?: unknown }).reason;
+        const phase =
+          timeoutPhaseOf(reason) ??
+          (now() - streamStartedAt >= turnBudgetMs ? "total" : "first_chunk");
+        const timeoutMs = phase === "first_chunk" ? firstChunkTimeoutMs : turnBudgetMs;
+        streamTimeout.error = new LlmTimeoutError(phase, timeoutMs, { cause: reason });
+        recordLlmStepTimeout({ phase });
+        logger.warn({
+          module: "llm",
+          action: "converse.timeout",
+          msg: "stream aborted by the typed SDK timeout",
+          conversation_id: p.conversation_id,
+          tenant_id: p.tenant_id,
+          provider: attemptProvider,
+          model: modelId,
+          phase,
+          timeout_ms: timeoutMs,
+          elapsed_ms: Math.round(now() - streamStartedAt),
+        });
+      },
+      onStepStart: ({ modelId: stepModelId }) => {
+        recordConversationStep({ stage: stepRouterSignals.stage ?? "idle", model: stepModelId });
+      },
+      onToolExecutionEnd: ({ toolExecutionMs }) => {
+        enrichActiveSpan(toolSpanAttributes({ duration_ms: toolExecutionMs }));
+      },
       runtimeContext: {
         tenant_id: p.tenant_id,
         conversation_id: p.conversation_id,
@@ -1354,9 +1395,11 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       }
       await result.finishReason;
     } catch (err) {
+      if (streamTimeout.error) throw streamTimeout.error;
       if (capturedError) throw capturedError;
       throw err;
     }
+    if (streamTimeout.error) throw streamTimeout.error;
   }
 
   const attempts = resolveConversationAttemptRoutes(route, seedModel);
@@ -1368,7 +1411,10 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
       cancelled = true;
     } else {
       const providerKind = classifyProviderError(primaryErr);
-      const providerErr = providerKind === "other" ? null : toLlmProviderError(primaryErr);
+      const providerErr =
+        providerKind === "other" || primaryErr instanceof LlmTimeoutError
+          ? null
+          : toLlmProviderError(primaryErr);
       const msg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
       logger.warn({
         module: "llm",
@@ -1442,7 +1488,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
             p.db,
           );
           const typedFallbackErr =
-            classifyProviderError(fbErr) === "other" ? null : toLlmProviderError(fbErr);
+            classifyProviderError(fbErr) === "other" || fbErr instanceof LlmTimeoutError
+              ? null
+              : toLlmProviderError(fbErr);
           throw typedFallbackErr ?? fbErr;
         }
       }

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { LlmTimeoutError } from "../../conversations/turn-failure.ts";
 import { BadRequestError, ConflictError, HttpError, UnprocessableEntityError } from "../errors.ts";
 import { mapKnownErrorResponse } from "../middleware/error.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -135,5 +136,52 @@ describe("error envelope wire — 429 hint + retry_after", () => {
     expect(body.message).toBe("slow your roll");
     expect(body.hint).toBe("wait 30s and retry");
     expect(body.retry_after).toBe(30);
+  });
+});
+
+describe("error envelope wire — a model that timed out", () => {
+  let server: ServerType;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const app = new Hono<AppEnv>();
+    app.onError((err, c) => {
+      const known = mapKnownErrorResponse(c, err);
+      if (known) return known;
+      return c.json({ code: "internal_error", message: String(err) }, 500);
+    });
+    app.get("/__test__/throw-llm-timeout", () => {
+      throw new LlmTimeoutError("first_chunk", 120_000);
+    });
+    app.get("/__test__/throw-sdk-timeout", () => {
+      throw new DOMException("Step timeout of 5000ms exceeded", "TimeoutError");
+    });
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+    const addr = (server as unknown as { address: () => { port: number } | null }).address();
+    if (!addr || typeof addr !== "object") throw new Error("test server address resolution failed");
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  test("the loop's timeout is a 504 llm_timeout with the same wording and details as the SSE frame", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-llm-timeout`);
+    expect(res.status).toBe(504);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("llm_timeout");
+    expect(body.message).toBe("Timed out after 120 s");
+    expect(body.details).toEqual({ phase: "first_chunk", timeout_ms: 120_000 });
+    expect(body.hint).toContain("retry");
+  });
+
+  test("a raw SDK timeout is classified the same way", async () => {
+    const res = await fetch(`${baseUrl}/__test__/throw-sdk-timeout`);
+    expect(res.status).toBe(504);
+    const body = (await res.json()) as ErrorBody;
+    expect(body.code).toBe("llm_timeout");
+    expect(body.message).toBe("Timed out after 5 s");
+    expect(body.details).toEqual({ phase: "step", timeout_ms: 5000 });
   });
 });

@@ -25,7 +25,8 @@ export type MockFailure =
   | "rate_limit"
   | "quota_exhausted"
   | "overloaded"
-  | "context_length_exceeded";
+  | "context_length_exceeded"
+  | "stream_never_answers";
 
 export type ConverseMockStep = { tool: string; args: Record<string, unknown> } | { text: string };
 

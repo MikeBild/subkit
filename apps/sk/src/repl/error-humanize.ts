@@ -35,9 +35,19 @@ const PROVIDER_UNAVAILABLE_RE =
 
 const RETRY_AT_RE = /regain access on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) ?utc/i;
 
-export type EngineErrorKind = "provider_limit" | "provider_unavailable" | "validation" | null;
+const PROVIDER_TIMEOUT_RE = /^timed out after \d+ s$/i;
+
+export type EngineErrorKind =
+  | "provider_limit"
+  | "provider_unavailable"
+  | "provider_timeout"
+  | "validation"
+  | null;
 
 export function classifyEngineError(e: RawValidationError): EngineErrorKind {
+  if (e.path === "llm_timeout" || PROVIDER_TIMEOUT_RE.test(e.message)) {
+    return "provider_timeout";
+  }
   if (
     e.path === "llm_provider_limited" ||
     e.path === "quota_exhausted" ||
@@ -76,6 +86,13 @@ export function humanizeValidationError(e: RawValidationError): HumanizedValidat
       label: "LLM provider temporarily unavailable",
       detail: e.message,
       hint: "retry in a moment, or switch the engine's configured model route",
+    };
+  }
+  if (kind === "provider_timeout") {
+    return {
+      label: "LLM provider timed out",
+      detail: e.message,
+      hint: "the model did not answer in time — retry, or shorten the request",
     };
   }
   const stepKindMatch = STEP_KIND_PATH.exec(e.path);
@@ -267,6 +284,12 @@ function providerHint(err: EngineError): string | null {
   }
   if (err.code === "llm_context_too_large") {
     return "prompt context exceeded the model window — compact the conversation or split the request";
+  }
+  if (err.code === "llm_timeout") {
+    const timeoutMs = (err.details as { timeout_ms?: unknown } | null | undefined)?.timeout_ms;
+    return typeof timeoutMs === "number"
+      ? `the model did not answer within ${Math.ceil(timeoutMs / 1000)} s — retry, or shorten the request`
+      : "the model did not answer in time — retry, or shorten the request";
   }
   return null;
 }

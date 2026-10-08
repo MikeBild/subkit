@@ -2380,6 +2380,8 @@ const EN = {
   "chat.cause.provider_unreachable": "The AI provider could not be reached.",
   "chat.cause.provider_context_too_large": "The conversation is too long for the model.",
   "chat.cause.tenant_budget_exhausted": "This installation's monthly AI budget is used up.",
+  "chat.cause.provider_timeout": "Timed out after {seconds} s",
+  "chat.cause.provider_timeoutUnknown": "The AI provider did not answer in time.",
   "chat.empty.title": "Describe what SubKit should do.",
   "chat.composer.placeholder": "Message SubKit · @ points to files, skills, sources",
   "chat.mention.categories": "Categories",
@@ -6538,6 +6540,8 @@ const DE: Record<TranslationKey, string> = {
   "chat.cause.provider_context_too_large": "Die Unterhaltung ist zu lang für das Modell.",
   "chat.cause.tenant_budget_exhausted":
     "Das monatliche KI-Budget dieser Installation ist aufgebraucht.",
+  "chat.cause.provider_timeout": "Zeitüberschreitung nach {seconds} s",
+  "chat.cause.provider_timeoutUnknown": "Der KI-Anbieter hat nicht rechtzeitig geantwortet.",
   "chat.empty.title": "Beschreibe, was SubKit tun soll.",
   "chat.composer.placeholder": "Nachricht an SubKit · @ verweist auf Dateien, Skills, Quellen",
   "chat.mention.categories": "Kategorien",

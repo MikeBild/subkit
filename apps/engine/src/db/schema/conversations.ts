@@ -43,6 +43,7 @@ export const conversations = pgTable(
       at: string;
       kind?: string;
       retry_at?: string;
+      timeout?: { phase: string; timeout_ms: number | null };
     } | null>(),
     owner_id: uuid("owner_id"),
     model: text("model"),

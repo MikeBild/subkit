@@ -1444,6 +1444,7 @@ export function ChatPage() {
               message: string;
               kind?: string;
               retry_at?: string;
+              timeout?: { timeout_ms?: number | null };
             } | null;
           }
         | undefined
@@ -1456,15 +1457,22 @@ export function ChatPage() {
           code: send.error.code,
           kind: send.error.details?.kind,
           retry_at: send.error.details?.retry_at,
+          timeout_ms: send.error.details?.timeout_ms,
         })
       : null
-    : turnFailureCause(turnFailure);
+    : turnFailureCause(
+        turnFailure ? { ...turnFailure, timeout_ms: turnFailure.timeout?.timeout_ms } : null,
+      );
   const failureCauseText = failureCause
-    ? failureCause.kind === "provider_quota_exhausted" && failureCause.retryAt
-      ? t("chat.cause.provider_quota_exhaustedUntil", {
-          time: formatDateTime(locale, failureCause.retryAt),
-        })
-      : t(`chat.cause.${failureCause.kind}`)
+    ? failureCause.kind === "provider_timeout"
+      ? failureCause.timeoutMs !== null
+        ? t("chat.cause.provider_timeout", { seconds: Math.ceil(failureCause.timeoutMs / 1000) })
+        : t("chat.cause.provider_timeoutUnknown")
+      : failureCause.kind === "provider_quota_exhausted" && failureCause.retryAt
+        ? t("chat.cause.provider_quota_exhaustedUntil", {
+            time: formatDateTime(locale, failureCause.retryAt),
+          })
+        : t(`chat.cause.${failureCause.kind}`)
     : null;
   const submitTurn = async (
     message: string,
