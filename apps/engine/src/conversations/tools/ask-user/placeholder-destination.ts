@@ -8,7 +8,14 @@ export interface PlaceholderDestinationHint {
   match: string;
 }
 
-function firstHint(
+export interface StrippedAskInput {
+  input: unknown;
+  dropped: PlaceholderDestinationHint[];
+}
+
+const HINT_ATTRIBUTES: readonly PlaceholderHintAttribute[] = ["placeholder", "default"];
+
+function hintIn(
   field: string,
   attribute: PlaceholderHintAttribute,
   value: unknown,
@@ -18,33 +25,47 @@ function firstHint(
   return hit ? { field, attribute, match: hit.match } : null;
 }
 
-export function detectPlaceholderDestinationHint(
-  toolName: string,
-  input: unknown,
-): PlaceholderDestinationHint | null {
-  if (input == null || typeof input !== "object") return null;
-  const obj = input as Record<string, unknown>;
-  if (toolName === "ask_user_text") {
-    return (
-      firstHint("question", "placeholder", obj.placeholder) ??
-      firstHint("question", "default", obj.default)
-    );
+function withoutPlaceholderHints(
+  field: string,
+  record: Record<string, unknown>,
+  dropped: PlaceholderDestinationHint[],
+): Record<string, unknown> {
+  let out = record;
+  for (const attribute of HINT_ATTRIBUTES) {
+    const hint = hintIn(field, attribute, out[attribute]);
+    if (!hint) continue;
+    dropped.push(hint);
+    const { [attribute]: _removed, ...rest } = out;
+    void _removed;
+    out = rest;
   }
-  if (toolName === "ask_user_form") {
-    const fields = Array.isArray(obj.fields) ? obj.fields : [];
-    for (const f of fields) {
-      if (f == null || typeof f !== "object") continue;
-      const field = f as Record<string, unknown>;
-      const name = typeof field.name === "string" ? field.name : "";
-      const hint =
-        firstHint(name, "placeholder", field.placeholder) ??
-        firstHint(name, "default", field.default);
-      if (hint) return hint;
-    }
-  }
-  return null;
+  return out;
 }
 
-export function placeholderDestinationHintMessage(hint: PlaceholderDestinationHint): string {
-  return `${hint.field}.${hint.attribute}: placeholder destination "${hint.match}" — destinations come from the user; ask again without the example value and describe the expected format instead.`;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function stripPlaceholderDestinationHints(
+  toolName: string,
+  input: unknown,
+): StrippedAskInput {
+  if (!isRecord(input)) return { input, dropped: [] };
+  const dropped: PlaceholderDestinationHint[] = [];
+  if (toolName === "ask_user_text") {
+    return { input: withoutPlaceholderHints("question", input, dropped), dropped };
+  }
+  if (toolName === "ask_user_form" && Array.isArray(input.fields)) {
+    const fields = input.fields.map((f) => {
+      if (!isRecord(f)) return f;
+      const name = typeof f.name === "string" ? f.name : "";
+      return withoutPlaceholderHints(name, f, dropped);
+    });
+    return { input: dropped.length > 0 ? { ...input, fields } : input, dropped };
+  }
+  return { input, dropped };
+}
+
+export function describeDroppedHints(dropped: ReadonlyArray<PlaceholderDestinationHint>): string {
+  return dropped.map((d) => `${d.field}.${d.attribute}="${d.match}"`).join(", ");
 }
