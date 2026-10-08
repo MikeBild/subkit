@@ -683,7 +683,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(validateRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    const res = await validateTenantWorkflowDef(body, principal.tenant_id, c.get("db"));
+    const res = await validateTenantWorkflowDef(body, principal.tenant_id, c.get("db"), {
+      destinationTier: "tokens",
+    });
     if (res.ok) return c.json({ ok: true }, 200);
     return c.json({ ok: false, errors: res.errors }, 200);
   });
