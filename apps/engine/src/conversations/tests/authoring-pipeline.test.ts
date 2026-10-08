@@ -105,7 +105,7 @@ const VALID_DEF = {
       id: "fetch_repos",
       kind: "request",
       method: "GET",
-      url: "https://api.example.com/repos",
+      url: "https://jsonplaceholder.typicode.com/posts",
     },
     {
       id: "shape_repos",
@@ -122,7 +122,12 @@ const NEVER_VALID_DEF = {
   name: "Broken loop",
   slug: "broken-loop",
   steps: [
-    { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/items" },
+    {
+      id: "fetch",
+      kind: "request",
+      method: "GET",
+      url: "https://jsonplaceholder.typicode.com/todos",
+    },
     { id: "iter", kind: "loop", over: "$scope.fetch.data", body: ["missing_step"] },
   ],
 };
@@ -326,7 +331,12 @@ describe("runAuthoringPipeline — one-shot contract", () => {
         name: "Schema broken",
         slug: "schema-broken",
         steps: [
-          { id: "fetch", kind: "request", method: "GET", url: "https://api.example.com/items" },
+          {
+            id: "fetch",
+            kind: "request",
+            method: "GET",
+            url: "https://jsonplaceholder.typicode.com/todos",
+          },
           { id: "branch", kind: "branch", when: "true" },
           {
             id: "call",
@@ -834,6 +844,136 @@ describe("runAuthoringPipeline — semantic critic wire-in", () => {
         await setConfigKey(["llm", "critic", "enabled"], false);
         await setConfigKey(["llm", "critic", "min_steps"], 3);
       }
+    },
+  );
+});
+
+describe("runAuthoringPipeline — ask-first: placeholder destinations are refused, not regenerated", () => {
+  const PLACEHOLDER_BODY_DEF = {
+    name: "Droplet report",
+    slug: "droplet-report",
+    steps: [
+      {
+        id: "send",
+        kind: "request",
+        method: "POST",
+        url: "https://api.acme.com/send",
+        body: { to: "user@example.com", subject: "Droplets" },
+      },
+    ],
+  };
+  const PLACEHOLDER_TRANSFORM_DEF = {
+    name: "Droplet report",
+    slug: "droplet-report",
+    steps: [
+      {
+        id: "compose",
+        kind: "transform",
+        language: "javascript",
+        expression: 'return { to: "recipient@example.com", body: "report" };',
+      },
+    ],
+  };
+  const PARAMETERIZED_DEF = {
+    name: "Droplet report",
+    slug: "droplet-report",
+    input_schema: {
+      type: "object",
+      properties: { recipient: { type: "string" } },
+      required: ["recipient"],
+    },
+    steps: [
+      {
+        id: "send",
+        kind: "request",
+        method: "POST",
+        url: "https://api.acme.com/send",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: the parameterized recipient is the correct design under test
+        body: { to: "${input.recipient}", subject: "Droplets" },
+      },
+    ],
+  };
+
+  for (const [label, def, path] of [
+    ["request body.to", PLACEHOLDER_BODY_DEF, "steps.send.body.to"],
+    ["JS transform expression", PLACEHOLDER_TRANSFORM_DEF, "steps.compose.expression"],
+  ] as const) {
+    tw(
+      `${label}: ONE pass, authoring_definition_invalid + requires_user_input, field named, nothing stashed, zero egress`,
+      async () => {
+        let calls = 0;
+        getMockProvider().generateOverrides.generate = () => {
+          calls += 1;
+          return def;
+        };
+        const toolCtx = makeCtx();
+        const result = await runAuthoringPipeline({
+          ctx: toolCtx,
+          goal: "Send me a daily report of my DigitalOcean droplets by email.",
+        });
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error("unreachable");
+        expect(result.error_code).toBe("authoring_definition_invalid");
+        expect(result.requires_user_input).toBe(true);
+        expect(result.attempts).toBe(1);
+        expect(calls).toBe(1);
+        expect(result.placeholder_destinations?.map((v) => v.path)).toEqual([path]);
+        expect(result.errors.map((e) => e.path)).toEqual([path]);
+        expect(result.message).toContain(`${path}: placeholder destination`);
+        expect(result.message).toContain("ask with ask_user_text or ask_user_form");
+        expect(toolCtx._draft.value).toBeNull();
+        expect(fetchCalls).toBe(0);
+      },
+    );
+  }
+
+  tw(
+    "a parameterized destination (a runtime input placeholder) is the correct design and passes",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => PARAMETERIZED_DEF;
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "email the droplet report" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.attempts).toBe(1);
+      expect(result.validation.ok).toBe(true);
+      expect(toolCtx._draft.value?.workflow.slug).toBe("droplet-report");
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw(
+    "author_workflow envelope: requires_user_input, ask-first next_best_actions, placeholder_destinations, previous draft kept",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => PLACEHOLDER_BODY_DEF;
+      const toolCtx = makeCtx();
+      const before = createEmptyDraftDocument();
+      before.workflow = {
+        name: "Kept",
+        slug: "kept",
+        steps: [{ id: "a", kind: "transform", language: "javascript", expression: "return 1;" }],
+      };
+      toolCtx._draft.value = before;
+      const result = await authorWorkflowTool.execute(toolCtx, {
+        goal: "Send me a daily report of my DigitalOcean droplets by email.",
+      });
+      expect(result.ok).toBe(false);
+      const data = result.data as {
+        error_code: string;
+        requires_user_input: boolean;
+        next_best_actions: string[];
+        placeholder_destinations: Array<{ path: string; match: string }>;
+        attempts: number;
+      };
+      expect(data.error_code).toBe("authoring_definition_invalid");
+      expect(data.requires_user_input).toBe(true);
+      expect(data.next_best_actions).toEqual(["ask_user_text", "ask_user_form", "author_workflow"]);
+      expect(data.placeholder_destinations).toEqual([
+        expect.objectContaining({ path: "steps.send.body.to", match: "user@example.com" }),
+      ]);
+      expect(data.attempts).toBe(1);
+      expect(toolCtx._draft.value?.workflow.slug).toBe("kept");
+      expect(fetchCalls).toBe(0);
     },
   );
 });

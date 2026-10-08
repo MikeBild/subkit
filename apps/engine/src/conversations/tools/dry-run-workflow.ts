@@ -43,6 +43,7 @@ import type { ConversationTool, ToolResult } from "./index.ts";
 import { classifyStepReferences } from "./inherited-step-references.ts";
 import { recordLastPreview } from "./last-preview-store.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
+import { placeholderDestinationGateResult } from "./placeholder-destination-gate.ts";
 import { previewEvidence } from "./preview-evidence.ts";
 import { replacesPersistedWorkflow } from "./state-gate.ts";
 import { buildRawStepResults } from "./step-results.ts";
@@ -81,7 +82,17 @@ export const dryRunWorkflowTool: ConversationTool = {
         message: "Sensitive workflows cannot run through persistent conversation previews.",
       };
     }
-    const validation = await validateTenantWorkflowDef(draft, ctx.tenant_id, ctx.db);
+    const validation = await validateTenantWorkflowDef(draft, ctx.tenant_id, ctx.db, {
+      destinationTier: "all",
+    });
+    const placeholderDestinations = validation.placeholder_destinations ?? [];
+    if (placeholderDestinations.length > 0) {
+      return placeholderDestinationGateResult(
+        ctx.getDraft(),
+        placeholderDestinations,
+        "dry_run_workflow",
+      );
+    }
     if (!validation.ok) {
       const invalidStepId =
         typeof draft.steps[0]?.id === "string" ? draft.steps[0].id : "(invalid-draft)";

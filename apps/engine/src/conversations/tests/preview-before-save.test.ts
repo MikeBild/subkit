@@ -125,7 +125,7 @@ describe("save_workflow_draft preview-before-commit gate", () => {
             id: "fetch",
             kind: "request",
             method: "GET",
-            url: "https://example.invalid/health",
+            url: "https://jsonplaceholder.typicode.com/posts/1",
           },
         ],
       },

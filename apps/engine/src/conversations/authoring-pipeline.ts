@@ -47,7 +47,12 @@ import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatte
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { type ValidationError, validateTenantWorkflowDef } from "../workflows/index.ts";
+import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
+import {
+  type DestinationPlaceholderViolation,
+  type ValidationError,
+  validateTenantWorkflowDef,
+} from "../workflows/index.ts";
 import {
   ResponseFilterSchema,
   TriggerSchema,
@@ -67,6 +72,7 @@ import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { getLastPreview } from "./tools/last-preview-store.ts";
+import { describePlaceholderDestinations } from "./tools/placeholder-destination-gate.ts";
 import { collectProbedConnectorSlugs } from "./tools/probed-connectors.ts";
 import type { WorkflowDraftDocument } from "./types.ts";
 
@@ -167,6 +173,8 @@ export type AuthoringPipelineResult =
         | "authoring_definition_invalid";
       message: string;
       deadline_exceeded?: true;
+      requires_user_input?: true;
+      placeholder_destinations?: DestinationPlaceholderViolation[];
       errors: ValidationError[];
       attempts: number;
       unresolved_connectors: string[];
@@ -616,7 +624,40 @@ export async function runAuthoringPipeline(
     }
 
     if (candidate) {
-      const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db);
+      const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db, {
+        destinationTier: "all",
+      });
+      const placeholderDestinations = validation.placeholder_destinations ?? [];
+      if (placeholderDestinations.length > 0) {
+        logger.warn({
+          module: "conversations",
+          action: "authoring_pipeline.placeholder_destination_rejected",
+          msg: "generated definition fills destination(s) with placeholder values — refusing without a second pass; the value must come from the user",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          pass,
+          violation_count: placeholderDestinations.length,
+          paths: placeholderDestinations.map((v) => v.path),
+        });
+        recordAuthoringGateBlock({
+          code: "workflow_placeholder_destination",
+          tool: "author_workflow",
+        });
+        ctx.onLog?.(
+          "warn",
+          `generate · draft "${candidate.name}" fills ${placeholderDestinations.length} destination(s) with placeholders — asking the user instead of regenerating`,
+        );
+        return {
+          ok: false,
+          error_code: "authoring_definition_invalid",
+          message: `${describePlaceholderDestinations(placeholderDestinations)} Nothing was stored as the draft; the previous draft is unchanged.`,
+          requires_user_input: true,
+          placeholder_destinations: placeholderDestinations,
+          errors: validation.errors,
+          attempts,
+          unresolved_connectors: unresolved,
+        };
+      }
       const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
       const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
         path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
@@ -703,25 +744,44 @@ export async function runAuthoringPipeline(
   }
 
   const workflowDraft = toWorkflowDraftDocument(definition);
-  const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
+  const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db, {
+    destinationTier: "all",
+  });
   if (!structural.ok) {
+    const structuralPlaceholders = structural.placeholder_destinations ?? [];
     logger.warn({
       module: "conversations",
-      action: "authoring_pipeline.definition_invalid",
+      action:
+        structuralPlaceholders.length > 0
+          ? "authoring_pipeline.placeholder_destination_rejected"
+          : "authoring_pipeline.definition_invalid",
       msg: "generated definition fails workflow validation — refusing to stash it as the draft",
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
       attempts,
       error_count: structural.errors.length,
+      paths: structuralPlaceholders.map((v) => v.path),
     });
+    if (structuralPlaceholders.length > 0) {
+      recordAuthoringGateBlock({
+        code: "workflow_placeholder_destination",
+        tool: "author_workflow",
+      });
+    }
     return {
       ok: false,
       error_code: "authoring_definition_invalid",
-      message: `the generated definition is not a valid workflow after ${attempts} generation pass(es) (${structural.errors
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ")}). It was not stored as the draft; the previous draft is unchanged.`,
+      message:
+        structuralPlaceholders.length > 0
+          ? `${describePlaceholderDestinations(structuralPlaceholders)} Nothing was stored as the draft; the previous draft is unchanged.`
+          : `the generated definition is not a valid workflow after ${attempts} generation pass(es) (${structural.errors
+              .slice(0, 3)
+              .map((e) => `${e.path}: ${e.message}`)
+              .join("; ")}). It was not stored as the draft; the previous draft is unchanged.`,
       ...(deadlineExceeded ? { deadline_exceeded: true } : {}),
+      ...(structuralPlaceholders.length > 0
+        ? { requires_user_input: true, placeholder_destinations: structuralPlaceholders }
+        : {}),
       errors: structural.errors,
       attempts,
       unresolved_connectors: unresolved,

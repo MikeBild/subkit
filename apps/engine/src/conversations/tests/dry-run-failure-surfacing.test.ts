@@ -70,7 +70,7 @@ describe("dry_run_workflow · failure surfacing", () => {
             id: "publish",
             kind: "request",
             method: "POST",
-            url: "https://api.example.test/publish",
+            url: "https://jsonplaceholder.typicode.com/posts",
             body: { a: 1 },
           },
           {
