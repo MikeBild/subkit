@@ -383,7 +383,7 @@
       "minimum": 44,
       "maximum": 72
     },
-    "mobileCardGapPx": 12,
+    "mobileCardGapPx": 2,
     "rawIdentifiers": "secondary-only",
     "technicalText": "collapsed-or-detail-only",
     "rowOpen": "name-link-plus-row-click",

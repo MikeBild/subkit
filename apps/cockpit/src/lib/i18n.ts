@@ -3710,6 +3710,9 @@ const EN = {
   "create.template.ready.one": "1 template",
   "create.template.ready.other": "{count} templates",
   "create.template.readyNone": "None yet",
+  "create.template.readyLine.one": "1 ready workflow",
+  "create.template.readyLine.other": "{count} ready workflows",
+  "create.template.readyLineNone": "No ready workflows yet",
   "create.template.header": "Header",
   "create.template.headerMissing": "The header name is missing.",
   "create.template.secretHelp":
@@ -7895,6 +7898,9 @@ const DE: Record<TranslationKey, string> = {
   "create.template.ready.one": "1 Vorlage",
   "create.template.ready.other": "{count} Vorlagen",
   "create.template.readyNone": "Noch keine",
+  "create.template.readyLine.one": "1 fertiger Workflow",
+  "create.template.readyLine.other": "{count} fertige Workflows",
+  "create.template.readyLineNone": "Noch keine fertigen Workflows",
   "create.template.header": "Header",
   "create.template.headerMissing": "Der Name des Headers fehlt.",
   "create.template.secretHelp":

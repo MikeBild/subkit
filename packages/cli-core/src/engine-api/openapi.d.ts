@@ -15907,8 +15907,8 @@ export interface paths {
         /** Browser-openable approval portal (single-use grant token) */
         get: {
             parameters: {
-                query: {
-                    grant: string;
+                query?: {
+                    grant?: string;
                 };
                 header?: never;
                 path?: never;

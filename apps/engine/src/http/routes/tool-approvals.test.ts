@@ -209,6 +209,19 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
     expect(html).toContain("expired");
   });
 
+  test("a cut-short or missing grant shows the dead-link page with one way back", async () => {
+    for (const query of ["?grant=skag_cut", "?grant=", ""]) {
+      const res = await fetch(`${server.baseUrl}/v1/tool-approvals/decide${query}`, {
+        headers: { accept: "text/html" },
+      });
+      expect(res.status).toBe(400);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      const html = await res.text();
+      expect(html).toContain("expired");
+      expect(html.match(/<a /g)).toHaveLength(1);
+    }
+  });
+
   test("an expired grant is rejected", async () => {
     const { approval_id, approval_url } = await seedApproval();
     await server.db

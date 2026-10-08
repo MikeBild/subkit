@@ -223,6 +223,7 @@ export function useSolutionFlow(
         <SearchField id="create-solution-search" value={query} onChange={setQuery} />
         <ListTable<SolutionEntry>
           id="create-solution"
+          layout="rows"
           columns={columns}
           rows={entries.filter((entry) => solutionMatches(entry, solutionText(entry, t), query))}
           pending={pack.isPending}
@@ -432,8 +433,8 @@ export function useConnectorTemplateFlow(
             </span>
             <span className="truncate text-muted-foreground">
               {template.recipes.length > 0
-                ? tn("create.template.ready", template.recipes.length)
-                : t("create.template.readyNone")}
+                ? tn("create.template.readyLine", template.recipes.length)
+                : t("create.template.readyLineNone")}
             </span>
           </span>
         ),
@@ -502,6 +503,7 @@ export function useConnectorTemplateFlow(
         <SearchField id="create-template-search" value={query} onChange={setQuery} />
         <ListTable<ConnectorTemplate>
           id="create-template"
+          layout="rows"
           columns={columns}
           rows={sorted.filter((template) => templateMatches(template, query))}
           pending={templates.isPending}
