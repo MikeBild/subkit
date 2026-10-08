@@ -57,7 +57,7 @@ const NEGATIVE_SPEC: LiveScenarioSpec = {
   ...CLARIFY_SPEC,
   slug: "underspecified-placeholder-rejected",
   answer_turns: [
-    "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+    "Send it to test@example.com by a plain HTTP POST to https://hooks.example.com/report with a JSON body {to, subject, rows}. The data is the first 5 posts from https://jsonplaceholder.typicode.com/posts (id and title). Subject: Post report. No schedule, I run it on demand. That is everything, build and preview it now.",
   ],
 };
 
@@ -830,7 +830,7 @@ describe("live scenario specs", () => {
   test("the placeholder-rejected scenario answers with the placeholder the engine must refuse", () => {
     const spec = LIVE_SCENARIOS.find((s) => s.slug === "underspecified-placeholder-rejected");
     expect(spec?.answer_turns).toEqual([
-      "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+      "Send it to test@example.com by a plain HTTP POST to https://hooks.example.com/report with a JSON body {to, subject, rows}. The data is the first 5 posts from https://jsonplaceholder.typicode.com/posts (id and title). Subject: Post report. No schedule, I run it on demand. That is everything, build and preview it now.",
     ]);
     expect(spec?.connectors).toEqual([]);
   });

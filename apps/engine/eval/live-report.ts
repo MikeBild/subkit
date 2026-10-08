@@ -709,7 +709,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
     kind: "clarification",
     goal: "Author a workflow that emails the report. Preview it and save it.",
     answer_turns: [
-      "Send it to test@example.com; the report is the list of my DigitalOcean droplets.",
+      "Send it to test@example.com by a plain HTTP POST to https://hooks.example.com/report with a JSON body {to, subject, rows}. The data is the first 5 posts from https://jsonplaceholder.typicode.com/posts (id and title). Subject: Post report. No schedule, I run it on demand. That is everything, build and preview it now.",
     ],
     connectors: [],
     content_checks: [
