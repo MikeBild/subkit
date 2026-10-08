@@ -1,0 +1,38 @@
+{
+  "name": "authoring-judge-sees-final-output",
+  "description": "The preview judge judges the FINAL output the caller receives, not the step artifacts: a raw forecast payload leaking through a missing output_transform is 'failed' and blocks the green preview; the shaped argmax result with a conforming output_schema 'passes'; a shaped result that violates the declared output_schema is downgraded to 'partial' by the deterministic type check even when the model says 'passes'. The judge prompt carries the final-output section, the schema and the raw-payload rule.",
+  "flow": "judge",
+  "input": {
+    "goal": "Return the hottest day of the forecast: the date and its maximum temperature.",
+    "forecast": {
+      "daily": {
+        "time": ["2026-06-22", "2026-06-23", "2026-06-24"],
+        "temperature_2m_max": [24.1, 31.2, 27.4]
+      }
+    },
+    "argmax_output_transform": "($t := daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { \"hottest_day\": daily.time[$idx], \"max_temp\": $m })",
+    "output_schema": {
+      "type": "object",
+      "required": ["hottest_day", "max_temp"],
+      "properties": { "hottest_day": { "type": "string" }, "max_temp": { "type": "number" } }
+    },
+    "raw_marker": "\"temperature_2m_max\": [",
+    "failed_verdict": {
+      "verdict": "failed",
+      "reason": "The final output is the raw forecast payload; no day was selected.",
+      "missing": ["the hottest day", "its maximum temperature"]
+    },
+    "passing_verdict": {
+      "verdict": "passes",
+      "reason": "The final output names the hottest day and its maximum temperature.",
+      "missing": []
+    },
+    "violating_final_output": { "hottest": "2026-06-23", "max_temp": "31.2" },
+    "expect": {
+      "final_output_heading": "Final output the caller receives (after output_transform) — THIS is the object to judge",
+      "schema_heading": "Declared output_schema the final output must satisfy",
+      "raw_rule": "RAW PAYLOAD IS NOT A RESULT",
+      "shaped_final_output": { "hottest_day": "2026-06-23", "max_temp": 31.2 }
+    }
+  }
+}
