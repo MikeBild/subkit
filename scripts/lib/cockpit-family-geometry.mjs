@@ -16,6 +16,7 @@ export function familyGeometry(contract = FAMILY_UI) {
     gutterDesktop: contract.geometry.gutterDesktopPx,
     controlHeight: contract.geometry.controlHeightPx,
     rowMinHeight: contract.geometry.tableRowMinPx,
+    cardGap: contract.collections.mobileCardGapPx,
   };
 }
 
@@ -44,17 +45,25 @@ export function geometryBreaches(measured, viewportWidth, expected = familyGeome
   const rows = [...new Set(measured.rows ?? [])].filter((height) => height < expected.rowMinHeight);
   if (rows.length > 0)
     breaches.push(`table rows ${rows.join("/")}px high, below ${expected.rowMinHeight}px`);
+  const gaps = [...new Set(measured.cardGaps ?? [])].filter((gap) => gap !== expected.cardGap);
+  if (gaps.length > 0)
+    breaches.push(`phone cards ${gaps.join("/")}px apart inside instead of ${expected.cardGap}px`);
+  const labelled = measured.labelledCards ?? 0;
+  if (labelled > 0)
+    breaches.push(`${labelled} phone card(s) still label their name instead of reading as a row`);
   return breaches;
 }
 
 export function measureFamilyGeometry() {
   const scope = document.querySelector('[data-testid="page-content"]');
-  if (!scope) return { title: null, gutter: null, buttons: [], rows: [] };
+  if (!scope)
+    return { title: null, gutter: null, buttons: [], rows: [], cardGaps: [], labelledCards: 0 };
   const shown = (node) => node.getClientRects().length > 0 && !node.closest("[inert]");
   const heading = scope.querySelector('[data-slot="page-title-row"] h1');
   const style = heading ? getComputedStyle(heading) : null;
   const main = scope.querySelector("main[data-page-kind]");
   const padded = main && main.dataset.pageKind !== "workspace" ? main.firstElementChild : null;
+  const cards = [...scope.querySelectorAll("[data-family-collection-mobile-card]")].filter(shown);
   return {
     title: style
       ? {
@@ -73,6 +82,9 @@ export function measureFamilyGeometry() {
     rows: [...scope.querySelectorAll('[data-slot="table-body"] tr[data-slot="table-row"]')]
       .filter(shown)
       .map((node) => Math.round(node.getBoundingClientRect().height)),
+    cardGaps: cards.map((node) => Number.parseFloat(getComputedStyle(node).rowGap)),
+    labelledCards: cards.filter((node) => !node.querySelector('[data-family-slot="card-title"]'))
+      .length,
   };
 }
 
