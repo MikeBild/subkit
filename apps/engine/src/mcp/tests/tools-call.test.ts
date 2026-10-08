@@ -1,21 +1,21 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, desc, eq } from "drizzle-orm";
-import { getConfig, setConfigKey } from "../../config/loader.ts";
 import { auditLog, executions } from "../../db/schema/index.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../execution/tests/setup.ts";
-import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/object-store.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
+import {
+  type MemoryOffloadStorage,
+  useMemoryOffloadStorage,
+} from "../../test-helpers/offload-storage.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
 let mock: MockServer;
-let originalObjectStoreBucket: string;
+let storage: MemoryOffloadStorage;
 
 beforeAll(async () => {
   suite = await startMcpTestSuite("tools-call");
-  originalObjectStoreBucket = getConfig().storage.object_store.bucket;
-  await setConfigKey("storage.object_store.bucket", "test", { force: true });
-  setObjectStoreForTesting(new MemoryObjectStore());
+  storage = await useMemoryOffloadStorage();
   mock = await createMockServer((_req, res) => {
     jsonResponse(res, 200, { hello: "world" });
   });
@@ -23,8 +23,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await mock.close();
-  setObjectStoreForTesting(null);
-  await setConfigKey("storage.object_store.bucket", originalObjectStoreBucket, { force: true });
+  await storage.restore();
   await suite.cleanup();
 });
 
