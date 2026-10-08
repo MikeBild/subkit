@@ -5,11 +5,18 @@ import {
   compile as compileJsonata,
   describeUnknownFunction,
   findUnknownFunctionCalls,
+  flattenBindings,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
+import { checkOutputContract, summarizeViolations } from "../execution/output-contract.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { checkJsBodySyntax, evaluateJsBody } from "./js-transform-eval.ts";
+import {
+  checkJsBodySyntax,
+  evaluateJsBody,
+  evaluateJsOutputFunction,
+  type JsBodyEvalOutcome,
+} from "./js-transform-eval.ts";
 import { truncateForLlm } from "./tools/truncate.ts";
 
 export const MAX_REPAIR_ATTEMPTS = 2;
@@ -26,12 +33,21 @@ export interface TransformRepairFinding {
   position?: number;
 }
 
+export type TransformEvaluation =
+  | { kind: "step_scope"; scope: Record<string, unknown>; input: unknown }
+  | {
+      kind: "workflow_output";
+      root: unknown;
+      scope: Record<string, unknown>;
+      input: unknown;
+      output_schema: Record<string, unknown> | null;
+    };
+
 export interface RepairTransformParams {
   expression: string;
   language?: TransformRepairLanguage;
   finding: TransformRepairFinding;
-  scopeSample?: Record<string, unknown> | null;
-  input?: unknown;
+  evaluation?: TransformEvaluation;
   pathCandidates?: ReadonlyArray<string>;
   site?: string;
   tenant_id: string;
@@ -52,12 +68,12 @@ function isEmptyEvalResult(value: unknown): boolean {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0);
 }
 
-function renderScopeSample(scope: Record<string, unknown>): string {
-  const bounded = truncateForLlm(scope, SCOPE_SAMPLE_CAP_CHARS);
+function renderSample(value: unknown): string {
+  const bounded = truncateForLlm(value, SCOPE_SAMPLE_CAP_CHARS, { store: false });
   try {
-    return JSON.stringify(bounded.data, null, 1) ?? "{}";
+    return JSON.stringify(bounded.data, null, 1) ?? "null";
   } catch {
-    return "(scope sample not serialisable)";
+    return "(sample not serialisable)";
   }
 }
 
@@ -113,7 +129,28 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
         `Failure (${params.finding.kind}):`,
         lastError,
       ];
-  if (params.scopeSample && Object.keys(params.scopeSample).length > 0) {
+  const evaluation = params.evaluation;
+  if (evaluation?.kind === "workflow_output") {
+    lines.push(
+      "",
+      javascript
+        ? "Recorded final value this body receives as `input` (the last step's `.data`):"
+        : "Recorded final value the expression evaluates against (the root `$`, the last step's `.data`):",
+      "```json",
+      renderSample(evaluation.root),
+      "```",
+    );
+    if (evaluation.output_schema) {
+      lines.push(
+        "",
+        "Declared output_schema — the corrected result MUST satisfy it:",
+        "```json",
+        renderSample(evaluation.output_schema),
+        "```",
+      );
+    }
+  }
+  if (evaluation && Object.keys(evaluation.scope).length > 0) {
     const scopeHeading = javascript
       ? workflowOutput
         ? "Recorded upstream step outputs, for reference only — this body does NOT see them as `input.scope`; its `input` is the last step's `.data`:"
@@ -121,7 +158,7 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
       : workflowOutput
         ? "Recorded upstream step outputs (addressing: `$scope.<step_id>.data`):"
         : "Recorded upstream scope the expression evaluates against (root object; addressing: `$scope.<step_id>.data` — bare `<step_id>.data` also resolves):";
-    lines.push("", scopeHeading, "```json", renderScopeSample(params.scopeSample), "```");
+    lines.push("", scopeHeading, "```json", renderSample(evaluation.scope), "```");
   }
   if (params.pathCandidates && params.pathCandidates.length > 0) {
     lines.push(
@@ -151,34 +188,105 @@ function buildRepairPrompt(params: RepairTransformParams, lastError: string): st
       (params.finding.kind === "empty_result"
         ? " AND produce a non-empty result against the recorded scope above."
         : "."),
+    ...(evaluation?.kind === "workflow_output"
+      ? [
+          "- The corrected result must not be undefined against the recorded final value above" +
+            (evaluation.output_schema ? " and must satisfy the declared output_schema." : "."),
+        ]
+      : []),
   );
   return lines.join("\n");
 }
 
-async function verifyCandidate(
-  candidate: string,
-  language: TransformRepairLanguage,
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race<T>([
+    work,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`verification exceeded ${VERIFY_EVAL_TIMEOUT_MS}ms`)),
+        VERIFY_EVAL_TIMEOUT_MS,
+      );
+    }),
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+function describeThrown(err: unknown): string {
+  return err instanceof Error ? err.message : typeof err === "string" ? err : JSON.stringify(err);
+}
+
+function workflowOutputVerdict(
+  value: unknown,
   finding: TransformRepairFinding,
-  scope: Record<string, unknown> | null | undefined,
-  input: unknown,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (language === "javascript") {
-    if (!scope || finding.kind === "compile_error") {
-      const syntax = await checkJsBodySyntax(candidate);
-      return syntax.ok ? { ok: true } : { ok: false, error: syntax.message };
-    }
-    const outcome = await evaluateJsBody({ code: candidate, scope, input: input ?? null });
-    if (!outcome.ok) {
-      return { ok: false, error: `candidate failed against recorded scope: ${outcome.message}` };
-    }
-    if (finding.kind === "empty_result" && isEmptyEvalResult(outcome.value)) {
+  evaluation: Extract<TransformEvaluation, { kind: "workflow_output" }>,
+): { ok: true } | { ok: false; error: string } {
+  if (value === undefined) {
+    return {
+      ok: false,
+      error:
+        "candidate evaluated to undefined against the recorded final value — the engine would pass the raw output through unchanged",
+    };
+  }
+  if (finding.kind === "empty_result" && isEmptyEvalResult(value)) {
+    return {
+      ok: false,
+      error: "candidate ran but still produced an empty result against the recorded final value",
+    };
+  }
+  if (evaluation.output_schema) {
+    const contract = checkOutputContract(value, evaluation.output_schema);
+    if (contract.ok && !contract.valid) {
       return {
         ok: false,
-        error: "candidate ran but still returned an empty result against recorded scope",
+        error: `candidate result violates output_schema: ${summarizeViolations(contract.violations)}`,
       };
     }
-    return { ok: true };
   }
+  return { ok: true };
+}
+
+async function verifyJavascriptCandidate(
+  candidate: string,
+  finding: TransformRepairFinding,
+  evaluation: TransformEvaluation | undefined,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!evaluation || (evaluation.kind === "step_scope" && finding.kind === "compile_error")) {
+    const syntax = await checkJsBodySyntax(candidate);
+    return syntax.ok ? { ok: true } : { ok: false, error: syntax.message };
+  }
+  const outcome: JsBodyEvalOutcome =
+    evaluation.kind === "workflow_output"
+      ? await evaluateJsOutputFunction({ code: candidate, root: evaluation.root })
+      : await evaluateJsBody({
+          code: candidate,
+          scope: evaluation.scope,
+          input: evaluation.input ?? null,
+        });
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      error: `candidate failed against ${evaluation.kind === "workflow_output" ? "the recorded final value" : "recorded scope"}: ${outcome.message}`,
+    };
+  }
+  if (evaluation.kind === "workflow_output") {
+    return workflowOutputVerdict(outcome.value, finding, evaluation);
+  }
+  if (finding.kind === "empty_result" && isEmptyEvalResult(outcome.value)) {
+    return {
+      ok: false,
+      error: "candidate ran but still returned an empty result against recorded scope",
+    };
+  }
+  return { ok: true };
+}
+
+async function verifyJsonataCandidate(
+  candidate: string,
+  finding: TransformRepairFinding,
+  evaluation: TransformEvaluation | undefined,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   let compiled: ReturnType<typeof compileJsonata>;
   try {
     compiled = compileJsonata(candidate);
@@ -187,20 +295,39 @@ async function verifyCandidate(
   }
   const [unknownFunction] = findUnknownFunctionCalls(candidate);
   if (unknownFunction) return { ok: false, error: describeUnknownFunction(unknownFunction) };
-  if (!scope || finding.kind === "compile_error") return { ok: true };
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  if (!evaluation) return { ok: true };
+  if (evaluation.kind === "workflow_output") {
+    try {
+      const value = await withTimeout(
+        compiled
+          .evaluate(
+            evaluation.root,
+            flattenBindings({ input: evaluation.input ?? null, scope: evaluation.scope }),
+          )
+          .catch((err: unknown) => {
+            throw formatJsonataError(err, candidate);
+          }),
+      );
+      return workflowOutputVerdict(value, finding, evaluation);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `candidate threw against the recorded final value: ${describeThrown(err)}`,
+      };
+    }
+  }
+  if (finding.kind === "compile_error") return { ok: true };
   try {
-    const value = await Promise.race<unknown>([
-      compiled.evaluate(scope, buildJsonataBindings(scope, input ?? null)).catch((err: unknown) => {
-        throw formatJsonataError(err, candidate);
-      }),
-      new Promise((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`verification exceeded ${VERIFY_EVAL_TIMEOUT_MS}ms`)),
-          VERIFY_EVAL_TIMEOUT_MS,
-        );
-      }),
-    ]);
+    const value = await withTimeout(
+      compiled
+        .evaluate(
+          evaluation.scope,
+          buildJsonataBindings(evaluation.scope, evaluation.input ?? null),
+        )
+        .catch((err: unknown) => {
+          throw formatJsonataError(err, candidate);
+        }),
+    );
     if (finding.kind === "empty_result" && isEmptyEvalResult(value)) {
       return {
         ok: false,
@@ -209,12 +336,19 @@ async function verifyCandidate(
     }
     return { ok: true };
   } catch (err) {
-    const msg =
-      err instanceof Error ? err.message : typeof err === "string" ? err : JSON.stringify(err);
-    return { ok: false, error: `candidate threw against recorded scope: ${msg}` };
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    return { ok: false, error: `candidate threw against recorded scope: ${describeThrown(err)}` };
   }
+}
+
+function verifyCandidate(
+  candidate: string,
+  language: TransformRepairLanguage,
+  finding: TransformRepairFinding,
+  evaluation: TransformEvaluation | undefined,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return language === "javascript"
+    ? verifyJavascriptCandidate(candidate, finding, evaluation)
+    : verifyJsonataCandidate(candidate, finding, evaluation);
 }
 
 export async function repairTransformExpression(
@@ -254,8 +388,7 @@ export async function repairTransformExpression(
       candidate,
       params.language ?? "javascript",
       params.finding,
-      params.scopeSample,
-      params.input,
+      params.evaluation,
     );
     if (verdict.ok) {
       logger.info({
