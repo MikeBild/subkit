@@ -17,6 +17,27 @@ export interface OutboxTailOptions {
 }
 
 export const OUTBOX_REPLAY_CAP = 1_000;
+export const OUTBOX_POLL_MS = 250;
+
+type AbortListenerTarget = Pick<
+  AbortSignal,
+  "aborted" | "addEventListener" | "removeEventListener"
+>;
+
+export function pauseUnlessAborted(signal: AbortListenerTarget, ms: number): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const wake = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", wake);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", wake, { once: true });
+  });
+}
 
 export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): Response {
   const { db } = opts;
@@ -110,13 +131,7 @@ export function streamOutboxTail(c: Context<AppEnv>, opts: OutboxTailOptions): R
         await stream.writeSSE({ event: "ping", data: "{}" });
         lastWrite = Date.now();
       }
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, 250);
-        signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
+      await pauseUnlessAborted(signal, OUTBOX_POLL_MS);
     }
   });
 }

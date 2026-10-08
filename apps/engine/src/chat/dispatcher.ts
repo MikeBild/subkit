@@ -15,7 +15,7 @@ import {
 } from "../conversations/service.ts";
 import { describeTurnFailure, type TurnFailure } from "../conversations/turn-failure.ts";
 import type { Db } from "../db/client.ts";
-import { chatIdentities, chatSessions, chatWorkspaces, conversations } from "../db/schema/index.ts";
+import { chatIdentities, chatSessions, chatWorkspaces } from "../db/schema/index.ts";
 import { errorFields, log, logger } from "../logging/logger.ts";
 import { tryAcquire } from "../notifications/rate-limit.ts";
 import { recordChatDelivery } from "../observability/instrumentation.ts";
@@ -860,14 +860,6 @@ async function handleChatEventImpl(
         text: replyText,
       });
     }
-  }
-
-  if (outcome.status === "committed") {
-    await db
-      .select({ id: conversations.id, status: conversations.status })
-      .from(conversations)
-      .where(and(eq(conversations.tenant_id, tenant_id), eq(conversations.id, conversation_id)))
-      .limit(1);
   }
 
   return {
