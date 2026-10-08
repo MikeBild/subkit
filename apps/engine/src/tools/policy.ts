@@ -2,14 +2,21 @@ import {
   buildPendingOutputForTool,
   decideToolMode,
   type PermissionMode,
+  type ToolModeRule,
   type ToolPolicies,
+  type ToolPolicyMode,
 } from "../conversations/tool-policies.ts";
-import type { ConfirmEnvelope, ToolCategory, ToolSurface } from "./types.ts";
+import type { ConfirmEnvelope, ConfirmReason, ToolCategory, ToolSurface } from "./types.ts";
+
+export type PolicySkipReason =
+  | "mode_not_confirm_before_execution"
+  | "prior_approval_present"
+  | "confirmed_marker";
 
 export type PolicyDecision =
-  | { kind: "proceed" }
-  | { kind: "needs_confirm"; envelope: ConfirmEnvelope }
-  | { kind: "not_available_on_surface"; reason: string };
+  | { kind: "proceed"; mode: ToolPolicyMode; rule: ToolModeRule; skip_reason: PolicySkipReason }
+  | { kind: "needs_confirm"; mode: "confirm_before_execution"; rule: ToolModeRule }
+  | { kind: "not_available_on_surface"; mode: ToolPolicyMode; rule: ToolModeRule; reason: string };
 
 export const MCP_ELICITATION_BLURB =
   "the engine collects any input it needs — forms, OAuth authorization — through the authoring conversation in this client, so the operator stays in the chat";
@@ -83,17 +90,11 @@ export interface PolicyDecideInput {
   readonly permission_mode?: PermissionMode | null;
   readonly overrides?: ToolPolicies;
   readonly connector_trust?: boolean;
+  readonly prior_approval?: boolean;
 }
 
 export function policyDecide(input: PolicyDecideInput): PolicyDecision {
-  if (input.category === "draft_write" && input.surface === "mcp") {
-    return {
-      kind: "not_available_on_surface",
-      reason: DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
-    };
-  }
-
-  const decision = decideToolMode({
+  const { mode, rule } = decideToolMode({
     tool: input.tool,
     category: input.category,
     input: input.args,
@@ -102,23 +103,49 @@ export function policyDecide(input: PolicyDecideInput): PolicyDecision {
     ...(input.connector_trust ? { connector_trust: true } : {}),
   });
 
-  if (decision.mode !== "confirm_before_execution") return { kind: "proceed" };
+  if (input.category === "draft_write" && input.surface === "mcp") {
+    return {
+      kind: "not_available_on_surface",
+      mode,
+      rule,
+      reason: DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
+    };
+  }
 
-  if (isConfirmed(input.args, input.meta)) return { kind: "proceed" };
+  if (mode !== "confirm_before_execution") {
+    return { kind: "proceed", mode, rule, skip_reason: "mode_not_confirm_before_execution" };
+  }
 
+  if (input.prior_approval === true) {
+    return { kind: "proceed", mode, rule, skip_reason: "prior_approval_present" };
+  }
+
+  if (isConfirmed(input.args, input.meta)) {
+    return { kind: "proceed", mode, rule, skip_reason: "confirmed_marker" };
+  }
+
+  return { kind: "needs_confirm", mode, rule };
+}
+
+export function confirmEnvelopeFor(p: {
+  readonly tool: string;
+  readonly args: Record<string, unknown>;
+  readonly rule: ConfirmReason;
+  readonly approval_id: string;
+  readonly approval_url: string | null;
+  readonly surface: ToolSurface;
+}): ConfirmEnvelope {
   return {
-    kind: "needs_confirm",
-    envelope: {
-      tool: input.tool,
-      pending_output: buildPendingOutputForTool(input.tool, input.args),
-      policy_mode: "confirm_before_execution",
-      reason: decision.rule,
-      tool_call_id: crypto.randomUUID(),
-      resume:
-        input.surface === "mcp"
-          ? "A person must grant the approval at approval_url. Only then call confirm_tool_call with tool and confirm_id = tool_call_id. This triggers the stored call; it cannot approve it."
-          : "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
-    },
+    tool: p.tool,
+    pending_output: buildPendingOutputForTool(p.tool, p.args),
+    policy_mode: "confirm_before_execution",
+    reason: p.rule,
+    tool_call_id: p.approval_id,
+    approval_url: p.approval_url,
+    resume:
+      p.surface === "mcp"
+        ? "A person must grant the approval at approval_url. Only then call confirm_tool_call with tool and confirm_id = tool_call_id. This triggers the stored call; it cannot approve it."
+        : "The operator answers the emitted ask_user_confirm; the engine then performs the call itself.",
   };
 }
 

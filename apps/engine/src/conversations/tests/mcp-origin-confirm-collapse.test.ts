@@ -10,9 +10,9 @@ import {
 } from "../../db/schema/index.ts";
 import { EngineClient } from "../../engine-client/index.ts";
 import { createLlmTestCtx, type LlmTestCtx } from "../../llm/tests/setup.ts";
+import { policyDecide } from "../../tools/policy.ts";
 import type { PermissionMode } from "../tool-policies.ts";
 import { getTool, listTools, type ToolContext } from "../tools/index.ts";
-import { decideConfirm } from "../tools/sdk-wrap/confirm-decision.ts";
 import { wrapOne } from "../tools/sdk-wrap/invoke.ts";
 import { type TurnSignals, wrapTools } from "../tools/sdk-wrap.ts";
 import type { TurnEvent } from "../types.ts";
@@ -214,16 +214,27 @@ describe("conversation confirmation — no transport bypass", () => {
 describe("invariant — every palette tool respects its resolved confirmation", () => {
   it("catalogue category and MCP transport never substitute for approval", () => {
     for (const entry of listTools()) {
+      const overrides = { [entry.name]: "confirm_before_execution" as const };
       expect(
-        decideConfirm({
+        policyDecide({
           tool: entry.name,
           category: entry.category,
-          surface: "mcp",
-          resolverRule: "category_default",
-          resolvedMode: "confirm_before_execution",
-          priorApproval: false,
+          surface: "chat",
+          args: {},
+          overrides,
         }),
-      ).toEqual({ pause: true, reason: "confirm_required" });
+      ).toMatchObject({ kind: "needs_confirm", rule: "conversation_override" });
+      if (entry.category !== "draft_write") {
+        expect(
+          policyDecide({
+            tool: entry.name,
+            category: entry.category,
+            surface: "mcp",
+            args: {},
+            overrides,
+          }),
+        ).toMatchObject({ kind: "needs_confirm", rule: "conversation_override" });
+      }
     }
   });
 
