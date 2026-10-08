@@ -63,6 +63,7 @@ export interface ObservedTurn {
   assistant_text: string;
   status: string;
   pending_elicitation_id: string | null;
+  delivered_ask?: { tool_name: string | null; input: unknown } | null;
 }
 
 export interface CreatedArtifact {
@@ -286,7 +287,17 @@ function askTexts(calls: ObservedToolCall[]): string[] {
 }
 
 export function findReplyPlaceholders(turn: ObservedTurn): string[] {
-  const corpus = [turn.assistant_text, ...askTexts(turn.tool_calls)].join("\n");
+  const asks = turn.delivered_ask
+    ? askTexts([
+        {
+          tool: turn.delivered_ask.tool_name ?? "ask_user_form",
+          input: turn.delivered_ask.input,
+          output: null,
+          call_id: "delivered",
+        },
+      ])
+    : askTexts(turn.tool_calls);
+  const corpus = [turn.assistant_text, ...asks].join("\n");
   return findPlaceholderDestinations(corpus, "all").map((h) => h.match);
 }
 
@@ -699,7 +710,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       },
       {
         name: "asks for the source",
-        pattern: "source|data|which report|from|quelle|woher",
+        pattern: "source|data|which report|from|contain|content|inhalt|quelle|woher",
         flags: "i",
       },
     ],
@@ -720,7 +731,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       },
       {
         name: "asks for the source",
-        pattern: "source|data|which report|from|quelle|woher",
+        pattern: "source|data|which report|from|contain|content|inhalt|quelle|woher",
         flags: "i",
       },
     ],
