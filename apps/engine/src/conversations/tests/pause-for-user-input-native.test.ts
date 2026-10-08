@@ -484,8 +484,8 @@ describe("pauseForUserInput — D7 secret-elicitation guard (surface gated)", ()
   });
 });
 
-describe("pauseForUserInput — placeholder-destination guard (every surface)", () => {
-  test("a form field hinting an example address → directive, no row, conversation stays active", async () => {
+describe("pauseForUserInput — placeholder-destination hints are dropped (every surface)", () => {
+  test("a form field hinting an example address is asked without the hint", async () => {
     const conversation_id = await freshConversation();
     const result = await pauseForUserInput(buildCtx(conversation_id), {
       tool_name: "ask_user_form",
@@ -503,32 +503,31 @@ describe("pauseForUserInput — placeholder-destination guard (every surface)", 
         ],
       },
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error_code).toBe("ask_placeholder_destination");
-      expect(result.message).toContain(
-        'recipient_email.placeholder: placeholder destination "you@example.com"',
-      );
-      expect(result.next_best_actions).toEqual(["ask_user_form"]);
-      expect(result.pause).toBeUndefined();
-    }
-    expect(await readElicitation(conversation_id)).toHaveLength(0);
-    expect(await readConversationStatus(conversation_id)).toBe("active");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.pause).toBeDefined();
+    const rows = await readElicitation(conversation_id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("pending");
+    const stored = JSON.stringify(rows[0]);
+    expect(stored).toContain("Recipient email address");
+    expect(stored).not.toContain("you@example.com");
+    expect(JSON.stringify(result)).not.toContain("you@example.com");
   });
 
-  test("a text default carrying an example address → directive", async () => {
+  test("a text default carrying an example address is asked without the default", async () => {
     const conversation_id = await freshConversation();
     const result = await pauseForUserInput(buildCtx(conversation_id), {
       tool_name: "ask_user_text",
       summary: "Recipient?",
       input: { question: "Which address should receive the report?", default: "user@example.com" },
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error_code).toBe("ask_placeholder_destination");
-    expect(await readElicitation(conversation_id)).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    const rows = await readElicitation(conversation_id);
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(rows[0])).not.toContain("user@example.com");
   });
 
-  test("a question that names the placeholder it refuses is asked as usual", async () => {
+  test("a question that names the placeholder it refuses is asked unchanged", async () => {
     const conversation_id = await freshConversation();
     const result = await pauseForUserInput(buildCtx(conversation_id), {
       tool_name: "ask_user_text",
@@ -544,5 +543,6 @@ describe("pauseForUserInput — placeholder-destination guard (every surface)", 
     const rows = await readElicitation(conversation_id);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("pending");
+    expect(JSON.stringify(rows[0])).toContain("test@example.com");
   });
 });
