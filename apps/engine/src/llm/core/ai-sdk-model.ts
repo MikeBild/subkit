@@ -392,6 +392,16 @@ export class AiSdkModel implements SubkitLlm {
 
     const outcome = readStructuredOutcome<T>(result.output, wrappedInResult);
     if (!outcome.ok) {
+      logger.warn({
+        module: "llm",
+        action: "structured.refused",
+        msg: "model returned a structured outcome with ok=false",
+        model: answeredBy.model_used,
+        reason: outcome.reason,
+        finish_reason: result.finishReason,
+        steps: result.steps?.length ?? 1,
+        output_tokens: usage.output_tokens,
+      });
       return { success: false, response: outcome.reason, messages, usage, ...answeredBy };
     }
     return { success: true, response: outcome.value, messages, usage, ...answeredBy };
