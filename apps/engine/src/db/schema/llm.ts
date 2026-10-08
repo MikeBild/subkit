@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   bigint,
   bigserial,
@@ -12,34 +11,9 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { bytea, tenantId, timestamps } from "./_common.ts";
+import { tenantId, timestamps } from "./_common.ts";
 import { executions } from "./executions.ts";
 import { tenants } from "./identity.ts";
-
-export const tenantLlmSettings = pgTable(
-  "tenant_llm_settings",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenant_id: tenantId().references(() => tenants.id, { onDelete: "cascade" }),
-    llm_primary_model: text("llm_primary_model"),
-    llm_fallback_model: text("llm_fallback_model"),
-    llm_provider: text("llm_provider"),
-    llm_provider_credentials_ciphertext: bytea("llm_provider_credentials_ciphertext"),
-    llm_provider_credentials_iv: bytea("llm_provider_credentials_iv"),
-    llm_provider_credentials_auth_tag: bytea("llm_provider_credentials_auth_tag"),
-    enable_prompt_cache: boolean("enable_prompt_cache").notNull().default(true),
-    system_prompt_additions: text("system_prompt_additions"),
-    default_environment: text("default_environment").notNull().default("dev"),
-    auto_discovery: boolean("auto_discovery").notNull().default(true),
-    failure_notification_channels: jsonb("failure_notification_channels")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    confirmation_profile: text("confirmation_profile").notNull().default("strict"),
-    ...timestamps,
-  },
-  (t) => [uniqueIndex("tenant_llm_settings_tenant_key").on(t.tenant_id)],
-);
 
 export const tenantDlpRules = pgTable(
   "tenant_dlp_rules",

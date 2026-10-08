@@ -5,8 +5,15 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel, Tool } from "ai";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import {
+  addToolInputExamplesMiddleware,
+  type LanguageModel,
+  type Tool,
+  wrapLanguageModel,
+} from "ai";
 import { getConfig } from "../../config/loader.ts";
+import { fetchWithResponseTimeout } from "./response-timeout.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
 
@@ -250,6 +257,7 @@ function anthropicOptions(tenantId?: string, apiKeyOverride?: string): Record<st
   const options: Record<string, unknown> = {
     apiKey: apiKeyOverride ?? requireEnv("ANTHROPIC_API_KEY", "anthropic", tenantId),
     headers: { "anthropic-beta": "context-1m-2025-08-07" },
+    fetch: fetchWithResponseTimeout(),
   };
   const baseURL = readEnv("ANTHROPIC_BASE_URL", tenantId);
   if (baseURL) options.baseURL = baseURL;
@@ -297,6 +305,7 @@ function resolveOpenAi(
   const modelId = modelOverride ?? readEnv("OPENAI_MODEL", tenantId) ?? defaultModel;
   const openaiOptions: Record<string, unknown> = {
     apiKey: apiKeyOverride ?? requireEnv("OPENAI_API_KEY", "openai", tenantId),
+    fetch: fetchWithResponseTimeout(),
   };
   const baseURL = readOpenAiBaseUrl(tenantId);
   if (baseURL) openaiOptions.baseURL = baseURL;
@@ -318,6 +327,7 @@ function resolveGemini(
   const modelId = modelOverride ?? readEnv("GEMINI_MODEL", tenantId) ?? defaultModel;
   const geminiOptions: Record<string, unknown> = {
     apiKey: apiKeyOverride ?? requireEnv("GEMINI_API_KEY", "gemini", tenantId),
+    fetch: fetchWithResponseTimeout(),
   };
   const baseURL = readEnv("GEMINI_BASE_URL", tenantId);
   if (baseURL) geminiOptions.baseURL = baseURL;
@@ -356,6 +366,7 @@ function resolveAzure(
   if (deploymentBasedUrls !== undefined) {
     azureOptions.useDeploymentBasedUrls = deploymentBasedUrls === "true";
   }
+  azureOptions.fetch = fetchWithResponseTimeout();
   const provider = createAzure(azureOptions);
   return {
     provider: "azure",
@@ -379,6 +390,7 @@ function resolveBedrock(
         accessKeyId: requireEnv("AWS_ACCESS_KEY_ID", "bedrock", tenantId),
         secretAccessKey: requireEnv("AWS_SECRET_ACCESS_KEY", "bedrock", tenantId),
       };
+  bedrockOptions.fetch = fetchWithResponseTimeout();
   const sessionToken = readEnv("AWS_SESSION_TOKEN", tenantId);
   if (sessionToken) bedrockOptions.sessionToken = sessionToken;
   const baseURL = readEnv("AWS_BASE_URL", tenantId);
@@ -410,7 +422,7 @@ function resolveVertex(
   }
 
   if (modelId.startsWith("claude")) {
-    const anthropicVertexOptions: Record<string, unknown> = {};
+    const anthropicVertexOptions: Record<string, unknown> = { fetch: fetchWithResponseTimeout() };
     const project = readEnv("VERTEX_PROJECT", tenantId);
     const location = readEnv("VERTEX_LOCATION", tenantId);
     if (project) anthropicVertexOptions.project = project;
@@ -435,7 +447,7 @@ function resolveVertex(
     };
   }
 
-  const vertexOptions: Record<string, unknown> = {};
+  const vertexOptions: Record<string, unknown> = { fetch: fetchWithResponseTimeout() };
   if (vertexApiKey) vertexOptions.apiKey = vertexApiKey;
   const project = readEnv("VERTEX_PROJECT", tenantId);
   const location = readEnv("VERTEX_LOCATION", tenantId);
@@ -447,6 +459,23 @@ function resolveVertex(
     modelId,
     model: provider(modelId) as unknown as LanguageModel,
   };
+}
+
+export function sendsToolInputExamplesNatively(provider: ProviderKind, modelId: string): boolean {
+  return provider === "anthropic" || (provider === "vertex" && modelId.startsWith("claude"));
+}
+
+export function withToolInputExamples(
+  model: LanguageModel | string,
+  provider: ProviderKind,
+  modelId: string,
+): LanguageModel | string {
+  if (typeof model === "string") return model;
+  if (sendsToolInputExamplesNatively(provider, modelId)) return model;
+  return wrapLanguageModel({
+    model: model as LanguageModelV4,
+    middleware: addToolInputExamplesMiddleware(),
+  });
 }
 
 export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";

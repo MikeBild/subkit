@@ -17,7 +17,6 @@ const BASE_ROUTE: ModelRoute = {
   fallback_provider: "anthropic",
   context_cap: 200_000,
   monthly_budget: null,
-  enable_prompt_cache: false,
 };
 
 const ENV_KEYS = ["JUDGE_MODEL", "GENERATE_MODEL", "CONVERSE_MODEL"] as const;

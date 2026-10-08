@@ -142,3 +142,36 @@ describe("resourceAccess agrees with can() on every resource", () => {
     });
   }
 });
+
+describe("resourceAccess with a tenant-wide allow", () => {
+  test("resolves from the role alone, so grants are never consulted for the subject id", async () => {
+    const access = await resourceAccess(testDb.db, {
+      tenant_id,
+      principal: {
+        provider: "test",
+        kind: "user",
+        id: "not-a-uuid-admin",
+        tenant_id,
+        roles: ["admin"],
+      },
+      permission: "workflow:read",
+      resource_type: "workflow",
+      quiet: true,
+    });
+    expect(access.any).toBe(true);
+    for (const id of workflowIds) expect(access.allows(id)).toBe(true);
+  });
+
+  test("still narrows a tenant-wide allow to the credential allow-list", async () => {
+    const [a] = workflowIds as [string, string, string];
+    const access = await resourceAccess(testDb.db, {
+      tenant_id,
+      principal: { ...(principals.admin as ResolvedPrincipal), allowed_workflows: [a] },
+      permission: "workflow:read",
+      resource_type: "workflow",
+      quiet: true,
+    });
+    expect(access.any).toBe(true);
+    expect(workflowIds.map((id) => access.allows(id))).toEqual([true, false, false]);
+  });
+});

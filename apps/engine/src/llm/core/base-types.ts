@@ -44,7 +44,6 @@ export interface SubkitLlmToolDefinition {
 export interface SubkitLlmToolWithContext {
   toolDefinition: SubkitLlmToolDefinition | Record<string, Tool>;
   toolContext?: unknown;
-  maxUses?: number;
 }
 
 export interface SubkitLlmObjectGeneratorInput {
@@ -52,7 +51,6 @@ export interface SubkitLlmObjectGeneratorInput {
   schema: Record<string, unknown>;
   temperature?: number;
   tools?: SubkitLlmToolWithContext[];
-  toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
   metadata?: Record<string, unknown>;
   maxAttempts?: number;
   signal?: AbortSignal;

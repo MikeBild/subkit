@@ -47,9 +47,12 @@ test("a driver filter of 'mcp' selects it; the category filter is a different ax
 });
 
 test("the tenant snapshot names it, so the model answers 'what do I have' without a list_ call", async () => {
-  const summary = await loadTenantSummary(tenant_id, ctx.db);
+  const summary = await loadTenantSummary(
+    { provider: "test", kind: "user", id: "u-mcp-catalog", tenant_id, roles: ["admin"] },
+    ctx.db,
+  );
   expect(summary.connectors.map((c) => c.id)).toContain(mcpConnectorId);
-  const block = renderTenantSummaryBlock(summary);
+  const block = renderTenantSummaryBlock(summary, new Set());
   expect(block ?? "").toContain(`rovo (mcp/prod)`);
   expect(block ?? "").toContain(mcpConnectorId);
 });

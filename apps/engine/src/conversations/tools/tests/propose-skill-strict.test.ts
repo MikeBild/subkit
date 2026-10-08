@@ -28,9 +28,14 @@ describe("strict + inputExamples opt-in", () => {
     expect(editWorkflowPatchTool.strict).toBeUndefined();
   });
 
-  it("toInputExamples is a no-op for any input (regression suppressor)", () => {
-    expect(toInputExamples({ scope: "global", title: "x" })).toEqual({});
+  it("toInputExamples wraps a non-empty example and stays silent for none", () => {
+    expect(toInputExamples({ scope: "global", title: "x" })).toEqual({
+      inputExamples: [{ input: { scope: "global", title: "x" } }],
+    });
     expect(toInputExamples(undefined)).toEqual({});
-    expect(toInputExamples(proposeSkillTool.example_input)).toEqual({});
+    expect(toInputExamples({})).toEqual({});
+    expect(toInputExamples(proposeSkillTool.example_input)).toEqual({
+      inputExamples: [{ input: proposeSkillTool.example_input as Record<string, unknown> }],
+    });
   });
 });

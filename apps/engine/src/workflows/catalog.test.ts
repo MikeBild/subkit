@@ -5,7 +5,7 @@ import { tenants } from "../db/schema/identity.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
 import { createSeededRandom, FROZEN_NOW } from "../test-helpers/determinism/index.ts";
-import { listWorkflowToolsForTenant } from "./catalog.ts";
+import { listWorkflowToolSlugs, listWorkflowToolsForTenant } from "./catalog.ts";
 
 const seedRand = createSeededRandom(0xc47a106);
 
@@ -122,6 +122,46 @@ describe("listWorkflowToolsForTenant — is_tool filter", () => {
     await seedWorkflow({ slug: "draft-wf", has_version: false });
     const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
     expect(results.map((r) => r.slug)).not.toContain("draft-wf");
+  });
+});
+
+describe("listWorkflowToolSlugs — the snapshot's tool set is the palette's tool set", () => {
+  test("returns exactly the slugs that become wf_ tools, under the same filter, order and cap", async () => {
+    const old = new Date("2026-01-01T00:00:00Z");
+    const recent = new Date("2026-03-01T00:00:00Z");
+    await seedWorkflow({ slug: "palette-recent", last_executed_at: recent });
+    await seedWorkflow({ slug: "palette-old", last_executed_at: old });
+    await seedWorkflow({ slug: "palette-never", last_executed_at: null });
+    await seedWorkflow({ slug: "palette-non-tool", is_tool: false });
+    await seedWorkflow({ slug: "palette-draft", has_version: false });
+    await seedWorkflow({ slug: "palette-deleted", deleted: true });
+    await seedWorkflow({ slug: "palette-foreign", tenant_id: otherTenantId });
+
+    const principal = makePrincipal();
+    const slugs = await listWorkflowToolSlugs({ db: tdb.db, principal, limit: 2 });
+    const palette = await listWorkflowToolsForTenant({ db: tdb.db, principal, limit: 2 });
+
+    expect([...slugs].sort()).toEqual(palette.map((entry) => entry.slug).sort());
+    expect([...slugs].sort()).toEqual(["palette-old", "palette-recent"]);
+    for (const hidden of [
+      "palette-never",
+      "palette-non-tool",
+      "palette-draft",
+      "palette-deleted",
+      "palette-foreign",
+    ]) {
+      expect(slugs.has(hidden), hidden).toBe(false);
+    }
+  });
+
+  test("honours the principal's workflow allow-list", async () => {
+    const allowed = await seedWorkflow({ slug: "allowlisted" });
+    await seedWorkflow({ slug: "not-allowlisted" });
+    const slugs = await listWorkflowToolSlugs({
+      db: tdb.db,
+      principal: makePrincipal({ allowed_workflows: [allowed.id] }),
+    });
+    expect([...slugs]).toEqual(["allowlisted"]);
   });
 });
 

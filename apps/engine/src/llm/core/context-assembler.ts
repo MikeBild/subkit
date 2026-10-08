@@ -1,5 +1,5 @@
 import { getConnector } from "../../connectors/service.ts";
-import { type Executor, getDb } from "../../db/client.ts";
+import { type Db, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
+import { listWorkflowToolSlugs } from "../../workflows/catalog.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
@@ -105,7 +106,7 @@ export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
-  exec?: Executor,
+  exec?: Db,
 ): Promise<
   EnhancedPrompt & {
     dropped_sections: string[];
@@ -152,7 +153,7 @@ export async function assembleEnhancedPrompt(
 
   const query = buildQuery(p.user_turns);
 
-  const preEmbedCorpus = p.flow !== "converse";
+  const preEmbedCorpus = p.flow !== "converse" && p.flow !== "summarize";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
   if (preEmbedCorpus) {
@@ -310,8 +311,13 @@ export async function assembleEnhancedPrompt(
     : null;
 
   const tenantSummaryBlock =
-    p.flow === "converse"
-      ? renderTenantSummaryBlock(await loadTenantSummary(p.tenant_id, db))
+    p.flow === "converse" && p.principal
+      ? renderTenantSummaryBlock(
+          ...(await Promise.all([
+            loadTenantSummary(p.principal, db),
+            listWorkflowToolSlugs({ db, principal: p.principal }),
+          ])),
+        )
       : null;
 
   let lastSections: Array<{ text: string; volatile: boolean }> = [];
@@ -322,7 +328,6 @@ export async function assembleEnhancedPrompt(
       volatileTexts.add(text);
       sections.push(text);
     };
-    if (tenantSummaryBlock) vol(tenantSummaryBlock);
     sections.push(baseSystem);
     if (runtimeBlock) vol(runtimeBlock);
     const globalIndexBlock = formatSkillIndex("Global", globalSkills, p.runtime_context);
@@ -552,7 +557,7 @@ export async function assembleEnhancedPrompt(
 
 export async function assembleContext(
   params: AssembleContextParams,
-  exec?: Executor,
+  exec?: Db,
 ): Promise<AssembledContext> {
   const prompt = await assembleEnhancedPrompt(params, exec);
   const blocks = splitPromptIntoBlocks(prompt, params.flow);

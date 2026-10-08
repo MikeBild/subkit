@@ -30,9 +30,9 @@ async function messageTokens(conversation_id: string): Promise<number> {
   return countModelMessagesTokens(messages);
 }
 
-async function countCompactedMarkers(conversation_id: string): Promise<number> {
+async function compactedMarkers(conversation_id: string): Promise<Record<string, unknown>[]> {
   const rows = await ctx.db
-    .select({ id: conversationMessages.id })
+    .select({ content: conversationMessages.content })
     .from(conversationMessages)
     .where(
       and(
@@ -42,7 +42,11 @@ async function countCompactedMarkers(conversation_id: string): Promise<number> {
         sql`${conversationMessages.content}->>'kind' = 'compacted'`,
       ),
     );
-  return rows.length;
+  return rows.map((r) => r.content as Record<string, unknown>);
+}
+
+async function countCompactedMarkers(conversation_id: string): Promise<number> {
+  return (await compactedMarkers(conversation_id)).length;
 }
 
 describe("context auto-compaction mechanism (B)", () => {
@@ -72,8 +76,20 @@ describe("context auto-compaction mechanism (B)", () => {
       ctx.db,
     );
     expect(result.messages_collapsed).toBeGreaterThan(0);
+    expect(Object.keys(result).sort()).toEqual(["conversation", "messages_collapsed", "summary"]);
+    expect(typeof result.summary).toBe("string");
+    expect(
+      result.summary.startsWith(`Compacted ${result.messages_collapsed} earlier message(s).`),
+    ).toBe(true);
 
-    expect(await countCompactedMarkers(conversationId)).toBe(1);
+    const markers = await compactedMarkers(conversationId);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toMatchObject({
+      kind: "compacted",
+      summary: result.summary,
+      collapsed: result.messages_collapsed,
+    });
+    expect(["semantic", "stub"]).toContain(String(markers[0]?.mode));
     const after = await messageTokens(conversationId);
     expect(after).toBeLessThan(before / 2);
   }, 30_000);

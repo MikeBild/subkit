@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, tenants } from "../../db/schema/index.ts";
 import type { LlmProviderError } from "../../llm/errors.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 
@@ -115,27 +115,10 @@ describe("conversations/hardening", () => {
 
   test("turn-level fallback retries with the fallback model on overloaded", async () => {
     resetMockProvider();
-    const [settings] = await ctx.testDb.db
-      .select()
-      .from(tenantLlmSettings)
-      .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
-    if (settings) {
-      await ctx.testDb.db
-        .update(tenantLlmSettings)
-        .set({
-          llm_provider: "mock",
-          llm_primary_model: "hardening-primary",
-          llm_fallback_model: "hardening-fallback",
-        })
-        .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
-    } else {
-      await ctx.testDb.db.insert(tenantLlmSettings).values({
-        tenant_id: ctx.tenant_id,
-        llm_provider: "mock",
-        llm_primary_model: "hardening-primary",
-        llm_fallback_model: "hardening-fallback",
-      });
-    }
+    await ctx.testDb.db
+      .update(tenants)
+      .set({ llm_primary: "hardening-primary", llm_fallback: "hardening-fallback" })
+      .where(eq(tenants.id, ctx.tenant_id));
 
     getMockProvider().setFailure("hardening-primary", "overloaded");
 
@@ -178,27 +161,10 @@ describe("conversations/hardening", () => {
 
   test("quota-exhausted on the same provider does not waste a fallback attempt", async () => {
     resetMockProvider();
-    const [settings] = await ctx.testDb.db
-      .select()
-      .from(tenantLlmSettings)
-      .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
-    if (settings) {
-      await ctx.testDb.db
-        .update(tenantLlmSettings)
-        .set({
-          llm_provider: "mock",
-          llm_primary_model: "quota-primary",
-          llm_fallback_model: "quota-fallback",
-        })
-        .where(eq(tenantLlmSettings.tenant_id, ctx.tenant_id));
-    } else {
-      await ctx.testDb.db.insert(tenantLlmSettings).values({
-        tenant_id: ctx.tenant_id,
-        llm_provider: "mock",
-        llm_primary_model: "quota-primary",
-        llm_fallback_model: "quota-fallback",
-      });
-    }
+    await ctx.testDb.db
+      .update(tenants)
+      .set({ llm_primary: "quota-primary", llm_fallback: "quota-fallback" })
+      .where(eq(tenants.id, ctx.tenant_id));
 
     getMockProvider().setFailure("quota-primary", "quota_exhausted");
 

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { createKnowledgeSource } from "../../knowledge/service.ts";
 import { createWorkflow } from "../../workflows/service.ts";
 import { assembleEnhancedPrompt } from "../core/context-assembler.ts";
@@ -104,7 +105,31 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
     expect(Array.isArray(prompt.included_knowledge_chunks)).toBe(true);
   });
 
-  test("converse system prompt carries the tenant-snapshot block at BOTH ends", async () => {
+  test("converse system prompt carries the tenant-snapshot block exactly once for a principal", async () => {
+    const principal: ResolvedPrincipal = {
+      provider: "test",
+      kind: "user",
+      id: "u-converse",
+      tenant_id: ctx.tenant_id,
+      roles: ["admin"],
+    };
+    const prompt = await assembleEnhancedPrompt(
+      {
+        tenant_id: ctx.tenant_id,
+        flow: "converse",
+        user_turns: [{ role: "user", content: "show my workflows" }],
+        max_tokens: 12000,
+        model: "mock",
+        principal,
+      },
+      ctx.testDb.db,
+    );
+    const matches = prompt.system.match(/=== TENANT SNAPSHOT/g) ?? [];
+    expect(matches.length).toBe(1);
+    expect(prompt.system).toContain("wf-pagination-probe");
+  });
+
+  test("converse without a principal renders no tenant snapshot (fail closed)", async () => {
     const prompt = await assembleEnhancedPrompt(
       {
         tenant_id: ctx.tenant_id,
@@ -115,8 +140,7 @@ describe.skipIf(skip)("converse pipeline — non-regression contract", () => {
       },
       ctx.testDb.db,
     );
-    const matches = prompt.system.match(/TENANT SNAPSHOT/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
+    expect(prompt.system).not.toContain("=== TENANT SNAPSHOT");
   });
 
   test("non-converse flows do NOT inject the tenant-snapshot block", async () => {

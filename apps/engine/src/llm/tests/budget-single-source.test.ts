@@ -73,10 +73,7 @@ describe("the monthly token cap", () => {
     expect(declares(identity, "tenants"), "`tenants` declares a monthly cap column again").toBe(
       false,
     );
-    expect(
-      declares(llm, "tenantLlmSettings"),
-      "`tenant_llm_settings` declares a monthly cap column again",
-    ).toBe(false);
+    expect(llm, "a tenant-level llm settings table came back").not.toContain("tenant_llm_settings");
     expect(
       declares(llm, "userLlmSettings"),
       "`user_llm_settings` lost the per-user cap its resolver reads",

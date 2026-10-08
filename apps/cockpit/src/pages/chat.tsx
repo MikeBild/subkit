@@ -195,6 +195,7 @@ import {
   chatHeaderTitle,
   conversationOpenedByFailedSend,
   costPill,
+  messageAuthor,
   nextSessionKey,
   type OptimisticMessage,
   optimisticUiMessage,
@@ -870,7 +871,7 @@ function ChatMessage({
   onOpenFile?: (fileId: string) => void;
 }) {
   const { t, locale } = useI18n();
-  const from = message.role === "user" ? "user" : "assistant";
+  const from = messageAuthor(message.role);
   const groups = groupMessageParts(message.parts, pendingApprovalId).filter(
     (group) => group.kind !== "part" || Boolean(textFromPart(group.part)?.trim()),
   );
@@ -884,7 +885,13 @@ function ChatMessage({
     >
       <MessageContent data-testid={`chat-message-${messageIndex}-content`}>
         <MessageHeader data-testid={`chat-message-${messageIndex}-role`}>
-          {t(from === "user" ? "chat.role.you" : "chat.role.assistant")}
+          {t(
+            from === "user"
+              ? "chat.role.you"
+              : from === "system"
+                ? "chat.role.system"
+                : "chat.role.assistant",
+          )}
           {answersQuestion ? (
             <span
               className="ml-1 font-normal text-muted-foreground"
@@ -1444,6 +1451,7 @@ export function ChatPage() {
               message: string;
               kind?: string;
               retry_at?: string;
+              timeout?: { timeout_ms?: number | null };
             } | null;
           }
         | undefined
@@ -1456,15 +1464,22 @@ export function ChatPage() {
           code: send.error.code,
           kind: send.error.details?.kind,
           retry_at: send.error.details?.retry_at,
+          timeout_ms: send.error.details?.timeout_ms,
         })
       : null
-    : turnFailureCause(turnFailure);
+    : turnFailureCause(
+        turnFailure ? { ...turnFailure, timeout_ms: turnFailure.timeout?.timeout_ms } : null,
+      );
   const failureCauseText = failureCause
-    ? failureCause.kind === "provider_quota_exhausted" && failureCause.retryAt
-      ? t("chat.cause.provider_quota_exhaustedUntil", {
-          time: formatDateTime(locale, failureCause.retryAt),
-        })
-      : t(`chat.cause.${failureCause.kind}`)
+    ? failureCause.kind === "provider_timeout"
+      ? failureCause.timeoutMs !== null
+        ? t("chat.cause.provider_timeout", { seconds: Math.ceil(failureCause.timeoutMs / 1000) })
+        : t("chat.cause.provider_timeoutUnknown")
+      : failureCause.kind === "provider_quota_exhausted" && failureCause.retryAt
+        ? t("chat.cause.provider_quota_exhaustedUntil", {
+            time: formatDateTime(locale, failureCause.retryAt),
+          })
+        : t(`chat.cause.${failureCause.kind}`)
     : null;
   const submitTurn = async (
     message: string,

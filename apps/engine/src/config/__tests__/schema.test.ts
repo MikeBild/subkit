@@ -43,6 +43,20 @@ describe("ConfigSchema", () => {
     expect(result.data.tokens.monthly_budget).toBe(0);
   });
 
+  test("sandbox.max_transform_wall_ms defaults to five minutes and must be a positive integer", () => {
+    const parsed = ConfigSchema.parse({ database: { url: "postgres://x" } });
+    expect(parsed.sandbox.max_transform_wall_ms).toBe(300_000);
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      sandbox: { max_transform_wall_ms: 0 },
+    });
+    expect(r.success).toBe(false);
+    if (r.success) return;
+    expect(r.error.issues.some((i) => i.path.join(".") === "sandbox.max_transform_wall_ms")).toBe(
+      true,
+    );
+  });
+
   test("rejects an invalid log.level", () => {
     const r = ConfigSchema.safeParse({
       database: { url: "postgres://x" },

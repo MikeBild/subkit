@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
-import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage, tenants } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { invoke } from "../core/invoke.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
@@ -11,12 +11,10 @@ let ctx: LlmTestCtx;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("routing");
-  await ctx.testDb.db.insert(tenantLlmSettings).values({
-    tenant_id: ctx.tenant_id,
-    llm_provider: "mock",
-    llm_primary_model: "mock-primary-1",
-    llm_fallback_model: "mock-fallback-1",
-  });
+  await ctx.testDb.db
+    .update(tenants)
+    .set({ llm_primary: "mock-primary-1", llm_fallback: "mock-fallback-1" })
+    .where(eq(tenants.id, ctx.tenant_id));
 });
 
 afterAll(async () => {

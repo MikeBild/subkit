@@ -4,6 +4,8 @@ export const STEP_TIMEOUT_DEFAULT_MS = 60 * 60_000;
 
 export const TRANSFORM_TIMEOUT_DEFAULT_MS = 60_000;
 
+export const TRANSFORM_WALL_CEILING_DEFAULT_MS = 300_000;
+
 export const MAX_CALL_DEPTH = 5;
 
 export const MAX_CALL_RETRIES = 5;

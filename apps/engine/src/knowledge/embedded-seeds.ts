@@ -1,3 +1,4 @@
+import codingAgents from "../conversations/seed/knowledge/coding-agents.md" with { type: "text" };
 import externalChat from "../conversations/seed/knowledge/external-chat.md" with { type: "text" };
 import knowledgeAndSkills from "../conversations/seed/knowledge/knowledge-and-skills.md" with {
   type: "text",
@@ -20,6 +21,7 @@ export interface EmbeddedKnowledgeSeedFile {
 }
 
 export const EMBEDDED_KNOWLEDGE_SEEDS: readonly EmbeddedKnowledgeSeedFile[] = [
+  { file: "coding-agents.md", content: codingAgents },
   { file: "external-chat.md", content: externalChat },
   { file: "knowledge-and-skills.md", content: knowledgeAndSkills },
   { file: "mcp-tool-catalog.md", content: mcpToolCatalog },

@@ -6,13 +6,13 @@ import { and, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig, loadConfig } from "../../config/loader.ts";
 import { createElicitation } from "../../conversations/elicitations.ts";
+import { _setConverseFirstChunkTimeoutMsForTests } from "../../conversations/loop.ts";
 import * as svc from "../../conversations/service.ts";
 import {
   auditLog,
   conversations,
   mcpTasks,
   sessions,
-  tenantLlmSettings,
   tenants,
   users,
 } from "../../db/schema/index.ts";
@@ -124,12 +124,10 @@ beforeAll(async () => {
     roles: ["admin"],
     auth_source: { kind: "browser_session", session_id: session.id },
   };
-  await queue.testDb.db.insert(tenantLlmSettings).values({
-    tenant_id: tenantId,
-    llm_provider: "mock",
-    llm_primary_model: "runturn-primary",
-    llm_fallback_model: "runturn-fallback",
-  });
+  await queue.testDb.db
+    .update(tenants)
+    .set({ llm_primary: "runturn-primary", llm_fallback: "runturn-fallback" })
+    .where(eq(tenants.id, tenantId));
   await registerConversationRunTurnHandler({ boss: queue.boss, db: queue.testDb.db });
 });
 
@@ -849,5 +847,62 @@ describe("conversation.run-turn worker — parked turn supersession", () => {
     const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
     expect(row?.result).not.toBeNull();
     expect(row?.failure_reason).toBeNull();
+  }, 45_000);
+
+  test("a raw SDK timeout becomes the shared timeout wording in failure_reason and the tool result", async () => {
+    const { conversation_id, mcp_task_id } =
+      await seedConversationAndTask("hang on the first chunk");
+    const sdkTimeout = new Error("First chunk timeout of 90000ms exceeded");
+    sdkTimeout.name = "TimeoutError";
+    const spy = spyOn(svc, "runConversationTurn").mockImplementation(async () => {
+      throw sdkTimeout;
+    });
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        kind: "start",
+      });
+      await waitForTerminal(mcp_task_id);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.failure_reason).toBe("Timed out after 90 s");
+    expect(row?.result).toBeNull();
+
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    const result = await store.getTaskResult(mcp_task_id);
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: "text", text: "Timed out after 90 s" }]);
+  }, 45_000);
+
+  test("a provider that never sends its first chunk fails the MCP turn with the same wording the loop uses", async () => {
+    const { conversation_id, mcp_task_id } = await seedConversationAndTask("silent provider");
+    getMockProvider().setFailure("runturn-primary", "stream_never_answers");
+    _setConverseFirstChunkTimeoutMsForTests(200);
+    try {
+      await enqueueConversationRunTurn(queue.boss, {
+        tenant_id: tenantId,
+        conversation_id,
+        mcp_task_id,
+        actor_id: userId,
+        kind: "start",
+      });
+      await waitForTerminal(mcp_task_id);
+    } finally {
+      _setConverseFirstChunkTimeoutMsForTests(null);
+    }
+
+    const row = await getMcpTask(tenantId, mcp_task_id, queue.testDb.db);
+    expect(row?.failure_reason).toBe("Timed out after 1 s");
+    const store = new ConversationTaskStore({ db: queue.testDb.db, tenant_id: tenantId });
+    expect(await store.getTaskResult(mcp_task_id)).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "Timed out after 1 s" }],
+    });
   }, 45_000);
 });

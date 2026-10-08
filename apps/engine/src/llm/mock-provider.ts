@@ -25,7 +25,9 @@ export type MockFailure =
   | "rate_limit"
   | "quota_exhausted"
   | "overloaded"
-  | "context_length_exceeded";
+  | "context_length_exceeded"
+  | "stream_never_answers"
+  | "response_never_arrives";
 
 export type ConverseMockStep = { tool: string; args: Record<string, unknown> } | { text: string };
 
@@ -223,12 +225,7 @@ class MockProvider {
     }
   }
 
-  call<T = unknown>(args: {
-    flow: LlmFlow;
-    model: string;
-    prompt: EnhancedPrompt;
-    enable_prompt_cache?: boolean;
-  }): MockResult<T> {
+  call<T = unknown>(args: { flow: LlmFlow; model: string; prompt: EnhancedPrompt }): MockResult<T> {
     this.maybeFail(args.model, args.prompt);
     const lastUser =
       [...args.prompt.messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -247,7 +244,7 @@ class MockProvider {
     const stableTokens = Math.max(0, Math.floor(args.prompt.token_counts.system / 2));
     let cache_creation_tokens = 0;
     let cache_read_tokens = 0;
-    if (args.enable_prompt_cache && stableTokens > 0) {
+    if (stableTokens > 0) {
       const cacheKey = `${args.model}::${args.flow}`;
       if (this.cacheSeenKey.has(cacheKey)) {
         cache_read_tokens = stableTokens;

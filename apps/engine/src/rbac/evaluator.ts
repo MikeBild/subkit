@@ -371,8 +371,20 @@ export async function resourceAccess(
   if (tenantWide.source === "credential_ceiling") {
     return { tenantWide, allows: () => false, any: false };
   }
-  const granted = new Set<string>();
   const isPortalToken = principal.provider === "portal_token";
+  const ceilingAllows = (id: string): boolean => {
+    const list =
+      resource_type === "workflow"
+        ? principal.allowed_workflows
+        : resource_type === "connector"
+          ? principal.allowed_connectors
+          : undefined;
+    return isPortalToken || !list || list === "all" || list.includes(id);
+  };
+  if (tenantWide.allow) {
+    return { tenantWide, allows: ceilingAllows, any: true };
+  }
+  const granted = new Set<string>();
   if (!isPortalToken) {
     const permissionId = await lookupPermissionId(db, permission);
     if (permissionId) {
@@ -408,18 +420,8 @@ export async function resourceAccess(
       for (const row of rows) granted.add(row.id);
     }
   }
-  const ceilingAllows = (id: string): boolean => {
-    const list =
-      resource_type === "workflow"
-        ? principal.allowed_workflows
-        : resource_type === "connector"
-          ? principal.allowed_connectors
-          : undefined;
-    return isPortalToken || !list || list === "all" || list.includes(id);
-  };
   const allows = (id: string): boolean => {
     if (!ceilingAllows(id)) return false;
-    if (tenantWide.allow) return true;
     if (granted.has(id)) return true;
     return matchesPortalTokenAllowlist({
       tenant_id: check.tenant_id,
@@ -434,7 +436,23 @@ export async function resourceAccess(
     (permission === "workflow:read" || permission === "workflow:run") &&
     resource_type === "workflow" &&
     (allowlist === "all" || (Array.isArray(allowlist) && allowlist.length > 0));
-  return { tenantWide, allows, any: tenantWide.allow || granted.size > 0 || portalReaches };
+  return { tenantWide, allows, any: granted.size > 0 || portalReaches };
+}
+
+export async function catalogVisibility(
+  db: Db,
+  principal: ResolvedPrincipal,
+  permission: "workflow:read" | "connector:read",
+  resource_type: "workflow" | "connector",
+): Promise<((id: string) => boolean) | null> {
+  const access = await resourceAccess(db, {
+    tenant_id: principal.tenant_id,
+    principal,
+    permission,
+    resource_type,
+    quiet: true,
+  });
+  return access.any ? access.allows : null;
 }
 
 function emitDeny(check: PermissionCheck, reason: string, source: string): void {

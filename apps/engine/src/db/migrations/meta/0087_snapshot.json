@@ -1,5 +1,5 @@
 {
-  "id": "092e2d49-064d-401a-9fed-cad90c7d66e5",
+  "id": "24d6479d-f440-439b-9cdc-582f4ffeb4b5",
   "prevId": "0959b454-1db5-4dd0-b588-e934a115caa4",
   "version": "7",
   "dialect": "postgresql",
@@ -5535,26 +5535,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "caller_context": {
-          "name": "caller_context",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "input": {
           "name": "input",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "authorization_context": {
-          "name": "authorization_context",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sensitive_result": {
-          "name": "sensitive_result",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -7367,12 +7349,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "expires_at": {
           "name": "expires_at",
           "type": "timestamp with time zone",
@@ -7754,18 +7730,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "issuer_url": {
-          "name": "issuer_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "subject": {
           "name": "subject",
@@ -9186,149 +9150,6 @@
         "tenant_dlp_rules_tenant_id_tenants_id_fk": {
           "name": "tenant_dlp_rules_tenant_id_tenants_id_fk",
           "tableFrom": "tenant_dlp_rules",
-          "tableTo": "tenants",
-          "columnsFrom": ["tenant_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tenant_llm_settings": {
-      "name": "tenant_llm_settings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "llm_primary_model": {
-          "name": "llm_primary_model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "llm_fallback_model": {
-          "name": "llm_fallback_model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "llm_provider": {
-          "name": "llm_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "llm_provider_credentials_ciphertext": {
-          "name": "llm_provider_credentials_ciphertext",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "llm_provider_credentials_iv": {
-          "name": "llm_provider_credentials_iv",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "llm_provider_credentials_auth_tag": {
-          "name": "llm_provider_credentials_auth_tag",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "enable_prompt_cache": {
-          "name": "enable_prompt_cache",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "system_prompt_additions": {
-          "name": "system_prompt_additions",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_environment": {
-          "name": "default_environment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'dev'"
-        },
-        "auto_discovery": {
-          "name": "auto_discovery",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "failure_notification_channels": {
-          "name": "failure_notification_channels",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "confirmation_profile": {
-          "name": "confirmation_profile",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'strict'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "tenant_llm_settings_tenant_key": {
-          "name": "tenant_llm_settings_tenant_key",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "tenant_llm_settings_tenant_id_tenants_id_fk": {
-          "name": "tenant_llm_settings_tenant_id_tenants_id_fk",
-          "tableFrom": "tenant_llm_settings",
           "tableTo": "tenants",
           "columnsFrom": ["tenant_id"],
           "columnsTo": ["id"],
@@ -13360,18 +13181,6 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "caller_context": {
-          "name": "caller_context",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "authorization_context": {
-          "name": "authorization_context",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "claimed_execution_id": {
           "name": "claimed_execution_id",
