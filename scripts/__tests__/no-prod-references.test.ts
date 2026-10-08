@@ -6,8 +6,8 @@ const root = join(import.meta.dir, "../..");
 const self = "scripts/__tests__/no-prod-references.test.ts";
 
 describe("no installation-specific references", () => {
-  test("the operator domain appears in no tracked file", () => {
-    const needle = ["mikebild", "dev"].join("\\.");
+  test("the operator's domains appear in no tracked file", () => {
+    const needle = ["mikebild", "(dev|com)"].join("\\.");
     let hits = "";
     try {
       hits = execFileSync("git", ["grep", "-nIE", needle, "--", ".", `:!${self}`], {
