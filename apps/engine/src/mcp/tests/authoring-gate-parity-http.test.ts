@@ -402,7 +402,7 @@ describe("unknown JSONata function check answers identically on every authoring 
     expect(JSON.stringify(draft.body)).toContain(direct.errors[0] ?? "missing");
   }, 60_000);
 
-  test.failing("POST /v1/workflows/validate reports the same finding instead of ok:true", async () => {
+  test("POST /v1/workflows/validate reports the same finding instead of ok:true", async () => {
     const direct = projectGate(
       await runWrappedTool("web", "edit_workflow_patch", UNKNOWN_FUNCTION_PATCH),
     );

@@ -9316,7 +9316,7 @@
             "type": "string"
           },
           "description": {
-            "type": "string"
+            "$ref": "#/components/schemas/CatalogDescription"
           },
           "input_schema": {
             "type": "object",
@@ -9336,11 +9336,38 @@
           "timeout_ms": {
             "type": "integer",
             "exclusiveMinimum": 0
+          },
+          "max_llm_tokens_per_run": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/WorkflowTrigger"
+          },
+          "output_transform": {
+            "type": "string"
+          },
+          "output_transform_function": {
+            "type": "string"
+          },
+          "validation_expression": {
+            "type": "string"
+          },
+          "validation_function": {
+            "type": "string"
+          },
+          "response_filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
           }
         },
         "required": [
           "steps"
-        ]
+        ],
+        "additionalProperties": {}
       },
       "WorkflowInputSchemaResponse": {
         "type": "object",
