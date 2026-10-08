@@ -67,18 +67,6 @@ function makeStub(result: GenerateTextStubResult) {
   return { fn, calls };
 }
 
-function makeMultiStub(results: GenerateTextStubResult[]) {
-  const calls: unknown[] = [];
-  let i = 0;
-  const fn = async (opts: unknown) => {
-    calls.push(opts);
-    const r = results[Math.min(i, results.length - 1)] ?? { text: "" };
-    i += 1;
-    return stubResult(r);
-  };
-  return { fn, calls };
-}
-
 function outcome(value: unknown, text = JSON.stringify({ ok: true, value, reason: null })) {
   return {
     text,
