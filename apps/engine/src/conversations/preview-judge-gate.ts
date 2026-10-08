@@ -44,6 +44,8 @@ export async function runPreviewJudgeGate(p: {
   steps: ReadonlyArray<Record<string, unknown>>;
   run_steps: Parameters<typeof buildJudgeStepArtifacts>[0];
   final_output?: unknown;
+  output_schema?: Record<string, unknown> | null;
+  final_output_held?: boolean;
   prior_breaker: JudgeBreakerState | null;
   signal?: AbortSignal;
 }): Promise<PreviewJudgeGateResult> {
@@ -86,6 +88,8 @@ export async function runPreviewJudgeGate(p: {
       definition_summary: buildJudgeDefinitionSummary(p.steps as Array<Record<string, unknown>>),
       step_artifacts: buildJudgeStepArtifacts(p.run_steps),
       final_output: p.final_output,
+      output_schema: p.output_schema ?? null,
+      final_output_held: p.final_output_held === true,
       tenant_id: p.tenant_id,
       db: p.db,
       ...(p.signal ? { signal: p.signal } : {}),

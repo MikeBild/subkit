@@ -87,7 +87,16 @@
       "name": "weather-table-format-mismatch",
       "goal": "Return a MARKDOWN TABLE ranking cities by temperature.",
       "definition_summary": "fetch_weather -> rank (transform)",
-      "final_output": [{ "city": "Madrid", "temp_c": 34 }, { "city": "Berlin", "temp_c": 27 }],
+      "final_output": [
+        {
+          "city": "Madrid",
+          "temp_c": 34
+        },
+        {
+          "city": "Berlin",
+          "temp_c": 27
+        }
+      ],
       "label": "failed",
       "note": "Data is correct but the goal demanded a markdown table; a JSON array does not satisfy the named output format."
     },
@@ -95,7 +104,10 @@
       "name": "single-value-correct",
       "goal": "Return the hottest day's date and temperature for the next week.",
       "definition_summary": "fetch_forecast -> argmax (transform)",
-      "final_output": { "hottest_day": "2026-06-28", "hottest_temp_c": 31.2 },
+      "final_output": {
+        "hottest_day": "2026-06-28",
+        "hottest_temp_c": 31.2
+      },
       "label": "passes",
       "note": "Exactly the requested fields with plausible values."
     },
@@ -112,11 +124,26 @@
       "goal": "Return the 5 most-recently-updated repositories with name and star count.",
       "definition_summary": "list_repos (graphql) -> shape (transform)",
       "final_output": [
-        { "name": "a", "stars": 10 },
-        { "name": "b", "stars": 9 },
-        { "name": "c", "stars": 8 },
-        { "name": "d", "stars": 7 },
-        { "name": "e", "stars": 6 }
+        {
+          "name": "a",
+          "stars": 10
+        },
+        {
+          "name": "b",
+          "stars": 9
+        },
+        {
+          "name": "c",
+          "stars": 8
+        },
+        {
+          "name": "d",
+          "stars": 7
+        },
+        {
+          "name": "e",
+          "stars": 6
+        }
       ],
       "label": "passes",
       "note": "Five repos, each with name + stars, ordered by recency/stars."
@@ -125,9 +152,66 @@
       "name": "list-truncated-one-item",
       "goal": "Return the 5 most-recently-updated repositories with name and star count.",
       "definition_summary": "list_repos (graphql) -> shape (transform)",
-      "final_output": [{ "name": "a", "stars": 10 }],
+      "final_output": [
+        {
+          "name": "a",
+          "stars": 10
+        }
+      ],
       "label": "passes",
       "note": "Judge-defensible PASS: the list is well-formed with the named fields (name + stars). The goal asked for 5, but whether 5 actually exist is NOT verifiable from the output alone — the judge cannot know if only 1 repo exists, so it must not be penalized for the count. (A strict count rule would false-fail legitimately-short lists.)"
+    },
+    {
+      "name": "jsonata-argmax-raw-forecast-leak",
+      "goal": "Return the hottest day of the coming week for Berlin: the date and its maximum temperature.",
+      "definition_summary": "forecast (request) -> output_transform (JSONata argmax)",
+      "final_output": {
+        "latitude": 52.52,
+        "longitude": 13.41,
+        "generationtime_ms": 0.08,
+        "timezone": "Europe/Berlin",
+        "daily_units": {
+          "time": "iso8601",
+          "temperature_2m_max": "°C"
+        },
+        "daily": {
+          "time": [
+            "2026-06-22",
+            "2026-06-23",
+            "2026-06-24",
+            "2026-06-25",
+            "2026-06-26",
+            "2026-06-27",
+            "2026-06-28"
+          ],
+          "temperature_2m_max": [24.1, 26.3, 29.8, 31.2, 27.4, 25.0, 23.6]
+        }
+      },
+      "label": "failed",
+      "note": "The output_transform threw (or returned undefined) and the engine passed the RAW forecast payload through: seven days of arrays instead of the one hottest day. The data to answer is present, but nothing selected it; the goal asks for a derived single result."
+    },
+    {
+      "name": "jsonata-argmax-correct-with-schema",
+      "goal": "Return the hottest day of the coming week for Berlin: the date and its maximum temperature.",
+      "definition_summary": "forecast (request) -> output_transform (JSONata argmax)",
+      "final_output": {
+        "hottest_day": "2026-06-25",
+        "max_temp": 31.2
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["hottest_day", "max_temp"],
+        "properties": {
+          "hottest_day": {
+            "type": "string"
+          },
+          "max_temp": {
+            "type": "number"
+          }
+        }
+      },
+      "label": "passes",
+      "note": "Exactly the two requested fields, satisfying the declared output_schema; the argmax selected the single hottest day."
     }
   ]
 }

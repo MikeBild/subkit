@@ -756,6 +756,169 @@ describe("preview judge · format-fidelity downgrade wiring", () => {
   });
 });
 
+describe("preview judge · the judge sees the final output and the output_schema", () => {
+  const GOAL = "Return the hottest day of the coming week: the date and its maximum temperature.";
+  const RAW_FORECAST = {
+    daily: { time: ["2026-06-22", "2026-06-23"], temperature_2m_max: [24.1, 31.2] },
+  };
+  const SCHEMA = {
+    type: "object",
+    required: ["hottest_day", "max_temp"],
+    properties: { hottest_day: { type: "string" }, max_temp: { type: "number" } },
+  };
+  const forecastArtifacts: JudgeStepArtifact[] = [
+    { step_id: "forecast", kind: "request", status: "succeeded", output_preview: RAW_FORECAST },
+  ];
+
+  function judgePrompt(): string {
+    return getMockProvider().calls.find((c) => c.flow === "judge")?.last_user ?? "";
+  }
+
+  test("the prompt carries the final output as THE object to judge, the schema, and the raw-payload rule", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok",
+      missing: [],
+    });
+    await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request)",
+      step_artifacts: forecastArtifacts,
+      final_output: { hottest_day: "2026-06-23", max_temp: 31.2 },
+      output_schema: SCHEMA,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    const prompt = judgePrompt();
+    expect(prompt).toContain(
+      "Final output the caller receives (after output_transform) — THIS is the object to judge",
+    );
+    expect(prompt).toContain('"hottest_day": "2026-06-23"');
+    expect(prompt).toContain("Declared output_schema the final output must satisfy");
+    expect(prompt).toContain('"required": [');
+    expect(prompt).toContain("RAW PAYLOAD IS NOT A RESULT");
+  });
+
+  test("without a final output the prompt has no final-output section (held or absent output)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok",
+      missing: [],
+    });
+    await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request)",
+      step_artifacts: forecastArtifacts,
+      final_output: null,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    expect(judgePrompt()).not.toContain("Final output the caller receives");
+  });
+
+  test('schema mismatch → "partial" with the violations in missing, even when the judge says "passes"', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "Looks like the hottest day.",
+      missing: [],
+    });
+    const outcome = await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request)",
+      step_artifacts: forecastArtifacts,
+      final_output: { hottest: "2026-06-23", max_temp: "31.2" },
+      output_schema: SCHEMA,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    expect(outcome.verdict).toBe("partial");
+    if (outcome.verdict !== "partial") throw new Error("unreachable");
+    expect(outcome.missing.some((m) => m.startsWith("$output/hottest_day"))).toBe(true);
+    expect(outcome.missing.some((m) => m.startsWith("$output/max_temp"))).toBe(true);
+  });
+
+  test('a conforming final output keeps "passes"; a judge "failed" is never upgraded by a conforming schema', async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok",
+      missing: [],
+    });
+    const passes = await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request)",
+      step_artifacts: forecastArtifacts,
+      final_output: { hottest_day: "2026-06-23", max_temp: 31.2 },
+      output_schema: SCHEMA,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    expect(passes.verdict).toBe("passes");
+
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "failed",
+      reason: "raw payload",
+      missing: ["hottest day"],
+    });
+    const failed = await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request)",
+      step_artifacts: forecastArtifacts,
+      final_output: { hottest_day: "2026-06-23", max_temp: 31.2 },
+      output_schema: SCHEMA,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    expect(failed.verdict).toBe("failed");
+  });
+
+  test("final_output_held skips the schema check (the held preview has no real final output)", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok",
+      missing: [],
+    });
+    const outcome = await judgePreview({
+      goal: GOAL,
+      definition_summary: "- forecast (request); - send (held)",
+      step_artifacts: forecastArtifacts,
+      final_output: RAW_FORECAST,
+      output_schema: SCHEMA,
+      final_output_held: true,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+    });
+    expect(outcome.verdict).toBe("passes");
+  });
+
+  test("dry_run_workflow passes output_schema through: a conforming green preview keeps its verdict, a violating one is repaired or downgraded", async () => {
+    getMockProvider().generateOverrides.judge = () => ({
+      verdict: "passes",
+      reason: "ok",
+      missing: [],
+    });
+    const toolCtx = makeCtx({
+      workflow: {
+        name: "schema-through",
+        slug: "schema-through",
+        goal: GOAL,
+        steps: [
+          {
+            id: "shape",
+            kind: "transform",
+            language: "javascript",
+            expression: 'return { hottest_day: "2026-06-23", max_temp: 31.2 };',
+          },
+        ],
+        output_schema: SCHEMA,
+      },
+    } as unknown as DraftDocument);
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(result.ok).toBe(true);
+    expect((result.data as JudgeEnvelope).judge?.verdict).toBe("passes");
+    expect(judgePrompt()).toContain("Declared output_schema the final output must satisfy");
+  });
+});
+
 describe("preview judge · bounded-field coercion + retry (fail-open fix)", () => {
   const GOAL_PLAIN = "email me the droplet specs for each project";
 
