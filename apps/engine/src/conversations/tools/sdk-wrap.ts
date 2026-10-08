@@ -39,13 +39,24 @@ export async function wrapTools(
   const out: Record<string, Tool<Record<string, unknown>, WrappedToolOutput>> = {};
   const isChatSurface = ctx.surface === "chat" || principal?.provider === "chat";
   if (ctx.surface !== "chat" && principal?.provider === "chat") {
-    await recordChatPaletteSurfaceEnforced({
-      tenant_id: ctx.tenant_id,
-      actor_id: ctx.actor_id,
-      conversation_id: ctx.conversation_id,
-      request_source: "chat",
-      executor: db,
-    });
+    try {
+      await recordChatPaletteSurfaceEnforced({
+        tenant_id: ctx.tenant_id,
+        actor_id: ctx.actor_id,
+        conversation_id: ctx.conversation_id,
+        request_source: "chat",
+        executor: db,
+      });
+    } catch (auditErr) {
+      logger.warn({
+        module: "conversation_tool",
+        action: "chat_palette.surface_enforced_audit_failed",
+        msg: "failed to audit the chat palette enforcement; the read-only palette still applies",
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
   }
   const loadedSkillSet = new Set(loadedSkills);
   const visibleTools = isChatSurface

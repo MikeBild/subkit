@@ -170,6 +170,59 @@ describe("wrapTools chat-surface palette switch", () => {
     expect(await enforcedRows()).toHaveLength(1);
   });
 
+  it("a failing audit insert leaves the read-only palette in place instead of failing the turn", async () => {
+    const principal: ResolvedPrincipal = {
+      provider: "chat",
+      kind: "user",
+      id: "u-chat-provider-audit-down",
+      tenant_id: ctx.tenant_id,
+      roles: ["admin"],
+    };
+    const enforcedRows = () =>
+      ctx.testDb.db
+        .select()
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenant_id, ctx.tenant_id),
+            eq(auditLog.action, "conversation.palette_surface_enforced"),
+          ),
+        );
+    const rowsBefore = (await enforcedRows()).length;
+    const realDb = ctx.testDb.db as unknown as Db;
+    const dbWithFailingInsert = new Proxy(realDb, {
+      get(target, prop, receiver) {
+        if (prop === "insert") {
+          return () => {
+            throw new Error("connection reset by peer");
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const wrapped = await wrapTools(
+      makeCtx(),
+      freshSignals(),
+      [],
+      dbWithFailingInsert,
+      ["workflow-authoring", "connector-creation-guidance"],
+      {},
+      null,
+      principal,
+    );
+    const names = Object.keys(wrapped);
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(
+        CHAT_READONLY_TOOLS.has(name) || name.startsWith("wf_"),
+        `${name} leaked past the chat palette`,
+      ).toBe(true);
+    }
+    expect(names.includes("call_connector")).toBe(false);
+    expect((await enforcedRows()).length).toBe(rowsBefore);
+  });
+
   it("absent surface keeps today's authoring palette (web/CLI/MCP regression guard)", async () => {
     const events: TurnEvent[] = [];
     const wrapped = await wrapTools(
