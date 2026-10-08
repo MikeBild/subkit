@@ -1,5 +1,10 @@
 import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
+import {
+  describeTurnFailure,
+  timeoutPhaseOf,
+  turnFailureFramePayload,
+} from "../../conversations/turn-failure.ts";
 import { LlmProviderError, LlmQuotaExhausted } from "../../llm/errors.ts";
 import { toLlmProviderError } from "../../llm/provider-errors.ts";
 import { logger } from "../../logging/logger.ts";
@@ -132,7 +137,15 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
       },
     });
   }
-  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+  if (timeoutPhaseOf(err) !== null) {
+    const failure = turnFailureFramePayload(describeTurnFailure(err));
+    captureToRing(c, err, 504, "llm_timeout", "llm_timeout");
+    return envelope(c, 504, "llm_timeout", failure.message, {
+      hint: "the model did not answer in time — retry, or shorten the request",
+      details: failure.details,
+    });
+  }
+  if (err instanceof Error && err.name === "AbortError") {
     captureToRing(c, err, 504, "llm_timeout", "llm_timeout");
     return envelope(c, 504, "llm_timeout", "llm call exceeded the timeout");
   }

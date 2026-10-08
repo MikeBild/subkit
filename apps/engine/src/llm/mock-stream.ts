@@ -138,6 +138,22 @@ export function createMockLanguageModel(modelId = "mock-converse"): MockLanguage
             { tokens: countPromptTextTokens(options.prompt) },
           );
         }
+        if (primed === "stream_never_answers") {
+          const abortSignal = options.abortSignal;
+          return {
+            stream: new ReadableStream<LanguageModelV4StreamPart>({
+              start(controller) {
+                if (abortSignal?.aborted) {
+                  controller.error(abortSignal.reason);
+                  return;
+                }
+                abortSignal?.addEventListener("abort", () => controller.error(abortSignal.reason), {
+                  once: true,
+                });
+              },
+            }),
+          };
+        }
       }
 
       singleton.toolChoices.push(options.toolChoice);

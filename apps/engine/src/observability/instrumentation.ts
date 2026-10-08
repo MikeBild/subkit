@@ -1,10 +1,22 @@
+import type { GateRecord } from "../conversations/confirmation.ts";
+import type { TimeoutPhase } from "../conversations/turn-failure.ts";
+import type { AuthoringStage } from "../conversations/types.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import {
   boundedConnectorSlug,
+  boundedLabel,
   CONNECTOR_HEALTH_VALUES,
+  CONVERSATION_STAGE_LABELS,
+  CONVERSATION_SURFACE_LABELS,
   DB_TRANSIENT_RETRY_LABELS,
+  LLM_TIMEOUT_PHASES,
+  TOOL_POLICY_MODES,
+  TOOL_POLICY_OUTCOMES,
+  TOOL_POLICY_RULES,
 } from "./metric-label-allowlists.ts";
 import { getMetrics, METRIC_NAMES, type PatchCandidateDecision } from "./metrics.ts";
+
+export type { TimeoutPhase };
 
 function safe(fn: () => void): void {
   try {
@@ -271,8 +283,48 @@ export function recordConversationToolCall(args: {
       reg.observe(METRIC_NAMES.CONVERSATION_TOOL_DURATION_MS, args.duration_ms, {
         category: args.category,
         tool: args.tool,
+        outcome: args.outcome,
       });
     }
+  });
+}
+
+export function recordToolPolicyDecision(record: GateRecord): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.TOOL_POLICY_DECISION_TOTAL, {
+      rule: boundedLabel(TOOL_POLICY_RULES, record.rule),
+      mode: boundedLabel(TOOL_POLICY_MODES, record.mode),
+      outcome: boundedLabel(TOOL_POLICY_OUTCOMES, record.outcome),
+      surface: boundedLabel(CONVERSATION_SURFACE_LABELS, record.surface),
+    });
+  });
+}
+
+export function recordConversationStep(args: {
+  stage: AuthoringStage | "idle";
+  model: string;
+}): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_STEP_TOTAL, {
+      stage: boundedLabel(CONVERSATION_STAGE_LABELS, args.stage),
+      model: args.model,
+    });
+  });
+}
+
+export type ConversationRepairKind = "repaired" | "capped";
+
+export function recordConversationRepair(args: { kind: ConversationRepairKind }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_REPAIR_TOTAL, { kind: args.kind });
+  });
+}
+
+export function recordLlmStepTimeout(args: { phase: TimeoutPhase }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.LLM_STEP_TIMEOUT_TOTAL, {
+      phase: boundedLabel(LLM_TIMEOUT_PHASES, args.phase),
+    });
   });
 }
 

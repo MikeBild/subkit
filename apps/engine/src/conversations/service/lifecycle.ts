@@ -18,6 +18,7 @@ import { cancelConversationAbort, hasConversationAbort } from "../abort.ts";
 import { stringifyConversationExcerpt, truncateExcerpt } from "../excerpt.ts";
 import type { ConversationOutcome } from "../lifecycle-view.ts";
 import { deriveConversationOutcome } from "../lifecycle-view.ts";
+import type { TurnFailure } from "../turn-failure.ts";
 import type {
   ConversationOwner,
   ConversationRecord,
@@ -515,7 +516,7 @@ export async function recordConversationTurnFailure(
   exec: Db,
   tenant_id: string,
   conversation_id: string,
-  failure: { code: string; message: string; at: string; kind?: string; retry_at?: string },
+  failure: TurnFailure,
 ): Promise<void> {
   await exec
     .update(conversations)
