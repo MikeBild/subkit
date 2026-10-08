@@ -242,6 +242,7 @@ const ACTION_KEYS: Record<string, TranslationKey> = {
   "skill_candidate.context_recorded": "audit.action.skillContextRecorded",
   "workflow.created": "audit.action.workflowCreated",
   "workflow.updated": "audit.action.workflowUpdated",
+  "workflow.preview_auto_repaired": "audit.action.workflowPreviewAutoRepaired",
   "execution.started": "audit.action.executionStarted",
   "execution.completed": "audit.action.executionCompleted",
   "schedule.admission.changed": "audit.action.scheduleAdmissionChanged",
