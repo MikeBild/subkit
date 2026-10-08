@@ -69,6 +69,10 @@ export function setMcpSessionFactoriesForTests(factories: McpSessionFactories | 
   testFactories = factories;
 }
 
+export function mcpRequestHeaders(auth: Record<string, string>): Record<string, string> {
+  return { ...auth, "accept-encoding": "identity" };
+}
+
 function buildTransport(
   tenant_id: string,
   row: McpConnectorRow,
@@ -77,7 +81,8 @@ function buildTransport(
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
   assertEgressAllowed(url, { tenant_id });
-  const requestInit: RequestInit = Object.keys(headers).length > 0 ? { headers } : {};
+  const requestHeaders = mcpRequestHeaders(headers);
+  const requestInit: RequestInit = { headers: requestHeaders };
   switch (row.transport) {
     case "http":
       return new StreamableHTTPClientTransport(url, {
@@ -89,7 +94,7 @@ function buildTransport(
         requestInit,
         ...(authProvider ? { authProvider } : {}),
         eventSourceInit: {
-          fetch: (target, init) => getDriverFetch()(target, { ...init, headers }),
+          fetch: (target, init) => getDriverFetch()(target, { ...init, headers: requestHeaders }),
         },
       });
     case "stdio":
