@@ -38,6 +38,7 @@ interface StructuredCall {
   temperature?: number;
   timeout?: { totalMs?: number };
   abortSignal?: AbortSignal;
+  providerOptions?: Record<string, unknown>;
   model: unknown;
 }
 
@@ -269,6 +270,26 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(call.tools).toBeUndefined();
     expect(call.stopWhen).toBeUndefined();
     expect(call.output?.name).toBe("object");
+  });
+
+  it("asks Anthropic for the tool-based structured output so a large schema never meets the grammar compiler", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    await model.generateObject({
+      messages: [{ role: "user", content: "test" }],
+      schema: keySchema,
+    });
+    const structured = stub.calls[0] as StructuredCall;
+    expect(structured.providerOptions).toEqual({
+      anthropic: { structuredOutputMode: "jsonTool" },
+    });
+
+    await model.generateText([{ role: "user", content: "hi" }]);
+    const plain = stub.calls[1] as StructuredCall;
+    expect(plain.providerOptions).toBeUndefined();
   });
 
   it("sends an object-rooted { ok, value, reason } schema on the wire", async () => {
