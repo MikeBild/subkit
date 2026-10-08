@@ -48,7 +48,7 @@ export function timeoutPhaseOf(error: unknown): TimeoutPhase | null {
 
 const SDK_TIMEOUT_MS_RE = /timeout of (\d+)ms exceeded/;
 
-function timeoutMsOf(error: unknown): number | null {
+export function timeoutBudgetOf(error: unknown): number | null {
   if (error instanceof LlmTimeoutError) return error.timeout_ms;
   const match = error instanceof Error ? SDK_TIMEOUT_MS_RE.exec(error.message) : null;
   return match?.[1] ? Number(match[1]) : null;
@@ -82,7 +82,7 @@ export function describeTurnFailure(error: unknown, now: Date = new Date()): Tur
   if (providerErr) return providerFailure(providerErr, at);
   const phase = timeoutPhaseOf(error);
   if (phase) {
-    const timeout_ms = timeoutMsOf(error);
+    const timeout_ms = timeoutBudgetOf(error);
     return {
       code: "llm_timeout",
       message: timeout_ms === null ? "Timed out" : timeoutMessage(timeout_ms),
