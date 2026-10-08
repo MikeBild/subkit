@@ -14,6 +14,7 @@ import {
   MODEL_RELAYED_ANSWER,
 } from "../../conversations/answer-actor.ts";
 import * as svc from "../../conversations/service.ts";
+import { describeTurnFailure } from "../../conversations/turn-failure.ts";
 import type { Db } from "../../db/client.ts";
 import { conversationMessages } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
@@ -378,7 +379,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db, boss: PgBoss)
         });
       }
     }
-    const failureReason = err instanceof Error ? err.message : String(err);
+    const failureReason = describeTurnFailure(err).message;
     const failureStored = await storeAttemptFailure(data, failureAttemptId, failureReason, db);
     if (!failureStored) {
       log.queue.job.completed({
