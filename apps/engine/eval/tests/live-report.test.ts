@@ -646,6 +646,44 @@ describe("scoreScenario · placeholder answer (negative scenario)", () => {
     expect(scenarioPassed(score)).toBe(true);
   });
 
+  test("a refusal that names the placeholder only in the assistant text still counts", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn(
+          [call("ask_user_text", { question: "Which real inbox should receive the report?" })],
+          "awaiting_input",
+          "test@example.com is a placeholder address, so I did not build the workflow.",
+          "elic_2",
+        ),
+      ]),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("PASS");
+    expect(score.guard_fired).toBe(false);
+  });
+
+  test("an unrelated renewed question after the placeholder answer is not a refusal → FAIL", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        firstTurn(),
+        turn(
+          [call("ask_user_text", { question: "Which subject line should the e-mail carry?" })],
+          "awaiting_input",
+          "",
+          "elic_2",
+        ),
+      ]),
+    );
+    expect((score.targets as ClarificationTargets).placeholder_rejected_after_answer).toBe("FAIL");
+    expect(score.guard_fired).toBe(false);
+    expect(score.notes.join(" ")).toContain(
+      "renewed question does not address the placeholder test@example.com",
+    );
+    expect(scenarioPassed(score)).toBe(false);
+  });
+
   test("a save after the placeholder answer fails even when the gate fired earlier", () => {
     const score = scoreScenario(
       NEGATIVE_SPEC,
