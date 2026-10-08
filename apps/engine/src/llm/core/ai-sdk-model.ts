@@ -219,7 +219,10 @@ export class AiSdkModel implements SubkitLlm {
     if (params.signal) callOpts.abortSignal = params.signal;
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
-    if (params.output) callOpts.output = params.output;
+    if (params.output) {
+      callOpts.output = params.output;
+      callOpts.providerOptions = { anthropic: { structuredOutputMode: "jsonTool" } };
+    }
     if (params.stopWhen) callOpts.stopWhen = params.stopWhen;
     if (params.maxOutputTokens !== undefined) callOpts.maxOutputTokens = params.maxOutputTokens;
     if (params.metadata) {
