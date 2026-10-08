@@ -71,6 +71,8 @@ export const METRIC_NAMES = {
   CONVERSATION_TOOL_CALLS_TOTAL: "conversation_tool_calls_total",
   CONVERSATION_TOOL_DURATION_MS: "conversation_tool_duration_ms",
   CONVERSATION_CONFIRMATIONS_TOTAL: "conversation_confirmations_total",
+  CONVERSATION_COMPACTION_TOTAL: "conversation_compaction_total",
+  SANDBOX_LIMIT_CLAMPED_TOTAL: "sandbox_limit_clamped_total",
   LLM_OUTPUT_VIOLATIONS_TOTAL: "llm_output_violations_total",
   LLM_OUTPUT_GUARD_DURATION_MS: "llm_output_guard_duration_ms",
   CANNOT_HELP_INVOCATIONS_TOTAL: "cannot_help_invocations_total",
@@ -343,6 +345,16 @@ function buildRegistry(): MetricsRegistry {
     name: METRIC_NAMES.CONVERSATION_CONFIRMATIONS_TOTAL,
     help: "Confirmation state transitions, partitioned by to_state.",
     labels: ["to_state", "tool"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.CONVERSATION_COMPACTION_TOTAL,
+    help: "Conversation compactions by mode. `semantic` means the summarize flow wrote the summary; `stub` means it failed (budget, provider, empty answer) and the lexical stub stood in. A rising stub share means compaction is losing decisions and open approvals.",
+    labels: ["mode"],
+  });
+  reg.registerCounter({
+    name: METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL,
+    help: "Tenant-authored sandbox limits cut to the operator ceiling. `field` names the limit; `transform_wall_ms` counts transform steps whose timeout_ms exceeded sandbox.max_transform_wall_ms and ran with the ceiling instead.",
+    labels: ["field"],
   });
   reg.registerCounter({
     name: METRIC_NAMES.SELF_HEALING_REPAIR_RETRIED_TOTAL,

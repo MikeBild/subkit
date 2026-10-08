@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   _resetRssHighWaterForTests,
   recordConnectorCall,
+  recordConversationCompaction,
   recordDbTransientRetry,
   recordLlmFallbackInvocation,
+  recordSandboxLimitClamped,
   setDlqJobCount,
 } from "./instrumentation.ts";
 import { _resetConnectorSlugBudgetForTests } from "./metric-label-allowlists.ts";
@@ -131,5 +133,32 @@ describe("LLM fallback counter", () => {
     recordLlmFallbackInvocation({ from: "haiku", to: "sonnet", reason: "rate_limit" });
     recordLlmFallbackInvocation({ from: "haiku", to: "sonnet", reason: "timeout" });
     expect(getMetrics().counterSum(METRIC_NAMES.LLM_FALLBACK_INVOCATIONS_TOTAL)).toBe(3);
+  });
+});
+
+describe("conversation compaction counter", () => {
+  test("conversation_compaction_total counts semantic and stub compactions apart", () => {
+    recordConversationCompaction({ mode: "semantic" });
+    recordConversationCompaction({ mode: "semantic" });
+    recordConversationCompaction({ mode: "stub" });
+    const snap = getMetrics().snapshot();
+    const entry = snap.find((s) => s.name === METRIC_NAMES.CONVERSATION_COMPACTION_TOTAL);
+    expect(entry?.samples.find((s) => s.labels.mode === "semantic")?.value).toBe(2);
+    expect(entry?.samples.find((s) => s.labels.mode === "stub")?.value).toBe(1);
+  });
+});
+
+describe("sandbox limit clamp counter", () => {
+  test("sandbox_limit_clamped_total is labelled by the clamped field", () => {
+    recordSandboxLimitClamped({ field: "transform_wall_ms" });
+    const snap = getMetrics().snapshot();
+    const entry = snap.find((s) => s.name === METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL);
+    expect(entry?.samples).toEqual([
+      {
+        name: METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL,
+        labels: { field: "transform_wall_ms" },
+        value: 1,
+      },
+    ]);
   });
 });

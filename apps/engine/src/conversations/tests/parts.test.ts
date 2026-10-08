@@ -271,6 +271,20 @@ for (const confirmation_state of ["confirmed", "declined", "expired"]) {
   });
 }
 
+test("a compacted system note surfaces its summary as text on every surface", () => {
+  const summary = "Compacted 12 earlier message(s). Draft wf-sync waits on approval apr_1.";
+  const ui = toMessageParts(
+    msg({
+      id: "compacted-note",
+      role: "system",
+      content: { kind: "compacted", summary, text: summary, collapsed: 12, mode: "semantic" },
+    }),
+    [],
+  );
+  expect(ui.role).toBe("system");
+  expect(ui.parts).toEqual([{ type: "text", text: summary }]);
+});
+
 test("a text answer is not labelled as an execution approval", () => {
   const ui = toMessageParts(msg({ id: "answer-message", role: "assistant" }), [
     call({

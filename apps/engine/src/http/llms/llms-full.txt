@@ -2269,6 +2269,7 @@ QuickJS JS sandbox limits
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `sandbox.max_transform_wall_ms` | number | `300000` | global | no | no | Operator ceiling for a transform step's wall-clock, in ms. A step timeout_ms above it runs with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min. |
 | `sandbox.memory_bytes` | number | `134217728` | global | no | no | Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB. |
 | `sandbox.stack_bytes` | number | `2097152` | global | no | no | Max stack size for a JS sandbox run, in bytes. Default 2 MB. |
 | `sandbox.tick_budget` | number | `10000000` | global | no | no | Interrupt-tick budget (coarse runaway backstop, not an opcode count). |

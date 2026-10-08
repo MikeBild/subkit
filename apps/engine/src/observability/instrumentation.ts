@@ -313,6 +313,22 @@ export function recordConfirmationTransition(args: { to_state: string; tool: str
   });
 }
 
+export type ConversationCompactionMode = "semantic" | "stub";
+
+export function recordConversationCompaction(args: { mode: ConversationCompactionMode }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.CONVERSATION_COMPACTION_TOTAL, { mode: args.mode });
+  });
+}
+
+export type SandboxClampedField = "transform_wall_ms";
+
+export function recordSandboxLimitClamped(args: { field: SandboxClampedField }): void {
+  safe(() => {
+    getMetrics().inc(METRIC_NAMES.SANDBOX_LIMIT_CLAMPED_TOTAL, { field: args.field });
+  });
+}
+
 export function recordSelfHealingRepairRetried(args: {
   tenant_id: string;
   attempts: number;

@@ -153,7 +153,7 @@ export async function assembleEnhancedPrompt(
 
   const query = buildQuery(p.user_turns);
 
-  const preEmbedCorpus = p.flow !== "converse";
+  const preEmbedCorpus = p.flow !== "converse" && p.flow !== "summarize";
   const knowledgeChunks: IncludedKnowledgeChunk[] = [];
   const chunks: IncludedChunk[] = [];
   if (preEmbedCorpus) {

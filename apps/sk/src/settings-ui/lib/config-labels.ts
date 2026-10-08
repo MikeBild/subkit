@@ -129,6 +129,7 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "sandbox.wall_ms": "JS sandbox wall-clock cap (ms)",
   "sandbox.stack_bytes": "JS sandbox stack cap (bytes)",
   "sandbox.transform_wall_ms": "Transform wall-clock cap (ms)",
+  "sandbox.max_transform_wall_ms": "Transform wall-clock ceiling (ms)",
 
   "repl.permissionMode": "Permission mode",
   "repl.portalTokenTtlMin": "Portal token TTL (minutes)",

@@ -1,5 +1,6 @@
 import { getConfig } from "../../config/loader.ts";
 import { logger } from "../../logging/logger.ts";
+import { recordSandboxLimitClamped } from "../../observability/instrumentation.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
 import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import {
@@ -10,7 +11,7 @@ import {
 import type { TransformStep } from "../../workflows/types.ts";
 import { combineSignals } from "../abort.ts";
 import { resolveScopeForJsonata } from "../jsonata-bindings.ts";
-import { TRANSFORM_TIMEOUT_DEFAULT_MS } from "../timeouts.ts";
+import { TRANSFORM_TIMEOUT_DEFAULT_MS, TRANSFORM_WALL_CEILING_DEFAULT_MS } from "../timeouts.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 import { detectTransformWarnings } from "./transform-warnings.ts";
@@ -23,12 +24,42 @@ export interface RunTransformParams {
   input: unknown;
 }
 
-function configuredTransformWallMs(): number {
+function sandboxTransformLimits(): { transform_wall_ms: number; max_transform_wall_ms: number } {
   try {
-    return getConfig().sandbox.transform_wall_ms;
+    const sandbox = getConfig().sandbox;
+    return {
+      transform_wall_ms: sandbox.transform_wall_ms,
+      max_transform_wall_ms: sandbox.max_transform_wall_ms,
+    };
   } catch {
-    return TRANSFORM_TIMEOUT_DEFAULT_MS;
+    return {
+      transform_wall_ms: TRANSFORM_TIMEOUT_DEFAULT_MS,
+      max_transform_wall_ms: TRANSFORM_WALL_CEILING_DEFAULT_MS,
+    };
   }
+}
+
+export function effectiveTransformWallMs(stepTimeoutMs: number | undefined): {
+  wall_ms: number;
+  clamped: boolean;
+} {
+  const limits = sandboxTransformLimits();
+  const requested = stepTimeoutMs ?? limits.transform_wall_ms;
+  const wall_ms = Math.min(requested, limits.max_transform_wall_ms);
+  return { wall_ms, clamped: wall_ms < requested };
+}
+
+function transformTimeoutMessage(
+  step: TransformStep,
+  wall: ReturnType<typeof effectiveTransformWallMs>,
+): string {
+  const base = `transform exceeded ${wall.wall_ms}ms`;
+  if (!wall.clamped) return base;
+  const requested =
+    step.timeout_ms === undefined
+      ? "the configured sandbox.transform_wall_ms"
+      : `timeout_ms ${step.timeout_ms}`;
+  return `${base} (operator ceiling sandbox.max_transform_wall_ms; ${requested} was clamped)`;
 }
 
 export async function runTransformStep(p: RunTransformParams): Promise<StepResult> {
@@ -43,7 +74,18 @@ export async function runTransformStep(p: RunTransformParams): Promise<StepResul
 
 async function runTransformStepInner(p: RunTransformParams): Promise<StepResult> {
   const start = Date.now();
-  const timeoutMs = p.step.timeout_ms ?? configuredTransformWallMs();
+  const wall = effectiveTransformWallMs(p.step.timeout_ms);
+  const timeoutMs = wall.wall_ms;
+  if (wall.clamped) {
+    recordSandboxLimitClamped({ field: "transform_wall_ms" });
+    logger.warn({
+      module: "execution",
+      action: "step.transform.wall_clamped",
+      step_id: p.step.id,
+      requested_timeout_ms: p.step.timeout_ms ?? null,
+      wall_ms: timeoutMs,
+    });
+  }
   const timeoutCtrl = new AbortController();
   const timer = setTimeout(() => timeoutCtrl.abort("timeout"), timeoutMs);
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
@@ -119,7 +161,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "timed_out",
         retry_count: 0,
         duration_ms,
-        error: { code: "transform_timeout", message: `transform exceeded ${timeoutMs}ms` },
+        error: { code: "transform_timeout", message: transformTimeoutMessage(p.step, wall) },
       };
     }
     if (err instanceof SandboxMemoryError) {
@@ -151,7 +193,7 @@ async function runTransformStepInner(p: RunTransformParams): Promise<StepResult>
         status: "timed_out",
         retry_count: 0,
         duration_ms,
-        error: { code: "transform_timeout", message: `transform exceeded ${timeoutMs}ms` },
+        error: { code: "transform_timeout", message: transformTimeoutMessage(p.step, wall) },
       };
     }
     if (p.ctx.signal.aborted) {
