@@ -120,7 +120,7 @@ function cachedAsset(relativePath: string): Asset | null {
   const cached = assetCache.get(relativePath);
   if (cached) return cached;
   const asset = readAsset(relativePath);
-  if (asset) assetCache.set(relativePath, asset);
+  if (asset && normalize(relativePath) === relativePath) assetCache.set(relativePath, asset);
   return asset;
 }
 

@@ -78,6 +78,21 @@ describe("cockpit browser boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-cache");
   });
 
+  test("spelling one bundle file many ways still serves the same file", async () => {
+    const app = createOpenApiApp();
+    registerCockpitRoutes(app);
+    const html = await (await app.request("http://subkit.test/cockpit/")).text();
+    const assetPath = html.match(/(?:src|href)="\/cockpit\/(assets\/[^"]+)"/)?.[1];
+    expect(assetPath).toBeDefined();
+    if (!assetPath) return;
+
+    const canonical = await app.request(`http://subkit.test/cockpit/${assetPath}`);
+    const variant = await app.request(`http://subkit.test/cockpit/${assetPath.replace("/", "//")}`);
+
+    expect(variant.status).toBe(canonical.status);
+    expect(variant.headers.get("etag")).toBe(canonical.headers.get("etag"));
+  });
+
   test("the app icon keeps no long cache because its name carries no content hash", async () => {
     const app = createOpenApiApp();
     registerCockpitRoutes(app);
