@@ -27,6 +27,10 @@ export interface SubkitLlmObjectResponse<T> extends SubkitLlmAnsweredBy {
   usage: SubkitLlmUsage;
 }
 
+export type StructuredOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly reason: string };
+
 export interface SubkitLlmUsage {
   input_tokens: number;
   output_tokens: number;
@@ -44,7 +48,6 @@ export interface SubkitLlmToolDefinition {
 export interface SubkitLlmToolWithContext {
   toolDefinition: SubkitLlmToolDefinition | Record<string, Tool>;
   toolContext?: unknown;
-  maxUses?: number;
 }
 
 export interface SubkitLlmObjectGeneratorInput {
@@ -52,7 +55,6 @@ export interface SubkitLlmObjectGeneratorInput {
   schema: Record<string, unknown>;
   temperature?: number;
   tools?: SubkitLlmToolWithContext[];
-  toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
   metadata?: Record<string, unknown>;
   maxAttempts?: number;
   signal?: AbortSignal;

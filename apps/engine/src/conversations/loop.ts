@@ -80,6 +80,7 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
+  NO_SNAPSHOT_COVERAGE,
   resolvePreferredTool,
   turnToolChoice,
 } from "./intent-detector.ts";
@@ -247,7 +248,9 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
   const detectedIntent = detectUserIntent(
     ingestedUserMessage,
     matchesEnumerationIntent(ingestedUserMessage)
-      ? await loadEnumerationCoverage(p.tenant_id, ingestedUserMessage, p.db)
+      ? p.principal
+        ? await loadEnumerationCoverage(p.principal, ingestedUserMessage, p.db)
+        : NO_SNAPSHOT_COVERAGE
       : undefined,
   );
   let workflowIdForTurn = p.workflow_id;

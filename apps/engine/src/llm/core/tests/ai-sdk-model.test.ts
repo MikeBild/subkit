@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { NoObjectGeneratedError } from "ai";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
@@ -23,24 +24,45 @@ interface GenerateTextStubResult {
   finishReason?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
   response?: { messages: SubkitLlmMessage[] };
+  responseMessages?: SubkitLlmMessage[];
   providerMetadata?: Record<string, Record<string, unknown>>;
+  output?: unknown;
+  steps?: unknown[];
+}
+
+interface StructuredCall {
+  output?: { name: string; responseFormat: PromiseLike<{ type: string; schema: unknown }> };
+  tools?: Record<string, unknown>;
+  toolChoice?: unknown;
+  stopWhen?: unknown;
+  temperature?: number;
+  timeout?: { totalMs?: number };
+  abortSignal?: AbortSignal;
+  model: unknown;
+}
+
+function stubResult(result: GenerateTextStubResult) {
+  return {
+    text: result.text ?? "",
+    toolCalls: result.toolCalls ?? [],
+    toolResults: result.toolResults ?? [],
+    finishReason: result.finishReason ?? "stop",
+    usage: result.usage ?? { inputTokens: 0, outputTokens: 0 },
+    response: result.response ?? {
+      messages: [{ role: "assistant", content: result.text ?? "" }],
+    },
+    ...(result.responseMessages ? { responseMessages: result.responseMessages } : {}),
+    providerMetadata: result.providerMetadata ?? {},
+    ...(result.steps ? { steps: result.steps } : {}),
+    ...("output" in result ? { output: result.output } : {}),
+  };
 }
 
 function makeStub(result: GenerateTextStubResult) {
   const calls: unknown[] = [];
   const fn = async (opts: unknown) => {
     calls.push(opts);
-    return {
-      text: result.text ?? "",
-      toolCalls: result.toolCalls ?? [],
-      toolResults: result.toolResults ?? [],
-      finishReason: result.finishReason ?? "stop",
-      usage: result.usage ?? { inputTokens: 0, outputTokens: 0 },
-      response: result.response ?? {
-        messages: [{ role: "assistant", content: result.text ?? "" }],
-      },
-      providerMetadata: result.providerMetadata ?? {},
-    };
+    return stubResult(result);
   };
   return { fn, calls };
 }
@@ -52,52 +74,70 @@ function makeMultiStub(results: GenerateTextStubResult[]) {
     calls.push(opts);
     const r = results[Math.min(i, results.length - 1)] ?? { text: "" };
     i += 1;
-    return {
-      text: r.text ?? "",
-      toolCalls: r.toolCalls ?? [],
-      toolResults: r.toolResults ?? [],
-      finishReason: r.finishReason ?? "stop",
-      usage: r.usage ?? { inputTokens: 0, outputTokens: 0 },
-      response: r.response ?? {
-        messages: [{ role: "assistant", content: r.text ?? "" }],
-      },
-      providerMetadata: r.providerMetadata ?? {},
-    };
+    return stubResult(r);
+  };
+  return { fn, calls };
+}
+
+function outcome(value: unknown, text = JSON.stringify({ ok: true, value, reason: null })) {
+  return {
+    text,
+    finishReason: "stop",
+    output: { ok: true, value, reason: null },
+  } satisfies GenerateTextStubResult;
+}
+
+function timeoutError(): Error {
+  const err = new Error("The operation timed out");
+  err.name = "TimeoutError";
+  return err;
+}
+
+function abortError(): Error {
+  const err = new Error("The operation was aborted");
+  err.name = "AbortError";
+  return err;
+}
+
+function makeTimeoutExpiredStub() {
+  const calls: StructuredCall[] = [];
+  const fn = (opts: StructuredCall) => {
+    calls.push(opts);
+    return opts.timeout?.totalMs === undefined
+      ? Promise.reject(new Error("stub expected a typed timeout on the call"))
+      : Promise.reject(timeoutError());
   };
   return { fn, calls };
 }
 
 function makeAbortAwareStub() {
-  const calls: Array<{ abortSignal: AbortSignal | undefined; model: unknown }> = [];
-  const fn = (opts: { abortSignal?: AbortSignal; model: unknown }) => {
-    calls.push({ abortSignal: opts.abortSignal, model: opts.model });
+  const calls: StructuredCall[] = [];
+  const fn = (opts: StructuredCall) => {
+    calls.push(opts);
     return new Promise((_resolve, reject) => {
       const signal = opts.abortSignal;
       if (!signal) return;
-      const onAbort = () => {
-        const err = new Error("The operation was aborted");
-        err.name = "AbortError";
-        reject(err);
-      };
-      if (signal.aborted) return onAbort();
-      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) return reject(abortError());
+      signal.addEventListener("abort", () => reject(abortError()), { once: true });
     });
   };
   return { fn, calls };
 }
 
 describe("AiSdkModel per-call timeout + abort", () => {
-  it("aborts a hung provider call at the injected timeout with a typed error", async () => {
-    const stub = makeAbortAwareStub();
+  it("surfaces the SDK timeout as a typed error that is not a caller abort", async () => {
+    const stub = makeTimeoutExpiredStub();
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
       callTimeoutMs: 40,
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
     });
-    await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
-      LlmCallAbortedError,
-    );
+    const err = await model.generateText([{ role: "user", content: "hi" }]).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmCallAbortedError);
+    expect((err as Error).message).toContain("timeout");
+    expect((err as Error).message).not.toBe("llm call aborted (caller signal)");
+    expect(stub.calls[0]?.timeout).toEqual({ totalMs: 40 });
   });
 
   it("propagates a caller-supplied signal abort promptly", async () => {
@@ -113,19 +153,29 @@ describe("AiSdkModel per-call timeout + abort", () => {
       signal: controller.signal,
     });
     queueMicrotask(() => controller.abort());
-    await expect(p).rejects.toBeInstanceOf(LlmCallAbortedError);
+    const err = await p.catch((e) => e);
+    expect(err).toBeInstanceOf(LlmCallAbortedError);
+    expect((err as Error).message).toBe("llm call aborted (caller signal)");
   });
 
-  it("passes an abortSignal to the provider call even with no caller signal", async () => {
+  it("passes the typed total timeout and the caller signal unchanged to the provider call", async () => {
     const stub = makeStub({ text: "ok", usage: { inputTokens: 1, outputTokens: 1 } });
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
+      callTimeoutMs: 1234,
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
     });
+    const controller = new AbortController();
+    await model.generateText([{ role: "user", content: "hi" }], { signal: controller.signal });
+    const call = stub.calls[0] as StructuredCall;
+    expect(call.timeout).toEqual({ totalMs: 1234 });
+    expect(call.abortSignal).toBe(controller.signal);
+
     await model.generateText([{ role: "user", content: "hi" }]);
-    const call = stub.calls[0] as { abortSignal?: AbortSignal };
-    expect(call.abortSignal).toBeInstanceOf(AbortSignal);
+    const second = stub.calls[1] as StructuredCall;
+    expect(second.timeout).toEqual({ totalMs: 1234 });
+    expect(second.abortSignal).toBeUndefined();
   });
 
   it("does not regress a normal fast call", async () => {
@@ -141,26 +191,14 @@ describe("AiSdkModel per-call timeout + abort", () => {
     expect(r.usage.input_tokens).toBe(5);
   });
 
-  it("bounds the fallback model call with the same timeout", async () => {
-    const calls: Array<{ model: unknown; abortSignal: AbortSignal | undefined }> = [];
+  it("bounds the fallback model call with the same typed timeout", async () => {
+    const calls: StructuredCall[] = [];
     let i = 0;
-    const fn = (opts: { model: unknown; abortSignal?: AbortSignal }) => {
-      calls.push({ model: opts.model, abortSignal: opts.abortSignal });
+    const fn = (opts: StructuredCall) => {
+      calls.push(opts);
       i += 1;
-      if (i === 1) {
-        return Promise.reject(new Error("overloaded"));
-      }
-      return new Promise((_resolve, reject) => {
-        const signal = opts.abortSignal;
-        if (!signal) return;
-        const onAbort = () => {
-          const err = new Error("aborted");
-          err.name = "AbortError";
-          reject(err);
-        };
-        if (signal.aborted) return onAbort();
-        signal.addEventListener("abort", onAbort, { once: true });
-      });
+      if (i === 1) return Promise.reject(new Error("overloaded"));
+      return Promise.reject(timeoutError());
     };
     const model = new AiSdkModel({
       defaultModel: "claude-sonnet-4-5",
@@ -173,49 +211,8 @@ describe("AiSdkModel per-call timeout + abort", () => {
       LlmCallAbortedError,
     );
     expect(calls.length).toBe(2);
-  });
-
-  it("uses one aggregate timeout signal across primary and fallback", async () => {
-    const calls: Array<{ abortSignal: AbortSignal | undefined; sawAbortedAtStart: boolean }> = [];
-    let i = 0;
-    const fn = (opts: { abortSignal?: AbortSignal }) => {
-      calls.push({
-        abortSignal: opts.abortSignal,
-        sawAbortedAtStart: opts.abortSignal?.aborted ?? false,
-      });
-      i += 1;
-      if (i === 1) {
-        return new Promise((_resolve, reject) => {
-          const rejectOverloaded = () => reject(new Error("overloaded"));
-          if (opts.abortSignal?.aborted) return rejectOverloaded();
-          opts.abortSignal?.addEventListener("abort", rejectOverloaded, { once: true });
-        });
-      }
-      return new Promise((_resolve, reject) => {
-        const onAbort = () => {
-          const err = new Error("aborted");
-          err.name = "AbortError";
-          reject(err);
-        };
-        if (opts.abortSignal?.aborted) return onAbort();
-        opts.abortSignal?.addEventListener("abort", onAbort, { once: true });
-      });
-    };
-    const model = new AiSdkModel({
-      defaultModel: "claude-sonnet-4-5",
-      callTimeoutMs: 5,
-      fallback: { defaultModel: "claude-sonnet-4-6" },
-      // biome-ignore lint/suspicious/noExplicitAny: stub
-      generateTextFn: fn as any,
-    });
-
-    await expect(model.generateText([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
-      LlmCallAbortedError,
-    );
-
-    expect(calls).toHaveLength(2);
-    expect(calls[1]?.abortSignal).toBe(calls[0]?.abortSignal);
-    expect(calls[1]?.sawAbortedAtStart).toBe(true);
+    expect(calls[0]?.timeout).toEqual({ totalMs: 40 });
+    expect(calls[1]?.timeout).toEqual({ totalMs: 40 });
   });
 });
 
@@ -262,39 +259,68 @@ describe("AiSdkModel.generateText", () => {
   });
 });
 
-describe("AiSdkModel.generateObject — submit-tool loop", () => {
-  it("returns final result when the model calls submit", async () => {
-    const stub = makeStub({
-      text: "",
-      toolCalls: [{ toolCallId: "c1", toolName: "submit", input: { key: "value" } }],
-      finishReason: "tool-calls",
-    });
+describe("AiSdkModel.generateObject — structured outcome", () => {
+  const keySchema = { type: "object", properties: { key: { type: "string" } } };
+
+  it("returns the value of an ok outcome from a single model call", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject({
       messages: [{ role: "user", content: "test" }],
-      schema: { type: "object", properties: { key: { type: "string" } } },
+      schema: keySchema,
     });
     expect(r.success).toBe(true);
     expect(r.response).toEqual({ key: "value" });
+    expect(stub.calls.length).toBe(1);
 
-    const call = stub.calls[0] as {
-      toolChoice: string;
-      tools: Record<string, unknown>;
-    };
-    expect(call.toolChoice).toBe("required");
-    expect(call.tools).toHaveProperty("submit");
-    expect(call.tools).toHaveProperty("abort");
+    const call = stub.calls[0] as StructuredCall;
+    expect(call.toolChoice).toBeUndefined();
+    expect(call.tools).toBeUndefined();
+    expect(call.stopWhen).toBeUndefined();
+    expect(call.output?.name).toBe("object");
   });
 
-  it("unwraps { result: [...] } when schema is array-rooted", async () => {
-    const stub = makeStub({
-      text: "",
-      toolCalls: [{ toolCallId: "c1", toolName: "submit", input: { result: [1, 2, 3] } }],
-      finishReason: "tool-calls",
+  it("sends an object-rooted { ok, value, reason } schema on the wire", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
     });
+    await model.generateObject({
+      messages: [{ role: "user", content: "test" }],
+      schema: keySchema,
+    });
+    const call = stub.calls[0] as StructuredCall;
+    const format = await call.output!.responseFormat;
+    expect(format.type).toBe("json");
+    const schema = format.schema as {
+      type: string;
+      required: string[];
+      additionalProperties: boolean;
+      properties: {
+        ok: { type: string };
+        value: { anyOf: Array<Record<string, unknown>> };
+        reason: { type: string[] };
+      };
+    };
+    expect(schema.type).toBe("object");
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(["ok", "value", "reason"]);
+    expect(schema.properties.ok).toEqual({ type: "boolean" });
+    expect(schema.properties.reason).toEqual({ type: ["string", "null"] });
+    expect(schema.properties.value.anyOf).toHaveLength(2);
+    expect(schema.properties.value.anyOf[0]).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+    });
+    expect(schema.properties.value.anyOf[1]).toEqual({ type: "null" });
+  });
+
+  it("unwraps { result: [...] } when the value schema is array-rooted", async () => {
+    const stub = makeStub(outcome({ result: [1, 2, 3] }));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
@@ -307,11 +333,11 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
     expect(r.response).toEqual([1, 2, 3]);
   });
 
-  it("returns success=false with abort reason when model aborts", async () => {
+  it("returns success=false with the reason of a refused outcome", async () => {
     const stub = makeStub({
-      text: "",
-      toolCalls: [{ toolCallId: "c1", toolName: "abort", input: { reason: "no can do" } }],
-      finishReason: "tool-calls",
+      text: JSON.stringify({ ok: false, value: null, reason: "no can do" }),
+      finishReason: "stop",
+      output: { ok: false, value: null, reason: "no can do" },
     });
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -319,18 +345,28 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
     });
     const r = await model.generateObject({
       messages: [{ role: "user", content: "x" }],
-      schema: { type: "object", properties: { key: { type: "string" } } },
+      schema: keySchema,
     });
     expect(r.success).toBe(false);
     expect(r.response).toBe("no can do");
   });
 
-  it("treats o-model temperature as undefined", async () => {
-    const stub = makeStub({
-      text: "",
-      toolCalls: [{ toolCallId: "c1", toolName: "submit", input: { key: "value" } }],
-      finishReason: "tool-calls",
+  it("treats an ok outcome without a value as empty_value", async () => {
+    const stub = makeStub(outcome(null));
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
     });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+    });
+    expect(r.success).toBe(false);
+    expect(r.response).toBe("empty_value");
+  });
+
+  it("treats o-model temperature as undefined", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
     const model = new AiSdkModel({
       defaultModel: "o1-preview",
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -338,43 +374,85 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
     });
     await model.generateObject({
       messages: [{ role: "user", content: "x" }],
-      schema: { type: "object", properties: { key: { type: "string" } } },
+      schema: keySchema,
       temperature: 0.5,
     });
-    const call = stub.calls[0] as { temperature: number | undefined };
+    const call = stub.calls[0] as StructuredCall;
     expect(call.temperature).toBeUndefined();
   });
 
-  it("returns a clear failure when no tool calls arrive", async () => {
-    const stub = makeStub({
-      text: "just text",
-      toolCalls: [],
-      finishReason: "stop",
-    });
+  it("reports an abnormal finish instead of reading output", async () => {
+    const stub = makeStub({ text: "", finishReason: "length" });
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
     });
     const r = await model.generateObject({
       messages: [{ role: "user", content: "x" }],
-      schema: { type: "object", properties: { key: { type: "string" } } },
+      schema: keySchema,
     });
     expect(r.success).toBe(false);
+    expect(r.response).toBe("LLM finished abnormally: length");
   });
 
-  it("continues the loop across non-submit tool calls up to maxUses", async () => {
-    const stub = makeMultiStub([
-      {
-        text: "",
-        toolCalls: [{ toolCallId: "c1", toolName: "echo", input: { v: 1 } }],
-        finishReason: "tool-calls",
+  it("reports a schema rejection from the SDK as a failed outcome", async () => {
+    const stub = {
+      fn: async () => {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: response did not match schema.",
+          text: "{}",
+          response: { id: "r1", timestamp: new Date(0), modelId: "m" },
+          usage: { inputTokens: 7, outputTokens: 1 },
+          finishReason: "stop",
+        } as unknown as ConstructorParameters<typeof NoObjectGeneratedError>[0]);
       },
-      {
-        text: "",
-        toolCalls: [{ toolCallId: "c2", toolName: "submit", input: { ok: true } }],
-        finishReason: "tool-calls",
-      },
-    ]);
+    };
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+    });
+    expect(r.success).toBe(false);
+    expect(String(r.response)).toContain("structured output rejected");
+    expect(r.usage.input_tokens).toBe(7);
+  });
+
+  it("falls back to the secondary model on a primary provider error", async () => {
+    let i = 0;
+    const calls: StructuredCall[] = [];
+    const fn = async (opts: StructuredCall) => {
+      calls.push(opts);
+      i += 1;
+      if (i === 1) throw new Error("overloaded");
+      return stubResult(outcome({ key: "from-fallback" }));
+    };
+    const model = new AiSdkModel({
+      defaultModel: "claude-sonnet-4-5",
+      fallback: { defaultModel: "claude-sonnet-4-6" },
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+    });
+    expect(r.success).toBe(true);
+    expect(r.response).toEqual({ key: "from-fallback" });
+    expect(r.fell_back).toBe(true);
+    expect(r.model_used).toBe("claude-sonnet-4-6");
+    expect(r.primary_error).toBe("overloaded");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("keeps extra tools in the palette and bounds the steps with stepCountIs(maxAttempts)", async () => {
+    const stub = makeStub({
+      ...outcome({ ok: true }),
+      toolCalls: [{ toolCallId: "c1", toolName: "echo", input: { v: 1 } }],
+      steps: [{}, {}],
+    });
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
       generateTextFn: stub.fn as any,
@@ -386,6 +464,7 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
         properties: { ok: { type: "boolean" } },
         required: ["ok"],
       },
+      maxAttempts: 3,
       tools: [
         {
           toolDefinition: {
@@ -394,13 +473,75 @@ describe("AiSdkModel.generateObject — submit-tool loop", () => {
             arguments: { type: "object", properties: { v: { type: "number" } } },
             execute: async (args) => args,
           },
-          maxUses: 2,
         },
       ],
     });
     expect(r.success).toBe(true);
     expect(r.response).toEqual({ ok: true });
-    expect(stub.calls.length).toBe(2);
+    expect(stub.calls.length).toBe(1);
+    const call = stub.calls[0] as StructuredCall;
+    expect(Object.keys(call.tools ?? {})).toEqual(["echo"]);
+    expect(call.toolChoice).toBeUndefined();
+    expect(typeof call.stopWhen).toBe("function");
+    const stop = call.stopWhen as (o: { steps: unknown[] }) => boolean;
+    expect(stop({ steps: [{}, {}] })).toBe(false);
+    expect(stop({ steps: [{}, {}, {}] })).toBe(true);
+  });
+
+  it("reports the step cap when the model is still calling tools at the last step", async () => {
+    const stub = makeStub({
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [{ toolCallId: "c1", toolName: "echo", input: { v: 1 } }],
+      steps: [{}, {}, {}],
+    });
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+      maxAttempts: 3,
+      tools: [
+        {
+          toolDefinition: {
+            name: "echo",
+            description: "echo",
+            arguments: { type: "object", properties: { v: { type: "number" } } },
+            execute: async (args) => args,
+          },
+        },
+      ],
+    });
+    expect(r.success).toBe(false);
+    expect(r.response).toBe("max_attempts_exceeded after 3 tool steps");
+  });
+
+  it("threads the accumulated response messages of every step", async () => {
+    const stub = makeStub({
+      ...outcome({ key: "value" }),
+      responseMessages: [
+        { role: "assistant", content: "calling echo" },
+        { role: "tool", content: "echoed" },
+        { role: "assistant", content: JSON.stringify({ ok: true, value: { key: "value" } }) },
+      ],
+    });
+    const model = new AiSdkModel({
+      // biome-ignore lint/suspicious/noExplicitAny: stub
+      generateTextFn: stub.fn as any,
+    });
+    const r = await model.generateObject({
+      messages: [{ role: "user", content: "x" }],
+      schema: keySchema,
+    });
+    expect(r.messages.map((m) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "assistant",
+    ]);
   });
 });
 

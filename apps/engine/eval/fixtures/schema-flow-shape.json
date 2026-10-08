@@ -1,10 +1,11 @@
 {
   "name": "schema-flow-shape",
-  "description": "Every schema-constrained flow calls AiSdkModel.generateObject with toolChoice='required' (submit/abort loop). Prevents a silent regression where a flow drops back to JSON mode without submit/abort.",
+  "description": "Every schema-constrained flow calls AiSdkModel.generateObject with an object-rooted { ok, value, reason } structured output and no forced tool choice. Prevents a silent regression back to a submit/abort tool loop or to unconstrained JSON mode.",
   "flow": "generate",
   "input": {
-    "expected_tool_choice": "required",
-    "expected_tools": ["submit", "abort"],
+    "expected_output": "object",
+    "expected_outcome_keys": ["ok", "value", "reason"],
+    "forbidden_tools": ["submit", "abort"],
     "flows": ["generate", "extract", "repair", "discover"]
   }
 }

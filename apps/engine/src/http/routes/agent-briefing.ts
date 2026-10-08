@@ -15,7 +15,7 @@ import {
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
-import { can, resourceAccess } from "../../rbac/index.ts";
+import { can, catalogVisibility } from "../../rbac/index.ts";
 import { BadRequestError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -128,22 +128,6 @@ async function canReadKnowledge(db: Db, principal: ResolvedPrincipal): Promise<b
     quiet: true,
   });
   return decision.allow;
-}
-
-async function catalogVisibility(
-  db: Db,
-  principal: ResolvedPrincipal,
-  permission: "workflow:read" | "connector:read",
-  resource_type: "workflow" | "connector",
-): Promise<((id: string) => boolean) | null> {
-  const access = await resourceAccess(db, {
-    tenant_id: principal.tenant_id,
-    principal,
-    permission,
-    resource_type,
-    quiet: true,
-  });
-  return access.any ? access.allows : null;
 }
 
 export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {

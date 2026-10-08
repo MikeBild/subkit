@@ -1,3 +1,5 @@
+import type { StructuredOutcome } from "./base-types.ts";
+
 export interface NormalizedSchema {
   schema: Record<string, unknown>;
   wrappedInResult: boolean;
@@ -91,4 +93,38 @@ export function unwrapResult<T>(value: unknown, wrapped: boolean): T {
     return (value as { result: T }).result;
   }
   return value as T;
+}
+
+export function structuredOutcomeSchema(
+  valueSchema: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      ok: { type: "boolean" },
+      value: { anyOf: [normalizeSchema(valueSchema).schema, { type: "null" }] },
+      reason: { type: ["string", "null"] },
+    },
+    required: ["ok", "value", "reason"],
+    additionalProperties: false,
+  };
+}
+
+export function readStructuredOutcome<T>(
+  raw: unknown,
+  wrappedInResult: boolean,
+): StructuredOutcome<T> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, reason: "malformed_outcome" };
+  }
+  const outcome = raw as { ok?: unknown; value?: unknown; reason?: unknown };
+  if (outcome.ok === true) {
+    if (outcome.value === null || outcome.value === undefined) {
+      return { ok: false, reason: "empty_value" };
+    }
+    return { ok: true, value: unwrapResult<T>(outcome.value, wrappedInResult) };
+  }
+  const reason =
+    typeof outcome.reason === "string" && outcome.reason.trim() !== "" ? outcome.reason : "abort";
+  return { ok: false, reason };
 }

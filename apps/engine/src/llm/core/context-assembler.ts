@@ -1,5 +1,5 @@
 import { getConnector } from "../../connectors/service.ts";
-import { type Executor, getDb } from "../../db/client.ts";
+import { type Db, getDb } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import { idHashesCapped } from "../../observability/id-hashes.ts";
 import {
@@ -106,7 +106,7 @@ export { promptSkillAudience } from "./context-assembler/skill-audience.ts";
 
 export async function assembleEnhancedPrompt(
   p: AssembleContextParams & { surface?: ConversationSurface },
-  exec?: Executor,
+  exec?: Db,
 ): Promise<
   EnhancedPrompt & {
     dropped_sections: string[];
@@ -314,7 +314,7 @@ export async function assembleEnhancedPrompt(
     p.flow === "converse" && p.principal
       ? renderTenantSummaryBlock(
           ...(await Promise.all([
-            loadTenantSummary(p.tenant_id, db),
+            loadTenantSummary(p.principal, db),
             listWorkflowToolSlugs({ db, principal: p.principal }),
           ])),
         )
@@ -557,7 +557,7 @@ export async function assembleEnhancedPrompt(
 
 export async function assembleContext(
   params: AssembleContextParams,
-  exec?: Executor,
+  exec?: Db,
 ): Promise<AssembledContext> {
   const prompt = await assembleEnhancedPrompt(params, exec);
   const blocks = splitPromptIntoBlocks(prompt, params.flow);
