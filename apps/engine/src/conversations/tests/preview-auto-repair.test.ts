@@ -11,6 +11,7 @@ import {
   attemptPreviewAutoRepair,
   buildStepOutputFixtures,
   PREVIEW_AUTO_REPAIRED_WARNING_CODE,
+  previewAutoRepairBlocker,
   previewAutoRepairTrigger,
   previewOutputRoot,
 } from "../preview-auto-repair.ts";
@@ -101,6 +102,96 @@ function failedTransformRun(): RunResult {
   });
 }
 
+type StepSummary = RunResult["steps"][number];
+
+function summary(
+  step_key: string,
+  step_index: number,
+  kind: string,
+  status: StepSummary["status"],
+  output_preview?: unknown,
+): StepSummary {
+  return {
+    step_key,
+    step_index,
+    kind,
+    status,
+    duration_ms: status === "skipped" ? 0 : 1,
+    retry_count: 0,
+    error:
+      status === "skipped" ? { code: "skipped", message: "skipped by branch control flow" } : null,
+    ...(output_preview !== undefined ? { output_preview } : {}),
+  };
+}
+
+const LOOP_ITEMS = [{ x: 1 }, { x: 2 }];
+const LOOP_RESULTS = [{ detail: { data: { x: 10 } } }, { detail: { data: { x: 20 } } }];
+
+const LOOP_STEPS = [
+  { id: "list", kind: "transform", language: "javascript", expression: "return [{x:1},{x:2}];" },
+  { id: "each", kind: "loop", over: "$scope.list.data", body: ["detail"] },
+  {
+    id: "detail",
+    kind: "transform",
+    language: "javascript",
+    expression: "return { x: input.scope.$item.x * 10 };",
+  },
+];
+
+function loopShapedFailedRun(): RunResult {
+  return {
+    execution_id: uuid(),
+    status: "failed",
+    output: null,
+    error: { code: "output_transform_failed", message: "output_transform threw: T0410" },
+    steps: [
+      summary("list", 0, "transform", "succeeded", LOOP_ITEMS),
+      summary("each", 1, "loop", "succeeded", LOOP_RESULTS),
+      summary("detail", 2, "transform", "skipped"),
+    ],
+    warnings: [],
+  };
+}
+
+const BRANCH_STEPS = [
+  { id: "probe", kind: "transform", language: "javascript", expression: "return { flag: true };" },
+  {
+    id: "route",
+    kind: "branch",
+    when: "$scope.probe.data.flag",
+    then_steps: ["taken"],
+    else_steps: ["untaken"],
+  },
+  {
+    id: "taken",
+    kind: "transform",
+    language: "javascript",
+    expression: 'return { picked: "then" };',
+  },
+  {
+    id: "untaken",
+    kind: "transform",
+    language: "javascript",
+    expression: 'return { picked: "else" };',
+  },
+];
+
+function branchShapedFailedRun(): RunResult {
+  return {
+    execution_id: uuid(),
+    status: "failed",
+    output: null,
+    error: { code: "output_transform_failed", message: "output_transform threw: D3030" },
+    steps: [
+      summary("probe", 0, "transform", "succeeded", { flag: true }),
+      summary("route", 1, "branch", "succeeded", { matched: true, arm: "then" }),
+      summary("taken", 2, "transform", "succeeded", { picked: "then" }),
+      summary("untaken", 3, "transform", "skipped"),
+    ],
+    warnings: [],
+  };
+}
+
 describe("previewAutoRepairTrigger", () => {
   const def = definition({ output_transform: THROWING_OUTPUT_TRANSFORM });
 
@@ -141,6 +232,49 @@ describe("previewAutoRepairTrigger", () => {
       ),
     ).toBeNull();
     expect(previewAutoRepairTrigger(succeededRun(), def)).toBeNull();
+  });
+
+  test("skipped summaries of a loop body or an untaken branch arm do not block the trigger", () => {
+    expect(
+      previewAutoRepairTrigger(
+        loopShapedFailedRun(),
+        definition({ output_transform: "$number($)" }, LOOP_STEPS),
+      ),
+    ).toBe("output_transform_failed");
+    expect(
+      previewAutoRepairTrigger(
+        branchShapedFailedRun(),
+        definition({ output_transform: "$number(picked)" }, BRANCH_STEPS),
+      ),
+    ).toBe("output_transform_failed");
+  });
+
+  test("the blocker names why a failed output site is not repaired in place", () => {
+    const noSteps = { ...failedTransformRun(), steps: [] };
+    expect(previewAutoRepairBlocker(noSteps, def)).toBe("no_steps");
+    const held = failedTransformRun();
+    held.steps[0]!.held = true;
+    expect(previewAutoRepairBlocker(held, def)).toBe("step_held");
+    const stepFailed = failedTransformRun();
+    stepFailed.steps[0]!.status = "timed_out";
+    expect(previewAutoRepairBlocker(stepFailed, def)).toBe("step_failed");
+    const noPreview = failedTransformRun();
+    delete noPreview.steps[0]!.output_preview;
+    expect(previewAutoRepairBlocker(noPreview, def)).toBe("step_preview_missing");
+    expect(previewAutoRepairBlocker(failedTransformRun(), definition({}))).toBe("no_output_site");
+    const offloaded = succeededRun({
+      status: "failed",
+      error: { code: "output_transform_failed", message: "x" },
+      stepOutput: { $offloaded: true, storage_uri: "s3://x/y", size_bytes: 10 },
+    });
+    expect(previewAutoRepairBlocker(offloaded, def)).toBe("root_unavailable");
+    expect(previewAutoRepairBlocker(failedTransformRun(), def)).toBeNull();
+    expect(
+      previewAutoRepairBlocker(
+        loopShapedFailedRun(),
+        definition({ output_transform: "$" }, LOOP_STEPS),
+      ),
+    ).toBeNull();
   });
 });
 
@@ -311,7 +445,74 @@ describe("attemptPreviewAutoRepair", () => {
       db: ctx.testDb.db,
       rerun: async () => succeededRun(),
     });
-    expect(outcome).toEqual({ repaired: false, reason: "not_applicable", attempts: 0 });
+    expect(outcome).toEqual({
+      repaired: false,
+      reason: "not_applicable",
+      blocker: "no_trigger",
+      attempts: 0,
+    });
+    expect(getMockProvider().calls).toHaveLength(0);
+  });
+
+  test("a loop preview is repaired from the top-level fixtures; the skipped body step needs none", async () => {
+    getMockProvider().generateOverrides.repair = () => ({ expression: '{ "count": $count($) }' });
+    const rerunCalls: Array<Record<string, unknown>> = [];
+    const outcome = await attemptPreviewAutoRepair({
+      run: loopShapedFailedRun(),
+      definition: definition({ output_transform: "$number($)" }, LOOP_STEPS),
+      previewInput: null,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+      rerun: async (_repaired, fixtures) => {
+        rerunCalls.push(fixtures);
+        return { ...loopShapedFailedRun(), status: "succeeded", error: null, output: { count: 2 } };
+      },
+    });
+    expect(outcome.repaired).toBe(true);
+    expect(Object.keys(rerunCalls[0] ?? {}).sort()).toEqual(["each", "list"]);
+    expect(rerunCalls[0]?.each).toEqual({ data: LOOP_RESULTS, duration_ms: 1, error: null });
+  });
+
+  test("a branch preview is repaired against the taken arm's output; the untaken arm needs no fixture", async () => {
+    getMockProvider().generateOverrides.repair = () => ({ expression: '{ "arm": picked }' });
+    const rerunCalls: Array<Record<string, unknown>> = [];
+    const outcome = await attemptPreviewAutoRepair({
+      run: branchShapedFailedRun(),
+      definition: definition({ output_transform: "$number(picked)" }, BRANCH_STEPS),
+      previewInput: null,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+      rerun: async (_repaired, fixtures) => {
+        rerunCalls.push(fixtures);
+        return {
+          ...branchShapedFailedRun(),
+          status: "succeeded",
+          error: null,
+          output: { arm: "then" },
+        };
+      },
+    });
+    expect(outcome.repaired).toBe(true);
+    expect(Object.keys(rerunCalls[0] ?? {}).sort()).toEqual(["probe", "route", "taken"]);
+  });
+
+  test("a succeeded step without a recorded preview blocks the re-run and is reported as step_preview_missing", async () => {
+    const run = failedTransformRun();
+    delete run.steps[0]!.output_preview;
+    const outcome = await attemptPreviewAutoRepair({
+      run,
+      definition: def,
+      previewInput: null,
+      tenant_id: ctx.tenant_id,
+      db: ctx.testDb.db,
+      rerun: async () => succeededRun(),
+    });
+    expect(outcome).toEqual({
+      repaired: false,
+      reason: "not_applicable",
+      blocker: "step_preview_missing",
+      attempts: 0,
+    });
     expect(getMockProvider().calls).toHaveLength(0);
   });
 });
@@ -466,6 +667,46 @@ describe("dry_run_workflow · deterministic in-preview auto-repair", () => {
     expect(data.auto_repair?.site).toBe("output_transform_function");
     expect(data.final_output).toEqual({ hottest_day: "2026-06-23", max_temp: 31.2 });
     expect(toolCtx.current().workflow.output_transform_function).toContain("Math.max");
+  });
+
+  test("a loop draft with a throwing output_transform comes back green from ONE call without entering the body", async () => {
+    getMockProvider().generateOverrides.repair = () => ({ expression: '{ "count": $count($) }' });
+    const toolCtx = makeCtx({
+      workflow: {
+        name: "auto-repair-loop",
+        slug: "auto-repair-loop",
+        steps: LOOP_STEPS,
+        output_transform: "$number($)",
+      },
+    } as unknown as DraftDocument);
+    const before = await executionsFor(toolCtx);
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(result.ok).toBe(true);
+    const data = result.data as PreviewEnvelope;
+    expect(data.auto_repair?.after).toBe('{ "count": $count($) }');
+    expect(data.final_output).toEqual({ count: 2 });
+    expect(toolCtx.current().workflow.output_transform).toBe('{ "count": $count($) }');
+    expect(getMockProvider().calls.filter((c) => c.flow === "repair")).toHaveLength(1);
+    expect((await executionsFor(toolCtx)) - before).toBe(2);
+  });
+
+  test("a branch draft with a throwing output_transform is repaired against the taken arm from ONE call", async () => {
+    getMockProvider().generateOverrides.repair = () => ({ expression: '{ "arm": picked }' });
+    const toolCtx = makeCtx({
+      workflow: {
+        name: "auto-repair-branch",
+        slug: "auto-repair-branch",
+        steps: BRANCH_STEPS,
+        output_transform: "$number(picked)",
+      },
+    } as unknown as DraftDocument);
+    const result = await dryRunWorkflowTool.execute(toolCtx, { input: null });
+    expect(result.ok).toBe(true);
+    const data = result.data as PreviewEnvelope;
+    expect(data.auto_repair?.after).toBe('{ "arm": picked }');
+    expect(data.final_output).toEqual({ arm: "then" });
+    expect(toolCtx.current().workflow.output_transform).toBe('{ "arm": picked }');
+    expect(getMockProvider().calls.filter((c) => c.flow === "repair")).toHaveLength(1);
   });
 
   test("when no candidate verifies, the original failed preview stands with a repair proposal and no draft change", async () => {

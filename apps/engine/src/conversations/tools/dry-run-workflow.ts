@@ -28,7 +28,7 @@ import {
   attemptPreviewAutoRepair,
   buildStepOutputFixtures,
   type PreviewAutoRepair,
-  previewAutoRepairTrigger,
+  previewAutoRepairCondition,
   previewAutoRepairWarning,
   recordPreviewAutoRepairOutcome,
   workflowOutputEvaluation,
@@ -457,7 +457,7 @@ export const dryRunWorkflowTool: ConversationTool = {
     }
 
     let autoRepair: PreviewAutoRepair | null = null;
-    if (previewAutoRepairTrigger(run, definition)) {
+    if (previewAutoRepairCondition(run)) {
       const outcome = await attemptPreviewAutoRepair({
         run,
         definition,
@@ -485,16 +485,16 @@ export const dryRunWorkflowTool: ConversationTool = {
           }),
         ...(signal ? { signal } : {}),
       });
-      await ctx.setDraft(
-        recordPreviewAutoRepairOutcome({
-          outcome,
-          draft: ctx.getDraft(),
-          tenant_id: ctx.tenant_id,
-          conversation_id: ctx.conversation_id,
-          actor: author ? actorOf(author) : null,
-          db: ctx.db,
-        }),
-      );
+      const draftBefore = ctx.getDraft();
+      const draftAfter = recordPreviewAutoRepairOutcome({
+        outcome,
+        draft: draftBefore,
+        tenant_id: ctx.tenant_id,
+        conversation_id: ctx.conversation_id,
+        actor: author ? actorOf(author) : null,
+        db: ctx.db,
+      });
+      if (draftAfter !== draftBefore) await ctx.setDraft(draftAfter);
       if (outcome.repaired) {
         run = outcome.run;
         definition = outcome.definition;

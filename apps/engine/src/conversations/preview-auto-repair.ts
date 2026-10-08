@@ -41,21 +41,48 @@ function contractViolationWarning(run: RunResult): { message: string } | null {
   return warning ? { message: warning.message } : null;
 }
 
+export type PreviewAutoRepairBlocker =
+  | "no_trigger"
+  | "no_steps"
+  | "step_failed"
+  | "step_held"
+  | "step_preview_missing"
+  | "no_output_site"
+  | "root_unavailable";
+
+export function previewAutoRepairCondition(run: RunResult): PreviewAutoRepairTrigger | null {
+  if (run.error?.code === "output_transform_failed") return "output_transform_failed";
+  if (run.status === "succeeded" && contractViolationWarning(run)) {
+    return "output_contract_violation";
+  }
+  return null;
+}
+
+export function previewAutoRepairBlocker(
+  run: RunResult,
+  definition: WorkflowDef,
+): PreviewAutoRepairBlocker | null {
+  if (run.steps.length === 0) return "no_steps";
+  if (run.steps.some((s) => s.held === true)) return "step_held";
+  if (run.steps.some((s) => s.status !== "succeeded" && s.status !== "skipped")) {
+    return "step_failed";
+  }
+  const succeeded = run.steps.filter((s) => s.status === "succeeded");
+  if (Object.keys(buildStepOutputFixtures(run.steps)).length !== succeeded.length) {
+    return "step_preview_missing";
+  }
+  if (workflowOutputSite(definition) === null) return "no_output_site";
+  if (!previewOutputRoot(run, definition).ok) return "root_unavailable";
+  return null;
+}
+
 export function previewAutoRepairTrigger(
   run: RunResult,
   definition: WorkflowDef,
 ): PreviewAutoRepairTrigger | null {
-  const trigger: PreviewAutoRepairTrigger | null =
-    run.error?.code === "output_transform_failed"
-      ? "output_transform_failed"
-      : run.status === "succeeded" && contractViolationWarning(run)
-        ? "output_contract_violation"
-        : null;
+  const trigger = previewAutoRepairCondition(run);
   if (!trigger) return null;
-  if (run.steps.length === 0) return null;
-  if (run.steps.some((s) => s.status !== "succeeded" || s.held === true)) return null;
-  if (workflowOutputSite(definition) === null) return null;
-  return trigger;
+  return previewAutoRepairBlocker(run, definition) === null ? trigger : null;
 }
 
 export function buildStepOutputFixtures(steps: ReadonlyArray<RunStep>): Record<string, unknown> {
@@ -119,11 +146,8 @@ export interface PreviewAutoRepair {
 
 export type PreviewAutoRepairOutcome =
   | { repaired: true; auto_repair: PreviewAutoRepair; definition: WorkflowDef; run: RunResult }
-  | {
-      repaired: false;
-      reason: "not_applicable" | "repair_failed" | "rerun_failed";
-      attempts: number;
-    };
+  | { repaired: false; reason: "not_applicable"; blocker: PreviewAutoRepairBlocker; attempts: 0 }
+  | { repaired: false; reason: "repair_failed" | "rerun_failed"; attempts: number };
 
 function repairFinding(trigger: PreviewAutoRepairTrigger, run: RunResult): TransformRepairFinding {
   if (trigger === "output_transform_failed") {
@@ -149,20 +173,33 @@ export async function attemptPreviewAutoRepair(p: {
   ) => Promise<RunResult>;
   signal?: AbortSignal;
 }): Promise<PreviewAutoRepairOutcome> {
-  const trigger = previewAutoRepairTrigger(p.run, p.definition);
+  const trigger = previewAutoRepairCondition(p.run);
+  if (!trigger)
+    return { repaired: false, reason: "not_applicable", blocker: "no_trigger", attempts: 0 };
+  const notApplicable = (blocker: PreviewAutoRepairBlocker): PreviewAutoRepairOutcome => {
+    logger.info({
+      module: "conversations",
+      action: "preview_auto_repair.not_applicable",
+      msg: "preview failed at the workflow output site but the run shape rules out a fixture re-run",
+      tenant_id: p.tenant_id,
+      trigger,
+      blocker,
+      step_statuses: p.run.steps.map((s) => `${s.step_key}:${s.status}${s.held ? ":held" : ""}`),
+    });
+    return { repaired: false, reason: "not_applicable", blocker, attempts: 0 };
+  };
+  const blocker = previewAutoRepairBlocker(p.run, p.definition);
+  if (blocker) return notApplicable(blocker);
   const site = workflowOutputSite(p.definition);
-  if (!trigger || !site) return { repaired: false, reason: "not_applicable", attempts: 0 };
+  if (!site) return notApplicable("no_output_site");
   const fixtures = buildStepOutputFixtures(p.run.steps);
-  if (Object.keys(fixtures).length !== p.run.steps.length) {
-    return { repaired: false, reason: "not_applicable", attempts: 0 };
-  }
   const evaluation = workflowOutputEvaluation({
     run: p.run,
     definition: p.definition,
     scope: fixtures,
     input: p.previewInput,
   });
-  if (!evaluation) return { repaired: false, reason: "not_applicable", attempts: 0 };
+  if (!evaluation) return notApplicable("root_unavailable");
 
   const repair = await repairTransformExpression({
     expression: site.expression,
