@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { describeTurnFailure, timeoutPhaseOf } from "../../../conversations/turn-failure.ts";
+import { flush } from "../../../test-helpers/determinism/wait.ts";
 import { fetchWithResponseTimeout, type ResponseFetch } from "../response-timeout.ts";
 
 function neverAnswering(seen: { signal: AbortSignal | null }): ResponseFetch {
@@ -45,7 +46,7 @@ describe("fetchWithResponseTimeout — the headers phase the SDK's first-chunk t
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("ok");
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await flush();
     expect(seen.signal?.aborted).toBe(false);
   });
 
