@@ -299,6 +299,9 @@ export function projectTurn(outcome: TurnOutcomeJson): ProjectedTurn {
       assistant_text: deltas.length > 0 ? deltas : messageText,
       status: outcome.status ?? completedStatus ?? "unknown",
       pending_elicitation_id,
+      delivered_ask: elicitation
+        ? { tool_name: elicitation.tool_name, input: elicitation.input }
+        : null,
     },
     ...(tokens !== undefined ? { tokens } : {}),
     elicitation,

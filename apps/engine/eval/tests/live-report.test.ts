@@ -508,6 +508,45 @@ describe("scoreScenario · clarification", () => {
     expect(clarificationTargets(neutral).no_placeholder_in_reply).toBe("PASS");
   });
 
+  test("no_placeholder_in_reply scores the question the user received, not the raw tool input the engine stripped", () => {
+    const raw = {
+      question: "Who receives the report and what should the report contain?",
+      fields: [
+        { name: "to", label: "Recipient e-mail", type: "text", placeholder: "you@example.com" },
+        { name: "content", label: "What should the report contain?", type: "text" },
+      ],
+    };
+    const delivered = {
+      question: raw.question,
+      fields: [
+        { name: "to", label: "Recipient e-mail", type: "text" },
+        { name: "content", label: "What should the report contain?", type: "text" },
+      ],
+    };
+    const strippedTurn: ObservedTurn = {
+      ...turn([call("ask_user_form", raw)], "awaiting_input"),
+      delivered_ask: { tool_name: "ask_user_form", input: delivered },
+    };
+    const score = scoreScenario(CLARIFY_SPEC, observation(CLARIFY_SPEC, [strippedTurn]));
+    expect(clarificationTargets(score).no_placeholder_in_reply).toBe("PASS");
+
+    const leakedTurn: ObservedTurn = {
+      ...turn([call("ask_user_form", raw)], "awaiting_input"),
+      delivered_ask: { tool_name: "ask_user_form", input: raw },
+    };
+    const leaked = scoreScenario(CLARIFY_SPEC, observation(CLARIFY_SPEC, [leakedTurn]));
+    expect(clarificationTargets(leaked).no_placeholder_in_reply).toBe("FAIL");
+  });
+
+  test("a question about what the report should contain names the missing source", () => {
+    const spec = LIVE_SCENARIOS.find((s) => s.slug === "underspecified-asks-first");
+    const sourceCheck = spec?.content_checks.find((c) => c.name === "asks for the source");
+    expect(sourceCheck).toBeDefined();
+    expect(
+      new RegExp(sourceCheck!.pattern, sourceCheck!.flags).test("What should the report contain?"),
+    ).toBe(true);
+  });
+
   test("a real address in the reply is not a placeholder", () => {
     expect(
       findReplyPlaceholders(
