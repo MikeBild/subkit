@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { waitFor } from "../../apps/engine/src/test-helpers/determinism/wait.ts";
 import {
   buildExpectScript,
   EXPECT_BIN,
@@ -86,20 +87,22 @@ function childFixture(body: string) {
 }
 
 async function bounded<T>(pending: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      pending,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Owned PTY helper exceeded its bounded deadline")),
-          27000,
-        );
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
+  let settled: { value: T } | { error: unknown } | undefined;
+  void pending.then(
+    (value) => {
+      settled = { value };
+    },
+    (error: unknown) => {
+      settled = { error };
+    },
+  );
+  const outcome = await waitFor(() => settled, {
+    tries: 270,
+    sleepMs: 100,
+    label: "Owned PTY helper bounded deadline",
+  });
+  if ("error" in outcome) throw outcome.error;
+  return outcome.value;
 }
 
 for (const scenario of scenarios) {
