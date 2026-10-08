@@ -88,6 +88,11 @@ export function detectMultiArtifactIntent(text: string | null | undefined): bool
 
 const FULL_COVERAGE: EnumerationCoverage = { workflows_complete: true, connectors_complete: true };
 
+export const NO_SNAPSHOT_COVERAGE: EnumerationCoverage = {
+  workflows_complete: false,
+  connectors_complete: false,
+};
+
 export function detectUserIntent(
   latestUserText: string | null | undefined,
   coverage: EnumerationCoverage = FULL_COVERAGE,

@@ -1,0 +1,16 @@
+{
+  "name": "ai-sdk-structured-outcome",
+  "description": "AiSdkModel.generateObject reads the { ok, value, reason } structured output in one model call and threads the value schema correctly (mocked generateText).",
+  "flow": "generate",
+  "input": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "slug": { "type": "string" },
+        "steps": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["slug", "steps"]
+    },
+    "value": { "slug": "generated-abc", "steps": [{ "id": "step-1" }] }
+  }
+}

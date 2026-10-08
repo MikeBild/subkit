@@ -541,7 +541,6 @@ async function dispatchReal<T>(
         schema: jsonSchema,
         temperature: 0,
         metadata: telemetryMeta,
-        toolChoice: "required",
         ...(params.signal ? { signal: params.signal } : {}),
       });
       usage = r.usage;

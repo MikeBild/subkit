@@ -5,6 +5,7 @@ import {
   detectUserIntent,
   inferStateDrivenFollowUpTool,
   matchesEnumerationIntent,
+  NO_SNAPSHOT_COVERAGE,
   resolvePreferredTool,
   turnToolChoice,
 } from "./intent-detector.ts";
@@ -136,6 +137,13 @@ describe("detectUserIntent", () => {
         forceNoTools: true,
         reason: "enumeration_answer_from_snapshot",
       });
+    });
+
+    test("a turn without a principal has no snapshot, so tools stay and list_workflows leads", () => {
+      const res = detectUserIntent("welche workflows habe ich", NO_SNAPSHOT_COVERAGE);
+      expect(res.forceNoTools).toBeUndefined();
+      expect(res.forceTool).toBe("list_workflows");
+      expect(res.reason).toBe("enumeration_snapshot_trimmed");
     });
 
     test("trimmed workflows keep tools and force list_workflows for the first step", () => {

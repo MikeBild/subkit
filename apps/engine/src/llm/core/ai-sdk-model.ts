@@ -2,8 +2,10 @@ import {
   generateText,
   jsonSchema,
   type ModelMessage,
+  NoObjectGeneratedError,
   NoSuchToolError,
-  type Schema,
+  Output,
+  stepCountIs,
   type Tool,
   tool,
 } from "ai";
@@ -22,6 +24,7 @@ import type {
   SubkitLlmTelemetryMetadata,
   SubkitLlmToolDefinition,
   SubkitLlmToolWithContext,
+  SubkitLlmUsage,
 } from "./base-types.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
 import {
@@ -30,7 +33,11 @@ import {
   ProviderMisconfiguredError,
   type ResolvedModel,
 } from "./model-init.ts";
-import { normalizeSchema, unwrapResult } from "./schema-normalizer.ts";
+import {
+  normalizeSchema,
+  readStructuredOutcome,
+  structuredOutcomeSchema,
+} from "./schema-normalizer.ts";
 
 export const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
@@ -94,19 +101,25 @@ export class LlmCallAbortedError extends Error {
   }
 }
 
-function buildCallSignal(
-  timeoutMs: number,
-  callerSignal?: AbortSignal,
-): { signal: AbortSignal; isCallerAborted: () => boolean } {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
-  return { signal, isCallerAborted: () => callerSignal?.aborted ?? false };
-}
-
 function isAbortError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const name = (err as { name?: unknown }).name;
   return name === "AbortError" || name === "TimeoutError";
+}
+
+type GenerateTextOptions = Parameters<typeof generateText>[0];
+type GenerateTextOutcome = Awaited<ReturnType<typeof generateText>>;
+
+function usageOf(
+  usage: { inputTokens?: unknown; outputTokens?: unknown } | undefined,
+  providerMetadata: unknown,
+): SubkitLlmUsage {
+  return {
+    input_tokens: Number(usage?.inputTokens ?? 0),
+    output_tokens: Number(usage?.outputTokens ?? 0),
+    cache_read_tokens: extractCacheRead(providerMetadata),
+    cache_creation_tokens: extractCacheCreation(providerMetadata),
+  };
 }
 
 export class AiSdkModel implements SubkitLlm {
@@ -157,29 +170,11 @@ export class AiSdkModel implements SubkitLlm {
     return this.resolved;
   }
 
-  private buildTools(
-    submitSchema: Schema<unknown>,
+  private buildExtraTools(
     extras: SubkitLlmToolWithContext[] | undefined,
-    usageCounts: Map<string, number>,
-  ): Record<string, Tool> {
-    const tools: Record<string, Tool> = {
-      submit: tool({
-        description:
-          "Submit the final result in the required format. Submit even on error. Keep non-tool messages brief.",
-        inputSchema: submitSchema,
-      }),
-      abort: tool({
-        description: "There is no way given the input to complete the request successfully; abort.",
-        inputSchema: jsonSchema({
-          type: "object",
-          properties: { reason: { type: "string" } },
-          required: ["reason"],
-          additionalProperties: false,
-        }),
-      }),
-    };
-
-    if (!extras) return tools;
+  ): Record<string, Tool> | undefined {
+    if (!extras || extras.length === 0) return undefined;
+    const tools: Record<string, Tool> = {};
     for (const item of extras) {
       const def = item.toolDefinition;
       if (!("name" in (def as Record<string, unknown>))) {
@@ -187,8 +182,6 @@ export class AiSdkModel implements SubkitLlm {
         continue;
       }
       const td = def as SubkitLlmToolDefinition;
-      const uses = usageCounts.get(td.name) ?? 0;
-      if (item.maxUses !== undefined && uses >= item.maxUses) continue;
       const baseSpec = {
         description: td.description,
         inputSchema: jsonSchema(td.arguments as Parameters<typeof jsonSchema>[0]),
@@ -207,24 +200,27 @@ export class AiSdkModel implements SubkitLlm {
     messages: SubkitLlmMessage[];
     temperature?: number;
     tools?: Record<string, Tool>;
-    toolChoice?: "auto" | "required" | "none" | { type: "tool"; toolName: string };
+    output?: GenerateTextOptions["output"];
+    stopWhen?: GenerateTextOptions["stopWhen"];
     metadata?: SubkitLlmTelemetryMetadata;
     signal?: AbortSignal;
     maxOutputTokens?: number;
-  }): Promise<SubkitLlmAnsweredBy & { result: Awaited<ReturnType<typeof generateText>> }> {
+  }): Promise<SubkitLlmAnsweredBy & { result: GenerateTextOutcome }> {
     const primary = await this.ensureInit();
     const timeoutMs = this.opts.callTimeoutMs ?? LLM_CALL_TIMEOUT_MS;
-    const { signal: callSignal, isCallerAborted } = buildCallSignal(timeoutMs, params.signal);
-    const callOpts: Parameters<typeof generateText>[0] = {
+    const isCallerAborted = () => params.signal?.aborted === true;
+    const callOpts: GenerateTextOptions = {
       model: primary.model,
       messages: params.messages as ModelMessage[],
       maxRetries: this.opts.maxRetries ?? 0,
-      abortSignal: callSignal,
+      timeout: { totalMs: timeoutMs },
       allowSystemInMessages: true,
     };
+    if (params.signal) callOpts.abortSignal = params.signal;
     if (params.temperature !== undefined) callOpts.temperature = params.temperature;
     if (params.tools) callOpts.tools = params.tools;
-    if (params.toolChoice) callOpts.toolChoice = params.toolChoice;
+    if (params.output) callOpts.output = params.output;
+    if (params.stopWhen) callOpts.stopWhen = params.stopWhen;
     if (params.maxOutputTokens !== undefined) callOpts.maxOutputTokens = params.maxOutputTokens;
     if (params.metadata) {
       const rc = params.metadata as Record<string, string | number | boolean>;
@@ -266,7 +262,7 @@ export class AiSdkModel implements SubkitLlm {
         primary: primary.modelId,
         fallback: this.fallbackResolved.modelId,
       });
-      const fbOpts: Parameters<typeof generateText>[0] = {
+      const fbOpts: GenerateTextOptions = {
         ...callOpts,
         model: this.fallbackResolved.model,
       };
@@ -330,124 +326,72 @@ export class AiSdkModel implements SubkitLlm {
   async generateObject<T>(
     input: SubkitLlmObjectGeneratorInput & { metadata?: SubkitLlmTelemetryMetadata },
   ): Promise<SubkitLlmObjectResponse<T>> {
-    const { schema: cleanedSchema, wrappedInResult } = normalizeSchema(input.schema);
-    const schemaObj = jsonSchema(cleanedSchema as Parameters<typeof jsonSchema>[0]);
-    const usageCounts = new Map<string, number>();
+    const { wrappedInResult } = normalizeSchema(input.schema);
+    const outcomeSchema = structuredOutcomeSchema(input.schema);
+    const output = Output.object({
+      schema: jsonSchema(outcomeSchema as Parameters<typeof jsonSchema>[0]),
+    });
 
     const isOModel = this.modelId.startsWith("o");
     const temperature = isOModel ? undefined : (input.temperature ?? 0);
+    const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
 
     const seeded = withCurrentDate(input.messages);
-    const convo: SubkitLlmMessage[] = [...seeded];
-
-    let finalResult: T | undefined;
-    let abortReason: string | undefined;
-    let aggregatedUsage = {
-      input_tokens: 0,
-      output_tokens: 0,
-      cache_read_tokens: 0,
-      cache_creation_tokens: 0,
+    const extraTools = this.buildExtraTools(input.tools);
+    const cwfParams: Parameters<typeof this.callWithFallback>[0] = {
+      messages: seeded,
+      output,
     };
-
-    let answeredBy: SubkitLlmAnsweredBy = { model_used: this.modelId, fell_back: false };
-    const maxAttempts = input.maxAttempts ?? MAX_TOOL_LOOP_ATTEMPTS;
-    let attempts = 0;
-    while (finalResult === undefined && abortReason === undefined) {
-      if (attempts >= maxAttempts) {
-        return {
-          success: false,
-          response: `max_attempts_exceeded after ${attempts} tool-loop iterations`,
-          messages: convo,
-          usage: aggregatedUsage,
-          ...answeredBy,
-        };
-      }
-      attempts += 1;
-      const tools = this.buildTools(schemaObj, input.tools, usageCounts);
-      const cwfParams: Parameters<typeof this.callWithFallback>[0] = {
-        messages: convo,
-        tools,
-        toolChoice: input.toolChoice ?? "required",
-      };
-      if (temperature !== undefined) cwfParams.temperature = temperature;
-      if (input.metadata) cwfParams.metadata = input.metadata;
-      if (input.signal) cwfParams.signal = input.signal;
-      const { result, ...answered } = await this.callWithFallback(cwfParams);
-      const primaryError = answeredBy.primary_error ?? answered.primary_error;
-      answeredBy = {
-        model_used: answered.model_used,
-        fell_back: answeredBy.fell_back || answered.fell_back,
-        ...(primaryError !== undefined ? { primary_error: primaryError } : {}),
-      };
-
-      aggregatedUsage = {
-        input_tokens: aggregatedUsage.input_tokens + Number(result.usage?.inputTokens ?? 0),
-        output_tokens: aggregatedUsage.output_tokens + Number(result.usage?.outputTokens ?? 0),
-        cache_read_tokens:
-          aggregatedUsage.cache_read_tokens + extractCacheRead(result.providerMetadata),
-        cache_creation_tokens:
-          aggregatedUsage.cache_creation_tokens + extractCacheCreation(result.providerMetadata),
-      };
-
-      if (
-        result.finishReason === "error" ||
-        result.finishReason === "content-filter" ||
-        result.finishReason === "other"
-      ) {
-        return {
-          success: false,
-          response: `LLM finished abnormally: ${result.finishReason}`,
-          messages: convo,
-          usage: aggregatedUsage,
-          ...answeredBy,
-        };
-      }
-
-      const toolCalls = result.toolCalls ?? [];
-      for (const call of toolCalls) {
-        usageCounts.set(call.toolName, (usageCounts.get(call.toolName) ?? 0) + 1);
-        if (call.toolName === "submit") {
-          finalResult = unwrapResult<T>((call.input as T) ?? ({} as T), wrappedInResult);
-          break;
-        }
-        if (call.toolName === "abort") {
-          abortReason = ((call.input as { reason?: string })?.reason ?? "abort").toString();
-          break;
-        }
-      }
-
-      convo.push(...((result.response.messages as unknown as SubkitLlmMessage[]) ?? []));
-
-      if (finalResult !== undefined || abortReason !== undefined) break;
-
-      if (toolCalls.length === 0) {
-        return {
-          success: false,
-          response: "no tool calls produced by model",
-          messages: convo,
-          usage: aggregatedUsage,
-          ...answeredBy,
-        };
-      }
+    if (extraTools) {
+      cwfParams.tools = extraTools;
+      cwfParams.stopWhen = stepCountIs(maxAttempts);
     }
+    if (temperature !== undefined) cwfParams.temperature = temperature;
+    if (input.metadata) cwfParams.metadata = input.metadata;
+    if (input.signal) cwfParams.signal = input.signal;
 
-    if (abortReason !== undefined) {
+    let called: Awaited<ReturnType<typeof this.callWithFallback>>;
+    try {
+      called = await this.callWithFallback(cwfParams);
+    } catch (err) {
+      if (NoObjectGeneratedError.isInstance(err)) {
+        return {
+          success: false,
+          response: `structured output rejected: ${err.message}`,
+          messages: seeded,
+          usage: usageOf(err.usage, undefined),
+          model_used: this.modelId,
+          fell_back: false,
+        };
+      }
+      throw err;
+    }
+    const { result, ...answeredBy } = called;
+    const responseMessages = (result.responseMessages ??
+      result.response?.messages ??
+      []) as unknown as SubkitLlmMessage[];
+    const messages = [...seeded, ...responseMessages];
+    const usage = usageOf(result.usage, result.providerMetadata);
+
+    if (result.finishReason !== "stop") {
+      const steps = result.steps?.length ?? 1;
       return {
         success: false,
-        response: abortReason,
-        messages: convo,
-        usage: aggregatedUsage,
+        response:
+          result.finishReason === "tool-calls"
+            ? `max_attempts_exceeded after ${steps} tool steps`
+            : `LLM finished abnormally: ${result.finishReason}`,
+        messages,
+        usage,
         ...answeredBy,
       };
     }
 
-    return {
-      success: true,
-      response: finalResult as T,
-      messages: convo,
-      usage: aggregatedUsage,
-      ...answeredBy,
-    };
+    const outcome = readStructuredOutcome<T>(result.output, wrappedInResult);
+    if (!outcome.ok) {
+      return { success: false, response: outcome.reason, messages, usage, ...answeredBy };
+    }
+    return { success: true, response: outcome.value, messages, usage, ...answeredBy };
   }
 }
 

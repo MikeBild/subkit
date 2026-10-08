@@ -1,8 +1,9 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
-import type { Executor } from "../db/client.ts";
+import type { Db } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { catalogVisibility } from "../rbac/evaluator.ts";
 import { synthesizeInputSchema } from "./input-schema-synth.ts";
 import { WorkflowDefSchema } from "./types.ts";
 
@@ -51,7 +52,7 @@ function toOutputSchema(
 }
 
 export interface ListWorkflowToolsParams {
-  db: Executor;
+  db: Db;
   principal: ResolvedPrincipal;
   limit?: number;
 }
@@ -73,40 +74,34 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
     Array.isArray(principal.allowed_workflows) && principal.allowed_workflows.length > 0
       ? inArray(workflows.id, principal.allowed_workflows)
       : undefined;
-  const rows = await p.db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      description: workflows.description,
-      category: workflows.category,
-      current_version_id: workflows.current_version_id,
-      last_executed_at: workflows.last_executed_at,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, principal.tenant_id),
-        isNull(workflows.deleted_at),
-        eq(workflows.is_tool, true),
-        ...(allowlistSqlFilter ? [allowlistSqlFilter] : []),
-      ),
-    )
-    .orderBy(sql`${workflows.last_executed_at} DESC NULLS LAST`, asc(workflows.created_at))
-    .limit(limit);
+  const [visible, rows] = await Promise.all([
+    catalogVisibility(p.db, principal, "workflow:read", "workflow"),
+    p.db
+      .select({
+        id: workflows.id,
+        slug: workflows.slug,
+        name: workflows.name,
+        description: workflows.description,
+        category: workflows.category,
+        current_version_id: workflows.current_version_id,
+        last_executed_at: workflows.last_executed_at,
+      })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.tenant_id, principal.tenant_id),
+          isNull(workflows.deleted_at),
+          eq(workflows.is_tool, true),
+          ...(allowlistSqlFilter ? [allowlistSqlFilter] : []),
+        ),
+      )
+      .orderBy(sql`${workflows.last_executed_at} DESC NULLS LAST`, asc(workflows.created_at)),
+  ]);
+  if (!visible) return [];
 
-  if (rows.length === limit) {
-    logger.info({
-      module: "workflows",
-      action: "catalog.palette_truncated",
-      msg: "workflow tool palette hit the LRU cap; older workflows are reachable via run_workflow(workflow=<slug>) / find_workflow",
-      tenant_id: principal.tenant_id,
-      limit,
-    });
-  }
-
-  return rows.filter((row): row is WorkflowToolRow => {
+  const readable = rows.filter((row): row is WorkflowToolRow => {
     if (!row.current_version_id) return false;
+    if (!visible(row.id)) return false;
     if (
       principal.allowed_workflows &&
       principal.allowed_workflows !== "all" &&
@@ -116,6 +111,18 @@ async function selectWorkflowToolRows(p: ListWorkflowToolsParams): Promise<Workf
     }
     return true;
   });
+
+  if (readable.length > limit) {
+    logger.info({
+      module: "workflows",
+      action: "catalog.palette_truncated",
+      msg: "workflow tool palette hit the LRU cap; older workflows are reachable via run_workflow(workflow=<slug>) / find_workflow",
+      tenant_id: principal.tenant_id,
+      limit,
+    });
+  }
+
+  return readable.slice(0, limit);
 }
 
 export async function listWorkflowToolSlugs(

@@ -1,8 +1,9 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { compareCategoryCounts } from "../../api/catalog-metadata.ts";
-import type { Executor } from "../../db/client.ts";
-import { totalOverWindow } from "../../db/list-result.ts";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
+import type { Db } from "../../db/client.ts";
 import { connectors, workflows } from "../../db/schema/index.ts";
+import { catalogVisibility } from "../../rbac/evaluator.ts";
 
 export interface TenantSummary {
   workflows: ReadonlyArray<{
@@ -26,6 +27,67 @@ export interface TenantSummary {
   connectors_total: number;
 }
 
+export interface VisibleCatalog {
+  workflows: ReadonlyArray<{
+    id: string;
+    slug: string;
+    name: string;
+    lifecycle: string;
+    is_tool: boolean;
+    category: string;
+  }>;
+  connectors: ReadonlyArray<{
+    id: string;
+    slug: string;
+    display_name: string;
+    driver: string;
+    environment: string;
+    category: string;
+  }>;
+}
+
+export async function loadVisibleCatalog(
+  principal: ResolvedPrincipal,
+  db: Db,
+): Promise<VisibleCatalog> {
+  const [workflowVisible, connectorVisible, workflowRows, connectorRows] = await Promise.all([
+    catalogVisibility(db, principal, "workflow:read", "workflow"),
+    catalogVisibility(db, principal, "connector:read", "connector"),
+    db
+      .select({
+        id: workflows.id,
+        slug: workflows.slug,
+        name: workflows.name,
+        lifecycle: workflows.lifecycle,
+        is_tool: workflows.is_tool,
+        category: workflows.category,
+      })
+      .from(workflows)
+      .where(and(eq(workflows.tenant_id, principal.tenant_id), isNull(workflows.deleted_at)))
+      .orderBy(asc(workflows.slug)),
+    db
+      .select({
+        id: connectors.id,
+        slug: connectors.slug,
+        display_name: connectors.display_name,
+        driver: connectors.driver,
+        environment: connectors.environment,
+        category: connectors.category,
+      })
+      .from(connectors)
+      .where(and(eq(connectors.tenant_id, principal.tenant_id), isNull(connectors.deleted_at)))
+      .orderBy(asc(connectors.slug), asc(connectors.environment)),
+  ]);
+  const allowlist = principal.allowed_workflows;
+  const allowlisted = (id: string) => !Array.isArray(allowlist) || allowlist.includes(id);
+  return {
+    workflows: workflowVisible
+      ? workflowRows.filter((row) => workflowVisible(row.id) && allowlisted(row.id))
+      : [],
+    connectors: connectorVisible ? connectorRows.filter((row) => connectorVisible(row.id)) : [],
+  };
+}
+
 export const MAX_WORKFLOWS_IN_SUMMARY = 40;
 export const MAX_CONNECTORS_IN_SUMMARY = 40;
 
@@ -44,71 +106,37 @@ export function snapshotCoverage(summary: {
   };
 }
 
-export async function loadSnapshotCoverage(
-  tenant_id: string,
-  exec: Executor,
-): Promise<SnapshotCoverage> {
-  const count = sql<number>`count(*)::int`;
-  const [[w], [c]] = await Promise.all([
-    exec
-      .select({ n: count })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at))),
-    exec
-      .select({ n: count })
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at))),
-  ]);
+export function visibleCatalogCoverage(catalog: VisibleCatalog): SnapshotCoverage {
   return snapshotCoverage({
-    workflows_total: Number(w?.n ?? 0),
-    connectors_total: Number(c?.n ?? 0),
+    workflows_total: catalog.workflows.length,
+    connectors_total: catalog.connectors.length,
   });
 }
 
-export async function loadTenantSummary(tenant_id: string, exec: Executor): Promise<TenantSummary> {
-  const [workflowRows, connectorRows, categoryCounts] = await Promise.all([
-    exec
-      .select({
-        id: workflows.id,
-        slug: workflows.slug,
-        name: workflows.name,
-        lifecycle: workflows.lifecycle,
-        is_tool: workflows.is_tool,
-        category: workflows.category,
-        total: totalOverWindow(),
-      })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
-      .orderBy(asc(workflows.slug))
-      .limit(MAX_WORKFLOWS_IN_SUMMARY),
-    exec
-      .select({
-        id: connectors.id,
-        slug: connectors.slug,
-        display_name: connectors.display_name,
-        driver: connectors.driver,
-        environment: connectors.environment,
-        category: connectors.category,
-        total: totalOverWindow(),
-      })
-      .from(connectors)
-      .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
-      .orderBy(asc(connectors.slug), asc(connectors.environment))
-      .limit(MAX_CONNECTORS_IN_SUMMARY),
-    exec
-      .select({ category: workflows.category, count: sql<number>`count(*)::int` })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)))
-      .groupBy(workflows.category),
-  ]);
+export async function loadSnapshotCoverage(
+  principal: ResolvedPrincipal,
+  db: Db,
+): Promise<SnapshotCoverage> {
+  return visibleCatalogCoverage(await loadVisibleCatalog(principal, db));
+}
+
+export async function loadTenantSummary(
+  principal: ResolvedPrincipal,
+  db: Db,
+): Promise<TenantSummary> {
+  const catalog = await loadVisibleCatalog(principal, db);
+  const counts = new Map<string, number>();
+  for (const row of catalog.workflows) {
+    counts.set(row.category, (counts.get(row.category) ?? 0) + 1);
+  }
   return {
-    workflows: workflowRows.map(({ total: _t, ...row }) => row),
-    workflow_categories: categoryCounts
-      .map((c) => ({ category: c.category, count: Number(c.count) }))
+    workflows: catalog.workflows.slice(0, MAX_WORKFLOWS_IN_SUMMARY),
+    workflow_categories: [...counts]
+      .map(([category, count]) => ({ category, count }))
       .sort(compareCategoryCounts),
-    connectors: connectorRows.map(({ total: _t, ...row }) => row),
-    workflows_total: Number(workflowRows[0]?.total ?? 0),
-    connectors_total: Number(connectorRows[0]?.total ?? 0),
+    connectors: catalog.connectors.slice(0, MAX_CONNECTORS_IN_SUMMARY),
+    workflows_total: catalog.workflows.length,
+    connectors_total: catalog.connectors.length,
   };
 }
 
