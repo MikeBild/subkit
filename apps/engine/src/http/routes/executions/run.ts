@@ -1,13 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { AuditAction, auditAwait, readRequestSource } from "../../../audit/index.ts";
+import { AuditAction, actorType, auditAwait, readRequestSource } from "../../../audit/index.ts";
 import type { ResolvedPrincipal } from "../../../auth/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
   assertCallerExecutionSource,
   assertExecutionAuthorityCurrent,
+  auditAdmissionRefusal,
   authorizationContextFromPrincipal,
   finalizeExecution,
   type RunExecutionSource,
@@ -219,6 +220,22 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           workflow_id: body.workflow_id,
           request_source,
         });
+      }
+      if ("downgraded_from" in admitted && admitted.downgraded_from) {
+        await auditAdmissionRefusal(
+          {
+            tenant_id: principal.tenant_id,
+            reason: admitted.downgraded_from.code,
+            message: admitted.downgraded_from.message,
+            workflow_id: body.workflow_id,
+            execution_id: admitted.execution_id,
+            request_source,
+            actor_id: principal.id,
+            actor_type: actorType(principal),
+            extra: { downgraded_to_preparation: true },
+          },
+          db,
+        );
       }
       if (admitted.replayed && admitted.status !== "queued") {
         return c.json(
