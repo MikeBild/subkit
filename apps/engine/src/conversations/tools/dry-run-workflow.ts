@@ -1,10 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { actorOf } from "../../audit/actor.ts";
 import { resolveDryRunEnvironment } from "../../credentials/service.ts";
 import { conversationToolCalls } from "../../db/schema/index.ts";
 import type { PreviewStepSummary } from "../../execution/classify.ts";
 import { classifyRunResult } from "../../execution/classify.ts";
 import { runExecution } from "../../execution/engine.ts";
+import { HELD_PREVIEW_WARNING_CODE } from "../../execution/types.ts";
 import { logger } from "../../logging/logger.ts";
 import {
   recordAuthoringGateBlock,
@@ -22,6 +24,15 @@ import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs, workflowOutputSite } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
+import {
+  attemptPreviewAutoRepair,
+  buildStepOutputFixtures,
+  type PreviewAutoRepair,
+  previewAutoRepairTrigger,
+  previewAutoRepairWarning,
+  recordPreviewAutoRepairOutcome,
+  workflowOutputEvaluation,
+} from "../preview-auto-repair.ts";
 import type { PreviewJudgeOutcome } from "../preview-judge.ts";
 import { runPreviewJudgeGate } from "../preview-judge-gate.ts";
 import { computeScopeDriftWarnings } from "../scope-drift.ts";
@@ -293,7 +304,7 @@ export const dryRunWorkflowTool: ConversationTool = {
       });
     }
 
-    const definition = {
+    let definition: WorkflowDef = {
       ...validation.workflow,
       name: draft.name ?? "draft",
       steps,
@@ -445,21 +456,57 @@ export const dryRunWorkflowTool: ConversationTool = {
       }
     }
 
-    const previewScope: Record<string, unknown> = {};
-    for (const s of run.steps) {
-      if (s.status === "succeeded" && s.output_preview !== undefined) {
-        const rm = (s.request_meta ?? null) as { status?: unknown; headers?: unknown } | null;
-        previewScope[s.step_key] = {
-          data: s.output_preview,
-          duration_ms: s.duration_ms ?? 0,
-          error: null,
-          ...(rm && typeof rm.status === "number" ? { status_code: rm.status } : {}),
-          ...(rm?.headers && typeof rm.headers === "object"
-            ? { headers: rm.headers as Record<string, string> }
-            : {}),
-        };
+    let autoRepair: PreviewAutoRepair | null = null;
+    if (previewAutoRepairTrigger(run, definition)) {
+      const outcome = await attemptPreviewAutoRepair({
+        run,
+        definition,
+        previewInput: previewInput ?? null,
+        tenant_id: ctx.tenant_id,
+        db: ctx.db,
+        rerun: (repaired, step_output_fixtures) =>
+          runExecution({
+            db: ctx.db,
+            tenant_id: ctx.tenant_id,
+            source: {
+              kind: "draft",
+              definition: repaired,
+              ...(draft.name ? { name: draft.name } : {}),
+            },
+            input: previewInput ?? null,
+            options: {
+              request_source: "chat",
+              execution_mode: effectiveEnvironment,
+              hold_writes: true,
+              principal: author,
+              step_output_fixtures,
+              ...(signal ? { signal } : {}),
+            },
+          }),
+        ...(signal ? { signal } : {}),
+      });
+      await ctx.setDraft(
+        recordPreviewAutoRepairOutcome({
+          outcome,
+          draft: ctx.getDraft(),
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          actor: author ? actorOf(author) : null,
+          db: ctx.db,
+        }),
+      );
+      if (outcome.repaired) {
+        run = outcome.run;
+        definition = outcome.definition;
+        autoRepair = outcome.auto_repair;
+        ctx.onLog?.(
+          "info",
+          `${autoRepair.site} repaired in-preview and verified by a fixture re-run`,
+        );
       }
     }
+
+    const previewScope = buildStepOutputFixtures(run.steps);
     if (Object.keys(previewScope).length > 0) {
       recordLastPreview({
         tenant_id: ctx.tenant_id,
@@ -533,6 +580,8 @@ export const dryRunWorkflowTool: ConversationTool = {
       message: (w as { message?: string }).message ?? "",
     }));
     runWarnings.push(...authorPermissionWarnings);
+    if (autoRepair) runWarnings.push(previewAutoRepairWarning(autoRepair));
+    const autoRepairField = autoRepair ? { auto_repair: autoRepair } : {};
     recordExecutionDryRun({ tenant_id: ctx.tenant_id, source_kind: "workflow" });
     if (runWarnings.length > 0) {
       recordExecutionWarningsEmitted({
@@ -569,6 +618,8 @@ export const dryRunWorkflowTool: ConversationTool = {
         steps: steps as unknown as Array<Record<string, unknown>>,
         run_steps: run.steps,
         final_output: run.output,
+        output_schema: definition.output_schema ?? null,
+        final_output_held: (run.warnings ?? []).some((w) => w.code === HELD_PREVIEW_WARNING_CODE),
         prior_breaker: ctx.getDraft().state?.judge_breaker ?? null,
         ...(signal ? { signal } : {}),
       });
@@ -810,6 +861,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...autoRepairField,
           ...inheritedReferencesField,
           ...unverifiedBoundariesField,
           ...stepResultsField,
@@ -849,6 +901,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...autoRepairField,
           ...inheritedReferencesField,
           ...unverifiedBoundariesField,
           ...stepResultsField,
@@ -861,6 +914,12 @@ export const dryRunWorkflowTool: ConversationTool = {
       runWarnings,
       runError: run.error ?? null,
       output: workflowOutputSite(definition),
+      outputEvaluation: workflowOutputEvaluation({
+        run,
+        definition,
+        scope: previewScope,
+        input: previewInput ?? null,
+      }),
       previewScope,
       input: previewInput ?? null,
       tenant_id: ctx.tenant_id,
@@ -936,6 +995,7 @@ export const dryRunWorkflowTool: ConversationTool = {
           preview_evidence: previewEvidence(run.steps),
           step_trace: stepTrace,
           ...finalOutputField,
+          ...autoRepairField,
           ...inheritedReferencesField,
           ...unverifiedBoundariesField,
           ...stepResultsField,
