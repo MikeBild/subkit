@@ -92,7 +92,7 @@ describe("http driver auth application", () => {
     expect(lastRequest?.url).toBe("/ping");
   });
 
-  test("step-level Authorization header wins over the connector's bearer credential", async () => {
+  test("step-level Authorization cannot replace the connector's bearer credential", async () => {
     const conn = await makeConnector({ auth_type: "bearer" });
     await upsertCredential(
       {
@@ -106,15 +106,15 @@ describe("http driver auth application", () => {
       ctx.testDb.db,
     );
     const fresh = await getConnector(ctx.tenantId, conn.id, ctx.testDb.db);
-    const plan = await buildRequestPlan({
-      db: ctx.testDb.db,
-      tenant_id: ctx.tenantId,
-      connector: fresh!,
-      path_or_url: "/ping",
-      headers: { Authorization: "eyJraWQiOiJ.id-token-from-prior-step" },
-    });
-    expect(plan.headers.Authorization).toBe("eyJraWQiOiJ.id-token-from-prior-step");
-    expect(plan.headers.Authorization).not.toContain("Bearer stale-token");
+    await expect(
+      buildRequestPlan({
+        db: ctx.testDb.db,
+        tenant_id: ctx.tenantId,
+        connector: fresh!,
+        path_or_url: "/ping",
+        headers: { Authorization: "eyJraWQiOiJ.id-token-from-prior-step" },
+      }),
+    ).rejects.toBeInstanceOf(HttpRequestInvalidError);
   });
 
   test("parseResponseBody parses application/x-amz-json-1.1 (AWS Cognito IDP)", () => {

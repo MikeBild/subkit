@@ -1,3 +1,4 @@
+import type { ConnectorHeaderPolicy } from "../connectors/index.ts";
 import { compileJsonSchemaContract } from "../execution/index.ts";
 import {
   compile as compileJsonata,
@@ -50,7 +51,7 @@ export interface ValidationError {
 
 export interface ValidateOptions {
   allowForwardRefs?: boolean;
-  noneAuthConnectorIds?: ReadonlySet<string>;
+  connectorHeaderPolicies?: ReadonlyMap<string, ConnectorHeaderPolicy>;
 }
 
 export interface ForwardRef {
@@ -308,7 +309,9 @@ export function validateWorkflowDef(
 
   for (const v of detectReservedAuthHeaders(
     wf.steps,
-    options.noneAuthConnectorIds ? { noneAuthConnectorIds: options.noneAuthConnectorIds } : {},
+    options.connectorHeaderPolicies
+      ? { connectorHeaderPolicies: options.connectorHeaderPolicies }
+      : {},
   )) {
     errors.push({ path: v.path, message: v.message });
   }

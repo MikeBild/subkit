@@ -12,13 +12,13 @@ import {
   recordExecutionWarningsEmitted,
 } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import {
   describeStepReferences,
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef, WorkflowDef } from "../../workflows/types.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withJudgeBreaker, withLatestPreview } from "../authoring-state.ts";
 import { proposeDryRunRepairs } from "../dry-run-repair.ts";
 import { commitWorkflowAtomic } from "../persistence/commit-workflow.ts";
@@ -81,7 +81,7 @@ export const dryRunWorkflowTool: ConversationTool = {
         message: "Sensitive workflows cannot run through persistent conversation previews.",
       };
     }
-    const validation = validateWorkflowDef(draft);
+    const validation = await validateTenantWorkflowDef(draft, ctx.tenant_id, ctx.db);
     if (!validation.ok) {
       const invalidStepId =
         typeof draft.steps[0]?.id === "string" ? draft.steps[0].id : "(invalid-draft)";

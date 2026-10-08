@@ -58,6 +58,7 @@ import { readMemoryUsage, timePhase, timePhaseAsync } from "../observability/run
 import { isTracingActive } from "../observability/tracing.ts";
 import { skillAudienceForAuthoringMode } from "../skills/types.ts";
 import { now } from "../utils/clock.ts";
+import { validateTenantWorkflowDef } from "../workflows/tenant-validator.ts";
 import { mergeAbortSignals } from "./_internal/abort-merge.ts";
 import { CONVERSATION_CANCELLED_REASON, isExpectedCancellation } from "./abort.ts";
 import { resolveAttachmentSlugsInText } from "./attachments.ts";
@@ -478,11 +479,15 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     p.principal,
     p.db,
   );
+  const workflowValidation = await validateTenantWorkflowDef(draft.workflow, p.tenant_id, p.db, {
+    allowForwardRefs: true,
+  });
   const authoringContext = [
     renderAuthoringContextBlock({
       draft,
       user_message: currentUserText,
       document_analysis: documentAnalysisSummary,
+      workflow_validation: workflowValidation,
     }),
   ]
     .filter(Boolean)

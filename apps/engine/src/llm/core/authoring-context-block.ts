@@ -13,6 +13,7 @@ import type {
   WorkflowDraftStepPreview,
 } from "../../conversations/types.ts";
 import { extractStepIdReferences } from "../../workflows/levenshtein.ts";
+import type { validateTenantWorkflowDef } from "../../workflows/tenant-validator.ts";
 import { validateWorkflowDef } from "../../workflows/validator.ts";
 
 export interface AuthoringContextInput {
@@ -30,6 +31,7 @@ export interface AuthoringContextInput {
     sample_endpoints?: Array<{ method: string; path: string; description?: string }>;
   } | null;
   expertise?: ExpertiseHint;
+  workflow_validation?: Awaited<ReturnType<typeof validateTenantWorkflowDef>>;
 }
 
 const EXPERTISE_TONE_HINT: Record<ExpertiseHint, string> = {
@@ -76,9 +78,16 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
 
   if (normalizedDraft) {
     if (lines.length > 0) lines.push("");
+    lines.push("## Execution trust boundaries");
+    lines.push(
+      "- Explain who starts the workflow, which service the connector authenticates to, what permissions allow, and which external effects a human approval covers. These are separate; a login or connector probe is not an effect approval or a successful workflow run.",
+      "- SubKit supplies immutable $caller from authentication; client context is untrusted input. Callerless system runs have null caller. Never substitute the approver, connector credentials or input owner fields for the caller; a child retains the original caller.",
+      "- Ground explanations in recorded runs, step results and audit entries. Stored caller_context is not currently exposed by the public execution serializers or get_execution; do not claim a complete caller/auth graph in Cockpit, HTTP or MCP.",
+      "",
+    );
     lines.push("## Current authoring state");
     const mode = normalizedDraft.mode ?? "onboarding";
-    lines.push(...renderModeEnvelope(mode, normalizedDraft));
+    lines.push(...renderModeEnvelope(mode, normalizedDraft, input.workflow_validation));
   }
 
   if (input.document_analysis && input.document_analysis.endpoint_count > 0) {
@@ -155,6 +164,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
 function renderModeEnvelope(
   mode: NonNullable<DraftDocument["mode"]> | "onboarding",
   draft: DraftDocument,
+  workflowValidation?: AuthoringContextInput["workflow_validation"],
 ): string[] {
   const lines: string[] = [`- Mode: ${mode}`];
   if (draft.summary) {
@@ -166,16 +176,16 @@ function renderModeEnvelope(
     return lines;
   }
   if (mode === "workflow_authoring") {
-    lines.push(...renderWorkflowLines(draft));
+    lines.push(...renderWorkflowLines(draft, workflowValidation));
     return lines;
   }
   if (mode === "resume_review") {
     lines.push(...renderConnectorLines(draft));
-    lines.push(...renderWorkflowLines(draft));
+    lines.push(...renderWorkflowLines(draft, workflowValidation));
     return lines;
   }
   lines.push(...renderConnectorLines(draft));
-  lines.push(...renderWorkflowLines(draft));
+  lines.push(...renderWorkflowLines(draft, workflowValidation));
   return lines;
 }
 
@@ -324,7 +334,10 @@ const REQUEST_STEP_URL_HINT_LINES = [
   "  - `url: ${connector.<slug>.base_url}/<path>` (resolved at execute time)",
 ];
 
-function renderWorkflowLines(draft: DraftDocument): string[] {
+function renderWorkflowLines(
+  draft: DraftDocument,
+  workflowValidation?: AuthoringContextInput["workflow_validation"],
+): string[] {
   const workflow = draft.workflow;
   const workflowSteps = workflow.steps.length;
   if (workflowSteps === 0) {
@@ -351,7 +364,7 @@ function renderWorkflowLines(draft: DraftDocument): string[] {
       `- Latest preview: ${preview.ok ? "ok" : "failed"}${preview.step_id ? ` (step=${preview.step_id})` : ""} — ${preview.summary}`,
     );
   }
-  const validationLines = renderValidationStateLines(workflow);
+  const validationLines = renderValidationStateLines(workflow, workflowValidation);
   if (validationLines.length > 0) {
     lines.push(...validationLines);
   }
@@ -524,8 +537,11 @@ function resolveLoopItemSample(output: unknown, sourceExpr: string, sourceStep: 
   return cur;
 }
 
-function renderValidationStateLines(workflow: unknown): string[] {
-  const result = validateWorkflowDef(workflow, { allowForwardRefs: true });
+function renderValidationStateLines(
+  workflow: unknown,
+  workflowValidation?: AuthoringContextInput["workflow_validation"],
+): string[] {
+  const result = workflowValidation ?? validateWorkflowDef(workflow, { allowForwardRefs: true });
   if (result.ok && result.errors.length === 0) {
     return ["- Validation: ok (0 errors)"];
   }

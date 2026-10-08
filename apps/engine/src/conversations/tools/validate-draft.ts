@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
+import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { getWorkflowDraft, withWorkflowValidation } from "../authoring-state.ts";
 import { buildLifecyclePayload } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
@@ -16,7 +16,7 @@ export const validateDraftTool: ConversationTool = {
   async execute(ctx, _args): Promise<ToolResult> {
     const draft = ctx.getDraft();
     const workflowDraft = getWorkflowDraft(draft);
-    const validation = validateWorkflowDef(workflowDraft);
+    const validation = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
     const nextDraft = withWorkflowValidation(
       draft,
       validation.ok,

@@ -11,8 +11,8 @@ import { canonicalWorkflowJson as canonical, workflowJsonDigest } from "./canoni
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
+import { validateTenantWorkflowDef } from "./tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
-import { validateWorkflowDef } from "./validator.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
@@ -93,7 +93,7 @@ export async function saveWorkflowDraft(
   input: SaveWorkflowDraftInput,
   exec: Executor = getDb(),
 ): Promise<SaveWorkflowDraftResult> {
-  const validation = validateWorkflowDef(input.def);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, exec);
   if (!validation.ok || !validation.workflow) {
     return {
       code: "invalid_definition",

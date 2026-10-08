@@ -3,7 +3,7 @@ slug: subkit-concepts
 scope: global
 title: sk Core Concepts
 description: The minimum mental model an agent needs to author, run, and reason about sk workflows.
-activates_when: [{"kind":"baseline"}]
+activates_when: [{"kind":"baseline"},{"kind":"intent_keyword","word":"$caller"},{"kind":"intent_keyword","word":"caller identity"},{"kind":"intent_keyword","word":"aufruferidentität"},{"kind":"intent_keyword","word":"aufrufer"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -16,6 +16,19 @@ version: 5
 sk is a governance-first workflow engine. Every workflow is a list of **steps**
 executed by the engine, backed by PostgreSQL, and scoped to a tenant. This document
 is the canonical primer for agents authoring or editing workflows.
+
+## Identity, credentials, authorization and approval
+
+Keep four questions separate:
+
+- Identity: immutable `$caller` describes the authenticated execution principal; it contains no token or permission grant.
+- Connector credentials: encrypted saved credentials authenticate outbound requests to an upstream service; they are not the execution caller.
+- Authorization: live RBAC and resource grants decide whether that principal may invoke a workflow or access a resource.
+- Human approval: a person approves an effect boundary in an environment; this does not supply identity or replace RBAC. The approver can differ from the caller.
+
+An authenticated HTTP or MCP invocation uses its principal as caller. A trusted callerless webhook or schedule has `$caller = null`, even when a person created it or approved its effects. An authenticated system account has a caller and is distinct from that callerless case. Children inherit the parent's identity; input, source labels and child definitions cannot replace it. For example, use the caller's principal ID to check ownership of an input object ID, a saved connector credential to call its service, and a reviewed boundary to permit the resulting write. Fail closed when the workflow requires an authenticated user but caller is null.
+
+See workflow-authoring for identity constraints and expression syntax, auth-flows for upstream authentication, and REST API knowledge for inspection and correlation limits.
 
 ## Workflow shape
 

@@ -112,15 +112,27 @@ describe("callConnector — re-auth clearing edge", () => {
     expect(await readFlag(connector_id)).toBe(true);
   });
 
-  test("a 2xx under the caller's own Authorization proves nothing about the stored one", async () => {
-    upstreamStatus = 200;
-    const connector_id = await seedFlaggedConnector("call-keeps-on-caller-auth");
-    const result = await call(connector_id, {
-      headers: { Authorization: "Bearer fixture-caller-token-not-real" },
-    });
-    expect(result.kind).toBe("ok");
-    expect(await readFlag(connector_id)).toBe(true);
-  });
+  test.each([
+    ["Authorization", "capitalized"],
+    ["authorization", "lowercase"],
+  ])(
+    "a caller's %s cannot replace the stored credential or clear reauth",
+    async (header, label) => {
+      upstreamStatus = 200;
+      const connector_id = await seedFlaggedConnector(`call-keeps-on-caller-auth-${label}`);
+      const before = mock.callCount();
+      const result = await call(connector_id, {
+        headers: { [header]: "Bearer fixture-caller-token-not-real" },
+      });
+      expect(result).toMatchObject({
+        kind: "error",
+        error_code: "call_failed",
+        message: "request headers conflict with connector authentication",
+      });
+      expect(mock.callCount()).toBe(before);
+      expect(await readFlag(connector_id)).toBe(true);
+    },
+  );
 
   test("a 2xx from an absolute URL on another host proves nothing either", async () => {
     upstreamStatus = 200;

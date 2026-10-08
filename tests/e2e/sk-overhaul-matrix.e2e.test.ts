@@ -83,10 +83,11 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "/au" },
           { kind: "sleep", ms: 100 },
-          { kind: "send", text: "\x03" },
-          { kind: "send", text: "\x03" },
+          { kind: "ready" },
+          { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );
@@ -101,10 +102,11 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: "/" },
           { kind: "sleep", ms: 100 },
-          { kind: "send", text: "\x03" },
-          { kind: "send", text: "\x03" },
+          { kind: "ready" },
+          { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.member, engineUrl: E().baseUrl },
       );
@@ -276,10 +278,11 @@ describe("e2e matrix: sk CLI overhaul (live engine)", () => {
       const r = await runPtyScenario(
         [
           { kind: "wait", pattern: "Resume work, create a connector", label: "ready" },
+          { kind: "ready" },
           { kind: "send", text: `${PASTE_START}    indented\n\tline\n${PASTE_END}` },
           { kind: "sleep", ms: 50 },
-          { kind: "send", text: "\x03" },
-          { kind: "send", text: "\x03" },
+          { kind: "ready" },
+          { kind: "send", text: "\x04" },
         ],
         { persona: E().personas.admin, engineUrl: E().baseUrl },
       );

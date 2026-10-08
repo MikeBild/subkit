@@ -1,9 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Executor } from "../../db/client.ts";
 import { workflows, workflowVersions } from "../../db/schema/index.ts";
+import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { annotateRuntime } from "../../workflows/runtime-annotation.ts";
 import { WorkflowDefSchema } from "../../workflows/types.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import type { DraftDocument } from "../types.ts";
 import { workflowDefFromDraft } from "./commit-workflow.ts";
@@ -94,7 +94,7 @@ export async function classifyDraftVsPersisted(
   const parsedCurrent = WorkflowDefSchema.safeParse(dag);
   if (!parsedCurrent.success) return { state: "no_target", reason: "unreadable_dag" };
 
-  const validated = validateWorkflowDef(draftDef);
+  const validated = await validateTenantWorkflowDef(draftDef, tenant_id, exec);
   const draftForCompare =
     validated.ok && validated.workflow
       ? (annotateRuntime(validated.workflow) as unknown as Record<string, unknown>)

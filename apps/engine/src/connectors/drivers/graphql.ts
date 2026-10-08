@@ -5,6 +5,7 @@ import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowedResolved } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
+import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import type { ConnectorView } from "../types.ts";
 import {
   type AppliedAuthMethod,
@@ -12,6 +13,7 @@ import {
   checkAuthorityRedirect,
   deriveAppliedAuthMethod,
   FETCH_DEADLINE_MS,
+  HttpRequestInvalidError,
   type RequestDispatchPolicy,
   type ResolvedConnectorCredential,
   readBodyCapped,
@@ -131,6 +133,15 @@ export async function executeGraphQLRequest(p: {
   }
   const { credential, credential_id, credential_revision, connection_authority, oauth2_refreshed } =
     await resolveConnectorCredential(resolveOpts);
+  const violations = requestHeaderViolations(
+    p.extra_headers ?? {},
+    connectorHeaderPolicy(p.connector, credential),
+  );
+  if (violations.length > 0)
+    throw new HttpRequestInvalidError(
+      "request headers conflict with connector authentication",
+      "headers",
+    );
   const auth_method = deriveAppliedAuthMethod(credential, oauth2_refreshed);
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -140,10 +151,6 @@ export async function executeGraphQLRequest(p: {
   const query: Record<string, string | number | boolean> = {};
   applyAuthMaterial(p.connector, credential, headers, query);
   if (p.extra_headers) {
-    if ("Authorization" in p.extra_headers || "authorization" in p.extra_headers) {
-      delete headers.Authorization;
-      delete headers.authorization;
-    }
     for (const [k, v] of Object.entries(p.extra_headers)) {
       headers[k] = v;
     }

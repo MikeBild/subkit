@@ -31,9 +31,9 @@ import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
+import { validateTenantWorkflowDef } from "./tenant-validator.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
-import { validateWorkflowDef } from "./validator.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
@@ -184,7 +184,7 @@ export async function createWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = validateWorkflowDef(input.def);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db);
   if (!validation.ok || !validation.workflow) {
     log.workflow.validation.failed({
       tenant_id: input.tenant_id,
@@ -286,7 +286,7 @@ export async function updateWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = validateWorkflowDef(input.def);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db);
   if (!validation.ok || !validation.workflow) {
     log.workflow.validation.failed({
       tenant_id: input.tenant_id,

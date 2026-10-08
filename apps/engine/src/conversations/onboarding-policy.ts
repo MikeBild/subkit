@@ -131,7 +131,8 @@ export function nextRecommendedAction(input: PolicyInput): NextAction {
     if (workflowSteps === 0) {
       return {
         kind: "workflow_goal",
-        summary: "Ask for the workflow goal and which connectors are involved.",
+        summary:
+          "Ask for the workflow goal, what starts it, whose data it may access and which connector effects are allowed. Distinguish authenticated caller identity from connector credentials and human approval.",
         rationale: "A workflow draft exists but has no steps yet.",
       };
     }
@@ -203,7 +204,8 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
       return {
         kind: "choice",
         subject: action.kind,
-        prompt: "How should this connector authenticate?",
+        prompt:
+          "How should SubKit authenticate to this service? This connection does not identify the person starting a workflow or approve its actions.",
         options: [
           { id: "none", label: "None (public)" },
           { id: "bearer", label: "Bearer / API token" },
@@ -245,7 +247,7 @@ export function nextQuestion(input: PolicyInput): NextQuestion | null {
         kind: "text",
         subject: action.kind,
         prompt:
-          "What should the workflow do? Include the input that triggers it and the shape of the successful result.",
+          "What should the workflow do, and who or what starts it? Include the input, whose data it may access, the allowed actions and the successful result. SubKit supplies the verified caller identity; do not put login tokens or identity claims in the input.",
       };
     case "workflow_preview":
       return {

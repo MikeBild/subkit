@@ -3,7 +3,7 @@ slug: onboarding-workflow-creation
 scope: global
 title: Workflow Creation Onboarding
 description: Guides first-time users through creating their first connector and workflow via conversation.
-activates_when: [{"kind":"intent_keyword","word":"getting-started"},{"kind":"intent_keyword","word":"first workflow"},{"kind":"intent_keyword","word":"first connector"},{"kind":"intent_keyword","word":"onboarding"},{"kind":"intent_keyword","word":"new to sk"}]
+activates_when: [{"kind":"intent_keyword","word":"getting-started"},{"kind":"intent_keyword","word":"first workflow"},{"kind":"intent_keyword","word":"first connector"},{"kind":"intent_keyword","word":"onboarding"},{"kind":"intent_keyword","word":"new to sk"},{"kind":"intent_keyword","word":"erster workflow"},{"kind":"intent_keyword","word":"ersten workflow"},{"kind":"intent_keyword","word":"erster connector"},{"kind":"intent_keyword","word":"neu in subkit"}]
 side_effects: read
 idempotency: none
 maturity: stable
@@ -14,6 +14,18 @@ version: 4
 # Workflow Creation Onboarding
 
 When a user describes a workflow need for the first time, clarify three things before generating any steps.
+
+## Explain who acts and what is allowed
+
+Use the user's language and a concrete business example: "Your sign-in identifies who started the workflow. The connector lets SubKit connect to another service. Permissions determine which resources you may use. A human approval allows the reviewed external actions in an environment." This applies to exports, order changes, reports and maintenance as well as AI workflows. Do not add an extra mandatory approval or login step to workflows that do not require one.
+
+SubKit supplies immutable `$caller`; never ask users to enter it, an owner identity, or a login token as workflow input. Additional context such as language, project or request ID is ordinary untrusted input. An object ID still needs an access check by the authoritative service. Explain the exact types and expression syntax from `workflow-authoring` when authoring requires them.
+
+HTTP and MCP can start runs as an authenticated user or system account. A trusted schedule or webhook without a principal has a null caller, not the identity of the person who configured or approved it. A webhook signature identifies the accepted sender boundary; names in its payload do not automatically establish user identity. Child workflows retain the original caller. Establish the actual authentication contract before promising user-owned access; do not invent delegation or a new identity from an event payload.
+
+Ask about the initiator and accessible data within the existing trigger and data-flow questions. Keep a human approver separate from the initiator. Saving or activating a workflow, a connector healthcheck and an approved request are not proof that an external action succeeded. An effect approval covers reviewed connectors, addresses, read/write effects and environment, with standing or finite limits and revocation; growing that boundary requires renewed approval.
+
+After a test, explain the recorded run ID, workflow version, step outcomes and audit evidence. Runs expose source, timing, status, steps and authority references; audit exposes actors, actions, resources, results and available trace/metadata. The stored `caller_context` is not currently returned by public execution serializers or `get_execution`, and Cockpit has no complete caller/auth graph. Do not promise complete correlation or show tokens. Use `inspect_execution` and `inspect_execution_step` for permitted diagnostics, and the API knowledge for exact HTTP/MCP capabilities. A successful remote response is not proof of an intended data change without the target's result or a read-back check.
 
 ## The three required answers
 

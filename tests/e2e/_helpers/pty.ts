@@ -34,7 +34,7 @@ export interface ExpectSleepStep {
   ms: number;
 }
 
-export type ExpectStep = ExpectWaitStep | ExpectSendStep | ExpectSleepStep;
+export type ExpectStep = ExpectWaitStep | ExpectSendStep | ExpectSleepStep | { kind: "ready" };
 
 function tclQuote(value: string): string {
   return `"${value
@@ -59,18 +59,32 @@ export function buildExpectScript(
     "match_max 100000",
     "log_user 1",
     `spawn -noecho ${tclQuote(bin)}`,
+    "set childPid [exp_pid]",
+    "set childReaped 0",
+    "set scenarioCode [catch {",
+    "proc drain {milliseconds} {",
+    "  set deadline [expr {[clock milliseconds] + $milliseconds}]",
+    "  while {[clock milliseconds] < $deadline} {",
+    '    expect -timeout 1 {\n -re {.+} {}\n timeout {}\n eof { error "Unexpected EOF while draining" }\n }',
+    "  }",
+    "}",
   ];
   for (const step of steps) {
+    if (step.kind === "ready") {
+      lines.push("set deadline [expr {[clock milliseconds]+20000}]");
+      lines.push("set ready 0");
+      lines.push(
+        'while {[clock milliseconds]<$deadline} { expect -timeout 1 {\n -re {.+} {}\n timeout {}\n eof {error "Unexpected EOF before TTY readiness"}\n }; set flags [exec stty -a < $spawn_out(slave,name)]; if {[string match "*-icanon*" $flags] && [regexp {(^|[[:space:]])-echo([[:space:]]|$)} $flags]} {set ready 1; break} }',
+      );
+      lines.push('if {!$ready} {error "TTY not ready"}');
+      continue;
+    }
     if (step.kind === "wait") {
       const label = step.label ?? step.pattern;
       lines.push("expect {");
       lines.push(`  -re ${tclRegex(step.pattern)} { puts ${tclQuote(`__MATCH__ ${label}`)} }`);
-      lines.push(
-        `  timeout { puts stderr ${tclQuote(`Timed out waiting for ${step.pattern}`)}; exit 1 }`,
-      );
-      lines.push(
-        `  eof { puts stderr ${tclQuote(`Process exited while waiting for ${step.pattern}`)}; exit 1 }`,
-      );
+      lines.push(`  timeout { error ${tclQuote(`Timed out waiting for ${step.pattern}`)} }`);
+      lines.push(`  eof { error ${tclQuote(`Process exited while waiting for ${step.pattern}`)} }`);
       lines.push("}");
       continue;
     }
@@ -78,10 +92,35 @@ export function buildExpectScript(
       lines.push(`send -- ${tclQuote(step.text)}`);
       continue;
     }
-    lines.push(`after ${step.ms}`);
+    lines.push(`drain ${step.ms}`);
   }
   lines.push("set timeout 5");
-  lines.push("expect { eof {} timeout {} }");
+  lines.push('expect {\n eof {}\n timeout { error "CLI EOF timeout" }\n }');
+  lines.push("set exitDeadline [expr {[clock milliseconds] + 5000}]");
+  lines.push("set childExited 0");
+  lines.push("while {[clock milliseconds] < $exitDeadline} {");
+  lines.push("  if {[catch {exec ps -p $childPid -o stat=} childState statusOptions]} {");
+  lines.push("    set statusError [dict get $statusOptions -errorcode]");
+  lines.push(
+    '    if {[lindex $statusError 0] ne "CHILDSTATUS" || [lindex $statusError 2] != 1} {error "Cannot observe owned CLI process exit"}',
+  );
+  lines.push("    set childExited 1");
+  lines.push("    break");
+  lines.push("  }");
+  lines.push("  if {[regexp {^[[:space:]]*Z} $childState]} {set childExited 1; break}");
+  lines.push("  after 25");
+  lines.push("}");
+  lines.push('if {!$childExited} {error "CLI did not exit after EOF"}');
+  lines.push("set outcome [wait]");
+  lines.push("set childReaped 1");
+  lines.push(
+    'if {[llength $outcome] != 4 || [lindex $outcome 2] != 0 || [lindex $outcome 3] != 0} {error "CLI did not exit normally with status zero: $outcome"}',
+  );
+  lines.push("} scenarioError]");
+  lines.push(
+    "if {$scenarioCode != 0} {puts stderr $scenarioError; if {!$childReaped} {catch {exec kill -KILL $childPid}; catch {close}; catch {wait}}; exit 1}",
+  );
+  lines.push("exit 0");
   return lines.join("\n");
 }
 

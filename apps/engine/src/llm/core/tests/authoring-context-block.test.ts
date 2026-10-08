@@ -1,6 +1,32 @@
 import { describe, expect, it } from "bun:test";
 import { renderAuthoringContextBlock } from "../authoring-context-block.ts";
 
+describe("authoring execution trust guidance", () => {
+  it("keeps runtime identity and evidence separate from untrusted draft data", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        workflow: {
+          name: "Weekly report",
+          steps: [],
+          input_schema_sample: { caller: { principalId: "untrusted-owner" } },
+        },
+      },
+      expertise: "novice",
+    });
+    expect(out).toContain("## Execution trust boundaries");
+    expect(out).toContain("client context is untrusted input");
+    expect(out).toContain("Callerless system runs have null caller");
+    expect(out).toContain("get_execution");
+    expect(out).toContain("do not claim a complete caller/auth graph");
+    expect(out).not.toContain("untrusted-owner");
+  });
+
+  it("does not add workflow guidance to an unrelated informational turn", () => {
+    const out = renderAuthoringContextBlock({ draft: null, user_message: "hello" });
+    expect(out).not.toContain("## Execution trust boundaries");
+  });
+});
+
 describe("renderAuthoringContextBlock — Document Analysis section", () => {
   it("emits the section when endpoint_count > 0", () => {
     const out = renderAuthoringContextBlock({
@@ -321,5 +347,58 @@ describe("renderAuthoringContextBlock — scope manifest (P4)", () => {
     expect(out).not.toBeNull();
     expect(out!).toContain("$item.{ id, threadId }");
     expect(out!).toContain("sampled from preview of `list_messages`");
+  });
+});
+
+describe("renderAuthoringContextBlock — tenant workflow validation", () => {
+  it("preserves authoritative connector refusals instead of replacing them with structural success", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "protected-service",
+          steps: [{ id: "request", kind: "request", method: "GET", url: "https://example.test" }],
+        },
+      },
+      user_message: "continue",
+      workflow_validation: {
+        ok: false,
+        errors: [{ path: "steps.request.headers", message: "saved connector header is protected" }],
+      },
+    });
+    expect(out).toContain("- Validation: 1 error");
+    expect(out).toContain("steps.request.headers: saved connector header is protected");
+    expect(out).not.toContain("- Validation: ok (0 errors)");
+  });
+
+  it("uses the authoritative tenant validation result for connector Authorization forwarding", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: {
+          name: "forward-user-token",
+          steps: [
+            {
+              id: "request",
+              kind: "request",
+              method: "GET",
+              connector_id: "connector-id",
+              path: "/items",
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: workflow placeholders are literal authoring data.
+              headers: { Authorization: "Bearer ${scope.login.data.access_token}" },
+            },
+          ],
+        },
+      },
+      user_message: "continue",
+      workflow_validation: {
+        ok: true,
+        workflow: { name: "forward-user-token", steps: [] },
+        errors: [],
+      },
+    });
+
+    expect(out).toContain("- Validation: ok (0 errors)");
+    expect(out).not.toContain("do not set a Authorization header");
   });
 });

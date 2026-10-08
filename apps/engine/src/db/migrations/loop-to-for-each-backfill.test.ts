@@ -18,6 +18,8 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq, sql } from "drizzle-orm";
+import { createConnector } from "../../connectors/service.ts";
+import { upsertCredential } from "../../credentials/service.ts";
 import {
   auditLog,
   dataMigrations,
@@ -263,4 +265,87 @@ describe("loop→for_each backfill", () => {
       .where(eq(workflowVersions.tenant_id, tenantId));
     expect(Number(after[0]?.c)).toBe(Number(before[0]?.c));
   });
+});
+
+test("backfill uses persisted tenant credentials and refuses protected header overrides", async () => {
+  const connector = await createConnector(
+    {
+      tenant_id: tenantId,
+      actor_id: null,
+      input: {
+        name: "backfill-header",
+        driver: "http",
+        environment: "dev",
+        base_url: "https://api.example.com",
+        auth_type: "header",
+        config: {},
+      },
+    },
+    ctx.db,
+  );
+  await upsertCredential(
+    {
+      tenant_id: tenantId,
+      actor_id: null,
+      connector_id: connector.id,
+      environment: "dev",
+      mode: "header",
+      value: { mode: "header", headers: { "x-subkit-token": "fixture-protected" } },
+    },
+    ctx.db,
+  );
+  const dag = (headers: Record<string, string>) => ({
+    name: "backfill-header",
+    steps: [
+      { id: "fetch_data", kind: "request", method: "GET", url: "https://api.example.com/data" },
+      { id: "each", kind: "loop", over: "fetch_data.data.rows", body: ["request"] },
+      {
+        id: "request",
+        kind: "request",
+        method: "GET",
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal per-item path validates the iteration migration.
+        path: "/items/${item.id}",
+        connector_id: connector.id,
+        headers,
+      },
+    ],
+  });
+  const allowed = await seedWorkflow({
+    slug: "backfill-forwarded-auth",
+    dag: dag({ Authorization: "Bearer transient-fixture" }),
+    schedule: { cron: "0 8 * * *" },
+  });
+  const blocked = await seedWorkflow({
+    slug: "backfill-protected-auth",
+    dag: dag({ "X-Subkit-Token": "override-fixture" }),
+  });
+  await ctx.db
+    .delete(dataMigrations)
+    .where(eq(dataMigrations.name, LOOP_TO_FOR_EACH_BACKFILL_NAME));
+  const report = await runLoopToForEachBackfill(ctx.db);
+  expect(report.migrated).toBe(1);
+  expect(report.needs_review).toBe(1);
+  const versions = await ctx.db
+    .select()
+    .from(workflowVersions)
+    .where(eq(workflowVersions.tenant_id, tenantId));
+  const allowedVersions = versions.filter((row) => row.workflow_id === allowed.workflow_id);
+  expect(allowedVersions).toHaveLength(2);
+  const rewritten = allowedVersions.find((row) => row.version === 2)?.dag as {
+    steps: { kind: string; headers?: Record<string, string> }[];
+  };
+  expect(rewritten.steps).toHaveLength(2);
+  expect(rewritten.steps[1]?.headers).toEqual({ Authorization: "Bearer transient-fixture" });
+  expect(versions.filter((row) => row.workflow_id === blocked.workflow_id)).toHaveLength(1);
+  const schedules = await ctx.db
+    .select()
+    .from(workflowsSchedules)
+    .where(
+      and(
+        eq(workflowsSchedules.tenant_id, tenantId),
+        eq(workflowsSchedules.workflow_id, allowed.workflow_id),
+      ),
+    );
+  expect(schedules).toHaveLength(1);
+  expect((await runLoopToForEachBackfill(ctx.db)).skipped).toBe(true);
 });

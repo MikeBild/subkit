@@ -6,9 +6,9 @@ import {
   recordExecutionDryRun,
   recordExecutionWarningsEmitted,
 } from "../../observability/instrumentation.ts";
+import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import { buildScopeAtStep } from "../../workflows/scope-shape.ts";
 import type { StepDef } from "../../workflows/types.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { getWorkflowDraft, withLatestPreview } from "../authoring-state.ts";
 import { stepFingerprint } from "../step-fingerprint.ts";
 import { authorConnectorWriteWarnings } from "./author-build-warnings.ts";
@@ -38,7 +38,7 @@ export const dryRunStepTool: ConversationTool = {
   async execute(ctx, rawArgs): Promise<ToolResult> {
     const args = inputSchema.parse(rawArgs);
     const workflowDraft = getWorkflowDraft(ctx.getDraft());
-    const validation = validateWorkflowDef(workflowDraft);
+    const validation = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
     if (!validation.ok) {
       const nextDraft = withLatestPreview(
         ctx.getDraft(),

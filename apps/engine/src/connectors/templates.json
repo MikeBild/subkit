@@ -15954,7 +15954,7 @@
     "name": "Supabase",
     "driver": "http",
     "base_url": "https://{ref}.supabase.co/rest/v1",
-    "auth_type": "bearer",
+    "auth_type": "header",
     "oauth": null,
     "default_skill": "supabase-basics",
     "ingestion_source": "unsupported",
@@ -15963,17 +15963,12 @@
     "description": "Supabase PostgREST API",
     "category": "database",
     "tags": ["rest", "postgrest", "realtime", "auth"],
-    "setup_instructions": "Get project URL and API keys from Dashboard > Settings > API. Authenticate with `Authorization: Bearer <key>` (auth_type bearer) using the service_role or anon key — PostgREST reads the database role from this JWT (service_role bypasses Row Level Security; anon enforces it). Bearer alone is sufficient for self-hosted PostgREST. On Supabase Cloud (behind the Kong gateway) you must ALSO send the `apikey` header with the same key — use a header credential carrying both `apikey` and `Authorization: Bearer`. Self-hosted: override base_url with your own host, e.g. https://supabase.example.com/rest/v1.",
+    "setup_instructions": "Configure saved connector header credentials for the requirements of your Supabase deployment. Supabase gateways commonly require `apikey: <public anon key>` and `Authorization: Bearer <key>`; when user-scoped RLS is required, Authorization must carry the verified user's access token through a server-side mechanism bound to that caller; never pass it as workflow input. A tenant-wide connector credential cannot represent different app users, so use a protected owner-binding RPC based on immutable `$caller`. A protected RPC may additionally require `x-subkit-token`, a server-to-server credential stored only in the connector's encrypted headers. This token authenticates SubKit to the backend; it is not `$caller`, a user token, or the public `apikey`. Never use service_role for caller-scoped access because it bypasses RLS. Self-hosted deployments may differ; verify their gateway requirements rather than assuming headers from the hosting model. Override base_url with your project URL, e.g. https://<ref>.supabase.co/rest/v1 or your self-hosted endpoint.",
     "auth_options": [
       {
-        "auth_type": "bearer",
-        "label": "Bearer token (service_role or anon key)",
-        "description": "Send `Authorization: Bearer <key>` with the service_role (RLS bypass) or anon (RLS enforced) key. This sets the database role and is sufficient for self-hosted PostgREST."
-      },
-      {
         "auth_type": "header",
-        "label": "Cloud: apikey + Authorization (both headers)",
-        "description": "Supabase Cloud's gateway also requires the `apikey` header. Use a header credential carrying BOTH `apikey` and `Authorization: Bearer` with the same key. apikey alone runs as anon."
+        "label": "Supabase API and optional protected RPC headers",
+        "description": "Store deployment-required `apikey` and `Authorization` values as saved connector headers. A protected server-to-server RPC can also require `x-subkit-token`; keep it secret and distinct from the immutable workflow `$caller`. Use the user's verified JWT in Authorization for user RLS."
       }
     ],
     "url_pattern": "^https://[^/]+\\.supabase\\.co/rest/v1(\\/|$)",
@@ -15982,8 +15977,8 @@
     "probe_endpoint": null,
     "credential_hints": [
       {
-        "field": "token",
-        "label": "Bearer token (service_role or anon key)",
+        "field": "headers",
+        "label": "Saved Supabase API and protected RPC headers",
         "placeholder": "",
         "doc_url": null,
         "secret": true

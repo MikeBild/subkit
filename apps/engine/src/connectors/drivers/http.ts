@@ -9,6 +9,7 @@ import { instrument } from "../../observability/runtime-telemetry.ts";
 import { injectTraceContext, scrubUrl } from "../egress.ts";
 import { assertEgressAllowedResolved, assertRobotsAllowed } from "../egress-guard.ts";
 import { requestUsedStoredCredential } from "../reauth.ts";
+import { connectorHeaderPolicy, requestHeaderViolations } from "../request-header-policy.ts";
 import { getConnectorProbeEndpoint } from "../template-binding.ts";
 import { type ProbeEndpoint, ProbeEndpointSchema } from "../templates.ts";
 import type { ConnectorView } from "../types.ts";
@@ -429,12 +430,16 @@ export async function buildRequestPlan(
     connection_authority: connectionAuthority,
     oauth2_refreshed: oauth2Refreshed,
   } = await resolveConnectorCredential(resolveOpts);
-  const stepAuthHeader = headers.Authorization ?? headers.authorization ?? null;
+  const violations = requestHeaderViolations(
+    headers,
+    connectorHeaderPolicy(p.connector, credential),
+  );
+  if (violations.length > 0)
+    throw new HttpRequestInvalidError(
+      "request headers conflict with connector authentication",
+      "headers",
+    );
   applyAuthMaterial(p.connector, credential, headers, query);
-  if (stepAuthHeader) {
-    delete headers.authorization;
-    headers.Authorization = stepAuthHeader;
-  }
   if (p.idempotency_key) {
     headers["Idempotency-Key"] = p.idempotency_key;
   }

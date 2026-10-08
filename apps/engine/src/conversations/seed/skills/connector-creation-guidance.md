@@ -390,7 +390,7 @@ Common codes you will see while authoring a connector:
 - `placeholder_connector_missing` — slug typo or wrong environment.
 - `auth_mutation_not_allowed` — you tried to write `config.oauth` via `update_connector_draft`. Only `config.oauth.client_id` is writable (public id). For client_secret + endpoints, use `save_connector_draft({ credential: { mode: "oauth2", ... } })`. To change the auth shape entirely, call `start_connector_from_description` with a different `auth_type`.
 - `force_save_cooldown` — a force_save was requested while the failed probe is still fresh (within 60s). Collect a new credential via `ask_user_form`, re-probe, and retry. The cooldown protects you from persisting the credential a probe just rejected.
-- `reserved_auth_header_present` — a workflow step with `connector_id` carries `Authorization` / `Cookie` / `Proxy-Authorization`. The connector injects auth from its saved credential — remove the header. The only legitimate exception is the multi-step token-mint pattern where the connector's `auth_type` is `"none"`; see `auth-flows.md`.
+- `reserved_auth_header_present` — remove any header that shadows a saved connector or credential header, regardless of casing. Dynamic `Authorization` is allowed only after tenant-scoped validation checks current HTTP/GraphQL connector configuration and credentials: compatible `none`, `header` or `query` authentication must not own `Authorization`. Missing credentials do not establish this permission. `Cookie`, `Proxy-Authorization` and duplicate case variants are always forbidden; `x-subkit-token` and every other saved header remain protected. See `auth-flows.md`.
 
 ## MCP connectors (driver `mcp`) — a different shape, not a different entity
 

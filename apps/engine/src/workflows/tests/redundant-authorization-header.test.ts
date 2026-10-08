@@ -163,7 +163,11 @@ describe("validateWorkflowDef · redundant Authorization header", () => {
           },
         ],
       },
-      { noneAuthConnectorIds: new Set([noneAuthId]) },
+      {
+        connectorHeaderPolicies: new Map([
+          [noneAuthId, { allowAuthorization: true, ownedHeaders: new Set<string>() }],
+        ]),
+      },
     );
     expect(result.ok).toBe(true);
   });

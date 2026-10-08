@@ -1,12 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { recordAuthoringGateBlock } from "../../observability/instrumentation.ts";
 import { buildStepDag, detectCycles, renderCycleReport } from "../../workflows/dag.ts";
+import { validateTenantWorkflowDef } from "../../workflows/index.ts";
 import {
   describeStepReferences,
   validateUnsupportedPlaceholders,
 } from "../../workflows/reference-validator.ts";
 import type { WorkflowDef } from "../../workflows/types.ts";
-import { validateWorkflowDef } from "../../workflows/validator.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { getWorkflowDraft, withWorkflowDraft } from "../authoring-state.ts";
 import { applyDiffsToConfig, type ToolDiff } from "../json-patch-apply.ts";
@@ -202,7 +202,9 @@ export async function applyWorkflowPatchToDraft(
       }
     }
 
-    const validation = validateWorkflowDef(patched, { allowForwardRefs: true });
+    const validation = await validateTenantWorkflowDef(patched, ctx.tenant_id, ctx.db, {
+      allowForwardRefs: true,
+    });
     if (!validation.ok) {
       return {
         ok: false,

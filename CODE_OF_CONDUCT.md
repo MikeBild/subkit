@@ -24,9 +24,8 @@ place where someone represents the project.
 
 ## Reporting
 
-If you experience or witness behaviour that violates this code, contact the maintainer through
-the contact page at https://www.mikebild.dev/de/contact/ or by email to the address in the
-repository's commit history. Reports are handled confidentially.
+If you experience or witness behaviour that violates this code, contact the maintainer by email
+to the address in the repository's commit history. Reports are handled confidentially.
 
 ## Enforcement
 
