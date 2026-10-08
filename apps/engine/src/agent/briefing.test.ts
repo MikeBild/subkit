@@ -7,6 +7,7 @@ import {
   type AssembleInput,
   type CatalogEntry,
   catalogInDomain,
+  inDomain,
   trimToBudget,
 } from "./briefing.ts";
 
@@ -216,5 +217,14 @@ describe("catalogInDomain", () => {
     expect(
       catalogInDomain({ slug: "blog-de-sync", category: "content" }, ["radar", "blog-de"]),
     ).toBe(true);
+  });
+});
+
+describe("inDomain", () => {
+  test("a domain tag or the category places a skill or source in the domain", () => {
+    expect(inDomain({ tags: ["domain:ops"], category: "other" }, ["ops"])).toBe(true);
+    expect(inDomain({ tags: [], category: "ops" }, ["ops"])).toBe(true);
+    expect(inDomain({ tags: ["foundations"], category: "platform" }, ["ops"])).toBe(false);
+    expect(inDomain({ tags: ["domain:radar"], category: null }, ["ops", "radar"])).toBe(true);
   });
 });

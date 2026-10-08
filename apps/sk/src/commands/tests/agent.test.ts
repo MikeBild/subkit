@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
@@ -17,6 +25,7 @@ import {
   readBriefed,
   recordBriefed,
   wireClaudeHooks,
+  wireCodexHooks,
 } from "../agent.ts";
 
 describe("findAgentFile", () => {
@@ -59,7 +68,7 @@ describe("wireClaudeHooks", () => {
       hooks: Array<{ command: string }>;
     }>;
     expect(sessionStart).toHaveLength(1);
-    expect(sessionStart[0]?.matcher).toBe("startup|resume|compact");
+    expect(sessionStart[0]?.matcher).toBe("startup|resume|clear|compact");
     expect(sessionStart[0]?.hooks[0]?.command).toContain("sk agent briefing --hook");
     const prompt = hooks.UserPromptSubmit as Array<{
       matcher?: string;
@@ -113,6 +122,36 @@ describe("wireClaudeHooks", () => {
     expect(hooks.PreToolUse).toEqual(existing.hooks.PreToolUse);
     const sessionStart = hooks.SessionStart as unknown[];
     expect(sessionStart).toHaveLength(2);
+  });
+});
+
+describe("wireCodexHooks", () => {
+  test("adds SessionStart + UserPromptSubmit briefing hooks that hand Codex the whole text", () => {
+    const updated = wireCodexHooks({});
+    if (!updated) throw new Error("expected hooks update");
+    const hooks = updated.hooks as Record<
+      string,
+      Array<{
+        matcher?: string;
+        hooks: Array<{ command: string; additionalContextLimit?: number }>;
+      }>
+    >;
+    expect(hooks.SessionStart?.[0]?.matcher).toBe("startup|resume|clear|compact");
+    expect(hooks.SessionStart?.[0]?.hooks[0]?.command).toBe("sk agent briefing --hook");
+    expect(hooks.SessionStart?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
+    expect(hooks.UserPromptSubmit?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
+    expect(hooks.Stop).toBeUndefined();
+    expect(hooks.SessionEnd).toBeUndefined();
+  });
+
+  test("is idempotent and keeps the hooks of other tools", () => {
+    const existing = {
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "other-tool" }] }] },
+    };
+    const updated = wireCodexHooks(existing);
+    if (!updated) throw new Error("expected hooks update");
+    expect((updated.hooks as Record<string, unknown>).Stop).toEqual(existing.hooks.Stop);
+    expect(wireCodexHooks(updated)).toBeNull();
   });
 });
 
@@ -204,8 +243,9 @@ describe("briefed domains per session", () => {
   });
 });
 
-describe("sk agent init --skip-claude", () => {
+describe("sk agent init", () => {
   let cwd: string;
+  let home: string;
   let savedCwd: string;
   let savedEnv: Record<string, string | undefined>;
   let printed: string[];
@@ -213,9 +253,11 @@ describe("sk agent init --skip-claude", () => {
   beforeEach(() => {
     savedCwd = process.cwd();
     cwd = mkdtempSync(join(tmpdir(), "sk-agent-init-"));
+    home = mkdtempSync(join(tmpdir(), "sk-agent-home-"));
     process.chdir(cwd);
-    savedEnv = { SUBKIT_ENGINE_URL: process.env.SUBKIT_ENGINE_URL };
+    savedEnv = { SUBKIT_ENGINE_URL: process.env.SUBKIT_ENGINE_URL, HOME: process.env.HOME };
     process.env.SUBKIT_ENGINE_URL = "https://engine.example.test";
+    process.env.HOME = home;
     printed = [];
     originalWrite = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((chunk: string | Uint8Array) => {
@@ -232,19 +274,41 @@ describe("sk agent init --skip-claude", () => {
     }
   });
 
-  test("declares the domains and prints the Codex and Hermes snippets without touching Claude", async () => {
+  test("declares the domains, wires Codex and prints the remaining Codex and Hermes steps without touching Claude", async () => {
     await runCommand(agentCommand, {
       rawArgs: ["init", "--domains", "blog-de", "--skip-claude"],
     });
     const output = printed.join("");
     expect(findAgentFile(cwd)?.config.domains).toEqual(["blog-de"]);
-    expect(output).toContain("Codex (manual, feature-gated):");
-    expect(output).toContain('"UserPromptSubmit"');
+    const codexHooks = JSON.parse(readFileSync(join(home, ".codex", "hooks.json"), "utf8")) as {
+      hooks: Record<string, unknown[]>;
+    };
+    expect(Object.keys(codexHooks.hooks).sort()).toEqual(["SessionStart", "UserPromptSubmit"]);
+    expect(output).toContain("wired SessionStart + UserPromptSubmit briefing hooks");
+    expect(output).toContain("Codex (finish by hand):");
+    expect(output).toContain("hooks = true");
+    expect(output).toContain("/hooks");
     expect(output).toContain("Hermes (manual):");
     expect(output).toContain("https://engine.example.test/mcp");
     expect(output).toContain("sk agent briefing");
-    expect(output).not.toContain("wired SessionStart");
+    expect(existsSync(join(home, ".claude", "settings.json"))).toBe(false);
     expect(output).not.toContain("Claude Code hooks");
+  });
+
+  test("wires Claude Code under the home directory and leaves Codex alone when asked", async () => {
+    await runCommand(agentCommand, {
+      rawArgs: ["init", "--domains", "blog-de", "--skip-codex"],
+    });
+    const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")) as {
+      hooks: Record<string, unknown[]>;
+    };
+    expect(Object.keys(settings.hooks).sort()).toEqual([
+      "SessionEnd",
+      "SessionStart",
+      "UserPromptSubmit",
+    ]);
+    expect(existsSync(join(home, ".codex", "hooks.json"))).toBe(false);
+    expect(printed.join("")).toContain("wired SessionStart + UserPromptSubmit + SessionEnd hooks");
   });
 });
 
@@ -282,9 +346,14 @@ describe("hook clients", () => {
     expect(signals[0]).toBeInstanceOf(AbortSignal);
   });
 
-  test("the Codex snippet says the capture runs once per turn", () => {
+  test("the Codex snippet names the manual rest: feature flag, trust, and the optional per-turn capture", () => {
     const snippet = codexHookSnippet();
+    expect(snippet).toContain("hooks = true");
+    expect(snippet).toContain("/hooks");
+    expect(snippet).toContain("additionalContextLimit 0");
     expect(snippet).toContain("once per turn");
+    expect(snippet).toContain('"Stop"');
+    expect(snippet).not.toContain('"SessionStart"');
     expect(snippet).not.toContain("cheap");
   });
 });

@@ -1,3 +1,4 @@
+import { PLATFORM_CATEGORY, UNCATEGORIZED } from "../api/catalog-metadata.ts";
 import type { Db } from "../db/client.ts";
 import { listKnowledgeSources } from "../knowledge/service.ts";
 import { DOMAIN_TAG_PREFIX } from "../knowledge/tags.ts";
@@ -47,6 +48,17 @@ export function domainsOfTags(tags: readonly string[]): string[] {
     .map((t) => t.slice(DOMAIN_TAG_PREFIX.length));
 }
 
+export function domainsOfItem(item: {
+  tags: readonly string[];
+  category?: string | null;
+}): string[] {
+  const domains = new Set(domainsOfTags(item.tags));
+  if (item.category && item.category !== UNCATEGORIZED && item.category !== PLATFORM_CATEGORY) {
+    domains.add(item.category);
+  }
+  return [...domains];
+}
+
 export async function listKnownDomains(
   tenant_id: string,
   opts: { include_knowledge: boolean },
@@ -60,7 +72,7 @@ export async function listKnownDomains(
   ]);
   const known = new Set<string>();
   for (const item of [...skills, ...knowledge]) {
-    for (const domain of domainsOfTags(item.tags)) known.add(domain);
+    for (const domain of domainsOfItem(item)) known.add(domain);
   }
   return [...known].sort();
 }

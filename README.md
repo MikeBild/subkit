@@ -46,6 +46,16 @@ sk
 
 `sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
 
+## Use sk from a coding agent
+
+```bash
+claude mcp add --transport http --scope user sk http://localhost:3000/mcp --header "Authorization: Bearer ${SK_API_KEY}"
+codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_KEY
+sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
+```
+
+Every approved workflow is then a tool in the agent, with the rights of the key and nothing more.
+
 ## License
 
 MIT

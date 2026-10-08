@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { DOMAIN_PROMPT_MAX_CHARS, domainsOfTags, resolveDomains } from "./domains.ts";
+import {
+  DOMAIN_PROMPT_MAX_CHARS,
+  domainsOfItem,
+  domainsOfTags,
+  resolveDomains,
+} from "./domains.ts";
 
 const KNOWN = ["blog-de", "ops", "radar", "mikebild-dev", "data_lake"];
 
@@ -62,5 +67,21 @@ describe("resolveDomains", () => {
 describe("domainsOfTags", () => {
   test("keeps only domain tags with a value", () => {
     expect(domainsOfTags(["domain:ops", "kind:guide", "domain:", "billing"])).toEqual(["ops"]);
+  });
+});
+
+describe("domainsOfItem", () => {
+  test("a category is a domain, beside the domain tags", () => {
+    expect(domainsOfItem({ tags: ["domain:ops"], category: "radar" }).sort()).toEqual([
+      "ops",
+      "radar",
+    ]);
+    expect(domainsOfItem({ tags: ["domain:ops"], category: "ops" })).toEqual(["ops"]);
+  });
+
+  test("the uncategorised and the platform category are never domains", () => {
+    expect(domainsOfItem({ tags: [], category: "other" })).toEqual([]);
+    expect(domainsOfItem({ tags: ["foundations"], category: "platform" })).toEqual([]);
+    expect(domainsOfItem({ tags: [], category: null })).toEqual([]);
   });
 });
