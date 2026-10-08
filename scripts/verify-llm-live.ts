@@ -133,6 +133,7 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
       }),
     },
     toolChoice: "required",
+    include: { requestBody: true },
     maxRetries: 0,
     timeout: { totalMs: target.timeoutMs },
   });
