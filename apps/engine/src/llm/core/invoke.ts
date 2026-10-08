@@ -6,7 +6,7 @@ import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { getConfig } from "../../config/loader.ts";
 import { type Executor, getDb } from "../../db/client.ts";
-import { tenantLlmSettings, tenants } from "../../db/schema/index.ts";
+import { tenants } from "../../db/schema/index.ts";
 import { log, logger } from "../../logging/logger.ts";
 import { zodToJsonSchema7 } from "../../mcp/json-schema.ts";
 import {
@@ -32,10 +32,15 @@ import { classifyProviderError, shouldFallBack } from "../provider-errors.ts";
 import type { LlmFlow, LlmProviderKind, ModelRoute, UserTurn } from "../types.ts";
 import { AiSdkModel } from "./ai-sdk-model.ts";
 import type { SubkitLlmAnsweredBy, SubkitLlmMessage } from "./base-types.ts";
-import { toSystemMessages } from "./cache-blocks.ts";
+import { promptCacheSupported, toSystemMessages } from "./cache-blocks.ts";
 import { type AssembledContext, assembleContext } from "./context-assembler.ts";
 import { maybeWrapForDevtools } from "./devtools-wrap.ts";
-import { detectConfiguredProvider, initializeModel, type ModelInitOptions } from "./model-init.ts";
+import {
+  detectConfiguredProvider,
+  initializeModel,
+  type ModelInitOptions,
+  withToolInputExamples,
+} from "./model-init.ts";
 import { safeParseJson } from "./safe-json.ts";
 
 export async function resolveLanguageModel(
@@ -51,7 +56,9 @@ export async function resolveLanguageModel(
     ...(tenantId ? { tenantId } : {}),
   };
   const resolved = await initializeModel(initOptions);
-  return await maybeWrapForDevtools(resolved.model);
+  return await maybeWrapForDevtools(
+    withToolInputExamples(resolved.model, resolved.provider, resolved.modelId),
+  );
 }
 
 function zodToJson(schema: ZodType): Record<string, unknown> {
@@ -138,13 +145,6 @@ function currentFallbackProvider(
 export async function resolveModelRoute(tenant_id: string, exec?: Executor): Promise<ModelRoute> {
   const db = exec ?? getDb();
 
-  const settingsRows = await db
-    .select()
-    .from(tenantLlmSettings)
-    .where(eq(tenantLlmSettings.tenant_id, tenant_id))
-    .limit(1);
-  const settings = settingsRows[0];
-
   const tenantRows = await db
     .select()
     .from(tenants)
@@ -159,12 +159,9 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     if (cfg.model) cfgModel = cfg.model;
     if (cfg.fallback_model) cfgFallback = cfg.fallback_model;
   } catch {}
-  const primary =
-    settings?.llm_primary_model ?? tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY_MODEL;
-  const fallback =
-    settings?.llm_fallback_model ?? tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK_MODEL;
-  const provider =
-    (settings?.llm_provider as LlmProviderKind | undefined) ?? currentProvider(tenant_id);
+  const primary = tenant?.llm_primary ?? cfgModel ?? DEFAULT_PRIMARY_MODEL;
+  const fallback = tenant?.llm_fallback ?? cfgFallback ?? DEFAULT_FALLBACK_MODEL;
+  const provider = currentProvider(tenant_id);
   const fallback_provider = currentFallbackProvider(provider, tenant_id);
   const monthly_budget = resolveMonthlyBudget(tenant_id);
 
@@ -176,7 +173,6 @@ export async function resolveModelRoute(tenant_id: string, exec?: Executor): Pro
     fallback_provider,
     context_cap: contextCapFor(primary),
     monthly_budget,
-    enable_prompt_cache: settings?.enable_prompt_cache ?? true,
   };
 }
 
@@ -380,7 +376,6 @@ async function dispatchMock<T>(
       flow: params.flow,
       model: route.primary,
       prompt: mockPrompt,
-      enable_prompt_cache: route.enable_prompt_cache,
     });
   } catch (err) {
     if (!(err instanceof LlmProviderError)) throw err;
@@ -413,7 +408,6 @@ async function dispatchMock<T>(
         flow: params.flow,
         model: route.fallback,
         prompt: mockPrompt,
-        enable_prompt_cache: route.enable_prompt_cache,
       });
     } else {
       throw err;
@@ -500,7 +494,7 @@ async function dispatchReal<T>(
   db: Executor,
 ): Promise<InvokeResult<T>> {
   const systemMessages = toSystemMessages(assembled.blocks, {
-    enabled: route.enable_prompt_cache,
+    enabled: promptCacheSupported(route.provider, route.primary),
     ttl: "1h",
   });
   const userMessages: SubkitLlmMessage[] = assembled.prompt.messages.map((m) => ({

@@ -1,0 +1,1 @@
+DROP TABLE "tenant_llm_settings" CASCADE;

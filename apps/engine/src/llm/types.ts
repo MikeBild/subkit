@@ -1,4 +1,5 @@
 import type { FilePart, ImagePart, TextPart } from "ai";
+import type { ResolvedPrincipal } from "../auth/types.ts";
 import type {
   AuthoringActiveTarget,
   AuthoringCheckpointView,
@@ -33,7 +34,6 @@ export interface ModelRoute {
   fallback_provider: LlmProviderKind;
   context_cap: number;
   monthly_budget: number | null;
-  enable_prompt_cache: boolean;
 }
 
 export interface UserTurn {
@@ -110,6 +110,7 @@ export interface AssembleContextParams {
   authoring_hint?: AuthoringPromptHint;
   authoring_connector_ids?: string[];
   conversation_id?: string;
+  principal?: ResolvedPrincipal;
   runtime_context?: {
     engine_url?: string;
     tenant_slug?: string;

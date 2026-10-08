@@ -55,6 +55,17 @@ export interface CacheHintOptions {
   ttl?: PromptCacheTtl;
 }
 
+const PROMPT_CACHE_PROVIDERS: ReadonlySet<string> = new Set([
+  "anthropic",
+  "vertex",
+  "bedrock",
+  "gateway",
+]);
+
+export function promptCacheSupported(provider: string, modelId: string): boolean {
+  return PROMPT_CACHE_PROVIDERS.has(provider) && /claude/i.test(modelId);
+}
+
 export function toSystemMessages(
   blocks: CacheBlocks,
   opts: CacheHintOptions,

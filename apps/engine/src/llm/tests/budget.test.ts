@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
-import { llmUsage, tenantLlmSettings } from "../../db/schema/index.ts";
+import { llmUsage } from "../../db/schema/index.ts";
 import { monthlyUsage } from "../accounting/index.ts";
 import { LlmQuotaExhausted } from "../errors.ts";
 import { runGenerateFlow } from "../flows/generate.ts";
@@ -11,10 +11,6 @@ let ctx: LlmTestCtx;
 
 beforeAll(async () => {
   ctx = await createLlmTestCtx("budget");
-  await ctx.testDb.db.insert(tenantLlmSettings).values({
-    tenant_id: ctx.tenant_id,
-    llm_provider: "mock",
-  });
   await setConfigKey("tokens.monthly_budget", 200, { tenantId: ctx.tenant_id, force: true });
 });
 

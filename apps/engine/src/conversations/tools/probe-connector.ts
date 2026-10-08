@@ -157,7 +157,6 @@ export const probeConnectorTool: ConversationTool = {
     connector_slug: "stripe",
     method: "GET",
     path: "/v1/customers",
-    query: { limit: 2 },
     environment: "dev",
   },
   inputSchema: ProbeInput,

@@ -781,7 +781,7 @@ describe("tryFastPath — one catalog block", () => {
     await seedCategoryCatalog();
     const summary = await loadTenantSummary(tenantId, tdb.db);
     expect(summary.workflows.some((w) => w.slug.startsWith("notion-"))).toBe(false);
-    const text = renderTenantSummaryBlock(summary) ?? "";
+    const text = renderTenantSummaryBlock(summary, new Set()) ?? "";
     expect(text).toContain("notion (4)");
     expect(text).toContain("PARTIAL LIVE LIST");
     expect(text).not.toContain("DO NOT call list_workflows");

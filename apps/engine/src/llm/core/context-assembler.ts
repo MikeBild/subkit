@@ -8,6 +8,7 @@ import {
 } from "../../observability/instrumentation.ts";
 import { retrieveApplicableSkills } from "../../skills/service.ts";
 import { type Skill, skillOfferedTo } from "../../skills/types.ts";
+import { listWorkflowToolSlugs } from "../../workflows/catalog.ts";
 import type { PriorWorkflowRef } from "../../workflows/prior-workflows.ts";
 import { contextCapFor, countMessagesTokens, countTokens } from "../accounting/index.ts";
 import { LlmContextTooLarge } from "../errors.ts";
@@ -310,8 +311,13 @@ export async function assembleEnhancedPrompt(
     : null;
 
   const tenantSummaryBlock =
-    p.flow === "converse"
-      ? renderTenantSummaryBlock(await loadTenantSummary(p.tenant_id, db))
+    p.flow === "converse" && p.principal
+      ? renderTenantSummaryBlock(
+          ...(await Promise.all([
+            loadTenantSummary(p.tenant_id, db),
+            listWorkflowToolSlugs({ db, principal: p.principal }),
+          ])),
+        )
       : null;
 
   let lastSections: Array<{ text: string; volatile: boolean }> = [];
@@ -322,7 +328,6 @@ export async function assembleEnhancedPrompt(
       volatileTexts.add(text);
       sections.push(text);
     };
-    if (tenantSummaryBlock) vol(tenantSummaryBlock);
     sections.push(baseSystem);
     if (runtimeBlock) vol(runtimeBlock);
     const globalIndexBlock = formatSkillIndex("Global", globalSkills, p.runtime_context);

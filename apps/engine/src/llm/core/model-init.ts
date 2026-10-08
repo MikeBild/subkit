@@ -5,7 +5,13 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import type { LanguageModel, Tool } from "ai";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import {
+  addToolInputExamplesMiddleware,
+  type LanguageModel,
+  type Tool,
+  wrapLanguageModel,
+} from "ai";
 import { getConfig } from "../../config/loader.ts";
 
 const CONFIG_UNINITIALIZED = Symbol("config_uninitialized");
@@ -447,6 +453,23 @@ function resolveVertex(
     modelId,
     model: provider(modelId) as unknown as LanguageModel,
   };
+}
+
+export function sendsToolInputExamplesNatively(provider: ProviderKind, modelId: string): boolean {
+  return provider === "anthropic" || (provider === "vertex" && modelId.startsWith("claude"));
+}
+
+export function withToolInputExamples(
+  model: LanguageModel | string,
+  provider: ProviderKind,
+  modelId: string,
+): LanguageModel | string {
+  if (typeof model === "string") return model;
+  if (sendsToolInputExamplesNatively(provider, modelId)) return model;
+  return wrapLanguageModel({
+    model: model as LanguageModelV4,
+    middleware: addToolInputExamplesMiddleware(),
+  });
 }
 
 export const DEFAULT_INIT_MODEL = "claude-sonnet-4-6";

@@ -610,6 +610,13 @@
       "when": 1791363515256,
       "tag": "0086_inbound_hook_slug_global_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1791450722727,
+      "tag": "0087_tenant_llm_settings_dropped",
+      "breakpoints": true
     }
   ]
 }
