@@ -16,6 +16,7 @@ import { EMBEDDED_MIGRATIONS, type EmbeddedMigration } from "./migrations/embedd
 import { runInboxNonActionablePurge } from "./migrations/inbox-nonactionable-purge.ts";
 import { runLoopToForEachBackfill } from "./migrations/loop-to-for-each-backfill.ts";
 import { runMetricsScopeBackfill } from "./migrations/metrics-scope-backfill.ts";
+import { normalizeMcpTaskActorConstraint } from "./normalize-mcp-task-actor-constraint.ts";
 import * as schema from "./schema/index.ts";
 
 export interface MigrationReport {
@@ -211,6 +212,9 @@ async function applyMigrations(
     await db.transaction(async (tx) => {
       if (replayFromScratch && m.tag <= ISOLATION_MIGRATION_TAG) {
         await tx.execute(sql.raw(MIGRATION_SEARCH_PATH_SQL));
+      }
+      if (m.tag === "0089_decider_kind") {
+        await normalizeMcpTaskActorConstraint(tx);
       }
       for (const stmt of m.statements) {
         await tx.execute(sql.raw(stmt));
