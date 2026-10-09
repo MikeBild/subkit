@@ -15,6 +15,59 @@ export interface LiveArgs {
 
 export type LiveProvider = "anthropic" | "openai";
 
+export const LIVE_TOOL_EXAMPLE = { name: "example-check-evidence", ok: true } as const;
+
+export function assertLiveToolEvidence(
+  provider: LiveProvider,
+  requestBody: unknown,
+  toolCalls: ReadonlyArray<{ toolName: string; input: unknown }>,
+): void {
+  const body = typeof requestBody === "string" ? JSON.parse(requestBody) : requestBody;
+  const object = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  const exampleMatches = (value: unknown): boolean =>
+    object(value) &&
+    Object.keys(value).length === 2 &&
+    value.name === LIVE_TOOL_EXAMPLE.name &&
+    value.ok === true;
+  const tools = object(body) && Array.isArray(body.tools) ? body.tools : [];
+  const matching = tools.filter((value) => {
+    if (!object(value)) return false;
+    const definition = provider === "openai" && object(value.function) ? value.function : value;
+    if (definition.name !== "record_check") return false;
+    if (provider === "anthropic") {
+      return (
+        Array.isArray(definition.input_examples) && definition.input_examples.some(exampleMatches)
+      );
+    }
+    if (value.type !== "function" || typeof definition.description !== "string") return false;
+    const examples = definition.description.split("Input Examples:\n")[1];
+    return (
+      examples?.split("\n").some((line) => {
+        try {
+          return exampleMatches(JSON.parse(line));
+        } catch {
+          return false;
+        }
+      }) ?? false
+    );
+  });
+  if (matching.length !== 1) {
+    throw new Error("the record_check tool sent to the provider carries no verified input example");
+  }
+  const call = toolCalls[0];
+  if (
+    toolCalls.length !== 1 ||
+    call?.toolName !== "record_check" ||
+    !object(call.input) ||
+    Object.keys(call.input).length !== 2 ||
+    call.input.name !== "live-gate" ||
+    call.input.ok !== true
+  ) {
+    throw new Error("the provider did not return the required record_check invocation");
+  }
+}
+
 export interface LiveModelRef {
   provider: LiveProvider;
   model: string;
