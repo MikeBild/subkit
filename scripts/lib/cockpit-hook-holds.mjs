@@ -194,16 +194,17 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     await capture("hook-sample");
     await page.getByTestId("authority-sample-prepare").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    await page.getByTestId("authority-limit-limited").click();
     if (
-      (await page.getByTestId("authority-runs").inputValue()) !== "100" ||
-      (await page.getByTestId("authority-hours").inputValue()) !== "720"
+      (await page.getByTestId("authority-limit-until-revoked").getAttribute("data-state")) !== "on"
     )
-      throw new Error("A hook-started workflow lost its thirty-day suggestion");
-    const suggestion = await page.getByTestId("authority-suggestion").innerText();
-    if (!suggestion.includes("14") || !/Webhook|webhook/.test(suggestion))
-      throw new Error(`The suggested limits are not explained: ${suggestion}`);
-    await capture("hook-suggestion");
+      throw new Error("A hook-started grant does not begin until revoked");
+    await page.getByTestId("authority-limit-thirty-days").click();
+    if ((await page.getByTestId("authority-limit-thirty-days").getAttribute("data-state")) !== "on")
+      throw new Error("A hook-started grant cannot select thirty days");
+    for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
+      if (await page.getByTestId(field).count())
+        throw new Error(`A hook-started grant exposes obsolete ${field}`);
+    await capture("hook-duration");
     if (
       prepareBodies.length !== 2 ||
       JSON.stringify(prepareBodies[1].input) !== JSON.stringify(delivered)

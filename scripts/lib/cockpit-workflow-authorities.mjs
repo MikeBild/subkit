@@ -1082,11 +1082,15 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       body.workflow_version_id !== currentReview.manifest.workflow_version_id ||
       body.execution_environment !== "prod" ||
       body.valid_from !== currentReview.suggested_bounds.valid_from ||
-      body.valid_until !== currentReview.suggested_bounds.valid_until ||
-      body.max_runs !== 2
+      body.valid_until !==
+        new Date(
+          Date.parse(currentReview.suggested_bounds.valid_from) +
+            (posts === 1 ? 7 : 30) * 86_400_000,
+        ).toISOString() ||
+      body.max_runs !== null
     ) {
       throw new Error(
-        `Grant boundary mismatch: ${JSON.stringify({ actual: body, expected: { digest: currentReview.digest, version: currentReview.manifest.workflow_version_id, bounds: currentReview.suggested_bounds, environment: "prod", max_runs: 2 } })}`,
+        `Grant boundary mismatch: ${JSON.stringify({ actual: body, expected: { digest: currentReview.digest, version: currentReview.manifest.workflow_version_id, bounds: { valid_from: currentReview.suggested_bounds.valid_from, valid_until: new Date(Date.parse(currentReview.suggested_bounds.valid_from) + (posts === 1 ? 7 : 30) * 86_400_000).toISOString() }, environment: "prod", max_runs: null } })}`,
       );
     }
     await route.fulfill({
@@ -1105,28 +1109,22 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
     await stand.visit(page, `workflows/${workflowId}`);
     await page.getByTestId("workflow-automation-action").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    if (await page.getByTestId("authority-runs").count())
+    if (
+      (await page.getByTestId("authority-limit-until-revoked").getAttribute("data-state")) !== "on"
+    )
       throw new Error("The grant dialog does not start at 'until revoked'");
-    await page.getByTestId("authority-limit-limited").click();
-    if (
-      (await page.getByTestId("authority-runs").inputValue()) !== "1" ||
-      (await page.getByTestId("authority-hours").inputValue()) !== "24"
-    )
-      throw new Error("Grant lost finite server defaults");
-    if (
-      (await page.getByTestId("authority-runs").getAttribute("aria-invalid")) === "true" ||
-      (await page.getByTestId("authority-hours").getAttribute("aria-invalid")) === "true"
-    )
-      throw new Error("Valid bounds presented as invalid");
+    for (const duration of ["seven-days", "thirty-days", "until-revoked", "seven-days"]) {
+      const option = page.getByTestId(`authority-limit-${duration}`);
+      await option.click();
+      if ((await option.getAttribute("data-state")) !== "on")
+        throw new Error(`Grant duration cannot be selected: ${duration}`);
+      for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
+        if (await page.getByTestId(field).count())
+          throw new Error(`Grant duration exposes obsolete ${field}`);
+    }
+    if (posts !== 0) throw new Error("Choosing a grant duration caused a grant");
     if (await page.getByTestId("authority-prepare").count())
       throw new Error("Successful review shows redundant refresh action");
-    await page.getByTestId("authority-runs").fill("0");
-    if (
-      (await page.getByTestId("authority-runs").getAttribute("aria-invalid")) !== "true" ||
-      (await page.getByTestId("authority-hours").getAttribute("aria-invalid")) === "true"
-    )
-      throw new Error("Run validation incorrectly marks the duration invalid");
-    await page.getByTestId("authority-runs").fill("1");
     if (
       !(await page.getByTestId("authority-environment").innerText()).includes(
         locale === "de" ? "Produktion" : "Production",
@@ -1158,7 +1156,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       if (!boundaryPanel.includes(sentence))
         throw new Error(`Grant cannot describe a rule it was given: ${sentence}`);
     }
-    await page.getByTestId("authority-runs").fill("2");
+    await page.getByTestId("authority-limit-seven-days").click();
     await page.getByTestId("authority-grant-confirm").click();
     await page
       .getByRole("alert")
@@ -1173,7 +1171,7 @@ async function verifyGrant(page, stand, workflowId, locale, baseAuthority, captu
       throw new Error("Conflict reapproves or retries itself");
     await page.getByTestId("authority-prepare").click();
     await page.getByTestId("authority-grant-review").waitFor();
-    await page.getByTestId("authority-runs").fill("2");
+    await page.getByTestId("authority-limit-thirty-days").click();
     await page.getByTestId("authority-grant-confirm").click();
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     if (posts !== 2 || previews !== 2)

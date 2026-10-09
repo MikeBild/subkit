@@ -234,7 +234,8 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       );
 
     const sha256 = createHash("sha256").update(bytes).digest("hex");
-    if (sha256 === row.sha256) return c.json(toFileWire(row), 200);
+    if (sha256 === row.sha256 && body.filename === row.filename)
+      return c.json(toFileWire(row), 200);
     const twin = await db
       .select({ id: files.id, filename: files.filename })
       .from(files)
@@ -277,6 +278,7 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     const [updated] = await db
       .update(files)
       .set({
+        filename: body.filename,
         content_type: body.content_type ?? null,
         size_bytes: bytes.byteLength,
         storage_uri: composeStorageUri(key),

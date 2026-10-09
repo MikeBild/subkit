@@ -226,7 +226,17 @@ function ApprovalTable({
         "version",
         (authority) => authority.workflow_version_id,
         t("authority.version"),
-        (authority) => authorityVersionLabel(authority.workflow_version_id, versions).text,
+        (authority) => {
+          const state = observedAuthorityState(authority, now);
+          return (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>{authorityVersionLabel(authority.workflow_version_id, versions).text}</span>
+              <span className="@2xl:hidden">
+                <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />
+              </span>
+            </span>
+          );
+        },
         { width: "w-[14%]" },
       ),
       column.custom(

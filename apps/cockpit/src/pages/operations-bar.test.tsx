@@ -140,20 +140,17 @@ describe("the operations bar", () => {
     expect(html).not.toContain("0,00");
   });
 
-  test("the month's usage leads with its money, then its share of the cap, what is left and its state", () => {
+  test("the month's usage shows money and token percentage with pressure styling", () => {
     const html = render(figuresOf());
-    expect(figureText(html, "budget")).toBe(
-      "Nutzung · Monat135,80 $27 % von 150 Mio. TokenReichlich · 109,5 Mio. übrig",
-    );
+    expect(figureText(html, "budget")).toBe("Nutzung · Monat135,80 $27 % des Tokenkontingents");
     expect(html).toContain('data-budget-pressure="ample"');
     expect(hrefs(html)).toContain("/cockpit/usage");
     const critical = render(figuresOf({ budget: month(142_500_000, 150_000_000, "critical") }));
-    expect(figureText(critical, "budget")).toContain("95 %");
-    expect(figureText(critical, "budget")).toContain("Fast aufgebraucht");
+    expect(figureText(critical, "budget")).toBe("Nutzung · Monat135,80 $95 % des Tokenkontingents");
     expect(critical).toContain('data-budget-pressure="critical"');
     expect(critical).toContain("text-destructive");
     expect(figureText(render(figuresOf(), "en"), "budget")).toBe(
-      "Usage · Month$135.8027 % of 150M tokensComfortable · 109.5M left",
+      "Usage · Month$135.8027% of token budget",
     );
   });
 
@@ -168,9 +165,7 @@ describe("the operations bar", () => {
     );
     expect(figureText(partial, "budget")).toContain("mind. 135,80 $");
     const unpriced = render(figuresOf({ monthSpend: answered({ calls: 30, cost: null }) }));
-    expect(figureText(unpriced, "budget")).toBe(
-      "Nutzung · Monat27 %von 150 Mio. TokenReichlich · 109,5 Mio. übrig",
-    );
+    expect(figureText(unpriced, "budget")).toBe("Nutzung · Monat27 %");
   });
 
   test("no cap still shows the month's money and says 'Kein Kontingent'", () => {
