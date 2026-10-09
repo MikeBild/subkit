@@ -175,12 +175,17 @@ describe("wireCodexHooks", () => {
       string,
       Array<{
         matcher?: string;
-        hooks: Array<{ command: string; additionalContextLimit?: number }>;
+        hooks: Array<{
+          command: string;
+          additionalContextLimit?: number;
+          statusMessage?: string;
+        }>;
       }>
     >;
     expect(hooks.SessionStart?.[0]?.matcher).toBe("startup|resume|clear|compact");
     expect(hooks.SessionStart?.[0]?.hooks[0]?.command).toBe("sk agent briefing --hook");
     expect(hooks.SessionStart?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
+    expect(hooks.SessionStart?.[0]?.hooks[0]?.statusMessage).toBe("Loading repository briefing");
     expect(hooks.UserPromptSubmit?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
     expect(hooks.Stop).toBeUndefined();
     expect(hooks.SessionEnd).toBeUndefined();
@@ -215,7 +220,12 @@ describe("wireCodexHooks", () => {
       string,
       Array<{
         matcher?: string;
-        hooks: Array<{ command: string; timeout?: number; additionalContextLimit?: number }>;
+        hooks: Array<{
+          command: string;
+          timeout?: number;
+          additionalContextLimit?: number;
+          statusMessage?: string;
+        }>;
       }>
     >;
     const subkit = hooks.SessionStart?.flatMap((entry) => entry.hooks).find(
@@ -223,6 +233,7 @@ describe("wireCodexHooks", () => {
     );
     expect(subkit?.timeout).toBeGreaterThan(5);
     expect(subkit?.additionalContextLimit).toBe(0);
+    expect(subkit?.statusMessage).toBe("Loading repository briefing");
     expect(
       hooks.SessionStart?.flatMap((entry) => entry.hooks.map((hook) => hook.command)),
     ).toContain("other-tool");
@@ -516,9 +527,40 @@ describe("briefing hook output", () => {
       );
       expect(result?.hookSpecificOutput).toEqual({
         hookEventName: event,
-        additionalContext: "# Domain briefing",
+        additionalContext: expect.stringContaining(
+          "Interpret a brief check-in as asking what is relevant to this repository's declared domain context",
+        ),
       });
+      expect(result?.hookSpecificOutput?.additionalContext).not.toContain("For SubKit check-ins");
     }
+  });
+
+  test("routes open-ended check-ins through the declared SubKit domain and live status tools", async () => {
+    const root = fixture(["subkit"]);
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          markdown: "# SubKit briefing",
+          domains: ["subkit"],
+          skills_full: [],
+          skills_title_only: [],
+          knowledge_sources: [],
+          workflows: [],
+          connectors: [],
+          proposed_candidates: 0,
+        }),
+      )) as unknown as typeof fetch;
+    const result = await getBriefingHookOutput(payload(root), {
+      profile,
+      fetchImpl,
+      sessionDirectory: join(root, "sessions"),
+    });
+    expect(result?.hookSpecificOutput?.additionalContext).toContain(
+      "call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues",
+    );
+    expect(result?.hookSpecificOutput?.additionalContext).toContain(
+      "use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`",
+    );
   });
 
   test("stays silent in undeclared repositories and warns on invalid declarations or absent API keys", async () => {

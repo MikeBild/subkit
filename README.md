@@ -86,6 +86,8 @@ Run `sk status`, then `sk agent briefing --json` from the repository to verify t
 
 Hooks walk up from the working directory for `.sk/agent.json`; without it they stay silent. Run `sk agent init --domains <category>[,<category>]` once in each repository and commit that file. Each successful briefing gives the model the full domain context and shows you a concise status with loaded materials and any skill proposals awaiting review. If the engine is unreachable, the key is missing, or the declaration is invalid, the client shows a warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
 
+For open-ended check-ins, the briefing tells the agent to interpret the question using the domain declared by the current repository and the connected sources that best answer it. It distinguishes live service state from repository changes and static knowledge, and reports when a relevant source is unavailable. A repository without `.sk/agent.json` does not inherit another folder's briefing.
+
 ## License
 
 MIT
