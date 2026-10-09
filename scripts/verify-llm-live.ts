@@ -9,9 +9,11 @@ import { initializeModel, withToolInputExamples } from "../apps/engine/src/llm/c
 import { zodToJsonSchema7 } from "../apps/engine/src/mcp/json-schema.ts";
 import {
   assertLiveInputBound,
+  assertLiveToolEvidence,
   exitCodeFor,
   LIVE_CHECK_NAMES,
   LIVE_OUTPUT_TOKEN_LIMITS,
+  LIVE_TOOL_EXAMPLE,
   type LiveArgs,
   type LiveCheckName,
   type LiveCheckResult,
@@ -179,7 +181,7 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
           required: ["name", "ok"],
           additionalProperties: false,
         }),
-        ...toInputExamples({ name: "live-gate", ok: true }),
+        ...toInputExamples(LIVE_TOOL_EXAMPLE),
       }),
     },
     toolChoice: "required",
@@ -188,17 +190,7 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
     maxOutputTokens: LIVE_OUTPUT_TOKEN_LIMITS.tool_input_examples,
     timeout: { totalMs: target.timeoutMs },
   });
-  const body =
-    typeof result.request.body === "string"
-      ? result.request.body
-      : JSON.stringify(result.request.body ?? null);
-  const examplesSent =
-    target.provider === "anthropic"
-      ? body.includes('"input_examples"')
-      : body.includes("live-gate");
-  if (!examplesSent) {
-    throw new Error("the request body sent to the provider carries no tool input examples");
-  }
+  assertLiveToolEvidence(target.provider, result.request.body, result.toolCalls);
   const first = result.toolCalls[0];
   return `finish=${result.finishReason} tool_calls=${result.toolCalls.length}${first ? ` first=${first.toolName}` : ""}`;
 }

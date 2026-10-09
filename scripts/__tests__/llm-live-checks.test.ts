@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertLiveInputBound,
+  assertLiveToolEvidence,
   DEFAULT_KEY_FILE,
   DEFAULT_TIMEOUT_MS,
   exitCodeFor,
   LIVE_CHECK_NAMES,
   LIVE_INPUT_BYTE_LIMIT,
   LIVE_OUTPUT_TOKEN_LIMITS,
+  LIVE_TOOL_EXAMPLE,
   type LiveCheckResult,
   liveGateFailureHint,
   orderedForFlow,
@@ -22,6 +24,91 @@ import {
 
 const PRIMARY = "claude-sonnet-4-6";
 const FALLBACK = "claude-opus-4-7";
+
+describe("live tool evidence", () => {
+  const call = { toolName: "record_check", input: { name: "live-gate", ok: true } };
+  const description = `Records a check.\n\nInput Examples:\n${JSON.stringify(LIVE_TOOL_EXAMPLE)}`;
+  const anthropic = { tools: [{ name: "record_check", input_examples: [LIVE_TOOL_EXAMPLE] }] };
+  const openai = { tools: [{ type: "function", name: "record_check", description }] };
+
+  test("accepts Anthropic native examples and OpenAI Responses and Chat tool descriptions", () => {
+    assertLiveToolEvidence("anthropic", JSON.stringify(anthropic), [call]);
+    assertLiveToolEvidence("openai", openai, [call]);
+    assertLiveToolEvidence(
+      "openai",
+      {
+        tools: [{ type: "function", function: { name: "record_check", description } }],
+      },
+      [call],
+    );
+  });
+
+  test("prompt text and unrelated tool examples cannot prove examples on the target tool", () => {
+    for (const provider of ["anthropic", "openai"] as const) {
+      for (const tools of [
+        [],
+        [{ type: "function", name: "record_check", description: "Records a check." }],
+        [{ type: "function", name: "other", description, input_examples: [LIVE_TOOL_EXAMPLE] }],
+      ]) {
+        expect(() =>
+          assertLiveToolEvidence(
+            provider,
+            {
+              messages: [{ role: "user", content: `live-gate input_examples ${description}` }],
+              tools,
+            },
+            [call],
+          ),
+        ).toThrow("verified input example");
+      }
+    }
+  });
+
+  test("rejects mismatched native or description examples and malformed bodies", () => {
+    expect(() =>
+      assertLiveToolEvidence(
+        "anthropic",
+        {
+          tools: [{ name: "record_check", input_examples: [{ ...LIVE_TOOL_EXAMPLE, ok: false }] }],
+        },
+        [call],
+      ),
+    ).toThrow();
+    expect(() =>
+      assertLiveToolEvidence(
+        "openai",
+        {
+          tools: [
+            { type: "function", name: "record_check", description: "Input Examples:\ninvalid" },
+          ],
+        },
+        [call],
+      ),
+    ).toThrow();
+    for (const body of [null, "invalid", {}, { tools: null }]) {
+      expect(() => assertLiveToolEvidence("openai", body, [call])).toThrow();
+    }
+  });
+
+  test("requires exactly the requested tool invocation and validated input", () => {
+    for (const calls of [
+      [],
+      [call, call],
+      [{ ...call, toolName: "other" }],
+      [{ ...call, input: LIVE_TOOL_EXAMPLE }],
+      [{ ...call, input: { name: "live-gate", ok: false } }],
+      [{ ...call, input: { ...call.input, extra: true } }],
+      [{ ...call, input: null }],
+    ]) {
+      expect(() => assertLiveToolEvidence("anthropic", anthropic, calls)).toThrow(
+        "required record_check",
+      );
+      expect(() => assertLiveToolEvidence("openai", openai, calls)).toThrow(
+        "required record_check",
+      );
+    }
+  });
+});
 
 describe("live request bounds", () => {
   test("accepts the byte boundary and rejects larger input before dispatch", () => {
