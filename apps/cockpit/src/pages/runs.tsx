@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -54,7 +55,7 @@ import {
   type RunFact,
   requestSourceLabel,
   rerunFailureText,
-  runAuthorityFacts,
+  runCaller,
   runCauseLinks,
   runCostFacts,
   runDurationMs,
@@ -137,6 +138,7 @@ function isLive(status: string): boolean {
 function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
+  const directory = useActorDirectory(true);
   const [openStep, setOpenStep] = useState<number | null>(null);
   const detail = useQuery({
     queryKey: ["run", run.id],
@@ -222,20 +224,16 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
       [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
       [t("runs.column.duration"), duration ?? MISSING],
       [
-        t("runs.column.source"),
-        <LabelText label={requestSourceLabel(current.request_source, t)} />,
-      ],
-      [
         t("resource.field.kind"),
         t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved"),
       ],
-      ...runAuthorityFacts(current, t),
       ...runCostFacts(cost.data, t, locale),
     ] as RunFact[]
   ).map(([label, value, full]) => ({
     label,
     value: full ? <span title={full}>{value}</span> : value,
   }));
+  const caller = runCaller(current, directory, t);
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
   const stepColumns: CockpitColumn<ExecutionStep>[] = useMemo(() => {
     const column = tableColumns<ExecutionStep>({ t, dateTime });
@@ -336,14 +334,29 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         />
       )}
       <SummaryLine
-        text={[
-          current.started_at ? dateTime(current.started_at) : null,
-          requestSourceLabel(current.request_source, t).text,
-          duration,
-        ]
+        text={[current.started_at ? dateTime(current.started_at) : null, duration]
           .filter(Boolean)
           .join(" · ")}
         testId="run-detail-summary"
+      />
+      <FactList
+        testId="run-detail-caller"
+        items={[
+          {
+            label: t("runs.caller.label"),
+            value: (
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span>{[caller.who, caller.channel].filter(Boolean).join(" · ")}</span>
+                <StatusBadge
+                  state={caller.state}
+                  label={t(
+                    caller.state === "verified" ? "runs.caller.verified" : "runs.caller.automatic",
+                  )}
+                />
+              </span>
+            ),
+          },
+        ]}
       />
       {detail.error || steps.error ? (
         <DataState
@@ -391,6 +404,15 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                 </Copyable>
               </CollapsibleSection>
             ) : null}
+            <CollapsibleSection label={t("runs.caller.why")} testId="run-detail-why">
+              <FactList
+                items={caller.why.map(([label, value, full]) => ({
+                  label,
+                  value: full ? <span title={full}>{value}</span> : value,
+                }))}
+                testId="run-detail-why-facts"
+              />
+            </CollapsibleSection>
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
               testId="run-detail-technical"
