@@ -113,6 +113,19 @@ export interface BriefingHookOutput {
   hookSpecificOutput?: { hookEventName: string; additionalContext: string };
 }
 
+function briefingInstructions(markdown: string, domains: string[]): string {
+  const instructions = [
+    "## Open-ended workspace questions",
+    `Interpret a brief check-in as asking what is relevant to this repository's declared domain context (${domains.join(", ")}). Use the connected sources that best answer the question, and distinguish current service state from repository changes and static knowledge. Treat words like “today” as project context unless the user explicitly asks about calendar events. If a relevant source is unavailable, briefly say what you could not check.`,
+  ];
+  if (domains.includes("subkit")) {
+    instructions.push(
+      "For SubKit questions about current work or pending items, inspect live sources independently: call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues; use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`; use `list_executions` and `list_schedules` for recent runs and upcoming work. Check `list_patch_candidates` when a workflow repair is relevant. These are read-only status checks; do not approve items or run workflows unless asked. Do not infer that nothing is pending from one empty queue, aggregate engine counts, or knowledge search. Mention a stopped conversation only when a connected source confirms it.",
+    );
+  }
+  return `${markdown}\n\n${instructions.join("\n\n")}`;
+}
+
 function briefingStatus(
   domains: string[],
   briefing: {
@@ -259,7 +272,7 @@ export async function getBriefingHookOutput(
           " Session tracking could not be saved; this domain may load again on a later prompt.";
       }
     }
-    return hookOutput(event, status, briefing.markdown);
+    return hookOutput(event, status, briefingInstructions(briefing.markdown, domains));
   } catch (err) {
     const failure = briefingFailureKind(err);
     debugLog("agent.briefing_hook_failed", {
@@ -537,6 +550,7 @@ interface ClaudeHookEntry {
     command?: string;
     timeout?: number;
     additionalContextLimit?: number;
+    statusMessage?: string;
   }>;
 }
 
@@ -633,6 +647,7 @@ export function wireCodexHooks(config: Record<string, unknown>): Record<string, 
       command: HOOK_COMMAND,
       timeout,
       additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
+      statusMessage: "Loading repository briefing",
     });
     hooks = result.hooks;
     changed ||= result.changed;
