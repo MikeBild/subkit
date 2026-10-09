@@ -10,6 +10,7 @@ import { tenants } from "../../../src/db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../src/db/tests/setup.ts";
 import { EngineClient } from "../../../src/engine-client/index.ts";
 import { resetMockProvider } from "../../../src/llm/mock-provider.ts";
+import { runWithTestEnv } from "../../../src/test-helpers/determinism/env.ts";
 import { withDriverFetchForTests } from "../../../src/test-helpers/driver-fetch.ts";
 
 async function ensureConfigLoaded(): Promise<void> {
@@ -43,6 +44,13 @@ function nextUuid(): string {
 }
 
 export async function withAuthoringEvalEnv<T>(
+  label: string,
+  fn: (env: AuthoringEvalEnv) => Promise<T>,
+): Promise<T> {
+  return runWithTestEnv({ MASTER_KEY: `${"0".repeat(63)}1` }, () => runAuthoringEval(label, fn));
+}
+
+async function runAuthoringEval<T>(
   label: string,
   fn: (env: AuthoringEvalEnv) => Promise<T>,
 ): Promise<T> {
