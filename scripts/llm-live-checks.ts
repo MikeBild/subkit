@@ -20,7 +20,7 @@ export interface LiveModelRef {
   model: string;
 }
 
-export const DEFAULT_KEY_FILE = "key.txt";
+export const DEFAULT_KEY_FILE = "claude-key.txt";
 export const DEFAULT_OPENAI_KEY_FILE = "openai-key.txt";
 
 export function parseModelRef(ref: string): LiveModelRef {

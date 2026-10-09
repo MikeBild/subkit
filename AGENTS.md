@@ -54,5 +54,5 @@ messages, gitleaks, build) and `bun run verify` before every release tag are the
 gate. `bun run release:tag` also runs `bun run verify:llm-live`, a fail-closed live
 call of the release models that has no bypass: pass the deployed route as
 `bun run release:tag -- --models anthropic:<primary>,openai:<fallback>`; keys come from
-`./key.txt` (Anthropic) and `./openai-key.txt` (OpenAI), both gitignored. Run the narrowest relevant checks while iterating.
+`./claude-key.txt` (Anthropic) and `./openai-key.txt` (OpenAI), both gitignored. Run the narrowest relevant checks while iterating.
 Report any skipped validation.

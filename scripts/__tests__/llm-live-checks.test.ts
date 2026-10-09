@@ -55,10 +55,10 @@ function result(partial: Partial<LiveCheckResult>): LiveCheckResult {
 }
 
 describe("llm-live-checks · parseLiveArgs", () => {
-  test("defaults to key.txt, both release models and a 60 s timeout", () => {
+  test("defaults to claude-key.txt, both release models and a 60 s timeout", () => {
     const args = parseLiveArgs([]);
     expect(args.keyFile).toBe(DEFAULT_KEY_FILE);
-    expect(args.keyFile).toBe("key.txt");
+    expect(args.keyFile).toBe("claude-key.txt");
     expect(args.models).toEqual([PRIMARY, FALLBACK]);
     expect(args.timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
     expect(args.timeoutMs).toBe(60_000);
@@ -194,7 +194,7 @@ describe("llm-live-checks · liveGateFailureHint", () => {
   test("names the tag, the key file, both overrides and the absence of a bypass", () => {
     const hint = liveGateFailureHint("v9.7.0");
     expect(hint).toContain("v9.7.0");
-    expect(hint).toContain("./key.txt");
+    expect(hint).toContain("./claude-key.txt");
     expect(hint).toContain("--key-file");
     expect(hint).toContain("--models");
     expect(hint).toContain("verify:llm-live");
