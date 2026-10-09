@@ -599,7 +599,9 @@ function ReviewSheet({
       }
       subtitle={
         item?.subject?.kind === "workflow" && item.subject.name ? (
-          <a href={absolute(workflowHref(item.subject.id))}>{item.subject.name}</a>
+          <a href={absolute(workflowHref(item.subject.id))} data-testid="attention-review-workflow">
+            {item.subject.name}
+          </a>
         ) : undefined
       }
       action={

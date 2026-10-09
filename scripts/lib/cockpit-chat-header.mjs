@@ -62,19 +62,7 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
       },
     });
   };
-  const hidePattern = `**/v1/conversations/${conversation.id}/hide`;
-  const unhidePattern = `**/v1/conversations/${conversation.id}/unhide`;
-  const hide = (route) => {
-    state.hidden = true;
-    return route.fulfill({ json: record() });
-  };
-  const unhide = (route) => {
-    state.hidden = false;
-    return route.fulfill({ json: record() });
-  };
   await page.route(detailPattern, detail);
-  await page.route(hidePattern, hide);
-  await page.route(unhidePattern, unhide);
   try {
     await stand.visit(page, `chat/${conversation.id}`);
     const summary = page.getByTestId("chat-summary");
@@ -136,22 +124,37 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
     await capture("renamed");
 
     state.hidden = true;
+    const hiddenResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/conversations/${conversation.id}` &&
+        response.request().method() === "GET" &&
+        response.status() === 200,
+    );
     await stand.visit(page, `chat/${conversation.id}`);
+    if (!(await (await hiddenResponse).json()).conversation.hidden)
+      throw new Error("the hidden-conversation fixture was not fetched");
     await page.getByTestId("chat-title").waitFor();
     await page.getByTestId("chat-menu").click();
-    await page.getByTestId("chat-unhide").waitFor();
-    if ((await page.getByTestId("chat-hide").count()) > 0)
-      throw new Error("a hidden conversation still offers to be hidden");
+    const menu = page.getByRole("menu");
+    await menu.waitFor({ state: "visible" });
+    const expectedActions = de ? ["Umbenennen", "Löschen"] : ["Rename", "Delete"];
+    const actions = (await menu.getByRole("menuitem").allTextContents()).map((value) =>
+      value.trim(),
+    );
+    if (JSON.stringify(actions) !== JSON.stringify(expectedActions))
+      throw new Error(
+        `the conversation header exposes unexpected actions: ${JSON.stringify(actions)}`,
+      );
+    if (await page.getByTestId(/^(chat-hide|chat-unhide)$/).count())
+      throw new Error("the conversation header still offers a hidden-state action");
     await capture("hidden-menu");
-    await page.getByTestId("chat-unhide").click();
-    await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
-    await page.getByTestId("chat-menu").click();
-    await page.getByTestId("chat-hide").waitFor();
-    if (state.hidden) throw new Error("showing the conversation again did not reach the engine");
+    await page.getByTestId("chat-delete").click();
+    const deletion = page.getByTestId("conversation-delete-dialog");
+    await deletion.waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
+    await deletion.waitFor({ state: "hidden" });
+    if (!state.hidden) throw new Error("opening and cancelling deletion changed hidden state");
   } finally {
     await page.unroute(detailPattern, detail);
-    await page.unroute(hidePattern, hide);
-    await page.unroute(unhidePattern, unhide);
   }
 }

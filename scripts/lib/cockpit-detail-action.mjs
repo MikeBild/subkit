@@ -226,7 +226,7 @@ async function expectWorkflowTitle(page, where) {
   await page.getByTestId("workflow-automation-state").waitFor({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
   const beside = await besideTitle(page);
-  if (beside.join("|") !== "workflow-menu-change|workflow-menu|workflow-run-open")
+  if (beside.join("|") !== "workflow-menu|workflow-run-open")
     throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
   if (await page.getByTestId("detail-action").count())
     throw new Error(`${where}: the title carries a state's action`);
@@ -319,6 +319,7 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await stand.visit(page, `workflows/${PLAIN}`);
     await expectWorkflowTitle(page, where);
     await assertSingleTriggers(page, where);
+    await page.getByTestId("workflow-menu").click();
     const change = page.getByTestId("workflow-menu-change");
     await change.waitFor({ state: "visible" });
     if ((await change.innerText()).trim() !== (de ? "Im Chat ändern" : "Change in chat"))

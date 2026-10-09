@@ -25,6 +25,7 @@ function mcpRecord(trusted) {
     config: {
       mcp: {
         transport: "http",
+        remote_tool_call_timeout_ms: 12000,
         auth: { kind: "header" },
         ...(trusted.length > 0 ? { tools_without_confirmation: trusted } : {}),
       },
@@ -155,7 +156,11 @@ function connectorApi(state, variant) {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
-    if (path === `/v1/connectors/${MCP_ID}`) return json(route, mcpRecord(state.trusted));
+    if (path === `/v1/connectors/${MCP_ID}`) {
+      const record = mcpRecord(state.trusted);
+      if (variant === "zero") delete record.config.mcp.remote_tool_call_timeout_ms;
+      return json(route, record);
+    }
     if (path === `/v1/connectors/${PG_ID}`) return json(route, PG_RECORD);
     if (path === `/v1/connectors/${OAUTH_ID}`) {
       state.oauth.reads += 1;
@@ -343,7 +348,7 @@ async function signInAtProvider(page) {
 
 async function helpText(page, testId) {
   const help = page.getByTestId(testId);
-  if (!(await help.count())) return "";
+  await help.waitFor({ state: "visible", timeout: 5_000 });
   await help.hover();
   const tip = page.locator('[data-slot="tooltip-content"]').first();
   await tip.waitFor({ state: "visible", timeout: 5_000 });
@@ -447,12 +452,37 @@ async function verifyConnectorSignIn(page, stand, oauth, de, capture) {
   await openTab(page, "usage");
   await page.getByTestId("connector-usage-summary").waitFor();
   await page.waitForLoadState("networkidle");
-  await page
-    .getByTestId("detail-conversations")
-    .waitFor({ state: "detached", timeout: 10_000 })
-    .catch(() => {});
-  if (await page.getByTestId("detail-conversations").count())
-    throw new Error(`${where}: an empty "Unterhaltungen dazu" section is on the page`);
+  const conversations = page.getByTestId("detail-conversations");
+  await conversations.waitFor({ state: "visible" });
+  const toggle = page.getByTestId("detail-conversations-toggle");
+  if ((await toggle.locator("span").innerText()).trim() !== "0")
+    throw new Error(`${where}: the empty conversation section does not show a recorded zero`);
+  await toggle.click();
+  const emptyLine = de ? "Noch keine Unterhaltungen." : "No conversations yet.";
+  await conversations
+    .getByText(emptyLine, { exact: true })
+    .filter({ visible: true })
+    .first()
+    .waitFor({ state: "visible" });
+  if (await conversations.getByTestId(/^detail-conversation-(?:mobile-)?row-\d+$/).count())
+    throw new Error(`${where}: empty conversations contain a row`);
+  if (await conversations.getByTestId("detail-conversation-retry").count())
+    throw new Error(`${where}: empty conversations are presented as unreadable`);
+  const ask = conversations
+    .getByTestId("detail-conversations-ask")
+    .filter({ visible: true })
+    .first();
+  await ask.waitFor({ state: "visible" });
+  if ((await ask.innerText()).trim() !== (de ? "Im Chat fragen" : "Ask in chat"))
+    throw new Error(`${where}: the empty conversation action is not localized`);
+  const destination = new URL(await ask.getAttribute("href"), page.url());
+  if (
+    destination.pathname !== "/cockpit/chat/new" ||
+    destination.searchParams.get("connector_id") !== OAUTH_ID ||
+    destination.searchParams.has("workflow_id") ||
+    destination.searchParams.has("execution_id")
+  )
+    throw new Error(`${where}: the empty conversation action loses its connector scope`);
   set({ conversations: "served" });
 
   where = "/connectors/<oauth> · needs sign-in";
@@ -615,9 +645,44 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await unfold(page, "connector-runtime-section");
     await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
   };
+  const assertConfiguration = async (timeout) => {
+    const heading = await page.getByTestId("connector-runtime-section-toggle").innerText();
+    if (heading.trim() !== (de ? "Laufzeit" : "Runtime"))
+      throw new Error(`${where}: configured runtime carries a historical measurement window`);
+    const runtime = page.getByTestId("connector-runtime");
+    await runtime.waitFor({ state: "visible" });
+    const facts = await runtime.locator(":scope > div").evaluateAll((rows) =>
+      rows.map((row) => ({
+        label: row.querySelector("dt")?.textContent?.trim(),
+        value: row.querySelector("dd")?.textContent?.trim(),
+      })),
+    );
+    const unknown = de ? "nicht dokumentiert" : "not documented";
+    const expected = [
+      {
+        label: de ? "Zeitlimit" : "Time limit",
+        value: timeout === null ? unknown : `${timeout} ms`,
+      },
+      { label: de ? "Wiederholungen" : "Retries", value: unknown },
+      { label: de ? "Ratenlimit" : "Rate limit", value: unknown },
+    ];
+    if (JSON.stringify(facts) !== JSON.stringify(expected))
+      throw new Error(`${where}: configured runtime facts differ: ${JSON.stringify(facts)}`);
+    for (const id of [
+      "connector-figure-calls",
+      "connector-figure-success",
+      "connector-figure-median",
+      "connector-figure-calls-link",
+      "connector-figure-success-link",
+      "connector-last-success",
+      "connector-last-failure",
+    ])
+      if (await page.getByTestId(id).count())
+        throw new Error(`${where}: historical metric ${id} replaces configured runtime facts`);
+  };
   try {
     await openConnection(MCP_ID);
-    await page.getByTestId("connector-figure-calls-link").waitFor({ timeout: 10_000 });
+    await assertConfiguration(12000);
 
     const order = await page.evaluate(() =>
       [
@@ -651,30 +716,6 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       if (!shown?.includes(expected))
         throw new Error(`${where}: "${fact}" reads "${shown}" instead of "${expected}"`);
     }
-
-    const calls = await page.getByTestId("connector-figure-calls-link").getAttribute("href");
-    const failed = await page.getByTestId("connector-figure-success-link").getAttribute("href");
-    const callsQuery = new URL(calls ?? "", "http://x").searchParams;
-    const failedQuery = new URL(failed ?? "", "http://x").searchParams;
-    if (
-      callsQuery.get("resource_type") !== "mcp_external_tool" ||
-      callsQuery.get("resource_id") !== MCP_ID ||
-      callsQuery.get("action") !== "mcp_external_tool.invoked" ||
-      !callsQuery.get("ts_from") ||
-      !callsQuery.get("ts_to")
-    )
-      throw new Error(`${where}: the call count does not open its own calls — ${calls}`);
-    if (
-      failedQuery.get("result") !== "error" ||
-      failedQuery.get("ts_from") !== callsQuery.get("ts_from") ||
-      failedQuery.get("ts_to") !== callsQuery.get("ts_to")
-    )
-      throw new Error(`${where}: the success rate does not open the failures of its window`);
-
-    const failure = await page.getByTestId("connector-last-failure").textContent();
-    const cause = de ? "Fehler im Fremdsystem" : "Error in the external system";
-    if (!failure?.includes(cause))
-      throw new Error(`${where}: the last failure is not worded as its cause — "${failure}"`);
 
     if (await page.getByTestId("connector-connection-select").count())
       throw new Error(`${where}: "Verbindung wählen" is offered for a header key`);
@@ -758,47 +799,27 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
 
     variant = "zero";
     await openConnection(MCP_ID);
-    await page.getByTestId("connector-runtime-unused").waitFor({ timeout: 10_000 });
-    if (await page.getByTestId("connector-figure-calls-link").count())
-      throw new Error(`${where} · zero: a counted zero opens a list`);
-    if (await page.getByTestId("connector-runtime-unused").locator("a, button").count())
-      throw new Error(`${where} · zero: the empty state repeats "Verbindung testen"`);
+    await assertConfiguration(null);
     if (!(await page.getByTestId("connector-menu").isVisible()))
       throw new Error(`${where} · zero: the connection cannot be tested from the page`);
-    if (await page.getByTestId("connector-figure-calls").count())
-      throw new Error(`${where} · zero: placeholder figures stand beside the sentence`);
     await page.waitForLoadState("networkidle");
     await assertSingleTriggers(page, `${where} · zero`);
     await capture("connector-zero");
 
     variant = "failed";
-    await stand.visit(page, `connectors/${MCP_ID}?tab=connection`);
-    await unfold(page, "connector-runtime-section");
-    await page.getByTestId("connector-runtime-failed").waitFor({ timeout: 10_000 });
-    if (!(await page.getByTestId("connector-runtime-failed-retry").isVisible()))
-      throw new Error(`${where} · failed: the failure offers no retry`);
-    if (await page.getByTestId("connector-figure-calls").count())
-      throw new Error(`${where} · failed: figures stand beside the failure`);
+    await openConnection(MCP_ID);
+    await assertConfiguration(12000);
     await capture("connector-failed");
 
     variant = null;
     await withBootstrap(page, "stats:read", async () => {
       await openConnection(MCP_ID);
-      await page.getByTestId("connector-runtime-not-permitted").waitFor({ timeout: 10_000 });
-      for (const id of [
-        "connector-figure-calls",
-        "connector-figure-success",
-        "connector-figure-median",
-        "connector-figure-calls-link",
-      ])
-        if (await page.getByTestId(id).count())
-          throw new Error(`${where} · no permission: "${id}" stands for a figure it may not read`);
-      if (!(await page.getByTestId("connector-last-success").count()))
-        throw new Error(`${where} · no permission: the last successful call is gone too`);
+      await assertConfiguration(12000);
       await capture("connector-no-permission");
     });
 
     await openConnection(PG_ID);
+    await assertConfiguration(null);
     if (await page.getByTestId("connector-tabs-tab-tools").count())
       throw new Error("/connectors/<postgres>: server tools on a database connector");
     const kind = await page.getByTestId("connector-fact-kind").textContent();

@@ -666,7 +666,7 @@ const WORDS = {
     branch: "wenn fetch_data.status = 200 → shape_success, sonst shape_failure",
     connector: "Konnektor",
     bodyInvalid: "Der Inhalt ist kein gültiges JSON.",
-    savedVersion: "Gespeichert, noch nicht aktiv",
+    invalidRun: "Repariere den Workflow vor dem Ausführen.",
     noSteps: "Noch keine Schritte",
     daily: "täglich um 07:00",
     waiting: "Wartet auf Freigabe",
@@ -706,7 +706,7 @@ const WORDS = {
     branch: "if fetch_data.status = 200 → shape_success, else shape_failure",
     connector: "Connector",
     bodyInvalid: "The body is not valid JSON.",
-    savedVersion: "Saved, not active yet",
+    invalidRun: "Repair the workflow before running it.",
     noSteps: "No steps yet",
     daily: "daily at 07:00",
     waiting: "Waiting for approval",
@@ -780,9 +780,7 @@ async function expectState(
       `${where}: the strip's action reads "${await text(page, "workflow-automation-action")}", not "${action}"`,
     );
   const beside = await headerTriggers(page);
-  const expected = runnable
-    ? "workflow-menu-change|workflow-menu|workflow-run-open"
-    : "workflow-menu-change|workflow-menu";
+  const expected = "workflow-menu|workflow-run-open";
   if (beside.join("|") !== expected)
     throw new Error(`${where}: beside the title stand ${JSON.stringify(beside)}`);
   const jumps = await page.getByTestId("detail-workflows").locator('a[href*="#"]').count();
@@ -949,8 +947,10 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-invocation-tab-schedule").click();
     await page.getByTestId("workflow-schedule").waitFor({ timeout: 10_000 });
     const scheduled = (await text(page, "workflow-schedule")) ?? "";
-    for (const part of [words.daily, "Europe/Berlin", "0 7 * * *"])
+    for (const part of [words.daily, "Europe/Berlin"])
       if (!scheduled.includes(part)) throw new Error(`${where}: the schedule lacks "${part}"`);
+    if (scheduled.includes("0 7 * * *"))
+      throw new Error(`${where}: the rhythm repeats the raw cron expression`);
     if (
       !(
         await page
@@ -1112,6 +1112,7 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the menu offers the chat a second time`);
     await page.keyboard.press("Escape");
     await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
+    await page.getByTestId("workflow-menu").click();
     await page.getByTestId("catalog-metadata-edit").click();
     await page.getByTestId("catalog-metadata-dialog").waitFor({ state: "visible" });
     const current = await page.getByTestId("catalog-metadata-category-input").inputValue();
@@ -1311,8 +1312,15 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       openers: 0,
       runnable: false,
     });
-    if (await page.getByTestId("workflow-run-open").count())
-      throw new Error(`${where}: a run the engine refuses is still offered`);
+    const blockedRun = page.getByTestId("workflow-run-open");
+    if (!(await blockedRun.isVisible()) || !(await blockedRun.isDisabled()))
+      throw new Error(`${where}: the invalid workflow lacks its visible disabled start`);
+    await page.getByTestId("workflow-run-open-blocked").hover();
+    const blockedReason = page.getByRole("tooltip");
+    await blockedReason.waitFor({ state: "visible" });
+    if ((await blockedReason.innerText()).trim() !== words.invalidRun)
+      throw new Error(`${where}: the disabled start does not explain the required repair`);
+    await page.keyboard.press("Escape");
     const fix = await page.getByTestId("workflow-automation-action").getAttribute("href");
     if (!fix?.includes(`workflow_id=${WORKFLOW}`) || !fix.includes("prompt="))
       throw new Error(`${where}: the way out loses the workflow or the task: ${fix}`);
@@ -1358,9 +1366,8 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
       throw new Error(`${where}: the headline lacks both versions: ${applying}`);
     await capture("workflow-page-apply");
     await openTab(page, "structure");
-    await page.getByTestId("workflow-build-saved").waitFor();
-    if ((await text(page, "workflow-build-saved")) !== words.savedVersion)
-      throw new Error(`${where}: the saved version is not marked as not active yet`);
+    if (await page.getByTestId("workflow-build-saved").count())
+      throw new Error(`${where}: the build tab duplicates the pending-version status`);
     const buildLine = (await text(page, "workflow-build-summary")) ?? "";
     if (!buildLine.includes("v10") || !buildLine.includes("11"))
       throw new Error(`${where}: the build tab does not show the saved version: "${buildLine}"`);
