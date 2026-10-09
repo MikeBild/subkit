@@ -77,4 +77,26 @@ describe("who asked for a run", () => {
     expect(line.who).toBe("Dienstkonto");
     expect(JSON.stringify(line.why.map(([label]) => label))).toContain("Ursprünglicher Lauf");
   });
+
+  test("a run that recorded no identity names its channel and never a person", () => {
+    const line = runCaller(
+      run(
+        {
+          kind: "unknown",
+          principal_id: null,
+          provider: null,
+          product_id: null,
+          verified_by: null,
+          channel: "webhook",
+          origin_execution_id: null,
+        },
+        "webhook",
+      ),
+      directory,
+      german,
+    );
+    expect(line.who).toBe("Webhook");
+    expect(line.channel).toBeNull();
+    expect(line.state).toBe("automatic");
+  });
 });

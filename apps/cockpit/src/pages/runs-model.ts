@@ -204,13 +204,13 @@ export function runCaller(
   const kindLabel = t(
     caller.kind === "system_account" ? "runs.caller.systemAccount" : "runs.caller.person",
   );
-  const who =
-    caller.kind === "engine"
-      ? channel
-      : ((caller.principal_id ? directory.get(caller.principal_id) : undefined) ?? kindLabel);
+  const named = caller.kind === "user" || caller.kind === "system_account";
+  const who = named
+    ? ((caller.principal_id ? directory.get(caller.principal_id) : undefined) ?? kindLabel)
+    : channel;
   return {
     who,
-    channel: caller.kind === "engine" ? null : channel,
+    channel: named ? channel : null,
     state: verified ? "verified" : "automatic",
     why: [
       [
