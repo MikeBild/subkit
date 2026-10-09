@@ -76,7 +76,7 @@ describe("conversations/elicitation", () => {
     const auditRows = await ctx.testDb.db
       .select()
       .from(auditLog)
-      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "approval.approved")));
+      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.action, "approval.rejected")));
     expect(auditRows.length).toBeGreaterThanOrEqual(1);
 
     const toolCalls = await ctx.testDb.db
@@ -391,5 +391,59 @@ for (const status of ["timeout", "cancelled"] as const) {
     });
     expect(detail?.tool_calls.find((item) => item.id === call!.id)?.outcome).toBe("denied");
     expect(detail?.resume_summary?.pending_approval ?? null).toBeNull();
+  });
+}
+
+for (const [answer, action] of [
+  [{ confirmed: false }, "approval.rejected"],
+  [{ confirmed: true }, "approval.approved"],
+] as const) {
+  test(`an answered confirmation is audited as ${action} when the answer is ${JSON.stringify(answer)}`, async () => {
+    const created = await createConversation(
+      { tenant_id: ctx.tenant_id, actor_id: ctx.user_id },
+      ctx.testDb.db,
+    );
+    const conversation_id = created.conversation.id;
+    const input = { question: "Delete the workflow?" };
+    const [call] = await ctx.testDb.db
+      .insert(conversationToolCalls)
+      .values({
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool: "ask_user_confirm",
+        input,
+        output: { status: "awaiting_input" },
+        outcome: "pending",
+      })
+      .returning();
+    const pending = await createElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id,
+        tool_name: "ask_user_confirm",
+        tool_call_id: call!.id,
+        summary: "Confirm",
+        input,
+        actor_id: ctx.user_id,
+      },
+      ctx.testDb.db,
+    );
+    await resolveElicitation(
+      {
+        tenant_id: ctx.tenant_id,
+        id: pending.id,
+        output: answer,
+        decided_by: { kind: "user", id: ctx.user_id },
+      },
+      ctx.testDb.db,
+    );
+    const rows = await ctx.testDb.db
+      .select({ action: auditLog.action })
+      .from(auditLog)
+      .where(and(eq(auditLog.tenant_id, ctx.tenant_id), eq(auditLog.resource_id, pending.id)));
+    expect(rows.map((r) => r.action)).toContain(action);
+    expect(rows.map((r) => r.action)).not.toContain(
+      action === "approval.rejected" ? "approval.approved" : "approval.rejected",
+    );
   });
 }
