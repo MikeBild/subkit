@@ -797,19 +797,6 @@ export function RunOverlays() {
         )
       }
       titleTestId={overlay.runId ? "run-detail-title" : "runs-sheet-title"}
-      badge={
-        overlay.runId && run ? (
-          <StatusBadge
-            state={run.status}
-            label={
-              runVerdict(run.status, (run as ExecutionDetail).outcome ?? null, t, (status) =>
-                statusLabel(t, status),
-              ).label
-            }
-            testId="run-detail-status"
-          />
-        ) : undefined
-      }
       action={
         overlay.runId && run && canRerun ? (
           <RerunAction run={run} onStarted={(id) => show({ list: overlay.list, runId: id })} />
