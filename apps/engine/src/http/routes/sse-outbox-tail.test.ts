@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { pauseUnlessAborted } from "./sse-outbox-tail.ts";
 
 function countingSignal() {
@@ -28,11 +29,14 @@ test("a quiet stream leaves no abort listener behind after each pause", async ()
 
 test("closing the stream ends the pause at once", async () => {
   const probe = countingSignal();
-  const started = Date.now();
-  const pause = pauseUnlessAborted(probe.signal, 10_000);
+  let settled = false;
+  const pause = pauseUnlessAborted(probe.signal, 10_000).then(() => {
+    settled = true;
+  });
   probe.abort();
+  await waitFor(() => settled, { tries: 10, label: "aborted stream pause" });
   await pause;
-  expect(Date.now() - started).toBeLessThan(1_000);
+  expect(settled).toBe(true);
 });
 
 test("an already closed stream does not wait", async () => {
