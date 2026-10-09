@@ -32,6 +32,16 @@ export class KnowledgeSlugConflictError extends Error {
   }
 }
 
+export class KnowledgeSlugExistsError extends Error {
+  constructor(
+    readonly slug: string,
+    readonly knowledge_source_id: string,
+  ) {
+    super(`slug '${slug}' already belongs to a knowledge source`);
+    this.name = "KnowledgeSlugExistsError";
+  }
+}
+
 function toSlug(name: string): string {
   return name
     .toLowerCase()
@@ -83,6 +93,10 @@ async function upsertKnowledgeBundleInner(
 
   const existing = await getKnowledgeSourceBySlug(p.tenant_id, slug, db);
 
+  if (existing && p.create_only) {
+    throw new KnowledgeSlugExistsError(slug, existing.id);
+  }
+
   if (!existing) {
     let created: KnowledgeSourceView;
     try {
@@ -98,8 +112,14 @@ async function upsertKnowledgeBundleInner(
         db,
       );
     } catch (err) {
-      if (isUniqueViolation(err) && !retriedAfterConflict) {
-        return upsertKnowledgeBundleInner(p, db, true);
+      if (isUniqueViolation(err)) {
+        const conflict = await getKnowledgeSourceBySlug(p.tenant_id, slug, db);
+        if (p.create_only && conflict) {
+          throw new KnowledgeSlugExistsError(slug, conflict.id);
+        }
+        if (!retriedAfterConflict) {
+          return upsertKnowledgeBundleInner(p, db, true);
+        }
       }
       throw err;
     }

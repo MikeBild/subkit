@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { buildClipper } from "./build-clipper.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const ENTRY = join(REPO_ROOT, "apps/sk/src/index.ts");
@@ -131,6 +132,7 @@ async function sha256(path: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  await buildClipper();
   const { dir, version: explicitVersion } = parseArgs(Bun.argv.slice(2));
   const version = await resolveVersion(explicitVersion);
   await mkdir(dir, { recursive: true });

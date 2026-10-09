@@ -29,6 +29,34 @@ export class KnowledgeContentReadOnlyError extends Error {
   }
 }
 
+export class KnowledgeBundleRequiredError extends Error {
+  constructor(readonly source_type: string) {
+    super("knowledge source must be a bundle");
+    this.name = "KnowledgeBundleRequiredError";
+  }
+}
+
+export class KnowledgeDocumentPathExistsError extends Error {
+  constructor(readonly path: string) {
+    super("knowledge document path already exists");
+    this.name = "KnowledgeDocumentPathExistsError";
+  }
+}
+
+export class KnowledgeDocumentPathInvalidError extends Error {
+  constructor() {
+    super("knowledge document path is invalid");
+    this.name = "KnowledgeDocumentPathInvalidError";
+  }
+}
+
+export class KnowledgeBundleDocumentLimitError extends Error {
+  constructor(readonly max_documents: number) {
+    super(`knowledge bundle cannot contain more than ${max_documents} documents`);
+    this.name = "KnowledgeBundleDocumentLimitError";
+  }
+}
+
 export class KnowledgeVersionAlreadyCurrentError extends Error {
   readonly code = "version_already_current";
   constructor(readonly version: number) {

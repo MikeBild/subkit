@@ -6,10 +6,20 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
-const BINARY_SUFFIXES = [".gif", ".png", ".jpg", ".jpeg", ".ico", ".pdf", ".woff", ".woff2"];
+const BINARY_SUFFIXES = [
+  ".gif",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".ico",
+  ".pdf",
+  ".woff",
+  ".woff2",
+  ".zip",
+];
 
-function trackedFiles(cwd: string = root): string[] {
-  const listing = Bun.spawnSync(["git", "ls-files", "-z"], { cwd });
+function trackedFiles(cwd: string = root, env = process.env): string[] {
+  const listing = Bun.spawnSync(["git", "ls-files", "-z"], { cwd, env });
   if (listing.exitCode !== 0) throw new Error(`git ls-files failed: ${listing.stderr.toString()}`);
   return listing.stdout
     .toString()
@@ -59,17 +69,18 @@ describe("no tracked source file is invisible to text search", () => {
 
   test("and it says nothing about an UNTRACKED file — the known limit, driven", () => {
     const sandbox = mkdtempSync(join(tmpdir(), "nul-untracked-"));
+    const env = { ...process.env, GIT_INDEX_FILE: join(sandbox, ".git", "index") };
     try {
-      expect(Bun.spawnSync(["git", "init", "-q"], { cwd: sandbox }).exitCode).toBe(0);
+      expect(Bun.spawnSync(["git", "init", "-q"], { cwd: sandbox, env }).exitCode).toBe(0);
       writeFileSync(join(sandbox, "tracked.ts"), Buffer.from('join("\0");', "utf8"));
       writeFileSync(join(sandbox, "untracked.ts"), Buffer.from('join("\0");', "utf8"));
-      expect(Bun.spawnSync(["git", "add", "tracked.ts"], { cwd: sandbox }).exitCode).toBe(0);
+      expect(Bun.spawnSync(["git", "add", "tracked.ts"], { cwd: sandbox, env }).exitCode).toBe(0);
 
       expect(nulAt(readFileSync(join(sandbox, "tracked.ts")))).not.toBeNull();
       expect(nulAt(readFileSync(join(sandbox, "untracked.ts")))).not.toBeNull();
 
       expect(
-        trackedFiles(sandbox),
+        trackedFiles(sandbox, env),
         "git ls-files is index-based: the unstaged file is not in the listing, so it is never opened",
       ).toEqual(["tracked.ts"]);
     } finally {
