@@ -344,6 +344,7 @@ export class AiSdkModel implements SubkitLlm {
     if (temperature !== undefined) cwfParams.temperature = temperature;
     if (input.metadata) cwfParams.metadata = input.metadata;
     if (input.signal) cwfParams.signal = input.signal;
+    if (input.maxOutputTokens !== undefined) cwfParams.maxOutputTokens = input.maxOutputTokens;
 
     let called: Awaited<ReturnType<typeof this.callWithFallback>>;
     try {

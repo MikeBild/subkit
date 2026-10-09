@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { NoObjectGeneratedError } from "ai";
+import { type generateText, NoObjectGeneratedError } from "ai";
 import { classifyProviderError, isFallbackEligible } from "../../provider-errors.ts";
 import { AiSdkModel, LlmCallAbortedError } from "../ai-sdk-model.ts";
 import type { SubkitLlmMessage } from "../base-types.ts";
@@ -39,6 +39,7 @@ interface StructuredCall {
   timeout?: { totalMs?: number };
   abortSignal?: AbortSignal;
   providerOptions?: Record<string, unknown>;
+  maxOutputTokens?: number;
   model: unknown;
 }
 
@@ -250,6 +251,22 @@ describe("AiSdkModel.generateText", () => {
 
 describe("AiSdkModel.generateObject — structured outcome", () => {
   const keySchema = { type: "object", properties: { key: { type: "string" } } };
+
+  it("preserves an explicit output cap without changing uncapped callers", async () => {
+    const stub = makeStub(outcome({ key: "value" }));
+    const model = new AiSdkModel({ generateTextFn: stub.fn as typeof generateText });
+    await model.generateObject({
+      messages: [{ role: "user", content: "test" }],
+      schema: keySchema,
+      maxOutputTokens: 512,
+    });
+    expect((stub.calls[0] as StructuredCall).maxOutputTokens).toBe(512);
+    await model.generateObject({
+      messages: [{ role: "user", content: "test" }],
+      schema: keySchema,
+    });
+    expect(stub.calls[1]).not.toHaveProperty("maxOutputTokens");
+  });
 
   it("returns the parsed value from a single model call and always offers the abort tool", async () => {
     const stub = makeStub(outcome({ key: "value" }));

@@ -14,6 +14,20 @@ export interface LiveArgs {
 
 export const DEFAULT_KEY_FILE = "key.txt";
 export const DEFAULT_TIMEOUT_MS = 60_000;
+export const LIVE_INPUT_BYTE_LIMIT = 65_536;
+export const LIVE_OUTPUT_TOKEN_LIMITS = {
+  generate_workflow: 1024,
+  judge_verdict: 512,
+  tool_input_examples: 512,
+} as const;
+
+export function assertLiveInputBound(input: unknown): number {
+  const bytes = Buffer.byteLength(JSON.stringify(input), "utf8");
+  if (bytes > LIVE_INPUT_BYTE_LIMIT) {
+    throw new Error(`live gate input exceeds ${LIVE_INPUT_BYTE_LIMIT} bytes`);
+  }
+  return bytes;
+}
 
 export function parseLiveArgs(argv: string[]): LiveArgs {
   const args: LiveArgs = {

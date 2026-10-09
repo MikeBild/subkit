@@ -3,10 +3,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertLiveInputBound,
   DEFAULT_KEY_FILE,
   DEFAULT_TIMEOUT_MS,
   exitCodeFor,
   LIVE_CHECK_NAMES,
+  LIVE_INPUT_BYTE_LIMIT,
+  LIVE_OUTPUT_TOKEN_LIMITS,
   type LiveCheckResult,
   liveGateFailureHint,
   orderedForFlow,
@@ -18,6 +21,26 @@ import {
 
 const PRIMARY = "claude-sonnet-4-6";
 const FALLBACK = "claude-opus-4-7";
+
+describe("live request bounds", () => {
+  test("accepts the byte boundary and rejects larger input before dispatch", () => {
+    expect(assertLiveInputBound("x".repeat(LIVE_INPUT_BYTE_LIMIT - 2))).toBe(LIVE_INPUT_BYTE_LIMIT);
+    expect(() => assertLiveInputBound("x".repeat(LIVE_INPUT_BYTE_LIMIT - 1))).toThrow(
+      "live gate input exceeds",
+    );
+    expect(() => assertLiveInputBound("🔥".repeat(LIVE_INPUT_BYTE_LIMIT / 4))).toThrow(
+      "live gate input exceeds",
+    );
+  });
+
+  test("caps both structured checks and the tool check", () => {
+    expect(LIVE_OUTPUT_TOKEN_LIMITS).toEqual({
+      generate_workflow: 1024,
+      judge_verdict: 512,
+      tool_input_examples: 512,
+    });
+  });
+});
 
 function result(partial: Partial<LiveCheckResult>): LiveCheckResult {
   return {
