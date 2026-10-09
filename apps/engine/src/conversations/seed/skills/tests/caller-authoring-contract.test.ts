@@ -73,7 +73,11 @@ describe("loaded caller authoring contract", () => {
     expect(trust?.length ?? 0).toBeLessThan(800);
     const auth = skills.skills.find((skill) => skill.slug === "auth-flows");
     expect(auth?.body).toContain("They do not establish the workflow's `$caller`");
-    expect(api).toContain("do not return it");
+    expect(api).toContain("return a safe `caller` summary");
+    expect(api).toContain("Missing stored identity is `kind: unknown`");
+    expect(api).toContain("excludes raw persisted authentication context");
+    expect(api).toContain("MCP `list_audit` accept `actor_id` and `trace_id` filters");
+    expect(api).not.toContain("do not promise a caller filter or caller identity field");
     expect(api).toContain("partial correlation");
   });
 

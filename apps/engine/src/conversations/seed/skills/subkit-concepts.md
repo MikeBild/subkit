@@ -28,7 +28,7 @@ Keep four questions separate:
 
 An authenticated HTTP or MCP invocation uses its principal as caller. A trusted callerless webhook or schedule has `$caller = null`, even when a person created it or approved its effects. An authenticated system account has a caller and is distinct from that callerless case. Children inherit the parent's identity; input, source labels and child definitions cannot replace it. For example, use the caller's principal ID to check ownership of an input object ID, a saved connector credential to call its service, and a reviewed boundary to permit the resulting write. Fail closed when the workflow requires an authenticated user but caller is null.
 
-See workflow-authoring for identity constraints and expression syntax, auth-flows for upstream authentication, and REST API knowledge for inspection and correlation limits.
+HTTP and MCP run inspection expose a safe `caller` summary without credentials or session identifiers. Missing saved identity is `kind: unknown`; a channel or approval cannot reconstruct historical identity. Audit reads can narrow by actor and trace, without bypassing tenant scope or permissions. See workflow-authoring for identity constraints and expression syntax, auth-flows for upstream authentication, and REST API knowledge for inspection and correlation limits.
 
 ## Workflow shape
 
