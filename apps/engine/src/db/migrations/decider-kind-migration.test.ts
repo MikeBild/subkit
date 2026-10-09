@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
@@ -185,7 +186,7 @@ describe("0089_decider_kind", () => {
         status: "resolved",
         decided_by: systemAccountId,
         decided_by_kind: "system_account",
-        decided_at: new Date(),
+        decided_at: new Date(FROZEN_NOW),
       })
       .returning({ decided_by_kind: conversationElicitations.decided_by_kind });
     expect(decided?.decided_by_kind).toBe("system_account");

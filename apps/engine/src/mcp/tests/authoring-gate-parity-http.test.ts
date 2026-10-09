@@ -432,7 +432,7 @@ describe("tenant isolation of the gate", () => {
   test("another tenant's admin cannot drive a conversation of this tenant and no output is recorded", async () => {
     const [otherTenant] = await suite.http.db
       .insert(tenants)
-      .values({ slug: `gate-parity-other-${Date.now()}`, display_name: "Gate parity other" })
+      .values({ slug: "gate-parity-other-tenant", display_name: "Gate parity other" })
       .returning({ id: tenants.id });
     if (!otherTenant) throw new Error("other tenant seed failed");
     const [otherUser] = await suite.http.db
