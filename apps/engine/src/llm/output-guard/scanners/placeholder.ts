@@ -17,7 +17,7 @@ const PATTERNS: Pattern[] = [
   },
   {
     kind: "placeholder.host",
-    re: /\b(?:your[-_]?(?:host|domain|server|engine)|example)\.(?:com|io|dev|net|org)\b/gi,
+    re: /(?<![@.\w-])(?:your[-_]?(?:host|domain|server|engine)|example)\.(?:com|io|dev|net|org)\b/gi,
     message:
       "Used a placeholder host (your-host.com / example.com). Use the real `engine_url` from the RUNTIME CONTEXT block.",
     repairFromEngineUrl: true,
