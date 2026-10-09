@@ -12,6 +12,7 @@ import {
   buildJudgeStepArtifacts,
   JUDGE_BREAKER_MAX_BLOCKS,
   type JudgeStepArtifact,
+  JudgeVerdictSchema,
   judgePreview,
   workflowDefinitionFingerprint,
 } from "../preview-judge.ts";
@@ -798,6 +799,8 @@ describe("preview judge · the judge sees the final output and the output_schema
     expect(prompt).toContain('"required": [');
     expect(prompt).toContain("RAW PAYLOAD IS NOT A RESULT");
     expect(prompt).toContain("BUILD INSTRUCTIONS ARE NOT OUTPUT");
+    expect(Object.keys(JudgeVerdictSchema.shape)).toEqual(["reason", "missing", "verdict"]);
+    expect(prompt).toContain("Write the reason first and derive the verdict from it");
     expect(prompt).toContain('"(not output_transform_function)"');
   });
 

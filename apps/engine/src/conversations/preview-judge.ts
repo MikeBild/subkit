@@ -21,9 +21,9 @@ const ARTIFACTS_TOTAL_BUDGET_CHARS = 6_000;
 const FINAL_OUTPUT_BUDGET_CHARS = 3_000;
 
 export const JudgeVerdictSchema = z.object({
-  verdict: z.enum(["passes", "partial", "failed"]),
   reason: z.string().min(1).max(800),
   missing: z.array(z.string().min(1).max(300)).max(12).default([]),
+  verdict: z.enum(["passes", "partial", "failed"]),
 });
 
 export type PreviewJudgeVerdict = z.infer<typeof JudgeVerdictSchema>;
@@ -200,7 +200,7 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     '- BUILD INSTRUCTIONS ARE NOT OUTPUT: parts of the goal that say HOW to build the workflow (step count or kinds, which expression language or definition field to use, "no separate transform step", "(not output_transform_function)", connector or endpoint choice, "preview it and save it") constrain the definition, not the output. Never list them in `missing` and never lower the verdict because the output does not mention them; judge only what the goal asks the output to contain.',
     '- RAW PAYLOAD IS NOT A RESULT: when the goal asks for a shaped or derived result (one value, a selection, a ranking, a summary, a composed message) and the final output is still the raw upstream payload (the full API response with its unselected arrays and metadata), the shaping never happened → "failed". A final output that only wraps the raw payload in a new key is the same failure.',
     "",
-    "Return ONLY the JSON object { verdict, reason, missing }.",
+    "Return ONLY the JSON object { reason, missing, verdict }. Write the reason first and derive the verdict from it; a verdict that contradicts its own reason is invalid.",
   ].join("\n");
 }
 
