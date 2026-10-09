@@ -8,11 +8,34 @@ import type { LlmFlow, ModelRoute } from "../apps/engine/src/llm/types.ts";
 
 export interface LiveArgs {
   keyFile: string;
+  openaiKeyFile: string;
   models: string[];
   timeoutMs: number;
 }
 
+export type LiveProvider = "anthropic" | "openai";
+
+export interface LiveModelRef {
+  provider: LiveProvider;
+  model: string;
+}
+
 export const DEFAULT_KEY_FILE = "key.txt";
+export const DEFAULT_OPENAI_KEY_FILE = "openai-key.txt";
+
+export function parseModelRef(ref: string): LiveModelRef {
+  const at = ref.indexOf(":");
+  if (at === -1) return { provider: "anthropic", model: ref };
+  const provider = ref.slice(0, at);
+  const model = ref.slice(at + 1);
+  if (provider !== "anthropic" && provider !== "openai") {
+    throw new Error(
+      `unknown provider "${provider}" in ${ref} (use anthropic:<model> or openai:<model>)`,
+    );
+  }
+  if (model.length === 0) throw new Error(`model id missing in ${ref}`);
+  return { provider, model };
+}
 export const DEFAULT_TIMEOUT_MS = 60_000;
 export const LIVE_INPUT_BYTE_LIMIT = 65_536;
 export const LIVE_OUTPUT_TOKEN_LIMITS = {
@@ -32,6 +55,7 @@ export function assertLiveInputBound(input: unknown): number {
 export function parseLiveArgs(argv: string[]): LiveArgs {
   const args: LiveArgs = {
     keyFile: DEFAULT_KEY_FILE,
+    openaiKeyFile: DEFAULT_OPENAI_KEY_FILE,
     models: [DEFAULT_PRIMARY_MODEL, DEFAULT_FALLBACK_MODEL],
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -44,6 +68,11 @@ export function parseLiveArgs(argv: string[]): LiveArgs {
         args.keyFile = value;
         i++;
         break;
+      case "--openai-key-file":
+        if (!value) throw new Error("--openai-key-file needs a path");
+        args.openaiKeyFile = value;
+        i++;
+        break;
       case "--models": {
         if (!value) throw new Error("--models needs a comma-separated list of model ids");
         const models = value
@@ -51,6 +80,7 @@ export function parseLiveArgs(argv: string[]): LiveArgs {
           .map((m) => m.trim())
           .filter((m) => m.length > 0);
         if (models.length === 0) throw new Error("--models needs at least one model id");
+        for (const m of models) parseModelRef(m);
         args.models = models;
         i++;
         break;
@@ -162,9 +192,9 @@ export function exitCodeFor(results: LiveCheckResult[], keyPresent: boolean): 0 
 export function liveGateFailureHint(tag: string): string {
   return [
     `release:tag: refusing to tag ${tag} — the live LLM gate (bun run verify:llm-live) did not pass.`,
-    `The gate reads the Anthropic key from ./${DEFAULT_KEY_FILE} (override with --key-file <path>) and exercises`,
-    "the release models (override with --models <a,b>):",
-    "  bun run verify:llm-live -- --key-file <path> --models <a,b> --timeout-ms <ms>",
+    `The gate reads the Anthropic key from ./${DEFAULT_KEY_FILE} (--key-file <path>) and the OpenAI key from ./${DEFAULT_OPENAI_KEY_FILE} (--openai-key-file <path>)`,
+    "and exercises the release models; pass the deployed route as provider:model, primary first:",
+    "  bun run release:tag -- --models anthropic:<primary>,openai:<fallback>",
     "A failing or unreachable model blocks the release; there is no bypass flag.",
   ].join("\n");
 }

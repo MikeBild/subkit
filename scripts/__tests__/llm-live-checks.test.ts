@@ -14,6 +14,7 @@ import {
   liveGateFailureHint,
   orderedForFlow,
   parseLiveArgs,
+  parseModelRef,
   readKeyFile,
   redactDetail,
   renderTable,
@@ -72,7 +73,12 @@ describe("llm-live-checks · parseLiveArgs", () => {
       "--timeout-ms",
       "1500",
     ]);
-    expect(args).toEqual({ keyFile: "/tmp/other.txt", models: ["a", "b", "c"], timeoutMs: 1500 });
+    expect(args).toEqual({
+      keyFile: "/tmp/other.txt",
+      openaiKeyFile: "openai-key.txt",
+      models: ["a", "b", "c"],
+      timeoutMs: 1500,
+    });
   });
 
   test("rejects a missing value, an empty model list, a bad timeout and an unknown flag", () => {
@@ -227,5 +233,39 @@ describe("llm-live-checks · module contract", () => {
     expect(source).not.toMatch(/from\s+["']ai["']/);
     expect(source).not.toMatch(/from\s+["']@ai-sdk\//);
     expect(source).not.toMatch(/from\s+["']@anthropic-ai\//);
+  });
+});
+
+describe("llm-live-checks · provider-prefixed models (the deployed route)", () => {
+  test("a bare id is Anthropic, openai:<id> is OpenAI", () => {
+    expect(parseModelRef("claude-haiku-4-5")).toEqual({
+      provider: "anthropic",
+      model: "claude-haiku-4-5",
+    });
+    expect(parseModelRef("anthropic:claude-haiku-4-5")).toEqual({
+      provider: "anthropic",
+      model: "claude-haiku-4-5",
+    });
+    expect(parseModelRef("openai:gpt-5.6-sol")).toEqual({
+      provider: "openai",
+      model: "gpt-5.6-sol",
+    });
+  });
+
+  test("an unknown provider or an empty model id is refused before any call", () => {
+    expect(() => parseModelRef("gemini:x")).toThrow(/unknown provider/);
+    expect(() => parseModelRef("openai:")).toThrow(/model id missing/);
+    expect(() => parseLiveArgs(["--models", "anthropic:a,bogus:b"])).toThrow(/unknown provider/);
+  });
+
+  test("--openai-key-file is read and defaults to openai-key.txt", () => {
+    expect(parseLiveArgs([]).openaiKeyFile).toBe("openai-key.txt");
+    expect(parseLiveArgs(["--openai-key-file", "/tmp/o.txt"]).openaiKeyFile).toBe("/tmp/o.txt");
+  });
+
+  test("the elevated route keeps provider prefixes, so generate and judge hit the OpenAI fallback first", () => {
+    expect(
+      orderedForFlow(["anthropic:claude-haiku-4-5", "openai:gpt-5.6-sol"], "generate"),
+    ).toEqual(["openai:gpt-5.6-sol", "anthropic:claude-haiku-4-5"]);
   });
 });

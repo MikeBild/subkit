@@ -15,14 +15,18 @@ import {
   type LiveArgs,
   type LiveCheckName,
   type LiveCheckResult,
+  type LiveProvider,
   orderedForFlow,
   parseLiveArgs,
+  parseModelRef,
   readKeyFile,
   redactDetail,
   renderTable,
 } from "./llm-live-checks.ts";
 
 interface LiveTarget {
+  label: string;
+  provider: LiveProvider;
   model: string;
   key: string;
   timeoutMs: number;
@@ -42,7 +46,7 @@ function trackedGenerateText(target: LiveTarget, check: LiveCheckName): typeof g
     }
     console.log(
       `verify:llm-live:request ${JSON.stringify({
-        model: target.model,
+        model: target.label,
         check,
         input_bytes: inputBytes,
         max_requests: check === "tool_input_examples" ? 1 : 2,
@@ -52,7 +56,7 @@ function trackedGenerateText(target: LiveTarget, check: LiveCheckName): typeof g
     const result = await generateText(...args);
     console.log(
       `verify:llm-live:usage ${JSON.stringify({
-        model: target.model,
+        model: target.label,
         check,
         input_bytes: inputBytes,
         requests: result.steps.length,
@@ -68,7 +72,7 @@ function trackedGenerateText(target: LiveTarget, check: LiveCheckName): typeof g
 
 function liveModel(target: LiveTarget, check: LiveCheckName): AiSdkModel {
   return new AiSdkModel({
-    providerOverride: "anthropic",
+    providerOverride: target.provider,
     apiKeyOverride: target.key,
     defaultModel: target.model,
     modelOverride: target.model,
@@ -146,7 +150,7 @@ async function checkJudgeVerdict(target: LiveTarget): Promise<string> {
 
 async function checkToolInputExamples(target: LiveTarget): Promise<string> {
   const resolved = await initializeModel({
-    providerOverride: "anthropic",
+    providerOverride: target.provider,
     apiKeyOverride: target.key,
     defaultModel: target.model,
     modelOverride: target.model,
@@ -188,8 +192,12 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
     typeof result.request.body === "string"
       ? result.request.body
       : JSON.stringify(result.request.body ?? null);
-  if (!body.includes('"input_examples"')) {
-    throw new Error("the request body sent to the provider carries no input_examples");
+  const examplesSent =
+    target.provider === "anthropic"
+      ? body.includes('"input_examples"')
+      : body.includes("live-gate");
+  if (!examplesSent) {
+    throw new Error("the request body sent to the provider carries no tool input examples");
   }
   const first = result.toolCalls[0];
   return `finish=${result.finishReason} tool_calls=${result.toolCalls.length}${first ? ` first=${first.toolName}` : ""}`;
@@ -207,7 +215,7 @@ async function runCheck(check: LiveCheckName, target: LiveTarget): Promise<LiveC
   try {
     const detail = await CHECKS[check](target);
     return {
-      model: target.model,
+      model: target.label,
       check,
       status: "PASS",
       ms: ms(),
@@ -215,7 +223,7 @@ async function runCheck(check: LiveCheckName, target: LiveTarget): Promise<LiveC
     };
   } catch (err) {
     return {
-      model: target.model,
+      model: target.label,
       check,
       status: "FAIL",
       ms: ms(),
@@ -231,28 +239,43 @@ async function main(): Promise<number> {
   } catch (err) {
     console.error(`verify:llm-live: ${err instanceof Error ? err.message : String(err)}\n`);
     console.error(
-      "usage: bun run verify:llm-live -- [--key-file <path>] [--models <a,b>] [--timeout-ms <ms>]",
+      "usage: bun run verify:llm-live -- [--key-file <path>] [--openai-key-file <path>] [--models <[provider:]model,…>] [--timeout-ms <ms>]",
     );
     return 2;
   }
-  const key = readKeyFile(args.keyFile);
-  if (key === null) {
-    console.error(
-      `verify:llm-live: no Anthropic key — ${args.keyFile} is missing or empty (pass --key-file <path>)`,
-    );
-    return exitCodeFor([], false);
-  }
   const models = orderedForFlow(args.models, "generate");
+  const keyFiles: Record<LiveProvider, string> = {
+    anthropic: args.keyFile,
+    openai: args.openaiKeyFile,
+  };
+  const keys: Partial<Record<LiveProvider, string>> = {};
+  for (const provider of new Set(models.map((m) => parseModelRef(m).provider))) {
+    const key = readKeyFile(keyFiles[provider]);
+    if (key === null) {
+      console.error(
+        `verify:llm-live: no ${provider} key — ${keyFiles[provider]} is missing or empty (pass --${provider === "anthropic" ? "key-file" : "openai-key-file"} <path>)`,
+      );
+      return exitCodeFor([], false);
+    }
+    keys[provider] = key;
+  }
   console.log(
-    `verify:llm-live: ${models.length} model(s) × ${LIVE_CHECK_NAMES.length} checks, timeout ${args.timeoutMs} ms, key from ${args.keyFile}\n`,
+    `verify:llm-live: ${models.length} model(s) × ${LIVE_CHECK_NAMES.length} checks, timeout ${args.timeoutMs} ms, providers ${Object.keys(keys).join(",")}\n`,
   );
   const results: LiveCheckResult[] = [];
-  for (const model of models) {
-    const target: LiveTarget = { model, key, timeoutMs: args.timeoutMs };
+  for (const label of models) {
+    const ref = parseModelRef(label);
+    const target: LiveTarget = {
+      label,
+      provider: ref.provider,
+      model: ref.model,
+      key: keys[ref.provider] as string,
+      timeoutMs: args.timeoutMs,
+    };
     for (const check of LIVE_CHECK_NAMES) {
       const result = await runCheck(check, target);
       results.push(result);
-      console.log(`${result.status} ${model} ${check} ${result.ms}ms ${result.detail}`);
+      console.log(`${result.status} ${label} ${check} ${result.ms}ms ${result.detail}`);
     }
   }
   console.log(`\n${renderTable(results)}\n`);

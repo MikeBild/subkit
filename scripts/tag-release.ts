@@ -94,7 +94,10 @@ if (problems.length > 0) {
 
 console.log("release:tag: running the live LLM gate (bun run verify:llm-live)\n");
 try {
-  execFileSync("bun", ["run", "verify:llm-live"], { cwd: REPO, stdio: "inherit" });
+  execFileSync("bun", ["run", "verify:llm-live", "--", ...process.argv.slice(2)], {
+    cwd: REPO,
+    stdio: "inherit",
+  });
 } catch {
   console.error(liveGateFailureHint(tag));
   process.exit(1);
