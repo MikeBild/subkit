@@ -686,6 +686,7 @@ function FileSheet({
                 </ContextHelp>
               </span>
               <CopyField
+                labelled
                 value={fileReference(file)}
                 label={t("files.reference")}
                 testId="file-reference-value"

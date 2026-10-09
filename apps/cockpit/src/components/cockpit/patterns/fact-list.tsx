@@ -12,6 +12,10 @@ export interface Fact {
 }
 
 const GRID = "grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-6 gap-y-2 text-sm";
+const LINE = "flex flex-wrap items-center gap-x-3.5 gap-y-1 text-sm [&>div>dt]:min-w-[7.5rem]";
+const BOX = "overflow-hidden rounded-lg border text-sm";
+const ROW =
+  "grid gap-0.5 border-t px-3.5 py-2.5 first:border-t-0 md:grid-cols-[minmax(7.5rem,12.5rem)_minmax(0,1fr)] md:gap-x-4";
 
 export function FactList({
   items,
@@ -47,10 +51,20 @@ export function FactList({
       </div>
     );
   }
+  const single = items.length === 1;
   return (
-    <dl data-slot="fact-list" data-testid={testId} className={GRID}>
+    <dl
+      data-slot="fact-list"
+      data-testid={testId}
+      data-shape={single ? "line" : "box"}
+      className={single ? LINE : BOX}
+    >
       {items.map((item, index) => (
-        <div key={item.testId ?? index} className="contents" data-testid={item.testId}>
+        <div
+          key={item.testId ?? index}
+          className={single ? "contents" : ROW}
+          data-testid={item.testId}
+        >
           <dt className="flex items-center gap-1 text-muted-foreground">
             {item.label}
             {item.help ? (
@@ -62,7 +76,9 @@ export function FactList({
               </ContextHelp>
             ) : null}
           </dt>
-          <dd className="min-w-0 break-words">{item.value}</dd>
+          <dd className={single ? "min-w-0 break-words" : "min-w-0 font-medium break-words"}>
+            {item.value}
+          </dd>
         </div>
       ))}
     </dl>

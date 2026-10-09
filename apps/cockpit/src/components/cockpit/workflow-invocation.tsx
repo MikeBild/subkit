@@ -114,6 +114,7 @@ function HttpMode({
     <div className="flex flex-col gap-3">
       <Copyable>
         <CopyField
+          labelled
           value={http.url ?? http.path}
           label={t("invocation.httpAddress")}
           testId="workflow-invocation-http-url"
@@ -212,15 +213,9 @@ function HttpMode({
           />
         </Copyable>
       )}
-      {verdict === "live" ? null : (
+      {verdict === "live" || verdict === "preview" ? null : (
         <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
-          {t(
-            verdict === "refused"
-              ? "invocation.http.refused"
-              : verdict === "preview"
-                ? "invocation.http.previewOnly"
-                : "invocation.http.unconfirmed",
-          )}
+          {t(verdict === "refused" ? "invocation.http.refused" : "invocation.http.unconfirmed")}
         </p>
       )}
     </div>
@@ -256,6 +251,7 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
             <div className="min-w-0 flex-1">
               <Copyable>
                 <CopyField
+                  labelled
                   value={hook.url ?? hook.path}
                   label={t("invocation.webhookAddress")}
                   testId={`workflow-invocation-hook-${index}-url`}
@@ -302,6 +298,7 @@ function McpMode({ invocation }: { invocation: Invocation }) {
       {invocation.base_url ? (
         <Copyable>
           <CopyField
+            labelled
             value={`${invocation.base_url.replace(/\/$/, "")}/mcp`}
             label={t("invocation.mcpAddress")}
             testId="workflow-invocation-mcp-url"
@@ -310,6 +307,7 @@ function McpMode({ invocation }: { invocation: Invocation }) {
       ) : null}
       <Copyable>
         <CopyField
+          labelled
           value={mcp.tool_name}
           label={t("invocation.mcp.tool")}
           testId="workflow-invocation-mcp-tool"

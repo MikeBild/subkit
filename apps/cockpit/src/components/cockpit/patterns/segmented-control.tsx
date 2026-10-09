@@ -22,8 +22,6 @@ export function SegmentedControl({
   return (
     <ToggleGroup
       type="single"
-      variant="outline"
-      size="sm"
       value={value}
       onValueChange={(next) => {
         if (next) onValueChange(next);
@@ -31,9 +29,15 @@ export function SegmentedControl({
       aria-label={label}
       data-slot="segmented-control"
       data-testid={testId}
+      className="max-w-full gap-0.5 overflow-x-auto rounded-md bg-muted p-[3px] [scrollbar-width:none]"
     >
       {options.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value} data-testid={option.testId}>
+        <ToggleGroupItem
+          key={option.value}
+          value={option.value}
+          data-testid={option.testId}
+          className="h-[26px] shrink-0 rounded-sm px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+        >
           {option.label}
         </ToggleGroupItem>
       ))}

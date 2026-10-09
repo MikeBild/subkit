@@ -2746,16 +2746,27 @@ async function checkModeGates(page) {
 async function checkSidebarToggle(page, where) {
   const shape = await page.evaluate(() => {
     const triggers = [...document.querySelectorAll('[data-testid="sidebar-trigger"]')];
-    const header = document.querySelector('[data-family-slot="page-header"]');
+    const phone = window.innerWidth < 768;
+    const home = document.querySelector(
+      phone ? '[data-family-slot="page-header"]' : '[data-testid="cockpit-sidebar-footer"]',
+    );
     return {
+      phone,
       count: triggers.length,
-      inPageHeader: Boolean(header && triggers[0] && header.contains(triggers[0])),
+      inPlace: Boolean(home && triggers[0] && home.contains(triggers[0])),
       bar: Boolean(document.querySelector('[data-testid="cockpit-header"]')),
     };
   });
   if (shape.count !== 1) breach("§6", where, `${shape.count} sidebar toggles on one screen`);
   if (shape.bar) breach("§6", where, "an empty top bar stands above the page header");
-  if (!shape.inPageHeader) breach("§6", where, "the sidebar toggle is not beside the page title");
+  if (!shape.inPlace)
+    breach(
+      "§6",
+      where,
+      shape.phone
+        ? "on a phone the sidebar toggle is not beside the page title"
+        : "on a wide screen the sidebar toggle is not in the sidebar footer",
+    );
 }
 
 async function checkResumeLine(page) {

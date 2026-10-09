@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
@@ -273,7 +272,6 @@ export function RunWorkflowDialog({
           disabled={disabled}
           data-testid="workflow-run-open"
         >
-          <Play data-icon="inline-start" />
           {t("run.action")}
         </Button>
       }

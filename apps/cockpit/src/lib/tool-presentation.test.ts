@@ -260,7 +260,7 @@ describe("what a workflow call really was", () => {
     };
     expect(workflowRunKind(legacy)).toBe("refused");
     expect(translate("de", workflowRefusalKey(legacy) ?? "tool.outcome.foundIssue")).toBe(
-      "Fassung in älterem Format gespeichert",
+      "Version in älterem Format gespeichert",
     );
     expect(workflowRefusalKey({ ok: false, data: { error_code: "run_failed" } })).toBeNull();
     expect(workflowRefusalKey(undefined)).toBeNull();

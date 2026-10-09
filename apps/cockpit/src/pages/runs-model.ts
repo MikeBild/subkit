@@ -32,6 +32,7 @@ const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
   scheduler: "runs.source.scheduler",
   chat: "runs.source.chat",
   ui: "runs.source.ui",
+  queue: "runs.source.queue",
 };
 
 export const REQUEST_SOURCES: readonly string[] = Object.keys(REQUEST_SOURCE_KEYS);
