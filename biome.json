@@ -28,7 +28,8 @@
       "!FAMILY-UI.json",
       "!OPERATIONAL-KPIS.json",
       "!OPERATIONAL-OVERVIEW.schema.json",
-      "!.agent-prime.json"
+      "!.agent-prime.json",
+      "!assets/clipper"
     ]
   },
   "formatter": {
@@ -62,7 +63,7 @@
           "level": "error",
           "options": {
             "paths": {
-              "**/_internal/*": "Imports from `_internal/` paths are package-private. The directory is the file-system enforcement of layering — only the same package's modules may reach in. Cross-package consumers must extend the package's public barrel (e.g. `./index.ts`) instead of reaching across this boundary."
+              "**/_internal/*": "Imports from `_internal/` paths are package-private. The directory is the file-system enforcement of layering \u2014 only the same package's modules may reach in. Cross-package consumers must extend the package's public barrel (e.g. `./index.ts`) instead of reaching across this boundary."
             }
           }
         }

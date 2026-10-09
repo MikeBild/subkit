@@ -206,6 +206,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/install/clipper.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bundled Chrome clipping extension
+         * @description Downloads the Chrome clipping extension archive embedded in this engine binary. The x-subkit-sha256 response header verifies the archive bytes.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Extension archive */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/zip": string;
+                    };
+                };
+                /** @description Extension archive unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/install/sha256sums": {
         parameters: {
             query?: never;
@@ -10473,6 +10521,84 @@ export interface paths {
                 };
                 /** @description The version is already current, or the source changed meanwhile */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/knowledge-sources/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append one Markdown document to a knowledge bundle using optimistic concurrency */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AppendKnowledgeSourceDocumentBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AppendKnowledgeSourceDocumentResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Bundle exceeds maximum size */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Validation error */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -22415,6 +22541,17 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
+        AppendKnowledgeSourceDocumentResponse: {
+            /** Format: uuid */
+            knowledge_source_id: string;
+            version: string;
+            path: string;
+        };
+        AppendKnowledgeSourceDocumentBody: {
+            expected_version: string;
+            path: string;
+            content: string;
+        };
         KnowledgeSourceListResponse: {
             items: components["schemas"]["KnowledgeSource"][];
             total: number;
@@ -22522,6 +22659,7 @@ export interface components {
         };
         CreateKnowledgeSourceBundleBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
             files: components["schemas"]["KnowledgeBundleFile"][];
+            create_only?: boolean;
         };
         KnowledgeBundleFile: {
             path: string;

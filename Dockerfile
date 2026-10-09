@@ -15,6 +15,8 @@ RUN set -eux; \
 
 RUN bun run build:cockpit
 
+RUN bun run build:clipper
+
 RUN bun scripts/fetch-embedding-assets.ts
 
 ARG ENGINE_VERSION

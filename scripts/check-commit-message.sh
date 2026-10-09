@@ -38,12 +38,14 @@ check_one() {
 
 if [ "$1" = "--range" ]; then
   range="$2"
+  log=$(git log --format='%h %s' "$range") || exit $?
+  [ -z "$log" ] && exit 0
   failed=0
   while IFS= read -r line; do
     sha="${line%% *}"
     header="${line#* }"
     if ! check_one "$header" "$sha"; then failed=1; fi
-  done < <(git log --format='%h %s' "$range")
+  done <<< "$log"
   exit "$failed"
 fi
 
