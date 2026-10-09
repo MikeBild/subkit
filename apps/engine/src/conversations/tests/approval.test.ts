@@ -375,7 +375,13 @@ for (const status of ["timeout", "cancelled"] as const) {
       ctx.testDb.db,
     );
     await resolveElicitation(
-      { tenant_id: ctx.tenant_id, id: pending.id, output: null, status, decided_by: ctx.user_id },
+      {
+        tenant_id: ctx.tenant_id,
+        id: pending.id,
+        output: null,
+        status,
+        decided_by: { kind: "user", id: ctx.user_id },
+      },
       ctx.testDb.db,
     );
     const detail = await getConversation(ctx.tenant_id, conversation_id, ctx.testDb.db);

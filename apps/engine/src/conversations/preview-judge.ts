@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Executor } from "../db/client.ts";
+import { checkJsonSchemaContract } from "../execution/json-schema-contract.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
 import {
@@ -10,13 +11,14 @@ import {
   outputMatchesFormat,
 } from "./output-format.ts";
 import { canonicalJson } from "./text-line-diff.ts";
-import { truncateStepPreviewForLlm } from "./tools/truncate.ts";
+import { truncateForLlm, truncateStepPreviewForLlm } from "./tools/truncate.ts";
 
 export const JUDGE_BREAKER_MAX_BLOCKS = 2;
 
 export const JUDGE_BREAKER_ESCALATE_AFTER = 2;
 
 const ARTIFACTS_TOTAL_BUDGET_CHARS = 6_000;
+const FINAL_OUTPUT_BUDGET_CHARS = 3_000;
 
 export const JudgeVerdictSchema = z.object({
   verdict: z.enum(["passes", "partial", "failed"]),
@@ -43,6 +45,8 @@ export interface JudgePreviewParams {
   definition_summary: string;
   step_artifacts: JudgeStepArtifact[];
   final_output?: unknown;
+  output_schema?: Record<string, unknown> | null;
+  final_output_held?: boolean;
   tenant_id: string;
   db?: Executor;
   signal?: AbortSignal;
@@ -133,6 +137,39 @@ function renderArtifacts(artifacts: JudgeStepArtifact[]): string {
   }
 }
 
+function renderJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 1) ?? "null";
+  } catch {
+    return "(not serialisable)";
+  }
+}
+
+function hasFinalOutput(params: JudgePreviewParams): boolean {
+  return params.final_output !== undefined && params.final_output !== null;
+}
+
+function renderFinalOutputSection(params: JudgePreviewParams): string[] {
+  if (!hasFinalOutput(params)) return [];
+  const bounded = truncateForLlm(params.final_output, FINAL_OUTPUT_BUDGET_CHARS, { store: false });
+  return [
+    "",
+    "Final output the caller receives (after output_transform) — THIS is the object to judge. The step outputs above are only evidence of how it was produced:",
+    "```json",
+    renderJson(bounded.data),
+    "```",
+    ...(params.output_schema
+      ? [
+          "",
+          "Declared output_schema the final output must satisfy:",
+          "```json",
+          renderJson(params.output_schema),
+          "```",
+        ]
+      : []),
+  ];
+}
+
 function buildJudgePrompt(params: JudgePreviewParams): string {
   return [
     "Judge whether a workflow's previewed output satisfies the user's goal.",
@@ -149,6 +186,7 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     "```json",
     renderArtifacts(params.step_artifacts),
     "```",
+    ...renderFinalOutputSection(params),
     "",
     "Verdict rules:",
     '- "passes": the output satisfies the goal. Minor cosmetic differences are fine — EXCEPT output format (see below).',
@@ -159,6 +197,8 @@ function buildJudgePrompt(params: JudgePreviewParams): string {
     '- NAMED-FIELD COMPLETENESS: every field, column, or property the goal EXPLICITLY names must be present in the output. A table missing a column the goal listed, or an object missing a key the goal asked for, is at most "partial", never "passes" — list each absent named field in `missing`. Concretely: if the goal names four columns and the output table\'s header row carries only two of them, that is "partial" (the other two are missing) — do NOT pass it just because the rows present look well-formed. (Only judge fields the goal actually names; do not invent requirements. An EMPTY result set — zero data rows — is exempt: there is no data for the columns to carry.)',
     '- CRITERIA/FILTER CONSISTENCY: if the goal restricts the result to a subset (any "only X" / "where Y" / "by <whom>" / "in <category>" qualifier), the output must not contain items whose own values VISIBLY CONTRADICT that restriction — that means the filter was not applied → "failed". Concretely: if the goal asks only for items in a particular state and an output row plainly shows the OPPOSITE state, the filter was not applied → "failed", even if the table itself is well-formed. Judge only against restrictions the goal states and values visible in the output; an unverifiable count (the goal asks for N and fewer are shown, with no way to know how many exist) is NOT a violation on its own.',
     '- OUTPUT FORMAT IS PART OF THE GOAL when the goal names one. If the goal asks for "a markdown table", "CSV", "an HTML body", or "a bulleted list", the rendered output MUST be in that exact format (a markdown table needs a header row, a `| --- |` separator, and one row per record). Correct data returned in the wrong shape (e.g. a JSON array when a markdown table was asked for) is "partial", NOT "passes" — list the missing format in `missing`.',
+    '- BUILD INSTRUCTIONS ARE NOT OUTPUT: parts of the goal that say HOW to build the workflow (step count or kinds, which expression language or definition field to use, "no separate transform step", "(not output_transform_function)", connector or endpoint choice, "preview it and save it") constrain the definition, not the output. Never list them in `missing` and never lower the verdict because the output does not mention them; judge only what the goal asks the output to contain.',
+    '- RAW PAYLOAD IS NOT A RESULT: when the goal asks for a shaped or derived result (one value, a selection, a ranking, a summary, a composed message) and the final output is still the raw upstream payload (the full API response with its unselected arrays and metadata), the shaping never happened → "failed". A final output that only wraps the raw payload in a new key is the same failure.',
     "",
     "Return ONLY the JSON object { verdict, reason, missing }.",
   ].join("\n");
@@ -183,6 +223,14 @@ function extractRenderedOutput(params: JudgePreviewParams): {
   }
   const last = params.step_artifacts[params.step_artifacts.length - 1];
   return { rendered: coerceToString(last?.output_preview), source: "step_artifacts" };
+}
+
+function outputSchemaMissing(params: JudgePreviewParams): string[] {
+  if (!params.output_schema || params.final_output_held === true) return [];
+  if (params.final_output === undefined) return [];
+  const check = checkJsonSchemaContract(params.final_output, params.output_schema, "$output");
+  if (!check.ok || check.valid) return [];
+  return check.violations.map((v) => `${v.path}: ${v.message}`);
 }
 
 function coerceVerdict(raw: unknown): PreviewJudgeVerdict | null {
@@ -231,6 +279,22 @@ export async function judgePreview(params: JudgePreviewParams): Promise<PreviewJ
     }
     if (!verdict) {
       throw new Error("preview judge returned no parseable verdict after one retry");
+    }
+    const schemaMissing = outputSchemaMissing(params);
+    if (schemaMissing.length > 0 && verdict.verdict !== "failed") {
+      logger.warn({
+        module: "conversations",
+        action: "preview_judge.schema_mismatch",
+        msg: "final output does not satisfy the declared output_schema — verdict downgraded to partial",
+        tenant_id: params.tenant_id,
+        verdict: verdict.verdict,
+        violations: schemaMissing,
+      });
+      return {
+        verdict: "partial",
+        reason: `The final output does not satisfy the declared output_schema: ${schemaMissing.join("; ")}`,
+        missing: [...new Set([...verdict.missing, ...schemaMissing])].slice(0, 12),
+      };
     }
     if (verdict.verdict === "passes") {
       const fmt = detectNamedOutputFormat(params.goal);

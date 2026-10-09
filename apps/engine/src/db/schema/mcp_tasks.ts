@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations } from "./conversations.ts";
-import { tenants, users } from "./identity.ts";
+import { auditActorKindEnum, tenants } from "./identity.ts";
 
 export const mcpTasks = pgTable(
   "mcp_tasks",
@@ -16,7 +16,8 @@ export const mcpTasks = pgTable(
     kind: text("kind").notNull().$type<"start" | "append" | "respond_elicitation">(),
     job_id: text("job_id"),
     request_source: text("request_source"),
-    actor_id: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    actor_id: uuid("actor_id"),
+    actor_kind: auditActorKindEnum("actor_kind"),
     user_message_id: uuid("user_message_id").references(() => conversationMessages.id, {
       onDelete: "set null",
     }),
@@ -35,5 +36,9 @@ export const mcpTasks = pgTable(
     index("mcp_tasks_conv_turn_idx").on(t.tenant_id, t.conversation_id, t.turn_seq),
     index("mcp_tasks_tenant_created_idx").on(t.tenant_id, t.created_at),
     check("mcp_tasks_kind_check", sql`${t.kind} IN ('start','append','respond_elicitation')`),
+    check(
+      "mcp_tasks_actor_kind_check",
+      sql`(${t.actor_id} IS NULL) = (${t.actor_kind} IS NULL) AND (${t.actor_kind} IS NULL OR ${t.actor_kind} <> 'system')`,
+    ),
   ],
 );

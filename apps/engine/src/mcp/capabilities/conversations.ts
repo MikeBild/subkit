@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { actorOf } from "../../audit/actor.ts";
 import { principalOrigin } from "../../auth/origin.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { type ElicitationRecord, getElicitation } from "../../conversations/elicitations.ts";
@@ -171,7 +172,7 @@ async function backgroundTurn(p: {
           tenant_id: p.principal.tenant_id,
           conversation_id: p.conversation_id,
           kind: p.kind,
-          actor_id: p.principal.id,
+          actor: actorOf(p.principal),
           request_source: "mcp",
           user_message_id: p.user_message_id,
         },
@@ -182,7 +183,7 @@ async function backgroundTurn(p: {
       {
         tenant_id: p.principal.tenant_id,
         task_id: taskId,
-        actor_id: p.principal.id,
+        actor: actorOf(p.principal),
       },
       p.db,
     );

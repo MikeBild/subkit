@@ -52,7 +52,7 @@ function heldChainDraft(slug: string): DraftDocument {
           id: "fetch",
           kind: "request",
           method: "POST",
-          url: "https://example.test/scrape",
+          url: "https://jsonplaceholder.typicode.com/posts",
           body: { q: "rows" },
         },
         {

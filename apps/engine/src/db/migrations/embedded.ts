@@ -106,6 +106,7 @@ import sql0085KnowledgeLearningProposer from "./0085_knowledge_learning_proposer
 import sql0086InboundHookSlugGlobalUnique from "./0086_inbound_hook_slug_global_unique.sql" with { type: "text" };
 import sql0087TenantLlmSettingsDropped from "./0087_tenant_llm_settings_dropped.sql" with { type: "text" };
 import sql0088AbsentSugarMan from "./0088_absent_sugar_man.sql" with { type: "text" };
+import sql0089DeciderKind from "./0089_decider_kind.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -219,6 +220,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0086_inbound_hook_slug_global_unique": sql0086InboundHookSlugGlobalUnique,
   "0087_tenant_llm_settings_dropped": sql0087TenantLlmSettingsDropped,
   "0088_absent_sugar_man": sql0088AbsentSugarMan,
+  "0089_decider_kind": sql0089DeciderKind,
 };
 
 const journal = journalMeta as unknown as Journal;

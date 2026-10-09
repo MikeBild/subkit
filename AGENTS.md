@@ -51,4 +51,7 @@ Work directly on `main`. Prefer focused changes, existing abstractions, and gene
 
 There is no CI. The pre-push hook (lint, typecheck, invariants, drift, commit
 messages, gitleaks, build) and `bun run verify` before every release tag are the
-gate. Run the narrowest relevant checks while iterating. Report any skipped validation.
+gate. `bun run release:tag` also runs `bun run verify:llm-live`, a fail-closed live
+call of the release models with the Anthropic key from `./key.txt` (`--key-file`,
+`--models`) that has no bypass. Run the narrowest relevant checks while iterating.
+Report any skipped validation.

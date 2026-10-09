@@ -1,6 +1,8 @@
 import {
   compile as compileJsonata,
+  describeUnknownFunction,
   findUnboundFunctionCalls,
+  findUnknownFunctionCalls,
 } from "../execution/jsonata-engine.ts";
 import { validateBareIterationIdentifiers } from "../workflows/reference-validator.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
@@ -48,6 +50,14 @@ function tryJsonata(expression: string, path: string, report: VerifierReport): v
         severity: "error",
         code: "jsonata_unbound_function",
         message: `JSONata function \`${finding.name}(...)\` is not bound; use \`${finding.suggestion}(...)\``,
+        path,
+      });
+    }
+    for (const finding of findUnknownFunctionCalls(expression)) {
+      addFinding(report, {
+        severity: "error",
+        code: "jsonata_unknown_function",
+        message: describeUnknownFunction(finding),
         path,
       });
     }

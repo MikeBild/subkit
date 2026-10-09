@@ -18,6 +18,7 @@ import type { ConversationTool, ToolContext, ToolResult } from "./index.ts";
 import { classifyStepReferences } from "./inherited-step-references.ts";
 import { getLastPreview } from "./last-preview-store.ts";
 import { boundWorkflowIdOf } from "./open-workflow-draft.ts";
+import { placeholderDestinationGateResult } from "./placeholder-destination-gate.ts";
 import { collectProbedConnectorSlugs } from "./probed-connectors.ts";
 import { resolveStepPatches, StepPatchSchema } from "./step-targeted-patch.ts";
 
@@ -204,7 +205,16 @@ export async function applyWorkflowPatchToDraft(
 
     const validation = await validateTenantWorkflowDef(patched, ctx.tenant_id, ctx.db, {
       allowForwardRefs: true,
+      destinationTier: "all",
     });
+    const placeholderDestinations = validation.placeholder_destinations ?? [];
+    if (placeholderDestinations.length > 0) {
+      return placeholderDestinationGateResult(
+        currentDraft,
+        placeholderDestinations,
+        "edit_workflow_patch",
+      );
+    }
     if (!validation.ok) {
       return {
         ok: false,

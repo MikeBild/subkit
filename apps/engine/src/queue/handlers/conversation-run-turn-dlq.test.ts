@@ -68,7 +68,7 @@ async function seedConversationAndTask(
       tenant_id: tenantId,
       conversation_id: created.conversation.id,
       kind: "start",
-      actor_id: userId,
+      actor: { kind: "user", id: userId },
       request_source: "mcp",
       user_message_id: created.initial_message_id,
     },

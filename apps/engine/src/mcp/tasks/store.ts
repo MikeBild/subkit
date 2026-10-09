@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
+import type { Actor } from "../../audit/actor.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { conversationToolCalls, mcpTasks } from "../../db/schema/index.ts";
@@ -15,7 +16,7 @@ export interface InsertMcpTaskParams {
   tenant_id: string;
   conversation_id: string;
   kind: "start" | "append" | "respond_elicitation";
-  actor_id: string | null;
+  actor: Actor | null;
   request_source: string;
   user_message_id: string | null;
 }
@@ -28,6 +29,7 @@ export interface McpTaskRow {
   kind: "start" | "append" | "respond_elicitation";
   job_id: string | null;
   actor_id: string | null;
+  actor_kind: "user" | "system_account" | null;
   request_source: string;
   user_message_id: string | null;
   result: ConversationTurnEnvelope | null;
@@ -49,7 +51,8 @@ export async function insertMcpTask(p: InsertMcpTaskParams, db: Db): Promise<str
       tenant_id: p.tenant_id,
       conversation_id: p.conversation_id,
       kind: p.kind,
-      actor_id: p.actor_id,
+      actor_id: p.actor?.id ?? null,
+      actor_kind: p.actor?.kind ?? null,
       request_source: p.request_source,
       user_message_id: p.user_message_id,
       turn_seq: sql<number>`(
@@ -77,14 +80,15 @@ export async function setMcpTaskJobId(
 }
 
 export async function rearmMcpTaskForNativeElicitation(
-  p: { tenant_id: string; task_id: string; actor_id: string | null },
+  p: { tenant_id: string; task_id: string; actor: Actor | null },
   db: Db,
 ): Promise<boolean> {
   const rows = await db
     .update(mcpTasks)
     .set({
       kind: "respond_elicitation",
-      actor_id: p.actor_id,
+      actor_id: p.actor?.id ?? null,
+      actor_kind: p.actor?.kind ?? null,
       user_message_id: null,
       job_id: null,
       result: null,

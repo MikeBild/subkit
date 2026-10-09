@@ -3,7 +3,9 @@ import { auditAwait } from "../../../audit/audit.ts";
 import { AuditAction } from "../../../audit/types.ts";
 import { logger } from "../../../logging/logger.ts";
 import { scrubString, scrubStringsDeep } from "../../../logging/scrub-secrets.ts";
+import { recordAuthoringGateBlock } from "../../../observability/instrumentation.ts";
 import { humanInBandAnswer } from "../../answer-actor.ts";
+import { decidedByFor } from "../../decided-by.ts";
 import {
   DRAFT_CREDENTIAL_SETUP_KIND,
   isDraftCredentialSetupAuthType,
@@ -27,6 +29,10 @@ import {
   mapAskUserToPrimitiveSchema,
   mapElicitResultToAskUserOutput,
 } from "./elicit-bridge.ts";
+import {
+  describeDroppedHints,
+  stripPlaceholderDestinationHints,
+} from "./placeholder-destination.ts";
 import { redactElicitationOutput } from "./redact-answer.ts";
 import { detectSecretElicitation, type SecretElicitationHit } from "./secret-detection.ts";
 import { validateElicitationAnswer } from "./validate-answer.ts";
@@ -145,6 +151,25 @@ async function secretElicitationBlockedOverMcp(
   };
 }
 
+function dropPlaceholderDestinationHints<T extends { tool_name: AskUserToolName; input: unknown }>(
+  ctx: ToolContext,
+  p: T,
+): T {
+  const stripped = stripPlaceholderDestinationHints(p.tool_name, p.input);
+  if (stripped.dropped.length === 0) return p;
+  logger.warn({
+    module: "conversation",
+    action: "ask_user.placeholder_destination_dropped",
+    msg: "removed placeholder destinations from the question's hints and defaults — destinations come from the user",
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    tool_name: p.tool_name,
+    dropped: describeDroppedHints(stripped.dropped),
+  });
+  recordAuthoringGateBlock({ code: "ask_placeholder_destination", tool: p.tool_name });
+  return { ...p, input: stripped.input };
+}
+
 export async function pauseForUserInput(
   ctx: ToolContext,
   p: { tool_name: AskUserToolName; summary: string; input: unknown },
@@ -155,6 +180,7 @@ export async function pauseForUserInput(
     const unrenderable = unrenderableFormResult(p.input);
     if (unrenderable) return unrenderable;
   }
+  p = dropPlaceholderDestinationHints(ctx, p);
   if (engineAuthorization && p.input && typeof p.input === "object" && !Array.isArray(p.input)) {
     p = { ...p, input: { ...p.input, authorization_url: engineAuthorization.authorizationUrl } };
   }
@@ -188,7 +214,7 @@ export async function pauseForUserInput(
             conversation_id: ctx.conversation_id,
             id: sensitiveRow.id,
             output: null,
-            decided_by: ctx.actor_id,
+            decided_by: decidedByFor(ctx.actor_id, ctx.principal),
             status: "cancelled",
             reason: "sensitive_field_requires_url_elicitation",
             transport: "failed",
@@ -284,7 +310,7 @@ export async function pauseForUserInput(
               conversation_id: ctx.conversation_id,
               id: row.id,
               output,
-              decided_by: ctx.actor_id,
+              decided_by: decidedByFor(ctx.actor_id, ctx.principal),
               status: "resolved",
               transport: "succeeded",
             },

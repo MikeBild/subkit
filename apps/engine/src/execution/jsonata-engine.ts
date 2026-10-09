@@ -142,6 +142,154 @@ export function findUnboundFunctionCalls(source: string): JSONataCallableFinding
   return findings;
 }
 
+export const JSONATA_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
+  "sum",
+  "count",
+  "max",
+  "min",
+  "average",
+  "string",
+  "substring",
+  "substringBefore",
+  "substringAfter",
+  "lowercase",
+  "uppercase",
+  "length",
+  "trim",
+  "pad",
+  "match",
+  "contains",
+  "replace",
+  "split",
+  "join",
+  "formatNumber",
+  "formatBase",
+  "formatInteger",
+  "parseInteger",
+  "number",
+  "floor",
+  "ceil",
+  "round",
+  "abs",
+  "sqrt",
+  "power",
+  "random",
+  "boolean",
+  "not",
+  "map",
+  "zip",
+  "filter",
+  "single",
+  "reduce",
+  "sift",
+  "keys",
+  "lookup",
+  "append",
+  "exists",
+  "spread",
+  "merge",
+  "reverse",
+  "each",
+  "error",
+  "assert",
+  "type",
+  "sort",
+  "shuffle",
+  "distinct",
+  "encodeUrlComponent",
+  "encodeUrl",
+  "decodeUrlComponent",
+  "decodeUrl",
+  "base64encode",
+  "base64decode",
+  "eval",
+  "toMillis",
+  "fromMillis",
+  "clone",
+  "now",
+  "millis",
+]);
+
+export const JSONATA_FUNCTION_SUGGESTIONS: Readonly<Record<string, string>> = {
+  indexOf: "`($arr#$i[$ = value].$i)[0]` — bind the array with `:=` first; `#$i` exposes the index",
+  findIndex: "`($arr#$i[<condition>].$i)[0]`",
+  includes: "`value in $arr`",
+  find: "`$filter($arr, function($v) { <condition> })[0]`",
+  length: "`$count($arr)` for arrays (`$length` is string length only)",
+  toUpperCase: "`$uppercase(str)`",
+  toFixed: "`$round(num, decimals)`",
+  slice: "`$arr[[0..n-1]]` (range predicate)",
+  parseFloat: "`$number(str)`",
+  concat: "`$append($a, $b)`",
+  push: "`$append($arr, value)`",
+};
+
+export interface JSONataUnknownFunctionFinding {
+  name: string;
+  position?: number;
+  suggestion: string | null;
+}
+
+export function findUnknownFunctionCalls(source: string): JSONataUnknownFunctionFinding[] {
+  const ast: unknown = compile(source).ast();
+  const bound = new Set<string>();
+  const calls: Array<{ name: string; position: number | undefined }> = [];
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const node = value as Record<string, unknown>;
+    if (node.type === "bind") {
+      const lhs = node.lhs as Record<string, unknown> | undefined;
+      if (lhs?.type === "variable" && typeof lhs.value === "string") bound.add(lhs.value);
+    }
+    if (node.type === "lambda" && Array.isArray(node.arguments)) {
+      for (const argument of node.arguments as Array<Record<string, unknown> | undefined>) {
+        if (argument?.type === "variable" && typeof argument.value === "string") {
+          bound.add(argument.value);
+        }
+      }
+    }
+    if (node.type === "function") {
+      const procedure = node.procedure as Record<string, unknown> | undefined;
+      if (procedure?.type === "variable" && typeof procedure.value === "string") {
+        calls.push({
+          name: procedure.value,
+          position: typeof procedure.position === "number" ? procedure.position : undefined,
+        });
+      }
+    }
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(ast);
+
+  const findings: JSONataUnknownFunctionFinding[] = [];
+  const seen = new Set<string>();
+  for (const call of calls) {
+    if (JSONATA_BUILTIN_FUNCTIONS.has(call.name) || bound.has(call.name)) continue;
+    const key = `${call.name}:${call.position ?? "unknown"}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    findings.push({
+      name: call.name,
+      ...(call.position !== undefined ? { position: call.position } : {}),
+      suggestion: JSONATA_FUNCTION_SUGGESTIONS[call.name] ?? null,
+    });
+  }
+  return findings;
+}
+
+export function describeUnknownFunction(f: JSONataUnknownFunctionFinding): string {
+  return (
+    `JSONata has no function \`$${f.name}\`` +
+    (f.suggestion
+      ? `; use ${f.suggestion}`
+      : " — only JSONata built-ins and functions bound with := function(...) are callable")
+  );
+}
+
 export function parseDeps(source: string): ExprDeps {
   const inputs = new Set<string>();
   const steps = new Set<string>();

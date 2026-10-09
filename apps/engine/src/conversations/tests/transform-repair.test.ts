@@ -9,9 +9,15 @@ import { EngineClient } from "../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../llm/mock-provider.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createEmptyDraftDocument } from "../authoring-state.ts";
+import { runRecordedEval } from "../recorded-eval.ts";
+import { stepFingerprint } from "../step-fingerprint.ts";
 import { dryRunTransformTool } from "../tools/dry-run-transform.ts";
 import type { ToolContext } from "../tools/index.ts";
-import { MAX_REPAIR_ATTEMPTS, repairTransformExpression } from "../transform-repair.ts";
+import {
+  MAX_REPAIR_ATTEMPTS,
+  repairTransformExpression,
+  type TransformEvaluation,
+} from "../transform-repair.ts";
 
 const nextUuid = createDeterministicUuidFactory(0xf18_10);
 
@@ -88,7 +94,7 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     const outcome = await repairTransformExpression({
       expression: "return input.scope.fetch.data.wrong_field;",
       finding: { kind: "empty_result", message: "expression evaluated to an empty result" },
-      scopeSample: RECORDED_SCOPE,
+      evaluation: { kind: "step_scope", scope: RECORDED_SCOPE, input: null },
       pathCandidates: ["input.scope.fetch.data.items"],
       tenant_id,
       db: ctx.db,
@@ -107,7 +113,7 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     const outcome = await repairTransformExpression({
       expression: "return input.scope.fetch.data.wrong_field;",
       finding: { kind: "empty_result", message: "expression evaluated to an empty result" },
-      scopeSample: RECORDED_SCOPE,
+      evaluation: { kind: "step_scope", scope: RECORDED_SCOPE, input: null },
       tenant_id,
       db: ctx.db,
     });
@@ -115,6 +121,153 @@ describe("repairTransformExpression — bounded repair mechanics", () => {
     if (outcome.repaired) throw new Error("unreachable");
     expect(outcome.attempts).toBe(MAX_REPAIR_ATTEMPTS);
     expect(outcome.last_error.length).toBeGreaterThan(0);
+  });
+});
+
+describe("repairTransformExpression — workflow_output verification mirrors the engine", () => {
+  const FORECAST = {
+    daily: {
+      time: ["2026-06-22", "2026-06-23", "2026-06-24"],
+      temperature_2m_max: [24.1, 31.2, 27.4],
+    },
+  };
+  const OUTPUT_SCHEMA = {
+    type: "object",
+    required: ["hottest_day", "max_temp"],
+    properties: { hottest_day: { type: "string" }, max_temp: { type: "number" } },
+  };
+  const evaluation: TransformEvaluation = {
+    kind: "workflow_output",
+    root: FORECAST,
+    scope: { forecast: { data: FORECAST, duration_ms: 1, error: null } },
+    input: null,
+    output_schema: OUTPUT_SCHEMA,
+  };
+  const ARGMAX =
+    '($t := daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { "hottest_day": daily.time[$idx], "max_temp": $m })';
+
+  function repairPrompts(): string[] {
+    return getMockProvider()
+      .calls.filter((c) => c.flow === "repair")
+      .map((c) => c.last_user);
+  }
+
+  test("the root is the last step's data: a candidate that only resolves against the step scope is rejected, bare paths on the final value win", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.repair = () => {
+      calls += 1;
+      return calls === 1
+        ? { expression: '{ "hottest_day": forecast.data.daily.time[0], "max_temp": 1 }' }
+        : { expression: ARGMAX };
+    };
+    const outcome = await repairTransformExpression({
+      expression: "$number(daily.time)",
+      language: "jsonata",
+      finding: { kind: "eval_error", message: "output_transform threw: D3030" },
+      evaluation,
+      site: "output_transform",
+      tenant_id,
+      db: ctx.db,
+    });
+    expect(outcome.repaired).toBe(true);
+    if (!outcome.repaired) throw new Error("unreachable");
+    expect(outcome.attempts).toBe(2);
+    expect(outcome.after).toBe(ARGMAX);
+    const prompts = repairPrompts();
+    expect(prompts[0]).toContain("Recorded final value the expression evaluates against");
+    expect(prompts[0]).toContain("Declared output_schema");
+    expect(prompts[1]).toContain("violates output_schema");
+  });
+
+  test("a candidate that satisfies the root but violates output_schema is rejected with the violation", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.repair = () => {
+      calls += 1;
+      return calls === 1
+        ? { expression: '{ "hottest": daily.time[1], "max_temp": $max(daily.temperature_2m_max) }' }
+        : { expression: ARGMAX };
+    };
+    const outcome = await repairTransformExpression({
+      expression: "$number(daily.time)",
+      language: "jsonata",
+      finding: { kind: "eval_error", message: "output_transform threw" },
+      evaluation,
+      site: "output_transform",
+      tenant_id,
+      db: ctx.db,
+    });
+    expect(outcome.repaired).toBe(true);
+    if (!outcome.repaired) throw new Error("unreachable");
+    expect(outcome.attempts).toBe(2);
+    expect(repairPrompts()[1]).toContain("$output/hottest_day");
+  });
+
+  test("a candidate that evaluates to undefined against the final value never passes (the engine would leak the raw payload)", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.repair = () => {
+      calls += 1;
+      return { expression: calls === 1 ? "nope.missing" : "also.missing" };
+    };
+    const outcome = await repairTransformExpression({
+      expression: "$number(daily.time)",
+      language: "jsonata",
+      finding: { kind: "eval_error", message: "output_transform threw" },
+      evaluation: { ...evaluation, output_schema: null },
+      site: "output_transform",
+      tenant_id,
+      db: ctx.db,
+    });
+    expect(outcome.repaired).toBe(false);
+    if (outcome.repaired) throw new Error("unreachable");
+    expect(outcome.last_error).toContain("evaluated to undefined");
+  });
+
+  test("runRecordedEval repairs the output_transform site against the recorded final value, not the scope root", async () => {
+    let calls = 0;
+    getMockProvider().generateOverrides.repair = () => {
+      calls += 1;
+      return calls === 1
+        ? { expression: "$scope.forecast.data.daily.time[99].missing" }
+        : { expression: ARGMAX };
+    };
+    const forecast = {
+      id: "forecast",
+      kind: "request",
+      method: "GET",
+      url: "https://jsonplaceholder.typicode.com/todos",
+    };
+    const report = await runRecordedEval(
+      {
+        steps: [forecast],
+        output_transform:
+          '($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); { "hottest_day": $scope.forecast.data.daily.time[$indexOf($t, $m)], "max_temp": $m })',
+        output_schema: OUTPUT_SCHEMA,
+      },
+      {
+        latest_preview: {
+          ok: true,
+          step_id: "forecast",
+          summary: "ok",
+          step_traces: [
+            {
+              step_id: "forecast",
+              kind: "request",
+              status: "succeeded",
+              fingerprint: stepFingerprint(forecast),
+              output_preview: FORECAST,
+            },
+          ],
+        },
+      },
+      { repair: { tenant_id, db: ctx.db } },
+    );
+    const finding = report.expressions.find((f) => f.site === "output_transform");
+    expect(finding?.status).toBe("compile_error");
+    expect(finding?.message).toContain("JSONata has no function `$indexOf`");
+    expect(finding?.repair?.repaired).toBe(true);
+    if (!finding?.repair?.repaired) throw new Error("unreachable");
+    expect(finding.repair.after).toBe(ARGMAX);
+    expect(finding.repair.attempts).toBe(2);
   });
 });
 

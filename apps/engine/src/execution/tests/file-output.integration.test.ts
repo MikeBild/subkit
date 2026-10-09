@@ -6,12 +6,16 @@ import { fileLinks } from "../../db/schema/files.ts";
 import { buildObjectKey } from "../../files/object-key.ts";
 import { requireFileForTenant } from "../../files/resolver.ts";
 import { attachInlineForTest } from "../../files/test-helpers.ts";
-import { getObjectStore } from "../../storage/object-store.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
+import {
+  type MemoryOffloadStorage,
+  useMemoryOffloadStorage,
+} from "../../test-helpers/offload-storage.ts";
 import { runExecution } from "../engine.ts";
 import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
 
 let ctx: EngineTestCtx;
+let storage: MemoryOffloadStorage;
 
 const nextHex = createDeterministicHexFactory(0xf00e2f);
 
@@ -39,11 +43,13 @@ function createFileRefServer(fid: string): {
 }
 
 beforeAll(async () => {
+  storage = await useMemoryOffloadStorage();
   ctx = await createEngineCtx("file-output");
 });
 
 afterAll(async () => {
   await ctx.cleanup();
+  await storage.restore();
 });
 
 describe("workflow file-output: $file ref in step result", () => {
@@ -130,9 +136,7 @@ describe("workflow file-output: $file ref in step result", () => {
     expect(fileRow.status).toBe("ready");
     expect(fileRow.filename).toBe("http-output.bin");
 
-    const store = getObjectStore();
-    const key = att.storage_key;
-    const stored = await store.get(key);
+    const stored = await storage.store.get(att.storage_key);
     expect(stored.byteLength).toBe(fileContent.byteLength);
   });
 
@@ -247,7 +251,7 @@ describe("workflow file-output: binary HTTP response promoted to engine-managed 
       expect(links[0]!.resource_id).toBe(result.execution_id);
       expect(links[0]!.role).toBe("output");
 
-      const stored = await getObjectStore().get(buildObjectKey(ctx.tenantId, fileRow.id));
+      const stored = await storage.store.get(buildObjectKey(ctx.tenantId, fileRow.id));
       expect(Buffer.compare(Buffer.from(stored), pdfBytes)).toBe(0);
     } finally {
       await srv.close();

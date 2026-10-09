@@ -1,12 +1,41 @@
 import type { Db } from "../db/client.ts";
+import { deriveOutputBehavior } from "../workflows/output-behavior.ts";
+import type { WorkflowDef } from "../workflows/types.ts";
 import { TRANSFORM_LANGUAGES_FORBIDDING_EXPRESSION } from "../workflows/types-web-scraper.ts";
 import { MAX_PIPELINE_REPAIRS } from "./recorded-eval.ts";
-import { repairTransformExpression } from "./transform-repair.ts";
+import {
+  repairTransformExpression,
+  type TransformEvaluation,
+  type TransformRepairLanguage,
+} from "./transform-repair.ts";
 
 export interface DryRunRepairProposal {
   step_id: string | null;
   site: string;
   repair: Awaited<ReturnType<typeof repairTransformExpression>>;
+}
+
+export interface WorkflowOutputSite {
+  site: "output_transform" | "output_transform_function";
+  language: TransformRepairLanguage;
+  expression: string;
+}
+
+export function workflowOutputSite(
+  def: Pick<WorkflowDef, "output_transform" | "output_transform_function">,
+): WorkflowOutputSite | null {
+  const behavior = deriveOutputBehavior(def);
+  if (behavior === "explicit_transform" && def.output_transform) {
+    return { site: "output_transform", language: "jsonata", expression: def.output_transform };
+  }
+  if (behavior === "transform_function" && def.output_transform_function) {
+    return {
+      site: "output_transform_function",
+      language: "javascript",
+      expression: def.output_transform_function,
+    };
+  }
+  return null;
 }
 
 interface StepLike {
@@ -30,14 +59,26 @@ export async function proposeDryRunRepairs(opts: {
   steps: StepLike[];
   runWarnings: RunWarningLike[];
   runError: { code: string; message: string } | null | undefined;
-  output_transform: unknown;
+  output: WorkflowOutputSite | null;
+  outputEvaluation: TransformEvaluation | null;
   previewScope: Record<string, unknown>;
   input: unknown;
   tenant_id: string;
   db: Db;
   signal?: AbortSignal;
 }): Promise<DryRunRepairProposal[]> {
-  const { steps, runWarnings, runError, previewScope, input, tenant_id, db, signal } = opts;
+  const {
+    steps,
+    runWarnings,
+    runError,
+    output,
+    outputEvaluation,
+    previewScope,
+    input,
+    tenant_id,
+    db,
+    signal,
+  } = opts;
   const proposals: DryRunRepairProposal[] = [];
   let repairBudget = MAX_PIPELINE_REPAIRS;
 
@@ -81,8 +122,7 @@ export async function proposeDryRunRepairs(opts: {
           kind: w.code === "transform_empty_extraction" ? "empty_result" : "eval_error",
           message: w.message,
         },
-        scopeSample: previewScope,
-        input,
+        evaluation: { kind: "step_scope", scope: previewScope, input },
         site: `steps.${stepId}.expression`,
         tenant_id,
         db,
@@ -91,21 +131,16 @@ export async function proposeDryRunRepairs(opts: {
     });
   }
 
-  if (
-    repairBudget > 0 &&
-    runError?.code === "output_transform_failed" &&
-    typeof opts.output_transform === "string" &&
-    opts.output_transform.length > 0
-  ) {
+  if (repairBudget > 0 && runError?.code === "output_transform_failed" && output) {
     proposals.push({
       step_id: null,
-      site: "output_transform",
+      site: output.site,
       repair: await repairTransformExpression({
-        expression: opts.output_transform,
+        expression: output.expression,
+        language: output.language,
         finding: { kind: "eval_error", message: runError.message },
-        scopeSample: previewScope,
-        input,
-        site: "output_transform",
+        ...(outputEvaluation ? { evaluation: outputEvaluation } : {}),
+        site: output.site,
         tenant_id,
         db,
         ...(signal ? { signal } : {}),

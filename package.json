@@ -48,6 +48,7 @@
     "eval:baseline": "bun run apps/engine/eval/runner.ts --write-baseline",
     "eval:judge": "bun run apps/engine/eval/judge-calibration.ts",
     "eval:live": "bun run apps/engine/eval/live-authoring.ts",
+    "eval:live:sweep": "bun run apps/engine/eval/live-sweep.ts",
     "format": "biome format --write .",
     "gen:cockpit": "bun run scripts/gen-embedded-cockpit.ts",
     "gen:config-example": "bun run apps/engine/scripts/gen-config-example.ts > subkit.config.example.json",
@@ -77,6 +78,7 @@
     "verify": "bun run lint && bun run typecheck && bun run lint:recipes && bun run audit:invariants && bun run check:deps-phantom && bun run check:config-example-drift && bun run check:embedded-drift && bun run check:cockpit-drift && bun run check:llms-txt-drift && bun run check:openapi-drift && bun run konvention:check && bun run verify:cockpit-visual && bun run test:contract && bun run test:determinism && bun run scripts/test-files-isolated.ts apps packages scripts && bun run verify:ai && bun run build:sk && bun run test:e2e",
     "verify:ai": "bun run eval",
     "verify:cockpit-visual": "bun run build:cockpit && bun run scripts/verify-cockpit-visual.mjs",
+    "verify:llm-live": "bun run scripts/verify-llm-live.ts",
     "verify:release": "bun run scripts/verify-release.ts"
   },
   "dependencies": {

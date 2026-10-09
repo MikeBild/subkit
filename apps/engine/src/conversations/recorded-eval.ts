@@ -2,6 +2,8 @@ import { z } from "@hono/zod-openapi";
 import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
+  describeUnknownFunction,
+  findUnknownFunctionCalls,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
 import { logger } from "../logging/logger.ts";
@@ -29,7 +31,11 @@ import {
   isHandRolledCodecBlock,
   type TransformGateBlock,
 } from "./tools/transform-authoring-gate.ts";
-import { repairTransformExpression, type TransformRepairOutcome } from "./transform-repair.ts";
+import {
+  repairTransformExpression,
+  type TransformEvaluation,
+  type TransformRepairOutcome,
+} from "./transform-repair.ts";
 import type { DraftDocument, WorkflowDraftStepPreview } from "./types.ts";
 
 const EVAL_TIMEOUT_MS = 500;
@@ -113,6 +119,7 @@ export interface RecordedEvalOptions {
 interface WorkflowLike {
   steps: ReadonlyArray<Record<string, unknown>>;
   output_transform?: string;
+  output_schema?: Record<string, unknown>;
 }
 
 export interface ExpressionSite {
@@ -139,6 +146,21 @@ function collectControlFlowChildIds(steps: ReadonlyArray<Record<string, unknown>
     if (Array.isArray(branches)) for (const br of branches) collect(br);
   }
   return childIds;
+}
+
+function recordedWorkflowOutputRoot(
+  steps: ReadonlyArray<Record<string, unknown>>,
+  recordedScope: Record<string, unknown>,
+): { ok: true; root: unknown } | { ok: false } {
+  const children = collectControlFlowChildIds(steps);
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const id = steps[i]?.id;
+    if (typeof id !== "string" || children.has(id)) continue;
+    const envelope = recordedScope[id];
+    if (!envelope || typeof envelope !== "object" || !("data" in envelope)) return { ok: false };
+    return { ok: true, root: (envelope as { data: unknown }).data };
+  }
+  return { ok: false };
 }
 
 function collectExpressionSites(workflow: WorkflowLike): ExpressionSite[] {
@@ -309,6 +331,16 @@ export async function evaluateJsonataSite(
       status: "compile_error",
       message: e.message,
       ...(e.position !== undefined ? { position: e.position } : {}),
+    };
+  }
+  const [unknownFunction] = findUnknownFunctionCalls(site.expression);
+  if (unknownFunction) {
+    return {
+      site: site.site,
+      step_id: site.step_id,
+      status: "compile_error",
+      message: describeUnknownFunction(unknownFunction),
+      ...(unknownFunction.position !== undefined ? { position: unknownFunction.position } : {}),
     };
   }
 
@@ -560,11 +592,26 @@ export async function runRecordedEval(
         .map((finding) => ({ finding, site: siteByName.get(finding.site) }))
         .filter((t) => t.site !== undefined)
         .slice(0, MAX_PIPELINE_REPAIRS);
+      const outputRoot = recordedWorkflowOutputRoot(steps, recordedScope);
       await Promise.all(
         targets.map(async ({ finding, site }) => {
           const resolved = site!;
           const refs = referencedStepIds(resolved, stepIds);
           const hasRecordedScope = refs.length > 0 && refs.every((ref) => ref in recordedScope);
+          const evaluation: TransformEvaluation | undefined =
+            resolved.site === "output_transform"
+              ? outputRoot.ok
+                ? {
+                    kind: "workflow_output",
+                    root: outputRoot.root,
+                    scope: recordedScope,
+                    input: evidence.input ?? null,
+                    output_schema: workflow.output_schema ?? null,
+                  }
+                : undefined
+              : hasRecordedScope
+                ? { kind: "step_scope", scope: recordedScope, input: evidence.input ?? null }
+                : undefined;
           finding.repair = await repairTransformExpression({
             expression: resolved.expression,
             language: resolved.language,
@@ -573,8 +620,7 @@ export async function runRecordedEval(
               message: finding.message ?? "",
               ...(finding.position !== undefined ? { position: finding.position } : {}),
             },
-            scopeSample: hasRecordedScope ? recordedScope : null,
-            input: evidence.input ?? null,
+            ...(evaluation ? { evaluation } : {}),
             pathCandidates: finding.path_candidates ?? [],
             site: finding.site,
             tenant_id: repairCtx.tenant_id,

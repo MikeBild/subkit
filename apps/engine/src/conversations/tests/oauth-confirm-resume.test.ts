@@ -97,7 +97,7 @@ for (const signIn of [false, true])
         tenant_id: server.tenantId,
         id: elicitation.id,
         output: { confirmed: true },
-        decided_by: server.userId,
+        decided_by: { kind: "user", id: server.userId },
       },
       server.db,
     );
@@ -139,7 +139,7 @@ for (const signIn of [false, true])
         tenant_id: server.tenantId,
         id: followUp!.id,
         output: { confirmed: true },
-        decided_by: server.userId,
+        decided_by: { kind: "user", id: server.userId },
       },
       server.db,
     );

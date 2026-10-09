@@ -1,0 +1,63 @@
+{
+  "name": "authoring-placeholder-destination-rejected",
+  "description": "Ask-first contract: a generated definition that fills a destination with a placeholder (body.to user@example.com, or an address inside the JS transform) is refused by the pipeline after exactly ONE generation pass with authoring_definition_invalid + requires_user_input, the field is named, nothing is stashed, zero egress; the same definition with a ${input.recipient} destination is accepted and stashed.",
+  "flow": "generate",
+  "input": {
+    "goal": "Send me a daily report of my DigitalOcean droplets by email.",
+    "placeholder_definitions": {
+      "body_to": {
+        "name": "Droplet report",
+        "slug": "droplet-report",
+        "steps": [
+          {
+            "id": "send",
+            "kind": "request",
+            "method": "POST",
+            "url": "https://api.acme.com/send",
+            "body": { "to": "user@example.com", "subject": "Droplets" }
+          }
+        ]
+      },
+      "transform_expression": {
+        "name": "Droplet report",
+        "slug": "droplet-report",
+        "steps": [
+          {
+            "id": "compose",
+            "kind": "transform",
+            "language": "javascript",
+            "expression": "return { to: \"recipient@example.com\", body: \"report\" };"
+          }
+        ]
+      }
+    },
+    "parameterized_definition": {
+      "name": "Droplet report",
+      "slug": "droplet-report",
+      "input_schema": {
+        "type": "object",
+        "properties": { "recipient": { "type": "string" } },
+        "required": ["recipient"]
+      },
+      "steps": [
+        {
+          "id": "send",
+          "kind": "request",
+          "method": "POST",
+          "url": "https://api.acme.com/send",
+          "body": { "to": "${input.recipient}", "subject": "Droplets" }
+        }
+      ]
+    },
+    "expect": {
+      "error_code": "authoring_definition_invalid",
+      "attempts": 1,
+      "paths": {
+        "body_to": "steps.send.body.to",
+        "transform_expression": "steps.compose.expression"
+      },
+      "gate_code": "workflow_placeholder_destination",
+      "next_best_actions": ["ask_user_text", "ask_user_form", "author_workflow"]
+    }
+  }
+}

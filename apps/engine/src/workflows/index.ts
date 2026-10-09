@@ -16,6 +16,7 @@ export {
   contentBoundariesFromManifest,
   contentPublicationLabels,
 } from "./content-publication-proposal.ts";
+export * from "./destination-placeholders.ts";
 export * from "./draft-schemas.ts";
 export * from "./drafts.ts";
 export { WorkflowEffectManifestSchema } from "./effect-manifest.ts";

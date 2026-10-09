@@ -20460,7 +20460,7 @@ export interface components {
         ValidateWorkflowBody: {
             name?: string;
             slug?: string;
-            description?: string;
+            description?: components["schemas"]["CatalogDescription"];
             input_schema?: {
                 [key: string]: unknown;
             };
@@ -20471,6 +20471,17 @@ export interface components {
                 [key: string]: unknown;
             }[];
             timeout_ms?: number;
+            max_llm_tokens_per_run?: number;
+            trigger?: components["schemas"]["WorkflowTrigger"];
+            output_transform?: string;
+            output_transform_function?: string;
+            validation_expression?: string;
+            validation_function?: string;
+            response_filters?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
         };
         WorkflowInputSchemaResponse: {
             /** @enum {string} */
