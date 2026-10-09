@@ -303,6 +303,26 @@ describe("runAuthoringPipeline — one-shot contract", () => {
   );
 
   tw(
+    "a generation model that declines names its reason in the author_workflow failure instead of a generic parse error",
+    async () => {
+      getMockProvider().generateOverrides.generate = () => {
+        throw new Error(
+          "the webhook destination is missing; supplying it would require inventing one",
+        );
+      };
+      const toolCtx = makeCtx();
+      const result = await runAuthoringPipeline({ ctx: toolCtx, goal: "email the report" });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("unreachable");
+      expect(result.error_code).toBe("authoring_generation_failed");
+      expect(result.message).toContain("the webhook destination is missing");
+      expect(result.message).not.toContain("schema-parseable");
+      expect(toolCtx._draft.value).toBeNull();
+      expect(fetchCalls).toBe(0);
+    },
+  );
+
+  tw(
     "never-converging mock gives up after MAX_GENERATION_PASSES with authoring_definition_invalid and the previous draft untouched",
     async () => {
       let calls = 0;
