@@ -130,8 +130,52 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
       cause: error,
     });
   });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.locator('[data-testid="runs-search"]').waitFor({ state: "visible" });
+  const reloadRequests = [];
+  const reloadFailures = [];
+  const reloadResponse = (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.startsWith("/v1/")) reloadRequests.push({ path, status: response.status() });
+  };
+  const reloadFailure = (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/v1/"))
+      reloadFailures.push({ path, error: request.failure()?.errorText ?? "unknown" });
+  };
+  page.on("response", reloadResponse);
+  page.on("requestfailed", reloadFailure);
+  let reloaded;
+  try {
+    reloaded = await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('[data-testid="runs-search"]').waitFor({ state: "visible" });
+  } catch (error) {
+    const state = await Promise.race([
+      page
+        .evaluate(() => ({
+          pathname: window.location.pathname,
+          searchKeys: [...new URLSearchParams(window.location.search).keys()],
+          runs: new URLSearchParams(window.location.search).get("runs"),
+          readyState: document.readyState,
+          testIds: [...document.querySelectorAll("[data-testid]")]
+            .map((element) => element.getAttribute("data-testid"))
+            .filter((value, index, values) => values.indexOf(value) === index)
+            .slice(0, 80),
+        }))
+        .catch(() => ({ unavailable: true })),
+      new Promise((resolve) => setTimeout(() => resolve({ unavailable: true }), 1000)),
+    ]);
+    throw new Error(
+      `${where}: the runs search did not survive reload — ${JSON.stringify({
+        documentStatus: reloaded?.status() ?? null,
+        state,
+        requests: reloadRequests.slice(-40),
+        failures: reloadFailures.slice(-20),
+      })}`,
+      { cause: error },
+    );
+  } finally {
+    page.off("response", reloadResponse);
+    page.off("requestfailed", reloadFailure);
+  }
   const kept = await page.locator('[data-testid="runs-search"]').inputValue();
   if (kept !== "Monatsreport")
     throw new Error(`${where}: a reload lost the search — the field reads "${kept}"`);
