@@ -76,7 +76,15 @@ codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_K
 sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
 ```
 
-Every approved workflow is then a tool in the agent, with the rights of the key and nothing more.
+Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks do not infer domains on their own. Both use the same authenticated sk profile as the CLI.
+
+### Set up and verify briefings
+
+MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit the generated `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` wires Claude Code SessionStart, UserPromptSubmit and SessionEnd hooks, and Codex SessionStart and UserPromptSubmit hooks. It is safe to rerun; `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+
+Run `sk agent briefing` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use `sk agent briefing --json` to inspect the structured result, including `domains`, `knowledge_sources`, `skills_full` and `used_tokens`. A successful result with empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`. `sk agent init` also prints remaining manual client steps.
+
+Hooks do not discover the repository's domain automatically: they walk up from the working directory for `.sk/agent.json` and stay silent when it is absent. Prompt hooks can additionally resolve domains named in new prompts. Codex hooks require `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in Codex's `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
 
 ## License
 
