@@ -515,6 +515,7 @@ export async function runAuthoringPipeline(
   let attempts = 0;
   let priorFindings: string[] | null = null;
   let deadlineExceeded = false;
+  let lastGenerationError: string | null = null;
   let criticRan = false;
   let criticRejection: CriticRejectionDetail | null = null;
 
@@ -653,6 +654,7 @@ export async function runAuthoringPipeline(
         pass,
         error: message,
       });
+      lastGenerationError = message;
       passErrors = [{ path: "(llm)", message }];
     }
 
@@ -754,7 +756,9 @@ export async function runAuthoringPipeline(
       error_code: "authoring_generation_failed",
       message: deadlineExceeded
         ? "generation ran out of time before producing a complete definition — the model was cut off, not wrong. Retry, or split the specification into smaller workflows."
-        : "the generation model produced no schema-parseable workflow definition within the pass cap",
+        : lastGenerationError
+          ? `the generation model produced no workflow definition: ${lastGenerationError}`
+          : "the generation model produced no schema-parseable workflow definition within the pass cap",
       ...(deadlineExceeded ? { deadline_exceeded: true } : {}),
       errors: validationErrors,
       attempts,
