@@ -186,7 +186,7 @@ export function UsagePage() {
           className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
         >
           <span
-            className="block h-full rounded-full bg-primary"
+            className="block h-full rounded-full bg-accent"
             style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
           />
         </span>
