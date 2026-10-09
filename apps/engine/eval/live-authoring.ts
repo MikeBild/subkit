@@ -309,7 +309,14 @@ export function projectTurn(outcome: TurnOutcomeJson): ProjectedTurn {
 }
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i;
-const RECIPIENT_FIELD_RE = /mail|recipient|empf|address|\bto\b/i;
+const RECIPIENT_NAME_RE = /mail|recipient|empf|address|^to$/i;
+const RECIPIENT_LABEL_RE = /mail|recipient|empf|address/i;
+const NOT_RECIPIENT_RE = /subject|betreff|content|inhalt|body|source|quelle|data/i;
+
+function isRecipientField(name: string, label: string): boolean {
+  if (NOT_RECIPIENT_RE.test(`${name} ${label}`)) return false;
+  return RECIPIENT_NAME_RE.test(name) || RECIPIENT_LABEL_RE.test(label);
+}
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)
@@ -352,7 +359,7 @@ export function answerForElicitation(
         else if (type === "number") {
           const n = answer.match(/-?\d+(?:\.\d+)?/)?.[0];
           values[name] = n === undefined ? 0 : Number(n);
-        } else if (email && RECIPIENT_FIELD_RE.test(`${name} ${label}`)) values[name] = email;
+        } else if (email && isRecipientField(name, label)) values[name] = email;
         else values[name] = answer;
       }
       return { values };
