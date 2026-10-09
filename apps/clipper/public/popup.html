@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SubKit Clipper</title>
+    <link rel="stylesheet" href="clipper.css" />
+  </head>
+  <body>
+    <main class="clipper">
+      <header class="masthead">
+        <span class="mark">S</span>
+        <div><p class="eyebrow">SubKit</p><h1 data-i18n="heading">In Wissen sichern</h1></div>
+        <button id="setup" class="quiet" type="button" aria-label="Einstellungen">⚙</button>
+      </header>
+      <form id="clip-form">
+        <label><span data-i18n="titleField">Titel</span> <input id="title" required /></label>
+        <label><span data-i18n="sourceField">Quelladresse</span> <input id="source-url" type="url" required /></label>
+        <label><span data-i18n="author">Autor</span> <input id="author" /></label>
+        <label><span data-i18n="publishedAt">Veröffentlicht am</span> <input id="published-at" /></label>
+        <label><span data-i18n="source">Wissenssammlung</span> <select id="source"></select></label>
+        <input id="collection-name" placeholder="Name der neuen Sammlung" />
+        <label><span data-i18n="content">Markdown</span> <textarea id="content" rows="13" required></textarea></label>
+        <p id="status" class="status" aria-live="polite"></p>
+        <section id="duplicate" class="duplicate" hidden>
+          <p data-i18n="duplicate">Dieser Clip existiert bereits.</p>
+          <button id="replace" class="quiet" type="button" data-i18n="replace">Ersetzen</button>
+          <button id="copy" class="quiet" type="button" data-i18n="copy">Als Kopie sichern</button>
+        </section>
+        <button id="retry-attempt" class="quiet" type="button" hidden data-i18n="retryAttempt">Neuen Speicherversuch starten</button>
+        <button id="save" class="primary" type="submit" data-i18n="save">Sichern</button>
+        <div class="draft-actions">
+          <button id="capture-again" class="quiet" type="button" data-i18n="newCapture">Neu erfassen</button>
+          <button id="discard" class="quiet" type="button" data-i18n="discard">Entwurf verwerfen</button>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

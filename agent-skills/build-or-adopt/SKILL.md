@@ -5,7 +5,7 @@ description: Use before adding restart-safety, run history, re-run, per-customer
 
 # Build or adopt
 
-> Installed from a running sk engine. The three reference pages next to this
+> Installed from a running sk engine. The reference pages next to this
 > file are that engine's own decision-and-install set, fetched at install time.
 
 ## When this fires
@@ -98,6 +98,7 @@ decision to a running engine.
 ```
 SKILL.md
 references/setup.md        from nothing to a running engine
+references/coding-agents.md agent briefings and hooks
 references/cli.md          every sk command
 references/settings.md     every runtime setting
 references/connectors.md   connector templates and recipes

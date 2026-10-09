@@ -10,6 +10,7 @@ import {
   KNOWLEDGE_SOURCE_MAX_BYTES,
   KnowledgeBudgetExceededError,
   KnowledgeSlugConflictError,
+  KnowledgeSlugExistsError,
   KnowledgeSourceSchema,
   UpdateKnowledgeSourceSchema,
 } from "../../knowledge/index.ts";
@@ -24,6 +25,7 @@ import {
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
+import { registerKnowledgeDocumentRoutes } from "./knowledge-documents.ts";
 import { registerKnowledgeVersionRoutes } from "./knowledge-versions.ts";
 
 const KnowledgeSourceListResponse = z
@@ -536,6 +538,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/knowledge-sources/search", requirePermission("knowledge:read"));
 
   registerKnowledgeVersionRoutes(app);
+  registerKnowledgeDocumentRoutes(app);
 
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
@@ -810,7 +813,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       const principal = requireAuth(c);
       const db = c.get("db");
       const body = c.req.valid("json");
-      const { files, ...inputFields } = body;
+      const { files, create_only, ...inputFields } = body;
       try {
         const result = await svc.upsertKnowledgeBundle(
           {
@@ -818,11 +821,22 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
             actor: actorOf(principal),
             input: inputFields,
             files,
+            ...(create_only ? { create_only } : {}),
           },
           db,
         );
         return c.json(result, 200);
       } catch (err) {
+        if (err instanceof KnowledgeSlugExistsError) {
+          return c.json(
+            {
+              code: "slug_exists",
+              message: err.message,
+              details: { knowledge_source_id: err.knowledge_source_id },
+            },
+            409,
+          );
+        }
         if (err instanceof KnowledgeSlugConflictError) {
           return c.json(
             {

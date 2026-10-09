@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import type { Actor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { bucketSize } from "../audit/buckets.ts";
@@ -8,12 +9,14 @@ import {
   FileScanCompletedMetadataSchema,
 } from "../audit/types.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { fileLinks } from "../db/schema/files.ts";
+import { fileLinks, files } from "../db/schema/files.ts";
 import { recordFilesDedupSeen } from "../files/dedup-counter.ts";
 import {
   type PersistInlineUploadResult,
   persistInlineUpload,
 } from "../files/persist-inline-upload.ts";
+import { storageKey } from "../files/resolver.ts";
+import { getObjectStore } from "../storage/object-store.ts";
 
 export async function persistKnowledgeFile(
   db: Executor,
@@ -34,6 +37,17 @@ export async function persistKnowledgeFile(
   });
   if (persisted.dedup) await recordFilesDedupSeen(db as Db, p.tenant_id);
   return persisted;
+}
+
+export async function cleanupPersistedKnowledgeFile(
+  db: Executor,
+  persisted: PersistInlineUploadResult | null,
+): Promise<void> {
+  if (!persisted || persisted.dedup) return;
+  await db
+    .delete(files)
+    .where(and(eq(files.tenant_id, persisted.row.tenant_id), eq(files.id, persisted.row.id)));
+  await getObjectStore().delete(storageKey(persisted.row.storage_uri));
 }
 
 export async function linkKnowledgeFile(

@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { apiKeys, files, users } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { getObjectStore } from "../../storage/object-store.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let srv: HttpTestServer;
@@ -194,6 +195,89 @@ describe("POST /v1/knowledge-sources/bundle — upsert lifecycle", () => {
     const body = (await res.json()) as { hits: { source_name: string; path: string | null }[] };
     expect(body.hits.length).toBeGreaterThan(0);
     expect(body.hits[0]!.source_name).toBe("Team Wiki");
+  });
+});
+
+describe("POST /v1/knowledge-sources/bundle — create_only", () => {
+  test("lost create response reconciles through slug_exists without replacing the bundle", async () => {
+    const body = {
+      name: "Clip collection",
+      slug: "clip-collection-create-only",
+      create_only: true,
+      files: [{ path: "clips/first.md", content: "# First" }],
+    };
+    const created = await postBundle(body);
+    expect(created.status).toBe(200);
+    const source = (await created.json()) as { knowledge_source: { id: string } };
+    const retried = await postBundle({
+      ...body,
+      files: [{ path: "clips/first.md", content: "# Changed after lost response" }],
+    });
+    expect(retried.status).toBe(409);
+    expect(
+      (await retried.json()) as { code: string; details: { knowledge_source_id: string } },
+    ).toMatchObject({
+      code: "slug_exists",
+      details: { knowledge_source_id: source.knowledge_source.id },
+    });
+    const content = await fetch(
+      `${srv.baseUrl}/v1/knowledge-sources/${source.knowledge_source.id}/content`,
+      { headers: { authorization: `Bearer ${srv.apiKey}` } },
+    );
+    expect(content.status).toBe(200);
+    expect((await content.json()) as { documents: { content: string }[] }).toMatchObject({
+      documents: [{ content: "# First" }],
+    });
+  });
+
+  test("concurrent create_only requests keep one source, one file, and one create audit", async () => {
+    const beforeFiles = await srv.db.select().from(files).where(eq(files.tenant_id, srv.tenantId));
+    const beforeObjects = await getObjectStore().list(`${srv.tenantId}/`);
+    const slug = "clip-collection-concurrent-create-only";
+    const [first, second] = await Promise.all([
+      postBundle({
+        name: "Concurrent clip collection",
+        slug,
+        create_only: true,
+        files: [{ path: "clips/first.md", content: "# First concurrent" }],
+      }),
+      postBundle({
+        name: "Concurrent clip collection",
+        slug,
+        create_only: true,
+        files: [{ path: "clips/first.md", content: "# First concurrent" }],
+      }),
+    ]);
+    const responses = [first, second];
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(1);
+    const created = (await responses.find((response) => response.status === 200)!.json()) as {
+      knowledge_source: { id: string };
+    };
+    expect(
+      (await responses.find((response) => response.status === 409)!.json()) as {
+        code: string;
+        details: { knowledge_source_id: string };
+      },
+    ).toMatchObject({
+      code: "slug_exists",
+      details: { knowledge_source_id: created.knowledge_source.id },
+    });
+    const afterFiles = await srv.db.select().from(files).where(eq(files.tenant_id, srv.tenantId));
+    expect(afterFiles).toHaveLength(beforeFiles.length + 1);
+    const afterObjects = await getObjectStore().list(`${srv.tenantId}/`);
+    expect(afterObjects).toHaveLength(beforeObjects.length + 1);
+    const audits = await srv.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, srv.tenantId),
+          eq(auditLog.resource_id, created.knowledge_source.id),
+          eq(auditLog.action, "knowledge_source.created"),
+        ),
+      );
+    expect(audits).toHaveLength(1);
   });
 });
 

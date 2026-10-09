@@ -82,9 +82,9 @@ describe("the self-description set", () => {
     expect(page).toContain(
       "In each repository, run `sk agent init --domains <category>[,<category>]`",
     );
-    expect(page).toContain("Use `sk agent briefing --json`");
-    expect(page).toContain("Hooks do not discover the repository's domain automatically");
-    expect(page).toContain("one-time trust in Codex's `/hooks` UI");
+    expect(page).toContain("`sk agent briefing --json`");
+    expect(page).toContain("Hooks do not infer the repository's domains on their own");
+    expect(page).toContain("one-time trust in its `/hooks` UI");
   });
 
   test("no served page links to a page the binary does not carry", async () => {

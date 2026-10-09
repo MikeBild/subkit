@@ -52,3 +52,8 @@ declare module "*.css" {
   const content: string;
   export default content;
 }
+
+declare module "*.zip" {
+  const path: string;
+  export default path;
+}
