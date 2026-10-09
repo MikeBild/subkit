@@ -38,21 +38,21 @@ Replace `<engine-host>` with this installation's address from `get_engine_status
 sk agent init --domains <category>
 ```
 
-Explain in one sentence what it did: `.sk/agent.json` (commit it), Claude Code hooks in `~/.claude/settings.json`, Codex briefing hooks in `~/.codex/hooks.json`. Then the two Codex steps that stay manual: `[features] hooks = true` in `~/.codex/config.toml`, and trusting the hooks once under `/hooks`. Hermes: run `sk agent briefing` in the repo and hand the output to the session.
+Explain in one sentence what it did: `.sk/agent.json` (commit it), Claude Code hooks in `~/.claude/settings.json`, Codex briefing hooks in `~/.codex/hooks.json`. The command reconciles the SubKit hooks and preserves other tools’ hooks. Claude Code and Codex show you the loaded domains, included materials, and pending skill reviews; the model receives the full briefing. A failed fetch gives a non-blocking warning. Then the two Codex steps that stay manual: `[features] hooks = true` in `~/.codex/config.toml`, and trusting the hooks once under `/hooks`. Hermes: run `sk agent briefing` in the repo and hand the output to the session. Repositories without `.sk/agent.json` stay silent; run this once per repository and commit the generated file.
 
 The domain is a catalog category. Use `list_knowledge_sources` or `find_workflow` to name the category the person's work already lives in; do not make one up.
 
 ## 4. Say what the briefing carries
 
-Conventions (active skills of the domain), the knowledge index, the domain's workflows and connectors, the three working guides, and the grounding rule to search before guessing. To get something briefed: put it in the category or tag it `domain:<slug>`. Verify with `sk agent briefing --domains <category>`.
+Conventions (active skills of the domain), the knowledge index, the domain's workflows and connectors, the three working guides, and the grounding rule to search before guessing. To get something briefed: put it in the category or tag it `domain:<slug>`. Verify with `sk status` and `sk agent briefing --json`. Empty `knowledge_sources` or `skills_full` means the briefing works, but those materials are not assigned to its domain.
 
 ## 5. When no briefing arrives, check in this order
 
-1. `.sk/agent.json` exists up the tree.
-2. The profile has an API key (`sk status`).
-3. `sk` is on the client's PATH.
-4. Codex: feature flag on, hooks trusted, `additionalContextLimit: 0` present.
-5. `~/.sk/debug.log` for `agent.briefing_hook_failed`.
+1. Start the client in the repository or a subdirectory and confirm `.sk/agent.json` exists up the tree.
+2. Run `sk status`, then `sk agent briefing --json` from that repository to separate configuration, credentials, and server problems.
+3. In Claude Code or Codex, open `/hooks` to check whether hooks ran and inspect errors. Codex also needs its feature flag enabled, trusted hooks, and `additionalContextLimit: 0`.
+4. Confirm `sk` is on the client’s PATH (desktop-launched clients may need an absolute command path).
+5. Read `~/.sk/debug.log` for `agent.briefing_hook_failed`; hook failures show a warning and never block the session.
 
 ## Pitfalls
 

@@ -6,6 +6,11 @@
       "summary": "sk is a self-hosted engine for governed workflows: describe the work in plain language, approve what it may touch, and every run is recorded."
     },
     {
+      "path": "coding-agents.md",
+      "title": "Use sk from a coding agent",
+      "summary": "Use MCP for approved sk tools; run sk agent init to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings."
+    },
+    {
       "path": "cli.md",
       "title": "sk CLI reference",
       "summary": "Every sk command and argument — and the surface authoring runs through: creating or changing a workflow, connector, knowledge source or skill is a definition edit, and definition edits belong here, where the change is a file you can read and a command you can re-run."

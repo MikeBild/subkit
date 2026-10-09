@@ -4,8 +4,21 @@ import { LLMS_PAGE_PATHS, type LlmsPage, renderLlmsIndex } from "@shared/llms-in
 
 const OUT_DIR = "apps/engine/src/http/llms";
 
+function codingAgentsReference(): string {
+  const readme = readFileSync("README.md", "utf8");
+  const start = readme.indexOf("## Use sk from a coding agent\n");
+  if (start < 0) throw new Error("README.md has no coding-agent setup section");
+  const rest = readme.slice(start);
+  const nextSection = rest.slice(1).search(/\n## (?!#)/);
+  const section = nextSection < 0 ? rest : rest.slice(0, nextSection + 1);
+  return section
+    .replace(/^## Use sk from a coding agent/m, "# Use sk from a coding agent")
+    .trimEnd();
+}
+
 const SOURCES: Record<string, () => string> = {
   "setup.md": () => readFileSync("README.md", "utf8"),
+  "coding-agents.md": codingAgentsReference,
   "cli.md": () => run("scripts/gen-cli-reference.ts"),
   "settings.md": () => run("apps/engine/scripts/gen-settings-doc.ts"),
   "connectors.md": () => run("scripts/gen-catalog.ts"),
