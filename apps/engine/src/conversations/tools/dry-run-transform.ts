@@ -428,8 +428,9 @@ export const dryRunTransformTool: ConversationTool = {
               ? { position: outcome.error.position }
               : {}),
           },
-          scopeSample: scopeRecord,
-          input: inputValue,
+          ...(scopeRecord
+            ? { evaluation: { kind: "step_scope", scope: scopeRecord, input: inputValue } }
+            : {}),
           site: "dry_run_transform",
           tenant_id: ctx.tenant_id,
           db: ctx.db,

@@ -19,6 +19,7 @@ import {
 import { connectorOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { withConnectorAuthenticated } from "../authoring-state.ts";
+import { decidedByFor } from "../decided-by.ts";
 import { ElicitationUnsupportedError } from "../elicitation-bridge.ts";
 import {
   createNativeElicitation,
@@ -102,7 +103,7 @@ async function resolveOAuthApprovalElicitation(
       conversation_id: ctx.conversation_id,
       id: elicitationId,
       output: { status },
-      decided_by: ctx.actor_id,
+      decided_by: decidedByFor(ctx.actor_id, ctx.principal),
       status: status === "succeeded" ? "resolved" : "cancelled",
       ...(status === "succeeded" ? {} : { reason: mapOAuthWaitFailure(status).code }),
       transport: "succeeded",

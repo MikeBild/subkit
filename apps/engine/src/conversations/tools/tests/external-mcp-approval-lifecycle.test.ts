@@ -189,7 +189,7 @@ async function answer(conversation_id: string, confirmed: boolean) {
       conversation_id,
       id: elicitation.id,
       output,
-      decided_by: actor_id,
+      decided_by: { kind: "user", id: actor_id },
       ...(confirmed ? {} : { status: "cancelled" as const, reason: "user_declined" }),
     },
     ctx.db as unknown as Db,

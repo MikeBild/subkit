@@ -6,14 +6,16 @@ import {
   ElicitRequestSchema,
   type ElicitResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
 import {
   apiKeys,
   connectors,
   executionSteps,
   executions,
+  roles,
   skills,
+  systemAccounts,
   tenants,
   users,
   workflows,
@@ -44,6 +46,10 @@ export interface McpTestSuite {
     userId: string,
     scopes: string[],
   ) => Promise<{ plaintext: string }>;
+  issueSystemAccountApiKey: (
+    scopes: string[],
+    opts?: { roleName?: string; name?: string },
+  ) => Promise<{ plaintext: string; system_account_id: string }>;
   connectTasks: () => Promise<Client>;
   connectTasksWithApiKey: (apiKey: string) => Promise<Client>;
   seedWorkflow: (def: WorkflowDef & { slug: string }) => Promise<{ id: string; slug: string }>;
@@ -234,6 +240,41 @@ export async function startMcpTestSuite(
     return { plaintext: key.plaintext };
   };
 
+  const issueSystemAccountApiKey = async (
+    scopes: string[],
+    opts: { roleName?: string; name?: string } = {},
+  ): Promise<{ plaintext: string; system_account_id: string }> => {
+    const roleName = opts.roleName ?? "member";
+    const [role] = await http.db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(and(isNull(roles.tenant_id), eq(roles.name, roleName)))
+      .limit(1);
+    if (!role) throw new Error(`global role ${roleName} not seeded`);
+    const [account] = await http.db
+      .insert(systemAccounts)
+      .values({
+        tenant_id: http.tenantId,
+        name: opts.name ?? `bot-${label}-${Math.random().toString(36).slice(2, 8)}`,
+        role_id: role.id,
+      })
+      .returning({ id: systemAccounts.id });
+    if (!account) throw new Error("seed system account failed");
+    const key = generateKey();
+    const [row] = await http.db
+      .insert(apiKeys)
+      .values({
+        tenant_id: http.tenantId,
+        system_account_id: account.id,
+        prefix: key.prefix,
+        token_sha256: key.hash,
+        scopes,
+      })
+      .returning({ id: apiKeys.id });
+    if (!row) throw new Error("seed system account api key failed");
+    return { plaintext: key.plaintext, system_account_id: account.id };
+  };
+
   const seedWorkflow = async (
     def: WorkflowDef & { slug: string },
   ): Promise<{ id: string; slug: string }> => {
@@ -380,6 +421,7 @@ export async function startMcpTestSuite(
     connectUrlElicitation,
     issueApiKey,
     issueApiKeyForTenant,
+    issueSystemAccountApiKey,
     connectTasks,
     connectTasksElicitation,
     connectTasksWithApiKey,

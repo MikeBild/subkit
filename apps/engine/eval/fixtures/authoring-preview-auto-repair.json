@@ -1,0 +1,28 @@
+{
+  "name": "authoring-preview-auto-repair",
+  "description": "Deterministic in-preview auto-repair: a draft whose JSONata output_transform throws at runtime comes back GREEN from ONE dry_run_workflow call. The repair is verified against the engine's real root (the last step's data) and the declared output_schema, the repaired definition is re-run from step fixtures (zero upstream calls), the draft carries the verified expression, the envelope carries auto_repair + the preview.auto_repaired warning, the audit log records workflow.preview_auto_repaired, and two executions rows exist linked via replaced_execution_id. No second preview, no edit_workflow_patch.",
+  "flow": "repair",
+  "input": {
+    "goal": "Return the hottest day of the forecast: the date and its maximum temperature.",
+    "forecast": {
+      "daily": {
+        "time": ["2026-06-22", "2026-06-23", "2026-06-24"],
+        "temperature_2m_max": [24.1, 31.2, 27.4]
+      }
+    },
+    "broken_output_transform": "$number(daily.time)",
+    "repaired_output_transform": "($t := daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { \"hottest_day\": daily.time[$idx], \"max_temp\": $m })",
+    "output_schema": {
+      "type": "object",
+      "required": ["hottest_day", "max_temp"],
+      "properties": { "hottest_day": { "type": "string" }, "max_temp": { "type": "number" } }
+    },
+    "expect": {
+      "final_output": { "hottest_day": "2026-06-23", "max_temp": 31.2 },
+      "warning_code": "preview.auto_repaired",
+      "audit_action": "workflow.preview_auto_repaired",
+      "executions": 2,
+      "repair_llm_calls": 1
+    }
+  }
+}

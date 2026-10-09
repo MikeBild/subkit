@@ -216,17 +216,25 @@ function collectBarePathReferences(
   }
 }
 
-function walkStrings(value: unknown, visit: (s: string) => void): void {
+export function walkStrings(
+  value: unknown,
+  visit: (s: string, path: string) => void,
+  path = "",
+): void {
   if (typeof value === "string") {
-    visit(value);
+    visit(value, path);
     return;
   }
   if (Array.isArray(value)) {
-    for (const v of value) walkStrings(v, visit);
+    value.forEach((v, i) => {
+      walkStrings(v, visit, `${path}.${i}`);
+    });
     return;
   }
   if (value && typeof value === "object") {
-    for (const v of Object.values(value as Record<string, unknown>)) walkStrings(v, visit);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      walkStrings(v, visit, `${path}.${k}`);
+    }
   }
 }
 

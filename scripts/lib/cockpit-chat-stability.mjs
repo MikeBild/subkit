@@ -157,7 +157,6 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
   const detail = async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     reads += 1;
-    lastRead = Date.now();
     const turn = state.turn
       ? [
           {
@@ -176,10 +175,13 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
           },
         ]
       : [];
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    return route
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await route
       .fulfill({
         json: { ...original, messages: [...state.history, ...turn] },
+      })
+      .then(() => {
+        lastRead = Date.now();
       })
       .catch(() => {});
   };
@@ -232,6 +234,7 @@ export async function verifyChatStability(page, stand, conversation, locale, lab
   try {
     await stand.visit(page, `chat/${conversation.id}`);
     await page.getByTestId("chat-transcript").getByText(state.history[0].parts[0].text).waitFor();
+    lastRead = Date.now();
     await installStream(page);
     await turn(
       "existing",

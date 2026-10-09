@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -12,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { tenantId, timestamps } from "./_common.ts";
 import { conversationMessages, conversations, conversationToolCalls } from "./conversations.ts";
-import { tenants, users } from "./identity.ts";
+import { auditActorKindEnum, tenants } from "./identity.ts";
 
 export const elicitationStatusEnum = pgEnum("elicitation_status", [
   "pending",
@@ -45,7 +46,8 @@ export const conversationElicitations = pgTable(
     delivery_lease_expires_at: timestamp("delivery_lease_expires_at", { withTimezone: true }),
     delivery_attempts: integer("delivery_attempts").notNull().default(0),
     delivery_last_error: text("delivery_last_error"),
-    decided_by: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decided_by: uuid("decided_by"),
+    decided_by_kind: auditActorKindEnum("decided_by_kind"),
     decided_at: timestamp("decided_at", { withTimezone: true }),
     decision_reason: text("decision_reason"),
     expires_at: timestamp("expires_at", { withTimezone: true })
@@ -59,5 +61,9 @@ export const conversationElicitations = pgTable(
     index("conversation_elicitations_expiry_sweep_idx")
       .on(t.expires_at)
       .where(sql`${t.status} = 'pending'`),
+    check(
+      "conversation_elicitations_decided_by_kind_check",
+      sql`(${t.decided_by} IS NULL) = (${t.decided_by_kind} IS NULL) AND (${t.decided_by_kind} IS NULL OR ${t.decided_by_kind} <> 'system')`,
+    ),
   ],
 );

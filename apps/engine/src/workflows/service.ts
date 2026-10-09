@@ -184,7 +184,9 @@ export async function createWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db, {
+    destinationTier: "tokens",
+  });
   if (!validation.ok || !validation.workflow) {
     log.workflow.validation.failed({
       tenant_id: input.tenant_id,
@@ -286,7 +288,9 @@ export async function updateWorkflow(
   exec?: Executor,
 ): Promise<{ workflow: WorkflowView; errors?: never } | { workflow?: never; errors: string[] }> {
   const db = exec ?? getDb();
-  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db);
+  const validation = await validateTenantWorkflowDef(input.def, input.tenant_id, db, {
+    destinationTier: "tokens",
+  });
   if (!validation.ok || !validation.workflow) {
     log.workflow.validation.failed({
       tenant_id: input.tenant_id,

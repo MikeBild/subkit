@@ -32,6 +32,7 @@ targetRules = [
   "gitlab-pat",
   "aws-access-token",
   "slack-bot-token",
+  "slack-webhook-url",
   "github-pat",
   "digitalocean-pat",
   "private-key",

@@ -1,0 +1,19 @@
+{
+  "name": "authoring-output-transform-function-preview",
+  "description": "output_transform_function contract in the preview: the body receives the last step's data as `input` (no input.scope), the preview shapes final_output from it, and a body written against the step-scope contract throws, is auto-repaired as JavaScript against the real final value inside the same dry_run_workflow call, and the repaired body lands in the draft. Zero egress.",
+  "flow": "infra",
+  "input": {
+    "rows": [{ "a": 1 }, { "a": 2 }],
+    "correct_body": "return { rows: input, row_count: input.length };",
+    "broken_body": "return { rows: input.scope.make_rows.data, row_count: input.scope.make_rows.data.length };",
+    "expect": {
+      "final_output": { "rows": [{ "a": 1 }, { "a": 2 }], "row_count": 2 },
+      "auto_repair_site": "output_transform_function",
+      "repair_prompt_must_contain": [
+        "A JavaScript `output_transform_function` in a workflow draft failed.",
+        "There is NO `input.scope` and NO `input.input` here",
+        "Recorded final value this body receives as `input`"
+      ]
+    }
+  }
+}

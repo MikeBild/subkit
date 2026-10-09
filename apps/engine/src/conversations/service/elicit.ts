@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
@@ -7,6 +8,7 @@ import type { Db } from "../../db/client.ts";
 import { conversations, conversationToolCalls } from "../../db/schema/index.ts";
 import { log } from "../../logging/logger.ts";
 import type { AnswerActor } from "../answer-actor.ts";
+import { decidedByFor } from "../decided-by.ts";
 import type { ElicitationBridge } from "../elicitation-bridge.ts";
 import { runLoop } from "../loop.ts";
 import { applyElicitationOutcome } from "../persistence/apply-outcome.ts";
@@ -151,12 +153,13 @@ export async function respondElicitation(
       });
     }
   }
+  const decided_by = decidedByFor(p.actor_id, p.principal);
   const resolveOutcome = await resolveElicitation(
     {
       tenant_id: p.tenant_id,
       id: p.elicitation_id,
       output,
-      decided_by: p.actor_id,
+      decided_by,
       ...(p.resolution_status ? { status: p.resolution_status } : {}),
       ...(p.reason ? { reason: p.reason } : {}),
     },
@@ -320,8 +323,7 @@ export async function respondElicitation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...auditActor(decided_by),
         action: AuditAction.CONVERSATION_COMMITTED,
         resource_type: "conversation",
         resource_id: p.conversation_id,
@@ -361,8 +363,7 @@ export async function respondElicitation(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
-        actor_id: p.actor_id,
+        ...auditActor(decided_by),
         action: AuditAction.CONVERSATION_COMMITTED,
         resource_type: "conversation",
         resource_id: p.conversation_id,

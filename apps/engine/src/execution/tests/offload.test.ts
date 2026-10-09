@@ -2,8 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { executionFixtures, executionSteps, executions, tenants } from "../../db/schema/index.ts";
-import { getObjectStore } from "../../storage/object-store.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import {
+  type MemoryOffloadStorage,
+  useMemoryOffloadStorage,
+} from "../../test-helpers/offload-storage.ts";
 import { bodyEnvelopeForLoopAccumulator } from "../engine/envelope.ts";
 import { runExecution } from "../engine.ts";
 import {
@@ -24,10 +27,12 @@ import {
 } from "./setup.ts";
 
 let ctx: EngineTestCtx;
+let storage: MemoryOffloadStorage;
 let mock: MockServer;
 const uuid = createDeterministicUuidFactory(0x0ff10ad);
 
 beforeAll(async () => {
+  storage = await useMemoryOffloadStorage();
   ctx = await createEngineCtx("offload");
   const big = "x".repeat(12 * 1024);
   mock = await createMockServer((_, res) => jsonResponse(res, 200, { blob: big }));
@@ -36,6 +41,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await mock.close();
   await ctx.cleanup();
+  await storage.restore();
 });
 
 describe("offload threshold", () => {
@@ -71,7 +77,7 @@ describe("offload threshold", () => {
 
     const storageUri = stepRows[0]!.result_storage_uri!;
     const objectKey = storageUri.replace(/^s3:\/\/test\//, "");
-    const objectBytes = await getObjectStore().get(objectKey);
+    const objectBytes = await storage.store.get(objectKey);
     expect(createHash("sha256").update(objectBytes).digest("hex")).toBe(
       stepRows[0]!.result_sha256!,
     );
@@ -196,7 +202,7 @@ describe("OffloadRef round-trip + resolveOffloaded", () => {
   test("resolveOffloaded fails closed when application SHA-256 metadata mismatches", async () => {
     const key = `offload/integrity/${uuid()}.json`;
     const body = Buffer.from('{"integrity":"expected"}', "utf8");
-    await getObjectStore().put(key, body);
+    await storage.store.put(key, body);
     const ref: OffloadRef = {
       $offloaded: true,
       storage_uri: `s3://test/${key}`,

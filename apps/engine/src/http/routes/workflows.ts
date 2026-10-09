@@ -338,16 +338,8 @@ const deleteScheduleRoute = createRoute({
   },
 });
 
-const ValidateBody = z
-  .object({
-    name: z.string().optional(),
-    slug: z.string().optional(),
-    description: z.string().optional(),
-    input_schema: z.record(z.string(), z.unknown()).optional(),
-    output_schema: z.record(z.string(), z.unknown()).optional(),
-    steps: z.array(z.record(z.string(), z.unknown())),
-    timeout_ms: z.number().int().positive().optional(),
-  })
+const ValidateBody = CreateBody.omit({ category: true })
+  .extend({ name: z.string().optional() })
   .openapi("ValidateWorkflowBody");
 
 const ValidateResponse = z
@@ -683,7 +675,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(validateRoute, async (c) => {
     const principal = requireAuth(c);
     const body = c.req.valid("json");
-    const res = await validateTenantWorkflowDef(body, principal.tenant_id, c.get("db"));
+    const res = await validateTenantWorkflowDef(body, principal.tenant_id, c.get("db"), {
+      destinationTier: "tokens",
+    });
     if (res.ok) return c.json({ ok: true }, 200);
     return c.json({ ok: false, errors: res.errors }, 200);
   });

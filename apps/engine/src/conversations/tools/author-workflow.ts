@@ -8,6 +8,7 @@ import { emitRecordedEvalSignals } from "../recorded-eval.ts";
 import { buildDraftMutationPayload, buildGateError } from "./authoring-contract.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { resolveSavedWorkflow } from "./open-workflow-draft.ts";
+import { PLACEHOLDER_DESTINATION_NEXT_ACTIONS } from "./placeholder-destination-gate.ts";
 
 const inputSchema = z
   .object({
@@ -60,6 +61,7 @@ export const authorWorkflowTool: ConversationTool = {
     "When the user supplied (or you can infer) an example input payload, pass it as `input_example`. It is persisted as the workflow's sample and becomes the input contract the run/dry-run present — a far more reliable idiom than hand-writing an input_schema. A run/dry-run TEST payload is a separate thing and is never written into the workflow.",
     "Name every connector the workflow should call (ids or slugs) — their recorded endpoint samples and docs ground the generation. Probe a connector first when it has never been called; recorded shapes make the difference between a grounded draft and a guessed one.",
     "The result's `recorded_eval` may carry findings and verified `repair` proposals; a valid definition is stashed with them — apply repairs via edit_workflow_patch, then preview. A definition that fails workflow validation is never stashed: the call refuses with authoring_definition_invalid and the previous draft stays.",
+    "Destinations (recipients, channels, webhook URLs, upload targets) come from the user: when the goal does not name them, ask with ask_user_text/ask_user_form BEFORE calling this tool. A generated definition that fills a destination with a placeholder is refused with authoring_definition_invalid, `requires_user_input: true` and `placeholder_destinations` naming each field; never retry with another placeholder.",
     "No live HTTP fires inside this call; generation cost rides the tenant token budget (≤2 generation passes + bounded expression repair).",
   ],
   requires_skill: "workflow-authoring",
@@ -117,14 +119,18 @@ export const authorWorkflowTool: ConversationTool = {
     });
 
     if (!result.ok) {
+      const placeholderDestinations = result.placeholder_destinations ?? [];
+      const askFirst = placeholderDestinations.length > 0;
       return {
         ok: false,
         data: buildGateError(ctx.getDraft(), {
           error_code: result.error_code,
           message: result.message,
           recommended_mode: "workflow",
-          next_best_actions:
-            result.error_code === "authoring_connectors_unresolved"
+          requires_user_input: askFirst,
+          next_best_actions: askFirst
+            ? [...PLACEHOLDER_DESTINATION_NEXT_ACTIONS]
+            : result.error_code === "authoring_connectors_unresolved"
               ? ["list_connectors", "find_connector", "author_workflow"]
               : result.error_code === "authoring_definition_invalid"
                 ? ["author_workflow"]
@@ -135,6 +141,7 @@ export const authorWorkflowTool: ConversationTool = {
             ...(result.unresolved_connectors.length > 0
               ? { unresolved_connectors: result.unresolved_connectors }
               : {}),
+            ...(askFirst ? { placeholder_destinations: placeholderDestinations } : {}),
           },
         }),
       };

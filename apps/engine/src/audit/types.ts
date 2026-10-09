@@ -68,6 +68,7 @@ export const AuditAction = {
   WORKFLOW_AUTHORITY_INHERITED: "workflow.authority_inherited",
   WORKFLOW_COMMITTED_OVERRIDE: "workflow.committed_override",
   WORKFLOW_SCHEDULE_NOT_BOUND: "workflow.schedule_not_bound",
+  WORKFLOW_PREVIEW_AUTO_REPAIRED: "workflow.preview_auto_repaired",
 
   EXECUTION_BOUNDARY_REFUSED: "execution.boundary_refused",
 

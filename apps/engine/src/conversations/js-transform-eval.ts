@@ -24,15 +24,11 @@ export async function checkJsBodySyntax(
   }
 }
 
-export async function evaluateJsBody(args: {
-  code: string;
-  scope: Record<string, unknown>;
-  input: unknown;
-}): Promise<JsBodyEvalOutcome> {
+async function runBody(code: string, input: unknown): Promise<JsBodyEvalOutcome> {
   try {
     const result = await runJs({
-      code: args.code,
-      input: { scope: args.scope, input: args.input ?? null },
+      code,
+      input,
       limits: { wall_ms: JS_EVAL_WALL_MS },
       clock: null,
     });
@@ -50,6 +46,21 @@ export async function evaluateJsBody(args: {
       message: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+export function evaluateJsBody(args: {
+  code: string;
+  scope: Record<string, unknown>;
+  input: unknown;
+}): Promise<JsBodyEvalOutcome> {
+  return runBody(args.code, { scope: args.scope, input: args.input ?? null });
+}
+
+export function evaluateJsOutputFunction(args: {
+  code: string;
+  root: unknown;
+}): Promise<JsBodyEvalOutcome> {
+  return runBody(args.code, args.root);
 }
 
 const JS_SCOPE_REF_PATTERNS = [

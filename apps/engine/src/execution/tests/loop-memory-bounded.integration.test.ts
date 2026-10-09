@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { executionFixtures, executionSteps, tenants } from "../../db/schema/index.ts";
-import { getObjectStore } from "../../storage/object-store.ts";
+import {
+  type MemoryOffloadStorage,
+  useMemoryOffloadStorage,
+} from "../../test-helpers/offload-storage.ts";
 import { runExecution } from "../engine.ts";
 import { isOffloadRef, OffloadResolutionError, resolveOffloaded } from "../offload.ts";
 import { containsOffloadRef } from "../offload-rehydrate.ts";
@@ -21,10 +24,12 @@ const LARGE_BLOB = "x".repeat(LARGE_SIZE);
 const SMALL_BLOB = "y".repeat(128);
 
 let ctx: EngineTestCtx;
+let storage: MemoryOffloadStorage;
 let largeMock: MockServer;
 let smallMock: MockServer;
 
 beforeAll(async () => {
+  storage = await useMemoryOffloadStorage();
   ctx = await createEngineCtx("loop-memory-bounded");
   largeMock = await createMockServer((_, res) => jsonResponse(res, 200, { blob: LARGE_BLOB }));
   smallMock = await createMockServer((_, res) => jsonResponse(res, 200, { blob: SMALL_BLOB }));
@@ -34,6 +39,7 @@ afterAll(async () => {
   await largeMock.close();
   await smallMock.close();
   await ctx.cleanup();
+  await storage.restore();
 });
 
 describe("loop memory-bounded: OOM guard", () => {
@@ -289,7 +295,7 @@ describe("loop memory-bounded: OOM guard", () => {
 
   test("TC6 — loop with no downstream consumer never re-materialises refs (fast-path)", async () => {
     const prefix = `offload/${ctx.tenantId}/`;
-    const objectCountBefore = (await getObjectStore().list(prefix)).length;
+    const objectCountBefore = (await storage.store.list(prefix)).length;
 
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "loop-no-consumer",
@@ -324,7 +330,7 @@ describe("loop memory-bounded: OOM guard", () => {
 
     expect(result.status).toBe("succeeded");
 
-    const objectCountAfter = (await getObjectStore().list(prefix)).length;
+    const objectCountAfter = (await storage.store.list(prefix)).length;
 
     const delta = objectCountAfter - objectCountBefore;
     expect(delta).toBe(2);

@@ -42,15 +42,27 @@ import { z } from "zod";
 import { readDiscoveryIndexForConnector } from "../connectors/discovery/service.ts";
 import type { DiscoveryResult } from "../connectors/discovery/types.ts";
 import { connectors as connectorsTable, conversationToolCalls } from "../db/schema/index.ts";
+import {
+  findUnknownFunctionCalls,
+  JSONATA_BUILTIN_FUNCTIONS,
+  JSONATA_FUNCTION_SUGGESTIONS,
+} from "../execution/jsonata-engine.ts";
 import { LLM_CALL_TIMEOUT_MS } from "../llm/core/ai-sdk-model.ts";
 import { formatProbeShapeExamples } from "../llm/core/context-assembler/formatters.ts";
 import { loadChunks, loadProbeShapeExamples } from "../llm/core/context-assembler/loaders.ts";
 import { invoke } from "../llm/core/invoke.ts";
 import { logger } from "../logging/logger.ts";
-import { type ValidationError, validateTenantWorkflowDef } from "../workflows/index.ts";
+import { recordAuthoringGateBlock } from "../observability/instrumentation.ts";
+import {
+  type DestinationPlaceholderViolation,
+  type ValidationError,
+  validateTenantWorkflowDef,
+} from "../workflows/index.ts";
+import { workflowJsonataSites } from "../workflows/jsonata-sites.ts";
 import {
   ResponseFilterSchema,
   TriggerSchema,
+  type WorkflowDef,
   WorkflowDefSchema,
   WorkflowRuntimeSchema,
 } from "../workflows/types.ts";
@@ -67,6 +79,7 @@ import { detectNamedOutputFormat } from "./output-format.ts";
 import { type RecordedEvalReport, runRecordedEval } from "./recorded-eval.ts";
 import type { ToolContext } from "./tools/index.ts";
 import { getLastPreview } from "./tools/last-preview-store.ts";
+import { describePlaceholderDestinations } from "./tools/placeholder-destination-gate.ts";
 import { collectProbedConnectorSlugs } from "./tools/probed-connectors.ts";
 import type { WorkflowDraftDocument } from "./types.ts";
 
@@ -78,6 +91,20 @@ const DOCS_EXCERPT_CAP_CHARS = 1_500;
 const DOCS_SNIPPETS_PER_CONNECTOR = 4;
 const INPUT_EXAMPLE_CAP_CHARS = 1_000;
 const DISCOVERED_ENDPOINTS_PER_CONNECTOR = 40;
+
+export const JSONATA_ARGMAX_IDIOM =
+  '($t := $scope.forecast.data.daily.temperature_2m_max; $m := $max($t); $idx := ($t#$i[$ = $m].$i)[0]; { "hottest_day": $scope.forecast.data.daily.time[$idx], "max_temp": $m })';
+
+const JSONATA_CONTRACT_LINES: ReadonlyArray<string> = [
+  "## JSONata contract — `loop.over`, `branch.when`, `output_transform`, `validation_expression`",
+  "- JSONata has NO JavaScript array/string methods — `$indexOf`, `$find`, `$includes`, `$slice`, `$toFixed` do not exist and throw at runtime. Only the built-ins below and functions bound with `$name := function($x) { … }` are callable; the validator rejects every other `$name(...)` call.",
+  `- Built-ins: ${[...JSONATA_BUILTIN_FUNCTIONS].map((name) => `$${name}`).join(" ")}.`,
+  `- JavaScript idiom → JSONata: ${Object.entries(JSONATA_FUNCTION_SUGGESTIONS)
+    .map(([method, idiom]) => `${method} → ${idiom}`)
+    .join("; ")}.`,
+  `- Argmax (index of the maximum) — verified idiom: \`${JSONATA_ARGMAX_IDIOM}\`.`,
+  "- `output_transform` (JSONata) runs once at the end: its root value is the last step's `.data`, with `$scope.<step_id>.data` and `$input` bound. `output_transform_function` is the JavaScript alternative — a FUNCTION BODY whose single `input` IS that final value (there is NO `input.scope` and NO `input.input` there). Set exactly one of the two.",
+];
 
 function formatDiscoveredEndpoints(
   connectors: GroundedConnector[],
@@ -105,6 +132,16 @@ function formatDiscoveredEndpoints(
     "The connector(s) below publish a machine-readable spec. These are the ONLY routes they expose. Bind every request step to one of these EXACT `method` + `path` pairs — do NOT invent, guess, drop a version prefix, or REST-ify routes (e.g. never turn `/v1/sites/{site}/content` into `/sites/{site}/items`). When an endpoint declares a request media type in `[brackets]`, encode the body that way — for `text/markdown` send the raw markdown string as the body, NOT a JSON object wrapping it.",
     ...blocks,
   ].join("\n");
+}
+
+function callsUnknownJsonataFunction(candidate: GeneratedWorkflow): boolean {
+  return workflowJsonataSites(candidate as unknown as WorkflowDef).some((site) => {
+    try {
+      return findUnknownFunctionCalls(site.expression).length > 0;
+    } catch {
+      return false;
+    }
+  });
 }
 
 export const GeneratedWorkflowSchema = z.object({
@@ -167,6 +204,8 @@ export type AuthoringPipelineResult =
         | "authoring_definition_invalid";
       message: string;
       deadline_exceeded?: true;
+      requires_user_input?: true;
+      placeholder_destinations?: DestinationPlaceholderViolation[];
       errors: ValidationError[];
       attempts: number;
       unresolved_connectors: string[];
@@ -324,6 +363,8 @@ export function buildGenerationPrompt(args: {
     "  - `input.input` — the workflow input",
     "  - `input.scope.$item` / `input.scope.$loop_index` — inside a loop body",
     "JSONata is NOT a programmable transform language: use it in `loop.over`, `branch.when`, `output_transform` and selector expressions. Request `${…}` string placeholders use the separate placeholder grammar above.",
+    "",
+    ...JSONATA_CONTRACT_LINES,
     "",
     "## Design rules",
     "- Prefer ONE bulk list endpoint over a nested per-item loop: when the vendor offers an endpoint that returns the collection with the fields you need, fetch it once and reshape with a single transform instead of looping a detail endpoint per item.",
@@ -616,7 +657,43 @@ export async function runAuthoringPipeline(
     }
 
     if (candidate) {
-      const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db);
+      const validation = await validateTenantWorkflowDef(candidate, ctx.tenant_id, ctx.db, {
+        destinationTier: "all",
+      });
+      const placeholderDestinations = validation.placeholder_destinations ?? [];
+      if (placeholderDestinations.length > 0) {
+        logger.warn({
+          module: "conversations",
+          action: "authoring_pipeline.placeholder_destination_rejected",
+          msg: "generated definition fills destination(s) with placeholder values — refusing without a second pass; the value must come from the user",
+          tenant_id: ctx.tenant_id,
+          conversation_id: ctx.conversation_id,
+          pass,
+          violation_count: placeholderDestinations.length,
+          paths: placeholderDestinations.map((v) => v.path),
+        });
+        recordAuthoringGateBlock({
+          code: "workflow_placeholder_destination",
+          tool: "author_workflow",
+        });
+        ctx.onLog?.(
+          "warn",
+          `generate · draft "${candidate.name}" fills ${placeholderDestinations.length} destination(s) with placeholders — asking the user instead of regenerating`,
+        );
+        return {
+          ok: false,
+          error_code: "authoring_definition_invalid",
+          message: `${describePlaceholderDestinations(placeholderDestinations)} Nothing was stored as the draft; the previous draft is unchanged.`,
+          requires_user_input: true,
+          placeholder_destinations: placeholderDestinations,
+          errors: validation.errors,
+          attempts,
+          unresolved_connectors: unresolved,
+        };
+      }
+      if (callsUnknownJsonataFunction(candidate)) {
+        recordAuthoringGateBlock({ code: "jsonata_unknown_function", tool: "author_workflow" });
+      }
       const grounding = evaluateEndpointGrounding(candidate.steps, groundingIndex);
       const groundingErrors: ValidationError[] = grounding.blocks.map((b) => ({
         path: `steps.${b.step_id}.${b.reason === "content_type_mismatch" ? "body" : "path"}`,
@@ -703,25 +780,44 @@ export async function runAuthoringPipeline(
   }
 
   const workflowDraft = toWorkflowDraftDocument(definition);
-  const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db);
+  const structural = await validateTenantWorkflowDef(workflowDraft, ctx.tenant_id, ctx.db, {
+    destinationTier: "all",
+  });
   if (!structural.ok) {
+    const structuralPlaceholders = structural.placeholder_destinations ?? [];
     logger.warn({
       module: "conversations",
-      action: "authoring_pipeline.definition_invalid",
+      action:
+        structuralPlaceholders.length > 0
+          ? "authoring_pipeline.placeholder_destination_rejected"
+          : "authoring_pipeline.definition_invalid",
       msg: "generated definition fails workflow validation — refusing to stash it as the draft",
       tenant_id: ctx.tenant_id,
       conversation_id: ctx.conversation_id,
       attempts,
       error_count: structural.errors.length,
+      paths: structuralPlaceholders.map((v) => v.path),
     });
+    if (structuralPlaceholders.length > 0) {
+      recordAuthoringGateBlock({
+        code: "workflow_placeholder_destination",
+        tool: "author_workflow",
+      });
+    }
     return {
       ok: false,
       error_code: "authoring_definition_invalid",
-      message: `the generated definition is not a valid workflow after ${attempts} generation pass(es) (${structural.errors
-        .slice(0, 3)
-        .map((e) => `${e.path}: ${e.message}`)
-        .join("; ")}). It was not stored as the draft; the previous draft is unchanged.`,
+      message:
+        structuralPlaceholders.length > 0
+          ? `${describePlaceholderDestinations(structuralPlaceholders)} Nothing was stored as the draft; the previous draft is unchanged.`
+          : `the generated definition is not a valid workflow after ${attempts} generation pass(es) (${structural.errors
+              .slice(0, 3)
+              .map((e) => `${e.path}: ${e.message}`)
+              .join("; ")}). It was not stored as the draft; the previous draft is unchanged.`,
       ...(deadlineExceeded ? { deadline_exceeded: true } : {}),
+      ...(structuralPlaceholders.length > 0
+        ? { requires_user_input: true, placeholder_destinations: structuralPlaceholders }
+        : {}),
       errors: structural.errors,
       attempts,
       unresolved_connectors: unresolved,
@@ -742,6 +838,9 @@ export async function runAuthoringPipeline(
       steps: definition.steps,
       ...(definition.output_transform !== undefined
         ? { output_transform: definition.output_transform }
+        : {}),
+      ...(definition.output_schema !== undefined
+        ? { output_schema: definition.output_schema }
         : {}),
     },
     {

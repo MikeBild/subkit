@@ -78,7 +78,7 @@ async function fixture() {
     {
       tenant_id: ctx.tenantId,
       conversation_id: created.conversation.id,
-      actor_id: user.id,
+      actor: { kind: "user", id: user.id },
       request_source: "mcp",
       kind: "start",
       user_message_id: created.initial_message_id,

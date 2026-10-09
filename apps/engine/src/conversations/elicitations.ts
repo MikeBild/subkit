@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
@@ -11,6 +12,7 @@ import {
 } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { APPROVAL_TTL_MS } from "../tools/approval.ts";
+import type { DecidedBy } from "./decided-by.ts";
 import {
   approvalHandleFromElicitationInput,
   isWorkflowInputForm,
@@ -445,7 +447,7 @@ export async function resolveElicitation(
     tenant_id: string;
     id: string;
     output: unknown;
-    decided_by: string | null;
+    decided_by: DecidedBy | null;
     reason?: string;
     status?: "resolved" | "cancelled" | "timeout";
     transport?: ElicitationTransportOutcome;
@@ -474,7 +476,8 @@ export async function resolveElicitation(
     .set({
       status,
       output: persistedOutput as Record<string, unknown> | null,
-      decided_by: p.decided_by,
+      decided_by: p.decided_by?.id ?? null,
+      decided_by_kind: p.decided_by?.kind ?? null,
       decided_at: new Date(),
       decision_reason: p.reason ?? null,
       updated_at: new Date(),
@@ -523,8 +526,7 @@ export async function resolveElicitation(
   await auditAwait(
     {
       tenant_id: p.tenant_id,
-      actor_type: p.decided_by ? "user" : "system",
-      actor_id: p.decided_by,
+      ...auditActor(p.decided_by),
       action:
         status === "timeout"
           ? AuditAction.ELICITATION_EXPIRED
@@ -552,7 +554,7 @@ export async function resolveElicitationAndReactivate(
     conversation_id: string;
     id: string;
     output: unknown;
-    decided_by: string | null;
+    decided_by: DecidedBy | null;
     reason?: string;
     status?: "resolved" | "cancelled";
     transport?: ElicitationTransportOutcome;

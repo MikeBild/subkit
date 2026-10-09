@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig } from "../src/config/loader.ts";
+import { getConfig, installRuntimeConfig, loadConfig } from "../src/config/loader.ts";
 import { judgePreview } from "../src/conversations/preview-judge.ts";
 import { tenants } from "../src/db/schema/index.ts";
 import { createTestDb } from "../src/db/tests/setup.ts";
@@ -13,6 +13,7 @@ interface GoldenCase {
   goal: string;
   definition_summary: string;
   final_output: unknown;
+  output_schema?: Record<string, unknown>;
   label: "passes" | "partial" | "failed";
   note?: string;
 }
@@ -23,14 +24,34 @@ function loadGolden(): GoldenCase[] {
   return parsed.cases;
 }
 
+function installAnthropicKeyFromEnv(): boolean {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) return false;
+  const base = getConfig();
+  installRuntimeConfig({
+    ...base,
+    llm: {
+      ...base.llm,
+      provider: "anthropic",
+      providers: {
+        ...base.llm.providers,
+        anthropic: { ...base.llm.providers.anthropic, api_key: key },
+      },
+    },
+  });
+  return true;
+}
+
 async function main(): Promise<void> {
   await loadConfig();
+  installAnthropicKeyFromEnv();
   const setup = validateProviderSetup();
   if (setup.detected !== "anthropic" || !setup.ok) {
     console.error(
       `judge-calibration: needs a ready anthropic provider (real judge, not mock), got ` +
         `detected=${setup.detected} ok=${setup.ok} missing=${JSON.stringify(setup.missing)}. ` +
-        `Point SUBKIT_CONFIG at a config with llm.provider=anthropic and llm.providers.anthropic.api_key.`,
+        `Pass the key through the environment of this one command (ANTHROPIC_API_KEY="$(cat key.txt)" bun run eval:judge) ` +
+        `or point SUBKIT_CONFIG at a config with llm.provider=anthropic and llm.providers.anthropic.api_key.`,
     );
     process.exit(2);
   }
@@ -56,15 +77,9 @@ async function main(): Promise<void> {
         const outcome = await judgePreview({
           goal: c.goal,
           definition_summary: c.definition_summary,
-          step_artifacts: [
-            {
-              step_id: "output",
-              kind: "transform",
-              status: "succeeded",
-              output_preview: c.final_output,
-            },
-          ],
+          step_artifacts: [],
           final_output: c.final_output,
+          output_schema: c.output_schema ?? null,
           tenant_id: tenant.id,
           db: testDb.db,
         });

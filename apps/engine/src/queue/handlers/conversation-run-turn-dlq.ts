@@ -1,6 +1,8 @@
 import type { Job, PgBoss } from "pg-boss";
+import { auditActor } from "../../audit/actor.ts";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
+import { decidedByFor } from "../../conversations/decided-by.ts";
 import type { Db } from "../../db/client.ts";
 import { log } from "../../logging/logger.ts";
 import { getMcpTask, setMcpTaskFailureIfNotTerminal } from "../../mcp/tasks/store.ts";
@@ -46,8 +48,7 @@ async function handleOne(job: Job<ConversationRunTurnJob>, db: Db): Promise<void
     await auditAwait(
       {
         tenant_id: data.tenant_id,
-        actor_type: data.actor_id ? "user" : "system",
-        actor_id: data.actor_id ?? null,
+        ...auditActor(decidedByFor(data.actor_id ?? null, data.principal)),
         action: AuditAction.CONVERSATION_TURN_FAILED,
         resource_type: "conversation",
         resource_id: conversationId,

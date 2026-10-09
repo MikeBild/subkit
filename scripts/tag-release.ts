@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { liveGateFailureHint } from "./llm-live-checks.ts";
 import { releaseVersionWasUsed } from "./release-history.ts";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -88,6 +89,14 @@ if (localTag !== "") {
 if (problems.length > 0) {
   console.error("release:tag: refusing to tag —\n");
   for (const p of problems) console.error(`  · ${p}`);
+  process.exit(1);
+}
+
+console.log("release:tag: running the live LLM gate (bun run verify:llm-live)\n");
+try {
+  execFileSync("bun", ["run", "verify:llm-live"], { cwd: REPO, stdio: "inherit" });
+} catch {
+  console.error(liveGateFailureHint(tag));
   process.exit(1);
 }
 

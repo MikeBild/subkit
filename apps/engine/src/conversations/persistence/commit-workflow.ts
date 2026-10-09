@@ -1,8 +1,14 @@
 import { logger } from "../../logging/logger.ts";
-import { WORKFLOW_DEF_FIELD_KEYS, type WorkflowDef } from "../../workflows/types.ts";
+import { detectPlaceholderDestinations } from "../../workflows/destination-placeholders.ts";
+import {
+  WORKFLOW_DEF_FIELD_KEYS,
+  type WorkflowDef,
+  WorkflowDefSchema,
+} from "../../workflows/types.ts";
 import { getWorkflowDraft } from "../authoring-state.ts";
 import { buildGateError, missingFreshCheckpoints } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
+import { placeholderDestinationGateResult } from "../tools/placeholder-destination-gate.ts";
 import type { WorkflowDraftDocument } from "../types.ts";
 import { persistAuthoringWorkflowDraft } from "./persist-authoring-workflow-draft.ts";
 import { classifyPreviewFailure } from "./preview-failure-class.ts";
@@ -190,6 +196,22 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     return null;
   };
 
+  const gatePlaceholderDestinations = async (): Promise<ToolResult | null> => {
+    const parsed = WorkflowDefSchema.safeParse(workflowDefFromDraft(getWorkflowDraft(fullDraft)));
+    if (!parsed.success) return null;
+    const violations = detectPlaceholderDestinations(parsed.data, { tier: "all" });
+    if (violations.length === 0) return null;
+    logger.info({
+      module: "conversation_persistence",
+      action: "commit_gate.placeholder_destination",
+      msg: "workflow commit refused — the draft fills destination(s) with placeholder values; the value must come from the user",
+      tenant_id: ctx.tenant_id,
+      conversation_id: ctx.conversation_id,
+      paths: violations.map((v) => v.path),
+    });
+    return placeholderDestinationGateResult(fullDraft, violations, "save_workflow_draft");
+  };
+
   const gatePartialSuccess = async (): Promise<ToolResult | null> => {
     if (
       latestExecution?.requires_repair === true &&
@@ -328,6 +350,7 @@ export async function commitWorkflowAtomic(p: CommitWorkflowAtomicParams): Promi
     { name: "playground_no_persist", run: gatePlayground },
     { name: "prior_approval", run: gatePriorApproval },
     { name: "inspect_validate_fresh", run: gateInspectValidate },
+    { name: "placeholder_destination", run: gatePlaceholderDestinations },
     { name: "partial_success", run: gatePartialSuccess },
     { name: "warnings_unacknowledged", run: gateWarnings },
     { name: "no_meaningful_change", run: gateNoMeaningfulChange },
