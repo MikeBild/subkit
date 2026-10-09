@@ -279,7 +279,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             {index + 1} {item.step_key}
           </span>
         ),
-        { width: "w-[45%]" },
+        { width: "w-[35%]" },
       ),
       column.custom(
         "operation",
@@ -299,13 +299,14 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             .filter(Boolean)
             .join(" · ");
         },
+        { width: "w-[30%]" },
       ),
       column.custom(
         "status",
         (item) => item.status,
         t("resource.field.status"),
         (item) => <StatusBadge state={item.status} />,
-        { width: "w-[30%]" },
+        { width: "w-[20%]" },
       ),
       column.custom(
         "duration",
@@ -313,7 +314,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         t("runs.column.duration"),
         (item) =>
           item.duration_ms === null ? MISSING : formatRunDuration(locale, item.duration_ms),
-        { width: "w-[25%]" },
+        { width: "w-[15%]" },
       ),
     ];
   }, [t, dateTime, locale, stepNames]);
