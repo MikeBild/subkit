@@ -22,6 +22,7 @@ export function SegmentedControl({
   return (
     <ToggleGroup
       type="single"
+      variant="outline"
       value={value}
       onValueChange={(next) => {
         if (next) onValueChange(next);
@@ -36,7 +37,7 @@ export function SegmentedControl({
           key={option.value}
           value={option.value}
           data-testid={option.testId}
-          className="h-[26px] shrink-0 rounded-sm px-2.5 text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+          className="h-[26px] shrink-0 rounded-sm border-0 bg-transparent px-2.5 shadow-none text-[13px] font-medium text-muted-foreground hover:bg-transparent hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
         >
           {option.label}
         </ToggleGroupItem>
