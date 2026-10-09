@@ -289,7 +289,7 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     expect(call.output?.name).toBe("object");
   });
 
-  it("asks Anthropic for the tool-based structured output so a large schema never meets the grammar compiler", async () => {
+  it("asks Anthropic for tool-based output and OpenAI for non-strict schemas so a workflow schema with optional fields is accepted", async () => {
     const stub = makeStub(outcome({ key: "value" }));
     const model = new AiSdkModel({
       // biome-ignore lint/suspicious/noExplicitAny: stub
@@ -302,6 +302,7 @@ describe("AiSdkModel.generateObject — structured outcome", () => {
     const structured = stub.calls[0] as StructuredCall;
     expect(structured.providerOptions).toEqual({
       anthropic: { structuredOutputMode: "jsonTool" },
+      openai: { strictJsonSchema: false },
     });
 
     await model.generateText([{ role: "user", content: "hi" }]);

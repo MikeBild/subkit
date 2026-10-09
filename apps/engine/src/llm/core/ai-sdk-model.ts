@@ -217,7 +217,10 @@ export class AiSdkModel implements SubkitLlm {
     if (params.tools) callOpts.tools = params.tools;
     if (params.output) {
       callOpts.output = params.output;
-      callOpts.providerOptions = { anthropic: { structuredOutputMode: "jsonTool" } };
+      callOpts.providerOptions = {
+        anthropic: { structuredOutputMode: "jsonTool" },
+        openai: { strictJsonSchema: false },
+      };
     }
     if (params.stopWhen) callOpts.stopWhen = params.stopWhen;
     if (params.maxOutputTokens !== undefined) callOpts.maxOutputTokens = params.maxOutputTokens;
