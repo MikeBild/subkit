@@ -532,7 +532,9 @@ export async function resolveElicitation(
           ? AuditAction.ELICITATION_EXPIRED
           : isWorkflowInputForm(row.tool_name, row.input)
             ? AuditAction.CONVERSATION_UPDATED
-            : status === "resolved"
+            : status === "resolved" &&
+                (row.tool_name !== "ask_user_confirm" ||
+                  interpretConfirmDecision(p.output) !== "declined")
               ? AuditAction.APPROVAL_APPROVED
               : AuditAction.APPROVAL_REJECTED,
       resource_type: "conversation_elicitation",
