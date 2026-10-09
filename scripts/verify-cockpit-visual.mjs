@@ -30,6 +30,7 @@ import { verifyGateDiagnosis } from "./lib/cockpit-gate-diagnosis.mjs";
 import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dialog.mjs";
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
+import { verifyIdentityEvidence } from "./lib/cockpit-identity-evidence.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
@@ -4440,6 +4441,22 @@ try {
           shoot(page, `${locale.artifact}-${viewport.name}-knowledge-totals-${state}`, {
             fullPage: false,
           }),
+        );
+      if (standOn(verifyIdentityEvidence))
+        await verifyIdentityEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          {
+            mockApi,
+            workflowId: uuid,
+            workflowVersionId: "018f4b4a-6d33-7b3a-9c2d-123456789ab8",
+            connectorId: runConnectorId,
+            secondConnectorId: uuid,
+            executionId: uuid,
+          },
         );
       if (standOn(verifyConnectorDetail))
         await verifyConnectorDetail(page, stand, locale.name, (state) =>
