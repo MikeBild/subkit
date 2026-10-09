@@ -89,6 +89,7 @@ export const BundleFileSchema = z
 
 export const CreateKnowledgeSourceBundleSchema = CreateKnowledgeSourceSchema.extend({
   files: z.array(BundleFileSchema).min(1).max(500),
+  create_only: z.boolean().optional(),
 })
   .refine((body) => body.scope !== "workflow" || body.workflow_id !== undefined, {
     message: "workflow_id is required when scope is 'workflow'",
@@ -240,11 +241,14 @@ export interface UpdateKnowledgeSourceContentParams {
   actor: Actor | null;
 }
 
+export interface AppendKnowledgeSourceDocumentParams extends UpdateKnowledgeSourceContentParams {}
+
 export interface UpsertKnowledgeBundleParams {
   tenant_id: string;
   actor: Actor | null;
   input: CreateKnowledgeSourceInput;
   files: { path: string; content: string }[];
+  create_only?: boolean;
 }
 
 export interface KnowledgeBundleUpsertResult {

@@ -18,7 +18,8 @@
     "packages/cli-core/src/**/*.ts",
     "packages/chat-ui/src/**/*.ts",
     "packages/chat-ui/src/**/*.tsx",
-    "drizzle.config.ts"
+    "drizzle.config.ts",
+    "apps/clipper/src/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "docs"]
 }

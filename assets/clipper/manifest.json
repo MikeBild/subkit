@@ -1,0 +1,16 @@
+{
+  "sha256": "58f3ef5f2e74ced23f6a67ce7af101579e892d70a985a341a99be53d922ea31b",
+  "files": [
+    "capture.js",
+    "clipper.css",
+    "install-config.json",
+    "licenses/readability.txt",
+    "licenses/turndown.txt",
+    "manifest.json",
+    "options.html",
+    "options.js",
+    "popup.html",
+    "popup.js",
+    "service-worker.js"
+  ]
+}

@@ -46,6 +46,33 @@ sk
 
 `sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
 
+## Save web pages to SubKit knowledge
+
+Run `sk clipper install` to unpack the Chrome extension shipped inside the CLI.
+In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
+and select the folder printed by the command. The installer prefills the engine URL
+from your active profile. In the extension settings, enter a separate API key with
+`knowledge:read` and `knowledge:write` access and allow access to your engine host.
+You can change the engine URL in those settings; no server address is built into the extension.
+
+Use the toolbar, page context menu, or a shortcut configured at `chrome://extensions/shortcuts`
+to capture an article or selected text. Review the Markdown, choose a global or
+workflow knowledge collection, then save. A new collection is created with its first clip.
+If a page is already in the collection, choose replacement or a separate copy.
+Image links are retained; image files are not uploaded. Failed saves remain local
+until you retry or discard them.
+
+Run `sk clipper install` after updating the CLI, then reload the extension in Chrome.
+Use `sk clipper install --dir <directory> --no-open` to choose a directory and skip
+opening Chrome. Updating an existing installation preserves its connection settings.
+For a new installation, `--engine-url <url>` overrides the active profile's address.
+The engine also serves the same embedded archive at `/install/clipper.zip`, with its
+SHA-256 in the `x-subkit-sha256` response header. HTTPS engines and local HTTP engines
+on `localhost`, `127.0.0.1`, or `[::1]` are supported, including an optional URL path prefix.
+Changing the engine address requires entering the key for that engine; an existing
+draft stays associated with its original engine. If another person changes the
+collection while you save, review the conflict before trying again.
+
 ## Execution identity and permission
 
 `$caller` answers who authenticated this execution. Connector credentials authenticate an outbound request to another service. RBAC decides which workflows and resources that principal may use. Human approval permits a reviewed effect boundary for an environment. These four concepts are independent: a credential or approval does not create caller identity or replace authorization, and the approver need not be the execution caller.

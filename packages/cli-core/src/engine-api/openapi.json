@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "9.8.0",
+    "version": "9.9.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -16592,6 +16592,49 @@
           "updated_at"
         ]
       },
+      "AppendKnowledgeSourceDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "knowledge_source_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_source_id",
+          "version",
+          "path"
+        ]
+      },
+      "AppendKnowledgeSourceDocumentBody": {
+        "type": "object",
+        "properties": {
+          "expected_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "expected_version",
+          "path",
+          "content"
+        ]
+      },
       "KnowledgeSourceListResponse": {
         "type": "object",
         "properties": {
@@ -17068,6 +17111,9 @@
                 },
                 "minItems": 1,
                 "maxItems": 500
+              },
+              "create_only": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -26645,6 +26691,38 @@
             "description": "Skill file (text/markdown)",
             "content": {
               "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/install/clipper.zip": {
+      "get": {
+        "tags": [
+          "install"
+        ],
+        "summary": "Bundled Chrome clipping extension",
+        "description": "Downloads the Chrome clipping extension archive embedded in this engine binary. The x-subkit-sha256 response header verifies the archive bytes.",
+        "responses": {
+          "200": {
+            "description": "Extension archive",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Extension archive unavailable",
+            "content": {
+              "text/plain": {
                 "schema": {
                   "type": "string"
                 }
@@ -39711,6 +39789,91 @@
           },
           "409": {
             "description": "The version is already current, or the source changed meanwhile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-sources/{id}/documents": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Append one Markdown document to a knowledge bundle using optimistic concurrency",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendKnowledgeSourceDocumentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppendKnowledgeSourceDocumentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Bundle exceeds maximum size",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
             "content": {
               "application/json": {
                 "schema": {

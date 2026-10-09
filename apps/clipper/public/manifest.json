@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "SubKit Clipper",
+  "description": "Capture pages and selections as Markdown in SubKit knowledge collections.",
+  "version": "1.0.0",
+  "permissions": ["activeTab", "scripting", "contextMenus", "storage"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://[::1]/*"
+  ],
+  "action": { "default_popup": "popup.html" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "commands": {
+    "capture-current-page": {
+      "suggested_key": { "default": "Alt+Shift+K", "mac": "Alt+Shift+K" },
+      "description": "Capture the selection or current page"
+    }
+  }
+}

@@ -30,7 +30,11 @@ import {
   KnowledgeVersionAlreadyCurrentError,
   KnowledgeVersionConflictError,
 } from "./errors.ts";
-import { linkKnowledgeFile, persistKnowledgeFile } from "./file-persist.ts";
+import {
+  cleanupPersistedKnowledgeFile,
+  linkKnowledgeFile,
+  persistKnowledgeFile,
+} from "./file-persist.ts";
 import { detectFormat, parseFileToChunks } from "./parsers.ts";
 import { fuseKnowledgeWithVectors } from "./search-vectors.ts";
 import { dedupeTags, mergeStructuralTags } from "./tags.ts";
@@ -268,8 +272,17 @@ export async function createKnowledgeSource(
   exec?: Executor,
 ): Promise<KnowledgeSourceView> {
   const db = exec ?? getDb();
-  const prepared = await prepareKnowledgeCreate(p, db);
-  const created = await (db as Db).transaction((tx) => applyKnowledgeCreate(tx, p, prepared));
+  const state: { prepared: PreparedKnowledgeCreate | null } = { prepared: null };
+  let created: KnowledgeSourceView;
+  try {
+    created = await (db as Db).transaction(async (tx) => {
+      state.prepared = await prepareKnowledgeCreate(p, tx);
+      return applyKnowledgeCreate(tx, p, state.prepared);
+    });
+  } catch (error) {
+    await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
+    throw error;
+  }
   finishKnowledgeWrite(p.tenant_id, created.id, db);
   return created;
 }
@@ -774,8 +787,19 @@ export async function ingestKnowledgeSource(
   exec?: Executor,
 ): Promise<KnowledgeIngestResult> {
   const db = exec ?? getDb();
-  const prepared = await prepareKnowledgeIngest(p, db);
-  const applied = await (db as Db).transaction((tx) => applyKnowledgeIngest(tx, p, prepared));
+  const state: { prepared: PreparedKnowledgeIngest | null } = { prepared: null };
+  let applied: AppliedKnowledgeIngest | null;
+  try {
+    applied = await (db as Db).transaction(async (tx) => {
+      state.prepared = await prepareKnowledgeIngest(p, tx);
+      return applyKnowledgeIngest(tx, p, state.prepared);
+    });
+  } catch (error) {
+    await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
+    throw error;
+  }
+  const prepared = state.prepared;
+  if (!prepared) throw new Error("knowledge ingest preparation did not complete");
 
   log.knowledge.ingested({
     knowledge_source_id: p.knowledge_source_id,

@@ -10,6 +10,7 @@ import { auditCommand } from "./commands/audit.ts";
 import { authCommand } from "./commands/auth.ts";
 import { categoriesCommand } from "./commands/categories.ts";
 import { chatCommand } from "./commands/chat.ts";
+import { clipperCommand } from "./commands/clipper.ts";
 import { connectorTemplatesCommand } from "./commands/connector-templates.ts";
 import { connectorsCommand } from "./commands/connectors.ts";
 import { credentialsCommand } from "./commands/credentials.ts";
@@ -423,6 +424,7 @@ const mainCommand = defineCommand({
     connectors: connectorsCommand,
     categories: categoriesCommand,
     chat: chatCommand,
+    clipper: clipperCommand,
     "connector-templates": connectorTemplatesCommand,
     credentials: credentialsCommand,
     skills: skillsCommand,
@@ -589,6 +591,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   connectors: { command: connectorsCommand, requires: "connector:read" },
   categories: { command: categoriesCommand, requires: "workflow:read" },
   chat: { command: chatCommand, requires: "chat_workspace:read" },
+  clipper: { command: clipperCommand },
   "connector-templates": { command: connectorTemplatesCommand, requires: "connector:read" },
   credentials: { command: credentialsCommand, requires: "credential:read" },
   skills: { command: skillsCommand, requires: "skill:read" },
