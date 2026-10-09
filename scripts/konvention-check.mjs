@@ -7,7 +7,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
 import { textOutsidePayloads } from "./lib/cockpit-visible-uuids.mjs";
 
-const KONVENTION_VERSION = "2.3";
+const KONVENTION_VERSION = "2.4";
 
 let konventionVersionImRepo = null;
 

@@ -466,7 +466,8 @@
       "Navigation badge = number of attention entries; list headers carry no counts.",
       "Collection rows: the name cell is a real link, the row is clickable, no named Open button, the menu glyph only for a real menu.",
       "Redirect the old overview, decisions and system addresses to /cockpit.",
-      "Keep serving /v1/operational-overview (operational-overview.v1) as optional metrics."
+      "Keep serving /v1/operational-overview (operational-overview.v1) as optional metrics.",
+      "Show the request chain on every run (COCKPIT-KONVENTION §16): one line 'requested by · channel' with a verified or automatic badge under the status strip, a collapsed 'why allowed' block (verification, permission, environment, link to the approval), steps that say whether they read or write and through which connector, one request id shared by run, audit and every API answer, and the audit filterable by actor and request id. Never show tokens, keys or raw headers."
     ]
   }
 }
