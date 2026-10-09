@@ -8,6 +8,7 @@ import { AuditAction } from "../apps/engine/src/audit/types.ts";
 import { leafSchemaMeta, listConfigLeaves } from "../apps/engine/src/config/walk.ts";
 import ENGINE_PERMISSIONS from "../apps/engine/src/rbac/permissions.json" with { type: "json" };
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
+import { verifyCatalogEvidence } from "./lib/cockpit-catalog-evidence.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
 import { verifyChatApprovals, verifyChatDecidedApproval } from "./lib/cockpit-chat-approvals.mjs";
@@ -21,6 +22,7 @@ import { verifyChatStability } from "./lib/cockpit-chat-stability.mjs";
 import { verifyConnectorDetail } from "./lib/cockpit-connector-detail.mjs";
 import { verifyCreateConnector } from "./lib/cockpit-create-connector.mjs";
 import { verifyDecisionLifecycle } from "./lib/cockpit-decisions.mjs";
+import { verifyDescriptionEvidence } from "./lib/cockpit-description-evidence.mjs";
 import { verifyDetailAction } from "./lib/cockpit-detail-action.mjs";
 import { verifyEdgeStates } from "./lib/cockpit-edge-states.mjs";
 import { verifyEnginePages } from "./lib/cockpit-engine-pages.mjs";
@@ -34,6 +36,7 @@ import { verifyIdentityEvidence } from "./lib/cockpit-identity-evidence.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
+import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyRunSheet, verifyRunsOverCatalog } from "./lib/cockpit-run-sheet.mjs";
@@ -4436,6 +4439,24 @@ try {
             fullPage: false,
           }),
         );
+      if (standOn(verifyCatalogEvidence))
+        await verifyCatalogEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { tenantId: uuid },
+        );
+      if (standOn(verifyDescriptionEvidence))
+        await verifyDescriptionEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { mockApi, recordId: uuid },
+        );
       if (standOn(verifyKnowledgeTotals))
         await verifyKnowledgeTotals(page, stand, locale.name, (state) =>
           shoot(page, `${locale.artifact}-${viewport.name}-knowledge-totals-${state}`, {
@@ -4472,6 +4493,15 @@ try {
         );
       if (standOn(verifyFirstClickOpens))
         await verifyFirstClickOpens(page, stand, `${locale.artifact}/${viewport.name}/first-click`);
+      if (standOn(verifyManagementEvidence))
+        await verifyManagementEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { mockApi, tenantId: uuid },
+        );
       if (standOn(verifyPeopleLoadsPerTab))
         await verifyPeopleLoadsPerTab(
           page,
