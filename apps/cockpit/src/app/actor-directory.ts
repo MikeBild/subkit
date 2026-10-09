@@ -4,24 +4,14 @@ import { apiRequest } from "@/api/client";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { canReadDirectory } from "@/pages/audit-model";
+import {
+  type Accounts,
+  type ActorDirectory,
+  actorDirectory,
+  type People,
+} from "./actor-directory-model";
 
-type People = { items?: Array<{ id: string; email?: string; name?: string }> };
-type Accounts = { items?: Array<{ id: string; name?: string }> };
-
-export function actorDirectory(people: People | undefined, accounts: Accounts | undefined) {
-  const byId = new Map<string, string>();
-  for (const item of people?.items ?? []) {
-    const label = item.name?.trim() || item.email?.trim();
-    if (label) byId.set(item.id, label);
-  }
-  for (const item of accounts?.items ?? []) {
-    const label = item.name?.trim();
-    if (label) byId.set(item.id, label);
-  }
-  return byId;
-}
-
-export function useActorDirectory(enabled: boolean): ReadonlyMap<string, string> {
+export function useActorDirectory(enabled: boolean): ActorDirectory {
   const session = useSession();
   const live = useLiveQueryOptions();
   const readable = enabled && canReadDirectory(session);

@@ -38,6 +38,7 @@ import {
   FileScanCompletedMetadataSchema,
   FileUploadReceivedMetadataSchema,
   readRequestSource,
+  recordedFileCreators,
 } from "../../audit/index.ts";
 import { writeEvent } from "../../db/events.ts";
 import { fileLinks, files, filesDedupSeen } from "../../db/schema/index.ts";
@@ -74,6 +75,8 @@ export function toFileWire(row: typeof files.$inferSelect): FileWire {
     size_bytes: row.size_bytes,
     sha256: row.sha256,
     scan_result: row.scan_result,
+    created_by: row.created_by,
+    creator: null,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
     replaced_at: row.replaced_at ? row.replaced_at.toISOString() : null,
@@ -895,6 +898,9 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const tenantConds = [eq(files.tenant_id, tenant_id), isNull(files.deleted_at)];
     if (q.status) tenantConds.push(eq(files.status, q.status));
     if (q.category) tenantConds.push(eq(files.category, q.category));
+    if (q.description_source) tenantConds.push(eq(files.description_source, q.description_source));
+    if (q.description_source === "llm")
+      tenantConds.push(sql`length(trim(coalesce(${files.description}, ''))) > 0`);
     if (q.q) {
       const needle = `%${q.q}%`;
       const search = or(
@@ -970,8 +976,10 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
             .groupBy(fileLinks.file_id)
         : [];
     const conversationCounts = new Map(conversationRows.map((u) => [u.id, u.conversations]));
+    const creators = await recordedFileCreators(db, tenant_id, page);
     const items = page.map((row) => ({
       ...toFileWire(row),
+      creator: creators.get(row.id) ?? null,
       usage: {
         workflows: workflowCounts.get(row.id) ?? 0,
         conversations: Number(conversationCounts.get(row.id) ?? 0),
@@ -1074,12 +1082,14 @@ export function registerFileRoutes(app: OpenAPIHono<AppEnv>): void {
     const { id } = c.req.valid("param");
     const principal = requireAuth(c);
     const db = c.get("db");
-    try {
-      const row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
-      return c.json(toFileWire(row), 200);
-    } catch {
+    const row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id)).catch(
+      () => null,
+    );
+    if (!row) {
       return c.json({ code: "not_found", message: "file not found" }, 404);
     }
+    const creators = await recordedFileCreators(db, principal.tenant_id, [row]);
+    return c.json({ ...toFileWire(row), creator: creators.get(row.id) ?? null }, 200);
   });
 
   const contentRoute = createRoute({

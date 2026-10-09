@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { CredentialUseSnapshot } from "../../credentials/provider-identity.ts";
 import type { ExecutionAuthorizationContext } from "../../execution/authorization-context.ts";
 import { executionModeEnum, tenantId, timestamps } from "./_common.ts";
 import { connectors } from "./connectors.ts";
@@ -164,6 +165,10 @@ export const executionSteps = pgTable(
     result_sha256: text("result_sha256"),
     result_preview: text("result_preview"),
     request_meta: jsonb("request_meta"),
+    credential_snapshots: jsonb("credential_snapshots")
+      .$type<CredentialUseSnapshot[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     duration_ms: integer("duration_ms"),
     retry_count: integer("retry_count").default(0).notNull(),
     error: jsonb("error"),
@@ -180,6 +185,10 @@ export const executionSteps = pgTable(
     held: boolean("held").default(false).notNull(),
   },
   (t) => [
+    check(
+      "execution_steps_credential_snapshots_array",
+      sql`jsonb_typeof(${t.credential_snapshots}) = 'array'`,
+    ),
     index("execution_steps_execution_started_idx").on(t.execution_id, t.started_at),
     index("execution_steps_running_execution_idx")
       .on(t.execution_id)

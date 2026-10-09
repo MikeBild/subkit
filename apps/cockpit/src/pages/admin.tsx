@@ -55,8 +55,10 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import {
   assignableRoles,
   type GrantResourceType,
+  grantStatus,
   isGrantResourceType,
   isPersonRole,
+  membershipNames,
   openPeopleSection,
   PERSON_ROLES,
   type PersonRole,
@@ -80,6 +82,7 @@ interface UserItem {
   role: string;
   status: string;
   oauth_connections?: number;
+  groups?: { id: string; name: string }[] | null;
 }
 
 interface RoleItem {
@@ -87,9 +90,13 @@ interface RoleItem {
   name: string;
   description: string | null;
   is_builtin: boolean;
+  permissions?: string[];
+  member_count?: number;
 }
 
 interface GroupItem {
+  member_count?: number;
+  member_ids?: string[];
   id: string;
   name: string;
   description: string | null;
@@ -191,6 +198,7 @@ function SectionList<T>({
   emptyLine,
   emptyAction,
   summary,
+  help,
   children,
 }: {
   name: string;
@@ -199,6 +207,7 @@ function SectionList<T>({
   emptyLine: string;
   emptyAction?: ReactNode;
   summary?: ReactNode;
+  help?: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -220,7 +229,7 @@ function SectionList<T>({
   if (!summary) return children;
   return (
     <div className="flex flex-col gap-3">
-      <SummaryLine text={summary} testId={`${name}-summary`} />
+      <SummaryLine text={summary} help={help} testId={`${name}-summary`} />
       {children}
     </div>
   );
@@ -350,7 +359,12 @@ export function SecretDialog({
       onSubmit={onClose}
       testId="secret-dialog"
     >
-      <CopyField value={secret ?? ""} label={t("people.inviteCode")} testId="secret-value" />
+      <CopyField
+        labelled
+        value={secret ?? ""}
+        label={t("people.inviteCode")}
+        testId="secret-value"
+      />
       <p className="text-sm text-muted-foreground">{t("secret.once")}</p>
     </FormDialog>
   );
@@ -509,7 +523,7 @@ function PersonSheet({
     const names = offered.length > 0 ? offered.map((item) => item.name) : [...PERSON_ROLES];
     return user && !names.includes(user.role) ? [user.role, ...names] : names;
   }, [roles, canAssignCustom, user]);
-  const refresh = () => client.invalidateQueries({ queryKey: ["admin", "people"] });
+  const refresh = () => client.invalidateQueries({ queryKey: ["admin"] });
   const close = () => {
     setPicked(null);
     onClose();
@@ -626,6 +640,12 @@ function PersonSheet({
           <FactList
             testId="people-sheet-facts"
             items={[
+              { label: t("people.email"), value: user.email },
+              {
+                label: t("access.groups"),
+                value: membershipNames(user.groups, t),
+                testId: "people-sheet-groups",
+              },
               {
                 label: t("people.role"),
                 help: purpose ?? undefined,
@@ -923,7 +943,7 @@ function InvitePersonDialog({
       toast.success(t("people.created"));
     },
     onError: (error) => refusalToast(error, t),
-    onSettled: () => client.invalidateQueries({ queryKey: ["admin", "people"] }),
+    onSettled: () => client.invalidateQueries({ queryKey: ["admin"] }),
   });
   return (
     <>
@@ -1065,7 +1085,7 @@ function RolesTab({ action }: { action: ReactNode }) {
       column.custom(
         "name",
         (row) => row.name,
-        t("common.name"),
+        t("people.role"),
         (row, index) => (
           <span className="block truncate" data-testid={`roles-list-${index}-name`}>
             <LabelText label={roleName(row.name, items, t)} />
@@ -1074,21 +1094,22 @@ function RolesTab({ action }: { action: ReactNode }) {
         { width: "w-[30%]" },
       ),
       column.custom(
-        "description",
-        (row) => row.description,
-        t("common.description"),
-        (row) => (
-          <span className="line-clamp-2 text-muted-foreground">
-            {builtinRoleDescription(row.name, row.description, t) ?? "—"}
-          </span>
-        ),
+        "permissions",
+        (row) => row.permissions?.length,
+        t("access.permissions"),
+        (row) =>
+          row.permissions ? (
+            <PermissionList permissions={row.permissions} limit={3} testId="role-row-permissions" />
+          ) : (
+            "—"
+          ),
         { width: "w-[50%]" },
       ),
       column.custom(
-        "kind",
-        (row) => row.is_builtin,
-        t("access.kind"),
-        (row) => t(row.is_builtin ? "access.builtin" : "access.custom"),
+        "member_count",
+        (row) => row.member_count,
+        t("access.members"),
+        (row) => row.member_count ?? "—",
         { width: "w-[20%]" },
       ),
     ];
@@ -1097,6 +1118,7 @@ function RolesTab({ action }: { action: ReactNode }) {
     <div data-testid="roles-section">
       <SectionList
         name="roles"
+        help={t("access.rolesHelp")}
         resource={t("access.roles")}
         query={query}
         emptyLine={t("access.noRoles")}
@@ -1124,6 +1146,7 @@ function RolesTab({ action }: { action: ReactNode }) {
 function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): void }) {
   const { t } = useI18n();
   const session = useSession();
+  const client = useQueryClient();
   const canWrite = session.permissions.includes("rbac:write");
   const people = usePeople(
     group !== null && canWrite && session.permissions.includes("identity:read"),
@@ -1143,8 +1166,9 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
         `/v1/rbac/groups/${encodeURIComponent(group?.id ?? "")}/members/${encodeURIComponent(userId)}`,
         { method: "POST" },
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       closeDialog();
+      await client.invalidateQueries({ queryKey: ["admin"] });
       toast.success(t("access.memberAdded"));
     },
     onError: (error) => refusalToast(error, t),
@@ -1155,8 +1179,9 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
         `/v1/rbac/groups/${encodeURIComponent(group?.id ?? "")}/roles/${encodeURIComponent(roleId)}`,
         { method: "POST" },
       ),
-    onSuccess: () => {
+    onSuccess: async () => {
       closeDialog();
+      await client.invalidateQueries({ queryKey: ["admin"] });
       toast.success(t("access.groupRoleAssigned"));
     },
     onError: (error) => refusalToast(error, t),
@@ -1196,7 +1221,7 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
               label: t("access.members"),
               value: (
                 <span className="text-muted-foreground" data-testid="groups-members-note">
-                  {t("access.membersNotListed")}
+                  {group?.member_count ?? "—"}
                 </span>
               ),
             },
@@ -1265,12 +1290,10 @@ function GroupsTab({ action }: { action: ReactNode }) {
     return [
       column.text("name", (row) => row.name, t("common.name"), { width: "w-[40%]" }),
       column.custom(
-        "description",
-        (row) => row.description,
-        t("common.description"),
-        (row) => (
-          <span className="line-clamp-2 text-muted-foreground">{row.description || "—"}</span>
-        ),
+        "member_count",
+        (row) => row.member_count,
+        t("access.members"),
+        (row) => row.member_count ?? "—",
         { width: "w-[60%]" },
       ),
     ];
@@ -1480,11 +1503,18 @@ function GrantsTab({ action }: { action: ReactNode }) {
       column.custom(
         "expires",
         (row) => row.expires_at,
-        t("access.validity"),
-        (row) =>
-          row.expires_at
-            ? t("access.grantExpires", { time: dateTime(row.expires_at) })
-            : t("access.grantNoExpiry"),
+        t("common.status"),
+        (row) => (
+          <span
+            title={
+              row.expires_at
+                ? t("access.grantExpires", { time: dateTime(row.expires_at) })
+                : t("access.grantNoExpiry")
+            }
+          >
+            <StatusBadge state={grantStatus(row.expires_at, Date.now())} />
+          </span>
+        ),
         { width: "w-[25%]" },
       ),
     ];
@@ -1493,13 +1523,23 @@ function GrantsTab({ action }: { action: ReactNode }) {
     <div data-testid="grants-section">
       <SectionList
         name="grants"
+        help={t("access.grantsHelp")}
         resource={t("access.grants")}
         query={query}
         emptyLine={t("access.noGrants")}
         emptyAction={action}
-        summary={t(items.length === 1 ? "access.grantsSummary.one" : "access.grantsSummary", {
-          count: items.length,
-        })}
+        summary={t(
+          items.every((item) => item.resource_type === "workflow")
+            ? items.length === 1
+              ? "access.workflowGrants.one"
+              : "access.workflowGrants.other"
+            : items.length === 1
+              ? "access.grantsSummary.one"
+              : "access.grantsSummary",
+          {
+            count: items.length,
+          },
+        )}
       >
         <AdminTable
           collectionId="grants-list"

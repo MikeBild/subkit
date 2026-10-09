@@ -1,9 +1,11 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   type CatalogMetadataColumns,
   type CatalogMetadataPatch,
   type CatalogSource,
   catalogMetadataView,
+  DescriptionAcceptanceError,
   humanMetadataWrite,
   metadataChange,
 } from "../api/catalog-metadata.ts";
@@ -19,7 +21,7 @@ import { type WorkflowLifecyclePayload, WorkflowLifecyclePayloadSchema } from ".
 import * as scheduleRepo from "../scheduler/repo.ts";
 import * as inboundService from "../webhooks/inbound/service.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
-import { definitionWithoutDescription } from "./canonical-json.ts";
+import { definitionWithoutDescription, workflowJsonDigest } from "./canonical-json.ts";
 import {
   buildWorkflowListConds,
   countWorkflows,
@@ -28,12 +30,24 @@ import {
   WORKFLOW_LIST_MAX_LIMIT,
 } from "./catalog-view.ts";
 import { applySkillSchemaGate, applyStorageBindingGate } from "./commit-gates.ts";
+import {
+  connectorReferencesForDefinition,
+  loadConnectorReferenceRecords,
+  type WorkflowConnectorReference,
+} from "./connector-refs.ts";
+import { loadWorkflowOperatingStates } from "./operating-status.ts";
 import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { invalidDefinitionForRead, readStoredDefinition } from "./stored-definition.ts";
 import { validateTenantWorkflowDef } from "./tenant-validator.ts";
 import { applyTriggerBindings, triggerOf } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
+import {
+  readVersionAuthor,
+  type VersionActor,
+  type VersionAuthor,
+  versionAuthorColumns,
+} from "./version-author.ts";
 import { isUnchangedFromCurrentVersion } from "./version-dedup.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
@@ -61,6 +75,10 @@ export async function emitWorkflowLifecycle(
 }
 
 export interface WorkflowView {
+  operating_status?: WorkflowOperatingStatus;
+  connector_references: WorkflowConnectorReference[];
+  creator: VersionAuthor;
+  checksum: string | null;
   id: string;
   tenant_id: string;
   slug: string;
@@ -115,21 +133,36 @@ async function workflowViewsFromRows(
   exec: Executor,
 ): Promise<WorkflowView[]> {
   const versionIds = rows.flatMap((wf) => (wf.current_version_id ? [wf.current_version_id] : []));
-  const versions = versionIds.length
+  const workflowIds = rows.map((wf) => wf.id);
+  const versions = workflowIds.length
     ? await exec
         .select({
           id: workflowVersions.id,
+          workflow_id: workflowVersions.workflow_id,
+          author_user_id: workflowVersions.author_user_id,
+          author_system_account_id: workflowVersions.author_system_account_id,
           version: workflowVersions.version,
           dag: workflowVersions.dag,
         })
         .from(workflowVersions)
         .where(
-          and(eq(workflowVersions.tenant_id, tenant_id), inArray(workflowVersions.id, versionIds)),
+          and(
+            eq(workflowVersions.tenant_id, tenant_id),
+            inArray(workflowVersions.workflow_id, workflowIds),
+            or(
+              eq(workflowVersions.version, 1),
+              ...(versionIds.length ? [inArray(workflowVersions.id, versionIds)] : []),
+            ),
+          ),
         )
     : [];
+  const connectorRecords = rows.length ? await loadConnectorReferenceRecords(tenant_id, exec) : [];
   const byId = new Map(versions.map((v) => [v.id, v]));
+  const originals = new Map(versions.filter((v) => v.version === 1).map((v) => [v.workflow_id, v]));
   return rows.map((wf) => {
-    const v = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
+    const current = wf.current_version_id ? byId.get(wf.current_version_id) : undefined;
+    const v = current?.workflow_id === wf.id ? current : undefined;
+    const original = originals.get(wf.id);
     const stored = v ? readStoredDefinition(v.dag) : null;
     const storedDef: WorkflowDef = stored
       ? stored.invalid
@@ -143,6 +176,9 @@ async function workflowViewsFromRows(
     const metadata = catalogMetadataView(wf);
     return {
       id: wf.id,
+      connector_references: connectorReferencesForDefinition(v?.dag, connectorRecords),
+      creator: original ? readVersionAuthor(original) : null,
+      checksum: v ? workflowJsonDigest(v.dag) : null,
       tenant_id: wf.tenant_id,
       slug: wf.slug,
       name: wf.name,
@@ -167,7 +203,7 @@ async function workflowViewsFromRows(
   });
 }
 
-export interface CreateWorkflowInput {
+export interface CreateWorkflowInput extends VersionActor {
   tenant_id: string;
   def: unknown;
   actor_id: string | null;
@@ -223,6 +259,7 @@ export async function createWorkflow(
       const [v] = await tx
         .insert(workflowVersions)
         .values({
+          ...versionAuthorColumns(input),
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
           version: 1,
@@ -235,7 +272,7 @@ export async function createWorkflow(
       await auditAwait(
         {
           tenant_id: input.tenant_id,
-          actor_type: input.actor_id ? "user" : "system",
+          actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
           actor_id: input.actor_id,
           action: AuditAction.WORKFLOW_CREATED,
           resource_type: "workflow",
@@ -271,7 +308,7 @@ export async function createWorkflow(
   return { workflow: view };
 }
 
-export interface UpdateWorkflowInput {
+export interface UpdateWorkflowInput extends VersionActor {
   tenant_id: string;
   id: string;
   def: unknown;
@@ -345,6 +382,7 @@ export async function updateWorkflow(
     const [v] = await tx
       .insert(workflowVersions)
       .values({
+        ...versionAuthorColumns(input),
         tenant_id: input.tenant_id,
         workflow_id: wf.id,
         version: next,
@@ -371,7 +409,7 @@ export async function updateWorkflow(
     await auditAwait(
       {
         tenant_id: input.tenant_id,
-        actor_type: input.actor_id ? "user" : "system",
+        actor_type: input.actor_type ?? (input.actor_id ? "user" : "system"),
         actor_id: input.actor_id,
         action: AuditAction.WORKFLOW_UPDATED,
         resource_type: "workflow",
@@ -414,6 +452,7 @@ export async function updateWorkflow(
 }
 
 export interface UpdateWorkflowMetadataInput {
+  accept_description?: boolean;
   tenant_id: string;
   id: string;
   slug?: string;
@@ -443,6 +482,9 @@ export async function updateWorkflowMetadata(
     typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : null;
   const desiredLifecycle = input.lifecycle ?? null;
   const metadataInput: CatalogMetadataPatch = {
+    ...(input.accept_description !== undefined
+      ? { accept_description: input.accept_description }
+      : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.category !== undefined ? { category: input.category } : {}),
   };
@@ -469,7 +511,8 @@ export async function updateWorkflowMetadata(
             isNull(workflows.deleted_at),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for("update");
       const wf = wfRows[0];
       if (!wf) return null;
       if (desiredSlug && desiredSlug !== wf.slug) {
@@ -604,6 +647,7 @@ export async function updateWorkflowMetadata(
     if (!view) return { errors: ["workflow not found after rename"] };
     return { workflow: view };
   } catch (err) {
+    if (err instanceof DescriptionAcceptanceError) throw err;
     if (desiredSlug) {
       const conflict = await slugConflictResult(err, db, input.tenant_id, desiredSlug);
       if (conflict) return conflict;
@@ -631,16 +675,47 @@ export async function listWorkflows(
           : workflows.created_at;
   const ordered = opts.order === "asc" ? asc(sortColumn) : desc(sortColumn);
 
+  const withOperatingStates = async (views: WorkflowView[]) => {
+    if (!opts.include_operating_status && !opts.operating_status) return views;
+    const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
+    const at = clock.rows[0]?.now;
+    if (!at) throw new Error("database clock unavailable");
+    const states = await loadWorkflowOperatingStates(
+      db,
+      tenant_id,
+      views,
+      opts.operating_access ?? { schedules: false, hooks: false, connectors: false },
+      new Date(at),
+    );
+    return views.map((view) => ({
+      ...view,
+      operating_status: states.get(view.id) ?? ("unknown" as const),
+    }));
+  };
   const derived = await resolveCatalogFilter(tenant_id, opts, db);
-  if (derived) {
+  if (derived || opts.operating_status) {
     const all = await db
       .select({ row: workflows })
       .from(workflows)
       .where(and(...tenantConds))
       .orderBy(ordered, asc(workflows.id));
-    const kept = all.filter((r) => derived.keep(r.row));
+    const kept = all.filter((r) => !derived || derived.keep(r.row));
+    if (opts.operating_status) {
+      const views = await withOperatingStates(
+        await workflowViewsFromRows(
+          tenant_id,
+          kept.map((r) => r.row),
+          db,
+        ),
+      );
+      const matching = views.filter((view) => view.operating_status === opts.operating_status);
+      return { rows: matching.slice(offset, offset + limit), total: matching.length };
+    }
     const page = kept.slice(offset, offset + limit).map((r) => r.row);
-    return { rows: await workflowViewsFromRows(tenant_id, page, db), total: kept.length };
+    return {
+      rows: await withOperatingStates(await workflowViewsFromRows(tenant_id, page, db)),
+      total: kept.length,
+    };
   }
 
   const rows = await db
@@ -656,7 +731,7 @@ export async function listWorkflows(
     rows.map((r) => r.row),
     db,
   );
-  return { rows: views, total };
+  return { rows: await withOperatingStates(views), total };
 }
 
 export interface WorkflowSummary {
@@ -676,6 +751,22 @@ export async function listWorkflowSummaries(
   exec?: Executor,
 ): Promise<ListResult<WorkflowSummary>> {
   const db = exec ?? getDb();
+  if (opts.operating_status) {
+    const listed = await listWorkflows(tenant_id, opts, db);
+    return {
+      rows: listed.rows.map((view) => ({
+        id: view.id,
+        slug: view.slug,
+        name: view.name,
+        description: view.description,
+        category: view.category,
+        lifecycle: view.lifecycle,
+        current_version: view.current_version,
+        step_count: view.steps.length,
+      })),
+      total: listed.total,
+    };
+  }
   const limit = Math.min(opts.limit ?? WORKFLOW_LIST_MAX_LIMIT, WORKFLOW_LIST_MAX_LIMIT);
   const offset = opts.offset ?? 0;
   const tenantConds = buildWorkflowListConds(tenant_id, opts);

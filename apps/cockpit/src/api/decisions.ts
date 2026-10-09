@@ -39,8 +39,13 @@ export function listPatchCandidatesByStatus(
   return apiRequest(`/v1/patch-candidates?status=${status}&order=desc&limit=25`);
 }
 
-export function listProposedSkillCandidates(): Promise<SkillCandidateList> {
-  return allDecisionPages<SkillCandidate>("/v1/skill-candidates?status=proposed");
+export function listProposedSkillCandidates(
+  knowledgeSourceId?: string,
+): Promise<SkillCandidateList> {
+  const source = knowledgeSourceId
+    ? `&knowledge_source_id=${encodeURIComponent(knowledgeSourceId)}`
+    : "";
+  return allDecisionPages<SkillCandidate>(`/v1/skill-candidates?status=proposed${source}`);
 }
 
 export function listWorkflowContextNotes(workflowId: string): Promise<SkillCandidateList> {

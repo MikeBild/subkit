@@ -43,7 +43,12 @@ export default defineConfig({
   root,
   base: "/cockpit/",
   plugins: [react(), tailwind(), contractMeta(), bareBase()],
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@shared": fileURLToPath(new URL("../../packages/shared/src", import.meta.url)),
+    },
+  },
   server: {
     port: 3010,
     proxy: Object.fromEntries(

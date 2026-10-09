@@ -1,6 +1,7 @@
 import { and, desc, eq, getTableColumns, gte, inArray, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { auditLog } from "../db/schema/audit.ts";
+import { auditResourceName } from "./resource-name.ts";
 import type { AuditActorType, AuditEntry, AuditResult } from "./types.ts";
 
 export interface AuditQueryFilters {
@@ -9,6 +10,7 @@ export interface AuditQueryFilters {
   actor_id?: string;
   actor_type?: AuditActorType;
   resource_type?: string;
+  resource_types?: string[];
   resource_id?: string;
   result?: AuditResult;
   trace_id?: string;
@@ -69,6 +71,9 @@ function buildWhere(filters: AuditQueryFilters, before?: AuditKeysetCursor) {
   if (filters.actor_id) tenantConds.push(eq(auditLog.actor_id, filters.actor_id));
   if (filters.actor_type) tenantConds.push(eq(auditLog.actor_type, filters.actor_type));
   if (filters.resource_type) tenantConds.push(eq(auditLog.resource_type, filters.resource_type));
+  if (filters.resource_types?.length) {
+    tenantConds.push(inArray(auditLog.resource_type, filters.resource_types));
+  }
   if (filters.resource_id) {
     tenantConds.push(sql`${auditLog.resource_id}::text = ${filters.resource_id}`);
   }
@@ -176,6 +181,7 @@ export function serializeAuditEntry(entry: AuditEntry): Record<string, unknown> 
     action: entry.action,
     resource_type: entry.resource_type,
     resource_id: entry.resource_id,
+    resource_name: auditResourceName(entry),
     result: entry.result,
     trace_id: entry.trace_id,
     ip: entry.ip,

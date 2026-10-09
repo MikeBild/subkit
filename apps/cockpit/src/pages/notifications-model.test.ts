@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { translate } from "@/lib/i18n";
 import {
+  channelTargetLabel,
   deliveryState,
   eventPatternLabels,
   platformLabel,
@@ -266,4 +267,14 @@ describe("editing a rule", () => {
     expect(before.target).toBe("current");
     expect(ruleEditBody(before, { ...before, name: "Neu" }, [slack])).toEqual({ name: "Neu" });
   });
+});
+
+test("channel targets use their stored destination rather than a platform guess", () => {
+  expect(
+    channelTargetLabel({ platform: "webhook", channel_id: "https://example.test/events" }, de),
+  ).toBe("https://example.test/events");
+  expect(channelTargetLabel({ platform: "slack", channel_id: "C024" }, de)).toBe("C024");
+  expect(channelTargetLabel({ platform: "sk_cli", channel_id: "_inbox" }, de)).toBe(
+    translate("de", "notifications.target.inbox"),
+  );
 });

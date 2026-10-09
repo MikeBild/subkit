@@ -25,7 +25,11 @@ const FULL: StarterSources = {
   attention: [
     { class: "decide", subject: { kind: "workflow", id: "w0", name: "nightly-sync" } },
     { class: "failing", subject: { kind: "connector", id: "c1", name: "wiki" } },
-    { class: "failing", subject: { kind: "workflow", id: "w1", name: "growth-report" } },
+    {
+      class: "failing",
+      subject: { kind: "workflow", id: "w1", name: "growth-report" },
+      counts: { consecutive_failures: 2 },
+    },
     { class: "failing", subject: { kind: "workflow", id: "w2", name: "late-report" } },
   ],
   usage: true,
@@ -75,7 +79,7 @@ describe("chat start: example cards drawn from the installation", () => {
     expect(failing).toEqual(
       expect.objectContaining({
         title: "Warum schlug etwas fehl?",
-        line: "growth-report · scheitert gerade",
+        line: "growth-report · 2 Fehlschläge in Folge",
         prompt: "Warum schlägt growth-report fehl?",
       }),
     );
@@ -87,9 +91,40 @@ describe("chat start: example cards drawn from the installation", () => {
         prompt: "Richte die Vorlage „Webhook meldet in Slack“ ein: Meldet Wichtiges.",
       }),
     );
+    expect(knowledge?.title).toBe("Was gilt im Betrieb?");
     expect(knowledge?.line).toBe("Quelle · Handbuch");
     expect(catalog?.line).toBe("billing · 4 Workflows");
     expect(catalog?.prompt).toBe("Zeig mir die Workflows in @kategorie/billing");
+  });
+
+  test("only an evidenced consecutive failure count changes the starter line", () => {
+    const starter = (count?: number) =>
+      chatStarters(
+        {
+          ...EMPTY,
+          attention: [
+            {
+              class: "failing",
+              subject: { kind: "workflow", id: "w1", name: "Report" },
+              counts: { consecutive_failures: count },
+            },
+          ],
+        },
+        de,
+      )[0];
+    expect(starter(1)?.line).toBe("Report · 1 Fehlschlag in Folge");
+    expect(starter(5)?.line).toBe("Report · 5 Fehlschläge in Folge");
+    for (const count of [undefined, 0, -1, 1.5, Number.NaN]) {
+      expect(starter(count)?.line).toBe("Report · scheitert gerade");
+    }
+    const attention = [
+      {
+        class: "failing",
+        subject: { kind: "workflow", id: "w1", name: "Report" },
+        counts: { failures: 9, consecutive_failures: undefined },
+      },
+    ];
+    expect(chatStarters({ ...EMPTY, attention }, de)[0]?.line).toBe("Report · scheitert gerade");
   });
 
   test("an installation without data still offers four ways in", () => {

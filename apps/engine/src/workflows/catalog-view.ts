@@ -1,3 +1,4 @@
+import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import {
   CATALOG_KINDS,
@@ -11,13 +12,18 @@ import { AuditAction, type AuditActorType } from "../audit/types.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { connectors, files, knowledgeSources, skills, workflows } from "../db/schema/index.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
+import type { OperatingStatusAccess } from "./operating-status.ts";
 
 export interface CatalogFilterOptions {
+  description_source?: "llm" | "human";
   category?: string;
   connector?: string;
 }
 
 export interface ListWorkflowsOptions extends CatalogFilterOptions {
+  operating_status?: WorkflowOperatingStatus;
+  operating_access?: OperatingStatusAccess;
+  include_operating_status?: boolean;
   limit?: number;
   offset?: number;
   status?: "draft" | "active" | "archived";
@@ -30,6 +36,10 @@ export interface ListWorkflowsOptions extends CatalogFilterOptions {
 export function buildWorkflowListConds(tenant_id: string, opts: ListWorkflowsOptions) {
   const conds = [eq(workflows.tenant_id, tenant_id), isNull(workflows.deleted_at)];
   if (opts.status) conds.push(eq(workflows.lifecycle, opts.status));
+  if (opts.description_source)
+    conds.push(eq(workflows.description_source, opts.description_source));
+  if (opts.description_source === "llm")
+    conds.push(sql`length(trim(coalesce(${workflows.description}, ''))) > 0`);
   const category = opts.category?.trim();
   if (category) conds.push(eq(workflows.category, category));
   if (opts.name_contains) conds.push(ilike(workflows.name, `%${opts.name_contains}%`));
@@ -92,6 +102,7 @@ export interface CategoryUsage {
   category: string;
   total: number;
   counts: Record<CatalogKind, number>;
+  llm_counts: Record<CatalogKind, number>;
 }
 
 function liveRows(kind: CatalogKind) {
@@ -112,7 +123,11 @@ export async function loadCategoryVocabulary(
     const table = CATALOG_TABLES[kind];
     const live = liveRows(kind);
     const rows = await db
-      .select({ category: table.category, c: sql<number>`count(*)::int` })
+      .select({
+        category: table.category,
+        c: sql<number>`count(*)::int`,
+        llm: sql<number>`count(*) FILTER (WHERE ${table.description_source} = 'llm' AND length(trim(coalesce(${table.description}, ''))) > 0)::int`,
+      })
       .from(table)
       .where(and(eq(table.tenant_id, tenant_id), ...(live ? [live] : [])))
       .groupBy(table.category);
@@ -121,8 +136,10 @@ export async function loadCategoryVocabulary(
         category: row.category,
         total: 0,
         counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
+        llm_counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
       };
       usage.counts[kind] = Number(row.c);
+      usage.llm_counts[kind] = Number(row.llm);
       usage.total += Number(row.c);
       byCategory.set(row.category, usage);
     }

@@ -47,6 +47,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { TranslationKey } from "@/lib/i18n";
 import { type LocalePreference, useI18n } from "@/lib/i18n-context";
 import { type Theme, useTheme } from "@/lib/theme";
@@ -184,11 +185,14 @@ export function AppShell() {
 
           <SidebarFooter data-testid="cockpit-sidebar-footer">
             <ShellLiveIndicator />
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <AccountMenu />
-              </SidebarMenuItem>
-            </SidebarMenu>
+            <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+              <SidebarMenu className="min-w-0 flex-1">
+                <SidebarMenuItem>
+                  <AccountMenu />
+                </SidebarMenuItem>
+              </SidebarMenu>
+              <DesktopSidebarToggle />
+            </div>
           </SidebarFooter>
           <SidebarRail
             aria-label={t("nav.toggle")}
@@ -271,6 +275,11 @@ function AttentionCounter() {
       {badge.count}
     </SidebarMenuBadge>
   );
+}
+
+function DesktopSidebarToggle() {
+  const isMobile = useIsMobile();
+  return isMobile ? null : <SidebarToggle className="shrink-0" />;
 }
 
 function ShellLiveIndicator() {

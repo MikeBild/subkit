@@ -9,6 +9,7 @@ import {
   asRuntime,
   authLabel,
   connectorCallsHref,
+  connectorConfiguredTimeout,
   connectorFigures,
   connectorNotice,
   connectorStatsEndpoint,
@@ -413,5 +414,20 @@ describe("the sign-in card's one line and one action", () => {
       expect(CATALOGS.en[key].length).toBeGreaterThan(0);
       expect(CATALOGS.de[key]).not.toBe(CATALOGS.en[key]);
     }
+  });
+});
+
+describe("effective connector timeout evidence", () => {
+  test("shows only the supported MCP configuration, never a guessed default", () => {
+    const config = { mcp: { remote_tool_call_timeout_ms: 12000 } };
+    expect(connectorConfiguredTimeout({ driver: "mcp", config })).toBe(12000);
+    expect(connectorConfiguredTimeout({ driver: "http", config })).toBeNull();
+    expect(connectorConfiguredTimeout({ driver: "mcp", config: {} })).toBeNull();
+    expect(
+      connectorConfiguredTimeout({
+        driver: "mcp",
+        config: { mcp: { remote_tool_call_timeout_ms: 0 } },
+      }),
+    ).toBeNull();
   });
 });

@@ -246,9 +246,9 @@ describe("usage", () => {
   test("the window a link opens is the window the page reads", () => {
     for (const window of ["24h", "7d", "30d"] as const)
       expect(usageWindowFromUrl(query(usageHref({ window })))).toBe(window);
-    expect(usageHref({ window: "30d" })).toBe("/usage");
-    expect(usageWindowFromUrl(query(usageHref()))).toBe("30d");
-    expect(usageWindowFromUrl("?window=1y")).toBe("30d");
+    expect(usageHref({ window: "7d" })).toBe("/usage");
+    expect(usageWindowFromUrl(query(usageHref()))).toBe("7d");
+    expect(usageWindowFromUrl("?window=1y")).toBe("7d");
   });
 });
 

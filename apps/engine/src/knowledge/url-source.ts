@@ -130,6 +130,7 @@ export async function refreshKnowledgeSource(
       tenant_id: p.tenant_id,
       actor: p.actor,
       knowledge_source_id: p.id,
+      expected_source_uri: source.source_uri,
       upload: {
         buffer: Buffer.from(document.content, "utf8"),
         filename: source.source_uri,

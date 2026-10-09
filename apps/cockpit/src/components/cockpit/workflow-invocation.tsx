@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { useActorDirectory } from "@/app/actor-directory";
+import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, apiAccessHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
@@ -114,6 +116,7 @@ function HttpMode({
     <div className="flex flex-col gap-3">
       <Copyable>
         <CopyField
+          labelled
           value={http.url ?? http.path}
           label={t("invocation.httpAddress")}
           testId="workflow-invocation-http-url"
@@ -256,6 +259,7 @@ function WebhookMode({ invocation }: { invocation: Invocation }) {
             <div className="min-w-0 flex-1">
               <Copyable>
                 <CopyField
+                  labelled
                   value={hook.url ?? hook.path}
                   label={t("invocation.webhookAddress")}
                   testId={`workflow-invocation-hook-${index}-url`}
@@ -299,9 +303,14 @@ function McpMode({ invocation }: { invocation: Invocation }) {
   const { mcp } = invocation;
   return (
     <div className="flex flex-col gap-3">
+      <FactList
+        items={[{ label: t("invocation.http.signIn"), value: t("invocation.mcp.signIn") }]}
+        testId="workflow-invocation-mcp-auth"
+      />
       {invocation.base_url ? (
         <Copyable>
           <CopyField
+            labelled
             value={`${invocation.base_url.replace(/\/$/, "")}/mcp`}
             label={t("invocation.mcpAddress")}
             testId="workflow-invocation-mcp-url"
@@ -310,6 +319,7 @@ function McpMode({ invocation }: { invocation: Invocation }) {
       ) : null}
       <Copyable>
         <CopyField
+          labelled
           value={mcp.tool_name}
           label={t("invocation.mcp.tool")}
           testId="workflow-invocation-mcp-tool"
@@ -356,6 +366,51 @@ function CliMode({ invocation }: { invocation: Invocation }) {
   );
 }
 
+function StartAccess({ access }: { access: NonNullable<Invocation["start_access"]> }) {
+  const { t } = useI18n();
+  const directory = useActorDirectory(access.visibility.rules);
+  const { permissions } = useSession();
+  const groups = useQuery({
+    queryKey: ["workflow-start-access-groups"],
+    enabled: access.visibility.rules && permissions.includes("rbac:read"),
+    queryFn: () => apiRequest<{ items: { id: string; name: string }[] }>("/v1/rbac/groups"),
+  });
+  return (
+    <section className="flex flex-col gap-2" data-testid="workflow-start-access">
+      <h3 className="text-sm font-medium">{t("invocation.startAccess")}</h3>
+      <FactList
+        items={[
+          {
+            label: t("invocation.startCaller"),
+            value: t(access.caller.allowed ? "invocation.startAllowed" : "invocation.startDenied"),
+          },
+        ]}
+      />
+      {!access.visibility.rules || !access.rules ? (
+        <p className={line}>{t("invocation.startRulesHidden")}</p>
+      ) : access.rules.roles.length + access.rules.grants.length === 0 ? (
+        <p className={line}>{t("invocation.startNoRules")}</p>
+      ) : (
+        <ul className="text-sm">
+          {access.rules.roles.map((role) => (
+            <li key={`role:${role.id}`}>{role.name}</li>
+          ))}
+          {access.rules.grants.map((grant) => (
+            <li key={`${grant.subject_type}:${grant.subject_id}`}>
+              {(grant.subject_type === "group"
+                ? groups.data?.items.find((group) => group.id === grant.subject_id)?.name
+                : actorDirectoryName(directory, grant.subject_type, grant.subject_id)) ??
+                t("runs.caller.unknown")}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className={line}>{t("invocation.startExternal")}</p>
+      <p className={line}>{t("invocation.startPreview")}</p>
+    </section>
+  );
+}
+
 export function WorkflowInvocation({
   workflowId,
   workflowName,
@@ -394,6 +449,7 @@ export function WorkflowInvocation({
   const hiddenKey = hiddenInvocationKey(hiddenInvocationLists(invocation));
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="workflow-invocation">
+      {invocation.start_access ? <StartAccess access={invocation.start_access} /> : null}
       {modes.length > 1 ? (
         <div className="overflow-x-auto">
           <SegmentedControl

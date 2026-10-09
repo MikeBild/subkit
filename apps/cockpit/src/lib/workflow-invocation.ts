@@ -1,7 +1,24 @@
 import type { components } from "@/api/schema";
 import type { TranslationKey } from "@/lib/i18n";
 
-export type WorkflowInvocation = components["schemas"]["WorkflowInvocation"];
+export interface WorkflowStartAccess {
+  permission: "workflow:run";
+  caller: { allowed: boolean; source: string | null; reason: string | null };
+  visibility: { rules: boolean };
+  rules?: {
+    roles: { id: string; name: string }[];
+    grants: {
+      subject_type: "user" | "system_account" | "group";
+      subject_id: string;
+      expires_at: string | null;
+    }[];
+  };
+  external: { authentication_required: true; credential_restrictions_apply: true };
+  without_approval: "held_preview_only";
+}
+export type WorkflowInvocation = components["schemas"]["WorkflowInvocation"] & {
+  start_access?: WorkflowStartAccess;
+};
 export type InvocationHook = NonNullable<WorkflowInvocation["hooks"]>[number];
 export type InvocationSchedule = NonNullable<WorkflowInvocation["schedules"]>[number];
 

@@ -185,6 +185,7 @@ describe("outbound Idempotency-Key", () => {
     expect(r.status).toBe("succeeded");
     expect(observed.length).toBe(1);
     expect(observed[0]?.method).toBe("GET");
+    expect(r.request_meta?.extras).toMatchObject({ effect_kind: "read" });
     expect(observed[0]?.idempotency_key).toBeNull();
     expect((r.request_meta as Record<string, unknown>).idempotency_key).toBeUndefined();
     void execution_id;

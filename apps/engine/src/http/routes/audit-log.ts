@@ -25,6 +25,9 @@ const AuditEntrySchema = z
     action: z.string(),
     resource_type: z.string(),
     resource_id: z.string().nullable(),
+    resource_name: z.string().nullable().openapi({
+      description: "Resource name recorded in the event snapshot, or null when not recorded.",
+    }),
     result: z.string(),
     trace_id: z.string().nullable(),
     ip: z.string().nullable(),
@@ -44,6 +47,7 @@ const FilterQuery = z
     actor_id: z.string().uuid().optional(),
     actor_type: z.enum(["user", "system_account", "system"]).optional(),
     resource_type: z.string().optional(),
+    resource_types: z.string().max(2000).optional(),
     resource_id: z.string().optional(),
     result: z.enum(["success", "denied", "error"]).optional(),
     trace_id: z.string().optional(),
@@ -105,6 +109,7 @@ interface RawFilterQuery {
   actor_id?: string | undefined;
   actor_type?: "user" | "system_account" | "system" | undefined;
   resource_type?: string | undefined;
+  resource_types?: string | undefined;
   resource_id?: string | undefined;
   result?: "success" | "denied" | "error" | undefined;
   trace_id?: string | undefined;
@@ -119,6 +124,8 @@ function filtersFromQuery(tenant_id: string, q: RawFilterQuery): AuditQueryFilte
   if (q.actor_id) f.actor_id = q.actor_id;
   if (q.actor_type) f.actor_type = q.actor_type as AuditActorType;
   if (q.resource_type) f.resource_type = q.resource_type;
+  const resourceTypes = parseActions(q.resource_types);
+  if (resourceTypes) f.resource_types = resourceTypes;
   if (q.resource_id) f.resource_id = q.resource_id;
   if (q.result) f.result = q.result as AuditResult;
   if (q.trace_id) f.trace_id = q.trace_id;
@@ -140,6 +147,7 @@ export function registerAuditLogRoutes(app: OpenAPIHono<AppEnv>): void {
       actor_id: rawQ.actor_id,
       actor_type: rawQ.actor_type as "user" | "system_account" | "system" | undefined,
       resource_type: rawQ.resource_type,
+      resource_types: rawQ.resource_types,
       resource_id: rawQ.resource_id,
       result: rawQ.result as "success" | "denied" | "error" | undefined,
       trace_id: rawQ.trace_id,

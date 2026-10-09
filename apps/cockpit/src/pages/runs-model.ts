@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import { auditHref, instantParam, RUNS_FILTER_PARAMS, uuidParam } from "@/app/links";
 import { causeClassLabel } from "@/lib/cause-class";
 import { LOCALE_TAGS, type Locale, type PluralKey, type TranslationKey } from "@/lib/i18n";
@@ -32,6 +33,7 @@ const REQUEST_SOURCE_KEYS: Partial<Record<string, TranslationKey>> = {
   scheduler: "runs.source.scheduler",
   chat: "runs.source.chat",
   ui: "runs.source.ui",
+  queue: "runs.source.queue",
 };
 
 export const REQUEST_SOURCES: readonly string[] = Object.keys(REQUEST_SOURCE_KEYS);
@@ -174,6 +176,73 @@ export function runAuthorityFacts(
       ? [identifierFact(t("authority.version"), run.workflow_version_id)]
       : []),
   ];
+}
+
+const VERIFICATION_KEYS = {
+  api_key: "runs.caller.method.api_key",
+  browser_session: "runs.caller.method.browser_session",
+  mcp_oauth: "runs.caller.method.mcp_oauth",
+  token_exchange: "runs.caller.method.token_exchange",
+} as const satisfies Record<string, TranslationKey>;
+
+export type RunCaller = {
+  who: string;
+  channel: string | null;
+  state: "verified" | "automatic" | "unknown";
+  stateLabel: TranslationKey;
+  why: RunFact[];
+};
+
+export function runCaller(
+  run: Pick<
+    Execution,
+    "caller" | "request_source" | "execution_authority_id" | "workflow_version_id" | "hold_writes"
+  >,
+  directory: ActorDirectory,
+  t: Translate,
+): RunCaller {
+  const { caller } = run;
+  const channel = requestSourceLabel(run.request_source, t).text;
+  const named = caller.kind === "user" || caller.kind === "system_account";
+  const verified = named && caller.verified_by != null;
+  const automatic = caller.kind === "engine";
+  const kindLabel = t(
+    caller.kind === "system_account" ? "runs.caller.systemAccount" : "runs.caller.person",
+  );
+  const who = named
+    ? ((caller.principal_id
+        ? actorDirectoryName(directory, caller.kind, caller.principal_id)
+        : undefined) ?? kindLabel)
+    : channel;
+  return {
+    who,
+    channel: named ? channel : null,
+    state: verified ? "verified" : automatic ? "automatic" : "unknown",
+    stateLabel: verified
+      ? "runs.caller.verified"
+      : automatic
+        ? "runs.caller.automatic"
+        : "runs.caller.unknown",
+    why: [
+      [
+        t("runs.caller.verifiedBy"),
+        t(
+          verified && caller.verified_by
+            ? VERIFICATION_KEYS[caller.verified_by]
+            : automatic
+              ? "runs.caller.method.engine"
+              : "runs.caller.method.none",
+        ),
+      ],
+      ...(caller.provider && verified
+        ? [[t("runs.caller.provider"), caller.provider] as RunFact]
+        : []),
+      ...runAuthorityFacts(run, t),
+      ...(caller.origin_execution_id
+        ? [identifierFact(t("runs.caller.origin"), caller.origin_execution_id)]
+        : []),
+    ],
+  };
 }
 
 export function runName(run: Execution, t: Translate): string {
@@ -447,4 +516,106 @@ export function runCauseLinks(
         },
       ]
     : [];
+}
+
+export interface StepCredentialSnapshot {
+  connector_id: string;
+  environment: "dev" | "prod";
+  credential_generation: number | null;
+  access_token_version: number | null;
+  identity: { issuer: string; subject: string; source: string } | null;
+}
+
+export function stepCredentialSnapshots(step: {
+  credential_snapshots?: unknown;
+}): StepCredentialSnapshot[] {
+  if (!Array.isArray(step.credential_snapshots)) return [];
+  return step.credential_snapshots.filter((value): value is StepCredentialSnapshot => {
+    if (
+      !value ||
+      typeof value !== "object" ||
+      typeof value.connector_id !== "string" ||
+      !["dev", "prod"].includes(value.environment) ||
+      ![value.credential_generation, value.access_token_version].every(
+        (generation) =>
+          generation === null ||
+          (typeof generation === "number" && Number.isSafeInteger(generation) && generation > 0),
+      )
+    )
+      return false;
+    return (
+      value.identity === null ||
+      (typeof value.identity?.issuer === "string" &&
+        typeof value.identity?.subject === "string" &&
+        ["openid_claims", "token_endpoint"].includes(value.identity?.source))
+    );
+  });
+}
+
+export function initialRunsFilter(search: string, now: number): RunsFilter {
+  const filter = filterFromUrl(search);
+  if (
+    filter.startedFrom ||
+    filter.startedTo ||
+    filter.workflowId ||
+    new URLSearchParams(search).has("run")
+  )
+    return filter;
+  return {
+    ...filter,
+    startedFrom: new Date(now - 7 * 86400000).toISOString(),
+    startedTo: new Date(now).toISOString(),
+  };
+}
+
+export function stepEffectKind(step: { request_meta?: unknown }): "read" | "write" | null {
+  const meta = step.request_meta;
+  if (!meta || typeof meta !== "object" || !("extras" in meta)) return null;
+  const extras = meta.extras;
+  if (!extras || typeof extras !== "object" || !("effect_kind" in extras)) return null;
+  return extras.effect_kind === "read" || extras.effect_kind === "write"
+    ? extras.effect_kind
+    : null;
+}
+
+export function runTraceEvidence(
+  run: unknown,
+  mayReadAudit: boolean,
+): { id: string | null; href: string | null } {
+  const raw = run && typeof run === "object" && "trace_id" in run ? run.trace_id : null;
+  const id = typeof raw === "string" && raw.trim().length > 0 ? raw : null;
+  return { id, href: id && mayReadAudit ? auditHref({ traceId: id, scope: "all" }) : null };
+}
+
+export function runPermissionBasis(
+  value: unknown,
+): "builtin_admin" | "resource_grant" | "group" | "role" | "portal_token_allowlist" | null {
+  switch (value) {
+    case "builtin_admin":
+    case "resource_grant":
+    case "group":
+    case "role":
+    case "portal_token_allowlist":
+      return value;
+    default:
+      return null;
+  }
+}
+
+export function runPermissionEvidence(run: {
+  permission_basis?: unknown;
+  permission_phase?: unknown;
+  permission_checked_at?: unknown;
+}) {
+  const basis = runPermissionBasis(run.permission_basis);
+  const phase = run.permission_phase;
+  const checkedAt = run.permission_checked_at;
+  if (
+    !basis ||
+    (phase !== "admission" && phase !== "start") ||
+    typeof checkedAt !== "string" ||
+    !Number.isFinite(Date.parse(checkedAt))
+  )
+    return null;
+  return { basis, phase, checkedAt } as const;
 }

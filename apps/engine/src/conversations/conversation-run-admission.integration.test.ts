@@ -65,6 +65,7 @@ async function fixture(
     loopRecipients?: boolean;
     inlineEach?: boolean;
     auxiliaryCredential?: boolean;
+    retryCredentials?: boolean;
     upstreamCredential?: boolean;
   } = {},
 ) {
@@ -109,6 +110,39 @@ async function fixture(
     );
   }
   if (auxiliary) await rotateAuxiliary("reviewed-test-token");
+  const [primary] = options.retryCredentials
+    ? await tdb.db
+        .insert(connectors)
+        .values({
+          tenant_id: tenantId,
+          slug: "primary",
+          display_name: "Primary",
+          driver: "http",
+          environment,
+          auth_type: "bearer",
+          base_url: remote.baseUrl,
+        })
+        .returning()
+    : [];
+  if (options.retryCredentials && !primary) throw new Error("missing primary connector");
+  if (primary) {
+    await upsertCredential(
+      {
+        tenant_id: tenantId,
+        connector_id: primary.id,
+        environment,
+        mode: "bearer",
+        value: { mode: "bearer", token: "primary-credential-secret" },
+        verified_identity: {
+          issuer: "https://primary.example.test",
+          subject: "primary-account",
+          source: "token_endpoint",
+        },
+        actor_id: null,
+      },
+      tdb.db,
+    );
+  }
   const definition = {
     name: slug,
     slug,
@@ -155,10 +189,20 @@ async function fixture(
         id: "send",
         kind: "request",
         method: "POST",
-        url: `${remote.baseUrl}/messages`,
-        ...(options.auxiliaryCredential
-          ? { headers: { Authorization: "Bearer ${cred.auxiliary.token}" } }
-          : {}),
+        ...(primary
+          ? {
+              connector_id: primary.id,
+              path: "/messages",
+              headers: { "X-Secondary": "${cred.auxiliary.token}" },
+              max_retries: 1,
+              retry_backoff_ms: 50,
+            }
+          : {
+              url: `${remote.baseUrl}/messages`,
+              ...(options.auxiliaryCredential
+                ? { headers: { Authorization: "Bearer ${cred.auxiliary.token}" } }
+                : {}),
+            }),
         ...(options.inlineEach
           ? { for_each: "(sourceData) => sourceData.lookup.data.recipients" }
           : {}),
@@ -432,6 +476,7 @@ async function fixture(
     workflow,
     version,
     authority,
+    primary,
     definition,
     run,
     rows,
@@ -461,6 +506,76 @@ for (const maxRuns of [undefined, 1]) {
     }
   });
 }
+
+test("approved retries retain every primary and auxiliary credential actually sent", async () => {
+  const f = await fixture({ auxiliaryCredential: true, retryCredentials: true });
+  if (!f.primary || !f.auxiliary) throw new Error("missing retry connectors");
+  const wire: Array<{ primary: string | undefined; secondary: string | string[] | undefined }> = [];
+  remote.setHandler((request, response) => {
+    wire.push({
+      primary: request.headers.authorization,
+      secondary: request.headers["x-secondary"],
+    });
+    if (wire.length === 1) {
+      response.setHeader("retry-after", "0");
+      jsonResponse(response, 429, { error: "try again" });
+    } else jsonResponse(response, 200, { sent: true });
+  });
+  try {
+    await f.runTool("synthetic");
+    expect(wire).toHaveLength(0);
+    const result = await f.confirmPrepared();
+    expect(result.synthetic_result?.ok).toBe(true);
+    expect(wire).toEqual([
+      { primary: "Bearer primary-credential-secret", secondary: "reviewed-test-token" },
+      { primary: "Bearer primary-credential-secret", secondary: "reviewed-test-token" },
+    ]);
+    const run = (await f.rows()).find((row) => row.tool_approval_id !== null);
+    if (!run) throw new Error("missing approved execution");
+    expect(run.status).toBe("succeeded");
+    expect(run.execution_authority_id).toBeNull();
+    expect(
+      Object.values(run.tool_approval_dispatches).map((dispatch) => dispatch.attempts),
+    ).toEqual([2]);
+    const [step] = await tdb.db
+      .select()
+      .from(executionSteps)
+      .where(
+        and(eq(executionSteps.tenant_id, f.tenant.id), eq(executionSteps.execution_id, run.id)),
+      );
+    const snapshots = step?.credential_snapshots ?? [];
+    expect(snapshots).toHaveLength(4);
+    for (const connectorId of [f.primary.id, f.auxiliary.id]) {
+      const [credential] = await tdb.db
+        .select()
+        .from(credentials)
+        .where(
+          and(
+            eq(credentials.tenant_id, f.tenant.id),
+            eq(credentials.connector_id, connectorId),
+            eq(credentials.environment, "dev"),
+          ),
+        );
+      if (!credential) throw new Error("missing retry credential");
+      expect(snapshots.filter((snapshot) => snapshot.connector_id === connectorId)).toEqual([
+        expect.objectContaining({
+          credential_id: credential.id,
+          credential_generation: credential.credential_generation,
+          identity: credential.verified_identity,
+        }),
+        expect.objectContaining({
+          credential_id: credential.id,
+          credential_generation: credential.credential_generation,
+          identity: credential.verified_identity,
+        }),
+      ]);
+    }
+    expect(JSON.stringify(snapshots)).not.toContain("primary-credential-secret");
+    expect(JSON.stringify(snapshots)).not.toContain("reviewed-test-token");
+  } finally {
+    remote.setHandler((_, response) => jsonResponse(response, 200, { sent: true }));
+  }
+});
 
 for (const rotated of [false, true]) {
   test(`auxiliary credential ${rotated ? "A-to-B-to-A requires reapproval" : "unchanged permits the exact approved dispatch"}`, async () => {

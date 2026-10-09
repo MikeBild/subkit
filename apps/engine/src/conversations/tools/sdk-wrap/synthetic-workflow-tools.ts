@@ -196,6 +196,7 @@ async function executeSyntheticRun(
       },
       db,
       principal,
+      rbac.workflow_permission,
     );
     const result = await runExecution({
       db,

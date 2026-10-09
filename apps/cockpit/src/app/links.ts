@@ -121,7 +121,7 @@ export function reviewFromUrl(search: string): string | null {
 }
 
 export function usageHref(filter: { window?: "24h" | "7d" | "30d" | null } = {}): string {
-  return withQuery("/usage", { window: filter.window === "30d" ? null : filter.window });
+  return withQuery("/usage", { window: filter.window === "7d" ? null : filter.window });
 }
 
 export function settingsHref(

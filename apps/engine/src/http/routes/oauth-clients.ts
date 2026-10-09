@@ -7,7 +7,7 @@ import {
   mcpOauthClients,
   mcpOauthRefreshTokens,
 } from "../../db/schema/index.ts";
-import { listClientApprovals } from "../../identity/index.ts";
+import { listClientApprovals, listClientLastUsage } from "../../identity/index.ts";
 import { now } from "../../utils/clock.ts";
 import { NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -26,6 +26,7 @@ const OAuthClientSchema = z
     disabled_at: z.string().nullable(),
     retired_at: z.string().nullable(),
     created_at: z.string(),
+    last_used_at: z.string().nullable(),
   })
   .openapi("OAuthClient");
 
@@ -98,7 +99,10 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
       })
       .from(mcpOauthClients);
 
-    const approvals = await listClientApprovals(db, new Date(now()));
+    const [approvals, lastUsage] = await Promise.all([
+      listClientApprovals(db, new Date(now())),
+      listClientLastUsage(db),
+    ]);
 
     const items = rows.map((r) => {
       const approval = approvals.get(r.client_id);
@@ -113,6 +117,7 @@ export function registerOAuthClientAdminRoutes(app: OpenAPIHono<AppEnv>): void {
         disabled_at: r.disabled_at ? r.disabled_at.toISOString() : null,
         retired_at: r.retired_at ? r.retired_at.toISOString() : null,
         created_at: r.created_at.toISOString(),
+        last_used_at: lastUsage.get(r.client_id) ?? null,
       };
     });
 

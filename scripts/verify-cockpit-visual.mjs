@@ -1658,6 +1658,26 @@ async function mockApi(route) {
         source_ref: null,
         status: ["succeeded", "running", "failed", "timed_out"][rotate],
         request_source: ["scheduler", "chat", "api", "carrier-pigeon"][rotate],
+        caller:
+          rotate === 2
+            ? {
+                kind: "system_account",
+                principal_id: uuid,
+                provider: "api_key",
+                product_id: null,
+                verified_by: "api_key",
+                channel: "api",
+                origin_execution_id: null,
+              }
+            : {
+                kind: "engine",
+                principal_id: null,
+                provider: null,
+                product_id: null,
+                verified_by: null,
+                channel: ["scheduler", "chat", "api", "carrier-pigeon"][rotate],
+                origin_execution_id: null,
+              },
         parent_execution_id: rotate === 2 ? uuid : null,
         started_at: started.toISOString(),
         finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
@@ -1694,6 +1714,15 @@ async function mockApi(route) {
       source_ref: null,
       status: "failed",
       request_source: "scheduler",
+      caller: {
+        kind: "engine",
+        principal_id: null,
+        provider: null,
+        product_id: null,
+        verified_by: null,
+        channel: "scheduler",
+        origin_execution_id: null,
+      },
       parent_execution_id: null,
       started_at: started.toISOString(),
       finished_at: new Date(started.getTime() + 6_900).toISOString(),
@@ -1718,6 +1747,23 @@ async function mockApi(route) {
           duration_ms: 78,
           error: null,
           input_preview: { bucket: "reports" },
+          request_meta: {
+            connector: { connector_id: runConnectorId, driver: "http" },
+            extras: { effect_kind: "read" },
+          },
+          credential_snapshots: [
+            {
+              connector_id: runConnectorId,
+              environment: "prod",
+              credential_generation: 3,
+              access_token_version: null,
+              identity: {
+                issuer: "https://identity.example.test",
+                subject: "report-reader-fixture",
+                source: "token_endpoint",
+              },
+            },
+          ],
           output_preview: { rows: 412, bytes: 337_858 },
           result_preview: null,
         },
@@ -3315,6 +3361,37 @@ async function assertRunDetail(page, label, language) {
     throw new Error(
       `${label} prints '${body}' as the run's result — a step that produced nothing has no result section`,
     );
+  const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+  const openStep = async (index) => {
+    await page
+      .locator(
+        wide
+          ? `[data-testid="run-detail-step-list-row-${index}"] td >> nth=1`
+          : `[data-testid="run-detail-step-list-mobile-row-${index}"]`,
+      )
+      .click();
+    await page.getByTestId("run-step-identities").waitFor();
+  };
+  await openStep(0);
+  const identity = await page.getByTestId("run-step-identities").innerText();
+  if (
+    !identity.includes("report-reader-fixture") ||
+    !identity.includes("https://identity.example.test")
+  )
+    throw new Error(`${label}: the dispatched credential identity is missing from its step`);
+  await page.getByTestId("run-step-close").click();
+  await page.getByTestId("run-step-sheet").waitFor({ state: "hidden" });
+  await openStep(1);
+  const undocumented = await page.getByTestId("run-step-identities").innerText();
+  if (
+    !undocumented.includes(language === "de" ? "nicht dokumentiert" : "not documented") ||
+    undocumented.includes("report-reader-fixture")
+  )
+    throw new Error(
+      `${label}: a step without a credential snapshot inherits another step's identity`,
+    );
+  await page.getByTestId("run-step-close").click();
+  await page.getByTestId("run-step-sheet").waitFor({ state: "hidden" });
   const rerunOf = new URL(page.url()).searchParams.get("run");
   let reruns = 0;
   const countRerun = (request) => {

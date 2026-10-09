@@ -200,6 +200,7 @@ export interface DiagnosisStepSummary {
   output_preview?: unknown;
   error?: unknown;
   request_meta?: unknown;
+  credential_snapshots?: import("../credentials/index.ts").CredentialUseSnapshot[];
 }
 
 export interface LatestDiagnosisSummary {

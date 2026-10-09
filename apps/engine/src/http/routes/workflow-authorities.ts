@@ -21,18 +21,15 @@ import {
   approvalWouldCarry,
   BoundaryGrowthSchema,
   boundaryGrowth,
-  contentBoundariesFromManifest,
   contentPublicationLabels,
   GrantWorkflowAuthoritySchema,
   grantWorkflowAuthority,
-  isOpenEnded,
   JsonValueSchema,
   nameGrowth,
+  observeWorkflowAuthority,
   prepareReportAuthority,
   previewWorkflowAuthority,
   referenceApprovedManifest,
-  remainingRuns,
-  reportBoundariesFromManifest,
   revokeWorkflowAuthority,
   suggestAuthorityBounds,
   WorkflowEffectManifestSchema,
@@ -441,56 +438,10 @@ async function readAuthority(db: Db, tenant_id: string, workflow_id: string, aut
       ),
     )
     .limit(1);
-  const active_version =
-    workflow?.lifecycle === "active" && workflow.current_version_id === row.workflow_version_id;
   const clock = await db.execute<{ now: Date }>(sql`SELECT clock_timestamp() AS now`);
   const now = clock.rows[0]?.now;
   if (!now) throw new Error("database clock unavailable");
-  let state: z.infer<typeof authoritySchema>["state"] = row.superseded_by
-    ? "superseded"
-    : row.revoked_at
-      ? "revoked"
-      : row.valid_until !== null && row.valid_until <= new Date(now)
-        ? "expired"
-        : row.max_runs !== null && row.reserved_runs >= row.max_runs
-          ? "exhausted"
-          : row.valid_from > new Date(now)
-            ? "not_yet_valid"
-            : "approved";
-  if (state === "approved" || state === "not_yet_valid") {
-    try {
-      const current = await previewWorkflowAuthority(
-        {
-          tenant_id,
-          workflow_id,
-          workflow_version_id: row.workflow_version_id,
-          execution_environment: row.execution_environment,
-        },
-        db,
-        {
-          report_boundaries: reportBoundariesFromManifest(row.effect_manifest),
-          content_boundaries: contentBoundariesFromManifest(row.effect_manifest),
-        },
-      );
-      if (current.digest !== row.effect_manifest_digest) state = "invalidated";
-      else if (!current.eligible_for_repeated_runs) state = "unavailable";
-    } catch (error) {
-      if ((error as { code?: string }).code !== "workflow_version_unavailable") throw error;
-      state = "invalidated";
-    }
-  }
-  return authoritySchema.parse({
-    ...row,
-    state,
-    active_version,
-    ready_for_new_run: active_version && state === "approved",
-    remaining_runs: remainingRuns(row),
-    open_ended: isOpenEnded(row),
-    valid_from: row.valid_from.toISOString(),
-    valid_until: row.valid_until?.toISOString() ?? null,
-    created_at: row.created_at.toISOString(),
-    revoked_at: row.revoked_at?.toISOString() ?? null,
-  });
+  return authoritySchema.parse(await observeWorkflowAuthority(db, row, workflow, new Date(now)));
 }
 
 export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void {

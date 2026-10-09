@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import { CatalogSourceSchema } from "../../api/catalog-metadata.ts";
 import type { Executor } from "../../db/client.ts";
 import {
@@ -15,6 +16,18 @@ import { TriggerSchema } from "../../workflows/index.ts";
 export const WorkflowSchema = z
   .object({
     id: z.string(),
+    operating_status: z.enum(WORKFLOW_OPERATING_STATUSES).optional(),
+    connector_references: z.array(
+      z.object({
+        step_id: z.string(),
+        connector_id: z.string().nullable(),
+        slug: z.string().nullable(),
+        name: z.string().nullable(),
+        reason: z.enum(["available", "deleted", "missing"]),
+      }),
+    ),
+    creator: z.object({ kind: z.enum(["user", "system_account"]), id: z.string() }).nullable(),
+    checksum: z.string().nullable(),
     tenant_id: z.string(),
     slug: z.string(),
     category: z
@@ -73,6 +86,10 @@ export const WorkflowListResponse = z
 export function serializeWorkflow(w: svc.WorkflowView, binding: TriggerBinding) {
   return {
     id: w.id,
+    ...(w.operating_status ? { operating_status: w.operating_status } : {}),
+    connector_references: w.connector_references,
+    creator: w.creator,
+    checksum: w.checksum,
     tenant_id: w.tenant_id,
     slug: w.slug,
     category: w.category,

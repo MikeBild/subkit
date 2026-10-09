@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { placeholderSlugsIn } from "./connector-refs.ts";
+import { connectorReferencesForDefinition, placeholderSlugsIn } from "./connector-refs.ts";
 
 describe("placeholderSlugsIn", () => {
   test("extracts the slug from the documented base_url placeholder", () => {
@@ -36,4 +36,118 @@ describe("placeholderSlugsIn", () => {
     expect(placeholderSlugsIn("${connectors.gmail.base_url}")).toEqual([]);
     expect(placeholderSlugsIn("${env.gmail.base_url}")).toEqual([]);
   });
+});
+
+describe("connectorReferencesForDefinition", () => {
+  const active = { id: "active-id", slug: "active", name: "Active", deleted_at: null };
+  const deleted = {
+    id: "deleted-id",
+    slug: "deleted",
+    name: "Deleted",
+    deleted_at: new Date("2000-01-01T00:00:00Z"),
+  };
+
+  test("keeps deleted and missing references distinct per step", () => {
+    const references = connectorReferencesForDefinition(
+      {
+        steps: [
+          { id: "read", connector_id: active.id, url: "${connector.active.base_url}" },
+          { id: "write", connector_id: deleted.id },
+          { id: "unknown", connector_id: "outside-tenant" },
+          { id: "placeholder", url: "${connector.deleted.base_url}" },
+        ],
+      },
+      [active, deleted],
+    );
+    expect(references).toEqual([
+      {
+        step_id: "read",
+        connector_id: active.id,
+        slug: "active",
+        name: "Active",
+        reason: "available",
+      },
+      {
+        step_id: "write",
+        connector_id: deleted.id,
+        slug: "deleted",
+        name: "Deleted",
+        reason: "deleted",
+      },
+      {
+        step_id: "unknown",
+        connector_id: "outside-tenant",
+        slug: null,
+        name: null,
+        reason: "missing",
+      },
+      {
+        step_id: "placeholder",
+        connector_id: deleted.id,
+        slug: "deleted",
+        name: "Deleted",
+        reason: "deleted",
+      },
+    ]);
+  });
+
+  test("a reused slug resolves to the active connector while an old id stays deleted", () => {
+    const replacement = { ...active, slug: deleted.slug };
+    expect(
+      connectorReferencesForDefinition(
+        {
+          steps: [
+            { id: "old", connector_id: deleted.id },
+            { id: "current", url: "${connector.deleted.base_url}" },
+          ],
+        },
+        [replacement, deleted],
+      ).map((reference) => reference.reason),
+    ).toEqual(["deleted", "available"]);
+  });
+
+  test("does not invent references from malformed definitions or body payloads", () => {
+    expect(connectorReferencesForDefinition(null, [active])).toEqual([]);
+    expect(
+      connectorReferencesForDefinition(
+        { steps: [{ id: "transform", body: { connector_id: active.id } }] },
+        [active],
+      ),
+    ).toEqual([]);
+  });
+});
+
+test("collects request steps referenced by loop, branch and parallel control flow", () => {
+  const connector = {
+    id: "connector",
+    slug: "nested",
+    name: "Nested",
+    deleted_at: new Date("2000-01-01T00:00:00Z"),
+  };
+  const references = connectorReferencesForDefinition(
+    {
+      steps: [
+        { id: "request", kind: "request", connector_id: connector.id },
+        { id: "loop", kind: "loop", over: "$input.items", body: ["request"] },
+        {
+          id: "branch",
+          kind: "branch",
+          when: "true",
+          then_steps: ["loop"],
+          else_steps: ["request"],
+        },
+        { id: "parallel", kind: "parallel", branches: [["branch"], ["request"]] },
+      ],
+    },
+    [connector],
+  );
+  expect(references).toEqual([
+    {
+      step_id: "request",
+      connector_id: connector.id,
+      slug: "nested",
+      name: "Nested",
+      reason: "deleted",
+    },
+  ]);
 });

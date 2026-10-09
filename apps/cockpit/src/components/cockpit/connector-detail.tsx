@@ -10,29 +10,26 @@ import {
   ActionMenu,
   Button,
   type CockpitColumn,
+  CodeBlock,
   ContextHelp,
   CopyField,
   DataState,
   type Fact,
   FactList,
+  FilterBar,
   RecordSheet,
   SegmentedControl,
   SummaryLine,
 } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
-import { causeClassLabel } from "@/lib/cause-class";
 import { formatRelativeTime, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { catalogLabel, LabelText } from "@/lib/machine-label";
 import {
   asRuntime,
   authLabel,
-  type ConnectorFigures,
-  connectorCallsHref,
-  connectorFigures,
-  connectorStatsEndpoint,
-  connectorStatsWindow,
+  connectorConfiguredTimeout,
   docKindLabel,
   documentationLinks,
   driverLabel,
@@ -63,9 +60,11 @@ function Copyable({ children }: { children: ReactNode }) {
 export function ConnectorConnectionFacts({
   record,
   headerNames,
+  speaksAs,
 }: {
   record: RecordValue;
   headerNames: readonly string[];
+  speaksAs?: { issuer: string; subject: string } | null;
 }) {
   const { t } = useI18n();
   const driver = text(record, "driver");
@@ -75,6 +74,11 @@ export function ConnectorConnectionFacts({
   const template = text(record, "template_name");
   const docs = documentationLinks(record);
   const facts: Fact[] = [
+    {
+      label: t("connectorDetail.connection.speaksAs"),
+      value: speaksAs ? `${speaksAs.subject} · ${speaksAs.issuer}` : t("runs.caller.unknown"),
+      testId: "connector-speaks-as",
+    },
     {
       label: t("connectorDetail.connection.address"),
       value: address ? (
@@ -160,152 +164,22 @@ export function ConnectorConnectionFacts({
   );
 }
 
-export function ConnectorRuntimeSection({
-  connectorId,
-  driver,
-  canReadStats,
-}: {
-  connectorId: string;
-  driver: string | null;
-  canReadStats: boolean;
-}) {
-  const { t, locale } = useI18n();
-  const [bounds] = useState(() => connectorStatsWindow());
-  const runtime = useQuery({
-    queryKey: ["connector-runtime", connectorId],
-    queryFn: () => apiRequest<unknown>(`/v1/connectors/${encodeURIComponent(connectorId)}/runtime`),
-  });
-  const stats = useQuery({
-    queryKey: ["connector-stats", connectorId, bounds.from],
-    enabled: canReadStats,
-    queryFn: () => apiRequest<unknown>(connectorStatsEndpoint(connectorId, bounds)),
-  });
-  if (runtime.isPending || (canReadStats && stats.isPending))
-    return <DataState state="loading" testId="connector-runtime" />;
-  const data = asRuntime(runtime.data);
-  const figures: ConnectorFigures | null = canReadStats
-    ? connectorFigures(stats.data, bounds)
-    : null;
-  if (!data || runtime.error || (canReadStats && (stats.error || !figures)))
-    return (
-      <div data-testid="connector-runtime">
-        <DataState
-          state="error"
-          line={t("connectorDetail.runtime.loadFailed")}
-          onRetry={() => {
-            void runtime.refetch();
-            if (canReadStats) void stats.refetch();
-          }}
-          testId="connector-runtime-failed"
-        />
-      </div>
-    );
-  const muted = "text-sm text-muted-foreground";
-  if (!data.recorded)
-    return (
-      <div data-testid="connector-runtime">
-        <p className={muted} data-testid="connector-runtime-not-recorded">
-          {t("connectorDetail.runtime.notRecorded")}
-        </p>
-      </div>
-    );
-  const tag = locale === "de" ? "de-DE" : "en-US";
-  const number = (value: number) => new Intl.NumberFormat(tag).format(value);
-  const failure = data.last_failure;
-  const lastSuccess = data.last_success_at
-    ? formatRelativeTime(locale, data.last_success_at)
-    : null;
-  const link = (href: string | null, label: string, testId: string) =>
-    href ? (
-      <a
-        href={absolute(href)}
-        className="font-medium underline-offset-4 hover:underline"
-        data-testid={`${testId}-link`}
-      >
-        {label}
-      </a>
-    ) : (
-      label
-    );
-  const facts: Fact[] =
-    !figures || figures.calls === 0
-      ? [
-          {
-            label: t("connectorDetail.runtime.lastSuccess"),
-            value: lastSuccess ?? t("connectorDetail.runtime.never"),
-            testId: "connector-last-success",
-          },
-        ]
-      : [
-          {
-            label: t("connectorDetail.runtime.calls"),
-            value: link(
-              connectorCallsHref(connectorId, driver, figures, "all"),
-              number(figures.calls),
-              "connector-figure-calls",
-            ),
-            testId: "connector-figure-calls",
-          },
-          {
-            label: t("connectorDetail.runtime.successRate"),
-            value:
-              figures.successRate === null
-                ? t("connectorDetail.runtime.noRate")
-                : link(
-                    connectorCallsHref(connectorId, driver, figures, "failed"),
-                    `${new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }).format(figures.successRate)} %`,
-                    "connector-figure-success",
-                  ),
-            testId: "connector-figure-success",
-          },
-          {
-            label: t("connectorDetail.runtime.median"),
-            value:
-              figures.medianMs === null
-                ? t("connectorDetail.runtime.noLatency")
-                : t("connectorDetail.runtime.ms", { ms: number(figures.medianMs) }),
-            testId: "connector-figure-median",
-          },
-          {
-            label: t("connectorDetail.runtime.lastSuccess"),
-            value: lastSuccess ?? t("connectorDetail.runtime.never"),
-            testId: "connector-figure-last-success",
-          },
-        ];
+export function ConnectorRuntimeSection({ record }: { record: RecordValue }) {
+  const { t } = useI18n();
+  const timeout = connectorConfiguredTimeout(record);
+  const unknown = t("runs.caller.unknown");
   return (
-    <div className="flex flex-col gap-3" data-testid="connector-runtime">
-      {!figures || figures.calls === 0 ? (
-        <p
-          className={muted}
-          data-testid={figures ? "connector-runtime-unused" : "connector-runtime-not-permitted"}
-        >
-          {t(
-            figures
-              ? "connectorDetail.runtime.unused"
-              : "connectorDetail.runtime.figuresNotPermitted",
-          )}
-        </p>
-      ) : null}
-      <FactList
-        items={[
-          ...facts,
-          ...(failure
-            ? [
-                {
-                  label: t("connectorDetail.runtime.lastFailure"),
-                  value: (
-                    <>
-                      {formatRelativeTime(locale, failure.at)} ·{" "}
-                      <LabelText label={causeClassLabel(failure.cause_class, t)} />
-                    </>
-                  ),
-                  testId: "connector-last-failure",
-                },
-              ]
-            : []),
-        ]}
-      />
-    </div>
+    <FactList
+      testId="connector-runtime"
+      items={[
+        {
+          label: t("connectorDetail.runtime.timeout"),
+          value: timeout === null ? unknown : `${timeout} ms`,
+        },
+        { label: t("connectorDetail.runtime.retries"), value: unknown },
+        { label: t("connectorDetail.runtime.rateLimit"), value: unknown },
+      ]}
+    />
   );
 }
 
@@ -322,6 +196,7 @@ interface ToolRow {
   description: string | null;
   claims: "read" | "write" | null;
   trusted: boolean;
+  inputSchema: Record<string, unknown> | null;
 }
 
 function ToolSheet({
@@ -368,6 +243,12 @@ function ToolSheet({
           },
         ]}
       />
+      <CodeBlock
+        label={t("connectorDetail.tools.inputSchema")}
+        code={row.inputSchema ? JSON.stringify(row.inputSchema, null, 2) : MISSING}
+        lang="json"
+        testId="connector-tool-input-schema"
+      />
       {canWrite ? (
         <SegmentedControl
           label={t("connectorDetail.tools.withoutAsking")}
@@ -404,12 +285,13 @@ export function ConnectorMcpTools({
   record: RecordValue;
   canWrite: boolean;
   canTest: boolean;
-  inspect: { data: McpInspect | null; pending: boolean; failed: boolean };
+  inspect: { data: McpInspect | null; pending: boolean; failed: boolean; readAt?: string | null };
   onInspect: () => void;
 }) {
   const { t, locale, dateTime } = useI18n();
   const client = useQueryClient();
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const trusted = toolsWithoutConfirmation(record);
   const asked = useRef(false);
   useEffect(() => {
@@ -439,6 +321,7 @@ export function ConnectorMcpTools({
         description: tool.description ?? null,
         claims: tool.claims ?? null,
         trusted: trusted.includes(tool.name),
+        inputSchema: tool.input_schema ?? null,
       }))
     : [];
   const known = new Set(listed.map((row) => row.name));
@@ -446,7 +329,7 @@ export function ConnectorMcpTools({
     ...listed,
     ...trusted
       .filter((name) => !known.has(name))
-      .map((name) => ({ name, description: null, claims: null, trusted: true })),
+      .map((name) => ({ name, description: null, claims: null, trusted: true, inputSchema: null })),
   ];
   const columns = useMemo<CockpitColumn<ToolRow>[]>(() => {
     const column = tableColumns<ToolRow>({ t, dateTime });
@@ -482,6 +365,9 @@ export function ConnectorMcpTools({
       ),
     ];
   }, [t, dateTime]);
+  const readLine = inspect.readAt
+    ? t("connectorDetail.tools.readAt", { when: formatRelativeTime(locale, inspect.readAt) })
+    : null;
   const sessionLine = session
     ? [
         session.capabilities
@@ -496,13 +382,23 @@ export function ConnectorMcpTools({
         .filter(Boolean)
         .join(" · ")
     : t("connectorDetail.tools.noSession");
-  const selected = open === null ? null : (rows[open] ?? null);
+  const selected = open === null ? null : (rows.find((row) => row.name === open) ?? null);
+  const needle = search.trim().toLocaleLowerCase();
+  const filteredRows = needle
+    ? rows.filter((row) =>
+        `${row.name} ${row.description ?? ""}`.toLocaleLowerCase().includes(needle),
+      )
+    : rows;
   return (
     <div className="flex flex-col gap-3" data-testid="connector-mcp-tools">
       <SummaryLine
         text={
           <span className="inline-flex items-center gap-1">
-            <span data-testid="connector-mcp-session">{sessionLine}</span>
+            <span data-testid="connector-mcp-session">
+              {inspect.data
+                ? `${t(inspect.data.tools.length === 1 ? "connectorDetail.tools.count.one" : "connectorDetail.tools.count.other", { count: inspect.data.tools.length })} · ${readLine ?? sessionLine}`
+                : sessionLine}
+            </span>
             {session?.protocol_version ? (
               <ContextHelp
                 label={t("connectorDetail.tools.protocol")}
@@ -538,19 +434,38 @@ export function ConnectorMcpTools({
       ) : null}
       <RecordTable
         columns={columns}
-        data={rows}
+        data={filteredRows}
+        toolbar={
+          <FilterBar
+            search={{
+              value: search,
+              onChange: setSearch,
+              placeholder: t("connectorDetail.tools.search"),
+              testId: "connector-tools-search",
+            }}
+          />
+        }
         collectionId="connector-mcp-tool"
-        emptyLine={t(
-          inspect.data ? "connectorDetail.tools.none" : "connectorDetail.tools.loadHint",
-        )}
+        emptyLine={
+          needle
+            ? t("resource.noMatches")
+            : t(inspect.data ? "connectorDetail.tools.none" : "connectorDetail.tools.loadHint")
+        }
+        emptyAction={
+          needle ? (
+            <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+              {t("catalog.clearFilters")}
+            </Button>
+          ) : undefined
+        }
         pending={inspect.pending}
-        onOpen={(row) => setOpen(rows.indexOf(row))}
+        onOpen={(row) => setOpen(row.name)}
         rowLabel={(row) => row.name}
       />
       {selected && open !== null ? (
         <ToolSheet
           row={selected}
-          index={open}
+          index={rows.indexOf(selected)}
           canWrite={canWrite}
           pending={setTrust.isPending}
           onTrust={(next) => setTrust.mutate({ tool: selected.name, confirm: !next })}
@@ -581,7 +496,15 @@ export function useConnectorWorkflows(slug: string | null) {
   });
 }
 
-export function ConnectorWorkflows({ slug, connectorId }: { slug: string; connectorId: string }) {
+export function ConnectorWorkflows({
+  slug,
+  connectorId,
+  connectorName,
+}: {
+  slug: string;
+  connectorId: string;
+  connectorName: string;
+}) {
   const { t, dateTime } = useI18n();
   const navigate = useNavigate();
   const { permissions } = useSession();
@@ -611,6 +534,7 @@ export function ConnectorWorkflows({ slug, connectorId }: { slug: string; connec
           query.data
             ? t(count === 1 ? "connectorPage.usedBy.one" : "connectorPage.usedBy.other", {
                 count,
+                name: connectorName,
               })
             : t("connectorDetail.usage.title")
         }
@@ -621,7 +545,7 @@ export function ConnectorWorkflows({ slug, connectorId }: { slug: string; connec
           columns={columns}
           data={rows}
           collectionId="connector-workflow"
-          emptyLine={t("connectorDetail.usage.noWorkflows")}
+          emptyLine={t("connectorDetail.usage.noWorkflows", { name: connectorName })}
           emptyAction={
             permissions.includes("conversation:write") ? (
               <Button asChild variant="outline" size="sm">
@@ -659,6 +583,12 @@ export function ConnectorTechnicalFacts({ record, id }: { record: RecordValue; i
   return (
     <FactList
       items={[
+        {
+          label: t("connectorDetail.technical.templateVersion"),
+          value:
+            typeof record.template_version === "number" ? String(record.template_version) : MISSING,
+          testId: "connector-template-version",
+        },
         {
           label: t("resource.field.slug"),
           value: slug ? <span className="break-all font-mono text-xs">{slug}</span> : MISSING,

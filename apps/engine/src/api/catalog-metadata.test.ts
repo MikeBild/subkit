@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CatalogMetadataPatchSchema,
   CategorySchema,
   groupByCategory,
   humanMetadataWrite,
+  metadataChange,
   normalizeCategory,
   UNCATEGORIZED,
 } from "./catalog-metadata.ts";
@@ -92,5 +94,38 @@ describe("groupByCategory", () => {
       "alpha",
       "zulu",
     ]);
+  });
+});
+
+describe("explicit description acceptance", () => {
+  const current = { description: "Approved text", description_source: "llm", category: "other" };
+  test("unchanged text keeps generated provenance until explicitly accepted", () => {
+    expect(metadataChange(current, { description: current.description })).toBeNull();
+    expect(
+      metadataChange(current, { description: current.description, accept_description: true }),
+    ).toEqual({ description: current.description, description_source: "human" });
+    expect(
+      metadataChange(
+        { ...current, description_source: "human" },
+        { description: current.description, accept_description: true },
+      ),
+    ).toBeNull();
+  });
+  test("acceptance never replaces changed text and rejects missing or empty text", () => {
+    expect(() =>
+      metadataChange(current, { description: "Older text", accept_description: true }),
+    ).toThrow("description changed");
+    for (const description of [undefined, null, "", "   "]) {
+      const patch = {
+        ...(description !== undefined ? { description } : {}),
+        accept_description: true,
+      };
+      expect(CatalogMetadataPatchSchema.safeParse(patch).success).toBe(false);
+      expect(() => metadataChange(current, patch)).toThrow("exact nonempty text");
+    }
+    expect(metadataChange(current, { description: null })).toMatchObject({
+      description: null,
+      description_source: "llm",
+    });
   });
 });

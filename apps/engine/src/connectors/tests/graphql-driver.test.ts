@@ -569,6 +569,7 @@ describe("graphql request step · envelope unwrap", () => {
         { id: "u2", name: "bob" },
       ],
     });
+    expect(r.request_meta?.extras).toMatchObject({ effect_kind: "read" });
     expect((r.output as Record<string, unknown>).data).toBeUndefined();
     expect((r.output as Record<string, unknown>).errors).toBeUndefined();
   });

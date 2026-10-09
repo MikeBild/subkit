@@ -29,7 +29,9 @@ const listRolesRoute = createRoute({
       description: "OK",
       content: {
         "application/json": {
-          schema: z.object({ items: z.array(RbacRoleSchema) }).openapi("RbacRoleListResponse"),
+          schema: z
+            .object({ items: z.array(RbacRoleDetailSchema) })
+            .openapi("RbacRoleListResponse"),
         },
       },
     },
@@ -234,7 +236,20 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const items = await rolesSvc.listRoles(db, principal.tenant_id);
-    return c.json({ items: items.map(serializeRole) }, 200);
+    const [counts, permissions] = await Promise.all([
+      rolesSvc.roleMemberCounts(db, principal.tenant_id),
+      rolesSvc.tenantRolePermissions(db, principal.tenant_id),
+    ]);
+    return c.json(
+      {
+        items: items.map((role) => ({
+          ...serializeRole(role),
+          member_count: counts.get(role.id) ?? 0,
+          permissions: permissions.get(role.id) ?? [],
+        })),
+      },
+      200,
+    );
   });
 
   app.openapi(getRoleRoute, async (c) => {
@@ -244,7 +259,11 @@ export function registerRolesRoutes(app: OpenAPIHono<AppEnv>): void {
     const role = await rolesSvc.getRole(db, principal.tenant_id, id);
     if (!role) throw new NotFoundError("role");
     const perms = await rolesSvc.listRolePermissions(db, role.id);
-    return c.json({ ...serializeRole(role), permissions: perms }, 200);
+    const counts = await rolesSvc.roleMemberCounts(db, principal.tenant_id);
+    return c.json(
+      { ...serializeRole(role), permissions: perms, member_count: counts.get(role.id) ?? 0 },
+      200,
+    );
   });
 
   app.openapi(createRoleRoute, async (c) => {

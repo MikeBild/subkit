@@ -42,7 +42,7 @@ export function windowBounds(window: StatsWindow, now = new Date()): WindowBound
 
 export function usageWindowFromUrl(search: string): StatsWindow {
   const raw = new URLSearchParams(search).get("window");
-  return (STATS_WINDOWS as readonly string[]).includes(raw ?? "") ? (raw as StatsWindow) : "30d";
+  return (STATS_WINDOWS as readonly string[]).includes(raw ?? "") ? (raw as StatsWindow) : "7d";
 }
 
 function windowQuery(bounds: WindowBounds): string {
@@ -145,6 +145,7 @@ export type OperatingFigure =
       value: number;
       href: string | null;
       basis: FigureBasis;
+      detail?: { kind: "failures" | "connectors"; count: number };
       money?: { currency: string; unpricedCalls: number };
       budget?: {
         percent: number;
@@ -202,6 +203,7 @@ export function operatingFigures(input: {
       id: "runs",
       state: "value",
       value: total,
+      detail: { kind: "failures", count: failed },
       href: canOpen.runs ? runsHref(window) : null,
       basis: "window",
     };
@@ -230,6 +232,7 @@ export function operatingFigures(input: {
       id: "connectorHealth",
       state: "value",
       value: read.connectors.healthyPercent,
+      detail: { kind: "connectors", count: read.connectors.notOk },
       href:
         canOpen.connectors && read.connectors.notOk > 0
           ? connectorsHref({ health: "not_ok" })

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectory, actorKey } from "@/app/actor-directory-model";
 import { ALL_ROUTE_PATHS } from "@/app/route-table";
 import { type Locale, type TranslationKey, translate } from "@/lib/i18n";
 import { buildNameIndex } from "@/lib/name-index";
@@ -29,6 +30,7 @@ import {
   searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
+import { auditAreaParams, auditObjectName, initialAuditFilter } from "./audit-model";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
 
@@ -41,6 +43,7 @@ const ENTRY: AuditEntry = {
   action: "settings.changed",
   resource_type: "settings",
   resource_id: null,
+  resource_name: null,
   result: "success",
   trace_id: "cli-949cacce25ff4379",
   ip: "203.0.113.42",
@@ -625,9 +628,22 @@ describe("the narrowing a link brings to the log", () => {
 });
 
 describe("who caused a row (§15.2 Verursacher)", () => {
-  const directory = new Map([
-    ["018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa", "operator@example.com"],
-    ["018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb", "Reporting bot"],
+  test("colliding user and service identifiers keep their own names", () => {
+    const colliding = actorDirectory(
+      { items: [{ id: "same", email: "person@example.com" }] },
+      { items: [{ id: "same", name: "Service" }] },
+    );
+    expect(auditActorName({ actor_type: "user", actor_id: "same" }, colliding, deText)?.text).toBe(
+      "person@example.com",
+    );
+    expect(
+      auditActorName({ actor_type: "system_account", actor_id: "same" }, colliding, deText)?.text,
+    ).toBe("Service");
+    expect(auditActorName({ actor_type: "", actor_id: "same" }, colliding, deText)).toBeNull();
+  });
+  const directory: ActorDirectory = new Map([
+    [actorKey("user", "018f4b4a-6d33-7b3a-9c2d-aaaaaaaaaaaa"), "operator@example.com"],
+    [actorKey("system_account", "018f4b4a-6d33-7b3a-9c2d-bbbbbbbbbbbb"), "Reporting bot"],
   ]);
 
   test("a person or system account by name", () => {
@@ -793,7 +809,7 @@ describe("the additional details of one record", () => {
     );
     expect(facts.map((fact) => [fact.label, fact.value])).toEqual([
       ["Workflow", "Wochenbericht"],
-      ["Fassung", "4"],
+      ["Version", "4"],
     ]);
     expect(facts[0]?.href).toContain("6f1d6c2e-0000-4000-8000-000000000001");
     expect(facts[1]?.href).toBeNull();
@@ -850,4 +866,45 @@ describe("searching the whole record, not the rows on screen", () => {
     expect(searchedActionParams({ action: "x.y" }, ["a.b"])).toBeNull();
     expect(searchedActionParams({}, [])).toBeNull();
   });
+});
+
+test("audit areas select resource types on the server without changing actor identity", () => {
+  expect(auditAreaParams("all")).toEqual({});
+  expect(auditAreaParams("runs")).toEqual({ resource_types: "execution,execution_step" });
+  expect(auditAreaParams("people").resource_types?.split(",")).toContain("user");
+});
+
+test("audit names prefer historical evidence and never guess from an identifier", () => {
+  const names = buildNameIndex([{ id: "wf", name: "Current name" }], []);
+  const t = (key: TranslationKey) => translate("de", key);
+  expect(
+    auditObjectName(
+      { resource_type: "workflow", resource_id: "wf", resource_name: "Deleted name" },
+      names,
+      t,
+    ),
+  ).toBe("Deleted name");
+  expect(
+    auditObjectName(
+      { resource_type: "workflow", resource_id: "wf", resource_name: null },
+      names,
+      t,
+    ),
+  ).toBe("Current name");
+  expect(
+    auditObjectName(
+      { resource_type: "workflow", resource_id: "unknown", resource_name: null },
+      names,
+      t,
+    ),
+  ).toBe(t("resource.workflows.title"));
+});
+
+test("audit defaults to thirty days but keeps linked operation history unrestricted", () => {
+  const now = Date.parse("2026-01-31T00:00:00Z");
+  expect(initialAuditFilter("", now).tsFrom).toBe("2026-01-01T00:00:00.000Z");
+  expect(initialAuditFilter("?trace_id=operation", now).tsFrom).toBeNull();
+  expect(initialAuditFilter("?ts_from=2025-01-01T00:00:00Z", now).tsFrom).toBe(
+    "2025-01-01T00:00:00.000Z",
+  );
 });

@@ -19,16 +19,21 @@ async function summaryReads(page, expected, where, why) {
   await summary.waitFor({ state: "visible", timeout: 5000 }).catch((error) => {
     throw new Error(`${where}: ${why} — the summary line is gone`, { cause: error });
   });
+  const window = page.getByTestId("runs-window-filter");
+  await window.waitFor({ state: "visible" });
+  const label = (await window.innerText()).trim();
+  if (!label) throw new Error(`${where}: the default time window has no readable label`);
+  const fullExpected = `${expected} · ${label}`;
   await page
     .waitForFunction(
       (text) =>
         document.querySelector('[data-testid="runs-summary"]')?.textContent?.trim() === text,
-      expected,
+      fullExpected,
       { timeout: 5000 },
     )
     .catch(async (error) => {
       throw new Error(
-        `${where}: ${why} — "${(await summary.innerText()).trim()}", expected "${expected}"`,
+        `${where}: ${why} — "${(await summary.innerText()).trim()}", expected "${fullExpected}"`,
         { cause: error },
       );
     });
@@ -89,7 +94,15 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
   await page.locator('[data-testid="run-detail"]').waitFor({ state: "visible" });
 
   let refused = 0;
+  let windowReads = 0;
   const failedCount = (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("status") === "failed" && params.get("limit") === "3") return route.fallback();
+    const from = Date.parse(params.get("started_from") ?? "");
+    const to = Date.parse(params.get("started_to") ?? "");
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to - from !== 7 * 86_400_000)
+      throw new Error(`${where}: the default request is not bounded to exactly seven days`);
+    windowReads += 1;
     if (!(new URL(route.request().url()).searchParams.get("status") ?? "").includes(","))
       return route.fallback();
     refused += 1;
@@ -104,6 +117,7 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
       where,
       "a failed count that cannot be read must not hide the total",
     );
+    if (!windowReads) throw new Error(`${where}: no bounded default run request was observed`);
     const deadline = Date.now() + 15_000;
     while (refused < 4 && Date.now() < deadline) await page.waitForTimeout(250);
     if (refused < 4)

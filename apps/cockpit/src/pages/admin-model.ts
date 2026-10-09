@@ -232,3 +232,20 @@ export function openPeopleSection(
   if (requested && readable.includes(requested)) return requested;
   return readable[0] ?? null;
 }
+
+export function membershipNames(
+  groups: readonly { name: string }[] | null | undefined,
+  t: Translate,
+): string {
+  if (groups == null) return t("access.membershipUnknown");
+  return groups.length ? groups.map((group) => group.name).join(", ") : t("access.noMemberships");
+}
+
+export function grantStatus(
+  expiresAt: string | null,
+  now: number,
+): "active" | "expired" | "unknown" {
+  if (expiresAt === null) return "active";
+  const expires = Date.parse(expiresAt);
+  return Number.isFinite(expires) ? (expires <= now ? "expired" : "active") : "unknown";
+}

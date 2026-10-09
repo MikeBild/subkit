@@ -264,3 +264,49 @@ test("an old schema remains writable and upgrades without granting any execution
     await legacy.cleanup();
   }
 });
+
+test("material generations change without changing authority and stale refresh cannot replace an account", async () => {
+  const f = await fixture();
+  const identity = {
+    issuer: "https://issuer.example.test",
+    subject: "provider-account",
+    source: "token_endpoint" as const,
+  };
+  await upsertCredential({ ...f.input, verified_identity: identity }, ctx.db);
+  const before = await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db);
+  if (!before) throw new Error("missing credential");
+  const refreshed = await rotateOAuth2Tokens(
+    {
+      tenant_id: f.tenant,
+      credential_id: f.credential.id,
+      expected_generation: before.row.credential_generation,
+      access_token: "new-token",
+      verified_identity: identity,
+      actor_id: null,
+    },
+    ctx.db,
+  );
+  expect(refreshed.credential_generation).toBe(before.row.credential_generation + 1);
+  expect(await revision(f.credential.id)).toBe(1);
+  await upsertCredential(
+    { ...f.input, value: { ...f.input.value, access_token: "replacement-account" } },
+    ctx.db,
+  );
+  await expect(
+    rotateOAuth2Tokens(
+      {
+        tenant_id: f.tenant,
+        credential_id: f.credential.id,
+        expected_generation: before.row.credential_generation,
+        access_token: "stale-refresh",
+        verified_identity: identity,
+        actor_id: null,
+      },
+      ctx.db,
+    ),
+  ).rejects.toMatchObject({ code: "credential_generation_changed" });
+  const after = await getCredentialForConnector(f.tenant, f.connector, "dev", ctx.db);
+  expect(after?.row.verified_identity).toBeNull();
+  if (after?.value.mode !== "oauth2") throw new Error("missing OAuth credential");
+  expect(after.value.access_token).toBe("replacement-account");
+});

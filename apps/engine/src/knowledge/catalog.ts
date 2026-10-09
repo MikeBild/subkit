@@ -15,6 +15,10 @@ function catalogConditions(
   if (p.workflow_id) tenantConds.push(eq(knowledgeSources.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(knowledgeSources.status, p.status));
   if (p.category) tenantConds.push(eq(knowledgeSources.category, p.category));
+  if (p.description_source)
+    tenantConds.push(eq(knowledgeSources.description_source, p.description_source));
+  if (p.description_source === "llm")
+    tenantConds.push(sql`length(trim(coalesce(${knowledgeSources.description}, ''))) > 0`);
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
@@ -64,13 +68,23 @@ export async function countKnowledgeSources(
   p: Omit<ListKnowledgeSourcesParams, "limit" | "offset" | "sort" | "order">,
   exec?: Executor,
 ): Promise<number> {
+  return (await knowledgeSourceTotals(p, exec)).total;
+}
+
+export async function knowledgeSourceTotals(
+  p: Omit<ListKnowledgeSourcesParams, "limit" | "offset" | "sort" | "order">,
+  exec?: Executor,
+): Promise<{ total: number; sections_total: number }> {
   const db = exec ?? getDb();
   const tenantConds = catalogConditions(p);
   const [row] = await db
-    .select({ total: sql<number>`count(*)::int` })
+    .select({
+      total: sql<number>`count(*)::int`,
+      sections_total: sql<number>`coalesce(sum(${knowledgeSources.chunk_count}), 0)::bigint`,
+    })
     .from(knowledgeSources)
     .where(and(...tenantConds));
-  return Number(row?.total ?? 0);
+  return { total: Number(row?.total ?? 0), sections_total: Number(row?.sections_total ?? 0) };
 }
 
 export async function getKnowledgeSource(

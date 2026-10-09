@@ -36,8 +36,7 @@ export async function getKnowledgeSourceContent(
         eq(knowledgeChunks.knowledge_source_id, knowledge_source_id),
       ),
     )
-    .orderBy(asc(knowledgeChunks.ordinal))
-    .limit(200);
+    .orderBy(asc(knowledgeChunks.ordinal));
   const documents =
     source.source_type === "bundle"
       ? chunks.map((chunk) => ({
@@ -87,6 +86,7 @@ export async function updateKnowledgeSourceContent(
         knowledge_source_id: p.knowledge_source_id,
         expected_version: p.expected_version,
         actor: p.actor,
+        ...(p.note !== undefined ? { note: p.note } : {}),
         upload: {
           buffer: Buffer.from(canonicalBundleSerialization(files), "utf8"),
           filename: `${source.slug}.bundle.json`,
@@ -103,6 +103,7 @@ export async function updateKnowledgeSourceContent(
         knowledge_source_id: p.knowledge_source_id,
         expected_version: p.expected_version,
         actor: p.actor,
+        ...(p.note !== undefined ? { note: p.note } : {}),
         upload: {
           buffer: Buffer.from(p.content, "utf8"),
           filename: source.source_uri,

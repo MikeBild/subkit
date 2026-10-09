@@ -14,6 +14,7 @@ export type AppEnv = {
     db: Db;
     boss?: PgBoss;
     principal?: ResolvedPrincipal;
+    workflow_permission?: import("../execution/index.ts").WorkflowPermission | null;
     service_metadata?: ServiceMetadata;
   };
 };

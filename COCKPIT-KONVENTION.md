@@ -1,6 +1,6 @@
 # Cockpit-Konvention
 
-Version 2.3 · 03.10.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
+Version 2.4 · 09.10.2026 · Gilt für: ContentKit, SubKit, WorkKit, WikiKit, CodeKit, WatchKit
 
 **Modell: Konvention statt Bibliothek.** Jedes Produkt bleibt eigenständig — eigenes Repo, eigene shadcn-Komponenten (vendored, wie shadcn gedacht ist), eigene Releases, kein shared Package. Geteilt wird nur dieses Dokument. Eine Kopie liegt in jedem Repo; Abweichungen sind erlaubt, wo das Produkt es begründet — die Konvention ist der Default, nicht das Gesetz.
 
@@ -21,6 +21,7 @@ Referenz-Implementierung: für v2.x ist SubKit die Referenz (Startseite „Über
 Änderungen v2.1.1: §6 Einstellungen — eine Zeile sagt, wenn ein Wert vom Standard abweicht, und setzt ihn per Entwurf zurück; „Alle | Geändert“ neben der Suche; Geheimnisse zeigen nur „Hinterlegt“ oder „Nicht hinterlegt“; ein Speichern ist ein Vorgang für alle Entwürfe der Seite, ein Konflikt behält sie.
 Änderungen v2.2: Die Betriebsleiste trägt sechs Werte statt vier — dazu **Kosten** (Ausgaben im gewählten Zeitfenster, in der Währung der Preise) und **Kontingent** (Token des Kalendermonats gegen das Monatskontingent, markiert „Monat"), je in Kurzform. §1 Betriebsleiste: ein Raster ohne seitliches Scrollen (breit 6 in einer Zeile oder 3 × 2, Telefon 2 Spalten). §0.1: Kosten und Kontingent wohnen als Kurzform in der Betriebsleiste; Nutzung behält Aufriss und Tabellen.
 Änderungen v2.3: Die Übersicht folgt dem abgenommenen Klick-Dummy. Die Betriebsleiste trägt wieder **vier** Werte — Ausführungen, Erfolgsquote, Gesunde Konnektoren, Kontingent —; Kosten zeigt Nutzung im Aufriss, entschiedene Reparaturen zeigt der Audit-Trail (§0.1). Das Zeitfenster (24 Std · 7 Tage) steht rechts in der Zusammenfassungszeile über der Leiste, nicht im Seitenkopf; der Seitenkopf trägt „Alle Läufe" und den Verweis „Was bereits entschieden wurde". Unter der Anliegen-Liste stehen die drei jüngsten Fehlschläge. Leer heißt: die Zusammenfassungszeile zählt „0 Einträge brauchen dich", die Liste sagt „Nichts braucht dich gerade." — ohne Statuszeile; den Gesundheitszustand liefern API, MCP und Prometheus, seine Ursachen sind Einträge (§1, §8.6).
+Änderungen v2.4: neuer §16 Auftragskette — jeder Lauf nennt, wer ihn ausgelöst hat, wie SubKit das geprüft hat und welche Freigabe galt; eine Zeile im Lauf, Details zugeklappt, keine neue Fläche (§0.1).
 
 ---
 
@@ -152,9 +153,9 @@ Deutsch auf oberster Ebene; Fachbegriffe (SRE, API-Namen) erst in der Detailtief
 
 ## 6. Struktur-Konstanten
 
-Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Ganz oben, ungruppiert und ohne Überschrift: **Übersicht** mit Abzeichen (§1). Installation-Sektion enthält mindestens: Nutzung · Einstellungen · Zugangsdaten · Personen & Rechte · Benachrichtigungen · Audit. Eine System-Seite gibt es nicht mehr: der Gesundheitszustand ist die Statuszeile auf der Übersicht, seine Ursachen sind Einträge dort, Komponenten und Score liefern API, MCP und Prometheus (§0.1). **Personen & Rechte** ist die eine Seite für Personen, Rollen, Gruppen und Freigaben, je Abschnitt eine Adresse (`?section=…`); **Zugangsdaten** ist die eine Seite für API-Schlüssel, verbundene Anwendungen und Kontoverbindungen. Deep-Links funktionieren; abgelöste Adressen leiten auf ihren neuen Ort um, statt „nicht gefunden" zu zeigen; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
+Sidebar links: Wortmarke, gruppierte Navigation, Account unten (Avatar · E-Mail · Rolle · Menü: Profil/Sprache/Darstellung/Abmelden). Ganz oben, ungruppiert und ohne Überschrift: **Übersicht** mit Abzeichen (§1). Die Gruppe **Verwaltung** enthält in dieser Reihenfolge: Nutzung · Audit · Personen & Rechte · API-Zugang · Einstellungen. Benachrichtigungen sind ein Bereich der Einstellungen. Eine System-Seite gibt es nicht mehr: der Gesundheitszustand ist die Statuszeile auf der Übersicht, seine Ursachen sind Einträge dort, Komponenten und Score liefern API, MCP und Prometheus (§0.1). **Personen & Rechte** ist die eine Seite für Personen, Rollen, Gruppen und Freigaben, je Abschnitt eine Adresse (`?section=…`); **API-Zugang** ist die Seite für API-Schlüssel und verbundene Anwendungen. Kontoverbindungen stehen beim jeweiligen Konnektor. Deep-Links funktionieren; abgelöste Adressen leiten auf ihren neuen Ort um, statt „nicht gefunden" zu zeigen; unbekannte Routen zeigen eine gestaltete Seite mit Rückweg. Mandanten-Switcher trennt Prod/Test, Test ausblendbar.
 
-**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt **„Installation"** (nie „Administration"), der Startseiten-Eintrag heißt **„Übersicht"** und steht **ungruppiert** ganz oben (§1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
+**Kanonische Gruppennamen.** Geteilte Konzepte heißen in allen sechs Produkten gleich: die Admin-Gruppe heißt auf Deutsch **„Verwaltung"**, auf Englisch **„Administration"**, der Startseiten-Eintrag heißt **„Übersicht"** und steht **ungruppiert** ganz oben (§1), die Rolle heißt **„Administrator"** (eine Schreibweise, keine Versalien-Varianten). Produktspezifische Gruppen (Wiki, Überwachung, …) bleiben frei benannt — aber deutsch und in Normalschreibung.
 
 **Wortmarke und App-Icon.** Die Seitenleiste trägt oben die Wortmarke: **Produkt-Icon plus
 Produktname in kanonischer Schreibweise** — WorkKit · SubKit · WikiKit · ContentKit · CodeKit ·
@@ -267,23 +268,23 @@ vier verschiedene Spaltensätze (5 bis 8 Spalten), „Aktion" gegen „Vorgang" 
 „Audit", und ein Produkt ohne Tabelle. **Der Grund: es gab keinen Paragrafen.** Die Aufträge
 trugen eine Beschreibung, und eine Beschreibung kann nicht fehlschlagen.
 
-**15.1 Name und Ort.** Der Menüeintrag heißt **„Audit"**, in der Gruppe Installation (§6).
+**15.1 Name und Ort.** Der Menüeintrag heißt **„Audit"**, in der Gruppe Verwaltung (§6).
 Die Seitenüberschrift heißt **„Audit-Trail"**. Nicht „Protokoll", nicht „Audit-Protokoll",
 nicht „Verlauf".
 
-**15.2 Die fünf Spalten.** In dieser Reihenfolge, mit diesen Namen:
+**15.2 Die vier Spalten.** In dieser Reihenfolge, mit diesen Namen:
 
-    Zeitpunkt · Vorgang · Art · Ergebnis · Verursacher
+    Ereignis · Wer · Ergebnis · Wann
 
-- **Zeitpunkt** ist **absolut** („19.08.2026, 14:11"), nie eine Spanne. Jede relative Angabe
-  hier ist eine deutsche Präposition am Quantum — genau der Defekt, den §5 laufend findet.
-- **Vorgang** ist ein deutscher Name, nie ein Maschinenwert. Wo keiner existiert, steht der
-  Maschinenwert **als solcher erkennbar**, nicht „Unbekannt" (§2).
-- **Verursacher** steht als Gedankenstrich, wo die Quelle keinen führt — **nie erschlossen**.
+- **Ereignis** nennt den Vorgang und den dokumentierten Objektnamen. Fehlt der Name,
+  darf ein berechtigt gelesener Name verwendet werden; sonst bleibt die Ressourcenart sichtbar.
+  Unbekannte Vorgangsnamen erscheinen als erkennbare Maschinenwerte.
+- **Wer** nennt ausschließlich dokumentierte, typisierte Akteure. Fehlt die Identität,
+  bleibt die dokumentierte Akteursart oder ein Gedankenstrich; sie wird nie erschlossen.
+- **Ergebnis** heißt Erfolgreich, Fehlgeschlagen oder Verweigert.
+- **Wann** ist absolut, nie eine relative Spanne.
 
-**Produktspezifische Zusatzspalten sind erlaubt** und stehen **rechts** der fünf (WorkKit:
-Transport, Details; ContentKit: Website). Eine Zusatzspalte ist nie ein anderer Name für eine
-der fünf.
+Produktspezifische Zusatzspalten stehen rechts der vier Spalten.
 
 **15.3 Was die Seite können muss.** Serverseitige Suche und Filter, vollständiges Blättern,
 Ereignisdetail mit sichtbaren Hashes und Rohdaten, Kettenstatus, Export der aktuellen Auswahl.
@@ -329,3 +330,24 @@ gefallen · nicht gebaut (mit Messwert)**. **Eine Zelle ohne Lauf ist nie grün.
 
 **Historische Lücken werden nicht schöngerechnet:** Altdaten werden als `legacy_partial`
 versiegelt, der lückenlose Nachweis beginnt am dokumentierten Umstellungszeitpunkt.
+
+## 16. Auftragskette
+
+Ein Lauf beantwortet vier Fragen, jede an genau einem Ort (§0.1):
+
+| Frage | Ort | Form |
+|---|---|---|
+| Wer hat den Auftrag gegeben? | Lauf-Sheet, unter dem Statusbalken | eine Zeile „Auftrag von · Kanal" + Badge **geprüft**, **automatisch** bei gespeicherter Engine-Identität oder **nicht dokumentiert** bei fehlendem Identitäts-/Prüfnachweis |
+| Warum durfte er starten? | Lauf-Sheet, zugeklappt „Warum erlaubt" | Prüfverfahren · Berechtigung · Umgebung · Link auf die Freigabe |
+| Mit wem spricht SubKit? | Schrittzeile und Konnektor | „Liest/Schreibt · Konnektor"; aufgeklappt „Spricht als" mit Status, nie Werte |
+| Was ist passiert? | Statusbalken und Schritte | wie bisher; eine Freigabe ist kein Erfolg |
+
+**16.1 Herkunft wird gekennzeichnet.** Geprüft (von SubKit festgestellt) · vom Client übermittelt · im Workflow ermittelt. Übermittelte Angaben verleihen nie Rechte.
+
+**16.2 Technische Auslöser heißen, was sie sind.** Zeitplan, Webhook, Unterworkflow — kein erfundener Mensch. Ein Unterlauf nennt den ursprünglichen Lauf.
+
+**16.3 Drei Fehler, drei Seiten.** Anmeldung abgelaufen · Anmeldung nicht zugeordnet · Workflow nicht erlaubt. Nie „Authentifizierung fehlgeschlagen" (§4).
+
+**16.4 Ein Vorgang, eine Kennung.** Lauf, Audit-Einträge und die Antworten von HTTP, MCP und CLI tragen dieselbe Vorgangskennung; das Audit filtert danach und nach Verursacher (§15).
+
+**16.5 Nicht zeigen.** Tokens, Schlüssel, Roh-Header, Kennungen von Schlüsseln. Begriffe wie Principal oder `$caller` stehen nur im aufgeklappten Detail.

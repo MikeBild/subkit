@@ -120,6 +120,28 @@ describe("the operations figures", () => {
     expect([figures.get("from"), figures.get("to")]).toEqual([WEEK.from, WEEK.to]);
   });
 
+  test("tile detail preserves observed failure and unhealthy counts", () => {
+    const figures = figuresOf({
+      counts: counts({
+        runs: { total: 12, failed: 3, successRatePercent: 75 },
+        connectors: { enabled: 5, notOk: 2, healthyPercent: 60 },
+      }),
+    });
+    expect(value(figures.find((figure) => figure.id === "runs"))?.detail).toEqual({
+      kind: "failures",
+      count: 3,
+    });
+    expect(value(figures.find((figure) => figure.id === "connectorHealth"))?.detail).toEqual({
+      kind: "connectors",
+      count: 2,
+    });
+    expect(
+      figuresOf({ counts: { state: "failed" } })
+        .filter((figure) => figure.id === "runs" || figure.id === "connectorHealth")
+        .every((figure) => figure.state === "unreadable"),
+    ).toBe(true);
+  });
+
   test("every link opens the list the number counted: same window, same filter", () => {
     const figures = figuresOf();
     expect(figures.map((figure) => [figure.id, value(figure)?.value])).toEqual([
@@ -132,7 +154,7 @@ describe("the operations figures", () => {
     ]);
     const [runs, rate, connectors, repairs, cost, budget] = figures.map(value);
     expect(usageWindowFromUrl(query(cost?.href ?? null))).toBe("7d");
-    expect(cost?.href).toBe("/usage?window=7d");
+    expect(cost?.href).toBe("/usage");
     expect(budget?.href).toBe("/usage");
     const window = { startedFrom: WEEK.from, startedTo: WEEK.to };
     expect(filterFromUrl(query(runs?.href ?? null))).toMatchObject({ status: "all", ...window });
@@ -262,7 +284,7 @@ describe("the operations figures", () => {
     expect(spend.cost).toBeNull();
     const cost = figuresOf({ spend: answered(spend) })[4];
     expect(cost?.state).toBe("unpriced");
-    expect(cost && "href" in cost ? cost.href : null).toBe("/usage?window=7d");
+    expect(cost && "href" in cost ? cost.href : null).toBe("/usage");
   });
 
   test("the month's usage is its money, with its whole share of the cap and the engine's word", () => {

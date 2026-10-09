@@ -610,6 +610,7 @@ export async function maybeAutoPersistFromElicitation(
           },
           p.db,
           p.principal,
+          rbac.workflow_permission,
         );
         const run = await runExecution({
           db: p.db,

@@ -209,6 +209,7 @@ export function registerRunRoute(app: OpenAPIHono<AppEnv>): void {
           },
           db,
           principal,
+          c.get("workflow_permission"),
         );
         if (body.async && admitted.status === "queued" && admitted.execution_authority_id) {
           await assertExecutionAuthorityCurrent(db, principal.tenant_id, admitted.execution_id);

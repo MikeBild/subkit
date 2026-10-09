@@ -27,7 +27,11 @@ import type { AppEnv } from "../openapi.ts";
 import { registerKnowledgeVersionRoutes } from "./knowledge-versions.ts";
 
 const KnowledgeSourceListResponse = z
-  .object({ items: z.array(KnowledgeSourceSchema), total: z.number().int().nonnegative() })
+  .object({
+    items: z.array(KnowledgeSourceSchema),
+    total: z.number().int().nonnegative(),
+    sections_total: z.number().int().nonnegative(),
+  })
   .openapi("KnowledgeSourceListResponse");
 
 const AnalyzeKnowledgeSourceBody = z
@@ -73,6 +77,7 @@ const listRoute = createRoute({
         scope: z.enum(["global", "workflow"]).optional(),
         workflow_id: z.string().uuid().optional(),
         status: z.enum(["active", "inactive", "processing", "error"]).optional(),
+        description_source: z.enum(["llm", "human"]).optional(),
         category: CategoryFilterSchema.optional(),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "status", "source_type", "bytes_total", "updated_at"]).optional(),
@@ -117,6 +122,14 @@ const updateRoute = createRoute({
     body: { content: { "application/json": { schema: UpdateKnowledgeSourceSchema } } },
   },
   responses: {
+    400: {
+      description: "Invalid description acceptance",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    409: {
+      description: "The reviewed description changed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: {
       description: "OK",
       content: { "application/json": { schema: KnowledgeSourceSchema } },
@@ -328,6 +341,7 @@ const UpdateKnowledgeSourceContentBody = z
     expected_version: z.string().min(1),
     path: z.string().min(1).max(512),
     content: z.string().min(1),
+    note: z.string().trim().min(1).max(2000).optional(),
   })
   .openapi("UpdateKnowledgeSourceContentBody");
 
@@ -449,7 +463,7 @@ const refreshRoute = createRoute({
     },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
     409: {
-      description: "The source has no address to read again",
+      description: "The source has no address to read again or its address changed during refresh",
       content: { "application/json": { schema: ErrorSchema } },
     },
     ...urlFailure,
@@ -457,6 +471,9 @@ const refreshRoute = createRoute({
 });
 
 function urlError(error: unknown): never {
+  if (error instanceof svc.KnowledgeSourceAddressConflictError) {
+    throw new ConflictError(error.message);
+  }
   if (error instanceof svc.KnowledgeUrlFetchError)
     throw new UnprocessableEntityError(error.message, { reason: error.code });
   if (error instanceof KnowledgeBudgetExceededError)
@@ -530,17 +547,18 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
       ...(q.status ? { status: q.status } : {}),
       ...(q.category ? { category: q.category } : {}),
+      ...(q.description_source ? { description_source: q.description_source } : {}),
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),
       ...(q.limit !== undefined ? { limit: q.limit } : {}),
       ...(q.offset !== undefined ? { offset: q.offset } : {}),
     };
-    const [items, total] = await Promise.all([
+    const [items, totals] = await Promise.all([
       svc.listKnowledgeSources(params, db),
-      svc.countKnowledgeSources(params, db),
+      svc.knowledgeSourceTotals(params, db),
     ]);
-    return c.json({ items, total }, 200);
+    return c.json({ items, ...totals }, 200);
   });
 
   app.openapi(searchRoute, async (c) => {
@@ -617,6 +635,7 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
           expected_version: body.expected_version,
           path: body.path,
           content: body.content,
+          ...(body.note !== undefined ? { note: body.note } : {}),
           actor: actorOf(principal),
         },
         db,
@@ -689,12 +708,19 @@ export function registerKnowledgeSourceRoutes(app: OpenAPIHono<AppEnv>): void {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const updated = await svc.updateKnowledgeSource(
-      { tenant_id: principal.tenant_id, id, patch: body, actor_id: principal.id },
-      db,
-    );
-    if (!updated) throw new NotFoundError("knowledge_source");
-    return c.json(updated, 200);
+    try {
+      const updated = await svc.updateKnowledgeSource(
+        { tenant_id: principal.tenant_id, id, patch: body, actor_id: principal.id },
+        db,
+      );
+      if (!updated) throw new NotFoundError("knowledge_source");
+      return c.json(updated, 200);
+    } catch (error) {
+      if (error instanceof svc.KnowledgeSourceAddressReadOnlyError) {
+        throw new BadRequestError(error.message);
+      }
+      throw error;
+    }
   });
 
   app.openapi(analyzeRoute, async (c) => {

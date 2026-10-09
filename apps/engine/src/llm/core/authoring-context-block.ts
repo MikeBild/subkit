@@ -82,7 +82,7 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push(
       "- Explain who starts the workflow, which service the connector authenticates to, what permissions allow, and which external effects a human approval covers. These are separate; a login or connector probe is not an effect approval or a successful workflow run.",
       "- SubKit supplies immutable $caller from authentication; client context is untrusted input. Callerless system runs have null caller. Never substitute the approver, connector credentials or input owner fields for the caller; a child retains the original caller.",
-      "- Ground explanations in recorded runs, step results and audit entries. Stored caller_context is not currently exposed by the public execution serializers or get_execution; do not claim a complete caller/auth graph in Cockpit, HTTP or MCP.",
+      "- Ground explanations in recorded runs, step results and audit entries. Raw caller_context and credential material remain private. Execution readers expose safe caller, recorded permission phase/time and environment evidence; step readers expose persisted credential identity snapshots and dispatch-effect metadata. Missing evidence stays unknown, and neither a snapshot nor a dispatch attempt proves provider acceptance. Do not claim a complete caller/auth graph.",
       "",
     );
     lines.push("## Current authoring state");

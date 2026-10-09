@@ -1,8 +1,9 @@
 import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
+import { executionStartTraceId } from "../../../audit/index.ts";
 import { executionStatusEnum, executions } from "../../../db/schema/index.ts";
 import {
-  describeExecutionCaller,
+  describeExecutionEvidence,
   executionVisibilityFilter,
   isSensitivePayload,
 } from "../../../execution/index.ts";
@@ -57,6 +58,7 @@ export const listExecutionsTool: ConversationTool = {
       data: {
         items: rows.map((e) => ({
           id: e.id,
+          ...describeExecutionEvidence(e),
           workflow_id: e.workflow_id,
           status: e.status,
           started_at: e.started_at,
@@ -99,11 +101,12 @@ export const getExecutionTool: ConversationTool = {
       data: {
         execution: {
           id: e.id,
+          ...describeExecutionEvidence(e),
           workflow_id: e.workflow_id,
           workflow_version_id: e.workflow_version_id,
           status: e.status,
           request_source: e.request_source,
-          caller: describeExecutionCaller(e),
+          trace_id: await executionStartTraceId(ctx.db, ctx.tenant_id, e.id),
           parent_execution_id: e.parent_execution_id,
           input: isSensitivePayload(e.input) ? null : e.input,
           started_at: e.started_at,

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { actorDirectory } from "@/app/actor-directory-model";
 import { translate } from "@/lib/i18n";
 import {
   restoredFrom,
   type WorkflowVersion,
+  workflowVersionAuthor,
   workflowVersionSheetCopy,
   workflowVersionView,
 } from "./workflow-versions";
@@ -11,6 +13,8 @@ function version(n: number, overrides: Partial<WorkflowVersion> = {}): WorkflowV
   return {
     id: `version-${n}`,
     workflow_id: "workflow-1",
+    author: null,
+    checksum: "digest",
     version: n,
     note: null,
     created_at: "2026-06-01T00:00:00.000Z",
@@ -145,5 +149,23 @@ describe("restoring next to a disabled workflow or an open draft", () => {
     expect(view).toMatchObject({ state: "draft", newest: false, restorable: false });
     const copy = workflowVersionSheetCopy(view, { canRestore: true, archived: false });
     expect(copy).toMatchObject({ restore: false, hint: "workflowVersions.draftHint" });
+  });
+});
+
+describe("version authors", () => {
+  test("keeps people and service accounts distinct even when IDs match", () => {
+    const directory = actorDirectory(
+      { items: [{ id: "same", email: "person@example.com" }] },
+      { items: [{ id: "same", name: "Worker" }] },
+    );
+    const t = (key: Parameters<typeof translate>[1]) => translate("de", key);
+    expect(workflowVersionAuthor({ kind: "user", id: "same" }, directory, t)).toBe(
+      "person@example.com",
+    );
+    expect(workflowVersionAuthor({ kind: "system_account", id: "same" }, directory, t)).toBe(
+      "Worker",
+    );
+    expect(workflowVersionAuthor(null, directory, t)).toBe(t("runs.caller.unknown"));
+    expect(workflowVersionAuthor(undefined, directory, t)).toBe(t("runs.caller.unknown"));
   });
 });

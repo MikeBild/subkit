@@ -1,6 +1,9 @@
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db, Executor } from "../db/client.ts";
 import {
+  groupMembers,
+  groupRoleAssignments,
+  groups,
   permissions as permissionsTable,
   rolePermissions,
   roles as rolesTable,
@@ -196,3 +199,45 @@ export async function findRoleByName(
 }
 
 void inArray;
+
+export async function roleMemberCounts(db: Db, tenant_id: string) {
+  const rows = await db
+    .select({
+      id: rolesTable.id,
+      member_count: sql<number>`(
+      select count(*)::int from ${users}
+      where "users"."tenant_id" = ${tenant_id}
+      and (
+        "users"."role_id" = "roles"."id"
+        or exists (
+          select 1 from ${groupMembers}
+          inner join ${groups} on "groups"."id" = "group_members"."group_id"
+          inner join ${groupRoleAssignments} on "group_role_assignments"."group_id" = "groups"."id"
+          where "groups"."tenant_id" = ${tenant_id}
+          and "group_members"."user_id" = "users"."id"
+          and "group_role_assignments"."role_id" = "roles"."id"
+        )
+      )
+    )`,
+    })
+    .from(rolesTable)
+    .where(or(isNull(rolesTable.tenant_id), eq(rolesTable.tenant_id, tenant_id)));
+  return new Map(rows.map((row) => [row.id, row.member_count]));
+}
+
+export async function tenantRolePermissions(db: Db, tenant_id: string) {
+  const rows = await db
+    .select({ role_id: rolesTable.id, permission: permissionsTable.name })
+    .from(rolesTable)
+    .innerJoin(rolePermissions, eq(rolePermissions.role_id, rolesTable.id))
+    .innerJoin(permissionsTable, eq(permissionsTable.id, rolePermissions.permission_id))
+    .where(or(isNull(rolesTable.tenant_id), eq(rolesTable.tenant_id, tenant_id)))
+    .orderBy(permissionsTable.name);
+  const result = new Map<string, string[]>();
+  for (const row of rows) {
+    const permissions = result.get(row.role_id) ?? [];
+    permissions.push(row.permission);
+    result.set(row.role_id, permissions);
+  }
+  return result;
+}

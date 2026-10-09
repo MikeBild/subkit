@@ -91,7 +91,7 @@ export async function executeGraphQLRequest(p: {
   before_dispatch?: (
     credential: Pick<
       ResolvedConnectorCredential,
-      "credential_id" | "credential_revision" | "connection_authority"
+      "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
     >,
   ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
@@ -131,8 +131,14 @@ export async function executeGraphQLRequest(p: {
   if (p.credential_override !== undefined) {
     resolveOpts.override = p.credential_override;
   }
-  const { credential, credential_id, credential_revision, connection_authority, oauth2_refreshed } =
-    await resolveConnectorCredential(resolveOpts);
+  const {
+    credential,
+    credential_id,
+    credential_revision,
+    connection_authority,
+    credential_snapshot,
+    oauth2_refreshed,
+  } = await resolveConnectorCredential(resolveOpts);
   const violations = requestHeaderViolations(
     p.extra_headers ?? {},
     connectorHeaderPolicy(p.connector, credential),
@@ -182,6 +188,7 @@ export async function executeGraphQLRequest(p: {
     credential_id,
     credential_revision,
     connection_authority: connection_authority ?? null,
+    ...(credential_snapshot ? { credential_snapshot } : {}),
   });
   const res = await instrument({
     module: "connector",
@@ -253,7 +260,7 @@ export async function query(p: {
   before_dispatch?: (
     credential: Pick<
       ResolvedConnectorCredential,
-      "credential_id" | "credential_revision" | "connection_authority"
+      "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
     >,
   ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;

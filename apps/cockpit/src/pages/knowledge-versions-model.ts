@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { TranslationKey } from "@/lib/i18n";
 import { computeLineDiff, type FocusedRow, focusDiff } from "@/lib/line-diff";
 
@@ -24,21 +25,17 @@ export function versionChange(previous: Documents, current: Documents): FocusedR
   return focusDiff(computeLineDiff(before, after));
 }
 
-export function authorName(
-  author: VersionAuthor,
-  directory: ReadonlyMap<string, string>,
-  t: Translate,
-): string {
+export function authorName(author: VersionAuthor, directory: ActorDirectory, t: Translate): string {
   if (!author) return t("knowledge.versions.subkit");
   return (
-    directory.get(author.id) ??
+    actorDirectoryName(directory, author.kind, author.id) ??
     t(author.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
   );
 }
 
 export function versionWhy(
   note: string | null,
-  directory: ReadonlyMap<string, string>,
+  directory: ActorDirectory,
   t: Translate,
 ): string | null {
   if (!note) return null;

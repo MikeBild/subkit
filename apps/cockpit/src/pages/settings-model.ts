@@ -1,4 +1,5 @@
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
+import { sameJsonValue as sameSettingValue } from "@/lib/json-value";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
@@ -202,19 +203,7 @@ export function settingFieldValue(
   return typeof item.value === "string" ? item.value : JSON.stringify(item.value);
 }
 
-export function sameSettingValue(a: unknown, b: unknown): boolean {
-  const canonical = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(canonical);
-    if (value && typeof value === "object")
-      return Object.fromEntries(
-        Object.keys(value as Record<string, unknown>)
-          .sort()
-          .map((key) => [key, canonical((value as Record<string, unknown>)[key])]),
-      );
-    return value === undefined ? null : value;
-  };
-  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
-}
+export { sameJsonValue as sameSettingValue } from "@/lib/json-value";
 
 export function settingHasDefault(item: Pick<SettingItem, "meta">): boolean {
   return Object.hasOwn(item.meta, "default");

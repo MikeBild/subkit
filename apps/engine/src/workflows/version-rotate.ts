@@ -80,6 +80,8 @@ export async function rotateWorkflowVersionInternal(
   const [v] = await exec
     .insert(workflowVersions)
     .values({
+      author_user_id: null,
+      author_system_account_id: null,
       tenant_id: input.tenant_id,
       workflow_id: wf.id,
       version: next,

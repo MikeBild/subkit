@@ -23,6 +23,13 @@ export const UserSchema = z
   })
   .openapi("User");
 
+export const UserDetailSchema = UserSchema.extend({
+  groups: z
+    .array(z.object({ id: z.string().uuid(), name: z.string() }))
+    .nullable()
+    .describe("Group memberships, or null when the caller cannot read RBAC membership."),
+}).openapi("UserDetail");
+
 export const SystemAccountSchema = z
   .object({
     id: z.string().uuid(),

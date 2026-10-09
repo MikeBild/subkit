@@ -3,14 +3,17 @@ import { and, eq, sql } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   apiKeys,
+  executions,
   mcpOauthAccessTokens,
   mcpOauthClients,
   sessions,
   users,
 } from "../../db/schema/index.ts";
 import { sha256Hex } from "../../identity/api-key.ts";
+import { can } from "../../rbac/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import {
   authorizationContextFromPrincipal,
   intersectExecutionAllowLists,
@@ -18,7 +21,15 @@ import {
   rehydrateExecutionPrincipal,
 } from "../authorization-context.ts";
 import { callerFromPrincipal } from "../caller-context.ts";
-import { createEngineCtx, type EngineTestCtx } from "./setup.ts";
+import { createExecution } from "../state.ts";
+import {
+  captureWorkflowPermission,
+  matchingWorkflowPermission,
+  recordStartingWorkflowPermission,
+} from "../workflow-permission.ts";
+import { createEngineCtx, createWorkflowRow, type EngineTestCtx } from "./setup.ts";
+
+const nextUuid = createDeterministicUuidFactory(0x4e19);
 
 let ctx: EngineTestCtx;
 let userId: string;
@@ -302,4 +313,127 @@ test("intersection never promotes disjoint ceilings to unrestricted credentials"
   );
   expect(intersectExecutionAllowLists([], "all")).toEqual([]);
   expect(intersectExecutionAllowLists("all", ["only"])).toEqual(["only"]);
+});
+
+test("permission evidence is bound to the real caller and workflow and cannot replace authentication", async () => {
+  const { owner, key } = await keyPrincipal("permission-proof");
+  const { workflow_id } = await createWorkflowRow(ctx, {
+    name: "Permission proof",
+    steps: [{ id: "result", kind: "transform", language: "javascript", expression: "return 1;" }],
+  });
+  owner.allowed_workflows = [workflow_id];
+  const decision = await can(ctx.testDb.db, {
+    tenant_id: ctx.tenantId,
+    principal: owner,
+    permission: "workflow:run",
+    resource: { type: "workflow", id: workflow_id },
+  });
+  expect(decision.allow).toBe(true);
+  if (!decision.allow || !decision.source || decision.source === "credential_ceiling") {
+    throw new Error("Expected an allowed workflow permission decision with a granting source");
+  }
+  const proof = await captureWorkflowPermission(ctx.testDb.db, owner, workflow_id, decision);
+  if (!proof) throw new Error("Expected permission evidence for the allowed workflow decision");
+  expect(proof.source).toBe(decision.source);
+  const caller = callerFromPrincipal(owner, ctx.tenantId);
+  expect(matchingWorkflowPermission(proof, caller, workflow_id)).toEqual(proof);
+  expect(matchingWorkflowPermission(proof, caller, nextUuid())).toBeNull();
+  expect(
+    matchingWorkflowPermission(
+      proof,
+      caller ? { ...caller, tenantId: nextUuid() } : null,
+      workflow_id,
+    ),
+  ).toBeNull();
+  expect(
+    matchingWorkflowPermission(
+      proof,
+      caller ? { ...caller, principalId: nextUuid() } : null,
+      workflow_id,
+    ),
+  ).toBeNull();
+  expect(
+    await captureWorkflowPermission(ctx.testDb.db, owner, workflow_id, {
+      allow: false,
+      source: "credential_ceiling",
+    }),
+  ).toBeNull();
+  const authorization = authorizationContextFromPrincipal(owner, proof, workflow_id);
+  expect(authorization?.workflow_permission).toEqual(proof);
+  expect(
+    authorizationContextFromPrincipal(owner, proof, nextUuid())?.workflow_permission,
+  ).toBeUndefined();
+  await ctx.testDb.db
+    .update(apiKeys)
+    .set({ revoked_at: new Date(FROZEN_NOW) })
+    .where(and(eq(apiKeys.tenant_id, ctx.tenantId), eq(apiKeys.id, key.id)));
+  await expect(
+    rehydrateExecutionPrincipal(ctx.testDb.db, caller, authorization, new Date(FROZEN_NOW)),
+  ).rejects.toMatchObject({ code: "execution_authentication_unavailable" });
+});
+
+test("the first starting permission proof is immutable and never backfills a started run", async () => {
+  const { owner } = await keyPrincipal("permission-replay");
+  const { workflow_id, version_id } = await createWorkflowRow(ctx, {
+    name: "Permission replay",
+    steps: [{ id: "result", kind: "transform", language: "javascript", expression: "return 1;" }],
+  });
+  owner.allowed_workflows = [workflow_id];
+  const caller = callerFromPrincipal(owner, ctx.tenantId);
+  if (!caller) throw new Error("caller fixture missing");
+  const decision = await can(ctx.testDb.db, {
+    tenant_id: ctx.tenantId,
+    principal: owner,
+    permission: "workflow:run",
+    resource: { type: "workflow", id: workflow_id },
+  });
+  const proof = await captureWorkflowPermission(
+    ctx.testDb.db,
+    owner,
+    workflow_id,
+    decision,
+    "start",
+  );
+  if (!proof) throw new Error("permission fixture missing");
+  const create = () =>
+    createExecution(ctx.testDb.db, {
+      tenant_id: ctx.tenantId,
+      workflow_id,
+      workflow_version_id: version_id,
+      source_kind: "saved",
+      source_ref: null,
+      request_source: "api",
+      input: null,
+      caller_context: caller,
+      authorization_context: authorizationContextFromPrincipal(owner),
+    });
+  const execution_id = await create();
+  const read = async (id: string) =>
+    (
+      await ctx.testDb.db
+        .select()
+        .from(executions)
+        .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, id)))
+    )[0]?.authorization_context?.workflow_permission;
+  await recordStartingWorkflowPermission(
+    ctx.testDb.db,
+    execution_id,
+    { ...caller, principalId: nextUuid() },
+    proof,
+  );
+  expect(await read(execution_id)).toBeUndefined();
+  await recordStartingWorkflowPermission(ctx.testDb.db, execution_id, caller, proof);
+  expect(await read(execution_id)).toEqual(proof);
+  await recordStartingWorkflowPermission(ctx.testDb.db, execution_id, caller, {
+    ...proof,
+    source: "group",
+  });
+  expect(await read(execution_id)).toEqual(proof);
+  const historical_id = await create();
+  await ctx.testDb.db
+    .update(executions)
+    .set({ status: "running", started_at: new Date(FROZEN_NOW) })
+    .where(and(eq(executions.tenant_id, ctx.tenantId), eq(executions.id, historical_id)));
+  await recordStartingWorkflowPermission(ctx.testDb.db, historical_id, caller, proof);
+  expect(await read(historical_id)).toBeUndefined();
 });

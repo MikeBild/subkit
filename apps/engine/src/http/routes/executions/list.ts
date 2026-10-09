@@ -1,7 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { readRequestSource } from "../../../audit/index.ts";
+import { executionStartTraceId, readRequestSource } from "../../../audit/index.ts";
 import { KEYSET_CURSOR_PATTERN } from "../../../db/keyset-cursor.ts";
 import { events, executionSteps, executions, workflows } from "../../../db/schema/index.ts";
 import {
@@ -201,7 +201,7 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
     const row = rows[0];
     if (!row || !executionVisibleToPrincipal(row.caller_context, principal))
       throw new NotFoundError("execution");
-    const [named, outcome] = await Promise.all([
+    const [named, outcome, traceId] = await Promise.all([
       row.workflow_id
         ? db
             .select({ name: workflows.name })
@@ -212,8 +212,12 @@ export function registerListRoutes(app: OpenAPIHono<AppEnv>): void {
             .limit(1)
         : Promise.resolve([]),
       loadExecutionOutcome(principal.tenant_id, row, db),
+      executionStartTraceId(db, principal.tenant_id, row.id),
     ]);
-    return c.json({ ...serializeExec(row, named[0]?.name ?? null), outcome }, 200);
+    return c.json(
+      { ...serializeExec(row, named[0]?.name ?? null), outcome, trace_id: traceId },
+      200,
+    );
   });
 
   app.openapi(getStepsRoute, async (c) => {

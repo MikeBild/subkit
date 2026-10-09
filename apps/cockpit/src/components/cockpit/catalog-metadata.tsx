@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { SelectField, TextAreaField, TextField } from "@/components/cockpit/form-field";
-import { Button, type FilterSelect, FormDialog } from "@/components/cockpit/patterns";
+import {
+  type ActionMenuItem,
+  Button,
+  type FilterSelect,
+  FormDialog,
+} from "@/components/cockpit/patterns";
 import { useI18n } from "@/lib/i18n-context";
 import { humanizeCategory, UNCATEGORIZED } from "@/lib/workflow-category";
 import {
@@ -20,6 +25,59 @@ import {
 } from "./catalog-metadata-model";
 
 const NEW_CATEGORY = "__new__";
+const KIND_LABELS = {
+  workflow: "inbox.resource.workflow",
+  connector: "inbox.resource.connector",
+  knowledge_source: "inbox.resource.knowledgeSource",
+  skill: "inbox.resource.skill",
+  file: "inbox.resource.file",
+} as const;
+
+export function useCatalogMetadataActions({
+  kind,
+  id,
+  record,
+  queryKey,
+  onEdit,
+}: {
+  kind: CatalogKind;
+  id: string;
+  record: CatalogMetadataRecord | undefined;
+  queryKey: readonly unknown[];
+  onEdit(): void;
+}): ActionMenuItem[] {
+  const { t } = useI18n();
+  const client = useQueryClient();
+  const accept = useMutation({
+    mutationFn: (description: string) =>
+      apiRequest(metadataEndpoint(kind, id), {
+        method: "PATCH",
+        body: JSON.stringify({ description, accept_description: true }),
+      }),
+    onSuccess: async () => {
+      toast.success(t("catalogMeta.saved"));
+      await Promise.all([
+        client.invalidateQueries({ queryKey: [...queryKey] }),
+        client.invalidateQueries({ queryKey: ["catalog"] }),
+        client.invalidateQueries({ queryKey: ["catalog-categories"] }),
+      ]);
+    },
+    onError: () => toast.error(t("detail.saveFailed")),
+  });
+  return [
+    { label: t("catalogMeta.dialogTitle"), onSelect: onEdit, testId: "catalog-metadata-edit" },
+    ...(writtenByAssistant(record)
+      ? [
+          {
+            label: t("catalogMeta.accept"),
+            onSelect: () => accept.mutate(recordDescription(record)),
+            disabled: accept.isPending,
+            testId: "catalog-metadata-accept",
+          },
+        ]
+      : []),
+  ];
+}
 
 export function CatalogMetadataSummary({
   record,
@@ -113,7 +171,7 @@ export function CatalogMetadataDialog({
     mutationFn: (body: Record<string, string>) =>
       apiRequest(metadataEndpoint(kind, id), { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: async () => {
-      toast.success(t("detail.saved"));
+      toast.success(t("catalogMeta.saved"));
       onOpenChange(false);
       await Promise.all([
         client.invalidateQueries({ queryKey: [...queryKey] }),
@@ -128,8 +186,22 @@ export function CatalogMetadataDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("catalogMeta.dialogTitle")}
+      description={[
+        t(KIND_LABELS[kind]),
+        typeof record?.name === "string"
+          ? record.name
+          : typeof record?.filename === "string"
+            ? record.filename
+            : typeof record?.title === "string"
+              ? record.title
+              : typeof record?.display_name === "string"
+                ? record.display_name
+                : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
       submit={{
-        label: t("common.saveChanges"),
+        label: t("common.save"),
         pending: save.isPending,
         disabled: !patch,
         testId: "catalog-metadata-save",
@@ -140,6 +212,11 @@ export function CatalogMetadataDialog({
       cancelTestId="catalog-metadata-cancel"
       testId="catalog-metadata-dialog"
     >
+      {writtenByAssistant(record) ? (
+        <p className="text-sm text-muted-foreground" data-testid="catalog-metadata-assistant-hint">
+          {t("catalogMeta.assistantHint")}
+        </p>
+      ) : null}
       <TextAreaField
         id="catalog-metadata-description-input"
         label={t("catalogMeta.description")}
@@ -147,6 +224,7 @@ export function CatalogMetadataDialog({
         onChange={setDescription}
         rows={5}
         help={t("catalogMeta.descriptionHelp")}
+        placeholder={t("catalogMeta.empty")}
       />
       <SelectField
         id="catalog-metadata-category-input"
@@ -188,16 +266,14 @@ export function CatalogNameCell({
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="truncate font-medium">{name}</span>
-      {category !== UNCATEGORIZED || description ? (
-        <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          {category !== UNCATEGORIZED ? (
-            <span className="shrink-0 rounded-full border px-1.5 leading-4">
-              {humanizeCategory(category, t("catalog.categoryOther"))}
-            </span>
-          ) : null}
-          {description ? <span className="truncate">{description}</span> : null}
-        </span>
-      ) : null}
+      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {category !== UNCATEGORIZED ? (
+          <span className="shrink-0 rounded-full border px-1.5 leading-4">
+            {humanizeCategory(category, t("catalog.categoryOther"))}
+          </span>
+        ) : null}
+        <span className="truncate">{description || t("catalogMeta.empty")}</span>
+      </span>
     </span>
   );
 }

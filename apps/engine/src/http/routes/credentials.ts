@@ -147,7 +147,9 @@ export function registerCredentialRoutes(app: OpenAPIHono<AppEnv>): void {
       {
         tenant_id: principal.tenant_id,
         credential_id: id,
+        expected_generation: fetched.row.credential_generation,
         access_token: bundle.access_token,
+        verified_identity: bundle.verified_identity ?? null,
         token_type: bundle.token_type,
         scope: bundle.scope ?? undefined,
         refresh_token: bundle.refresh_token ?? fetched.value.refresh_token,

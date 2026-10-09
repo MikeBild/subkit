@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import { listProposedPatchCandidates } from "@/api/decisions";
 import type { components } from "@/api/schema";
 import {
   absolute,
@@ -48,7 +49,9 @@ import {
   type WaitingConnector,
   workflowStrip,
 } from "@/lib/workflow-strip";
-import { isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
+import { fixerKey } from "@/pages/decisions-context";
+import { patchDecision } from "@/pages/decisions-model";
+import { failedStatusesFor, isExecutionRecord, latestFailedRun } from "@/pages/runs-model";
 
 const catalogText = (label: { text: string }) => label.text;
 
@@ -334,6 +337,16 @@ export function useTriggerWords(): (
 }
 
 function useRunHealth(workflowId: string, health: string | null, permissions: readonly string[]) {
+  const [weekFrom] = useState(() => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+  const weekFailures = useQuery({
+    queryKey: ["workflow-week-failures", workflowId, weekFrom],
+    enabled: permissions.includes("execution:read"),
+    queryFn: () =>
+      apiRequest<ExecutionList>(
+        `/v1/executions?${new URLSearchParams({ workflow_id: workflowId, started_from: weekFrom, status: failedStatusesFor("all") ?? "failed", limit: "1" })}`,
+      ),
+    refetchInterval: REFRESH_MS,
+  });
   const unhealthy = Boolean(health) && health !== "ok";
   const runs = useQuery({
     queryKey: ["workflow-latest-failed-run", workflowId],
@@ -346,15 +359,13 @@ function useRunHealth(workflowId: string, health: string | null, permissions: re
   const patch = useQuery({
     queryKey: ["run-open-repair", workflowId],
     enabled: permissions.includes("workflow:read"),
-    queryFn: () =>
-      apiRequest<{ items: { id: string }[] }>(
-        `/v1/patch-candidates?status=proposed&workflow_id=${encodeURIComponent(workflowId)}&limit=1`,
-      ),
+    queryFn: () => listProposedPatchCandidates(workflowId),
   });
   const failed = latestFailedRun((runs.data?.items ?? []).filter(isExecutionRecord));
   return {
     failedRun: failed,
-    repairPrepared: (patch.data?.items?.length ?? 0) > 0,
+    repair: patch.data?.items.find((item) => item.reviewable && item.review_digest) ?? null,
+    noRecentFailures: !weekFailures.error && weekFailures.data?.total === 0,
   };
 }
 
@@ -445,7 +456,7 @@ export function WorkflowStatus({
     noSteps,
     health,
     failedRunId: runHealth.failedRun?.id ?? null,
-    repairPrepared: runHealth.repairPrepared,
+    repairPrepared: runHealth.repair !== null,
     waitingConnector,
     rights: { write: automation.canWrite, chat: automation.canChat },
   });
@@ -467,6 +478,10 @@ export function WorkflowStatus({
       : null;
   const version = (value: number | null | undefined) =>
     value === null || value === undefined ? t("authority.noneActive") : `v${value}`;
+  const repair = runHealth.repair ? patchDecision(runHealth.repair, "") : null;
+  const repairFixer =
+    repair?.detail.kind === "patch" ? fixerKey(repair.detail.evidence.fixer) : null;
+  const repairDescription = repairFixer ? t(repairFixer) : repair?.summary;
   const blocked = Math.max(1, automation.diagnosis?.diagnoses.length ?? 0);
   const line = ((): string | null => {
     switch (strip.kind) {
@@ -492,7 +507,9 @@ export function WorkflowStatus({
           { count: blocked },
         );
       case "unapproved":
-        return t("workflowStrip.line.unapproved");
+        return state?.state === "grant"
+          ? t("workflowStrip.line.neverApproved", { version: version(state.facts.version) })
+          : t("workflowStrip.line.unapproved");
       case "grant":
         return t("workflowStrip.line.grant", {
           version: version(state?.facts.version),
@@ -506,21 +523,28 @@ export function WorkflowStatus({
       case "connector":
         return waitingConnector
           ? t(
-              waitingConnector.state === "expired"
-                ? "workflowStrip.line.connectorExpired"
-                : "workflowStrip.line.connectorMissing",
+              waitingConnector.state === "deleted"
+                ? "workflowStrip.line.connectorDeleted"
+                : waitingConnector.state === "expired"
+                  ? "workflowStrip.line.connectorExpired"
+                  : "workflowStrip.line.connectorMissing",
               { name: waitingConnector.name },
             )
           : null;
       case "failing":
         return failingLine(runHealth.failedRun?.failure ?? null, health ?? "failing");
       case "repairPrepared":
-        return t("workflowStrip.headline.repairPrepared");
+        return repairDescription ?? t("workflowStrip.headline.repairPrepared");
       case "approved":
       case "manual":
-        return lastRunAt
-          ? t("workflowStrip.line.running", { when: formatRelativeTime(locale, lastRunAt) })
-          : t("workflowStrip.line.runningNever");
+        return [
+          lastRunAt
+            ? t("workflowStrip.line.running", { when: formatRelativeTime(locale, lastRunAt) })
+            : t("workflowStrip.line.runningNever"),
+          runHealth.noRecentFailures ? t("workflowStrip.line.noRecentFailures") : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
       default:
         return headline;
     }

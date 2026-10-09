@@ -7,6 +7,7 @@ import { absolute, chatNewHref } from "@/app/links";
 import {
   CatalogMetadataDialog,
   CatalogMetadataSummary,
+  useCatalogMetadataActions,
 } from "@/components/cockpit/catalog-metadata";
 import {
   ConnectorCredentials,
@@ -43,6 +44,7 @@ import { connectorSignIn, signInFailure } from "@/lib/connector-sign-in";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripAction,
+  connectorExpiry,
   connectorStrip,
   connectorStripActionKey,
 } from "@/lib/connector-strip";
@@ -125,7 +127,6 @@ function ConnectorAccountConnections({
       }),
     ];
   }, [t, dateTime]);
-  if (!query.isPending && !query.error && rows.length === 0) return null;
   return (
     <Section label={t("connectorPage.accounts")} testId="connector-account-connections">
       <RecordTable
@@ -160,7 +161,7 @@ function ConnectorAccountConnections({
       <ConfirmDialog
         open={disconnect !== null}
         onOpenChange={(next) => !next && !remove.isPending && setDisconnect(null)}
-        object={disconnect?.name ?? ""}
+        object={t("connectorPage.accountConnection")}
         verb={t("connections.disconnect")}
         consequence={t("connectorPage.disconnectConsequence")}
         destructive
@@ -187,7 +188,7 @@ export function ConnectorPage({
   permissions: readonly string[];
   returned: SignInReturn | null;
 }) {
-  const { t } = useI18n();
+  const { t, dateTime } = useI18n();
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [describing, setDescribing] = useState(false);
@@ -214,6 +215,7 @@ export function ConnectorPage({
       ]);
     },
   });
+  const [toolsReadAt, setToolsReadAt] = useState<string | null>(null);
   const inspect = useMutation({
     mutationFn: async (): Promise<McpInspect> => {
       const body = asInspect(
@@ -224,6 +226,7 @@ export function ConnectorPage({
       if (!body) throw new Error("not an inspect answer");
       return body;
     },
+    onSuccess: () => setToolsReadAt(new Date().toISOString()),
   });
   const runTest = () => {
     probe.mutate();
@@ -323,23 +326,50 @@ export function ConnectorPage({
   };
   const busy =
     enable.isPending || probe.isPending || oauthStart.isPending || connectionRenew.isPending;
-  const stripLine =
-    strip.kind === "signInFailed" && failedSignIn !== null
-      ? signInFailureLine(failedSignIn, t)
-      : strip.kind === "tested" && probe.data
-        ? t("connectors.probeOk", { ms: String(Math.round(probe.data.latency_ms)) })
-        : strip.kind === "unreachable" && probe.data && !probe.data.ok
-          ? (probe.data.detail ?? t("connectors.probeFailed"))
-          : strip.kind === "expired" && users.data
+  const expiresAt = connectorExpiry(record.credentials, record.environment);
+  const testedAt = text(record, "last_tested_at");
+  const stripLine = (() => {
+    if (strip.kind === "signInFailed" && failedSignIn !== null)
+      return signInFailureLine(failedSignIn, t);
+    if (strip.kind === "unreachable" && probe.data && !probe.data.ok)
+      return probe.data.detail ?? t("connectors.probeFailed");
+    if (strip.kind === "expired")
+      return (
+        [
+          expiresAt ? t("connectorStrip.line.expiredSince", { when: dateTime(expiresAt) }) : null,
+          users.data
             ? t(
                 userCount === 1
                   ? "connectorStrip.line.expired.one"
                   : "connectorStrip.line.expired.other",
                 { count: userCount },
               )
-            : strip.kind === "notSignedIn"
-              ? t("connectorStrip.line.notSignedIn")
-              : null;
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null
+      );
+    if (strip.kind === "notSignedIn") return t("connectorStrip.line.notSignedIn");
+    if (["tested", "connected", "signedIn", "notRequired"].includes(strip.kind))
+      return (
+        [
+          expiresAt ? t("connectorStrip.line.validUntil", { when: dateTime(expiresAt) }) : null,
+          testedAt ? t("connectorStrip.line.testedAt", { when: dateTime(testedAt) }) : null,
+          probe.data?.ok ? `${Math.round(probe.data.latency_ms)} ms` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null
+      );
+    return null;
+  })();
+
+  const metadataActions = useCatalogMetadataActions({
+    kind: "connector",
+    id,
+    record,
+    queryKey: ["catalog-detail", "connectors", id],
+    onEdit: () => setDescribing(true),
+  });
 
   const menu: ActionMenuItem[] = [
     ...(canTest
@@ -359,6 +389,7 @@ export function ConnectorPage({
             onSelect: () => setEditing(true),
             testId: "connector-menu-edit",
           },
+          ...metadataActions,
           {
             label: t("workflowPage.delete"),
             destructive: true,
@@ -376,7 +407,7 @@ export function ConnectorPage({
       content: (
         <>
           {typeof record.slug === "string" && permissions.includes("workflow:read") ? (
-            <ConnectorWorkflows slug={record.slug} connectorId={id} />
+            <ConnectorWorkflows slug={record.slug} connectorId={id} connectorName={title} />
           ) : null}
           {permissions.includes("conversation:read") ? (
             <ConversationsAbout target={{ connector_id: id }} />
@@ -392,6 +423,7 @@ export function ConnectorPage({
           <ConnectorConnectionFacts
             record={record}
             headerNames={credential.data?.header_names ?? []}
+            speaksAs={credential.data?.speaks_as}
           />
           {auth !== "not_required" ? (
             <ConnectorCredentials
@@ -417,11 +449,7 @@ export function ConnectorPage({
               label={t("connectorPage.runtime")}
               testId="connector-runtime-section"
             >
-              <ConnectorRuntimeSection
-                connectorId={id}
-                driver={text(record, "driver")}
-                canReadStats={permissions.includes("stats:read")}
-              />
+              <ConnectorRuntimeSection record={record} />
             </CollapsibleSection>
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
@@ -446,6 +474,7 @@ export function ConnectorPage({
                 canTest={canTest}
                 inspect={{
                   data: inspect.data ?? null,
+                  readAt: toolsReadAt,
                   pending: inspect.isPending,
                   failed: inspect.isError,
                 }}
@@ -467,12 +496,7 @@ export function ConnectorPage({
         <PageHeader
           back={{ to: "/connectors", label: t("nav.connectors") }}
           title={title}
-          purpose={
-            <CatalogMetadataSummary
-              record={record}
-              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
-            />
-          }
+          purpose={<CatalogMetadataSummary record={record} />}
           secondary={
             canChat ? (
               <ActionMenu

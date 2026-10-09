@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { getConfig } from "../../config/loader.ts";
 import { RUN_WORKFLOW_TOOL, workflowToolName } from "../../mcp/index.ts";
-import { can } from "../../rbac/index.ts";
+import { can, workflowStartAccess } from "../../rbac/index.ts";
 import { listSchedules, nextScheduleFire, scheduleBindingState } from "../../scheduler/index.ts";
 import { listWorkflowInboundHooks } from "../../webhooks/index.ts";
 import {
@@ -129,6 +129,39 @@ const WorkflowInvocationSchema = z
     output: z.object({ schema: JsonObject.nullable() }),
     webhook_input_shape: z.record(z.string(), z.string()),
     authority: z.object({ dev: RunAuthority, prod: RunAuthority }),
+    start_access: z
+      .object({
+        permission: z.literal("workflow:run"),
+        caller: z.object({
+          allowed: z.boolean(),
+          source: z.string().nullable(),
+          reason: z.string().nullable(),
+        }),
+        visibility: z.object({ rules: z.boolean() }),
+        rules: z
+          .object({
+            roles: z.array(z.object({ id: z.string(), name: z.string() })),
+            grants: z.array(
+              z.object({
+                subject_type: z.enum(["user", "system_account", "group"]),
+                subject_id: z.string(),
+                expires_at: z.string().nullable(),
+              }),
+            ),
+          })
+          .optional()
+          .describe(
+            "Configured roles and unexpired grants for this workflow, visible only with rbac:read. These rules do not establish an authenticated caller or bypass credential restrictions, account state, or effect admission.",
+          ),
+        external: z.object({
+          authentication_required: z.literal(true),
+          credential_restrictions_apply: z.literal(true),
+        }),
+        without_approval: z.literal("held_preview_only"),
+      })
+      .describe(
+        "Current caller's workflow:run permission evaluated with credential ceilings; not an effect approval or a guarantee that a run is admitted. External authenticated callers need this permission too. Inbound hooks have their separately configured verifiers and are listed under hooks.",
+      ),
   })
   .openapi("WorkflowInvocation");
 
@@ -206,10 +239,11 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
     const now = clock.rows[0]?.now;
     if (!now) throw new Error("database clock unavailable");
 
-    const [hooks, schedules, authority] = await Promise.all([
+    const [hooks, schedules, authority, startAccess] = await Promise.all([
       mayHooks ? listWorkflowInboundHooks(tenant, workflow.id, db) : null,
       maySchedules ? listSchedules(db, tenant, workflow.id) : null,
       workflowRunAuthority(db, workflow),
+      workflowStartAccess(db, principal, workflow.id, new Date(now)),
     ]);
 
     return c.json(
@@ -283,6 +317,7 @@ export function registerWorkflowInvocationRoutes(app: OpenAPIHono<AppEnv>): void
         output: { schema: workflow.definition.output_schema ?? null },
         webhook_input_shape: { ...WEBHOOK_INPUT_SHAPE },
         authority,
+        start_access: startAccess,
       },
       200,
     );

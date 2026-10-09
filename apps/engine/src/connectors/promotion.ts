@@ -306,7 +306,12 @@ export async function promoteConnector(
         .where(and(eq(connectors.tenant_id, input.tenant_id), eq(connectors.id, source.id)));
       await tx
         .update(credentials)
-        .set({ environment: "prod", updated_at: new Date() })
+        .set({
+          environment: "prod",
+          verified_identity: null,
+          credential_generation: sql`${credentials.credential_generation} + 1`,
+          updated_at: new Date(),
+        })
         .where(
           and(
             eq(credentials.tenant_id, input.tenant_id),

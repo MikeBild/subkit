@@ -13,6 +13,7 @@ import { annotateRuntime } from "./runtime-annotation.ts";
 import { slugConflictResult } from "./slug-conflict.ts";
 import { validateTenantWorkflowDef } from "./tenant-validator.ts";
 import { type WorkflowDef, WorkflowDefSchema } from "./types.ts";
+import { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 import { writeWorkflowMetadata } from "./workflow-metadata.ts";
 
@@ -30,7 +31,7 @@ export type SaveWorkflowDraftResult =
   | { draft: WorkflowDraftView; errors?: never; code?: never }
   | { draft?: never; errors: string[]; code: DraftErrorCode };
 
-export interface SaveWorkflowDraftInput {
+export interface SaveWorkflowDraftInput extends VersionActor {
   tenant_id: string;
   workflow_id?: string;
   expected_draft_version_id?: string | null;
@@ -178,6 +179,7 @@ export async function saveWorkflowDraft(
       const [version] = await tx
         .insert(workflowVersions)
         .values({
+          ...versionAuthorColumns(input),
           tenant_id: input.tenant_id,
           workflow_id: wf.id,
           version: Number(latest?.max ?? 0) + 1,

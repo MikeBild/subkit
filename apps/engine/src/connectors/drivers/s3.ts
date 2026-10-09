@@ -1,4 +1,5 @@
 import { S3Client } from "@bradenmacdonald/s3-lite-client";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
@@ -71,6 +72,7 @@ async function resolveS3Credentials(
   creds: S3Credentials | null;
   credential_id: string | null;
   credential_revision: number | null;
+  credential_snapshot?: CredentialUseSnapshot;
 }> {
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   if (connector.auth_type === "none") {
@@ -92,7 +94,12 @@ async function resolveS3Credentials(
     override !== undefined
       ? override && {
           value: override,
-          row: { id: null as string | null, authority_revision: null as number | null },
+          row: {
+            id: null as string | null,
+            authority_revision: null as number | null,
+            credential_generation: null,
+            verified_identity: null,
+          },
         }
       : await getCredentialForConnector(tenant_id, connector.id, connector.environment, db);
   if (!row) {
@@ -101,6 +108,15 @@ async function resolveS3Credentials(
       "credential_missing",
     );
   }
+  const credential_snapshot: CredentialUseSnapshot = {
+    connector_id: connector.id,
+    environment: connector.environment,
+    credential_id: row.row.id,
+    credential_generation: row.row.credential_generation,
+    connection_id: null,
+    access_token_version: null,
+    identity: row.row.verified_identity,
+  };
   const v = row.value;
   if (v.mode === "aws_sigv4") {
     const out: S3Credentials = {
@@ -112,6 +128,7 @@ async function resolveS3Credentials(
       creds: out,
       credential_id: row.row.id,
       credential_revision: row.row.authority_revision,
+      credential_snapshot,
     };
   }
   if (v.mode !== "header") {
@@ -132,10 +149,29 @@ async function resolveS3Credentials(
   const out: S3Credentials = { access_key_id: id, secret_access_key: secret };
   const sess = headers["x-session-token"] ?? headers["X-Session-Token"];
   if (sess) out.session_token = sess;
-  return { creds: out, credential_id: row.row.id, credential_revision: row.row.authority_revision };
+  return {
+    creds: out,
+    credential_id: row.row.id,
+    credential_revision: row.row.authority_revision,
+    credential_snapshot,
+  };
+}
+
+class ObservedS3Client extends S3Client {
+  constructor(
+    options: ConstructorParameters<typeof S3Client>[0],
+    private readonly onCredentialUse?: () => Promise<void>,
+  ) {
+    super(options);
+  }
+  override async makeRequest(options: Parameters<S3Client["makeRequest"]>[0]): Promise<Response> {
+    await this.onCredentialUse?.();
+    return super.makeRequest(options);
+  }
 }
 
 export function buildS3Client(p: {
+  on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   credentials?: S3Credentials | null;
 }): S3Client {
@@ -151,7 +187,10 @@ export function buildS3Client(p: {
     opts.secretKey = p.credentials.secret_access_key;
     if (p.credentials.session_token) opts.sessionToken = p.credentials.session_token;
   }
-  return new S3Client(opts as ConstructorParameters<typeof S3Client>[0]);
+  return new ObservedS3Client(
+    opts as ConstructorParameters<typeof S3Client>[0],
+    p.on_credential_use,
+  );
 }
 
 export function assertRemovableObject(key: string, body: unknown): void {
@@ -178,10 +217,11 @@ function headersFromResponse(res: Response): Record<string, string> {
 }
 
 export async function executeS3Request(p: {
+  on_credential_use?: (snapshot: CredentialUseSnapshot) => Promise<void>;
   before_dispatch?: (
     credential: Pick<
       ResolvedConnectorCredential,
-      "credential_id" | "credential_revision" | "connection_authority"
+      "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
     >,
     request?: HttpDispatchObservation,
   ) => Promise<RequestDispatchPolicy | undefined>;
@@ -207,20 +247,46 @@ export async function executeS3Request(p: {
     creds: credentials,
     credential_id,
     credential_revision,
+    credential_snapshot,
   } = await resolveS3Credentials(p.db, p.tenant_id, p.connector, p.credential_override);
-  const client = buildS3Client({ connector: p.connector, credentials });
+  const snapshot = credential_snapshot ?? {
+    connector_id: p.connector.id,
+    environment: p.connector.environment,
+    credential_id,
+    credential_generation: null,
+    connection_id: null,
+    access_token_version: null,
+    identity: null,
+  };
+  const client = buildS3Client({
+    connector: p.connector,
+    credentials,
+    ...(!p.before_dispatch && p.on_credential_use
+      ? { on_credential_use: () => p.on_credential_use?.(snapshot) ?? Promise.resolve() }
+      : {}),
+  });
   if (p.before_dispatch && p.method === "LIST")
     return executeBoundS3List({
       client,
       params: p,
       credentials,
-      credential: { credential_id, credential_revision, connection_authority: null },
+      credential: {
+        credential_id,
+        credential_revision,
+        connection_authority: null,
+        ...(credential_snapshot ? { credential_snapshot } : {}),
+      },
     });
   if (p.before_dispatch)
     return executeBoundS3Request({
       client,
       params: p,
-      credential: { credential_id, credential_revision, connection_authority: null },
+      credential: {
+        credential_id,
+        credential_revision,
+        connection_authority: null,
+        ...(credential_snapshot ? { credential_snapshot } : {}),
+      },
     });
   const key = trimKey(p.path);
   const method = p.method.toUpperCase() as S3Method;
@@ -238,7 +304,7 @@ export async function executeS3Request(p: {
     level: "debug",
     thresholdMs: 1000,
     fields: { connector_id: p.connector.id, op: method, key },
-    fn: () => executeS3Operation({ client, method, key, credential_id, p }),
+    fn: () => executeS3Operation({ client, method, key, credential_id, snapshot, p }),
   });
 }
 
@@ -247,9 +313,10 @@ async function executeS3Operation(ctx: {
   method: S3Method;
   key: string;
   credential_id: string | null;
+  snapshot: CredentialUseSnapshot;
   p: Parameters<typeof executeS3Request>[0];
 }): Promise<S3Response> {
-  const { client, method, key, credential_id, p } = ctx;
+  const { client, method, key, credential_id, snapshot, p } = ctx;
   switch (method) {
     case "GET": {
       if (p.presignExpiresIn !== undefined) {
@@ -270,6 +337,7 @@ async function executeS3Operation(ctx: {
       let res: Response;
       if (p.range) {
         const url = await client.getPresignedUrl("GET", key, { expirySeconds: 60 });
+        await p.on_credential_use?.(snapshot);
         res = await getDriverFetch()(url, { headers: { range: p.range } });
       } else {
         res = await client.getObject(key);

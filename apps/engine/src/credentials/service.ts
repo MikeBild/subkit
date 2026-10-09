@@ -5,11 +5,12 @@ import { AuditAction } from "../audit/types.ts";
 import type { EncryptedPayload } from "../crypto/aes-gcm.ts";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
-import { connectors, credentials } from "../db/schema/index.ts";
+import { connectors, credentials, outboundConnections } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
 import { invalidateTenantState } from "../operator/tenant-state.ts";
 import { emitCredentialChange } from "../pubsub/resource-changes.ts";
 import {
+  hasColumn,
   hasCredentialAuthorityRevisionColumn,
   hasCredentialConnectionColumn,
 } from "../runtime-config/secret-columns.ts";
@@ -17,6 +18,11 @@ import type { ConnectionAuthorityIdentity } from "./authority-metadata.ts";
 import { authorityScopeSet, sameAuthorityScopes, storedScopes } from "./authority-scopes.ts";
 import { readAccessToken, summarizeConnections } from "./connections/service.ts";
 import type { ConnectionSummary } from "./connections/types.ts";
+import {
+  type CredentialUseSnapshot,
+  type VerifiedProviderIdentity,
+  VerifiedProviderIdentitySchema,
+} from "./provider-identity.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -214,6 +220,7 @@ function deserializePlain(mode: CredentialMode, raw: string): DecryptedCredentia
 }
 
 export interface UpsertCredentialInput {
+  verified_identity?: VerifiedProviderIdentity | null;
   tenant_id: string;
   connector_id: string;
   environment: "dev" | "prod";
@@ -254,6 +261,7 @@ export async function upsertCredential(
       : ne(credentials.mode, "oauth2_client");
     const withConnectionColumn = await hasCredentialConnectionColumn(tx);
     const withAuthorityRevision = await hasCredentialAuthorityRevisionColumn(tx);
+    const withIdentity = await hasColumn(tx, "credentials", "credential_generation");
     const existing = await tx
       .select({
         id: credentials.id,
@@ -285,7 +293,7 @@ export async function upsertCredential(
     let id: string;
     if (priorId) {
       id = priorId;
-    } else if (withConnectionColumn && withAuthorityRevision) {
+    } else if (withConnectionColumn && withAuthorityRevision && withIdentity) {
       const [row] = await tx
         .insert(credentials)
         .values({
@@ -364,6 +372,14 @@ export async function upsertCredential(
       .update(credentials)
       .set({
         mode: input.mode,
+        ...(withIdentity
+          ? {
+              credential_generation: priorId ? sql`${credentials.credential_generation} + 1` : 1,
+              verified_identity: input.verified_identity
+                ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
+                : null,
+            }
+          : {}),
         ciphertext: toBuf(payload.ciphertext),
         iv: toBuf(payload.iv),
         auth_tag: toBuf(payload.auth_tag),
@@ -418,7 +434,9 @@ export async function rotateOAuth2Tokens(
   input: {
     tenant_id: string;
     credential_id: string;
+    expected_generation?: number;
     access_token: string;
+    verified_identity?: VerifiedProviderIdentity | null;
     token_type?: string | undefined;
     scope?: string | undefined;
     refresh_token?: string | null | undefined;
@@ -426,12 +444,17 @@ export async function rotateOAuth2Tokens(
     actor_id: string | null;
   },
   exec?: Executor,
-): Promise<void> {
+): Promise<{
+  credential_generation: number | null;
+  verified_identity: VerifiedProviderIdentity | null;
+}> {
   const db = exec ?? getDb();
-  await db.transaction(async (tx) => {
+  const identity = await db.transaction(async (tx) => {
+    const withIdentity = await hasColumn(tx, "credentials", "credential_generation");
     const [prior] = await tx
       .select({
         mode: credentials.mode,
+        ...(withIdentity ? { credential_generation: credentials.credential_generation } : {}),
         granted_scopes: credentials.granted_scopes,
         ciphertext: credentials.ciphertext,
         iv: credentials.iv,
@@ -442,6 +465,13 @@ export async function rotateOAuth2Tokens(
         and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
       )
       .for("update");
+    if (
+      input.expected_generation !== undefined &&
+      prior?.credential_generation !== input.expected_generation
+    )
+      throw Object.assign(new Error("credential changed during refresh"), {
+        code: "credential_generation_changed",
+      });
     if (prior?.mode !== "oauth2") throw new Error("OAuth credential unavailable for refresh");
     const priorValue = deserializePlain(
       "oauth2",
@@ -474,9 +504,17 @@ export async function rotateOAuth2Tokens(
     const refreshPayload = input.refresh_token
       ? encryptSecret(input.refresh_token, refreshAadFor(input.tenant_id, input.credential_id))
       : null;
-    await tx
+    const updated = await tx
       .update(credentials)
       .set({
+        ...(withIdentity
+          ? {
+              credential_generation: sql`${credentials.credential_generation} + 1`,
+              verified_identity: input.verified_identity
+                ? VerifiedProviderIdentitySchema.parse(input.verified_identity)
+                : null,
+            }
+          : {}),
         ciphertext: toBuf(payload.ciphertext),
         iv: toBuf(payload.iv),
         auth_tag: toBuf(payload.auth_tag),
@@ -496,6 +534,17 @@ export async function rotateOAuth2Tokens(
       })
       .where(
         and(eq(credentials.tenant_id, input.tenant_id), eq(credentials.id, input.credential_id)),
+      )
+      .returning(
+        withIdentity
+          ? {
+              credential_generation: credentials.credential_generation,
+              verified_identity: credentials.verified_identity,
+            }
+          : {
+              credential_generation: sql<number | null>`NULL`,
+              verified_identity: sql<VerifiedProviderIdentity | null>`NULL`,
+            },
       );
     await auditAwait(
       {
@@ -510,6 +559,7 @@ export async function rotateOAuth2Tokens(
       },
       tx,
     );
+    return updated[0] ?? { credential_generation: null, verified_identity: null };
   });
 
   logger.info({
@@ -520,6 +570,7 @@ export async function rotateOAuth2Tokens(
     tenant_id: input.tenant_id,
     expires_at: input.expires_at?.toISOString() ?? null,
   });
+  return identity;
 }
 
 export async function getCredentialForConnector(
@@ -531,6 +582,7 @@ export async function getCredentialForConnector(
   row: typeof credentials.$inferSelect;
   value: DecryptedCredential;
   connection_authority?: ConnectionAuthorityIdentity | null;
+  credential_snapshot?: CredentialUseSnapshot;
 } | null> {
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
@@ -555,6 +607,15 @@ export async function getCredentialForConnector(
     return {
       row,
       connection_authority: grant?.connection_authority ?? null,
+      credential_snapshot: {
+        connector_id,
+        environment,
+        credential_id: row.id,
+        credential_generation: row.credential_generation,
+        connection_id: row.connection_id,
+        access_token_version: grant?.access_token_version ?? null,
+        identity: grant?.verified_identity ?? null,
+      },
       value: {
         mode: "oauth2",
         access_token: grant?.access_token ?? "",
@@ -602,6 +663,7 @@ export async function describeCredentialForConnector(
   environment: "dev" | "prod",
   exec?: Executor,
 ): Promise<{
+  speaks_as: VerifiedProviderIdentity | null;
   mode: string;
   environment: "dev" | "prod";
   connection: ConnectionSummary | null;
@@ -613,6 +675,7 @@ export async function describeCredentialForConnector(
   const rows = await db
     .select({
       id: credentials.id,
+      verified_identity: credentials.verified_identity,
       mode: credentials.mode,
       environment: credentials.environment,
       updated_at: credentials.updated_at,
@@ -638,7 +701,20 @@ export async function describeCredentialForConnector(
     ? ((await summarizeConnections(db, tenant_id, [row.connection_id])).get(row.connection_id) ??
       null)
     : null;
+  const [boundIdentity] = row.connection_id
+    ? await db
+        .select({ identity: outboundConnections.verified_identity })
+        .from(outboundConnections)
+        .where(
+          and(
+            eq(outboundConnections.tenant_id, tenant_id),
+            eq(outboundConnections.id, row.connection_id),
+          ),
+        )
+        .limit(1)
+    : [];
   return {
+    speaks_as: row.connection_id ? (boundIdentity?.identity ?? null) : row.verified_identity,
     mode: row.connection_id ? "connection" : row.mode,
     environment: row.environment,
     connection,
@@ -662,7 +738,11 @@ export async function getOAuth2ClientCredential(
   connector_id: string,
   environment: "dev" | "prod",
   exec?: Executor,
-): Promise<{ client_id: string; client_secret: string | undefined } | null> {
+): Promise<{
+  client_id: string;
+  client_secret: string | undefined;
+  credential_snapshot: CredentialUseSnapshot;
+} | null> {
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
@@ -689,7 +769,19 @@ export async function getOAuth2ClientCredential(
   );
   const value = deserializePlain("oauth2_client", plain);
   if (value.mode !== "oauth2_client") return null;
-  return { client_id: value.client_id, client_secret: value.client_secret };
+  return {
+    client_id: value.client_id,
+    client_secret: value.client_secret,
+    credential_snapshot: {
+      connector_id,
+      environment,
+      credential_id: row.id,
+      credential_generation: row.credential_generation,
+      connection_id: null,
+      access_token_version: null,
+      identity: row.verified_identity,
+    },
+  };
 }
 
 export async function resolveDefaultEnvironmentForConnector(
@@ -774,7 +866,12 @@ export async function getOAuth2PrivateKeyCredential(
   connector_id: string,
   environment: "dev" | "prod",
   exec?: Executor,
-): Promise<{ client_id: string; private_key: string; algorithm: string } | null> {
+): Promise<{
+  client_id: string;
+  private_key: string;
+  algorithm: string;
+  credential_snapshot: CredentialUseSnapshot;
+} | null> {
   if (!UUID_RE.test(connector_id)) return null;
   const db = exec ?? getDb();
   const rows = await db
@@ -802,7 +899,67 @@ export async function getOAuth2PrivateKeyCredential(
   );
   const value = deserializePlain("oauth2_private_key", plain);
   if (value.mode !== "oauth2_private_key") return null;
-  return { client_id: value.client_id, private_key: value.private_key, algorithm: value.algorithm };
+  return {
+    client_id: value.client_id,
+    private_key: value.private_key,
+    algorithm: value.algorithm,
+    credential_snapshot: {
+      connector_id,
+      environment,
+      credential_id: row.id,
+      credential_generation: row.credential_generation,
+      connection_id: null,
+      access_token_version: null,
+      identity: row.verified_identity,
+    },
+  };
+}
+
+export async function recordCredentialProviderIdentity(
+  input: {
+    tenant_id: string;
+    snapshot: CredentialUseSnapshot;
+    identity: VerifiedProviderIdentity | null;
+    request_source: import("../observability/service-metadata.ts").RequestSource;
+  },
+  db: Executor,
+): Promise<void> {
+  const credentialId = input.snapshot.credential_id;
+  const generation = input.snapshot.credential_generation;
+  if (!credentialId || generation === null) return;
+  const identity = input.identity ? VerifiedProviderIdentitySchema.parse(input.identity) : null;
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(credentials)
+      .set({ verified_identity: identity })
+      .where(
+        and(
+          eq(credentials.tenant_id, input.tenant_id),
+          eq(credentials.id, credentialId),
+          eq(credentials.connector_id, input.snapshot.connector_id),
+          eq(credentials.environment, input.snapshot.environment),
+          eq(credentials.credential_generation, generation),
+          inArray(credentials.mode, ["oauth2_client", "oauth2_private_key"]),
+          sql`${credentials.verified_identity} IS DISTINCT FROM ${identity ? JSON.stringify(identity) : null}::jsonb`,
+        ),
+      )
+      .returning({ id: credentials.id });
+    const row = rows[0];
+    if (!row) return;
+    await auditAwait(
+      {
+        tenant_id: input.tenant_id,
+        actor_type: "system",
+        actor_id: null,
+        action: AuditAction.CREDENTIAL_UPDATED,
+        resource_type: "credential",
+        resource_id: row.id,
+        result: "success",
+        metadata: { reason: "provider_identity_observed", request_source: input.request_source },
+      },
+      tx,
+    );
+  });
 }
 
 export async function deleteCredential(

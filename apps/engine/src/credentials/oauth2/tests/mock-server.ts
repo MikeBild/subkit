@@ -8,6 +8,7 @@ export interface MockOAuthServer {
   close: () => Promise<void>;
   setExpiresIn: (seconds: number) => void;
   setGrantedScope: (scope: string | null) => void;
+  setSubject: (subject: string | null) => void;
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -34,6 +35,7 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
   let lastGrant: string | null = null;
   let expiresIn = 3600;
   let grantedScope: string | null = null;
+  let subject: string | null = null;
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -73,6 +75,7 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
             expires_in: expiresIn,
             refresh_token: refresh,
             scope: grantedScope ?? form.scope ?? "",
+            ...(subject === null ? {} : { sub: subject }),
           }),
         );
         return;
@@ -107,6 +110,9 @@ export async function startMockOAuthServer(): Promise<MockOAuthServer> {
     },
     setGrantedScope: (scope: string | null) => {
       grantedScope = scope;
+    },
+    setSubject: (value: string | null) => {
+      subject = value;
     },
     close: () =>
       new Promise<void>((resolve) => {

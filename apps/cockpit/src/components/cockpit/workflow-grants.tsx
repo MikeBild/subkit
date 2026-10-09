@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
+import { useActorDirectory } from "@/app/actor-directory";
+import { actorDirectoryName } from "@/app/actor-directory-model";
 import type { WorkflowAutomation } from "@/components/cockpit/automation-panel";
 import { useConnectorNames } from "@/components/cockpit/connector-names";
 import {
@@ -214,6 +216,7 @@ function ApprovalTable({
   emptyLine: string;
 }) {
   const { t, locale, dateTime } = useI18n();
+  const directory = useActorDirectory(true);
   const [open, setOpen] = useState<WorkflowAuthority | null>(null);
   const { versions, now } = automation;
   const columns = useMemo<CockpitColumn<WorkflowAuthority>[]>(() => {
@@ -231,7 +234,15 @@ function ApprovalTable({
         (authority) => authority.valid_until,
         t("workflowApprovals.column.boundary"),
         (authority) => authorityHeadline(authority, t, locale),
-        { width: "w-[52%]" },
+        { width: "w-[34%]" },
+      ),
+      column.custom(
+        "granted",
+        (authority) => authority.created_at,
+        t("workflowApprovals.column.granted"),
+        (authority) =>
+          `${actorDirectoryName(directory, "user", authority.created_by) ?? t("audit.actor.user")} · ${dateTime(authority.created_at)}`,
+        { width: "w-[28%]" },
       ),
       column.custom(
         "state",
@@ -241,10 +252,10 @@ function ApprovalTable({
           const state = observedAuthorityState(authority, now);
           return <StatusBadge state={badgeState(state)} label={t(AUTHORITY_STATE_KEYS[state])} />;
         },
-        { width: "w-[34%]" },
+        { width: "w-[24%]" },
       ),
     ];
-  }, [t, dateTime, locale, versions, now]);
+  }, [t, dateTime, locale, versions, now, directory]);
   return (
     <>
       <RecordTable

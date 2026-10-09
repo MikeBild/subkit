@@ -293,6 +293,7 @@ export function negotiatedPageResponse(html: string, status: number): Response {
 export type SignInError =
   | "state_expired"
   | "grant_denied"
+  | "account_not_assigned"
   | "authorize_invalid"
   | "provider_not_configured"
   | "tenant_unavailable"
@@ -301,6 +302,8 @@ export type SignInError =
 const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
   en: {
     state_expired: "This sign-in attempt expired or was already used. Please sign in again.",
+    account_not_assigned:
+      "This company account is not assigned to SubKit. Contact an administrator.",
     grant_denied: "Your account is not authorized for SubKit. Contact the operator.",
     authorize_invalid:
       "This authorization request is invalid. Return to the application and start the sign-in again.",
@@ -312,6 +315,8 @@ const SIGN_IN_ERRORS: Record<AuthLocale, Record<SignInError, string>> = {
   de: {
     state_expired:
       "Dieser Anmeldeversuch ist abgelaufen oder wurde schon verwendet. Melde dich erneut an.",
+    account_not_assigned:
+      "Dieses Firmenkonto ist SubKit nicht zugeordnet. Frag eine Person mit der Rolle Administrator.",
     grant_denied:
       "Dein Konto ist für SubKit nicht freigegeben. Frag eine Person mit der Rolle Administrator.",
     authorize_invalid:
@@ -331,7 +336,7 @@ export function renderErrorPage(error: SignInError, retryHref: string, look: Pag
     look,
     surface: "auth",
     context: copy.oauthContext,
-    body: `<div class="stack" role="alert">${pageHead({ title: copy.signInFailed, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
+    body: `<div class="stack" role="alert">${pageHead({ title: error === "account_not_assigned" ? (look.locale === "de" ? "Konto nicht zugeordnet" : "Account not assigned") : copy.signInFailed, slot: "auth-heading", line: SIGN_IN_ERRORS[look.locale][error] })}</div>${pageActions(linkButton(retryHref, copy.signInAgain, "primary", ' data-testid="auth-retry"'))}`,
   });
 }
 
@@ -351,11 +356,11 @@ export function renderProviderChoice(providers: LoginProviderChoice[], look: Pag
       const apiKey = provider.protocol === "api_key";
       const label = de
         ? apiKey
-          ? "Mit API-Schlüssel fortfahren"
-          : "Mit SSO fortfahren"
+          ? "Mit API-Schlüssel anmelden"
+          : "Mit Firmenkonto anmelden"
         : apiKey
-          ? "Continue with API key"
-          : "Continue with SSO";
+          ? "Sign in with API key"
+          : "Sign in with work account";
       const kind = apiKey ? "api-key" : "sso";
       return linkButton(
         provider.href,
@@ -370,7 +375,7 @@ export function renderProviderChoice(providers: LoginProviderChoice[], look: Pag
     look,
     surface: "auth",
     context: copy.oauthContext,
-    body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Wähle, wie du dich bei SubKit anmeldest." : "Choose how to sign in to SubKit." })}${pageActions(links, { stack: true, slot: "provider-actions" })}`,
+    body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Du bist abgemeldet. Wähle, wie du dich bei SubKit anmeldest." : "You are signed out. Choose how to sign in to SubKit." })}${pageActions(links, { stack: true, slot: "provider-actions" })}`,
   });
 }
 
@@ -387,7 +392,7 @@ export function renderApiKeyLogin(
     look,
     surface: "auth",
     context: copy.oauthContext,
-    body: `${pageHead({ title: copy.signInHeading, slot: "auth-heading", line: de ? "Verwende einen bereichsgebundenen SubKit API-Schlüssel." : "Use a scoped SubKit API key." })}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">${de ? "API-Schlüssel" : "API key"}<input type="password" name="api_key" autocomplete="current-password" required></label>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}${pageActions(`<button class="button primary" type="submit">${de ? "Fortfahren" : "Continue"}</button>`)}</form>`,
+    body: `${pageHead({ title: de ? "Mit API-Schlüssel anmelden" : "Sign in with API key", slot: "auth-heading", line: de ? "Verwende einen bereichsgebundenen SubKit API-Schlüssel." : "Use a scoped SubKit API key." })}<form method="POST" action="${escapeHtml(action)}"><input type="hidden" name="provider" value="${escapeHtml(providerId)}"><input type="hidden" name="login_state" value="${escapeHtml(state)}"><label class="field">${de ? "API-Schlüssel" : "API key"}<input type="password" name="api_key" autocomplete="current-password" required></label>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}${pageActions(`<button class="button primary" type="submit">${de ? "Anmelden" : "Sign in"}</button>`)}</form>${pageActions(linkButton(`/v1/identity/login/start?login_state=${encodeURIComponent(state)}`, de ? "Zurück" : "Back", "outline", ' data-testid="auth-api-key-back"'))}`,
   });
 }
 
@@ -516,7 +521,7 @@ export function renderNotFoundPage(look: PageLook): string {
 export function renderServerErrorPage(look: PageLook, reference: string | null): string {
   const copy = NOTICE_COPY[look.locale];
   const shown = reference
-    ? `<div class="stack"><p class="muted">${copy.reference}</p><p class="reference mono" data-testid="page-reference">${escapeHtml(reference)}</p></div>`
+    ? `<div class="stack"><p class="muted">${copy.reference}</p><input class="reference mono" data-testid="page-reference" aria-label="${escapeHtml(copy.reference)}" value="${escapeHtml(reference)}" readonly></div>`
     : "";
   return renderSinglePage({
     look,

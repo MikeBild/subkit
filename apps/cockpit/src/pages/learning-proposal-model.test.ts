@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { actorDirectory } from "@/app/actor-directory-model";
 import { type TranslationKey, translate } from "@/lib/i18n";
 import {
   approvalActivatesSkill,
@@ -50,9 +51,15 @@ describe("learning proposals", () => {
   });
 
   test("the author is named from the directory, else by kind; a detected pattern has none", () => {
-    const directory = new Map([[LENA, "Lena Koch"]]);
+    const directory = actorDirectory(
+      { items: [{ id: LENA, email: "lena@example.com" }] },
+      { items: [{ id: LENA, name: "Service" }] },
+    );
+    expect(
+      proposalAuthor({ proposed_by: { kind: "system_account", id: LENA } }, directory, de),
+    ).toBe("Service");
     expect(proposalAuthor({ proposed_by: { kind: "user", id: LENA } }, directory, de)).toBe(
-      "Lena Koch",
+      "lena@example.com",
     );
     expect(
       proposalAuthor({ proposed_by: { kind: "system_account", id: "x" } }, directory, de),

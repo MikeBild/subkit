@@ -2,6 +2,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import type { Db } from "../db/client.ts";
+import { captureWorkflowPermission, type WorkflowPermission } from "../execution/index.ts";
 import { logger } from "../logging/logger.ts";
 import { can } from "../rbac/evaluator.ts";
 import type { ApprovalAuditResource } from "../tools/approval.ts";
@@ -19,7 +20,7 @@ export interface GateWorkflowRunRbacParams {
 }
 
 export type WorkflowRunRbacDecision =
-  | { allow: true }
+  | { allow: true; workflow_permission: WorkflowPermission | null }
   | { allow: false; reason: string; error_message: string };
 
 export async function gateWorkflowRunRbac(
@@ -31,7 +32,16 @@ export async function gateWorkflowRunRbac(
     permission: "workflow:run",
     resource: { type: "workflow", id: p.workflow_id },
   });
-  if (decision.allow) return { allow: true };
+  if (decision.allow)
+    return {
+      allow: true,
+      workflow_permission: await captureWorkflowPermission(
+        p.db,
+        p.principal,
+        p.workflow_id,
+        decision,
+      ),
+    };
 
   const allowlistViolation =
     p.principal.provider === "portal_token" || Array.isArray(p.principal.allowed_workflows);

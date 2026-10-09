@@ -348,6 +348,7 @@ export function registerOAuthRoutes(app: OpenAPIHono<AppEnv>): void {
             ...(bundle.scope ? { scope: bundle.scope } : {}),
           },
           oauth2_refresh_token: bundle.refresh_token ?? null,
+          verified_identity: bundle.verified_identity ?? null,
           oauth2_expires_at: bundle.expires_at,
           oauth2_granted_scopes: bundle.scope ?? null,
           actor_id: null,

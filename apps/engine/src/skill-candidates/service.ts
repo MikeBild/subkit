@@ -7,7 +7,11 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
-import { appendLearningToKnowledge } from "../knowledge/learnings.ts";
+import {
+  appendLearningToKnowledge,
+  getKnowledgeSource,
+  learningsTarget,
+} from "../knowledge/index.ts";
 import { log } from "../logging/logger.ts";
 import {
   recordLoopPatchToSkillCandidate,
@@ -66,6 +70,7 @@ async function getEvidenceCounts(
 
 function listFilterConds(p: ListSkillCandidatesParams) {
   const tenantConds = [eq(skillCandidates.tenant_id, p.tenant_id)];
+  if (p.candidate_ids) tenantConds.push(inArray(skillCandidates.id, p.candidate_ids));
   if (p.status) tenantConds.push(eq(skillCandidates.status, p.status));
   if (p.statuses) tenantConds.push(inArray(skillCandidates.status, p.statuses));
   if (p.scope) tenantConds.push(eq(skillCandidates.scope, p.scope));
@@ -74,6 +79,29 @@ function listFilterConds(p: ListSkillCandidatesParams) {
   if (p.pattern_kind) tenantConds.push(eq(skillCandidates.pattern_kind, p.pattern_kind));
   if (p.confidence) tenantConds.push(eq(skillCandidates.confidence, p.confidence));
   return tenantConds;
+}
+
+export async function knowledgeSourceCandidateIds(
+  tenant_id: string,
+  knowledge_source_id: string,
+  exec?: Executor,
+): Promise<string[] | null> {
+  const db = exec ?? getDb();
+  const source = await getKnowledgeSource(tenant_id, knowledge_source_id, db);
+  if (!source) return null;
+  if (source.source_type !== "inline") return [];
+  const candidates = await db
+    .select({ id: skillCandidates.id, tags: skillCandidates.tags })
+    .from(skillCandidates)
+    .where(
+      and(
+        eq(skillCandidates.tenant_id, tenant_id),
+        eq(skillCandidates.pattern_kind, "knowledge_learning"),
+      ),
+    );
+  return candidates
+    .filter((candidate) => learningsTarget(candidate.tags ?? []).slug === source.slug)
+    .map((candidate) => candidate.id);
 }
 
 export async function listSkillCandidates(

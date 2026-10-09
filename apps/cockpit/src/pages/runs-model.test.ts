@@ -13,6 +13,7 @@ import {
   runOverlaySearch,
   runsFilterSearch,
   runsSummaryText,
+  runTraceEvidence,
 } from "@/pages/runs-model";
 
 const t = (key: Parameters<typeof translate>[1]) => translate("en", key);
@@ -84,7 +85,7 @@ describe("run authority evidence", () => {
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: "exact-id" }, de),
     ).toEqual([
       [
-        "Für diesen Run gespeicherte Freigabe",
+        "Für diesen Lauf gespeicherte Freigabe",
         "Keine Bindung an eine Ausführungsfreigabe gespeichert",
       ],
       ["Version", "exact-id"],
@@ -92,19 +93,25 @@ describe("run authority evidence", () => {
   });
 });
 
-function run(patch: Record<string, unknown> = {}) {
+type RunFixture = Parameters<typeof runName>[0];
+
+function run(patch: Partial<RunFixture> = {}): RunFixture {
   return {
     id: "run",
     workflow_id: null,
     workflow_name: null,
     workflow_version_id: null,
     execution_authority_id: null,
-    source_kind: "saved" as const,
+    execution_environment: "prod",
+    permission_basis: null,
+    permission_phase: null,
+    permission_checked_at: null,
+    source_kind: "saved",
     source_ref: null,
     status: "succeeded",
     request_source: "api",
     caller: {
-      kind: "engine" as const,
+      kind: "engine",
       principal_id: null,
       provider: null,
       product_id: null,
@@ -347,5 +354,18 @@ describe("the summary line over all runs", () => {
     expect(
       runsSummaryText(1240, 0, (key, count, values) => translatePlural("de", key, count, values)),
     ).toBe("1.240 Läufe · 0 fehlgeschlagen");
+  });
+});
+
+test("run trace evidence links only a recorded trace and only for audit readers", () => {
+  expect(runTraceEvidence({}, true)).toEqual({ id: null, href: null });
+  expect(runTraceEvidence({ trace_id: null }, true)).toEqual({ id: null, href: null });
+  expect(runTraceEvidence({ trace_id: "recorded-trace" }, false)).toEqual({
+    id: "recorded-trace",
+    href: null,
+  });
+  expect(runTraceEvidence({ trace_id: "recorded-trace" }, true)).toEqual({
+    id: "recorded-trace",
+    href: "/audit?trace_id=recorded-trace&scope=all",
   });
 });

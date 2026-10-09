@@ -79,6 +79,11 @@ for (const locale of ["de", "en"] as const) {
     expect(html).toContain("ledger.example.test/entries");
     expect(html).not.toContain("wrong.example.test");
     expect(html).not.toContain(copy.limitations);
+    expect(html).toContain(
+      copy.titleForTarget
+        .replace("{operation}", "POST")
+        .replace("{target}", "https://ledger.example.test/entries"),
+    );
   });
   test(`${locale} shows persisted prepared content, version and retry limits without trusting caller prose`, () => {
     const copy = approvalCopy(locale);
@@ -236,3 +241,39 @@ test("the German portal carries none of the English copy", () => {
     .filter(([, text]) => german.includes(text.split("{")[0] ?? text));
   expect(leaks).toEqual([]);
 });
+
+for (const locale of ["de", "en"] as const) {
+  test(`${locale} separates a snapshot-backed requester from the deciding user and marks self requests`, () => {
+    const copy = approvalCopy(locale);
+    const html = buildApprovalDecisionHtml(
+      {
+        ...view,
+        requester: { kind: "user", id: "requesting-user", label: "requester@example.test" },
+      },
+      "grant",
+      { user_id: "requesting-user", email: "decider@example.test" },
+      "csrf",
+      { locale, scheme: null },
+    );
+    expect(html).toContain(copy.requester);
+    expect(html).toContain(copy.decider);
+    expect(html).toContain(copy.ownRequest);
+    expect(html).toContain("requester@example.test");
+    expect(html).toContain("decider@example.test");
+    expect(html).not.toContain("requesting-user");
+  });
+
+  test(`${locale} does not infer a requester or promote a caller-supplied preview into the title`, () => {
+    const copy = approvalCopy(locale);
+    const html = buildApprovalDecisionHtml(
+      { ...view, requester: null },
+      "grant",
+      { email: "decider@example.test" },
+      "csrf",
+      { locale, scheme: null },
+    );
+    expect(html).toContain(`<dt>${copy.requester}</dt><dd>${copy.unspecified}</dd>`);
+    expect(html).toContain(copy.title);
+    expect(html).not.toContain(copy.ownRequest);
+  });
+}

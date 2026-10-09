@@ -6,10 +6,12 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { assertEgressAllowed, assertEgressAllowedResolved } from "../../connectors/egress-guard.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { observeMcpCredential, withMcpCredentialObserver } from "./credential-observation.ts";
 import {
   capManifest,
   hashManifest,
@@ -25,7 +27,9 @@ import {
 import { type McpConnectorRow, McpPreflightError } from "./registry.ts";
 import type { RemoteCallClient } from "./remote-call.ts";
 import {
-  resolveAuthHeaders,
+  fetchWithMcpOAuth,
+  mcpOAuthCredentialSnapshot,
+  resolveAuthMaterial,
   resolveAuthProvider,
   resolveStaticAuthHeaders,
 } from "./session-auth.ts";
@@ -78,23 +82,52 @@ function buildTransport(
   row: McpConnectorRow,
   headers: Record<string, string>,
   authProvider?: OAuthClientProvider,
+  snapshot?: CredentialUseSnapshot | null,
+  environment: "dev" | "prod" = "prod",
 ): StreamableHTTPClientTransport | SSEClientTransport {
   const url = new URL(row.url);
   assertEgressAllowed(url, { tenant_id });
   const requestHeaders = mcpRequestHeaders(headers);
   const requestInit: RequestInit = { headers: requestHeaders };
+  const observedFetch = async (
+    target: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ) => {
+    const authorization = new Headers(init?.headers).get("authorization");
+    const actual = authProvider
+      ? await mcpOAuthCredentialSnapshot(
+          authProvider,
+          authorization?.replace(/^Bearer /i, "") ?? "",
+        )
+      : (snapshot ?? null);
+    const used = actual ?? {
+      connector_id: row.id,
+      environment,
+      credential_id: null,
+      credential_generation: null,
+      connection_id: null,
+      access_token_version: null,
+      identity: null,
+    };
+    await observeMcpCredential(used);
+    return authProvider
+      ? fetchWithMcpOAuth(authProvider, target, init)
+      : getDriverFetch()(target, init);
+  };
   switch (row.transport) {
     case "http":
       return new StreamableHTTPClientTransport(url, {
         requestInit,
+        fetch: observedFetch,
         ...(authProvider ? { authProvider } : {}),
       });
     case "sse":
       return new SSEClientTransport(url, {
         requestInit,
+        fetch: observedFetch,
         ...(authProvider ? { authProvider } : {}),
         eventSourceInit: {
-          fetch: (target, init) => getDriverFetch()(target, { ...init, headers: requestHeaders }),
+          fetch: (target, init) => observedFetch(target, { ...init, headers: requestHeaders }),
         },
       });
     case "stdio":
@@ -122,7 +155,13 @@ export interface OpenMcpSessionResult {
   readNegotiatedProtocolVersion: () => string | null;
 }
 
-export async function openMcpSession(
+export function openMcpSession(
+  ...args: Parameters<typeof openMcpSessionWithContext>
+): Promise<OpenMcpSessionResult> {
+  return withMcpCredentialObserver(undefined, () => openMcpSessionWithContext(...args));
+}
+
+async function openMcpSessionWithContext(
   db: Db,
   tenant_id: string,
   row: McpConnectorRow,
@@ -131,10 +170,11 @@ export async function openMcpSession(
   credentialOverride?: DecryptedCredential | null,
 ): Promise<OpenMcpSessionResult> {
   const auth = row.auth;
-  const headers =
+  const material =
     credentialOverride !== undefined
-      ? resolveStaticAuthHeaders(auth, credentialOverride)
-      : await resolveAuthHeaders(db, tenant_id, row.id, auth, environment);
+      ? { headers: resolveStaticAuthHeaders(auth, credentialOverride), snapshot: null }
+      : await resolveAuthMaterial(db, tenant_id, row.id, auth, environment);
+  const headers = material.headers;
   const authProvider: OAuthClientProvider | undefined =
     credentialOverride !== undefined
       ? undefined
@@ -147,7 +187,7 @@ export async function openMcpSession(
   );
   const transport =
     testFactories?.makeTransport?.(row, headers) ??
-    buildTransport(tenant_id, row, headers, authProvider);
+    buildTransport(tenant_id, row, headers, authProvider, material.snapshot, environment);
   const readNegotiatedProtocolVersion = captureNegotiatedProtocolVersion(transport as Transport);
   const client: McpClientLike =
     testFactories?.makeClient?.(row) ??

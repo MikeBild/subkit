@@ -7,6 +7,7 @@ import { DEMO_WORKFLOWS, seedOnboardingDemo } from "../demo-seed.ts";
 
 let tdb: TestDb;
 let tenantId: string;
+const seedAuthor = "10000000-0000-4000-8000-000000000001";
 
 beforeAll(async () => {
   tdb = await createTestDb("onboarding-demo-seed");
@@ -30,7 +31,10 @@ describe("onboarding demo seed", () => {
   });
 
   test("creates every demo workflow on first run, skips all on second run", async () => {
-    const first = await seedOnboardingDemo({ tenant_id: tenantId }, tdb.db);
+    const first = await seedOnboardingDemo(
+      { tenant_id: tenantId, actor_id: seedAuthor, actor_type: "user" },
+      tdb.db,
+    );
     expect(first.created.sort()).toEqual([...DEMO_WORKFLOWS].map((s) => s.slug).sort());
     expect(first.skipped).toEqual([]);
 
@@ -54,6 +58,8 @@ describe("onboarding demo seed", () => {
         .where(eq(workflowVersions.workflow_id, wf!.id));
       expect(versions).toHaveLength(1);
       expect(versions[0]!.version).toBe(1);
+      expect(versions[0]!.author_user_id).toBe(seedAuthor);
+      expect(versions[0]!.author_system_account_id).toBeNull();
     }
   });
 });

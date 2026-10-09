@@ -121,6 +121,7 @@ export async function buildExecutionDiagnosis(
       output_preview: executionSteps.output_preview,
       error: executionSteps.error,
       request_meta: executionSteps.request_meta,
+      credential_snapshots: executionSteps.credential_snapshots,
     })
     .from(executionSteps)
     .where(
@@ -143,6 +144,7 @@ export async function buildExecutionDiagnosis(
       kind: row.kind,
       status: row.status,
       duration_ms: row.duration_ms ?? null,
+      credential_snapshots: row.credential_snapshots ?? [],
       ...(previewValue !== undefined ? { output_preview: truncatedPreview.data } : {}),
       ...(scope ? { scope_at_step: scope } : {}),
       ...(row.error !== null ? { error: row.error } : {}),

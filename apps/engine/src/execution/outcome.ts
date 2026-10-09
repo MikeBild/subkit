@@ -23,6 +23,7 @@ export interface ExecutionOutcome {
   connector: RefusedConnector | null;
   steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
   output_contract: OutputContractVerdict;
+  planned_steps?: number | null;
 }
 
 export interface ExecutionFailureSummary {
@@ -205,7 +206,11 @@ export async function loadExecutionOutcome(
           .limit(1)
       : Promise.resolve([]),
   ]);
-  return deriveExecutionOutcome(exec, rows, topLevelSteps(version[0]?.dag));
+  const definition = topLevelSteps(version[0]?.dag);
+  return {
+    ...deriveExecutionOutcome(exec, rows, definition),
+    planned_steps: fixedPlannedSteps(definition),
+  };
 }
 
 export async function loadFailureSummaries(
@@ -253,4 +258,11 @@ export async function loadFailureSummaries(
     });
   }
   return out;
+}
+
+export function fixedPlannedSteps(steps: readonly { id: string; kind: string }[]): number | null {
+  return steps.length > 0 &&
+    steps.every((step) => step.kind === "request" || step.kind === "transform")
+    ? steps.length
+    : null;
 }

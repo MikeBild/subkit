@@ -35,6 +35,7 @@ export function RecordSheet({
   onOpenChange,
   size = "default",
   title,
+  subtitle,
   badge,
   back,
   action,
@@ -49,6 +50,7 @@ export function RecordSheet({
   onOpenChange(open: boolean): void;
   size?: SheetSize;
   title: ReactNode;
+  subtitle?: ReactNode;
   badge?: ReactNode;
   back?: { label: string; onClick(): void };
   action?: ReactNode;
@@ -95,6 +97,11 @@ export function RecordSheet({
               </span>
             ) : null}
           </div>
+          {subtitle ? (
+            <div className="text-sm text-muted-foreground" data-testid={`${testId}-subtitle`}>
+              {subtitle}
+            </div>
+          ) : null}
         </SheetHeader>
         <Loadable
           loading={loading}

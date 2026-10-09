@@ -3,11 +3,13 @@ import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
-import { absolute } from "@/app/links";
+import { type ActorDirectory, actorDirectory } from "@/app/actor-directory-model";
+import { absolute, auditHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
 import { useNameIndex } from "@/app/use-decisions";
 import {
+  ActionMenu,
   Button,
   type CockpitColumn,
   CodeBlock,
@@ -33,16 +35,19 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type ListParams, useInfiniteList } from "@/lib/use-infinite-list";
 import { windowFilterLabel } from "@/lib/window-filter";
 import {
+  AUDIT_AREAS,
   AUDIT_LINK_KEYS,
+  type AuditArea,
   type AuditEvidenceKind,
   type AuditScope,
   auditActionLabel,
   auditActorName,
+  auditAreaParams,
   auditDetailFacts,
   auditEvidenceBlocks,
-  auditFilterFromUrl,
   auditLinkParams,
   auditMetadataFacts,
+  auditObjectName,
   auditResourceHref,
   auditResourceLabel,
   auditResultFromUrl,
@@ -50,21 +55,26 @@ import {
   auditScopeParams,
   auditSearchActions,
   canReadDirectory,
+  initialAuditFilter,
   isAuditEntry,
-  isAuditScope,
   NO_AUDIT_LINK,
   searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
 
-type AuditEntry = components["schemas"]["AuditEntry"];
+type AuditEntry = Omit<components["schemas"]["AuditEntry"], "resource_name"> & {
+  resource_name?: string | null;
+};
 const RESULTS = ["success", "denied", "error"] as const;
-const SCOPES = ["all", "operations", "decisions"] as const satisfies readonly AuditScope[];
-
-const SCOPE_KEYS: Record<(typeof SCOPES)[number], TranslationKey> = {
+const AREA_KEYS: Record<AuditArea, TranslationKey> = {
   all: "audit.scope.all",
-  operations: "audit.scope.operations",
-  decisions: "audit.scope.decisions",
+  runs: "resource.runs.title",
+  workflows: "resource.workflows.title",
+  connectors: "resource.connectors.title",
+  knowledge: "resource.knowledge.title",
+  files: "resource.files.title",
+  conversations: "nav.chat",
+  people: "people.section.people",
 };
 
 const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
@@ -72,13 +82,7 @@ const EVIDENCE_KEYS: Record<AuditEvidenceKind, TranslationKey> = {
   after: "audit.detail.after",
 };
 
-function AuditDetail({
-  entry,
-  directory,
-}: {
-  entry: AuditEntry;
-  directory: ReadonlyMap<string, string>;
-}) {
+function AuditDetail({ entry, directory }: { entry: AuditEntry; directory: ActorDirectory }) {
   const { t, dateTime } = useI18n();
   const session = useSession();
   const names = useNameIndex(session.permissions, true);
@@ -93,6 +97,7 @@ function AuditDetail({
   const extra = auditMetadataFacts(current.metadata, t, names);
   const toFact = (fact: (typeof facts)[number]): Fact => ({
     label: fact.label,
+    help: fact.help,
     value:
       fact.value === null ? (
         MISSING
@@ -109,7 +114,10 @@ function AuditDetail({
     <>
       <FactList
         testId="audit-detail-facts"
-        items={facts.filter((fact) => !fact.mono).map(toFact)}
+        items={[
+          { label: t("audit.detail.object"), value: auditObjectName(current, names, t) },
+          ...facts.filter((fact) => !fact.mono || fact.prominent).map(toFact),
+        ]}
       />
 
       {detail.error ? (
@@ -154,7 +162,7 @@ function AuditDetail({
       ))}
 
       <CollapsibleSection label={t("audit.detail.technical")} testId="audit-detail-technical">
-        <FactList items={facts.filter((fact) => fact.mono).map(toFact)} />
+        <FactList items={facts.filter((fact) => fact.mono && !fact.prominent).map(toFact)} />
         {extra.rest ? (
           <CodeBlock
             label={t("audit.detail.metadataRest")}
@@ -177,12 +185,12 @@ export function AuditPage() {
   const [result, setResult] = useState<string>(
     () => auditResultFromUrl(window.location.search) ?? "all",
   );
-  const [linked, setLinked] = useState(() => auditFilterFromUrl(window.location.search));
-  const [scope, setScope] = useState<AuditScope>(
-    () =>
-      linked.scope ??
-      (linked.resourceType || linked.traceId || linked.actions.length > 0 ? "all" : "decisions"),
+  const [linked, setLinked] = useState(() =>
+    initialAuditFilter(window.location.search, Date.now()),
   );
+  const [area, setArea] = useState<AuditArea>("all");
+  const names = useNameIndex(session.permissions, allowed);
+  const [scope, setScope] = useState<AuditScope>(() => linked.scope ?? "all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const debouncedSearch = useDebouncedValue(search);
@@ -203,26 +211,19 @@ export function AuditPage() {
       apiRequest<{ items?: Array<{ id: string; name?: string }> }>("/v1/identity/system-accounts"),
     ...live,
   });
-  const directory = useMemo(() => {
-    const byId = new Map<string, string>();
-    for (const item of people.data?.items ?? []) {
-      const label = item.name?.trim() || item.email?.trim();
-      if (label) byId.set(item.id, label);
-    }
-    for (const item of accounts.data?.items ?? []) {
-      const label = item.name?.trim();
-      if (label) byId.set(item.id, label);
-    }
-    return byId;
-  }, [people.data, accounts.data]);
+  const directory = useMemo(
+    () => actorDirectory(people.data, accounts.data),
+    [people.data, accounts.data],
+  );
 
   const params = useMemo<ListParams>(
     () => ({
       ...(result !== "all" ? { result } : {}),
       ...auditScopeParams(scope),
+      ...auditAreaParams(area),
       ...auditLinkParams(linked),
     }),
-    [result, scope, linked],
+    [result, scope, linked, area],
   );
   const searched = useMemo(() => {
     const needle = debouncedSearch.trim();
@@ -251,7 +252,7 @@ export function AuditPage() {
         t("audit.column.event"),
         (entry) => {
           const label = auditActionLabel(entry.action);
-          const kind = auditResourceLabel(entry.resource_type, t).text;
+          const kind = auditObjectName(entry, names, t);
           return label.kind === "named" ? (
             <span className="block break-words" title={entry.action}>
               {t(label.key)}
@@ -295,7 +296,7 @@ export function AuditPage() {
       ),
       column.date("ts", (entry) => entry.ts, t("audit.column.time"), { width: "w-[20%]" }),
     ];
-  }, [t, dateTime, directory]);
+  }, [t, dateTime, directory, names]);
 
   const selectedAction = selected ? auditActionLabel(selected.action) : null;
   const selectedHref = selected
@@ -305,7 +306,8 @@ export function AuditPage() {
   const hasActiveFilters =
     Boolean(debouncedSearch.trim()) ||
     result !== "all" ||
-    scope !== "decisions" ||
+    scope !== "all" ||
+    area !== "all" ||
     linked.traceId !== null ||
     linked.resourceType !== null ||
     linked.actions.length > 0 ||
@@ -331,7 +333,8 @@ export function AuditPage() {
   const resetFilters = useCallback(() => {
     setSearch("");
     setResult("all");
-    setScope("decisions");
+    setScope("all");
+    setArea("all");
     setLinked(NO_AUDIT_LINK);
     forgetInAddress([
       ...AUDIT_LINK_KEYS.resource,
@@ -368,6 +371,9 @@ export function AuditPage() {
                         : "audit.count",
                     { count: rows.length },
                   )}
+              {linked.tsFrom || linked.tsTo ? (
+                <> · {windowFilterLabel(linked.tsFrom, linked.tsTo, t, dateTime)}</>
+              ) : null}
             </span>
           }
           help={t("audit.coverageNote")}
@@ -387,14 +393,18 @@ export function AuditPage() {
               }}
               selects={[
                 {
-                  value: scope,
-                  label: t("audit.filterScope"),
+                  value: area,
+                  label: t("audit.filterArea"),
                   testId: "audit-scope-filter",
                   onChange: (next) => {
-                    if (!isAuditScope(next)) return;
-                    setScope(next);
+                    if (!Object.hasOwn(AUDIT_AREAS, next)) return;
+                    setArea(next as AuditArea);
+                    setScope("all");
                   },
-                  options: SCOPES.map((value) => ({ value, label: t(SCOPE_KEYS[value]) })),
+                  options: (Object.keys(AUDIT_AREAS) as AuditArea[]).map((value) => ({
+                    value,
+                    label: t(AREA_KEYS[value]),
+                  })),
                 },
                 {
                   value: result,
@@ -533,6 +543,20 @@ export function AuditPage() {
             <StatusBadge
               state={selected.result}
               label={auditResultLabel(selected.result, t).text}
+            />
+          ) : null
+        }
+        menu={
+          selected?.trace_id ? (
+            <ActionMenu
+              alwaysMenu
+              testId="audit-detail-menu"
+              items={[
+                {
+                  label: t("audit.detail.wholeOperation"),
+                  href: absolute(auditHref({ traceId: selected.trace_id, scope: "all" })),
+                },
+              ]}
             />
           ) : null
         }

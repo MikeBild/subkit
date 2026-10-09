@@ -4,13 +4,17 @@ import type { SortingState } from "@tanstack/react-table";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import { listProposedSkillCandidates } from "@/api/decisions";
+import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
+import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
   CatalogMetadataDialog,
   CatalogMetadataSummary,
   CatalogNameCell,
+  useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { KnowledgeVersions } from "@/components/cockpit/knowledge-versions";
@@ -53,6 +57,7 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import {
   documentUnderTitle,
+  knowledgeSummary,
   type RefreshRhythm,
   refreshFields,
   refreshRhythm,
@@ -62,6 +67,8 @@ import {
   sourcePrimaryAction,
   sourceSections,
 } from "@/pages/knowledge-sources-model";
+import type { KnowledgeVersion } from "@/pages/knowledge-versions-model";
+import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 
 type KnowledgeSource = components["schemas"]["KnowledgeSource"];
 
@@ -124,10 +131,6 @@ function RefreshField({
   );
 }
 
-function countLine(t: Translate, count: number): string {
-  return t(count === 1 ? "knowledge.summary.one" : "knowledge.summary.other", { count });
-}
-
 function sectionsLine(t: Translate, count: number): string {
   return t(count === 1 ? "knowledge.sections.one" : "knowledge.sections.other", { count });
 }
@@ -144,11 +147,16 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const [first] = sorting;
   const [adding, setAdding] = useState(false);
   const categoryFilter = useCategoryFilter("knowledge_source");
-  const list = useInfiniteList<KnowledgeSource>(
+  const origin = useCatalogOrigin();
+  const list = useInfiniteList<
+    KnowledgeSource,
+    { items: KnowledgeSource[]; total: number; sections_total?: number }
+  >(
     ENDPOINT,
     {
       q: q || undefined,
       category: categoryFilter.category,
+      description_source: origin.descriptionSource,
       sort: first?.id ?? "updated_at",
       order: first?.desc ? "desc" : "asc",
     },
@@ -218,7 +226,8 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
   const rows = list.items;
   const pending = list.query.isPending && !list.query.failureReason;
   const failed = Boolean(list.query.error || list.query.failureReason);
-  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
+  const empty =
+    !pending && !failed && rows.length === 0 && !q && !categoryFilter.category && !origin.active;
   const addButton = (testId: string) =>
     canWrite ? (
       <Button onClick={() => setAdding(true)} data-testid={testId}>
@@ -253,8 +262,13 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {rows.length > 0 ? (
-          <SummaryLine text={countLine(t, list.total ?? rows.length)} testId="knowledge-summary" />
+        {rows.length > 0 || origin.active || q || categoryFilter.category ? (
+          <CatalogOriginSummary
+            text={knowledgeSummary(list.total ?? rows.length, list.first?.sections_total, t)}
+            testId="knowledge-summary"
+            kind="knowledge_source"
+            origin={origin}
+          />
         ) : null}
         <DataTable
           columns={columns}
@@ -290,10 +304,14 @@ export function KnowledgeSourcesPage({ permissions }: { permissions: readonly st
               title: t("resource.noMatches"),
               description: t("resource.broaderSearch"),
               resetLabel: t("catalog.clearFilters"),
-              onReset: () => setSearch(""),
+              onReset: () => {
+                setSearch("");
+                categoryFilter.select?.onChange("all");
+                origin.setValue("all");
+              },
             },
           }}
-          hasActiveFilters={Boolean(q)}
+          hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
           sorting={sorting}
           onSortingChange={setSorting}
           onOpen={(row) => void navigate({ to: recordHref("knowledge", row.id) })}
@@ -463,16 +481,6 @@ function AddSourceDialog({
   );
 }
 
-interface ChunkList {
-  items: {
-    ordinal: number;
-    title: string | null;
-    path: string | null;
-    content: string;
-    byte_size: number;
-  }[];
-}
-
 interface SourceContent {
   version: string;
   editable: boolean;
@@ -498,11 +506,34 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   });
   const chunks = useQuery({
     queryKey: [...queryKey, "chunks", query.data?.version],
-    queryFn: () => apiRequest<ChunkList>(`${ENDPOINT}/${encodeURIComponent(id)}/chunks?limit=200`),
+    queryFn: () => loadKnowledgeChunks(id),
     enabled: Boolean(query.data),
   });
+  const proposals = useQuery({
+    queryKey: [...queryKey, "proposals"],
+    queryFn: () => listProposedSkillCandidates(id),
+    enabled: canRead && permissions.includes("skill:read") && Boolean(query.data),
+    ...live,
+  });
+  const history = useQuery({
+    queryKey: [...queryKey, "current-version", query.data?.version],
+    queryFn: () =>
+      apiRequest<{ items: KnowledgeVersion[] }>(
+        `${ENDPOINT}/${encodeURIComponent(id)}/history?limit=1`,
+      ),
+    enabled: Boolean(query.data) && sourceKind(query.data?.source_type ?? "") === "text",
+    ...live,
+  });
+  const [reviewing, setReviewing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [describing, setDescribing] = useState(false);
+  const metadataActions = useCatalogMetadataActions({
+    kind: "knowledge_source",
+    id,
+    record: query.data,
+    queryKey: queryKey,
+    onEdit: () => setDescribing(true),
+  });
   const [deleting, setDeleting] = useState(false);
   const [openSection, setOpenSection] = useState<SourceSection | null>(null);
 
@@ -577,6 +608,8 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
   const kind = sourceKind(source.source_type);
   const primary = canWrite ? sourcePrimaryAction(kind) : null;
   const readAt = source.last_refreshed_at ?? source.updated_at;
+  const proposal = proposals.data?.items.find((item) => item.reviewable && item.review_digest);
+  const currentVersion = history.data?.items.find((version) => version.current);
   const strip =
     source.status === "error" ? (
       <StatusStrip
@@ -604,15 +637,43 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         }
         testId="knowledge-strip"
       />
+    ) : proposal ? (
+      <StatusStrip
+        tone="info"
+        line={t(
+          (proposals.data?.reviewable_total ?? 0) === 1
+            ? "knowledge.strip.proposal.one"
+            : "knowledge.strip.proposal.other",
+          { count: proposals.data?.reviewable_total ?? 1 },
+        )}
+        action={
+          <Button
+            variant="outline"
+            onClick={() => setReviewing(true)}
+            data-testid="knowledge-review-proposal"
+          >
+            {t("knowledge.reviewProposal")}
+          </Button>
+        }
+        testId="knowledge-strip"
+      />
     ) : (
       <StatusStrip
         tone="ok"
-        line={t("knowledge.strip.active", { when: formatRelativeTime(locale, readAt) })}
+        line={
+          kind === "text" && currentVersion !== undefined
+            ? t("knowledge.strip.version", {
+                version: currentVersion.version,
+                when: formatRelativeTime(locale, currentVersion.created_at),
+              })
+            : t("knowledge.strip.active", { when: formatRelativeTime(locale, readAt) })
+        }
         testId="knowledge-strip"
       />
     );
   const sections = sourceSections(chunks.data?.items ?? []);
   const facts: Fact[] = [
+    { label: t("knowledge.column.kind"), value: t(KIND_KEYS[kind]) },
     ...(kind === "url" || kind === "discovered"
       ? [
           {
@@ -645,12 +706,12 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
       label: t("knowledge.fact.slug"),
       value: <span className="font-mono text-xs">{source.slug}</span>,
     },
-    { label: t("knowledge.column.kind"), value: t(KIND_KEYS[kind]) },
     { label: t("knowledge.fact.mime"), value: source.mime_type ?? MISSING },
     { label: t("knowledge.fact.size"), value: bytes(source.bytes_total) },
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
   ];
   const menu = [
+    ...(canWrite ? metadataActions : []),
     ...(canWrite && primary !== "edit"
       ? [{ label: t("knowledge.edit"), onSelect: () => setEditing(true), testId: "knowledge-edit" }]
       : []),
@@ -685,12 +746,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         <PageHeader
           back={back}
           title={source.name}
-          purpose={
-            <CatalogMetadataSummary
-              record={source}
-              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
-            />
-          }
+          purpose={<CatalogMetadataSummary record={source} />}
           action={
             primary === "refresh" ? (
               <Button
@@ -752,16 +808,40 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         open={openSection !== null}
         onOpenChange={(open) => !open && setOpenSection(null)}
         title={openSection?.title ?? ""}
+        subtitle={source.name}
         testId="knowledge-section-sheet"
       >
         {openSection ? (
-          <FilePreview
-            name=""
-            mimeType="text/markdown"
-            text={documentUnderTitle(openSection.content, openSection.title)}
-          />
+          <div className="flex flex-col gap-4">
+            <FactList
+              items={[
+                { label: t("knowledge.column.size"), value: bytes(openSection.bytes) },
+                {
+                  label: t("knowledge.column.read"),
+                  value: source.last_refreshed_at ? dateTime(source.last_refreshed_at) : MISSING,
+                },
+              ]}
+              testId="knowledge-section-facts"
+            />
+            <FilePreview
+              name=""
+              mimeType="text/markdown"
+              text={documentUnderTitle(openSection.content, openSection.title)}
+            />
+          </div>
         ) : null}
       </RecordSheet>
+      <SkillProposalSheet
+        candidate={reviewing ? (proposal ?? null) : null}
+        permissions={permissions}
+        onClose={() => setReviewing(false)}
+        onDecided={() => {
+          void client.invalidateQueries({ queryKey });
+          void client.invalidateQueries({ queryKey: ["catalog"] });
+          void client.invalidateQueries({ queryKey: ["decisions"] });
+          void client.invalidateQueries({ queryKey: ["attention"] });
+        }}
+      />
       {canWrite ? (
         <>
           <EditSourceDialog source={source} open={editing} onOpenChange={setEditing} />
@@ -904,27 +984,33 @@ function EditSourceDialog({
   const isAddress = sourceKind(source.source_type) === "url";
   const savedRhythm = refreshRhythm(source.refresh_strategy, source.refresh_cron);
   const [name, setName] = useState(source.name);
+  const [address, setAddress] = useState(source.source_uri);
+  const [note, setNote] = useState("");
   const [rhythm, setRhythm] = useState<OfferedRhythm | null>(null);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setName(source.name);
+      setAddress(source.source_uri);
+      setNote("");
       setRhythm(savedRhythm === "custom" ? null : savedRhythm);
       setProblem(null);
     }
-  }, [open, source.name, savedRhythm]);
+  }, [open, source.name, source.source_uri, savedRhythm]);
   useEffect(() => setText(document?.content ?? ""), [document?.content]);
 
   const save = useMutation({
     mutationFn: async () => {
       const rhythmChanged = isAddress && rhythm !== null && rhythm !== savedRhythm;
-      if (name.trim() !== source.name || rhythmChanged)
+      const addressChanged = isAddress && address.trim() !== source.source_uri;
+      if (name.trim() !== source.name || rhythmChanged || addressChanged)
         await apiRequest(`${ENDPOINT}/${encodeURIComponent(source.id)}`, {
           method: "PATCH",
           body: JSON.stringify({
             ...(name.trim() !== source.name ? { name: name.trim() } : {}),
             ...(rhythmChanged && rhythm ? refreshFields(rhythm) : {}),
+            ...(addressChanged ? { source_uri: address.trim() } : {}),
           }),
         });
       if (document && content.data && text !== document.content)
@@ -934,6 +1020,7 @@ function EditSourceDialog({
             expected_version: content.data.version,
             path: document.path,
             content: text,
+            ...(note.trim() ? { note: note.trim() } : {}),
           }),
         });
     },
@@ -955,7 +1042,11 @@ function EditSourceDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t("knowledge.edit.title")}
-      submit={{ label: t("common.save"), pending: save.isPending, disabled: !name.trim() }}
+      submit={{
+        label: t("common.save"),
+        pending: save.isPending,
+        disabled: !name.trim() || (isAddress && !address.trim()),
+      }}
       onSubmit={() => save.mutate()}
       testId="knowledge-edit-dialog"
     >
@@ -969,11 +1060,24 @@ function EditSourceDialog({
         />
       </Field>
       {isAddress ? (
-        <RefreshField
-          value={rhythm}
-          onChange={setRhythm}
-          current={savedRhythm === "custom" ? rhythmLabel(t, source) : undefined}
-        />
+        <>
+          <Field>
+            <FieldLabel htmlFor="knowledge-edit-address">{t("knowledge.field.url")}</FieldLabel>
+            <Input
+              id="knowledge-edit-address"
+              type="url"
+              required
+              value={address}
+              onChange={(event) => setAddress(event.target.value)}
+              data-testid="knowledge-edit-address"
+            />
+          </Field>
+          <RefreshField
+            value={rhythm}
+            onChange={setRhythm}
+            current={savedRhythm === "custom" ? rhythmLabel(t, source) : undefined}
+          />
+        </>
       ) : null}
       {document ? (
         <Field>
@@ -985,6 +1089,21 @@ function EditSourceDialog({
             onChange={(event) => setText(event.target.value)}
             className="font-mono text-xs"
             data-testid="knowledge-edit-text"
+          />
+        </Field>
+      ) : null}
+      {document ? (
+        <Field>
+          <FieldLabel htmlFor="knowledge-edit-note">
+            {t("knowledge.versions.column.why")}
+          </FieldLabel>
+          <Input
+            id="knowledge-edit-note"
+            value={note}
+            disabled={text === document.content}
+            onChange={(event) => setNote(event.target.value)}
+            maxLength={2000}
+            data-testid="knowledge-edit-note"
           />
         </Field>
       ) : null}

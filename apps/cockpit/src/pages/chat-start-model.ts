@@ -49,6 +49,7 @@ export interface ChatStarter {
 
 export interface StarterAttention {
   class: string;
+  counts?: { consecutive_failures?: number };
   subject: { kind: string; id: string; name: string | null } | null;
 }
 
@@ -71,7 +72,11 @@ export interface StarterSources {
 function failingWorkflow(attention: readonly StarterAttention[]) {
   for (const item of attention) {
     if (item.class === "failing" && item.subject?.kind === "workflow" && item.subject.name) {
-      return { id: item.subject.id, name: item.subject.name };
+      return {
+        id: item.subject.id,
+        name: item.subject.name,
+        failures: item.counts?.consecutive_failures,
+      };
     }
   }
   return null;
@@ -101,7 +106,15 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
       id: `failing-${failing.id}`,
       icon: "failing",
       title: t("chat.starter.failing.title"),
-      line: t("chat.starter.failing.line", { name: failing.name }),
+      line:
+        failing.failures !== undefined && Number.isInteger(failing.failures) && failing.failures > 0
+          ? t(
+              failing.failures === 1
+                ? "chat.starter.failing.count.one"
+                : "chat.starter.failing.count.other",
+              { name: failing.name, count: failing.failures },
+            )
+          : t("chat.starter.failing.line", { name: failing.name }),
       prompt: t("chat.starter.failing.prompt", { name: failing.name }),
     });
   }

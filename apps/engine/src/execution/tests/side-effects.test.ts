@@ -354,3 +354,30 @@ describe("redactHeldRequestHeaders", () => {
     );
   });
 });
+
+test("dispatch classification uses the resolved S3 driver and materialized LIST without an S3 block", () => {
+  expect(
+    classifyRequestStepSideEffects(
+      step({ connector_id: CONNECTOR_ID, method: "GET" }),
+      "s3",
+      "LIST",
+    ),
+  ).toBe("read");
+  expect(
+    classifyRequestStepSideEffects(
+      step({ connector_id: CONNECTOR_ID, method: "GET", side_effects: "read" }),
+      "s3",
+      "PUT",
+    ),
+  ).toBe("write");
+});
+
+test("dispatch classification uses the materialized method without lowering mutation effects", () => {
+  expect(
+    classifyRequestStepSideEffects(
+      step({ connector_id: CONNECTOR_ID, method: "GET", side_effects: "read" }),
+      "http",
+      "DELETE",
+    ),
+  ).toBe("write");
+});

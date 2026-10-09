@@ -1,6 +1,7 @@
 import * as oauth from "openid-client";
 import { getDriverFetch } from "../../connectors/drivers/fetch-seam.ts";
 import { logger } from "../../logging/logger.ts";
+import { identityFromTokenResponse, VerifiedProviderIdentitySchema } from "../provider-identity.ts";
 import {
   type OAuth2ClientConfig,
   type OAuth2TokenBundle,
@@ -80,11 +81,24 @@ export function __resetOAuth2CacheForTests(): void {
 
 function toBundle(
   res: oauth.TokenEndpointResponse & oauth.TokenEndpointResponseHelpers,
+  issuer: string,
 ): OAuth2TokenBundle {
+  const claims = res.claims();
+  const verified = claims
+    ? VerifiedProviderIdentitySchema.safeParse({
+        issuer,
+        subject: claims.sub,
+        source: "openid_claims",
+      })
+    : null;
+  const verified_identity = verified?.success
+    ? verified.data
+    : identityFromTokenResponse(issuer, res);
   const expires_in = res.expiresIn();
   const expires_at =
     typeof expires_in === "number" ? new Date(Date.now() + Math.max(0, expires_in) * 1000) : null;
   return {
+    verified_identity,
     access_token: res.access_token ?? "",
     token_type: (res.token_type as string | undefined) ?? "Bearer",
     expires_at,
@@ -175,7 +189,7 @@ export async function completeAuthorizationCode(
     grantOpts.pkceCodeVerifier = p.code_verifier;
   }
   const res = await oauth.authorizationCodeGrant(configuration, p.current_url, grantOpts);
-  return toBundle(res);
+  return toBundle(res, p.cfg.issuer_url);
 }
 
 export async function runClientCredentialsGrant(
@@ -186,7 +200,7 @@ export async function runClientCredentialsGrant(
   if (cfg.scope) params.scope = cfg.scope;
   if (cfg.audience) params.audience = cfg.audience;
   const res = await oauth.clientCredentialsGrant(configuration, params);
-  return toBundle(res);
+  return toBundle(res, cfg.issuer_url);
 }
 
 export async function runPasswordGrant(
@@ -203,7 +217,7 @@ export async function runPasswordGrant(
   if (cfg.scope) params.set("scope", cfg.scope);
   if (cfg.audience) params.set("audience", cfg.audience);
   const res = await oauth.genericGrantRequest(configuration, "password", params);
-  return toBundle(res);
+  return toBundle(res, cfg.issuer_url);
 }
 
 export interface CognitoUserPasswordParams {
@@ -530,7 +544,7 @@ export async function runRefreshTokenGrant(
   if (cfg.scope) params.scope = cfg.scope;
   try {
     const res = await oauth.refreshTokenGrant(configuration, refresh_token, params);
-    return toBundle(res);
+    return toBundle(res, cfg.issuer_url);
   } catch (err) {
     logger.warn({
       module: "oauth2",

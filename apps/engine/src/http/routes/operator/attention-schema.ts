@@ -77,6 +77,10 @@ const AttentionItem = z
     counts: z.object({
       patches: z.number().int().optional(),
       failures: z.number().int().optional(),
+      consecutive_failures: z.number().int().nonnegative().optional().openapi({
+        description:
+          "Consecutive failed terminal runs, newest completion first. Another terminal status ends the sequence.",
+      }),
       skills: z.number().int().optional(),
       knowledge: z
         .number()

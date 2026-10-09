@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { translate } from "@/lib/i18n";
 import {
   documentUnderTitle,
+  knowledgeSummary,
   REFRESH_CRON,
   refreshFields,
   refreshRhythm,
@@ -101,5 +103,19 @@ describe("a document under a record's title", () => {
     expect(documentUnderTitle("# Andere\n```\n# kein Titel\n```", "Titel")).toBe(
       "## Andere\n```\n# kein Titel\n```",
     );
+  });
+});
+
+describe("knowledge summary", () => {
+  const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
+    translate("de", key, values);
+  test("uses the complete source and section totals", () => {
+    expect(knowledgeSummary(51, 345, de)).toBe("51 Quellen · 345 Abschnitte");
+    expect(knowledgeSummary(1, 1, de)).toBe("1 Quelle · 1 Abschnitt");
+    expect(knowledgeSummary(2, 0, de)).toBe("2 Quellen · 0 Abschnitte");
+  });
+  test("does not invent a section total when the API has not provided it", () => {
+    expect(knowledgeSummary(51, undefined, de)).toBe("51 Quellen");
+    expect(knowledgeSummary(51, Number.NaN, de)).toBe("51 Quellen");
   });
 });

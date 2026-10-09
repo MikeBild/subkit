@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db, Executor } from "../db/client.ts";
-import { toolApprovals } from "../db/schema/index.ts";
+import { systemAccounts, toolApprovals, users } from "../db/schema/index.ts";
+import { CallerContextSchema } from "../execution/index.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { logger } from "../logging/logger.ts";
@@ -146,7 +147,52 @@ export async function mintApprovalGrantUrl(
 
 export type ApprovalPortalState = "pending" | "granted" | "declined" | "consumed";
 
+export interface ApprovalRequester {
+  kind: "user" | "system_account";
+  id: string;
+  label: string | null;
+}
+
+export function approvalRequesterIdentity(row: {
+  tenant_id: string;
+  principal_id: string;
+  caller_context: unknown;
+}): Omit<ApprovalRequester, "label"> | null {
+  const parsed = CallerContextSchema.safeParse(row.caller_context);
+  if (
+    !parsed.success ||
+    parsed.data.tenantId !== row.tenant_id ||
+    parsed.data.principalId !== row.principal_id
+  )
+    return null;
+  return { kind: parsed.data.principalKind, id: parsed.data.principalId };
+}
+
+async function approvalRequester(
+  db: Db,
+  row: { tenant_id: string; principal_id: string; caller_context: unknown },
+): Promise<ApprovalRequester | null> {
+  const identity = approvalRequesterIdentity(row);
+  if (!identity) return null;
+  const labels =
+    identity.kind === "user"
+      ? await db
+          .select({ label: users.email })
+          .from(users)
+          .where(and(eq(users.tenant_id, row.tenant_id), eq(users.id, identity.id)))
+          .limit(1)
+      : await db
+          .select({ label: systemAccounts.name })
+          .from(systemAccounts)
+          .where(
+            and(eq(systemAccounts.tenant_id, row.tenant_id), eq(systemAccounts.id, identity.id)),
+          )
+          .limit(1);
+  return { ...identity, label: labels[0]?.label ?? null };
+}
+
 export interface ApprovalPortalView {
+  readonly requester?: ApprovalRequester | null;
   readonly approval_id: string;
   readonly tenant_id: string;
   readonly tool: string;
@@ -225,6 +271,8 @@ export async function resolveApprovalPortalToken(
     .select({
       id: toolApprovals.id,
       tenant_id: toolApprovals.tenant_id,
+      principal_id: toolApprovals.principal_id,
+      caller_context: toolApprovals.caller_context,
       tool: toolApprovals.tool,
       surface: toolApprovals.surface,
       execution_mode: toolApprovals.execution_mode,
@@ -249,6 +297,7 @@ export async function resolveApprovalPortalToken(
   return {
     approval_id: row.id,
     tenant_id: row.tenant_id,
+    requester: state === "pending" ? await approvalRequester(db, row) : null,
     tool: row.tool,
     workflow_slug: workflowSlugFromToolName(row.tool),
     surface: row.surface,

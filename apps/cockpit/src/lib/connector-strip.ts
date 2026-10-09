@@ -122,3 +122,14 @@ export function connectorStrip(input: ConnectorStripInput): ConnectorStrip {
           : "unproven";
   return { kind: calm, tone: "ok", action: null, lower: [] };
 }
+
+export function connectorExpiry(credentials: unknown, environment: unknown): string | null {
+  if (!Array.isArray(credentials) || typeof environment !== "string") return null;
+  for (const credential of credentials) {
+    if (!credential || typeof credential !== "object" || credential.environment !== environment)
+      continue;
+    const expiry = credential.oauth2_expires_at;
+    if (typeof expiry === "string" && Number.isFinite(Date.parse(expiry))) return expiry;
+  }
+  return null;
+}

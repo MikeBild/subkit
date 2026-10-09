@@ -19,7 +19,6 @@ import {
   respondToChatForm,
   respondToToolCall,
   sendConversationTurn,
-  setConversationHidden,
   type UiMessage,
 } from "@/api/client";
 import { dryRunPatchCandidate, getPatchCandidatePreview } from "@/api/decisions";
@@ -1332,6 +1331,14 @@ export function ChatPage() {
     { ...OWN_CONVERSATIONS, ...(showHidden ? { hidden: "only" } : {}) },
     { queryKey: ["conversations", "infinite", showHidden ? "hidden" : "visible"] },
   );
+  const hiddenConversations = useQuery({
+    queryKey: ["conversations", "hidden-presence"],
+    queryFn: () => {
+      const params = new URLSearchParams({ ...OWN_CONVERSATIONS, hidden: "only", limit: "1" });
+      return apiRequest<{ items: Conversation[] }>(`/v1/conversations?${params}`);
+    },
+    retry: retryConversationRead,
+  });
   const conversations = conversationList.query;
   const activeId = activeConversationId(selection, conversationList.items[0]?.id);
   useEffect(() => {
@@ -1660,16 +1667,6 @@ export function ChatPage() {
     send.reset();
     decide.mutate({ elicitationId, formOutput });
   };
-  const hide = useMutation({
-    mutationFn: ({ id, hidden }: { id: string; hidden: boolean }) =>
-      setConversationHidden(id, hidden),
-    onSuccess: async (_result, { id }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["conversations"] }),
-        queryClient.invalidateQueries({ queryKey: ["conversation", id] }),
-      ]);
-    },
-  });
   const remove = useMutation({
     mutationFn: (target: Conversation) => deleteConversation(target.id),
     onSuccess: async (_result, target) => {
@@ -1723,7 +1720,6 @@ export function ChatPage() {
   const choiceOpen = open(pendingChoice);
   const formOpen = open(pendingForm);
   const anyQuestion = Boolean(pendingDecision || pendingChoice || pendingForm || pendingText);
-  const anyQuestionOpen = open(pendingDecision) || choiceOpen || formOpen || open(pendingText);
   const answerMessageIds = useMemo(
     () =>
       new Set(
@@ -1952,7 +1948,6 @@ export function ChatPage() {
       !anyQuestion &&
       status === "ready",
   );
-  const cardActs = anyQuestionOpen || showPreparation || showScheduleStep;
   const unanchoredDecision = unanchored(pendingDecision);
   const unanchoredChoice = unanchored(pendingChoice);
   const unanchoredForm = unanchored(pendingForm);
@@ -1969,20 +1964,6 @@ export function ChatPage() {
               setRenameTitle(current.title || t("chat.untitled"));
             },
           },
-          current.hidden
-            ? {
-                label: t("chat.unhide"),
-                testId: "chat-unhide",
-                onSelect: () => hide.mutate({ id: current.id, hidden: false }),
-              }
-            : {
-                label: t("chat.hide"),
-                testId: "chat-hide",
-                onSelect: () => {
-                  hide.mutate({ id: current.id, hidden: true });
-                  startNew();
-                },
-              },
           {
             label: t("chat.delete"),
             testId: "chat-delete",
@@ -2004,17 +1985,16 @@ export function ChatPage() {
                 : "chat.new",
           );
   const chatHeader = <PageHeader testId="chat-header" title={t("nav.chat")} />;
-  const newConversation =
-    selection.kind === "new" && !activeId ? null : (
-      <Button
-        variant={cardActs ? "outline" : "default"}
-        onClick={startNew}
-        className="md:w-full"
-        data-testid="conversation-new"
-      >
-        {t("chat.new")}
-      </Button>
-    );
+  const newConversation = (
+    <Button
+      variant="default"
+      onClick={startNew}
+      className="md:w-full"
+      data-testid="conversation-new"
+    >
+      {t("chat.new")}
+    </Button>
+  );
   const conversationHead = (
     <div className="py-3 md:pt-6 md:pb-0" data-testid="chat-conversation-head">
       <div className="flex min-h-8 items-center gap-2">
@@ -2062,6 +2042,7 @@ export function ChatPage() {
       infinite={conversationList.infinite}
       activeId={activeId}
       showHidden={showHidden}
+      hasHidden={(hiddenConversations.data?.items.length ?? 0) > 0}
       onToggleHidden={() => setShowHidden((value) => !value)}
       onSelect={(id) => {
         setSelection({ kind: "existing", id });
@@ -2732,7 +2713,7 @@ export function ChatPage() {
         onOpenChange={(value) => !value && setRenameTarget(null)}
         title={t("chat.rename")}
         submit={{
-          label: t("common.saveChanges"),
+          label: t("common.rename"),
           pending: rename.isPending,
           disabled: !renameTitle.trim(),
         }}

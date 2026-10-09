@@ -117,3 +117,75 @@ export async function listWorkflowsUsingConnector(
       ),
     );
 }
+
+export interface WorkflowConnectorReference {
+  step_id: string;
+  connector_id: string | null;
+  slug: string | null;
+  name: string | null;
+  reason: "available" | "deleted" | "missing";
+}
+
+export interface ConnectorReferenceRecord {
+  id: string;
+  slug: string;
+  name: string;
+  deleted_at: Date | null;
+}
+
+export function connectorReferencesForDefinition(
+  definition: unknown,
+  records: ConnectorReferenceRecord[],
+): WorkflowConnectorReference[] {
+  if (!definition || typeof definition !== "object" || !("steps" in definition)) return [];
+  if (!Array.isArray(definition.steps)) return [];
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const bySlug = new Map<string, ConnectorReferenceRecord>();
+  for (const record of records) {
+    if (!bySlug.has(record.slug) || !record.deleted_at) bySlug.set(record.slug, record);
+  }
+  const references: WorkflowConnectorReference[] = [];
+  for (const value of definition.steps) {
+    if (!value || typeof value !== "object" || typeof value.id !== "string") continue;
+    const step = value as Record<string, unknown> & { id: string };
+    const seen = new Set<string>();
+    const append = (
+      record: ConnectorReferenceRecord | undefined,
+      id: string | null,
+      slug: string | null,
+    ) => {
+      const key = record?.id ?? id ?? slug;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      references.push({
+        step_id: step.id,
+        connector_id: record?.id ?? id,
+        slug: record?.slug ?? slug,
+        name: record?.name ?? null,
+        reason: record ? (record.deleted_at ? "deleted" : "available") : "missing",
+      });
+    };
+    if (typeof step.connector_id === "string") {
+      append(byId.get(step.connector_id), step.connector_id, null);
+    }
+    if (typeof step.url === "string") {
+      for (const slug of placeholderSlugsIn(step.url)) append(bySlug.get(slug), null, slug);
+    }
+  }
+  return references;
+}
+
+export async function loadConnectorReferenceRecords(
+  tenant_id: string,
+  exec: Executor,
+): Promise<ConnectorReferenceRecord[]> {
+  return exec
+    .select({
+      id: connectors.id,
+      slug: connectors.slug,
+      name: connectors.display_name,
+      deleted_at: connectors.deleted_at,
+    })
+    .from(connectors)
+    .where(eq(connectors.tenant_id, tenant_id));
+}

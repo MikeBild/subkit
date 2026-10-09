@@ -152,19 +152,10 @@ export function authorityHeadline(
     .join(" · ");
 }
 
-export type GrantLimit = "until_revoked" | "limited";
+export type GrantLimit = "until_revoked" | "7d" | "30d";
 
 export const DEFAULT_GRANT_LIMIT: GrantLimit = "until_revoked";
 
-export function grantLimitBounds(
-  limit: GrantLimit,
-  runs: string,
-  hours: string,
-): { runs: string | null; hours: string | null } {
-  return limit === "limited" ? { runs, hours } : { runs: null, hours: null };
-}
-
-export function grantConfirmKey(limit: GrantLimit, runs: string): TranslationKey {
-  if (limit === "until_revoked") return "authority.grantConfirmUntilRevoked";
-  return Number(runs) === 1 ? "authority.grantConfirmOne" : "authority.grantConfirm";
+export function grantLimitBounds(limit: GrantLimit): { runs: null; hours: string | null } {
+  return { runs: null, hours: limit === "7d" ? "168" : limit === "30d" ? "720" : null };
 }

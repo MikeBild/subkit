@@ -1,11 +1,13 @@
 import { z } from "@hono/zod-openapi";
 import { paginatedResponse } from "../../../api/common-schemas.ts";
+import { CredentialUseSnapshotSchema } from "../../../credentials/index.ts";
 import type { executionSteps, executions } from "../../../db/schema/index.ts";
 import {
-  describeExecutionCaller,
+  describeExecutionEvidence,
   ExecutionCallerSchema,
   PREVIEW_CLASSIFICATIONS,
   RequestMetaSchema,
+  WorkflowPermissionSchema,
 } from "../../../execution/index.ts";
 import {
   ReportDeliveryRefusalSchema,
@@ -21,6 +23,10 @@ export const ExecSchema = z
     workflow_name: z.string().nullable(),
     workflow_version_id: z.string().nullable(),
     execution_authority_id: z.string().uuid().nullable(),
+    execution_environment: z.enum(["dev", "prod"]),
+    permission_basis: WorkflowPermissionSchema.shape.source.nullable(),
+    permission_phase: WorkflowPermissionSchema.shape.phase.nullable(),
+    permission_checked_at: WorkflowPermissionSchema.shape.checked_at.nullable(),
     hold_writes: z.boolean().optional(),
     source_kind: z.enum(["saved", "draft", "step"]),
     source_ref: z.record(z.string(), z.unknown()).nullable(),
@@ -60,10 +66,25 @@ export const ExecutionOutcomeSchema = z
       skipped: z.number().int().nonnegative(),
     }),
     output_contract: z.enum(["passed", "violated", "none"]),
+    planned_steps: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional()
+      .describe(
+        "Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count.",
+      ),
   })
   .openapi("ExecutionOutcome");
 
 export const ExecDetailSchema = ExecSchema.extend({
+  trace_id: z
+    .string()
+    .nullable()
+    .describe(
+      "The unique nonempty trace recorded by successful execution-start audit entries. Null when evidence is absent, expired by retention, or conflicting. This is not inferred from the current request.",
+    ),
   outcome: ExecutionOutcomeSchema,
 }).openapi("ExecutionDetail");
 
@@ -104,6 +125,7 @@ export const StepRowSchema = z
     output_preview: z.unknown().nullable(),
     error: z.unknown().nullable(),
     request_meta: z.unknown().nullable(),
+    credential_snapshots: z.array(CredentialUseSnapshotSchema),
     started_at: z.string().nullable(),
     finished_at: z.string().nullable(),
   })
@@ -327,13 +349,12 @@ export function serializeExec(
     workflow_id: row.workflow_id ?? null,
     workflow_name: workflowName,
     workflow_version_id: row.workflow_version_id ?? null,
-    execution_authority_id: row.execution_authority_id ?? null,
+    ...describeExecutionEvidence(row),
     hold_writes: row.hold_writes,
     source_kind: (row.source_kind as "saved" | "draft" | "step") ?? "saved",
     source_ref: row.source_ref ?? null,
     status: row.status,
     request_source: row.request_source,
-    caller: describeExecutionCaller(row),
     parent_execution_id: row.parent_execution_id ?? null,
     input: row.input ?? null,
     started_at: row.started_at ? row.started_at.toISOString() : null,
@@ -357,6 +378,7 @@ export function serializeStep(row: typeof executionSteps.$inferSelect) {
     output_preview: row.output_preview ?? null,
     error: row.error ?? null,
     request_meta: row.request_meta ?? null,
+    credential_snapshots: row.credential_snapshots ?? [],
     started_at: row.started_at ? row.started_at.toISOString() : null,
     finished_at: row.finished_at ? row.finished_at.toISOString() : null,
   };

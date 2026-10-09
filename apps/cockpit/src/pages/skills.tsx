@@ -7,13 +7,16 @@ import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates, type SkillCandidate } from "@/api/decisions";
 import type { components } from "@/api/schema";
 import { useActorDirectory } from "@/app/actor-directory";
+import type { ActorDirectory } from "@/app/actor-directory-model";
 import { absolute, chatNewHref, recordHref, routerTarget } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useDirtyGuard } from "@/app/version-notice";
+import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
   CatalogMetadataDialog,
   CatalogMetadataSummary,
   CatalogNameCell,
+  useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import {
@@ -50,6 +53,7 @@ import { useInfiniteList } from "@/lib/use-infinite-list";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { documentUnderTitle } from "@/pages/knowledge-sources-model";
 import { proposalAuthor, proposalTarget } from "@/pages/learning-proposal-model";
+import { SkillProposalRowActions } from "@/pages/skill-proposal-row-actions";
 import { SkillProposalSheet } from "@/pages/skill-proposal-sheet";
 import {
   SKILL_APPLIES_TO,
@@ -101,11 +105,7 @@ function rowWhere(row: SkillRow): string | null {
   return row.kind === "skill" ? row.skill.applies_to : null;
 }
 
-function proposalLine(
-  candidate: SkillCandidate,
-  directory: ReadonlyMap<string, string>,
-  t: Translate,
-): string {
+function proposalLine(candidate: SkillCandidate, directory: ActorDirectory, t: Translate): string {
   const target = proposalTarget(candidate, t);
   const author = proposalAuthor(candidate, directory, t);
   return author ? `${target} · ${t("proposal.by", { name: author })}` : target;
@@ -125,11 +125,13 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   const [sorting, setSorting] = useState<SortingState>([{ id: "updated_at", desc: true }]);
   const [first] = sorting;
   const categoryFilter = useCategoryFilter("skill");
+  const origin = useCatalogOrigin();
   const list = useInfiniteList<Skill>(
     ENDPOINT,
     {
       q: q || undefined,
       category: categoryFilter.category,
+      description_source: origin.descriptionSource,
       sort: first?.id ?? "updated_at",
       order: first?.desc ? "desc" : "asc",
     },
@@ -137,7 +139,7 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
   );
   const proposals = useQuery({
     queryKey: PROPOSALS_KEY,
-    queryFn: listProposedSkillCandidates,
+    queryFn: () => listProposedSkillCandidates(),
     enabled: canRead,
     ...live,
   });
@@ -236,11 +238,14 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     );
 
   const rows: SkillRow[] = [
-    ...(q ? [] : open.map((candidate) => ({ kind: "proposal" as const, candidate }))),
+    ...(q || categoryFilter.category || origin.active
+      ? []
+      : open.map((candidate) => ({ kind: "proposal" as const, candidate }))),
     ...list.items.map((skill) => ({ kind: "skill" as const, skill })),
   ];
   const { pending, failed } = skillsLoadState([list.query, proposals]);
-  const empty = !pending && !failed && rows.length === 0 && !q && !categoryFilter.category;
+  const empty =
+    !pending && !failed && rows.length === 0 && !q && !categoryFilter.category && !origin.active;
   const newButton = (testId: string) =>
     canWrite ? (
       <Button asChild>
@@ -278,11 +283,17 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
     >
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-3">
-          {rows.length > 0 ? (
-            <SummaryLine
-              text={skillsLine(t, list.total ?? list.items.length, open.length)}
+          {rows.length > 0 || origin.active || q || categoryFilter.category ? (
+            <CatalogOriginSummary
+              text={skillsLine(
+                t,
+                list.total ?? list.items.length,
+                q || categoryFilter.category || origin.active ? 0 : open.length,
+              )}
               help={t("skills.summaryHelp")}
               testId="skills-summary"
+              kind="skill"
+              origin={origin}
             />
           ) : null}
           <DataTable
@@ -324,10 +335,14 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
                 title: t("resource.noMatches"),
                 description: t("resource.broaderSearch"),
                 resetLabel: t("catalog.clearFilters"),
-                onReset: () => setSearch(""),
+                onReset: () => {
+                  setSearch("");
+                  categoryFilter.select?.onChange("all");
+                  origin.setValue("all");
+                },
               },
             }}
-            hasActiveFilters={Boolean(q)}
+            hasActiveFilters={Boolean(q || categoryFilter.category || origin.active)}
             sorting={sorting}
             onSortingChange={setSorting}
             onOpen={(row) => {
@@ -342,6 +357,15 @@ export function SkillsPage({ permissions }: { permissions: readonly string[] }) 
             }
             columnsLabel={t("catalog.columns")}
             actionsLabel={t("common.actions")}
+            rowActions={(row) =>
+              row.kind === "proposal" ? (
+                <SkillProposalRowActions
+                  candidate={row.candidate}
+                  permissions={permissions}
+                  onDecided={decided}
+                />
+              ) : null
+            }
             collectionId="skills"
           />
         </div>
@@ -394,6 +418,13 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
   const query = useSkill(id, canRead);
   const [deleting, setDeleting] = useState(false);
   const [describing, setDescribing] = useState(false);
+  const metadataActions = useCatalogMetadataActions({
+    kind: "skill",
+    id,
+    record: query.data,
+    queryKey: ["skill", id],
+    onEdit: () => setDescribing(true),
+  });
   const lifecycle = useOptimisticAction<"activate" | "archive", Skill, Skill>({
     queryKey: ["skill", id],
     mutationFn: (verb) =>
@@ -476,6 +507,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
     { label: t("skills.fact.created"), value: dateTime(skill.created_at) },
   ];
   const menu = [
+    ...(canWrite ? metadataActions : []),
     ...(active && canArchive
       ? [
           {
@@ -516,12 +548,7 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
         <PageHeader
           back={back}
           title={skill.title}
-          purpose={
-            <CatalogMetadataSummary
-              record={skill}
-              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
-            />
-          }
+          purpose={<CatalogMetadataSummary record={skill} />}
           action={
             canWrite ? (
               <Button asChild>
@@ -755,12 +782,24 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
             </Field>
           </div>
         ) : (
-          <FilePreview
-            name=""
-            mimeType="text/markdown"
-            text={documentUnderTitle(body, title)}
-            testId="skill-editor-preview-body"
-          />
+          <div className="flex flex-col gap-4">
+            <FactList
+              items={[
+                { label: t("common.name"), value: title.trim() || MISSING },
+                {
+                  label: t("skills.editor.appliesTo"),
+                  value: t(skillAppliesToOptionKey(appliesTo)),
+                },
+              ]}
+              testId="skill-editor-preview-facts"
+            />
+            <FilePreview
+              name=""
+              mimeType="text/markdown"
+              text={documentUnderTitle(body, title)}
+              testId="skill-editor-preview-body"
+            />
+          </div>
         )}
         {problem && !dirty ? (
           <FieldError data-testid="skill-editor-error">{problem}</FieldError>

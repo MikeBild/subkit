@@ -3,6 +3,7 @@ import type { AutomationState } from "@/lib/automation-state";
 import { CATALOGS } from "@/lib/i18n";
 import type { WorkflowAuthority } from "@/lib/workflow-authorities";
 import {
+  deletedConnectorReference,
   STRIP_STATE_KEYS,
   type StripInput,
   stripActionKey,
@@ -66,9 +67,12 @@ describe("workflow status strip (D15, reviewed)", () => {
     expect(strip.lower).toEqual(["failing"]);
   });
 
-  test("an approval that ran out stops the workflow; a first one waits", () => {
+  test("an approval that ran out stops the workflow; a first one is not yet approved", () => {
     const pending = state({ state: "grant", primaryAction: { kind: "grant" } });
-    expect(workflowStrip(input({ automation: pending })).kind).toBe("grant");
+    expect(workflowStrip(input({ automation: pending }))).toMatchObject({
+      kind: "unapproved",
+      action: { kind: "approve", via: "grant" },
+    });
     const stopped = state({
       state: "grant",
       primaryAction: { kind: "grant" },
@@ -93,6 +97,7 @@ describe("workflow status strip (D15, reviewed)", () => {
     const manual = state({ state: "manual", primaryAction: { kind: "grant" } });
     expect(workflowStrip(input({ automation: manual }))).toMatchObject({
       kind: "unapproved",
+      tone: "info",
       action: { kind: "approve", via: "grant" },
     });
   });
@@ -165,5 +170,34 @@ describe("workflow status strip (D15, reviewed)", () => {
       expect(CATALOGS.de[key]).toBeTruthy();
     }
     expect(CATALOGS.de[stripActionKey({ kind: "approve", via: "grant" })]).toBe("Freigeben…");
+  });
+});
+
+describe("deleted connector evidence", () => {
+  test("missing references never turn into invented deleted connectors", () => {
+    expect(
+      deletedConnectorReference([{ reason: "missing", connector_id: "gone", name: null }]),
+    ).toBeNull();
+    expect(
+      deletedConnectorReference([{ reason: "deleted", connector_id: "gone", name: "Mail" }]),
+    ).toEqual({ state: "deleted", id: "gone", name: "Mail" });
+  });
+  test("a deleted connector leads before approval and never links its dead detail page", () => {
+    const strip = workflowStrip(
+      input({
+        automation: state({ state: "grant", primaryAction: { kind: "grant" } }),
+        waitingConnector: { state: "deleted", id: "gone", name: "Mail" },
+      }),
+    );
+    expect(strip.kind).toBe("connector");
+    expect(strip.action).toEqual({ kind: "chat" });
+    expect(
+      workflowStrip(
+        input({
+          waitingConnector: { state: "deleted", id: "gone", name: "Mail" },
+          rights: { write: false, chat: false },
+        }),
+      ).action,
+    ).toBeNull();
   });
 });

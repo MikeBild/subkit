@@ -65,7 +65,7 @@ export function alreadyDecidedPage(view: ApprovalPortalView, look: PageLook) {
 export function buildApprovalDecisionHtml(
   view: ApprovalPortalView,
   grant: string,
-  approver: { email: string },
+  approver: { email: string; user_id?: string },
   csrfToken: string,
   look: PageLook,
 ): string {
@@ -80,10 +80,16 @@ export function buildApprovalDecisionHtml(
   const environment =
     executionMode === "dev" ? copy.dev : executionMode === "prod" ? copy.prod : copy.unspecified;
   const binding = view.preview?.prepared_workflow;
+  const requester = view.requester;
+  const requesterLabel = requester
+    ? `${requester.label ? `${requester.label} · ` : ""}${requester.kind === "user" ? copy.person : copy.systemAccount}${requester.kind === "user" && requester.id === approver.user_id ? ` · ${copy.ownRequest}` : ""}`
+    : copy.unspecified;
   const summary = [
     [copy.tool, scrubString(view.tool)],
     ...(view.workflow_slug ? [[copy.workflow, scrubString(view.workflow_slug)]] : []),
     ...(binding ? [[copy.version, binding.workflow_version_id]] : []),
+    [copy.requester, scrubString(requesterLabel)],
+    [copy.decider, approver.email],
     [copy.environment, environment],
     [copy.scope, copy.once],
     [copy.expiry, date],
@@ -102,6 +108,17 @@ export function buildApprovalDecisionHtml(
       (write) => !direct && !reviews.some((review) => review.step === write.step),
     ),
   ];
+  const boundRequests = direct ? [direct.review] : reviews;
+  const firstBound = boundRequests[0];
+  const boundTarget = firstBound ? approvalDisplayTarget(firstBound.url) : null;
+  const title =
+    boundRequests.length > 1
+      ? copy.titleForRequests.replace("{count}", String(boundRequests.length))
+      : firstBound && boundTarget
+        ? copy.titleForTarget
+            .replace("{operation}", scrubString(firstBound.method ?? copy.unspecified))
+            .replace("{target}", boundTarget)
+        : copy.title;
   const effects = writes.length
     ? `<p class="muted">${direct ? copy.directEffectsHelp : copy.effectsHelp}</p><ul class="plain stack">${writes
         .map((write) => {
@@ -119,7 +136,7 @@ ${review ? `<dt>${copy.attempts}</dt><dd>${escapeHtml(copy.attemptsValue.replace
   const language = `<form method="POST" action="${APPROVAL_PORTAL_PATH}" aria-label="${copy.language}">${hidden}<button class="button ghost" type="submit" name="language" value="de" lang="de" aria-pressed="${locale === "de"}">Deutsch</button><button class="button ghost" type="submit" name="language" value="en" lang="en" aria-pressed="${locale === "en"}">English</button></form>`;
   return portalPage(
     look,
-    `${pageHead({ title: copy.title, slot: "auth-heading", line: copy.intro, chip: { tone: "warning", word: copy.pending } })}
+    `${pageHead({ title, slot: "auth-heading", line: copy.intro, chip: { tone: "warning", word: copy.pending } })}
 <section class="stack" aria-labelledby="boundary-title"><h2 id="boundary-title">${copy.summary}</h2><dl class="facts">${summary}</dl></section>
 <section class="stack" aria-labelledby="effects-title"><h2 id="effects-title">${copy.effects}</h2>${effects}<p class="muted">${reviews.length > 0 ? copy.boundHelp : binding ? copy.versionOnlyHelp : view.preview?.direct_connector ? copy.directBoundHelp : copy.limitations}</p>${reviews.length > 0 ? `<p class="muted">${copy.attemptsHelp}</p>` : ""}</section>
 <details><summary>${copy.details}</summary><div>

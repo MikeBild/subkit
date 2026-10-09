@@ -8,6 +8,7 @@ export {
   referenceApprovedManifest,
 } from "./authority-inheritance.ts";
 export { isOpenEnded, remainingRuns } from "./authority-live.ts";
+export * from "./authority-observation.ts";
 export { suggestAuthorityBounds } from "./authority-suggestions.ts";
 export * from "./boundary-proposal.ts";
 export * from "./catalog-view.ts";
@@ -45,4 +46,5 @@ export * from "./stored-definition.ts";
 export * from "./tenant-validator.ts";
 export * from "./types.ts";
 export * from "./validator.ts";
+export { type VersionActor, versionAuthorColumns } from "./version-author.ts";
 export * from "./versions.ts";

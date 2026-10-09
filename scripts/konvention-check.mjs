@@ -7,7 +7,7 @@ import { CATALOGS, interpolate } from "../apps/cockpit/src/lib/i18n.ts";
 import { IDENTITY_META, standAt } from "./lib/cockpit-identity.mjs";
 import { textOutsidePayloads } from "./lib/cockpit-visible-uuids.mjs";
 
-const KONVENTION_VERSION = "2.3";
+const KONVENTION_VERSION = "2.4";
 
 let konventionVersionImRepo = null;
 
@@ -569,6 +569,15 @@ const EXECUTION_ROWS = Array.from({ length: 8 }, (_, index) => {
     source_ref: null,
     status: ["succeeded", "running", "failed", "timed_out"][rotate],
     request_source: ["scheduler", "chat", "api", "scheduler"][rotate],
+    caller: {
+      kind: "engine",
+      principal_id: null,
+      provider: null,
+      product_id: null,
+      verified_by: null,
+      channel: ["scheduler", "chat", "api", "scheduler"][rotate],
+      origin_execution_id: null,
+    },
     parent_execution_id: null,
     started_at: started.toISOString(),
     finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
@@ -2737,16 +2746,27 @@ async function checkModeGates(page) {
 async function checkSidebarToggle(page, where) {
   const shape = await page.evaluate(() => {
     const triggers = [...document.querySelectorAll('[data-testid="sidebar-trigger"]')];
-    const header = document.querySelector('[data-family-slot="page-header"]');
+    const phone = window.innerWidth < 768;
+    const home = document.querySelector(
+      phone ? '[data-family-slot="page-header"]' : '[data-testid="cockpit-sidebar-footer"]',
+    );
     return {
+      phone,
       count: triggers.length,
-      inPageHeader: Boolean(header && triggers[0] && header.contains(triggers[0])),
+      inPlace: Boolean(home && triggers[0] && home.contains(triggers[0])),
       bar: Boolean(document.querySelector('[data-testid="cockpit-header"]')),
     };
   });
   if (shape.count !== 1) breach("§6", where, `${shape.count} sidebar toggles on one screen`);
   if (shape.bar) breach("§6", where, "an empty top bar stands above the page header");
-  if (!shape.inPageHeader) breach("§6", where, "the sidebar toggle is not beside the page title");
+  if (!shape.inPlace)
+    breach(
+      "§6",
+      where,
+      shape.phone
+        ? "on a phone the sidebar toggle is not beside the page title"
+        : "on a wide screen the sidebar toggle is not in the sidebar footer",
+    );
 }
 
 async function checkResumeLine(page) {

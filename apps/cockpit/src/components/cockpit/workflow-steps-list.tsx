@@ -255,11 +255,13 @@ function PreviewCard({
 
 export function WorkflowStepsList({
   steps,
+  workflowName,
   canRun,
   editor,
   emptyAction,
 }: {
   steps: WorkflowSteps;
+  workflowName?: string;
   canRun: boolean;
   editor?: StepDraft;
   emptyAction?: ReactNode;
@@ -396,6 +398,7 @@ export function WorkflowStepsList({
       />
       {selected && open !== null ? (
         <StepSheet
+          workflowName={workflowName}
           view={selected}
           index={open}
           connectorName={connectorNameOf(selected.definition, connectorNames)}
@@ -427,6 +430,7 @@ export function WorkflowStepsList({
 
 function StepSheet({
   view,
+  workflowName,
   index,
   connectorName,
   canRun,
@@ -435,6 +439,7 @@ function StepSheet({
   onEdit,
 }: {
   view: WorkflowStepView;
+  workflowName?: string;
   index: number;
   connectorName: string | null;
   canRun: boolean;
@@ -477,7 +482,8 @@ function StepSheet({
     <RecordSheet
       open
       onOpenChange={(next) => !next && onClose()}
-      title={<span className="font-mono">{definition.id}</span>}
+      title={t("workflowSteps.sheetTitle", { number: index + 1, name: definition.id })}
+      subtitle={workflowName}
       badge={lastRun ? <StatusBadge state={lastRun.status} /> : undefined}
       menu={
         onEdit ? (

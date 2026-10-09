@@ -33,6 +33,7 @@ import { LabelText } from "@/lib/machine-label";
 import {
   CHANNEL_PLATFORMS,
   CURRENT_TARGET,
+  channelTargetLabel,
   type DeliveryState,
   deliveryState,
   EVENT_KEYS,
@@ -275,6 +276,11 @@ export function NotificationSettings({
           </span>
         ),
         { width: "w-[30%]" },
+      ),
+      column.text(
+        "target",
+        (channel) => channelTargetLabel(channel, t),
+        t("notifications.column.target"),
       ),
       column.custom(
         "delivery",
@@ -603,6 +609,8 @@ function ChannelSheet({
         {channel && delivery ? (
           <FactList
             items={[
+              { label: t("notifications.column.target"), value: channelTargetLabel(channel, t) },
+              { label: t("notifications.usedBy"), value: tn("notifications.usedByRules", usedBy) },
               {
                 label: t("notifications.column.delivery"),
                 value: deliveryBadge(t, delivery),

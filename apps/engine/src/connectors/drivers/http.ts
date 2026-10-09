@@ -1,5 +1,6 @@
 import { getConfig, isConfigLoaded } from "../../config/loader.ts";
 import type { ConnectionAuthorityIdentity } from "../../credentials/authority-metadata.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import { refreshIfStale } from "../../credentials/oauth2/refresh-worker.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
@@ -271,6 +272,7 @@ export type AppliedAuthMethod =
   | "token_mint_refreshed";
 
 export interface ResolvedConnectorCredential {
+  credential_snapshot?: CredentialUseSnapshot;
   credential: DecryptedCredential | null;
   credential_id: string | null;
   credential_revision: number | null;
@@ -364,6 +366,15 @@ export async function resolveConnectorCredential(p: {
     credential,
     credential_id: row.row.id,
     credential_revision: row.row.authority_revision,
+    credential_snapshot: row.credential_snapshot ?? {
+      connector_id: p.connector.id,
+      environment: p.connector.environment,
+      credential_id: row.row.id,
+      credential_generation: row.row.credential_generation,
+      connection_id: null,
+      access_token_version: null,
+      identity: row.row.verified_identity,
+    },
     connection_authority: row.connection_authority ?? null,
     oauth2_refreshed,
   };
@@ -399,6 +410,7 @@ export function deriveAppliedAuthMethod(
 }
 
 export interface ResolvedRequestPlan {
+  credential_snapshot?: CredentialUseSnapshot;
   credential_revision: number | null;
   connection_authority: ResolvedConnectorCredential["connection_authority"];
   url: URL;
@@ -428,6 +440,7 @@ export async function buildRequestPlan(
     credential_id: credentialId,
     credential_revision: credentialRevision,
     connection_authority: connectionAuthority,
+    credential_snapshot,
     oauth2_refreshed: oauth2Refreshed,
   } = await resolveConnectorCredential(resolveOpts);
   const violations = requestHeaderViolations(
@@ -459,6 +472,7 @@ export async function buildRequestPlan(
     credential_id: credentialId,
     credential_revision: credentialRevision,
     connection_authority: connectionAuthority,
+    ...(credential_snapshot ? { credential_snapshot } : {}),
     auth_method: deriveAppliedAuthMethod(credential, oauth2Refreshed),
     stored_credential_used:
       p.credential_override === undefined &&
@@ -797,7 +811,7 @@ export async function executeConnectorHttpRequest(params: {
   before_dispatch?: (
     credential: Pick<
       ResolvedConnectorCredential,
-      "credential_id" | "credential_revision" | "connection_authority"
+      "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
     >,
   ) => Promise<RequestDispatchPolicy | undefined>;
   db: Db;
@@ -867,6 +881,9 @@ export async function executeConnectorHttpRequest(params: {
       ? {
           before_dispatch: () =>
             beforeDispatch({
+              ...(plan.credential_snapshot
+                ? { credential_snapshot: plan.credential_snapshot }
+                : {}),
               credential_id: plan.credential_id,
               credential_revision: plan.credential_revision,
               connection_authority: plan.connection_authority ?? null,

@@ -208,3 +208,11 @@ export function ruleEditBody(
   if (after.target !== before.target) Object.assign(body, ruleTargetFields(after.target, channels));
   return body;
 }
+
+export function channelTargetLabel(
+  channel: Pick<NotificationChannelLike, "platform" | "channel_id">,
+  t: Translate,
+): string {
+  if (channel.platform === "sk_cli") return t("notifications.target.inbox");
+  return channel.channel_id;
+}

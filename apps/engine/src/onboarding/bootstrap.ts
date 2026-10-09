@@ -438,7 +438,7 @@ async function finishBootstrap(
   try {
     const { seedOnboardingDemo } = await import("./demo-seed.ts");
     const seeded = await seedOnboardingDemo(
-      { tenant_id: result.tenant_id, actor_id: result.user_id },
+      { tenant_id: result.tenant_id, actor_id: result.user_id, actor_type: "user" },
       db,
     );
     logger.info({

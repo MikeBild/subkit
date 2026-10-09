@@ -843,3 +843,24 @@ describe("resolver — soft-delete filtering (regression: /v2/v2 double prefix)"
     expect(r.value).not.toContain("should-not-resolve");
   });
 });
+
+test("credential substitution captures only successfully resolved material without copying secrets", async () => {
+  const { tenant_id, connector_id } = await seed({ slug: "captured", tokenValue: CANARY });
+  const observed: unknown[] = [];
+  const context = {
+    tenant_id,
+    environment: "dev" as const,
+    db: ctx.db,
+    onCredentialUse: (snapshot: unknown) => {
+      observed.push(snapshot);
+    },
+  };
+  await resolveStringPlaceholders(`\${cred.captured.missing}`, context);
+  expect(observed).toEqual([]);
+  const result = await resolveStringPlaceholders(`\${cred.captured.token}`, context);
+  expect(result.value).toBe(CANARY);
+  expect(observed).toEqual([
+    expect.objectContaining({ connector_id, credential_generation: 1, identity: null }),
+  ]);
+  expect(JSON.stringify(observed)).not.toContain(CANARY);
+});

@@ -3,6 +3,8 @@ import { useRouterState } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import { useActorDirectory } from "@/app/actor-directory";
+import { actorDirectoryName } from "@/app/actor-directory-model";
 import { type ApiAccessSection, apiAccessSectionFromUrl } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
@@ -11,7 +13,6 @@ import {
   ActionMenu,
   type ActionMenuItem,
   Button,
-  Checkbox,
   type CockpitColumn,
   CollapsibleSection,
   ConfirmDialog,
@@ -29,6 +30,7 @@ import {
   PageTabs,
   RecordSheet,
   RowName,
+  SegmentedControl,
   StatusBadge,
   SummaryLine,
 } from "@/components/cockpit/patterns";
@@ -40,16 +42,16 @@ import {
   API_KEYS_QUERY,
   type ApiKeyItem,
   type ConnectedClientItem,
-  defaultKeyScopes,
   groupApiKeys,
   groupConnectedClients,
+  type KeyScopePreset,
+  keyPresetScopes,
   keyState,
   keyStateText,
   keysNeedingAction,
   openApiAccessSection,
   ROTATE_OVERLAP_MINUTES,
   readableSections,
-  scopeCatalogue,
   scopeLabel,
   scopeRisk,
   scopeRiskKey,
@@ -105,7 +107,7 @@ export function ApiAccessPage() {
   const active = openApiAccessSection(apiAccessSectionFromUrl(searchStr), readable);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [issued, setIssued] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{ secret: string; name: string | null } | null>(null);
 
   const nowMs = Date.now();
   const counts: Record<ApiAccessSection, number> = {
@@ -167,7 +169,7 @@ export function ApiAccessPage() {
           setIssued(plaintext);
         }}
       />
-      <IssuedKeyDialog secret={issued} onClose={() => setIssued(null)} />
+      <IssuedKeyDialog issued={issued} onClose={() => setIssued(null)} />
     </Page>
   );
 }
@@ -196,11 +198,12 @@ function KeysSection({
   query: UseQueryResult<{ items: ApiKeyItem[] }>;
   activeCount: number;
   emptyAction: ReactNode;
-  onIssued(plaintext: string): void;
+  onIssued(issued: { secret: string; name: string | null }): void;
 }) {
   const { t, tn, locale, dateTime } = useI18n();
   const session = useSession();
   const client = useQueryClient();
+  const directory = useActorDirectory(true);
   const canRotate = session.permissions.includes("api_key:rotate");
   const canRevoke = session.permissions.includes("api_key:revoke");
   const [rotating, setRotating] = useState<ApiKeyItem | null>(null);
@@ -217,7 +220,7 @@ function KeysSection({
     onSuccess: async (result) => {
       setRotating(null);
       setOpened(null);
-      onIssued(result.new.plaintext_key);
+      onIssued({ secret: result.new.plaintext_key, name: result.new.name });
       await refresh();
       if (result.old.rotating_out_at)
         toast.success(t("apiKeys.rotated", { date: dateTime(result.old.rotating_out_at) }));
@@ -247,6 +250,9 @@ function KeysSection({
         (key) => (
           <span className="block truncate font-medium">
             <RowName>{key.name || t("apiKeys.unnamed")}</RowName>
+            <span className="block text-xs font-normal text-muted-foreground">
+              {t("apiKeys.createdOn", { date: dateTime(key.created_at) })}
+            </span>
           </span>
         ),
         { width: "w-[30%]", ownsRowLink: true },
@@ -397,6 +403,20 @@ function KeysSection({
               { label: t("apiKeys.scopes"), value: scopeWords(opened.scopes, t) },
               { label: t("apiKeys.created"), value: dateTime(opened.created_at) },
               {
+                label: t("apiKeys.owner"),
+                value:
+                  opened.user_id && !opened.system_account_id
+                    ? (actorDirectoryName(directory, "user", opened.user_id) ??
+                      t("audit.actor.user"))
+                    : opened.system_account_id && !opened.user_id
+                      ? (actorDirectoryName(
+                          directory,
+                          "system_account",
+                          opened.system_account_id,
+                        ) ?? t("audit.actor.systemAccount"))
+                      : t("common.unknown"),
+              },
+              {
                 label: t("apiAccess.column.lastUsed"),
                 value: opened.last_used_at
                   ? formatRelativeTime(locale, opened.last_used_at)
@@ -427,7 +447,7 @@ function KeysSection({
         onOpenChange={(next) => !next && setRotating(null)}
         object={keyName(rotating)}
         verb={t("apiKeys.rotate")}
-        consequence={t("apiKeys.rotateConsequence", { minutes: String(ROTATE_OVERLAP_MINUTES) })}
+        consequence={t("apiKeys.rotateConsequenceHours", { hours: ROTATE_OVERLAP_MINUTES / 60 })}
         onConfirm={async () => {
           if (rotating) await rotate.mutateAsync(rotating.id).catch(() => undefined);
         }}
@@ -456,14 +476,14 @@ function CreateKeyDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onIssued: (plaintext: string) => Promise<void>;
+  onIssued: (issued: { secret: string; name: string | null }) => Promise<void>;
 }) {
   const { t } = useI18n();
   const session = useSession();
   const client = useQueryClient();
-  const catalogue = useMemo(() => scopeCatalogue(session.permissions), [session.permissions]);
   const [name, setName] = useState("");
-  const [picked, setPicked] = useState<string[]>(() => defaultKeyScopes(session.permissions));
+  const [preset, setPreset] = useState<KeyScopePreset>("run");
+  const picked = keyPresetScopes(preset, session.permissions);
   const issue = useMutation({
     mutationFn: () =>
       apiRequest<IssuedApiKey>("/v1/identity/api-keys", {
@@ -477,9 +497,9 @@ function CreateKeyDialog({
       }),
     onSuccess: async (result) => {
       setName("");
-      setPicked(defaultKeyScopes(session.permissions));
+      setPreset("run");
       await client.invalidateQueries({ queryKey: API_KEYS_QUERY });
-      await onIssued(result.plaintext_key);
+      await onIssued({ secret: result.plaintext_key, name: result.name });
     },
   });
   return (
@@ -513,53 +533,51 @@ function CreateKeyDialog({
               {t("apiKeys.scopesHint")}
             </ContextHelp>
           </span>
-          <div
-            className="grid max-h-72 gap-2 overflow-y-auto rounded-md border p-3"
-            data-testid="api-key-create-scopes"
-          >
-            {catalogue.map((scope, index) => (
-              <label
-                key={scope}
-                htmlFor={`api-key-scope-${index}`}
-                className="flex min-h-10 items-center gap-2 text-sm"
-              >
-                <Checkbox
-                  id={`api-key-scope-${index}`}
-                  checked={picked.includes(scope)}
-                  onCheckedChange={(value) =>
-                    setPicked((current) =>
-                      value === true
-                        ? [...current, scope]
-                        : current.filter((entry) => entry !== scope),
-                    )
-                  }
-                  data-testid={`api-key-scope-${index}`}
-                />
-                <span className="min-w-0 flex-1">{scopeLabel(scope, t).text}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t(scopeRiskKey(scopeRisk(scope)))}
-                </span>
-              </label>
-            ))}
-          </div>
+          <SegmentedControl
+            value={preset}
+            onValueChange={(value) => {
+              if (value === "read" || value === "run" || value === "manage") setPreset(value);
+            }}
+            label={t("apiKeys.scopes")}
+            testId="api-key-create-scopes"
+            options={[
+              { value: "read", label: t("apiKeys.preset.read") },
+              { value: "run", label: t("apiKeys.preset.run") },
+              { value: "manage", label: t("apiKeys.preset.manage") },
+            ]}
+          />
+          <p className="text-sm text-muted-foreground" data-testid="api-key-preset-permissions">
+            {scopeWords(picked, t)}
+          </p>
         </Field>
       </FieldGroup>
     </FormDialog>
   );
 }
 
-function IssuedKeyDialog({ secret, onClose }: { secret: string | null; onClose(): void }) {
+function IssuedKeyDialog({
+  issued,
+  onClose,
+}: {
+  issued: { secret: string; name: string | null } | null;
+  onClose(): void;
+}) {
   const { t } = useI18n();
   return (
     <FormDialog
-      open={Boolean(secret)}
+      open={Boolean(issued)}
       onOpenChange={(open) => !open && onClose()}
-      title={t("apiKeys.ready")}
+      title={issued?.name ? t("apiKeys.createdNamed", { name: issued.name }) : t("apiKeys.ready")}
       submit={{ label: t("common.done") }}
       onSubmit={onClose}
       testId="secret-dialog"
     >
-      <CopyField value={secret ?? ""} label={t("apiKeys.key")} testId="secret-value" />
+      <CopyField
+        labelled
+        value={issued?.secret ?? ""}
+        label={t("apiKeys.key")}
+        testId="secret-value"
+      />
       <p className="text-sm text-muted-foreground" data-testid="secret-once">
         {t("secret.once")}
       </p>
@@ -600,30 +618,6 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
         { width: "w-[28%]" },
       ),
       column.custom(
-        "state",
-        (item) => (item.disabled_at ? "disabled" : item.live_connections),
-        t("apiAccess.column.state"),
-        (item, index) =>
-          item.disabled_at ? (
-            <span data-testid={`connected-client-revoked-${index}`}>
-              <StatusBadge
-                state={item.retired_at ? "retired" : "revoked"}
-                label={t(item.retired_at ? "connectedClients.retired" : "connectedClients.revoked")}
-              />
-            </span>
-          ) : (
-            <StatusBadge
-              state={item.live_connections > 0 ? "active" : "inactive"}
-              label={
-                item.live_connections === 1
-                  ? t("connectedClients.live.one")
-                  : t("connectedClients.live", { count: String(item.live_connections) })
-              }
-            />
-          ),
-        { width: "w-[22%]" },
-      ),
-      column.custom(
         "approved_by",
         (item) => item.approved_by.join(", "),
         t("apiAccess.column.approvedBy"),
@@ -634,9 +628,14 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
         ),
         { width: "w-[30%]" },
       ),
-      column.date("created_at", (item) => item.created_at, t("apiAccess.column.created"), {
-        width: "w-[20%]",
-      }),
+      column.date(
+        "last_used_at",
+        (item) => item.last_used_at ?? null,
+        t("apiAccess.column.lastUsed"),
+        {
+          width: "w-[20%]",
+        },
+      ),
     ];
   }, [t, dateTime]);
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { VerifiedProviderIdentity } from "../provider-identity.ts";
 
 export const RFC7591ClientMetadataSchema = z.object({
   redirect_uris: z.array(z.string().url()).min(1),
@@ -52,6 +53,7 @@ export interface OAuth2ClientConfig {
 }
 
 export interface OAuth2TokenBundle {
+  verified_identity?: VerifiedProviderIdentity | null;
   access_token: string;
   token_type: string;
   expires_at: Date | null;

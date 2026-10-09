@@ -72,11 +72,29 @@ describe("approvePatchCandidate", () => {
     const params = {
       tenant_id: ctx.tenant_id,
       candidate_id: candidateId,
-      actor_id: null,
+      actor_id: "10000000-0000-4000-8000-000000000001",
+      actor_type: "system_account" as const,
       expected_review_digest: preview.review_digest,
     };
     const prepared = await preparePatchCandidate(params, db);
     expect(await preparePatchCandidate(params, db)).toEqual(prepared);
+    expect(
+      await preparePatchCandidate(
+        { ...params, actor_id: "10000000-0000-4000-8000-000000000002", actor_type: "user" },
+        db,
+      ),
+    ).toEqual(prepared);
+    const [authored] = await db
+      .select()
+      .from(workflowVersions)
+      .where(
+        and(
+          eq(workflowVersions.tenant_id, ctx.tenant_id),
+          eq(workflowVersions.id, prepared.workflow_version_id),
+        ),
+      );
+    expect(authored?.author_system_account_id).toBe(params.actor_id);
+    expect(authored?.author_user_id).toBeNull();
     const [before] = await db.select().from(workflows).where(eq(workflows.id, ctx.workflow_id));
     expect(before?.current_version_id).toBe(preview.base_version_id);
     const [candidate] = await db
