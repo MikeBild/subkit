@@ -621,10 +621,13 @@ export function DataTable<TData extends RowData>({
                         : undefined
                     }
                   >
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getVisibleCells().map((cell, cellIndex) => (
                       <TableCell
                         key={cell.id}
-                        className={priorityClass(cell.column.columnDef.meta?.priority)}
+                        className={cn(
+                          priorityClass(cell.column.columnDef.meta?.priority),
+                          cellIndex === 0 ? "font-medium" : "text-muted-foreground",
+                        )}
                       >
                         {open && cell.column.id === linkColumnId ? (
                           <LinkedCell

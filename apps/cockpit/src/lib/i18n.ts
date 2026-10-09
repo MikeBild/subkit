@@ -8456,7 +8456,7 @@ export function formatRelativeTime(locale: Locale, value: string, now = Date.now
   const abs = Math.abs(seconds);
   const rtf = new Intl.RelativeTimeFormat(LOCALE_TAGS[locale], {
     numeric: "auto",
-    style: "narrow",
+    style: "short",
   });
   if (abs < 60)
     return rtf.format(0, "second").replace(/^in 0 s$|^jetzt$/i, locale === "de" ? "jetzt" : "now");
