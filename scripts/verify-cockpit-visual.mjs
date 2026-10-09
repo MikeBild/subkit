@@ -4288,19 +4288,33 @@ try {
             );
           const localizedRoles =
             locale.name === "de"
-              ? ["Metrik-Abruf", "Portalnutzer", "Kann Prometheus-Metriken", "Portal-Zugriffstoken"]
+              ? [
+                  ["Metrik-Abruf", "Kann Prometheus-Metriken"],
+                  ["Portalnutzer", "Portal-Zugriffstoken"],
+                ]
               : [
-                  "Metrics scraper",
-                  "Portal token user",
-                  "Can read Prometheus metrics",
-                  "portal access tokens",
+                  ["Metrics scraper", "Can read Prometheus metrics"],
+                  ["Portal token user", "portal access tokens"],
                 ];
-          for (const expected of localizedRoles) {
-            if (!text.includes(expected)) {
+          for (const [name, description] of localizedRoles) {
+            if (!text.includes(name))
               throw new Error(
-                `${locale.artifact}/${viewport.name}/${route} misses localized built-in role text: ${expected}`,
+                `${locale.artifact}/${viewport.name}/${route} misses localized built-in role name: ${name}`,
               );
-            }
+            const label = locale.name === "de" ? `Rolle öffnen: ${name}` : `Open role: ${name}`;
+            await page
+              .getByRole("button", { name: label, exact: true })
+              .filter({ visible: true })
+              .click();
+            const sheet = page.getByTestId("role-sheet");
+            await sheet.waitFor({ state: "visible" });
+            const shown = await sheet.innerText();
+            if (!shown.includes(name) || !shown.includes(description))
+              throw new Error(
+                `${locale.artifact}/${viewport.name}/${route} role sheet misses localized built-in role text: ${name} / ${description}`,
+              );
+            await page.getByTestId("role-sheet-close").click();
+            await sheet.waitFor({ state: "hidden" });
           }
         }
         if (route === "" || route === "workflows" || route === "usage")
@@ -4738,14 +4752,50 @@ try {
         await shoot(page, `${locale.artifact}-desktop-chat-list`, {
           fullPage: false,
         });
-        await page.locator('[data-testid="conversation-toggle-hidden"]').click();
-        await page
-          .locator('[data-testid="conversation-hidden-empty"]')
-          .waitFor({ state: "visible" });
-        await shoot(page, `${locale.artifact}-desktop-chat-hidden`, {
-          fullPage: false,
-        });
-        await page.locator('[data-testid="conversation-toggle-hidden"]').click();
+        if ((await page.getByTestId("conversation-toggle-hidden").count()) !== 0)
+          throw new Error(`${locale.artifact}: an empty hidden list still offers a hidden toggle`);
+        const hiddenRecord = {
+          ...conversation,
+          id: "00000000-0000-4000-8000-000000000099",
+          title: "Hidden conversation fixture",
+          hidden: true,
+        };
+        const hiddenPattern = "**/v1/conversations?**";
+        const hiddenRoute = async (route) => {
+          const request = route.request();
+          const url = new URL(request.url());
+          if (
+            request.method() === "GET" &&
+            url.pathname === "/v1/conversations" &&
+            url.searchParams.get("hidden") === "only"
+          )
+            return route.fulfill({ json: { items: [hiddenRecord], total: 1 } });
+          return route.fallback();
+        };
+        await page.route(hiddenPattern, hiddenRoute);
+        try {
+          await stand.visit(page, `chat/${conversation.id}`);
+          await openConversationList(page);
+          await page.getByTestId("conversation-toggle-hidden").click();
+          await page
+            .getByTestId("conversation-item-0")
+            .filter({ hasText: hiddenRecord.title })
+            .waitFor();
+          if ((await page.getByTestId("conversation-hidden-empty").count()) !== 0)
+            throw new Error(
+              `${locale.artifact}: an existing hidden conversation is reported empty`,
+            );
+          await shoot(page, `${locale.artifact}-desktop-chat-hidden`, { fullPage: false });
+          await page.getByTestId("conversation-toggle-hidden").click();
+          await page
+            .getByTestId("conversation-item-0")
+            .filter({ hasNotText: hiddenRecord.title })
+            .waitFor();
+        } finally {
+          await page.unroute(hiddenPattern, hiddenRoute);
+          await stand.visit(page, "chat");
+          await openConversationList(page);
+        }
         await closeConversationList(page);
         await page.locator('[data-testid="conversation-new"]').click();
         await page.locator('[data-testid="chat-empty"]').waitFor({ state: "visible" });
