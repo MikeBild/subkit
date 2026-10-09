@@ -18,6 +18,7 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   clean: "ok",
   committed: "ok",
   valid: "ok",
+  verified: "ok",
   failed: "error",
   error: "error",
   expired: "error",

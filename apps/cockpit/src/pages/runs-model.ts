@@ -176,6 +176,58 @@ export function runAuthorityFacts(
   ];
 }
 
+const VERIFICATION_KEYS = {
+  api_key: "runs.caller.method.api_key",
+  browser_session: "runs.caller.method.browser_session",
+  mcp_oauth: "runs.caller.method.mcp_oauth",
+  token_exchange: "runs.caller.method.token_exchange",
+} as const satisfies Record<string, TranslationKey>;
+
+export type RunCaller = {
+  who: string;
+  channel: string | null;
+  state: "verified" | "automatic";
+  why: RunFact[];
+};
+
+export function runCaller(
+  run: Pick<
+    Execution,
+    "caller" | "request_source" | "execution_authority_id" | "workflow_version_id" | "hold_writes"
+  >,
+  directory: ReadonlyMap<string, string>,
+  t: Translate,
+): RunCaller {
+  const { caller } = run;
+  const channel = requestSourceLabel(run.request_source, t).text;
+  const verified = caller.verified_by !== null;
+  const kindLabel = t(
+    caller.kind === "system_account" ? "runs.caller.systemAccount" : "runs.caller.person",
+  );
+  const who =
+    caller.kind === "engine"
+      ? channel
+      : ((caller.principal_id ? directory.get(caller.principal_id) : undefined) ?? kindLabel);
+  return {
+    who,
+    channel: caller.kind === "engine" ? null : channel,
+    state: verified ? "verified" : "automatic",
+    why: [
+      [
+        t("runs.caller.verifiedBy"),
+        t(caller.verified_by ? VERIFICATION_KEYS[caller.verified_by] : "runs.caller.method.none"),
+      ],
+      ...(caller.provider && verified
+        ? [[t("runs.caller.provider"), caller.provider] as RunFact]
+        : []),
+      ...runAuthorityFacts(run, t),
+      ...(caller.origin_execution_id
+        ? [identifierFact(t("runs.caller.origin"), caller.origin_execution_id)]
+        : []),
+    ],
+  };
+}
+
 export function runName(run: Execution, t: Translate): string {
   if (run.workflow_name?.trim()) return run.workflow_name;
   return t(SOURCE_KIND_KEYS[run.source_kind] ?? "runs.sourceKind.saved");
