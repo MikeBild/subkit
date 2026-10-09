@@ -222,8 +222,8 @@ export function CatalogOriginSummary({
           value={origin.value}
           onValueChange={origin.setValue}
           options={[
-            { value: "all", label: t("catalog.originAll") },
-            { value: "llm", label: t("catalog.originAI") },
+            { value: "all", label: t("catalog.originAll"), testId: "catalog-origin-all" },
+            { value: "llm", label: t("catalog.originAI"), testId: "catalog-origin-llm" },
           ]}
           testId="catalog-origin"
         />

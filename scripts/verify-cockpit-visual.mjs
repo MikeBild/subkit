@@ -31,6 +31,7 @@ import { verifyChatReviewCard, verifyGrantDialog } from "./lib/cockpit-grant-dia
 import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
+import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
@@ -4431,6 +4432,12 @@ try {
       if (standOn(verifyChatActivity))
         await verifyChatActivity(page, stand, conversation, locale.name, (state) =>
           shoot(page, `${locale.artifact}-${viewport.name}-chat-activity-${state}`, {
+            fullPage: false,
+          }),
+        );
+      if (standOn(verifyKnowledgeTotals))
+        await verifyKnowledgeTotals(page, stand, locale.name, (state) =>
+          shoot(page, `${locale.artifact}-${viewport.name}-knowledge-totals-${state}`, {
             fullPage: false,
           }),
         );
