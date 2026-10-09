@@ -163,7 +163,7 @@ function Figure({
       {basis ? ` · ${t(basis)}` : null}
     </p>
   );
-  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3.5";
+  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3";
   if (figure.state !== "value") {
     const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
     return (
