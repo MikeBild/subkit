@@ -75,6 +75,18 @@ describe("the self-description set", () => {
     }
   });
 
+  test("coding-agent docs explain setup, verification, and manual recognition boundaries", async () => {
+    const index = await (await get("/llms.txt")).text();
+    expect(index).toContain("[Use sk from a coding agent](http://127.0.0.1/llms/coding-agents.md)");
+    const page = await (await get("/llms/coding-agents.md")).text();
+    expect(page).toContain(
+      "In each repository, run `sk agent init --domains <category>[,<category>]`",
+    );
+    expect(page).toContain("Use `sk agent briefing --json`");
+    expect(page).toContain("Hooks do not discover the repository's domain automatically");
+    expect(page).toContain("one-time trust in Codex's `/hooks` UI");
+  });
+
   test("no served page links to a page the binary does not carry", async () => {
     for (const rel of LLMS_PAGE_PATHS) {
       const body = await (await get(`/llms/${rel}`)).text();

@@ -76,7 +76,17 @@ codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_K
 sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
 ```
 
-Every approved workflow is then a tool in the agent, with the rights of the key and nothing more.
+Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks do not infer the repository's domains on their own. Both use the same authenticated sk profile as the CLI.
+
+### Set up and verify briefings
+
+MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit the generated `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` wires Claude Code SessionStart, UserPromptSubmit and SessionEnd hooks, and Codex SessionStart and UserPromptSubmit hooks. It is safe to rerun; `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+
+Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
+
+Hooks walk up from the working directory for `.sk/agent.json`; without it they stay silent. Run `sk agent init --domains <category>[,<category>]` once in each repository and commit that file. Each successful briefing gives the model the full domain context and shows you a concise status with loaded materials and any skill proposals awaiting review. If the engine is unreachable, the key is missing, or the declaration is invalid, the client shows a warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
+
+For open-ended check-ins, the briefing tells the agent to interpret the question using the domain declared by the current repository and the connected sources that best answer it. It distinguishes live service state from repository changes and static knowledge, and reports when a relevant source is unavailable. A repository without `.sk/agent.json` does not inherit another folder's briefing.
 
 ## License
 

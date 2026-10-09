@@ -43,11 +43,11 @@ sk agent init --domains <category>[,<category>]   # e.g. rechnungswesen or blog-
 What `init` does:
 
 - writes `.sk/agent.json` (`{"domains":[...],"budget_tokens":4000}` when `--budget` is given); commit it so every checkout is briefed;
-- wires Claude Code in `~/.claude/settings.json`: SessionStart (startup, resume, clear, compact) and UserPromptSubmit run `sk agent briefing --hook`, SessionEnd runs `sk agent capture --hook`;
+- wires Claude Code in `~/.claude/settings.json`: SessionStart (startup, resume, clear, compact, fork) and UserPromptSubmit run `sk agent briefing --hook`, SessionEnd runs `sk agent capture --hook`;
 - wires Codex in `~/.codex/hooks.json`: SessionStart and UserPromptSubmit run `sk agent briefing --hook` with `additionalContextLimit: 0`, so Codex hands the whole briefing to the model instead of spilling it to a file; no capture, because Codex's Stop hook fires after every turn;
 - prints what stays manual: Codex needs `[features] hooks = true` in `~/.codex/config.toml` and the hooks must be trusted once under `/hooks` inside `codex`; Hermes has no hooks and gets the briefing by running `sk agent briefing` in the repository.
 
-`--skip-claude` and `--skip-codex` leave the respective file untouched. Running `init` again changes nothing that is already wired. Outside a repository with `.sk/agent.json` the hooks stay silent and never fail a session.
+`--skip-claude` and `--skip-codex` leave the respective file untouched. Running `init` again reconciles SubKit's hook settings while preserving other tools' hooks. Outside a repository with `.sk/agent.json` the hooks stay silent. A successful hook gives the model the full briefing and shows the person a concise status with loaded domains, included materials, and skill proposals awaiting review. A failed fetch or invalid configuration shows a warning and lets the session continue.
 
 # What a briefing is
 
@@ -83,12 +83,13 @@ sk agent briefing --domains <category> --json | jq '{used_tokens, knowledge_sour
 
 At the end of a Claude Code session the transcript goes to the engine; the engine keeps only rules a person explicitly taught or confirmed and files them as candidates. `sk learnings list` shows them, `sk learnings review` decides them one by one, `sk skill-candidates approve|reject <id>` scripts the decision. A fact becomes part of the domain's knowledge source `learnings-<domain>` (needs `knowledge:write`); a practice becomes a draft skill that joins briefings once activated. Inside a chat, `save_learning` files the same candidates.
 
-# When no briefing arrives
+# When a briefing is missing or a warning appears
 
-- No `.sk/agent.json` up the directory tree: hooks are silent by design. Run `sk agent init`.
-- The profile has no API key: hooks make no request. `sk status` shows the profile; `sk login --api-key` or `SK_API_KEY` fixes it.
+- No `.sk/agent.json` up the directory tree: hooks are silent by design. Run `sk agent init --domains <category>` from the repository and commit the file.
+- Start the client in the declared repository or one of its subdirectories. A parent workspace without `.sk/agent.json` is intentionally silent.
+- Run `sk status`, then `sk agent briefing --json` in the repository to check credentials and the engine response. If the profile has no API key, use `sk login --api-key` or set `SK_API_KEY`.
 - `sk` is not on the PATH of a client started from the desktop: put the absolute path into the hook commands.
-- Codex skips edited hooks until they are trusted under `/hooks`, and runs no hooks at all without `[features] hooks = true`.
+- In either client, inspect `/hooks` to confirm briefing hooks are enabled and see hook errors. Codex also skips edited hooks until trusted and runs no hooks without `[features] hooks = true`.
 - Codex shows only a head-and-tail preview: the hook lacks `additionalContextLimit: 0`; `sk agent init` sets it.
 - Nothing listed under Knowledge index or Conventions: the sources and skills are in another category and carry no `domain:` tag.
-- Every hook request gives up after four seconds and logs to `~/.sk/debug.log` as `agent.briefing_hook_failed` or `agent.capture_hook_failed`.
+- Every hook request gives up after four seconds, displays a non-blocking warning, and logs detail to `~/.sk/debug.log` as `agent.briefing_hook_failed` or `agent.capture_hook_failed`.

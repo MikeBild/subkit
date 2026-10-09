@@ -19,6 +19,7 @@ import {
   codexHookSnippet,
   findAgentFile,
   forgetBriefed,
+  getBriefingHookOutput,
   newPromptDomains,
   parseHookPayload,
   planBriefing,
@@ -50,11 +51,18 @@ describe("findAgentFile", () => {
     expect(findAgentFile(root)).toBeNull();
   });
 
-  test("returns null for an empty domains list", () => {
+  test("rejects an empty domains list", () => {
     const root = mkdtempSync(join(tmpdir(), "sk-agent-empty-"));
     mkdirSync(join(root, ".sk"), { recursive: true });
     writeFileSync(join(root, AGENT_FILE_RELPATH), JSON.stringify({ domains: [] }));
-    expect(findAgentFile(root)).toBeNull();
+    expect(() => findAgentFile(root)).toThrow("domains must contain at least one domain slug");
+  });
+
+  test("reports malformed declarations as configuration errors", () => {
+    const root = mkdtempSync(join(tmpdir(), "sk-agent-invalid-json-"));
+    mkdirSync(join(root, ".sk"), { recursive: true });
+    writeFileSync(join(root, AGENT_FILE_RELPATH), "{invalid");
+    expect(() => findAgentFile(root)).toThrow(".sk/agent.json: invalid JSON");
   });
 });
 
@@ -68,7 +76,7 @@ describe("wireClaudeHooks", () => {
       hooks: Array<{ command: string }>;
     }>;
     expect(sessionStart).toHaveLength(1);
-    expect(sessionStart[0]?.matcher).toBe("startup|resume|clear|compact");
+    expect(sessionStart[0]?.matcher).toBe("startup|resume|clear|compact|fork");
     expect(sessionStart[0]?.hooks[0]?.command).toContain("sk agent briefing --hook");
     const prompt = hooks.UserPromptSubmit as Array<{
       matcher?: string;
@@ -83,7 +91,7 @@ describe("wireClaudeHooks", () => {
     expect(sessionEnd[0]?.hooks[0]?.command).toContain("sk agent capture --hook");
   });
 
-  test("an earlier install gains only the prompt hook, and a second run changes nothing", () => {
+  test("an earlier install is reconciled and a second run changes nothing", () => {
     const earlier = {
       hooks: {
         SessionStart: [
@@ -95,8 +103,12 @@ describe("wireClaudeHooks", () => {
     const updated = wireClaudeHooks(earlier);
     if (!updated) throw new Error("expected settings update");
     const hooks = updated.hooks as Record<string, unknown[]>;
-    expect(hooks.SessionStart).toEqual(earlier.hooks.SessionStart);
-    expect(hooks.SessionEnd).toEqual(earlier.hooks.SessionEnd);
+    expect((hooks.SessionStart as Array<{ matcher: string }>)[0]?.matcher).toBe(
+      "startup|resume|clear|compact|fork",
+    );
+    expect(
+      (hooks.SessionEnd as Array<{ hooks: Array<{ timeout: number }> }>)[0]?.hooks[0]?.timeout,
+    ).toBeGreaterThan(0);
     expect(hooks.UserPromptSubmit).toHaveLength(1);
     expect(wireClaudeHooks(updated)).toBeNull();
   });
@@ -123,6 +135,36 @@ describe("wireClaudeHooks", () => {
     const sessionStart = hooks.SessionStart as unknown[];
     expect(sessionStart).toHaveLength(2);
   });
+
+  test("updates SubKit inside a shared hook group without dropping sibling handlers", () => {
+    const updated = wireClaudeHooks({
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "startup",
+            hooks: [
+              { type: "command", command: "sk agent briefing --hook", timeout: 5 },
+              { type: "command", command: "other-tool", timeout: 7 },
+            ],
+          },
+        ],
+      },
+    });
+    if (!updated) throw new Error("expected settings update");
+    const entries = (
+      updated.hooks as Record<
+        string,
+        Array<{ hooks: Array<{ command: string; timeout?: number }> }>
+      >
+    ).SessionStart;
+    expect(entries?.flatMap((entry) => entry.hooks.map((hook) => hook.command))).toContain(
+      "other-tool",
+    );
+    const subkit = entries
+      ?.flatMap((entry) => entry.hooks)
+      .find((hook) => hook.command === "sk agent briefing --hook");
+    expect(subkit?.timeout).toBeGreaterThan(5);
+  });
 });
 
 describe("wireCodexHooks", () => {
@@ -133,12 +175,17 @@ describe("wireCodexHooks", () => {
       string,
       Array<{
         matcher?: string;
-        hooks: Array<{ command: string; additionalContextLimit?: number }>;
+        hooks: Array<{
+          command: string;
+          additionalContextLimit?: number;
+          statusMessage?: string;
+        }>;
       }>
     >;
     expect(hooks.SessionStart?.[0]?.matcher).toBe("startup|resume|clear|compact");
     expect(hooks.SessionStart?.[0]?.hooks[0]?.command).toBe("sk agent briefing --hook");
     expect(hooks.SessionStart?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
+    expect(hooks.SessionStart?.[0]?.hooks[0]?.statusMessage).toBe("Loading repository briefing");
     expect(hooks.UserPromptSubmit?.[0]?.hooks[0]?.additionalContextLimit).toBe(0);
     expect(hooks.Stop).toBeUndefined();
     expect(hooks.SessionEnd).toBeUndefined();
@@ -153,15 +200,59 @@ describe("wireCodexHooks", () => {
     expect((updated.hooks as Record<string, unknown>).Stop).toEqual(existing.hooks.Stop);
     expect(wireCodexHooks(updated)).toBeNull();
   });
+
+  test("reconciles stale SubKit Codex settings without changing sibling hooks", () => {
+    const updated = wireCodexHooks({
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "startup",
+            hooks: [
+              { type: "command", command: "sk agent briefing --hook", timeout: 5 },
+              { type: "command", command: "other-tool", timeout: 7 },
+            ],
+          },
+        ],
+      },
+    });
+    if (!updated) throw new Error("expected hooks update");
+    const hooks = updated.hooks as Record<
+      string,
+      Array<{
+        matcher?: string;
+        hooks: Array<{
+          command: string;
+          timeout?: number;
+          additionalContextLimit?: number;
+          statusMessage?: string;
+        }>;
+      }>
+    >;
+    const subkit = hooks.SessionStart?.flatMap((entry) => entry.hooks).find(
+      (hook) => hook.command === "sk agent briefing --hook",
+    );
+    expect(subkit?.timeout).toBeGreaterThan(5);
+    expect(subkit?.additionalContextLimit).toBe(0);
+    expect(subkit?.statusMessage).toBe("Loading repository briefing");
+    expect(
+      hooks.SessionStart?.flatMap((entry) => entry.hooks.map((hook) => hook.command)),
+    ).toContain("other-tool");
+  });
 });
 
 describe("hook payload", () => {
   test("reads the prompt of a UserPromptSubmit payload", () => {
     expect(
       parseHookPayload(
-        JSON.stringify({ cwd: "/r", session_id: "s1", prompt: "page the ops on-call" }),
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          cwd: "/r",
+          session_id: "s1",
+          prompt: "page the ops on-call",
+        }),
       ),
     ).toEqual({
+      hook_event_name: "UserPromptSubmit",
       cwd: "/r",
       session_id: "s1",
       transcript_path: null,
@@ -288,6 +379,8 @@ describe("sk agent init", () => {
     expect(output).toContain("Codex (finish by hand):");
     expect(output).toContain("hooks = true");
     expect(output).toContain("/hooks");
+    expect(output).toContain("model receives the full briefing");
+    expect(output).toContain("client shows loaded domains");
     expect(output).toContain("Hermes (manual):");
     expect(output).toContain("https://engine.example.test/mcp");
     expect(output).toContain("sk agent briefing");
@@ -355,5 +448,143 @@ describe("hook clients", () => {
     expect(snippet).toContain('"Stop"');
     expect(snippet).not.toContain('"SessionStart"');
     expect(snippet).not.toContain("cheap");
+  });
+});
+
+describe("briefing hook output", () => {
+  let savedDebugFile: string | undefined;
+
+  beforeEach(() => {
+    savedDebugFile = process.env.SK_DEBUG_FILE;
+    process.env.SK_DEBUG_FILE = join(
+      mkdtempSync(join(tmpdir(), "sk-agent-hook-log-")),
+      "debug.log",
+    );
+  });
+
+  afterEach(() => {
+    if (savedDebugFile === undefined) delete process.env.SK_DEBUG_FILE;
+    else process.env.SK_DEBUG_FILE = savedDebugFile;
+  });
+
+  function fixture(domains: unknown = ["ops"]) {
+    const root = mkdtempSync(join(tmpdir(), "sk-agent-hook-"));
+    mkdirSync(join(root, ".sk"), { recursive: true });
+    writeFileSync(join(root, AGENT_FILE_RELPATH), JSON.stringify({ domains }));
+    return root;
+  }
+
+  function payload(cwd: string, event = "SessionStart") {
+    return {
+      hook_event_name: event,
+      cwd,
+      session_id: "session-1",
+      transcript_path: null,
+      prompt: event === "UserPromptSubmit" ? "page ops" : null,
+    };
+  }
+
+  const profile = {
+    name: "test",
+    engine_url: "http://engine.invalid",
+    api_key: "wf_live_probe",
+    active_tenant_id: null,
+  };
+
+  test("injects the briefing and confirms loaded domains for either client event", async () => {
+    for (const event of ["SessionStart", "UserPromptSubmit"]) {
+      const root = fixture();
+      const fetchImpl = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/agent/domains")) {
+          return new Response(
+            JSON.stringify({ domains: [], from_prompt: ["blog-de"], from_repo: [] }),
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            markdown: "# Domain briefing",
+            domains: ["ops", "blog-de"],
+            skills_full: ["house-style"],
+            skills_title_only: ["release-check"],
+            knowledge_sources: ["ops-handbook", "blog-guide"],
+            workflows: ["publish-post"],
+            connectors: [],
+            proposed_candidates: 3,
+          }),
+        );
+      }) as typeof fetch;
+      const result = await getBriefingHookOutput(payload(root, event), {
+        profile,
+        fetchImpl,
+        sessionDirectory: join(root, "sessions"),
+      });
+      expect(result).not.toBeNull();
+      expect(result?.systemMessage).toBe(
+        event === "SessionStart"
+          ? "SubKit briefing loaded: ops — 2 skills, 2 knowledge sources, 1 workflow; 3 skill proposals await review (run `sk learnings review`)."
+          : "SubKit briefing loaded: blog-de — 2 skills, 2 knowledge sources, 1 workflow; 3 skill proposals await review (run `sk learnings review`).",
+      );
+      expect(result?.hookSpecificOutput).toEqual({
+        hookEventName: event,
+        additionalContext: expect.stringContaining(
+          "Interpret a brief check-in as asking what is relevant to this repository's declared domain context",
+        ),
+      });
+      expect(result?.hookSpecificOutput?.additionalContext).not.toContain("For SubKit check-ins");
+    }
+  });
+
+  test("routes open-ended check-ins through the declared SubKit domain and live status tools", async () => {
+    const root = fixture(["subkit"]);
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          markdown: "# SubKit briefing",
+          domains: ["subkit"],
+          skills_full: [],
+          skills_title_only: [],
+          knowledge_sources: [],
+          workflows: [],
+          connectors: [],
+          proposed_candidates: 0,
+        }),
+      )) as unknown as typeof fetch;
+    const result = await getBriefingHookOutput(payload(root), {
+      profile,
+      fetchImpl,
+      sessionDirectory: join(root, "sessions"),
+    });
+    expect(result?.hookSpecificOutput?.additionalContext).toContain(
+      "call `list_skill_suggestions` and `list_skill_candidates` for their separate review queues",
+    );
+    expect(result?.hookSpecificOutput?.additionalContext).toContain(
+      "use `list_workflows` and follow up any blocked or otherwise attention-worthy workflow with `get_workflow`",
+    );
+  });
+
+  test("stays silent in undeclared repositories and warns on invalid declarations or absent API keys", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "sk-agent-outside-"));
+    expect(await getBriefingHookOutput(payload(outside), { profile })).toBeNull();
+    const invalid = fixture([]);
+    const invalidResult = await getBriefingHookOutput(payload(invalid), { profile });
+    expect(invalidResult?.systemMessage).toContain("configuration is invalid");
+    const declared = fixture();
+    const missingKey = await getBriefingHookOutput(payload(declared), {
+      profile: { ...profile, api_key: "" },
+    });
+    expect(missingKey?.systemMessage).toContain("no API key");
+  });
+
+  test("shows a visible warning when the engine rejects or cannot serve a briefing", async () => {
+    for (const status of [401, 503]) {
+      const root = fixture();
+      const fetchImpl = (async () =>
+        new Response("unavailable", { status })) as unknown as typeof fetch;
+      const result = await getBriefingHookOutput(payload(root), { profile, fetchImpl });
+      expect(result?.systemMessage).toContain("SubKit briefing unavailable:");
+      expect(result?.systemMessage).toContain("The session will continue");
+      expect(result?.hookSpecificOutput?.hookEventName).toBe("SessionStart");
+    }
   });
 });
