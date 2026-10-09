@@ -53,6 +53,7 @@ export interface SubkitLlmObjectGeneratorInput {
   tools?: SubkitLlmToolWithContext[];
   metadata?: Record<string, unknown>;
   maxAttempts?: number;
+  maxOutputTokens?: number;
   signal?: AbortSignal;
 }
 

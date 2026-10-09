@@ -8,8 +8,10 @@ import { AiSdkModel } from "../apps/engine/src/llm/core/ai-sdk-model.ts";
 import { initializeModel, withToolInputExamples } from "../apps/engine/src/llm/core/model-init.ts";
 import { zodToJsonSchema7 } from "../apps/engine/src/mcp/json-schema.ts";
 import {
+  assertLiveInputBound,
   exitCodeFor,
   LIVE_CHECK_NAMES,
+  LIVE_OUTPUT_TOKEN_LIMITS,
   type LiveArgs,
   type LiveCheckName,
   type LiveCheckResult,
@@ -26,7 +28,45 @@ interface LiveTarget {
   timeoutMs: number;
 }
 
-function liveModel(target: LiveTarget): AiSdkModel {
+function trackedGenerateText(target: LiveTarget, check: LiveCheckName): typeof generateText {
+  return (async (...args: Parameters<typeof generateText>) => {
+    const options = args[0];
+    const format = options.output ? await options.output.responseFormat : undefined;
+    const inputBytes = assertLiveInputBound({
+      messages: options.messages,
+      tools: options.tools,
+      output: format,
+    });
+    if (options.maxRetries !== 0 || options.maxOutputTokens !== LIVE_OUTPUT_TOKEN_LIMITS[check]) {
+      throw new Error("live gate request does not enforce its retry and output limits");
+    }
+    console.log(
+      `verify:llm-live:request ${JSON.stringify({
+        model: target.model,
+        check,
+        input_bytes: inputBytes,
+        max_requests: check === "tool_input_examples" ? 1 : 2,
+        max_output_tokens_per_request: LIVE_OUTPUT_TOKEN_LIMITS[check],
+      })}`,
+    );
+    const result = await generateText(...args);
+    console.log(
+      `verify:llm-live:usage ${JSON.stringify({
+        model: target.model,
+        check,
+        input_bytes: inputBytes,
+        requests: result.steps.length,
+        max_requests: check === "tool_input_examples" ? 1 : 2,
+        max_output_tokens_per_request: LIVE_OUTPUT_TOKEN_LIMITS[check],
+        input_tokens: result.totalUsage.inputTokens ?? null,
+        output_tokens: result.totalUsage.outputTokens ?? null,
+      })}`,
+    );
+    return result;
+  }) as typeof generateText;
+}
+
+function liveModel(target: LiveTarget, check: LiveCheckName): AiSdkModel {
   return new AiSdkModel({
     providerOverride: "anthropic",
     apiKeyOverride: target.key,
@@ -34,6 +74,7 @@ function liveModel(target: LiveTarget): AiSdkModel {
     modelOverride: target.model,
     maxRetries: 0,
     callTimeoutMs: target.timeoutMs,
+    generateTextFn: trackedGenerateText(target, check),
   });
 }
 
@@ -46,7 +87,7 @@ const GENERATE_GOAL = [
 ].join("\n");
 
 async function checkGenerateWorkflow(target: LiveTarget): Promise<string> {
-  const out = await liveModel(target).generateObject<unknown>({
+  const out = await liveModel(target, "generate_workflow").generateObject<unknown>({
     messages: [
       {
         role: "system",
@@ -57,6 +98,7 @@ async function checkGenerateWorkflow(target: LiveTarget): Promise<string> {
     ],
     schema: zodToJsonSchema7(GeneratedWorkflowSchema),
     maxAttempts: 2,
+    maxOutputTokens: LIVE_OUTPUT_TOKEN_LIMITS.generate_workflow,
   });
   if (!out.success) throw new Error(`structured generation failed: ${String(out.response)}`);
   const parsed = GeneratedWorkflowSchema.safeParse(out.response);
@@ -79,7 +121,7 @@ const JUDGE_CASE = [
 ].join("\n");
 
 async function checkJudgeVerdict(target: LiveTarget): Promise<string> {
-  const out = await liveModel(target).generateObject<unknown>({
+  const out = await liveModel(target, "judge_verdict").generateObject<unknown>({
     messages: [
       {
         role: "system",
@@ -90,6 +132,7 @@ async function checkJudgeVerdict(target: LiveTarget): Promise<string> {
     ],
     schema: zodToJsonSchema7(JudgeVerdictSchema),
     maxAttempts: 2,
+    maxOutputTokens: LIVE_OUTPUT_TOKEN_LIMITS.judge_verdict,
   });
   if (!out.success) throw new Error(`structured judge call failed: ${String(out.response)}`);
   const parsed = JudgeVerdictSchema.safeParse(out.response);
@@ -112,7 +155,10 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
   if (typeof model === "string") {
     throw new Error(`provider resolved to a gateway model id (${model}) instead of a model`);
   }
-  const result = await generateText({
+  const result = await trackedGenerateText(
+    target,
+    "tool_input_examples",
+  )({
     model,
     messages: [
       {
@@ -135,6 +181,7 @@ async function checkToolInputExamples(target: LiveTarget): Promise<string> {
     toolChoice: "required",
     include: { requestBody: true },
     maxRetries: 0,
+    maxOutputTokens: LIVE_OUTPUT_TOKEN_LIMITS.tool_input_examples,
     timeout: { totalMs: target.timeoutMs },
   });
   const body =
