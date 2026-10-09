@@ -52,7 +52,7 @@ sk
 
 HTTP and MCP runs derive caller identity from their authenticated principal. Trusted callerless webhook and scheduled runs receive `null`; the person who configured or approved them is not automatically their caller. Child workflows retain the parent's caller. Use `required_caller_kind` and `product_id` when a workflow requires a particular authenticated identity, and never infer one from input fields or `request_source`.
 
-Run inspection exposes source, status, workflow version, execution authority and step evidence. The engine persists `caller_context`, but HTTP execution serialization and `get_execution` do not expose it. Audit actor and trace metadata provide partial correlation, not a complete caller timeline; MCP inspection offers fewer filters than HTTP. See the built-in Core Concepts, Auth Flows and REST API guidance for the contract and its limits.
+Run inspection exposes source, status, workflow version, execution authority, step evidence and a safe `caller` summary through HTTP and MCP. The summary names the stored principal, product, authentication method, channel and origin run without exposing credentials or session identifiers. Missing stored identity is `kind: unknown`; a channel alone cannot identify a caller. HTTP audit queries and MCP `list_audit` can filter by actor and trace. These records provide partial correlation, not a complete caller timeline. See the built-in Core Concepts, Auth Flows and REST API guidance for the contract and its limits.
 
 ## Product identity binding
 
