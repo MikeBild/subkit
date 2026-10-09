@@ -398,7 +398,8 @@ export function evaluateClarificationTargets(
     laterCalls.some((c) => ASK_TOOLS.has(c.tool)) ||
     later.some(
       (t) => t.tool_calls.every((c) => !AUTHORING_TOOLS.has(c.tool)) && isProseQuestion(t),
-    );
+    ) ||
+    (guard_fired && refusalNamesPlaceholder);
   const saved =
     obs.results.some((c) => c.tool === "save_workflow_draft") || obs.committed_workflow_id !== null;
   const artifacts = obs.created_artifacts.filter((a) => a.kind !== "conversation");
@@ -723,7 +724,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       },
       {
         name: "asks for the source",
-        pattern: "source|data|which report|from|contain|content|inhalt|quelle|woher",
+        pattern: "source|data|which report|what report|from|contain|content|inhalt|quelle|woher",
         flags: "i",
       },
     ],
@@ -744,7 +745,7 @@ export const LIVE_SCENARIOS: LiveScenarioSpec[] = [
       },
       {
         name: "asks for the source",
-        pattern: "source|data|which report|from|contain|content|inhalt|quelle|woher",
+        pattern: "source|data|which report|what report|from|contain|content|inhalt|quelle|woher",
         flags: "i",
       },
     ],

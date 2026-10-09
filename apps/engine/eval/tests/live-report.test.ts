@@ -1112,3 +1112,45 @@ describe("clarification · a prose question answered through the composer counts
     expect(statement.targets).toMatchObject({ single_clarifying_question: "FAIL" });
   });
 });
+
+describe("clarification · scorer reads real questions the PROD model asked", () => {
+  test("'What report should this workflow email?' asks for the source", () => {
+    const spec = LIVE_SCENARIOS.find((s) => s.slug === "underspecified-placeholder-rejected");
+    const sourceCheck = spec?.content_checks.find((c) => c.name.includes("source"));
+    expect(sourceCheck).toBeDefined();
+    expect(
+      new RegExp(sourceCheck!.pattern, sourceCheck!.flags).test(
+        "What report should this workflow email? (e.g. daily sales report)",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("clarification · a gated build that names the refused placeholder is the renewed ask", () => {
+  test("the model asks for real values in a statement after the gate fired", () => {
+    const score = scoreScenario(
+      NEGATIVE_SPEC,
+      observation(NEGATIVE_SPEC, [
+        turn([call("ask_user_text", ASK_RECIPIENT_AND_SOURCE)], "awaiting_input"),
+        turn(
+          [
+            call(
+              "author_workflow",
+              {},
+              {
+                ok: false,
+                error_code: "workflow_placeholder_destination",
+                placeholder_destinations: [{ path: "steps.send.url", match: "test@example.com" }],
+              },
+            ),
+          ],
+          "active",
+          "The engine needs real values. You provided test@example.com, which cannot be delivered. Please send the real recipient address.",
+        ),
+      ]),
+    );
+    const targets = score.targets as ClarificationTargets;
+    expect(score.guard_fired).toBe(true);
+    expect(targets.placeholder_rejected_after_answer).toBe("PASS");
+  });
+});
