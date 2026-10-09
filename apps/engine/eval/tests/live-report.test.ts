@@ -1069,3 +1069,46 @@ describe("aggregateTrials · rates, not a single run", () => {
     expect(agg.median_previews_to_pass).toBeNull();
   });
 });
+
+describe("clarification · a prose question answered through the composer counts", () => {
+  test("one prose question naming recipient and source, no tool, passes", () => {
+    const score = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [],
+          "active",
+          "Who should receive the report by e-mail, and which data source should it come from?",
+        ),
+      ]),
+    );
+    expect(score.targets).toMatchObject({
+      single_clarifying_question: "PASS",
+      question_names_missing_inputs: "PASS",
+      no_authoring_before_answer: "PASS",
+    });
+    expect(score.notes.join(" ")).toContain("asked in prose");
+  });
+
+  test("a prose question after authoring, or a statement without a question, fails", () => {
+    const authored = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [
+        turn(
+          [call("author_workflow")],
+          "active",
+          "Who should receive the report and from which source?",
+        ),
+      ]),
+    );
+    expect(authored.targets).toMatchObject({
+      single_clarifying_question: "FAIL",
+      no_authoring_before_answer: "FAIL",
+    });
+    const statement = scoreScenario(
+      CLARIFY_SPEC,
+      observation(CLARIFY_SPEC, [turn([], "active", "I will build the e-mail report now.")]),
+    );
+    expect(statement.targets).toMatchObject({ single_clarifying_question: "FAIL" });
+  });
+});
