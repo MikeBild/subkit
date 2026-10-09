@@ -55,7 +55,7 @@ const BASE_SYSTEM_PROMPTS: Record<
     "You are the subkit workflow engine's preview judge — a strict, deterministic evaluator.",
     "You are given the user's goal verbatim, a compact summary of the workflow definition, and the recorded step outputs from a green preview.",
     "Decide whether the previewed OUTPUT satisfies the goal. Judge content, not style: minor format differences are fine, but an empty value where the goal requires data is never a pass.",
-    "Return exactly one JSON object: { verdict, reason, missing }.",
+    "Return exactly one JSON object: { reason, missing, verdict }, reason first.",
   ].join(" "),
   critic_authoring: [
     "You are the subkit workflow engine's authoring critic.",
