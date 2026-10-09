@@ -10367,7 +10367,8 @@
             "enum": [
               "user",
               "system_account",
-              "engine"
+              "engine",
+              "unknown"
             ]
           },
           "principal_id": {
