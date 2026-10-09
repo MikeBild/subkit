@@ -26,7 +26,7 @@ export function versionChange(previous: Documents, current: Documents): FocusedR
 }
 
 export function authorName(author: VersionAuthor, directory: ActorDirectory, t: Translate): string {
-  if (!author) return t("knowledge.versions.subkit");
+  if (!author) return t("runs.caller.unknown");
   return (
     actorDirectoryName(directory, author.kind, author.id) ??
     t(author.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")

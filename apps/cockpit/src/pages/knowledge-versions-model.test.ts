@@ -57,7 +57,7 @@ describe("knowledge versions model", () => {
     ).toEqual([]);
   });
 
-  test("an author is named from the directory, else by kind, and no author is SubKit", () => {
+  test("an author is named from the directory, else by kind, and missing author remains undocumented", () => {
     expect(authorName({ kind: "user", id: USER }, directory, de)).toBe("lena@example.com");
     expect(authorName({ kind: "system_account", id: USER }, directory, de)).toBe("Service");
     expect(versionWhy(`proposed by system_account:${USER}`, directory, de)).toBe(
@@ -65,7 +65,8 @@ describe("knowledge versions model", () => {
     );
     expect(authorName({ kind: "user", id: ROBOT }, directory, de)).toBe("Person");
     expect(authorName({ kind: "system_account", id: ROBOT }, directory, de)).toBe("Systemkonto");
-    expect(authorName(null, directory, de)).toBe("SubKit");
+    expect(authorName(null, directory, de)).toBe("nicht dokumentiert");
+    expect(authorName(null, directory, (key) => translate("en", key))).toBe("not documented");
   });
 
   test("the engine's notes read as a reason in the viewer's language", () => {
