@@ -920,7 +920,9 @@ describe("runAuthoringPipeline — ask-first: placeholder destinations are refus
         expect(result.placeholder_destinations?.map((v) => v.path)).toEqual([path]);
         expect(result.errors.map((e) => e.path)).toEqual([path]);
         expect(result.message).toContain(`${path}: placeholder destination`);
-        expect(result.message).toContain("with ask_user_text or ask_user_form");
+        expect(result.message).toContain(
+          "ask the user for the real value with ask_user_text or ask_user_form",
+        );
         expect(toolCtx._draft.value).toBeNull();
         expect(fetchCalls).toBe(0);
       },
