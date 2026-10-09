@@ -797,6 +797,8 @@ describe("preview judge · the judge sees the final output and the output_schema
     expect(prompt).toContain("Declared output_schema the final output must satisfy");
     expect(prompt).toContain('"required": [');
     expect(prompt).toContain("RAW PAYLOAD IS NOT A RESULT");
+    expect(prompt).toContain("BUILD INSTRUCTIONS ARE NOT OUTPUT");
+    expect(prompt).toContain('"(not output_transform_function)"');
   });
 
   test("without a final output the prompt has no final-output section (held or absent output)", async () => {
