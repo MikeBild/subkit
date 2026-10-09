@@ -44,7 +44,10 @@ describe("converse base prompt — authoring focus blocks", () => {
     const prompt = await basePromptFor("converse", "sk_interactive");
     expect(prompt.content).toContain("BUSINESS DIALOGUE");
     expect(prompt.content).toContain(
-      "ask for exactly those with ONE ask_user_text/ask_user_form BEFORE author_workflow",
+      "ask for every missing one in ONE ask_user_text/ask_user_form BEFORE author_workflow",
+    );
+    expect(prompt.content).toContain(
+      "names the destination (recipient, channel or URL) AND the data source",
     );
     expect(prompt.content).toContain(
       "never substitute a placeholder — the engine rejects placeholder destinations",

@@ -15,7 +15,7 @@ const inputSchema = z
 export const askUserTextTool: ConversationTool = {
   name: "ask_user_text",
   description:
-    "Ask the user to type a free-form answer. The client renders a text input (multiline optional); the submitted string resumes the loop. Pre-fill a known or likely value via `default` so the user confirms instead of retyping.",
+    "Ask the user to type a free-form answer. The client renders a text input (multiline optional); the submitted string resumes the loop. Pre-fill a known or likely value via `default` so the user confirms instead of retyping. When the goal lacks several business inputs (for example the destination and the data source of a report), ask for all of them in this one call: name each one in the question.",
   inputSchema,
   category: "draft_write" as const,
   async execute(ctx, rawArgs): Promise<ToolResult> {
