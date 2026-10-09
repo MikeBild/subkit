@@ -9,6 +9,7 @@ import {
 import { validateAgainstJsonSchema } from "../execution/engine/envelope.ts";
 import { authorityLive } from "../workflows/authority-live.ts";
 import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts";
+import { factVersion, type WorkflowReadFacts } from "../workflows/read-facts.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 import type { ScheduleRow } from "./repo.ts";
@@ -31,19 +32,29 @@ async function inspectAutomationChecked<B extends object>(
   binding: AutomationBinding,
   base: B,
   db: Executor,
+  facts?: WorkflowReadFacts,
 ) {
   if (binding.paused) return { ...base, state: "paused", ready: false } as const;
-  const [workflow] = await db
-    .select({ version: workflows.current_version_id, lifecycle: workflows.lifecycle })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, binding.tenant_id),
-        eq(workflows.id, binding.workflow_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
+  if (facts && facts.tenant_id !== binding.tenant_id)
+    throw new Error("workflow facts tenant mismatch");
+  const found = facts?.workflows.get(binding.workflow_id);
+  const workflow = facts
+    ? found
+      ? { version: found.current_version_id, lifecycle: found.lifecycle }
+      : undefined
+    : (
+        await db
+          .select({ version: workflows.current_version_id, lifecycle: workflows.lifecycle })
+          .from(workflows)
+          .where(
+            and(
+              eq(workflows.tenant_id, binding.tenant_id),
+              eq(workflows.id, binding.workflow_id),
+              isNull(workflows.deleted_at),
+            ),
+          )
+          .limit(1)
+      )[0];
   if (
     !workflow?.version ||
     scheduleNeedsActivation({
@@ -52,17 +63,21 @@ async function inspectAutomationChecked<B extends object>(
     })
   )
     return { ...base, state: "activation_required", ready: false } as const;
-  const [version] = await db
-    .select({ dag: workflowVersions.dag })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, binding.tenant_id),
-        eq(workflowVersions.workflow_id, binding.workflow_id),
-        eq(workflowVersions.id, workflow.version),
-      ),
-    )
-    .limit(1);
+  const version = facts
+    ? factVersion(facts, binding.workflow_id, workflow.version)
+    : (
+        await db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, binding.tenant_id),
+              eq(workflowVersions.workflow_id, binding.workflow_id),
+              eq(workflowVersions.id, workflow.version),
+            ),
+          )
+          .limit(1)
+      )[0];
   const definition = WorkflowDefSchema.parse(version?.dag);
   if (
     binding.input &&
@@ -82,6 +97,7 @@ async function inspectAutomationChecked<B extends object>(
       execution_environment: binding.environment,
     },
     db,
+    { facts },
   );
   if (!preview.eligible_for_repeated_runs)
     return {
@@ -91,20 +107,30 @@ async function inspectAutomationChecked<B extends object>(
       unavailable_steps: preview.unavailable_steps,
       issues: preview.manifest.issues,
     } as const;
-  const [authority] = await db
-    .select({ id: workflowExecutionAuthorities.id })
-    .from(workflowExecutionAuthorities)
-    .where(
-      and(
-        eq(workflowExecutionAuthorities.tenant_id, binding.tenant_id),
-        eq(workflowExecutionAuthorities.workflow_id, binding.workflow_id),
-        eq(workflowExecutionAuthorities.workflow_version_id, workflow.version),
-        eq(workflowExecutionAuthorities.execution_environment, binding.environment),
-        eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
-        authorityLive(),
-      ),
-    )
-    .limit(1);
+  const authority = facts
+    ? facts.liveAuthorities.find(
+        (row) =>
+          row.workflow_id === binding.workflow_id &&
+          row.workflow_version_id === workflow.version &&
+          row.execution_environment === binding.environment &&
+          row.effect_manifest_digest === preview.digest,
+      )
+    : (
+        await db
+          .select({ id: workflowExecutionAuthorities.id })
+          .from(workflowExecutionAuthorities)
+          .where(
+            and(
+              eq(workflowExecutionAuthorities.tenant_id, binding.tenant_id),
+              eq(workflowExecutionAuthorities.workflow_id, binding.workflow_id),
+              eq(workflowExecutionAuthorities.workflow_version_id, workflow.version),
+              eq(workflowExecutionAuthorities.execution_environment, binding.environment),
+              eq(workflowExecutionAuthorities.effect_manifest_digest, preview.digest),
+              authorityLive(),
+            ),
+          )
+          .limit(1)
+      )[0];
   return {
     ...base,
     state: authority ? "authorized" : "approval_required",
@@ -117,15 +143,20 @@ async function inspectAutomation<B extends object>(
   binding: AutomationBinding,
   base: B,
   db: Executor,
+  facts?: WorkflowReadFacts,
 ) {
   try {
-    return await inspectAutomationChecked(binding, base, db);
+    return await inspectAutomationChecked(binding, base, db, facts);
   } catch {
     return { ...base, state: "verification_unavailable", ready: false } as const;
   }
 }
 
-export function inspectScheduleAutomation(schedule: ScheduleRow, db: Executor) {
+export function inspectScheduleAutomation(
+  schedule: ScheduleRow,
+  db: Executor,
+  facts?: WorkflowReadFacts,
+) {
   return inspectAutomation(
     {
       tenant_id: schedule.tenant_id,
@@ -136,12 +167,14 @@ export function inspectScheduleAutomation(schedule: ScheduleRow, db: Executor) {
     },
     { schedule_id: schedule.id, workflow_id: schedule.workflow_id },
     db,
+    facts,
   );
 }
 
 export function inspectInboundHookAutomation(
   hook: Pick<typeof webhooksInbound.$inferSelect, "id" | "tenant_id" | "workflow_id" | "active">,
   db: Executor,
+  facts?: WorkflowReadFacts,
 ) {
   return inspectAutomation(
     {
@@ -152,5 +185,6 @@ export function inspectInboundHookAutomation(
     },
     { inbound_hook_id: hook.id, workflow_id: hook.workflow_id },
     db,
+    facts,
   );
 }

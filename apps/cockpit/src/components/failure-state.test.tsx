@@ -43,13 +43,17 @@ describe("queryView", () => {
 });
 
 describe("ForbiddenState", () => {
-  test("names the missing permission and who grants it, in both languages", () => {
+  test("explains the denied page and names an administrator to contact, in both languages", () => {
     const de = render(<ForbiddenState />, "de");
     expect(de).toContain("Keine Berechtigung");
-    expect(de).toContain("Rolle Administrator");
+    expect(de).toContain(
+      "Du hast keine Berechtigung für diese Seite. Wende dich an deine Administratorin oder deinen Administrator.",
+    );
     const en = render(<ForbiddenState />, "en");
     expect(en).toContain("No permission");
-    expect(en).toContain("Administrator role");
+    expect(en).toContain(
+      "You do not have permission to view this page. Contact your administrator.",
+    );
   });
 
   test("is a titled forbidden state inside the page, never a second page title or an action", () => {

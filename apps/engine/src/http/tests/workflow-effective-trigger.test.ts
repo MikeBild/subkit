@@ -237,3 +237,34 @@ describe("effective trigger on the workflow representation", () => {
     expect(forFifty).toBe(forOne);
   });
 });
+
+test("one HTTP list keeps mixed schedule bindings attached to their own workflows", async () => {
+  const active = await createWorkflow("batch-trigger-active");
+  const paused = await createWorkflow("batch-trigger-paused");
+  const draft = await createWorkflow("batch-trigger-draft");
+  await bindSchedule(active.id, "11 * * * *");
+  const pausedSchedule = await bindSchedule(paused.id, "22 * * * *");
+  await bindSchedule(draft.id, "33 * * * *");
+  const pausedResponse = await fetch(`${ctx.baseUrl}/v1/schedules/${pausedSchedule}`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify({ paused: true }),
+  });
+  expect(pausedResponse.status).toBe(200);
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "draft" })
+    .where(and(eq(workflows.tenant_id, ctx.tenantId), eq(workflows.id, draft.id)));
+  const listed = await listWorkflows("limit=200");
+  for (const [workflow, cron, state] of [
+    [active, "11 * * * *", "active"],
+    [paused, "22 * * * *", "paused"],
+    [draft, "33 * * * *", "activation_required"],
+  ] as const) {
+    const row = listed.find((item) => item.id === workflow.id);
+    expect(row?.effective_trigger).toEqual({ kind: "schedule", source: "binding", state });
+    expect(row?.schedule?.cron).toBe(cron);
+    if (state === "active") expect(row?.schedule?.next_fire_at).toBeTruthy();
+    else expect(row?.schedule?.next_fire_at).toBeNull();
+  }
+});

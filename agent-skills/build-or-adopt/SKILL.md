@@ -5,7 +5,7 @@ description: Use before adding restart-safety, run history, re-run, per-customer
 
 # Build or adopt
 
-> Installed from a running sk engine. The three reference pages next to this
+> Installed from a running sk engine. The reference pages next to this
 > file are that engine's own decision-and-install set, fetched at install time.
 
 ## When this fires
@@ -91,7 +91,8 @@ advance and provable afterwards: several external systems, per-customer
 credentials, a person in the loop, a record of every run.
 `references/connectors.md` lists the systems sk connects out of the box,
 `references/cli.md` every command, and `references/setup.md` takes an adopt
-decision to a running engine.
+decision to a running engine. `references/coding-agents.md` explains repository
+setup, briefing verification and the coding-agent hooks.
 
 ## Files
 
@@ -101,4 +102,5 @@ references/setup.md        from nothing to a running engine
 references/cli.md          every sk command
 references/settings.md     every runtime setting
 references/connectors.md   connector templates and recipes
+references/coding-agents.md repository setup, briefings and coding-agent hooks
 ```

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   type CatalogMetadataPatch,
   catalogMetadataView,
@@ -523,30 +523,85 @@ export function isCircuitOpenBlocking(
   return now_ms - connector.circuit_opened_at.getTime() < connector.circuit_reset_ms;
 }
 
+export interface ConnectorEnvironmentRequest {
+  connector_id: string;
+  environment: Environment;
+}
+
+export function connectorEnvironmentKey(connector_id: string, environment: Environment): string {
+  return `${connector_id}:${environment}`;
+}
+
+export async function getConnectorsForEnvironments(
+  tenant_id: string,
+  requests: readonly ConnectorEnvironmentRequest[],
+  exec?: Executor,
+): Promise<Map<string, ConnectorView | null>> {
+  const result = new Map<string, ConnectorView | null>();
+  if (requests.length === 0) return result;
+  const db = exec ?? getDb();
+  const bases = await db
+    .select()
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.tenant_id, tenant_id),
+        inArray(connectors.id, [...new Set(requests.map((request) => request.connector_id))]),
+        isNull(connectors.deleted_at),
+      ),
+    );
+  const byId = new Map(bases.map((row) => [row.id, row]));
+  const slugs = [
+    ...new Set(
+      requests.flatMap((request) => {
+        const base = byId.get(request.connector_id);
+        return base && base.environment !== request.environment ? [base.slug] : [];
+      }),
+    ),
+  ];
+  const variants =
+    slugs.length === 0
+      ? []
+      : await db
+          .select()
+          .from(connectors)
+          .where(
+            and(
+              eq(connectors.tenant_id, tenant_id),
+              inArray(connectors.slug, slugs),
+              inArray(connectors.environment, [
+                ...new Set(requests.map((request) => request.environment)),
+              ]),
+              isNull(connectors.deleted_at),
+            ),
+          );
+  const bySlugEnvironment = new Map(variants.map((row) => [`${row.slug}:${row.environment}`, row]));
+  for (const request of requests) {
+    const base = byId.get(request.connector_id);
+    const row =
+      base && base.environment !== request.environment
+        ? (bySlugEnvironment.get(`${base.slug}:${request.environment}`) ?? base)
+        : base;
+    result.set(
+      connectorEnvironmentKey(request.connector_id, request.environment),
+      row ? toView(row) : null,
+    );
+  }
+  return result;
+}
+
 export async function getConnectorForEnvironment(
   tenant_id: string,
   id: string,
   environment: Environment,
   exec?: Executor,
 ): Promise<ConnectorView | null> {
-  const db = exec ?? getDb();
-  const base = await getConnector(tenant_id, id, db);
-  if (!base) return null;
-  if (base.environment === environment) return base;
-  const rows = await db
-    .select()
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.tenant_id, tenant_id),
-        eq(connectors.slug, base.slug),
-        eq(connectors.environment, environment),
-        isNull(connectors.deleted_at),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  return row ? toView(row) : base;
+  const rows = await getConnectorsForEnvironments(
+    tenant_id,
+    [{ connector_id: id, environment }],
+    exec,
+  );
+  return rows.get(connectorEnvironmentKey(id, environment)) ?? null;
 }
 
 export async function updateConnector(

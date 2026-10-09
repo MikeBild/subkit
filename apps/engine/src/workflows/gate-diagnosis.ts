@@ -19,6 +19,14 @@ import {
   planUtf8EncoderFix,
 } from "./gate-fix.ts";
 import {
+  assertHistoryScope,
+  assertHistoryStep,
+  assertHistoryVersion,
+  historyScopeKey,
+  historyStepKey,
+  type WorkflowHistoryFacts,
+} from "./history-read-facts.ts";
+import {
   GMAIL_SEND_TARGET,
   isReportMessageRefusal,
   type ReportDeliveryBoundary,
@@ -108,22 +116,35 @@ export async function diagnoseWorkflow(
   tenant_id: string,
   workflow_id: string,
   environment: "dev" | "prod",
-  options: { version_id?: string; preview?: Preview; held?: HeldEvidence } = {},
+  options: {
+    version_id?: string;
+    preview?: Preview;
+    held?: HeldEvidence;
+    facts?: WorkflowHistoryFacts;
+    workflow?: { current_version_id: string | null; draft_version_id: string | null } | null;
+    definition?: unknown;
+  } = {},
 ): Promise<WorkflowDiagnosis | null> {
-  const [workflow] = await db
-    .select({
-      current_version_id: workflows.current_version_id,
-      draft_version_id: workflows.draft_version_id,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, tenant_id),
-        eq(workflows.id, workflow_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
+  if (options.facts) assertHistoryScope(options.facts, tenant_id, workflow_id);
+  const workflow =
+    options.workflow !== undefined
+      ? options.workflow
+      : (
+          await db
+            .select({
+              current_version_id: workflows.current_version_id,
+              draft_version_id: workflows.draft_version_id,
+            })
+            .from(workflows)
+            .where(
+              and(
+                eq(workflows.tenant_id, tenant_id),
+                eq(workflows.id, workflow_id),
+                isNull(workflows.deleted_at),
+              ),
+            )
+            .limit(1)
+        )[0];
   if (!workflow) return null;
   const version_id =
     options.version_id ?? workflow.draft_version_id ?? workflow.current_version_id ?? null;
@@ -140,26 +161,44 @@ export async function diagnoseWorkflow(
     workflow_version_id: version_id,
     execution_environment: environment,
   };
-  const [version] = await db
-    .select({ dag: workflowVersions.dag })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, tenant_id),
-        eq(workflowVersions.workflow_id, workflow_id),
-        eq(workflowVersions.id, version_id),
-      ),
-    )
-    .limit(1);
+  const version = Object.hasOwn(options, "definition")
+    ? options.definition === null
+      ? undefined
+      : { dag: options.definition }
+    : (
+        await db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, tenant_id),
+              eq(workflowVersions.workflow_id, workflow_id),
+              eq(workflowVersions.id, version_id),
+            ),
+          )
+          .limit(1)
+      )[0];
   if (!version) return options.version_id ? null : { ...base, diagnoses: [] };
+  if (options.facts) assertHistoryVersion(options.facts, input);
+  if (options.facts && !options.preview)
+    throw new Error("Batched diagnosis requires its scoped preview");
   const preview = options.preview ?? (await previewWorkflowAuthority(input, db));
   const held =
-    options.held !== undefined ? options.held : await inspectHeldPreviewEvidence(input, db);
-  const refused = await newestRefusedStep(db, input);
+    options.held !== undefined
+      ? options.held
+      : await inspectHeldPreviewEvidence(input, db, options.facts);
+  const refused = await newestRefusedStep(db, input, options.facts);
   const diagnoses = collapse(
-    await buildDiagnoses(db, { ...input, definition: version.dag, preview, held, refused }),
+    await buildDiagnoses(db, {
+      ...input,
+      definition: version.dag,
+      preview,
+      held,
+      refused,
+      ...(options.facts ? { facts: options.facts } : {}),
+    }),
   );
-  if (base.is_current) await attachCandidates(db, input, diagnoses);
+  if (base.is_current) await attachCandidates(db, input, diagnoses, options.facts);
   return { ...base, diagnoses };
 }
 
@@ -171,7 +210,9 @@ async function newestRefusedStep(
     workflow_version_id: string;
     execution_environment: "dev" | "prod";
   },
+  facts?: WorkflowHistoryFacts,
 ) {
+  if (facts) return facts.refused.get(historyScopeKey(input)) ?? null;
   const laterStep = alias(executionSteps, "later_step");
   const laterRun = alias(executions, "later_run");
   const [row] = await db
@@ -240,6 +281,7 @@ interface DiagnosisInput {
   preview: Preview;
   held: HeldEvidence;
   refused: Awaited<ReturnType<typeof newestRefusedStep>>;
+  facts?: WorkflowHistoryFacts;
 }
 
 async function buildDiagnoses(db: Executor, input: DiagnosisInput): Promise<GateDiagnosis[]> {
@@ -392,32 +434,35 @@ async function requestDiagnosis(
 }
 
 async function successfulObservation(db: Executor, input: DiagnosisInput, step_id: string) {
-  const rows = await db
-    .select({
-      execution_id: executionSteps.execution_id,
-      step_key: executionSteps.step_key,
-      meta: executionSteps.request_meta,
-    })
-    .from(executionSteps)
-    .innerJoin(
-      executions,
-      and(
-        eq(executions.id, executionSteps.execution_id),
-        eq(executions.tenant_id, executionSteps.tenant_id),
-      ),
-    )
-    .where(
-      and(
-        eq(executionSteps.tenant_id, input.tenant_id),
-        eq(executions.workflow_id, input.workflow_id),
-        eq(executions.workflow_version_id, input.workflow_version_id),
-        eq(executions.execution_mode, input.execution_environment),
-        eq(executions.hold_writes, true),
-        sql`(${executionSteps.step_key} = ${step_id} OR ${executionSteps.step_key} ~ ${`^${escapeRegex(step_id)}\\[[0-9]+\\]$`})`,
-      ),
-    )
-    .orderBy(desc(executions.created_at), desc(executionSteps.started_at))
-    .limit(20);
+  if (input.facts) assertHistoryStep(input.facts, input.tenant_id, input.workflow_id, step_id);
+  const rows = input.facts
+    ? (input.facts.observations.get(historyStepKey(input, step_id)) ?? [])
+    : await db
+        .select({
+          execution_id: executionSteps.execution_id,
+          step_key: executionSteps.step_key,
+          meta: executionSteps.request_meta,
+        })
+        .from(executionSteps)
+        .innerJoin(
+          executions,
+          and(
+            eq(executions.id, executionSteps.execution_id),
+            eq(executions.tenant_id, executionSteps.tenant_id),
+          ),
+        )
+        .where(
+          and(
+            eq(executionSteps.tenant_id, input.tenant_id),
+            eq(executions.workflow_id, input.workflow_id),
+            eq(executions.workflow_version_id, input.workflow_version_id),
+            eq(executions.execution_mode, input.execution_environment),
+            eq(executions.hold_writes, true),
+            sql`(${executionSteps.step_key} = ${step_id} OR ${executionSteps.step_key} ~ ${`^${escapeRegex(step_id)}\\[[0-9]+\\]$`})`,
+          ),
+        )
+        .orderBy(desc(executions.created_at), desc(executionSteps.started_at))
+        .limit(20);
   for (const row of rows) {
     const meta = row.meta as {
       url?: unknown;
@@ -473,20 +518,33 @@ export async function findGateCandidate(
   input: { tenant_id: string; workflow_id: string; workflow_version_id: string },
   match: { step_id: string; fixer: GateFixer },
   statuses: ReadonlyArray<"proposed" | "applied" | "rejected" | "superseded" | "inapplicable">,
+  facts?: WorkflowHistoryFacts,
 ) {
-  const rows = await db
-    .select({ id: patchCandidates.id, status: patchCandidates.status, diff: patchCandidates.diff })
-    .from(patchCandidates)
-    .where(
-      and(
-        eq(patchCandidates.tenant_id, input.tenant_id),
-        eq(patchCandidates.workflow_id, input.workflow_id),
-        inArray(patchCandidates.status, [...statuses]),
-        sql`${patchCandidates.endpoint_key} LIKE 'gate:%'`,
-        sql`${patchCandidates.diff}->>'base_version_id' = ${input.workflow_version_id}`,
-      ),
-    )
-    .orderBy(desc(patchCandidates.created_at), desc(patchCandidates.id));
+  if (facts) assertHistoryScope(facts, input.tenant_id, input.workflow_id);
+  const rows = facts
+    ? (facts.candidates.get(input.workflow_id) ?? []).filter(
+        (row) =>
+          statuses.includes(row.status) &&
+          (row.diff as { base_version_id?: unknown } | null)?.base_version_id ===
+            input.workflow_version_id,
+      )
+    : await db
+        .select({
+          id: patchCandidates.id,
+          status: patchCandidates.status,
+          diff: patchCandidates.diff,
+        })
+        .from(patchCandidates)
+        .where(
+          and(
+            eq(patchCandidates.tenant_id, input.tenant_id),
+            eq(patchCandidates.workflow_id, input.workflow_id),
+            inArray(patchCandidates.status, [...statuses]),
+            sql`${patchCandidates.endpoint_key} LIKE 'gate:%'`,
+            sql`${patchCandidates.diff}->>'base_version_id' = ${input.workflow_version_id}`,
+          ),
+        )
+        .orderBy(desc(patchCandidates.created_at), desc(patchCandidates.id));
   return (
     rows.find((row) => {
       const signal = (
@@ -505,6 +563,7 @@ async function attachCandidates(
   db: Executor,
   input: { tenant_id: string; workflow_id: string; workflow_version_id: string },
   diagnoses: GateDiagnosis[],
+  facts?: WorkflowHistoryFacts,
 ) {
   for (const diagnosis of diagnoses) {
     if (!diagnosis.fixer) continue;
@@ -513,6 +572,7 @@ async function attachCandidates(
       input,
       { step_id: diagnosis.subject.step_id, fixer: diagnosis.fixer },
       ["proposed"],
+      facts,
     );
     if (open) diagnosis.candidate_id = open.id;
   }

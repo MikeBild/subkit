@@ -11,10 +11,10 @@ const konventionBytes = readFileSync(KONVENTION);
 const konvention = konventionBytes.toString("utf8");
 
 describe("the root copy of the family convention", () => {
-  test("it is byte-identical to the reviewed v2.4 document", () => {
+  test("it is byte-identical to the reviewed convention", () => {
     const digest = createHash("sha256").update(konventionBytes).digest("hex");
-    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed v2.4 text").toBe(
-      "9f948aef4c0fc6ead98971f9347f494082b3f43172df19674b3389f561a3241b",
+    expect(digest, "COCKPIT-KONVENTION.md is no longer the reviewed text").toBe(
+      "c5dc0a2687f00b6f944e39383a657692d069eab374f0ebf8d137f19901db4614",
     );
   });
 

@@ -309,8 +309,14 @@ describe("oidc provider — auth.enable_signup gate", () => {
     expect(res.status).toBe(403);
     expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
     const html = await res.text();
-    expect(html).toContain(">Sign-in failed</h1>");
-    expect(html).toContain("Your account is not authorized for SubKit. Contact the operator.");
+    expect(html).toMatch(
+      /<h1\b[^>]*data-family-slot="auth-heading"[^>]*>Account not assigned<\/h1>/,
+    );
+    expect(html).toContain(
+      "This company account is not assigned to SubKit. Contact an administrator.",
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('data-testid="auth-retry"');
 
     const created = await testDb.db
       .select()
