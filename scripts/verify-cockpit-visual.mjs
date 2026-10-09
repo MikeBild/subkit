@@ -1658,6 +1658,26 @@ async function mockApi(route) {
         source_ref: null,
         status: ["succeeded", "running", "failed", "timed_out"][rotate],
         request_source: ["scheduler", "chat", "api", "carrier-pigeon"][rotate],
+        caller:
+          rotate === 2
+            ? {
+                kind: "system_account",
+                principal_id: uuid,
+                provider: "api_key",
+                product_id: null,
+                verified_by: "api_key",
+                channel: "api",
+                origin_execution_id: null,
+              }
+            : {
+                kind: "engine",
+                principal_id: null,
+                provider: null,
+                product_id: null,
+                verified_by: null,
+                channel: ["scheduler", "chat", "api", "carrier-pigeon"][rotate],
+                origin_execution_id: null,
+              },
         parent_execution_id: rotate === 2 ? uuid : null,
         started_at: started.toISOString(),
         finished_at: rotate === 1 ? null : new Date(started.getTime() + 119_600).toISOString(),
@@ -1694,6 +1714,15 @@ async function mockApi(route) {
       source_ref: null,
       status: "failed",
       request_source: "scheduler",
+      caller: {
+        kind: "engine",
+        principal_id: null,
+        provider: null,
+        product_id: null,
+        verified_by: null,
+        channel: "scheduler",
+        origin_execution_id: null,
+      },
       parent_execution_id: null,
       started_at: started.toISOString(),
       finished_at: new Date(started.getTime() + 6_900).toISOString(),
