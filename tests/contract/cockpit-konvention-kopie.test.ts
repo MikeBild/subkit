@@ -24,6 +24,9 @@ describe("the root copy of the family convention", () => {
     expect(konvention).toContain("## 16. Auftragskette");
     expect(konvention).toContain('**Leitregel (v2.1): Aufgaben leben nur auf der „Übersicht".**');
     expect(konvention).toContain("**Betriebsleiste.** Genau vier Werte in einem Raster");
+    expect(konvention).toContain(
+      "Nutzung zeigt kompakt die Kosten des Monats und den prozentualen Anteil am Tokenkontingent;",
+    );
     expect(konvention).toContain("Änderungen v2.3:");
     expect(konvention).toContain("### 0.1 Ein Fakt, ein Ort");
     expect(konvention).toContain("## 0. Wofür das Cockpit da ist");
