@@ -19,6 +19,20 @@ describe("placeholderScanner", () => {
     expect(vs.map((v) => v.kind)).toEqual(["placeholder.host", "placeholder.host"]);
   });
 
+  it("leaves example domains inside an address or a subdomain alone so the user's own value is never rewritten", () => {
+    const vs = placeholderScanner.scan(
+      "I cannot send to test@example.com or post to https://hooks.example.com/report — please give a real address.",
+      ctx,
+    );
+    expect(vs).toEqual([]);
+  });
+
+  it("still repairs a bare example.com engine URL to the engine host", () => {
+    const vs = placeholderScanner.scan("Call https://example.com/v1/workflows", ctx);
+    expect(vs).toHaveLength(1);
+    expect(vs[0]?.repair).toBe("subkit-api.acme.dev");
+  });
+
   it("flags <YOUR_API_KEY>-style angle placeholders", () => {
     const vs = placeholderScanner.scan("Authorization: Bearer <YOUR_API_KEY>", ctx);
     expect(vs).toHaveLength(1);
