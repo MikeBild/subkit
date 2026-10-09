@@ -84,14 +84,14 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
     throw new Error(`${where}: the apps' total says "${clientsTotal}"`);
 
   const ungranted = await toggleText(page, "connected-clients-ungranted");
-  if (!ungranted.includes(`(${fixture.deadClients})`))
+  if (!new RegExp(`(^|\\s)${fixture.deadClients}(\\s|$)`).test(ungranted))
     throw new Error(`${where}: the collapsed registrations do not say how many — "${ungranted}"`);
   if ((await page.locator('[data-testid="connected-clients-ungranted-list"]').count()) > 0)
     throw new Error(
       `${where}: registrations without a grant are rendered before they are asked for`,
     );
   const disabled = await toggleText(page, "connected-clients-disabled");
-  if (!disabled.includes(`(${fixture.disabledClients})`))
+  if (!new RegExp(`(^|\\s)${fixture.disabledClients}(\\s|$)`).test(disabled))
     throw new Error(`${where}: retired and revoked registrations are not counted — "${disabled}"`);
   if ((await page.locator('[data-testid="connected-clients-disabled-list"]').count()) > 0)
     throw new Error(`${where}: retired registrations are listed by default`);
@@ -116,7 +116,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (keys.some((row) => /widerrufen|revoked/i.test(row)))
     throw new Error(`${where}: a revoked key stands among the live ones`);
   const revoked = await toggleText(page, "api-keys-revoked");
-  if (!revoked.includes(`(${fixture.revokedKeys})`))
+  if (!new RegExp(`(^|\\s)${fixture.revokedKeys}(\\s|$)`).test(revoked))
     throw new Error(`${where}: the revoked keys do not say how many — "${revoked}"`);
   if ((await page.locator('[data-testid="api-keys-revoked-list"]').count()) > 0)
     throw new Error(`${where}: revoked keys are rendered before they are asked for`);

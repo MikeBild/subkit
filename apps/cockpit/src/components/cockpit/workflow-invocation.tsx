@@ -213,9 +213,15 @@ function HttpMode({
           />
         </Copyable>
       )}
-      {verdict === "live" || verdict === "preview" ? null : (
+      {verdict === "live" ? null : (
         <p className={line} data-verdict={verdict} data-testid="workflow-invocation-preview-only">
-          {t(verdict === "refused" ? "invocation.http.refused" : "invocation.http.unconfirmed")}
+          {t(
+            verdict === "refused"
+              ? "invocation.http.refused"
+              : verdict === "preview"
+                ? "invocation.http.previewOnly"
+                : "invocation.http.unconfirmed",
+          )}
         </p>
       )}
     </div>
