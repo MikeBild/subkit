@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, max } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { mcpOauthAccessTokens, mcpOauthRefreshTokens, users } from "../db/schema/index.ts";
 
@@ -49,6 +49,23 @@ export async function countLiveConnectionsByUser(
 export interface ClientApproval {
   approved_by: string[];
   live_connections: number;
+}
+
+export async function listClientLastUsage(exec: Executor): Promise<Map<string, string>> {
+  // tenant-filter:exempt — MCP client administration is platform-global, guarded by mcp_oauth_client:read.
+  const rows = await exec
+    .select({
+      client_id: mcpOauthAccessTokens.client_id,
+      last_used_at: max(mcpOauthAccessTokens.last_used_at),
+    })
+    .from(mcpOauthAccessTokens)
+    .where(isNotNull(mcpOauthAccessTokens.last_used_at))
+    .groupBy(mcpOauthAccessTokens.client_id);
+  const usage = new Map<string, string>();
+  for (const row of rows) {
+    if (row.last_used_at) usage.set(row.client_id, new Date(row.last_used_at).toISOString());
+  }
+  return usage;
 }
 
 export async function listClientApprovals(

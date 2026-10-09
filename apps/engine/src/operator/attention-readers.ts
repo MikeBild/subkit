@@ -28,6 +28,7 @@ import type {
   AttentionReason,
   AttentionSource,
 } from "./attention.ts";
+import { readFailureStreaks } from "./failure-streaks.ts";
 import {
   collectFailureGroups,
   DECISION_FAILURE_WINDOW_HOURS,
@@ -84,6 +85,7 @@ interface WorkflowFacts {
   held: HeldRow["hold"] | null;
   trigger: AttentionItem["trigger"];
   groups: DigestFailureGroup[];
+  consecutiveFailures?: number;
   patches: { count: number; oldest: Date } | null;
   approval: ApprovalFact | null;
   repair: NonNullable<AttentionItem["repair"]> | null;
@@ -293,6 +295,18 @@ async function readWorkflowFacts(
       if (fact) fact.name = row.name;
     }
   }
+  const failingIds = [...facts.values()]
+    .filter((fact) => fact.groups.length > 0)
+    .map((fact) => fact.id);
+  const [streaks] = await Promise.allSettled([readFailureStreaks(db, tenantId, failingIds, now)]);
+  if (streaks.status === "fulfilled") {
+    for (const id of failingIds) {
+      const fact = facts.get(id);
+      if (fact) fact.consecutiveFailures = streaks.value.get(id) ?? 0;
+    }
+  } else {
+    sources.failures = "failed";
+  }
   return { facts, sources };
 }
 
@@ -386,6 +400,8 @@ function workflowItem(fact: WorkflowFacts): Candidate {
 
   const counts: AttentionItem["counts"] = {};
   if (failures > 0) counts.failures = failures;
+  if (fact.consecutiveFailures !== undefined)
+    counts.consecutive_failures = fact.consecutiveFailures;
   if (patches > 0) counts.patches = patches;
   return {
     source: fact.held ? "schedules" : failures > 0 ? "failures" : "patches",

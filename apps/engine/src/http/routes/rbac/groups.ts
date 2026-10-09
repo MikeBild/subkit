@@ -7,7 +7,7 @@ import { NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { RbacGroupSchema, serializeGroup } from "./shared.ts";
+import { RbacGroupDetailSchema, RbacGroupSchema, serializeGroup } from "./shared.ts";
 
 const GroupMemberParams = z.object({
   id: z.string().uuid(),
@@ -32,7 +32,9 @@ const listGroupsRoute = createRoute({
       description: "OK",
       content: {
         "application/json": {
-          schema: z.object({ items: z.array(RbacGroupSchema) }).openapi("RbacGroupListResponse"),
+          schema: z
+            .object({ items: z.array(RbacGroupDetailSchema) })
+            .openapi("RbacGroupListResponse"),
         },
       },
     },
@@ -184,7 +186,23 @@ export function registerGroupsRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const items = await groupsSvc.listGroups(db, principal.tenant_id);
-    return c.json({ items: items.map(serializeGroup) }, 200);
+    const memberships = await groupsSvc.listTenantGroupMemberships(db, principal.tenant_id);
+    const members = new Map<string, string[]>();
+    for (const membership of memberships) {
+      const ids = members.get(membership.group_id) ?? [];
+      ids.push(membership.user_id);
+      members.set(membership.group_id, ids);
+    }
+    return c.json(
+      {
+        items: items.map((group) => ({
+          ...serializeGroup(group),
+          member_count: members.get(group.id)?.length ?? 0,
+          member_ids: members.get(group.id) ?? [],
+        })),
+      },
+      200,
+    );
   });
 
   app.openapi(createGroupRoute, async (c) => {

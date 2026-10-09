@@ -9,6 +9,10 @@ import { auditAdmissionRefusal } from "../../execution/admission-audit.ts";
 import { rehydrateExecutionPrincipal } from "../../execution/authorization-context.ts";
 import { CallerContextSchema, callerAuditActorId } from "../../execution/caller-context.ts";
 import { runExecution } from "../../execution/engine.ts";
+import {
+  captureWorkflowPermission,
+  recordStartingWorkflowPermission,
+} from "../../execution/index.ts";
 import { finalizeExecution, GOVERNANCE_REFUSALS } from "../../execution/state.ts";
 import type { RequestSource, RunOptions } from "../../execution/types.ts";
 import { log, logger } from "../../logging/logger.ts";
@@ -205,6 +209,20 @@ async function handleOne(job: Job<ExecutionRunJob>, db: Db, boss: PgBoss): Promi
           throw Object.assign(new Error("The queued workflow is no longer authorized."), {
             code: "execution_authentication_unavailable",
           });
+        if (data.execution_id && runOptions.caller_context) {
+          await recordStartingWorkflowPermission(
+            db,
+            data.execution_id,
+            runOptions.caller_context,
+            await captureWorkflowPermission(
+              db,
+              runOptions.principal,
+              data.workflow_id,
+              decision,
+              "start",
+            ),
+          );
+        }
       }
     } catch (error) {
       await auditAwait(

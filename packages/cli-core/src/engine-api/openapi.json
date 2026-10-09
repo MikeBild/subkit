@@ -3185,6 +3185,44 @@
           "updated_at"
         ]
       },
+      "UserDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/User"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "groups": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ]
+                },
+                "description": "Group memberships, or null when the caller cannot read RBAC membership."
+              }
+            },
+            "required": [
+              "groups"
+            ]
+          }
+        ]
+      },
       "User": {
         "type": "object",
         "properties": {
@@ -3241,7 +3279,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/User"
+              "$ref": "#/components/schemas/UserDetail"
             }
           },
           "next_cursor": {
@@ -4243,6 +4281,12 @@
           },
           "created_at": {
             "type": "string"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -4255,7 +4299,8 @@
           "live_connections",
           "disabled_at",
           "retired_at",
-          "created_at"
+          "created_at",
+          "last_used_at"
         ]
       },
       "Whoami": {
@@ -6684,6 +6729,146 @@
               "dev",
               "prod"
             ]
+          },
+          "start_access": {
+            "type": "object",
+            "properties": {
+              "permission": {
+                "type": "string",
+                "enum": [
+                  "workflow:run"
+                ]
+              },
+              "caller": {
+                "type": "object",
+                "properties": {
+                  "allowed": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "allowed",
+                  "source",
+                  "reason"
+                ]
+              },
+              "visibility": {
+                "type": "object",
+                "properties": {
+                  "rules": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "rules"
+                ]
+              },
+              "rules": {
+                "type": "object",
+                "properties": {
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ]
+                    }
+                  },
+                  "grants": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "subject_type": {
+                          "type": "string",
+                          "enum": [
+                            "user",
+                            "system_account",
+                            "group"
+                          ]
+                        },
+                        "subject_id": {
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "subject_type",
+                        "subject_id",
+                        "expires_at"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "roles",
+                  "grants"
+                ],
+                "description": "Configured roles and unexpired grants for this workflow, visible only with rbac:read. These rules do not establish an authenticated caller or bypass credential restrictions, account state, or effect admission."
+              },
+              "external": {
+                "type": "object",
+                "properties": {
+                  "authentication_required": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  },
+                  "credential_restrictions_apply": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "authentication_required",
+                  "credential_restrictions_apply"
+                ]
+              },
+              "without_approval": {
+                "type": "string",
+                "enum": [
+                  "held_preview_only"
+                ]
+              }
+            },
+            "required": [
+              "permission",
+              "caller",
+              "visibility",
+              "external",
+              "without_approval"
+            ],
+            "description": "Current caller's workflow:run permission evaluated with credential ceilings; not an effect approval or a guarantee that a run is admitted. External authenticated callers need this permission too. Inbound hooks have their separately configured verifiers and are listed under hooks."
           }
         },
         "required": [
@@ -6698,7 +6883,8 @@
           "input",
           "output",
           "webhook_input_shape",
-          "authority"
+          "authority",
+          "start_access"
         ]
       },
       "WorkflowDraft": {
@@ -8557,6 +8743,31 @@
           "dag": {},
           "invalid": {
             "type": "boolean"
+          },
+          "author": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          "checksum": {
+            "type": "string"
           }
         },
         "required": [
@@ -8565,7 +8776,9 @@
           "version",
           "note",
           "created_at",
-          "invalid"
+          "invalid",
+          "author",
+          "checksum"
         ]
       },
       "Workflow": {
@@ -8573,6 +8786,92 @@
         "properties": {
           "id": {
             "type": "string"
+          },
+          "operating_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "waiting_approval",
+              "waiting_connector",
+              "failing",
+              "stopped",
+              "repair_required",
+              "unapproved",
+              "disabled",
+              "unknown"
+            ]
+          },
+          "connector_references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step_id": {
+                  "type": "string"
+                },
+                "connector_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "slug": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "available",
+                    "deleted",
+                    "missing"
+                  ]
+                }
+              },
+              "required": [
+                "step_id",
+                "connector_id",
+                "slug",
+                "name",
+                "reason"
+              ]
+            }
+          },
+          "creator": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          "checksum": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "tenant_id": {
             "type": "string"
@@ -8728,6 +9027,9 @@
         },
         "required": [
           "id",
+          "connector_references",
+          "creator",
+          "checksum",
           "tenant_id",
           "slug",
           "category",
@@ -9416,6 +9718,10 @@
                 ]
               }
             ]
+          },
+          "accept_description": {
+            "type": "boolean",
+            "description": "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected."
           },
           "category": {
             "allOf": [
@@ -10481,6 +10787,45 @@
             ],
             "format": "uuid"
           },
+          "execution_environment": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "prod"
+            ]
+          },
+          "permission_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "builtin_admin",
+              "resource_grant",
+              "group",
+              "role",
+              "portal_token_allowlist",
+              null
+            ]
+          },
+          "permission_phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "admission",
+              "start",
+              null
+            ]
+          },
+          "permission_checked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "hold_writes": {
             "type": "boolean"
           },
@@ -10537,6 +10882,10 @@
           "workflow_name",
           "workflow_version_id",
           "execution_authority_id",
+          "execution_environment",
+          "permission_basis",
+          "permission_phase",
+          "permission_checked_at",
           "source_kind",
           "source_ref",
           "status",
@@ -10556,11 +10905,19 @@
           {
             "type": "object",
             "properties": {
+              "trace_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The unique nonempty trace recorded by successful execution-start audit entries. Null when evidence is absent, expired by retention, or conflicting. This is not inferred from the current request."
+              },
               "outcome": {
                 "$ref": "#/components/schemas/ExecutionOutcome"
               }
             },
             "required": [
+              "trace_id",
               "outcome"
             ]
           }
@@ -10714,6 +11071,14 @@
               "violated",
               "none"
             ]
+          },
+          "planned_steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count."
           }
         },
         "required": [
@@ -10799,6 +11164,91 @@
           "output_preview": {},
           "error": {},
           "request_meta": {},
+          "credential_snapshots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "connector_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "environment": {
+                  "type": "string",
+                  "enum": [
+                    "dev",
+                    "prod"
+                  ]
+                },
+                "credential_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                },
+                "credential_generation": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "connection_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid"
+                },
+                "access_token_version": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "exclusiveMinimum": 0
+                },
+                "identity": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "issuer": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "subject": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "token_endpoint",
+                        "openid_claims"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "issuer",
+                    "subject",
+                    "source"
+                  ]
+                }
+              },
+              "required": [
+                "connector_id",
+                "environment",
+                "credential_id",
+                "credential_generation",
+                "connection_id",
+                "access_token_version",
+                "identity"
+              ]
+            }
+          },
           "started_at": {
             "type": [
               "string",
@@ -10823,6 +11273,7 @@
           "result_storage_uri",
           "result_sha256",
           "result_preview",
+          "credential_snapshots",
           "started_at",
           "finished_at"
         ]
@@ -13435,6 +13886,22 @@
           "updated_at": {
             "type": "string"
           },
+          "last_tested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last recorded explicit connector probe, successful or failed; null when no retained evidence exists."
+          },
+          "tools_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Tool count from the most recent retained successful MCP manifest observation; null when unknown."
+          },
           "credentials": {
             "type": "array",
             "items": {
@@ -13476,7 +13943,9 @@
           "auth_failed_reason",
           "sign_in",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "last_tested_at",
+          "tools_count"
         ]
       },
       "ConnectorHealthState": {
@@ -13622,6 +14091,10 @@
                 ]
               }
             ]
+          },
+          "accept_description": {
+            "type": "boolean",
+            "description": "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected."
           },
           "category": {
             "allOf": [
@@ -13995,6 +14468,35 @@
           "null"
         ],
         "properties": {
+          "speaks_as": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "issuer": {
+                "type": "string",
+                "format": "uri"
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "token_endpoint",
+                  "openid_claims"
+                ]
+              }
+            },
+            "required": [
+              "issuer",
+              "subject",
+              "source"
+            ]
+          },
           "mode": {
             "type": "string"
           },
@@ -14025,6 +14527,7 @@
           }
         },
         "required": [
+          "speaks_as",
           "mode",
           "environment",
           "connection",
@@ -14056,6 +14559,13 @@
                 "description": {
                   "type": "string"
                 },
+                "input_schema": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": {}
+                },
                 "claims": {
                   "type": "string",
                   "enum": [
@@ -14065,7 +14575,8 @@
                 }
               },
               "required": [
-                "name"
+                "name",
+                "input_schema"
               ]
             }
           },
@@ -15516,6 +16027,10 @@
               }
             ]
           },
+          "accept_description": {
+            "type": "boolean",
+            "description": "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected."
+          },
           "category": {
             "allOf": [
               {
@@ -15734,12 +16249,16 @@
           },
           "counts": {
             "$ref": "#/components/schemas/CategoryKindCounts"
+          },
+          "llm_counts": {
+            "$ref": "#/components/schemas/CategoryKindCounts"
           }
         },
         "required": [
           "category",
           "total",
-          "counts"
+          "counts",
+          "llm_counts"
         ]
       },
       "CategoryKindCounts": {
@@ -16085,11 +16604,16 @@
           "total": {
             "type": "integer",
             "minimum": 0
+          },
+          "sections_total": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "sections_total"
         ]
       },
       "KnowledgeSearchResult": {
@@ -16268,6 +16792,11 @@
           "content": {
             "type": "string",
             "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
           }
         },
         "required": [
@@ -16359,6 +16888,11 @@
             "minLength": 1,
             "maxLength": 200
           },
+          "source_uri": {
+            "type": "string",
+            "maxLength": 2048,
+            "format": "uri"
+          },
           "description": {
             "allOf": [
               {
@@ -16371,6 +16905,10 @@
                 ]
               }
             ]
+          },
+          "accept_description": {
+            "type": "boolean",
+            "description": "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected."
           },
           "category": {
             "allOf": [
@@ -19702,6 +20240,38 @@
               "null"
             ]
           },
+          "created_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Recorded creator identifier, or null when unknown. Does not imply an actor kind."
+          },
+          "creator": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "description": "Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous."
+          },
           "created_at": {
             "type": "string"
           },
@@ -19756,6 +20326,8 @@
           "size_bytes",
           "sha256",
           "scan_result",
+          "created_by",
+          "creator",
           "created_at",
           "updated_at",
           "replaced_at",
@@ -20133,6 +20705,10 @@
                 ]
               }
             ]
+          },
+          "accept_description": {
+            "type": "boolean",
+            "description": "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected."
           },
           "category": {
             "allOf": [
@@ -21684,6 +22260,11 @@
               },
               "failures": {
                 "type": "integer"
+              },
+              "consecutive_failures": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Consecutive failed terminal runs, newest completion first. Another terminal status ends the sequence."
               },
               "skills": {
                 "type": "integer"
@@ -24636,12 +25217,39 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/RbacRole"
+              "$ref": "#/components/schemas/RbacRoleDetail"
             }
           }
         },
         "required": [
           "items"
+        ]
+      },
+      "RbacRoleDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RbacRole"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "permissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "member_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Distinct people in this tenant assigned the role directly or through a group."
+              }
+            },
+            "required": [
+              "permissions",
+              "member_count"
+            ]
+          }
         ]
       },
       "RbacRole": {
@@ -24683,54 +25291,6 @@
           "is_builtin",
           "created_at",
           "updated_at"
-        ]
-      },
-      "RbacRoleDetail": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "tenant_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "is_builtin": {
-            "type": "boolean"
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "updated_at": {
-            "type": "string"
-          },
-          "permissions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "name",
-          "description",
-          "is_builtin",
-          "created_at",
-          "updated_at",
-          "permissions"
         ]
       },
       "CreateRbacRoleRequest": {
@@ -24925,12 +25485,40 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/RbacGroup"
+              "$ref": "#/components/schemas/RbacGroupDetail"
             }
           }
         },
         "required": [
           "items"
+        ]
+      },
+      "RbacGroupDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RbacGroup"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "member_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "member_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "description": "Existing people belonging to this tenant and group."
+              }
+            },
+            "required": [
+              "member_count",
+              "member_ids"
+            ]
+          }
         ]
       },
       "RbacGroup": {
@@ -25103,6 +25691,13 @@
               "null"
             ]
           },
+          "resource_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resource name recorded in the event snapshot, or null when not recorded."
+          },
           "result": {
             "type": "string"
           },
@@ -25146,6 +25741,7 @@
           "action",
           "resource_type",
           "resource_id",
+          "resource_name",
           "result",
           "trace_id",
           "ip",
@@ -30029,7 +30625,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/User"
+                  "$ref": "#/components/schemas/UserDetail"
                 }
               }
             }
@@ -34170,6 +34766,25 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "waiting_approval",
+                "waiting_connector",
+                "failing",
+                "stopped",
+                "repair_required",
+                "unapproved",
+                "disabled",
+                "unknown"
+              ]
+            },
+            "required": false,
+            "name": "operating_status",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "required": false,
@@ -34210,6 +34825,18 @@
             },
             "required": false,
             "name": "order",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "human"
+              ]
+            },
+            "required": false,
+            "name": "description_source",
             "in": "query"
           },
           {
@@ -34806,7 +35433,7 @@
             }
           },
           "409": {
-            "description": "Slug conflict",
+            "description": "Slug or description conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -36179,6 +36806,21 @@
             "schema": {
               "type": "string",
               "enum": [
+                "oauth",
+                "mcp",
+                "key"
+              ],
+              "description": "MCP takes precedence over authentication kind. OAuth selects non-MCP OAuth connectors; key selects non-MCP header, query, bearer, basic or AWS signature authentication. Unauthenticated connectors remain in the unfiltered list."
+            },
+            "required": false,
+            "description": "MCP takes precedence over authentication kind. OAuth selects non-MCP OAuth connectors; key selects non-MCP header, query, bearer, basic or AWS signature authentication. Unauthenticated connectors remain in the unfiltered list.",
+            "name": "kind",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
                 "true",
                 "false"
               ]
@@ -36272,6 +36914,18 @@
             },
             "required": false,
             "name": "offset",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "human"
+              ]
+            },
+            "required": false,
+            "name": "description_source",
             "in": "query"
           },
           {
@@ -36437,8 +37091,28 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid description acceptance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The reviewed description changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -38266,6 +38940,18 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "human"
+              ]
+            },
+            "required": false,
+            "name": "description_source",
+            "in": "query"
+          },
+          {
+            "schema": {
               "$ref": "#/components/schemas/CatalogCategoryFilter"
             },
             "required": false,
@@ -38491,8 +39177,28 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid description acceptance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The reviewed description changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -39065,6 +39771,18 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "human"
+              ]
+            },
+            "required": false,
+            "name": "description_source",
+            "in": "query"
+          },
+          {
+            "schema": {
               "$ref": "#/components/schemas/CatalogCategoryFilter"
             },
             "required": false,
@@ -39571,7 +40289,7 @@
             }
           },
           "409": {
-            "description": "The source has no address to read again",
+            "description": "The source has no address to read again or its address changed during refresh",
             "content": {
               "application/json": {
                 "schema": {
@@ -39689,8 +40407,28 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid description acceptance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The reviewed description changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -39988,6 +40726,15 @@
           {
             "schema": {
               "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "knowledge_source_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "enum": [
                 "repair_pattern",
                 "failure_pattern",
@@ -40046,6 +40793,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SkillCandidateListResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge source not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -42927,6 +43694,18 @@
         "parameters": [
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "human"
+              ]
+            },
+            "required": false,
+            "name": "description_source",
+            "in": "query"
+          },
+          {
+            "schema": {
               "$ref": "#/components/schemas/FileStatus"
             },
             "required": false,
@@ -43174,8 +43953,28 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid description acceptance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The reviewed description changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -47291,6 +48090,15 @@
             },
             "required": false,
             "name": "resource_type",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "required": false,
+            "name": "resource_types",
             "in": "query"
           },
           {

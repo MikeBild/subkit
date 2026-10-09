@@ -1,0 +1,39 @@
+import { describe, expect, test } from "bun:test";
+import { workflowOperatingStatus } from "./workflow-operating-status.ts";
+import { workflowStrip } from "./workflow-strip.ts";
+
+describe("workflow operating status", () => {
+  test("keeps unverifiable and loading states separate from active", () => {
+    for (const kind of ["loading", "failed", "unknown"] as const)
+      expect(workflowOperatingStatus(kind)).toBe("unknown");
+    for (const kind of ["approved", "manual"] as const)
+      expect(workflowOperatingStatus(kind)).toBe("active");
+  });
+
+  test("uses the detail strip's priority for disabled and deleted connectors", () => {
+    const strip = workflowStrip({
+      automation: null,
+      failed: false,
+      disabled: true,
+      noSteps: false,
+      health: "degraded",
+      failedRunId: null,
+      repairPrepared: true,
+      waitingConnector: { id: "removed", name: "Removed", state: "deleted" },
+      rights: { write: false, chat: false },
+    });
+    expect(strip.kind).toBe("disabled");
+    expect(workflowOperatingStatus(strip.kind)).toBe("disabled");
+    expect(strip.lower).toEqual(["connector", "failing", "repairPrepared"]);
+  });
+
+  test("keeps approval, connector, failure and repair conditions distinct", () => {
+    expect(workflowOperatingStatus("apply")).toBe("waiting_approval");
+    expect(workflowOperatingStatus("connector")).toBe("waiting_connector");
+    expect(workflowOperatingStatus("failing")).toBe("failing");
+    expect(workflowOperatingStatus("paused")).toBe("stopped");
+    expect(workflowOperatingStatus("repairPrepared")).toBe("repair_required");
+    expect(workflowOperatingStatus("unapproved")).toBe("unapproved");
+    expect(workflowOperatingStatus("empty")).toBe("unapproved");
+  });
+});

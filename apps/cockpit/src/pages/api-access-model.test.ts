@@ -10,11 +10,13 @@ import {
   groupConnectedClients,
   KEY_EXPIRING_DAYS,
   keyIdleDays,
+  keyPresetScopes,
   keyState,
   keyStateSaysUse,
   keyStateText,
   keysNeedingAction,
   openApiAccessSection,
+  ROTATE_OVERLAP_MINUTES,
   readableSections,
   scopeCatalogue,
   scopeLabel,
@@ -159,6 +161,7 @@ function client(overrides: Partial<ConnectedClientItem>): ConnectedClientItem {
     id: "00000000-0000-4000-8000-000000000001",
     client_id: "c-1",
     client_name: "Claude",
+    last_used_at: null,
     redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
     registration_source: "dcr",
     approved_by: ["anna@example.com"],
@@ -303,4 +306,14 @@ test("one valid approval reads singular, more read plural — no (n)", () => {
   expect(translate("de", "connectedClients.live.one")).toBe("1 gültige Freigabe");
   expect(translate("de", "connectedClients.live", { count: "3" })).toBe("3 gültige Freigaben");
   expect(translate("de", "connectedClients.live", { count: "3" })).not.toContain("(n)");
+});
+
+test("key presets never grant permissions the issuer does not hold", () => {
+  const held = ["workflow:read", "workflow:run", "rbac:write", "workflow:read"];
+  expect(keyPresetScopes("read", held)).toEqual(["workflow:read"]);
+  expect(keyPresetScopes("run", held)).toEqual(["workflow:read", "workflow:run"]);
+  expect(keyPresetScopes("manage", held)).toEqual(["workflow:read", "workflow:run", "rbac:write"]);
+  expect(keyPresetScopes("manage", [])).toEqual([]);
+  expect(keyPresetScopes("manage", ["*"])).toEqual([]);
+  expect(ROTATE_OVERLAP_MINUTES).toBe(24 * 60);
 });

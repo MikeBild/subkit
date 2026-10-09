@@ -73,10 +73,42 @@ export const DescriptionSchema = z
       "What this object is for, in plain language. The assistant reads it to pick the right object; an empty string hands the text back to automatic description.",
   });
 
+export const AcceptDescriptionSchema = z
+  .boolean()
+  .describe(
+    "Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected.",
+  );
+
+export class DescriptionAcceptanceError extends Error {
+  constructor(readonly code: "description_acceptance_invalid" | "description_changed") {
+    super(
+      code === "description_changed"
+        ? "The description changed; read it again before accepting it."
+        : "Accepting a description requires its exact nonempty text.",
+    );
+    this.name = "DescriptionAcceptanceError";
+  }
+}
+
+export function descriptionAcceptanceValid(patch: {
+  accept_description?: boolean | undefined;
+  description?: string | null | undefined;
+}): boolean {
+  return (
+    !patch.accept_description ||
+    (typeof patch.description === "string" && patch.description.trim().length > 0)
+  );
+}
+
 export const CatalogMetadataPatchSchema = z
   .object({
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
+  })
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
   })
   .openapi("CatalogMetadataPatch");
 
@@ -129,15 +161,26 @@ export function humanMetadataWrite(patch: CatalogMetadataPatch): CatalogMetadata
 }
 
 export function metadataChange(
-  current: { description: string | null; category: string },
+  current: { description: string | null; category: string; description_source?: string },
   patch: CatalogMetadataPatch,
 ): CatalogMetadataColumns | null {
+  if (patch.accept_description) {
+    if (typeof patch.description !== "string" || !patch.description.trim())
+      throw new DescriptionAcceptanceError("description_acceptance_invalid");
+    if (patch.description !== current.description)
+      throw new DescriptionAcceptanceError("description_changed");
+  }
   const write = humanMetadataWrite(patch);
   const out: CatalogMetadataColumns = {};
   if (write.description_source !== undefined) {
     const unchanged =
       write.description_source === "human" && write.description === (current.description ?? null);
-    if (!unchanged) {
+    if (patch.accept_description) {
+      if (current.description_source !== "human") {
+        out.description = current.description;
+        out.description_source = "human";
+      }
+    } else if (!unchanged) {
       out.description = write.description ?? null;
       out.description_source = write.description_source;
     }

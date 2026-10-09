@@ -108,6 +108,56 @@ describe("/v1/audit-log", () => {
     for (const row of body.items) expect(row.action).toBe("workflow.created");
   });
 
+  test("resource type groups filter list and export identically before pagination", async () => {
+    const filter = new URLSearchParams({
+      resource_types: " audit_test , absent_resource ",
+      action:
+        "workflow.created,workflow.updated,workflow.deleted,connector.created,connector.updated",
+    });
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const pageQuery = new URLSearchParams(filter);
+      pageQuery.set("limit", "2");
+      if (cursor) pageQuery.set("cursor", cursor);
+      const response = await fetch(`${srv.baseUrl}/v1/audit-log?${pageQuery}`, {
+        headers: adminHeaders(),
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        items: Array<{ id: string; resource_type: string }>;
+        next_cursor: string | null;
+      };
+      for (const row of body.items) {
+        expect(row.resource_type).toBe("audit_test");
+        expect(ids).not.toContain(row.id);
+        ids.push(row.id);
+      }
+      cursor = body.next_cursor;
+    } while (cursor);
+    expect(new Set(ids)).toEqual(new Set(seededIds));
+    const exported = await fetch(`${srv.baseUrl}/v1/audit-log/export.ndjson?${filter}`, {
+      headers: adminHeaders(),
+    });
+    expect(exported.status).toBe(200);
+    const exportIds = (await exported.text())
+      .trim()
+      .split("\n")
+      .map((line) => (JSON.parse(line) as { id: string }).id);
+    expect(exportIds).toEqual(ids);
+    filter.set("resource_type", "absent_resource");
+    const narrowed = await fetch(`${srv.baseUrl}/v1/audit-log?${filter}`, {
+      headers: adminHeaders(),
+    });
+    expect(narrowed.status).toBe(200);
+    expect((await narrowed.json()).items).toEqual([]);
+    const narrowedExport = await fetch(`${srv.baseUrl}/v1/audit-log/export.ndjson?${filter}`, {
+      headers: adminHeaders(),
+    });
+    expect(narrowedExport.status).toBe(200);
+    expect(await narrowedExport.text()).toBe("");
+  });
+
   test("ts_from / ts_to window narrows", async () => {
     const res = await fetch(
       `${srv.baseUrl}/v1/audit-log?ts_from=${encodeURIComponent(seedStartIso)}&ts_to=${encodeURIComponent(seedEndIso)}&limit=500`,

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
+import { useActorDirectory } from "@/app/actor-directory";
 import {
   Button,
   type CockpitColumn,
@@ -23,6 +24,7 @@ import {
   type WorkflowVersion,
   type WorkflowVersionAccess,
   type WorkflowVersionIds,
+  workflowVersionAuthor,
   workflowVersionSheetCopy,
   workflowVersionState,
   workflowVersionView,
@@ -58,6 +60,7 @@ export function WorkflowVersions({
   onRestored: () => void;
 }) {
   const { t, dateTime } = useI18n();
+  const directory = useActorDirectory(true);
   const [open, setOpen] = useState<WorkflowVersion | null>(null);
   const list = useInfiniteList<WorkflowVersion>(
     `/v1/workflows/${encodeURIComponent(workflowId)}/history`,
@@ -81,9 +84,14 @@ export function WorkflowVersions({
         (version) => versionNote(version.note, t),
         { width: "w-[44%]" },
       ),
-      column.date("saved", (version) => version.created_at, t("workflowVersions.column.saved"), {
-        width: "w-[24%]",
-      }),
+      column.custom(
+        "saved",
+        (version) => version.created_at,
+        t("workflowVersions.column.saved"),
+        (version) =>
+          `${workflowVersionAuthor(version.author, directory, t)} · ${dateTime(version.created_at)}`,
+        { width: "w-[24%]" },
+      ),
       column.custom(
         "state",
         (version) => version.id,
@@ -92,7 +100,7 @@ export function WorkflowVersions({
         { width: "w-[18%]" },
       ),
     ];
-  }, [t, dateTime, ids]);
+  }, [t, dateTime, ids, directory]);
   const failed = Boolean(list.query.error || list.query.failureReason) && list.items.length === 0;
   return (
     <CollapsibleSection
@@ -153,6 +161,7 @@ function WorkflowVersionSheet({
   onRestored: () => void;
 }) {
   const { t, dateTime } = useI18n();
+  const directory = useActorDirectory(true);
   const client = useQueryClient();
   const view = workflowVersionView(version, history, ids);
   const label = `v${version.version}`;
@@ -188,7 +197,10 @@ function WorkflowVersionSheet({
   const copy = workflowVersionSheetCopy(view, access);
   const facts: Fact[] = [
     { label: t("workflowVersions.fact.version"), value: label },
-    { label: t("workflowVersions.fact.saved"), value: dateTime(version.created_at) },
+    {
+      label: t("workflowVersions.fact.saved"),
+      value: `${workflowVersionAuthor(version.author, directory, t)} · ${dateTime(version.created_at)}`,
+    },
     { label: t("workflowVersions.fact.note"), value: versionNote(version.note, t) },
   ];
   return (

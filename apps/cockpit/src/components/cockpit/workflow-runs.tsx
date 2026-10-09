@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import {
@@ -11,13 +11,14 @@ import {
 import { RecordTable } from "@/components/cockpit/record-table";
 import { RefusalReasonLine } from "@/components/cockpit/refusal-reason";
 import { runHereHref, useOpenRunSheet } from "@/components/cockpit/run-sheet";
-import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
+import { tableColumns } from "@/components/cockpit/table-columns";
 import { causeClassLabel } from "@/lib/cause-class";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { LabelText } from "@/lib/machine-label";
 import { statusLabel } from "@/lib/status-label";
 import { useInfiniteList } from "@/lib/use-infinite-list";
+import { shortIdentifier } from "@/pages/audit-model";
 import {
   failedStatusesFor,
   formatRunDuration,
@@ -69,7 +70,13 @@ export function weekSummary(
   };
 }
 
-export function WorkflowRuns({ workflowId }: { workflowId: string }) {
+export function WorkflowRuns({
+  workflowId,
+  emptyAction,
+}: {
+  workflowId: string;
+  emptyAction?: ReactNode;
+}) {
   const { t, dateTime, locale } = useI18n();
   const sheets = useOpenRunSheet();
   const [status, setStatus] = useState("all");
@@ -84,25 +91,17 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
   const columns = useMemo<CockpitColumn<ExecutionListItem>[]>(() => {
     const column = tableColumns<ExecutionListItem>({ t, dateTime });
     return [
-      column.date(
-        "started_at",
-        (run) => run.started_at ?? run.created_at,
-        t("runs.column.started"),
-        {
-          width: "w-[28%]",
-        },
-      ),
       column.custom(
-        "status",
-        (run) => run.status,
-        t("resource.field.status"),
-        (run) => <StatusBadge state={run.status} />,
+        "run",
+        (run) => run.id,
+        t("workflowRuns.column.run"),
+        (run) => <span title={run.id}>#{shortIdentifier(run.id)}</span>,
         { width: "w-[20%]" },
       ),
       column.custom(
-        "cause",
+        "details",
         (run) => run.failure?.cause_class ?? null,
-        t("runs.column.cause"),
+        t("workflowRuns.column.details"),
         (run, index) => {
           const cause = run.failure?.cause_class;
           return cause && cause !== "ok" ? (
@@ -114,23 +113,28 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
                 className="block text-xs"
               />
             </span>
-          ) : null;
+          ) : (
+            <span className="tabular-nums">
+              {runDurationMs(run) === null
+                ? "—"
+                : formatRunDuration(locale, runDurationMs(run) ?? 0)}
+            </span>
+          );
         },
         { width: "w-[36%]" },
       ),
       column.custom(
-        "duration",
-        (run) => runDurationMs(run),
-        t("runs.column.duration"),
-        (run) => {
-          const ms = runDurationMs(run);
-          return (
-            <span className="tabular-nums">
-              {ms === null ? MISSING : formatRunDuration(locale, ms)}
-            </span>
-          );
-        },
-        { width: "w-[16%]" },
+        "status",
+        (run) => run.status,
+        t("resource.field.status"),
+        (run) => <StatusBadge state={run.status} />,
+        { width: "w-[20%]" },
+      ),
+      column.date(
+        "started_at",
+        (run) => run.started_at ?? run.created_at,
+        t("runs.column.started"),
+        { width: "w-[24%]" },
       ),
     ];
   }, [t, dateTime, locale]);
@@ -142,7 +146,8 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
           columns={columns}
           data={rows}
           collectionId="workflow-runs"
-          emptyLine={t("detail.noRuns")}
+          emptyLine={t(status === "all" ? "detail.noRuns" : "resource.noMatches")}
+          emptyAction={status === "all" ? emptyAction : undefined}
           pending={query.isPending}
           error={
             query.error

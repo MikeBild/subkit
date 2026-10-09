@@ -1,7 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { and, desc, eq } from "drizzle-orm";
+import { executionStartTraceId } from "../../audit/index.ts";
 import { executions, workflows } from "../../db/schema/index.ts";
-import { executionVisibilityFilter, isSensitivePayload } from "../../execution/index.ts";
+import {
+  describeExecutionEvidence,
+  executionVisibilityFilter,
+  isSensitivePayload,
+} from "../../execution/index.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
 import { buildExecutionDiagnosis } from "./execution-diagnosis.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
@@ -135,7 +140,11 @@ export const inspectExecutionTool: ConversationTool = {
           workflow_name: workflow.name,
           selected_by: selectedBy,
         },
-        execution: result.execution,
+        execution: {
+          ...result.execution,
+          ...describeExecutionEvidence(row),
+          trace_id: await executionStartTraceId(ctx.db, ctx.tenant_id, executionId),
+        },
         outcome: await ctx.engineClient.executions.outcome(row),
         diagnosis: result.diagnosis,
       },

@@ -20,7 +20,13 @@ import { offersConnectionChoice, renewalWay, signInLine } from "@/pages/connecto
 
 export type ConnectorCredentialSummary = NonNullable<
   components["schemas"]["ConnectorCredentialSummary"]
->;
+> & {
+  speaks_as?: {
+    issuer: string;
+    subject: string;
+    source: "token_endpoint" | "openid_claims";
+  } | null;
+};
 
 export function useConnectorCredential(connectorId: string | null) {
   return useQuery({

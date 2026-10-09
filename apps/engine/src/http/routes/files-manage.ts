@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq, isNull, ne } from "drizzle-orm";
-import { metadataChange } from "../../api/catalog-metadata.ts";
+import { DescriptionAcceptanceError, metadataChange } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import {
   FileIdSchema,
@@ -82,6 +82,14 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
       body: { content: { "application/json": { schema: UpdateFileSchema } } },
     },
     responses: {
+      400: {
+        description: "Invalid description acceptance",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
+      409: {
+        description: "The reviewed description changed",
+        content: { "application/json": { schema: ErrorSchema } },
+      },
       200: { description: "Updated", content: { "application/json": { schema: FileSchema } } },
       404: { description: "not_found", content: { "application/json": { schema: ErrorSchema } } },
     },
@@ -101,6 +109,9 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     if (row.deleted_at) return c.json(notFound, 404);
     const metadata = metadataChange(row, {
       ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.accept_description !== undefined
+        ? { accept_description: body.accept_description }
+        : {}),
       ...(body.category !== undefined ? { category: body.category } : {}),
     });
     const renamed = body.filename !== undefined && body.filename !== row.filename;
@@ -112,8 +123,19 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
         ...metadata,
         updated_at: new Date(),
       })
-      .where(eq(files.id, row.id))
+      .where(
+        and(
+          eq(files.tenant_id, principal.tenant_id),
+          eq(files.id, row.id),
+          isNull(files.deleted_at),
+          ...(body.accept_description && typeof body.description === "string"
+            ? [eq(files.description, body.description)]
+            : []),
+        ),
+      )
       .returning();
+    if (!updated && body.accept_description)
+      throw new DescriptionAcceptanceError("description_changed");
     if (renamed) {
       await auditAwait(
         {

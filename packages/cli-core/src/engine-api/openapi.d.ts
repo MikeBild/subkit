@@ -3100,7 +3100,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["User"];
+                        "application/json": components["schemas"]["UserDetail"];
                     };
                 };
                 /** @description Unauthorized */
@@ -6301,10 +6301,12 @@ export interface paths {
                     limit?: number;
                     offset?: number | null;
                     status?: "draft" | "active" | "archived";
+                    operating_status?: "active" | "waiting_approval" | "waiting_connector" | "failing" | "stopped" | "repair_required" | "unapproved" | "disabled" | "unknown";
                     name_contains?: string;
                     q?: string;
                     sort?: "name" | "lifecycle" | "created_at" | "updated_at";
                     order?: "asc" | "desc";
+                    description_source?: "llm" | "human";
                     /** @description Only workflows in this catalog block (see the `category` field on each item) */
                     category?: string;
                     /** @description Only workflows whose current version uses this connector (id or slug) */
@@ -6832,7 +6834,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description Slug conflict */
+                /** @description Slug or description conflict */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -8083,6 +8085,8 @@ export interface paths {
             parameters: {
                 query?: {
                     environment?: "dev" | "prod";
+                    /** @description MCP takes precedence over authentication kind. OAuth selects non-MCP OAuth connectors; key selects non-MCP header, query, bearer, basic or AWS signature authentication. Unauthenticated connectors remain in the unfiltered list. */
+                    kind?: "oauth" | "mcp" | "key";
                     enabled?: "true" | "false";
                     health_state?: "ok" | "degraded" | "needs_reauth" | "needs_update" | "needs_attention";
                     /** @description `not_ok`: only the connectors that count against the connector-health ratio of the operational overview — enabled and any health state but `ok`. `total` and paging apply to the narrowed list; combined with `enabled=false` the list is empty. */
@@ -8092,6 +8096,7 @@ export interface paths {
                     order?: "asc" | "desc";
                     limit?: number;
                     offset?: number | null;
+                    description_source?: "llm" | "human";
                     /** @description Only connectors in this catalog block (see the `category` field on each item) */
                     category?: string;
                     /** @description Only connectors of this driver (http, graphql, postgres, s3, mcp, …) */
@@ -8253,8 +8258,26 @@ export interface paths {
                         "application/json": components["schemas"]["Connector"];
                     };
                 };
+                /** @description Invalid description acceptance */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The reviewed description changed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -9816,6 +9839,7 @@ export interface paths {
                     status?: "draft" | "active" | "archived";
                     connector_id?: string;
                     workflow_id?: string;
+                    description_source?: "llm" | "human";
                     /** @description Only objects in this catalog block (see `GET /v1/categories`). */
                     category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
@@ -9982,8 +10006,26 @@ export interface paths {
                         "application/json": components["schemas"]["Skill"];
                     };
                 };
+                /** @description Invalid description acceptance */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The reviewed description changed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -10460,6 +10502,7 @@ export interface paths {
                     scope?: "global" | "workflow";
                     workflow_id?: string;
                     status?: "active" | "inactive" | "processing" | "error";
+                    description_source?: "llm" | "human";
                     /** @description Only objects in this catalog block (see `GET /v1/categories`). */
                     category?: components["schemas"]["CatalogCategoryFilter"];
                     q?: string;
@@ -10827,7 +10870,7 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description The source has no address to read again */
+                /** @description The source has no address to read again or its address changed during refresh */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -10964,8 +11007,26 @@ export interface paths {
                         "application/json": components["schemas"]["KnowledgeSource"];
                     };
                 };
+                /** @description Invalid description acceptance */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The reviewed description changed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -11168,6 +11229,7 @@ export interface paths {
                     scope?: "global" | "connector" | "workflow";
                     connector_id?: string;
                     workflow_id?: string;
+                    knowledge_source_id?: string;
                     pattern_kind?: "repair_pattern" | "failure_pattern" | "success_pattern" | "chained_workflow_pattern" | "authoring_capability" | "session_learning" | "connector_capability" | "knowledge_learning";
                     confidence?: "low" | "medium" | "high";
                     limit?: number;
@@ -11186,6 +11248,24 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["SkillCandidateListResponse"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Knowledge source not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -13668,6 +13748,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    description_source?: "llm" | "human";
                     status?: components["schemas"]["FileStatus"];
                     linked_to?: string;
                     /** @description Only objects in this catalog block (see `GET /v1/categories`). */
@@ -13834,8 +13915,26 @@ export interface paths {
                         "application/json": components["schemas"]["File"];
                     };
                 };
+                /** @description Invalid description acceptance */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description not_found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description The reviewed description changed */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -17523,6 +17622,7 @@ export interface paths {
                     actor_id?: string;
                     actor_type?: "user" | "system_account" | "system";
                     resource_type?: string;
+                    resource_types?: string;
                     resource_id?: string;
                     result?: "success" | "denied" | "error";
                     trace_id?: string;
@@ -18923,6 +19023,14 @@ export interface components {
             created_at: string;
             updated_at: string;
         };
+        UserDetail: components["schemas"]["User"] & {
+            /** @description Group memberships, or null when the caller cannot read RBAC membership. */
+            groups: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[] | null;
+        };
         User: {
             /** Format: uuid */
             id: string;
@@ -18937,7 +19045,7 @@ export interface components {
             updated_at: string;
         };
         UserListResponse: {
-            items: components["schemas"]["User"][];
+            items: components["schemas"]["UserDetail"][];
             next_cursor?: string | null;
         };
         CreateUserBody: {
@@ -19176,6 +19284,7 @@ export interface components {
             disabled_at: string | null;
             retired_at: string | null;
             created_at: string;
+            last_used_at: string | null;
         };
         Whoami: {
             id: string;
@@ -19744,6 +19853,40 @@ export interface components {
                  */
                 prod: "live_run_allowed" | "held_preview_only";
             };
+            /** @description Current caller's workflow:run permission evaluated with credential ceilings; not an effect approval or a guarantee that a run is admitted. External authenticated callers need this permission too. Inbound hooks have their separately configured verifiers and are listed under hooks. */
+            start_access: {
+                /** @enum {string} */
+                permission: "workflow:run";
+                caller: {
+                    allowed: boolean;
+                    source: string | null;
+                    reason: string | null;
+                };
+                visibility: {
+                    rules: boolean;
+                };
+                /** @description Configured roles and unexpired grants for this workflow, visible only with rbac:read. These rules do not establish an authenticated caller or bypass credential restrictions, account state, or effect admission. */
+                rules?: {
+                    roles: {
+                        id: string;
+                        name: string;
+                    }[];
+                    grants: {
+                        /** @enum {string} */
+                        subject_type: "user" | "system_account" | "group";
+                        subject_id: string;
+                        expires_at: string | null;
+                    }[];
+                };
+                external: {
+                    /** @enum {boolean} */
+                    authentication_required: true;
+                    /** @enum {boolean} */
+                    credential_restrictions_apply: true;
+                };
+                /** @enum {string} */
+                without_approval: "held_preview_only";
+            };
         };
         WorkflowDraft: {
             /** Format: uuid */
@@ -20281,9 +20424,31 @@ export interface components {
             created_at: string;
             dag?: unknown;
             invalid: boolean;
+            author: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                id: string;
+            } | null;
+            checksum: string;
         };
         Workflow: {
             id: string;
+            /** @enum {string} */
+            operating_status?: "active" | "waiting_approval" | "waiting_connector" | "failing" | "stopped" | "repair_required" | "unapproved" | "disabled" | "unknown";
+            connector_references: {
+                step_id: string;
+                connector_id: string | null;
+                slug: string | null;
+                name: string | null;
+                /** @enum {string} */
+                reason: "available" | "deleted" | "missing";
+            }[];
+            creator: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                id: string;
+            } | null;
+            checksum: string | null;
             tenant_id: string;
             slug: string;
             /** @description The catalog block this workflow belongs to. One vocabulary is shared by every workflow, connector, knowledge source, skill and file of the tenant; `other` until one is assigned. */
@@ -20494,6 +20659,8 @@ export interface components {
             slug?: string;
             name?: string;
             description?: components["schemas"]["CatalogDescription"] & (string | null);
+            /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
+            accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
             /** @enum {string} */
             lifecycle?: "active" | "archived";
@@ -20805,6 +20972,14 @@ export interface components {
             workflow_version_id: string | null;
             /** Format: uuid */
             execution_authority_id: string | null;
+            /** @enum {string} */
+            execution_environment: "dev" | "prod";
+            /** @enum {string|null} */
+            permission_basis: "builtin_admin" | "resource_grant" | "group" | "role" | "portal_token_allowlist" | null;
+            /** @enum {string|null} */
+            permission_phase: "admission" | "start" | null;
+            /** Format: date-time */
+            permission_checked_at: string | null;
             hold_writes?: boolean;
             /** @enum {string} */
             source_kind: "saved" | "draft" | "step";
@@ -20821,6 +20996,8 @@ export interface components {
             created_at: string;
         };
         ExecutionDetail: components["schemas"]["Execution"] & {
+            /** @description The unique nonempty trace recorded by successful execution-start audit entries. Null when evidence is absent, expired by retention, or conflicting. This is not inferred from the current request. */
+            trace_id: string | null;
             outcome: components["schemas"]["ExecutionOutcome"];
         };
         ExecutionOutcome: {
@@ -20848,6 +21025,8 @@ export interface components {
             };
             /** @enum {string} */
             output_contract: "passed" | "violated" | "none";
+            /** @description Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count. */
+            planned_steps?: number | null;
         };
         ExecutionStepListResponse: {
             items: components["schemas"]["ExecutionStep"][];
@@ -20867,6 +21046,25 @@ export interface components {
             output_preview?: unknown;
             error?: unknown;
             request_meta?: unknown;
+            credential_snapshots: {
+                /** Format: uuid */
+                connector_id: string;
+                /** @enum {string} */
+                environment: "dev" | "prod";
+                /** Format: uuid */
+                credential_id: string | null;
+                credential_generation: number | null;
+                /** Format: uuid */
+                connection_id: string | null;
+                access_token_version: number | null;
+                identity: {
+                    /** Format: uri */
+                    issuer: string;
+                    subject: string;
+                    /** @enum {string} */
+                    source: "token_endpoint" | "openid_claims";
+                } | null;
+            }[];
             started_at: string | null;
             finished_at: string | null;
         };
@@ -21544,6 +21742,13 @@ export interface components {
             } | null;
             created_at: string;
             updated_at: string;
+            /**
+             * Format: date-time
+             * @description Last recorded explicit connector probe, successful or failed; null when no retained evidence exists.
+             */
+            last_tested_at: string | null;
+            /** @description Tool count from the most recent retained successful MCP manifest observation; null when unknown. */
+            tools_count: number | null;
             credentials?: components["schemas"]["CredentialSummary"][];
         };
         /** @enum {string} */
@@ -21584,6 +21789,8 @@ export interface components {
             template_base_url_environment?: string;
             clear_template_binding?: boolean;
             description?: components["schemas"]["CatalogDescription"] & (string | null);
+            /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
+            accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         ConnectorProbeResult: {
@@ -21674,6 +21881,13 @@ export interface components {
             state: string;
         };
         ConnectorCredentialSummary: {
+            speaks_as: {
+                /** Format: uri */
+                issuer: string;
+                subject: string;
+                /** @enum {string} */
+                source: "token_endpoint" | "openid_claims";
+            } | null;
             mode: string;
             /** @enum {string} */
             environment: "dev" | "prod";
@@ -21689,6 +21903,9 @@ export interface components {
                 name: string;
                 title?: string;
                 description?: string;
+                input_schema: {
+                    [key: string]: unknown;
+                } | null;
                 /** @enum {string} */
                 claims?: "read" | "write";
             }[];
@@ -22070,6 +22287,8 @@ export interface components {
             expected_version?: number;
             title?: string;
             description?: components["schemas"]["CatalogDescription"] & (string | null);
+            /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
+            accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
             body?: string;
             examples?: string[];
@@ -22121,6 +22340,7 @@ export interface components {
             category: string;
             total: number;
             counts: components["schemas"]["CategoryKindCounts"];
+            llm_counts: components["schemas"]["CategoryKindCounts"];
         };
         CategoryKindCounts: {
             workflow: number;
@@ -22198,6 +22418,7 @@ export interface components {
         KnowledgeSourceListResponse: {
             items: components["schemas"]["KnowledgeSource"][];
             total: number;
+            sections_total: number;
         };
         KnowledgeSearchResult: {
             hits: {
@@ -22238,6 +22459,7 @@ export interface components {
             expected_version: string;
             path: string;
             content: string;
+            note?: string;
         };
         CreateKnowledgeSourceFromUrlBody: components["schemas"]["CreateKnowledgeSourceBody"] & {
             /** Format: uri */
@@ -22259,7 +22481,11 @@ export interface components {
         };
         UpdateKnowledgeSourceBody: {
             name?: string;
+            /** Format: uri */
+            source_uri?: string;
             description?: components["schemas"]["CatalogDescription"] & (string | null);
+            /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
+            accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
             tags?: string[];
             /** @enum {string} */
@@ -23005,6 +23231,18 @@ export interface components {
             size_bytes: number;
             sha256: string | null;
             scan_result: string | null;
+            /**
+             * Format: uuid
+             * @description Recorded creator identifier, or null when unknown. Does not imply an actor kind.
+             */
+            created_by: string | null;
+            /** @description Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous. */
+            creator: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                /** Format: uuid */
+                id: string;
+            } | null;
             created_at: string;
             updated_at: string;
             replaced_at: string | null;
@@ -23102,6 +23340,8 @@ export interface components {
         UpdateFile: {
             filename?: string;
             description?: components["schemas"]["CatalogDescription"] & (string | null);
+            /** @description Accept the supplied unchanged description as human-owned. Requires the exact current nonempty description; stale text is rejected. */
+            accept_description?: boolean;
             category?: components["schemas"]["CatalogCategory"] & (string | null);
         };
         FileUsage: {
@@ -23462,6 +23702,8 @@ export interface components {
             counts: {
                 patches?: number;
                 failures?: number;
+                /** @description Consecutive failed terminal runs, newest completion first. Another terminal status ends the sequence. */
+                consecutive_failures?: number;
                 skills?: number;
                 /** @description Of the proposals in `skills`, how many are facts for a knowledge source. */
                 knowledge?: number;
@@ -24126,7 +24368,12 @@ export interface components {
             resource_type: string;
         };
         RbacRoleListResponse: {
-            items: components["schemas"]["RbacRole"][];
+            items: components["schemas"]["RbacRoleDetail"][];
+        };
+        RbacRoleDetail: components["schemas"]["RbacRole"] & {
+            permissions: string[];
+            /** @description Distinct people in this tenant assigned the role directly or through a group. */
+            member_count: number;
         };
         RbacRole: {
             id: string;
@@ -24136,16 +24383,6 @@ export interface components {
             is_builtin: boolean;
             created_at: string;
             updated_at: string;
-        };
-        RbacRoleDetail: {
-            id: string;
-            tenant_id: string | null;
-            name: string;
-            description: string | null;
-            is_builtin: boolean;
-            created_at: string;
-            updated_at: string;
-            permissions: string[];
         };
         CreateRbacRoleRequest: {
             name: string;
@@ -24194,7 +24431,12 @@ export interface components {
             expires_at?: string | null;
         };
         RbacGroupListResponse: {
-            items: components["schemas"]["RbacGroup"][];
+            items: components["schemas"]["RbacGroupDetail"][];
+        };
+        RbacGroupDetail: components["schemas"]["RbacGroup"] & {
+            member_count: number;
+            /** @description Existing people belonging to this tenant and group. */
+            member_ids: string[];
         };
         RbacGroup: {
             id: string;
@@ -24238,6 +24480,8 @@ export interface components {
             action: string;
             resource_type: string;
             resource_id: string | null;
+            /** @description Resource name recorded in the event snapshot, or null when not recorded. */
+            resource_name: string | null;
             result: string;
             trace_id: string | null;
             ip: string | null;

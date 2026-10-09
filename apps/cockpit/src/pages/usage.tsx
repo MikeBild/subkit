@@ -186,7 +186,7 @@ export function UsagePage() {
           className="hidden h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
         >
           <span
-            className="block h-full rounded-full bg-primary"
+            className="block h-full rounded-full bg-accent"
             style={{ width: `${Math.round((row.share ?? 0) * 100)}%` }}
           />
         </span>
@@ -262,7 +262,7 @@ export function UsagePage() {
             </span>
           );
         },
-        { width: "w-[52%]" },
+        { width: "w-[52%]", ownsRowLink: true },
       ),
       column.custom("cost", (row) => row.cost ?? row.tokens, t("resource.usage.cost"), costCell, {
         width: "w-[32%]",
@@ -414,6 +414,11 @@ export function UsagePage() {
               collectionTier="embedded"
               columns={workflowColumns}
               data={attributedRows}
+              canOpen={(row) => workflowName.get(row.key)?.kind === "named"}
+              onOpen={(row) => window.location.assign(absolute(workflowHref(row.key)))}
+              rowHref={(row) =>
+                workflowName.get(row.key)?.kind === "named" ? absolute(workflowHref(row.key)) : null
+              }
               pending={byWorkflow.isPending}
               error={byWorkflow.error ? tableError(() => void byWorkflow.refetch()) : null}
               emptyState={emptyState}

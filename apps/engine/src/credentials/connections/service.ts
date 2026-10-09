@@ -18,6 +18,7 @@ import {
 import { listConnectorRefs } from "../../workflows/connector-refs.ts";
 import type { ConnectionAuthorityIdentity } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
+import { identityFromTokenResponse, type VerifiedProviderIdentity } from "../provider-identity.ts";
 import { discoverService, requireConnectable } from "./discovery.ts";
 import {
   expiryOf,
@@ -351,6 +352,7 @@ export async function completeConnection(
       service_name: start.service_name,
       service_description: start.service_description,
       access_token_version: versions.access,
+      verified_identity: identityFromTokenResponse(start.issuer, token),
       refresh_token_version: versions.refresh,
       expires_at: expiryOf(token),
       last_refreshed_at: now,
@@ -659,6 +661,7 @@ async function refreshRow(
         .update(outboundConnections)
         .set({
           access_token_version: versions.access,
+          verified_identity: identityFromTokenResponse(row.issuer, token),
           refresh_token_version: versions.refresh,
           expires_at: expiryOf(token),
           granted_scopes: nextScopes,
@@ -746,6 +749,8 @@ export async function readAccessToken(
   access_token: string;
   expires_at: Date | null;
   connection_authority: ConnectionAuthorityIdentity;
+  access_token_version: number;
+  verified_identity: VerifiedProviderIdentity | null;
 } | null> {
   let row = await findConnection(db, tenantId, connectionId);
   if (!row) return null;
@@ -771,6 +776,8 @@ export async function readAccessToken(
     access_token,
     expires_at: row.expires_at,
     connection_authority: { id: row.id, revision: row.authority_revision },
+    access_token_version: row.access_token_version,
+    verified_identity: row.verified_identity,
   };
 }
 

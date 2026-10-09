@@ -3,6 +3,10 @@ import { UNCATEGORIZED } from "@/lib/workflow-category";
 export type CatalogKind = "workflow" | "connector" | "knowledge_source" | "skill" | "file";
 
 export interface CatalogMetadataRecord {
+  name?: unknown;
+  filename?: unknown;
+  title?: unknown;
+  display_name?: unknown;
   description?: unknown;
   category?: unknown;
   description_source?: unknown;

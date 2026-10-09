@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   CONNECTOR_STRIP_KEYS,
   type ConnectorStripInput,
+  connectorExpiry,
   connectorStrip,
   connectorStripActionKey,
 } from "@/lib/connector-strip";
@@ -112,5 +113,18 @@ describe("connector status strip (D15)", () => {
       lower: [],
     });
     expect(connectorStrip(input({ returned: true, signInFailed: true })).kind).toBe("signInFailed");
+  });
+});
+
+describe("connector expiry evidence", () => {
+  test("reads only the configured environment and rejects missing or malformed expiry", () => {
+    const expiry = "2030-01-01T00:00:00.000Z";
+    const rows = [{ environment: "dev", oauth2_expires_at: expiry }];
+    expect(connectorExpiry(rows, "dev")).toBe(expiry);
+    expect(connectorExpiry(rows, "prod")).toBeNull();
+    expect(
+      connectorExpiry([{ environment: "prod", oauth2_expires_at: "not a date" }], "prod"),
+    ).toBeNull();
+    expect(connectorExpiry(undefined, "prod")).toBeNull();
   });
 });

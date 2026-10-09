@@ -9,6 +9,7 @@ import {
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import {
   auditLog,
+  connectors,
   events,
   sessions,
   tenants,
@@ -34,6 +35,7 @@ import {
   previewWorkflowAuthority,
   revokeWorkflowAuthority,
 } from "../execution-authorities.ts";
+import { listWorkflows } from "../service.ts";
 
 let ctx: TestDb;
 let counter = 0;
@@ -1017,3 +1019,102 @@ for (const expired of ["absolute", "idle"] as const) {
     ).toHaveLength(0);
   });
 }
+
+test("operating status verifies approval effect binding and does not infer readiness from a stored grant", async () => {
+  const f = await fixture();
+  const [connector] = await ctx.db
+    .insert(connectors)
+    .values({
+      tenant_id: f.workflow.tenant_id,
+      slug: "operating-status-target",
+      display_name: "Operating status target",
+      driver: "http",
+      auth_type: "none",
+      environment: "dev",
+      base_url: "https://approved.example.test",
+    })
+    .returning();
+  if (!connector) throw new Error("missing operating status connector fixture");
+  await ctx.db
+    .update(workflowVersions)
+    .set({
+      dag: {
+        name: f.workflow.name,
+        steps: [
+          {
+            id: "send",
+            kind: "request",
+            connector_id: connector.id,
+            method: "POST",
+            path: "/messages",
+            body: { recipient: "reviewed@example.test" },
+          },
+        ],
+      },
+    })
+    .where(
+      and(
+        eq(workflowVersions.tenant_id, f.workflow.tenant_id),
+        eq(workflowVersions.id, f.version.id),
+      ),
+    );
+  const preview = await previewWorkflowAuthority(
+    {
+      tenant_id: f.workflow.tenant_id,
+      workflow_id: f.workflow.id,
+      workflow_version_id: f.version.id,
+      execution_environment: "dev",
+    },
+    ctx.db,
+  );
+  f.input.expected_manifest_digest = preview.digest;
+  const authority = await grantWorkflowAuthority(
+    f.workflow.id,
+    { ...f.input, valid_until: null, max_runs: null },
+    f.context,
+  );
+  await ctx.db
+    .update(workflows)
+    .set({ lifecycle: "active", current_version_id: f.version.id, draft_version_id: null })
+    .where(and(eq(workflows.tenant_id, f.workflow.tenant_id), eq(workflows.id, f.workflow.id)));
+  await ctx.db.insert(workflowsSchedules).values({
+    tenant_id: f.workflow.tenant_id,
+    workflow_id: f.workflow.id,
+    cron: "0 9 * * *",
+    timezone: "UTC",
+    execution_mode: "dev",
+  });
+  const opts = {
+    include_operating_status: true,
+    operating_access: { schedules: true, hooks: true, connectors: true },
+  };
+  const ready = await listWorkflows(f.workflow.tenant_id, opts, ctx.db);
+  expect(ready.rows[0]?.operating_status).toBe("active");
+  const hidden = await listWorkflows(
+    f.workflow.tenant_id,
+    { include_operating_status: true },
+    ctx.db,
+  );
+  expect(hidden.rows[0]?.operating_status).toBe("unknown");
+  await ctx.db
+    .update(connectors)
+    .set({ base_url: "https://changed.example.test" })
+    .where(and(eq(connectors.tenant_id, f.workflow.tenant_id), eq(connectors.id, connector.id)));
+  const [storedAuthority] = await ctx.db
+    .select()
+    .from(workflowExecutionAuthorities)
+    .where(
+      and(
+        eq(workflowExecutionAuthorities.tenant_id, f.workflow.tenant_id),
+        eq(workflowExecutionAuthorities.id, authority.id),
+      ),
+    );
+  expect(storedAuthority?.effect_manifest_digest).toBe(preview.digest);
+  expect(storedAuthority?.revoked_at).toBeNull();
+  const invalidated = await listWorkflows(f.workflow.tenant_id, opts, ctx.db);
+  expect(invalidated.rows[0]?.operating_status).toBe("stopped");
+  expect(
+    (await listWorkflows(f.workflow.tenant_id, { ...opts, operating_status: "active" }, ctx.db))
+      .total,
+  ).toBe(0);
+});

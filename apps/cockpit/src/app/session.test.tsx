@@ -106,7 +106,10 @@ describe("session loading", () => {
         false,
       ),
     ).toBe("signed-out");
-    expect(sessionView({ isPending: false, error: null, data }, true)).toBe("signed-out");
+    expect(sessionView({ isPending: false, error: null, data }, true)).toBe("expired");
+    expect(sessionView({ isPending: false, error: null, data: undefined }, true)).toBe(
+      "signed-out",
+    );
     expect(sessionView({ isPending: false, error: null, data }, false)).toBe("ready");
   });
 });

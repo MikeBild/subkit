@@ -68,11 +68,15 @@ function slugify(name: string): string {
 }
 
 function metadataPatchOf(input: {
+  accept_description?: boolean | undefined;
   description?: string | null | undefined;
   category?: string | null | undefined;
 }): CatalogMetadataPatch {
   return {
     ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.accept_description !== undefined
+      ? { accept_description: input.accept_description }
+      : {}),
     ...(input.category !== undefined ? { category: input.category } : {}),
   };
 }
@@ -326,6 +330,8 @@ export async function listConnectors(
     environment?: Environment;
     category?: string;
     driver?: string;
+    kind?: "oauth" | "mcp" | "key";
+    description_source?: "llm" | "human";
     enabled?: boolean;
     health_state?: string;
     health?: "not_ok";
@@ -341,7 +347,22 @@ export async function listConnectors(
   const tenantConds = [eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)];
   if (opts.environment) tenantConds.push(eq(connectors.environment, opts.environment));
   if (opts.category) tenantConds.push(eq(connectors.category, opts.category));
+  if (opts.description_source)
+    tenantConds.push(eq(connectors.description_source, opts.description_source));
+  if (opts.description_source === "llm")
+    tenantConds.push(sql`length(trim(coalesce(${connectors.description}, ''))) > 0`);
   if (opts.driver) tenantConds.push(eq(connectors.driver, opts.driver));
+  if (opts.kind === "mcp") tenantConds.push(eq(connectors.driver, "mcp"));
+  if (opts.kind === "oauth") {
+    tenantConds.push(
+      sql`${connectors.driver} <> 'mcp' AND ${connectors.auth_type} IN ('oauth2', 'oauth2_client', 'oauth2_private_key')`,
+    );
+  }
+  if (opts.kind === "key") {
+    tenantConds.push(
+      sql`${connectors.driver} <> 'mcp' AND ${connectors.auth_type} IN ('header', 'query', 'bearer', 'basic', 'aws_sigv4')`,
+    );
+  }
   if (opts.enabled !== undefined) tenantConds.push(eq(connectors.enabled, opts.enabled));
   if (opts.health_state) tenantConds.push(eq(connectors.health_state, opts.health_state));
   if (opts.health === "not_ok") tenantConds.push(connectorCountsAgainstHealth());
@@ -547,7 +568,8 @@ export async function updateConnector(
           isNull(connectors.deleted_at),
         ),
       )
-      .limit(1);
+      .limit(1)
+      .for("update");
     const prior = existing[0];
     if (!prior) return null;
     const patch = restoreMaskedConnectorSecrets(requested, prior, {

@@ -41,6 +41,7 @@ const CategoryUsageSchema = z
     category: z.string(),
     total: z.number().int().nonnegative(),
     counts: KindCountsSchema,
+    llm_counts: KindCountsSchema,
   })
   .openapi("CategoryUsage");
 
@@ -119,10 +120,16 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
     const categories = (await loadCategoryVocabulary(principal.tenant_id, db))
       .map((usage) => {
         const counts = { ...usage.counts };
-        for (const kind of CATALOG_KINDS) if (!readable.has(kind)) counts[kind] = 0;
+        const llm_counts = { ...usage.llm_counts };
+        for (const kind of CATALOG_KINDS)
+          if (!readable.has(kind)) {
+            counts[kind] = 0;
+            llm_counts[kind] = 0;
+          }
         return {
           category: usage.category,
           counts,
+          llm_counts,
           total: CATALOG_KINDS.reduce((sum, kind) => sum + counts[kind], 0),
         };
       })

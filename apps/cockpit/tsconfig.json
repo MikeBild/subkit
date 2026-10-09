@@ -18,7 +18,10 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["vite/client", "bun-types"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

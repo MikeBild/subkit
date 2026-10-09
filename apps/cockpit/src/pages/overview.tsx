@@ -332,9 +332,14 @@ function LastFailures() {
         (run) => run.failure?.cause_class ?? null,
         t("overview.column.cause"),
         (run) =>
-          run.failure?.cause_class && run.failure.cause_class !== "ok"
-            ? causeClassLabel(run.failure.cause_class, t).text
-            : "—",
+          [
+            run.failure?.step_key,
+            run.failure?.cause_class && run.failure.cause_class !== "ok"
+              ? causeClassLabel(run.failure.cause_class, t).text
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "—",
         { width: "w-[35%]" },
       ),
       column.date(
@@ -585,7 +590,18 @@ function ReviewSheet({
     <RecordSheet
       open={Boolean(id)}
       onOpenChange={(open) => !open && onClose()}
-      title={item ? attentionRow(item, t).name : t("overview.sheet.title")}
+      title={
+        item
+          ? item.subject?.kind === "workflow"
+            ? attentionRow(item, t).reason
+            : attentionRow(item, t).name
+          : t("overview.sheet.title")
+      }
+      subtitle={
+        item?.subject?.kind === "workflow" && item.subject.name ? (
+          <a href={absolute(workflowHref(item.subject.id))}>{item.subject.name}</a>
+        ) : undefined
+      }
       action={
         <span
           ref={setActionsSlot}
@@ -597,7 +613,7 @@ function ReviewSheet({
       testId="attention-review"
       closeTestId="attention-review-close"
     >
-      {item ? (
+      {item && item.subject?.kind !== "workflow" ? (
         <SummaryLine text={attentionRow(item, t).reason} testId="attention-review-reason" />
       ) : null}
       {item?.detail ? <EngineWording text={item.detail} testId="attention-review-detail" /> : null}

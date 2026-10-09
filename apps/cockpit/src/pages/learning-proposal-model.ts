@@ -1,4 +1,5 @@
 import type { SkillCandidate } from "@/api/decisions";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { TranslationKey } from "@/lib/i18n";
 import type { FocusedRow } from "@/lib/line-diff";
 
@@ -26,13 +27,14 @@ export function proposalTarget(candidate: Proposal, t: Translate): string {
 
 export function proposalAuthor(
   candidate: Pick<SkillCandidate, "proposed_by">,
-  directory: ReadonlyMap<string, string>,
+  directory: ActorDirectory,
   t: Translate,
 ): string | null {
   const by = candidate.proposed_by;
   if (!by) return null;
   return (
-    directory.get(by.id) ?? t(by.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
+    actorDirectoryName(directory, by.kind, by.id) ??
+    t(by.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
   );
 }
 

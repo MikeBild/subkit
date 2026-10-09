@@ -14,6 +14,7 @@ export interface ConversationListProps {
   activeId: string | null;
   onSelect(id: string): void;
   showHidden: boolean;
+  hasHidden: boolean;
   onToggleHidden(): void;
   labelsFor(conversation: Conversation): ConversationRowLabels;
   failed?: { title: string; onRetry(): void } | null;
@@ -25,6 +26,7 @@ export function ConversationList({
   activeId,
   onSelect,
   showHidden,
+  hasHidden,
   onToggleHidden,
   labelsFor,
   failed,
@@ -91,16 +93,18 @@ export function ConversationList({
           <InfiniteSentinel infinite={infinite} testId="conversation-list-more" />
         ) : null}
       </nav>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="mt-1 justify-start px-2 text-xs text-muted-foreground"
-        data-testid="conversation-toggle-hidden"
-        onClick={onToggleHidden}
-      >
-        {t(showHidden ? "chat.hidden.back" : "chat.hidden.show")}
-      </Button>
+      {showHidden || hasHidden ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-1 justify-start px-2 text-xs text-muted-foreground"
+          data-testid="conversation-toggle-hidden"
+          onClick={onToggleHidden}
+        >
+          {t(showHidden ? "chat.hidden.back" : "chat.hidden.show")}
+        </Button>
+      ) : null}
     </div>
   );
 }

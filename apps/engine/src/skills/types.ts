@@ -1,8 +1,10 @@
 import { z } from "@hono/zod-openapi";
 import {
+  AcceptDescriptionSchema,
   CatalogSourceSchema,
   CategorySchema,
   DescriptionSchema,
+  descriptionAcceptanceValid,
   UNCATEGORIZED,
 } from "../api/catalog-metadata.ts";
 
@@ -145,6 +147,7 @@ export const UpdateSkillSchema = z
     expected_version: z.number().int().positive().optional(),
     title: z.string().min(1).optional(),
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
     body: z.string().min(1).optional(),
     examples: z.array(z.string()).optional(),
@@ -161,6 +164,10 @@ export const UpdateSkillSchema = z
     tags: z.array(z.string().min(1)).optional(),
     applies_to: SkillAppliesToSchema.optional(),
     status: SkillLifecycleSchema.optional(),
+  })
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
   })
   .openapi("UpdateSkillBody");
 

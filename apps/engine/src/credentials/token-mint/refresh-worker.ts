@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { audit } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { encryptSecret } from "../../crypto/aes-gcm.ts";
@@ -50,16 +50,31 @@ export async function refreshTokenMintIfStale(
       ...(decrypted.header_template ? { header_template: decrypted.header_template } : {}),
     });
     const enc = encryptSecret(plaintext, aadFor(tenant_id, credRow.id));
-    await db
+    const [rotated] = await db
       .update(credentials)
       .set({
+        credential_generation: sql`${credentials.credential_generation} + 1`,
+        verified_identity: null,
         ciphertext: toBuf(enc.ciphertext),
         iv: toBuf(enc.iv),
         auth_tag: toBuf(enc.auth_tag),
         oauth2_expires_at: bundle.expires_at,
         updated_at: new Date(),
       })
-      .where(eq(credentials.id, credRow.id));
+      .where(
+        and(
+          eq(credentials.tenant_id, tenant_id),
+          eq(credentials.id, credRow.id),
+          eq(credentials.credential_generation, credRow.credential_generation),
+        ),
+      )
+      .returning({ credential_generation: credentials.credential_generation });
+    if (!rotated)
+      throw Object.assign(new Error("credential changed during refresh"), {
+        code: "credential_generation_changed",
+      });
+    credRow.credential_generation = rotated.credential_generation;
+    credRow.verified_identity = null;
     audit(
       {
         tenant_id,
@@ -79,6 +94,7 @@ export async function refreshTokenMintIfStale(
       refresh_token: bundle.refresh_token ?? decrypted.refresh_token,
     };
   } catch (err) {
+    if ((err as { code?: string }).code === "credential_generation_changed") throw err;
     logger.error({
       module: "token_mint",
       action: "token_mint.refresh_failed",

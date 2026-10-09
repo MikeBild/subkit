@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq } from "drizzle-orm";
+import { _withDriverFetchForTests } from "../../connectors/drivers/fetch-seam.ts";
 import { credentials, mcpOauthStates, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
+import { withMcpCredentialObserver } from "./credential-observation.ts";
 import { makeMcpOAuthProvider } from "./oauth-provider.ts";
 import { seedMcpConnector } from "./test-fixtures.ts";
 
@@ -16,6 +18,152 @@ const FAKE_ISSUER = "https://auth.acmeauth.test";
 
 const STATE_FAR_FUTURE = new Date("2999-01-01T00:00:00.000Z");
 const TOKEN_EXPIRED_AT = new Date(FROZEN_NOW - 120_000);
+
+test("wire identity accepts only the discovered configured issuer token endpoint", async () => {
+  for (const rejection of [
+    "issuer",
+    "authorization-server",
+    "endpoint",
+    "method",
+    "failed",
+    "oversized",
+  ] as const) {
+    const serverId = await seedOAuth2Server(tenantA, `wire-identity-${rejection}`);
+    const provider = makeInteractiveProvider(tenantA, serverId, `state-${rejection}`);
+    provider.saveDiscoveryState({
+      authorizationServerUrl:
+        rejection === "authorization-server" ? "https://other.example.test" : FAKE_ISSUER,
+      authorizationServerMetadata: {
+        issuer: rejection === "issuer" ? "https://other.example.test" : FAKE_ISSUER,
+        authorization_endpoint: `${FAKE_ISSUER}/authorize`,
+        token_endpoint: `${FAKE_ISSUER}/token`,
+        response_types_supported: ["code"],
+      },
+    });
+    await provider.observeTokenResponse(
+      rejection === "endpoint" ? FAKE_SERVER_URL : `${FAKE_ISSUER}/token`,
+      { method: rejection === "method" ? "GET" : "POST" },
+      Response.json(
+        {
+          access_token: `wire-${rejection}`,
+          sub: "untrusted-subject",
+          ...(rejection === "oversized" ? { padding: "x".repeat(65_536) } : {}),
+        },
+        { status: rejection === "failed" ? 400 : 200 },
+      ),
+      undefined,
+    );
+    await provider.saveTokens({
+      access_token: `wire-${rejection}`,
+      token_type: "Bearer",
+      ...{ sub: "untrusted-subject" },
+    });
+    await provider.tokens();
+    expect(provider.credentialSnapshot(`wire-${rejection}`)?.identity).toBeNull();
+  }
+});
+
+test("conflicting token endpoint subjects for identical token material remain unknown", async () => {
+  const serverId = await seedOAuth2Server(tenantA, "wire-identity-conflict");
+  const provider = makeInteractiveProvider(tenantA, serverId, "state-wire-conflict");
+  provider.saveDiscoveryState({
+    authorizationServerUrl: FAKE_ISSUER,
+    authorizationServerMetadata: {
+      issuer: FAKE_ISSUER,
+      authorization_endpoint: `${FAKE_ISSUER}/authorize`,
+      token_endpoint: `${FAKE_ISSUER}/token`,
+      response_types_supported: ["code"],
+    },
+  });
+  for (const subject of ["first-account", "second-account", "first-account"]) {
+    await provider.observeTokenResponse(
+      `${FAKE_ISSUER}/token`,
+      { method: "POST" },
+      Response.json({ access_token: "conflicting-wire-token", sub: subject }),
+      undefined,
+    );
+  }
+  await provider.saveTokens({ access_token: "conflicting-wire-token", token_type: "Bearer" });
+  await provider.tokens();
+  expect(provider.credentialSnapshot("conflicting-wire-token")?.identity).toBeNull();
+});
+
+test("a refresh response cannot acquire the identity of an intervening authorization", async () => {
+  const serverId = await seedOAuth2Server(tenantA, "wire-identity-replacement");
+  const interactive = makeInteractiveProvider(tenantA, serverId, "state-wire-replacement");
+  await observeSubject(interactive, "old-access", "old-account");
+  await interactive.saveTokens({
+    access_token: "old-access",
+    refresh_token: "old-refresh",
+    token_type: "Bearer",
+  });
+  const automatic = makeNonInteractiveProvider(tenantA, serverId);
+  automatic.saveDiscoveryState({
+    authorizationServerUrl: FAKE_ISSUER,
+    authorizationServerMetadata: {
+      issuer: FAKE_ISSUER,
+      authorization_endpoint: `${FAKE_ISSUER}/authorize`,
+      token_endpoint: `${FAKE_ISSUER}/token`,
+      response_types_supported: ["code"],
+    },
+  });
+  await withMcpCredentialObserver(undefined, async () => {
+    await automatic.tokens();
+    const responseFetch: typeof fetch = Object.assign(
+      async () => {
+        await observeSubject(interactive, "replacement-access", "replacement-account", 1);
+        await interactive.saveTokens({
+          access_token: "replacement-access",
+          refresh_token: "replacement-refresh",
+          token_type: "Bearer",
+        });
+        await automatic.tokens();
+        return Response.json({ access_token: "late-refresh-token", sub: "old-account" });
+      },
+      { preconnect() {} },
+    );
+    await _withDriverFetchForTests(responseFetch, async () => {
+      const response = await automatic.fetch(`${FAKE_ISSUER}/token`, { method: "POST" });
+      await response.json();
+    });
+    await expect(
+      automatic.saveTokens({ access_token: "late-refresh-token", token_type: "Bearer" }),
+    ).rejects.toMatchObject({ code: "credential_generation_changed" });
+  });
+  const tokens = await interactive.tokens();
+  expect(tokens?.access_token).toBe("replacement-access");
+  expect(interactive.credentialSnapshot("replacement-access")?.identity?.subject).toBe(
+    "replacement-account",
+  );
+});
+
+test("a rejected response cannot reuse an earlier identity for the same token bytes", async () => {
+  for (const rejection of ["redirect", "oversized", "changed-discovery"] as const) {
+    const serverId = await seedOAuth2Server(tenantA, `wire-reused-${rejection}`);
+    const provider = makeInteractiveProvider(tenantA, serverId, `state-reused-${rejection}`);
+    await observeSubject(provider, "reused-access", "old-account");
+    if (rejection === "changed-discovery") {
+      provider.saveDiscoveryState({ authorizationServerUrl: "https://other.example.test" });
+    } else {
+      const response = Response.json({
+        access_token: "reused-access",
+        sub: "new-account",
+        ...(rejection === "oversized" ? { padding: "x".repeat(65_536) } : {}),
+      });
+      if (rejection === "redirect")
+        Object.defineProperty(response, "url", { value: "https://other.example.test/token" });
+      await provider.observeTokenResponse(
+        `${FAKE_ISSUER}/token`,
+        { method: "POST" },
+        response,
+        undefined,
+      );
+    }
+    await provider.saveTokens({ access_token: "reused-access", token_type: "Bearer" });
+    await provider.tokens();
+    expect(provider.credentialSnapshot("reused-access")?.identity).toBeNull();
+  }
+});
 
 async function seedOAuth2Server(tenantId: string, slug: string): Promise<string> {
   const row = await seedMcpConnector(ctx.db, {
@@ -65,6 +213,29 @@ function makeNonInteractiveProvider(tenantId: string, serverId: string) {
     interactive: false,
     request_source: "api",
   });
+}
+
+async function observeSubject(
+  provider: ReturnType<typeof makeMcpOAuthProvider>,
+  token: string,
+  subject: string,
+  generation?: number,
+): Promise<void> {
+  provider.saveDiscoveryState({
+    authorizationServerUrl: FAKE_ISSUER,
+    authorizationServerMetadata: {
+      issuer: FAKE_ISSUER,
+      authorization_endpoint: `${FAKE_ISSUER}/authorize`,
+      token_endpoint: `${FAKE_ISSUER}/token`,
+      response_types_supported: ["code"],
+    },
+  });
+  await provider.observeTokenResponse(
+    `${FAKE_ISSUER}/token`,
+    { method: "POST" },
+    Response.json({ access_token: token, sub: subject }),
+    generation,
+  );
 }
 
 beforeAll(async () => {
@@ -248,10 +419,10 @@ describe("McpDbOAuthClientProvider.saveTokens / tokens", () => {
       return rows[0]?.revision;
     };
     const automatic = makeNonInteractiveProvider(tenantA, serverId);
-    await automatic.saveTokens({ access_token: "refreshed", token_type: "Bearer" });
+    await saveRefreshResponse(automatic, { access_token: "refreshed", token_type: "Bearer" });
     expect(await revision()).toBe(1);
     expect((await automatic.tokens())?.scope).toBe("read");
-    await automatic.saveTokens({
+    await saveRefreshResponse(automatic, {
       access_token: "expanded",
       token_type: "Bearer",
       scope: "read write",
@@ -620,4 +791,87 @@ describe("McpDbOAuthClientProvider tenant isolation", () => {
     const aInfo = await providerA.clientInformation();
     expect(aInfo).toBeUndefined();
   });
+});
+
+test("identical token material across generations loses ambiguous session attribution", async () => {
+  const serverId = await seedOAuth2Server(tenantA, "identity-collision");
+  const interactive = makeInteractiveProvider(tenantA, serverId, "identity-collision-state");
+  await observeSubject(interactive, "same-token", "first-account");
+  await interactive.saveTokens({
+    access_token: "same-token",
+    refresh_token: "refresh",
+    token_type: "Bearer",
+  });
+  const automatic = makeNonInteractiveProvider(tenantA, serverId);
+  await automatic.tokens();
+  expect(automatic.credentialSnapshot("same-token")?.credential_generation).toBe(1);
+  expect(automatic.credentialSnapshot("same-token")?.identity?.subject).toBe("first-account");
+  await observeSubject(automatic, "same-token", "second-account");
+  await saveRefreshResponse(automatic, { access_token: "same-token", token_type: "Bearer" });
+  await automatic.tokens();
+  expect(automatic.credentialSnapshot("same-token")).toBeNull();
+  await automatic.tokens();
+  expect(automatic.credentialSnapshot("same-token")).toBeNull();
+});
+
+async function saveRefreshResponse(
+  provider: ReturnType<typeof makeMcpOAuthProvider>,
+  tokens: Parameters<ReturnType<typeof makeMcpOAuthProvider>["saveTokens"]>[0],
+): Promise<void> {
+  provider.saveDiscoveryState({
+    authorizationServerUrl: FAKE_ISSUER,
+    authorizationServerMetadata: {
+      issuer: FAKE_ISSUER,
+      authorization_endpoint: `${FAKE_ISSUER}/authorize`,
+      token_endpoint: `${FAKE_ISSUER}/token`,
+      response_types_supported: ["code"],
+    },
+  });
+  await withMcpCredentialObserver(undefined, async () => {
+    await provider.tokens();
+    const responseFetch: typeof fetch = Object.assign(async () => Response.json(tokens), {
+      preconnect() {},
+    });
+    await _withDriverFetchForTests(responseFetch, async () => {
+      const response = await provider.fetch(`${FAKE_ISSUER}/token`, { method: "POST" });
+      await response.json();
+    });
+    await provider.saveTokens(tokens);
+  });
+}
+
+test("refresh without consumed response evidence and conflicting token generations never use the current row as fallback", async () => {
+  const serverId = await seedOAuth2Server(tenantA, "response-generation-binding");
+  const interactive = makeInteractiveProvider(tenantA, serverId, "response-generation-state");
+  await interactive.saveTokens({
+    access_token: "initial-response-token",
+    refresh_token: "initial-refresh",
+    token_type: "Bearer",
+  });
+  const automatic = makeNonInteractiveProvider(tenantA, serverId);
+  await expect(
+    automatic.saveTokens({ access_token: "unobserved-token", token_type: "Bearer" }),
+  ).rejects.toMatchObject({ code: "credential_generation_changed" });
+  await saveRefreshResponse(automatic, {
+    access_token: "repeated-response-token",
+    token_type: "Bearer",
+  });
+  await interactive.saveTokens({
+    access_token: "new-interactive-token",
+    refresh_token: "new-interactive-refresh",
+    token_type: "Bearer",
+  });
+  await expect(
+    saveRefreshResponse(automatic, {
+      access_token: "repeated-response-token",
+      token_type: "Bearer",
+    }),
+  ).rejects.toMatchObject({ code: "credential_generation_changed" });
+  expect((await automatic.tokens())?.access_token).toBe("new-interactive-token");
+  await expect(
+    saveRefreshResponse(automatic, {
+      access_token: "repeated-response-token",
+      token_type: "Bearer",
+    }),
+  ).rejects.toMatchObject({ code: "credential_generation_changed" });
 });

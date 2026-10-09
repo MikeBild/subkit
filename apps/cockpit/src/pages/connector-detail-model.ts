@@ -6,7 +6,11 @@ import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import { type WindowBounds, windowBounds } from "./operations-figures";
 
 export type ConnectorRuntime = components["schemas"]["ConnectorRuntime"];
-export type McpInspect = components["schemas"]["ConnectorMcpInspectResponse"];
+export type McpInspect = Omit<components["schemas"]["ConnectorMcpInspectResponse"], "tools"> & {
+  tools: (components["schemas"]["ConnectorMcpInspectResponse"]["tools"][number] & {
+    input_schema?: Record<string, unknown> | null;
+  })[];
+};
 
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
@@ -328,4 +332,13 @@ export function signInActionLabel(state: ConnectorAuthState): TranslationKey {
   return state === "credentials_missing"
     ? "connectorCredentials.signIn"
     : "connectorCredentials.renew";
+}
+
+export function connectorConfiguredTimeout(record: Record<string, unknown>): number | null {
+  if (record.driver !== "mcp" || !isRecord(record.config) || !isRecord(record.config.mcp))
+    return null;
+  const value = record.config.mcp.remote_tool_call_timeout_ms;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1000 && value <= 300000
+    ? value
+    : null;
 }

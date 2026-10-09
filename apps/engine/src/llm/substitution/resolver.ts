@@ -4,6 +4,7 @@ import {
   baseUrlCarriesSecret,
   connectorConfigPathCarriesSecret,
 } from "../../connectors/public-view.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { CredentialMode, DecryptedCredential } from "../../credentials/types.ts";
 import { decryptSecret } from "../../crypto/aes-gcm.ts";
 import type { Db } from "../../db/client.ts";
@@ -33,6 +34,7 @@ export interface ResolverContext {
   scope?: Record<string, unknown>;
   principal?: ResolvedPrincipal;
   onAuthorityReference?: (reference: ResolvedAuthorityReference) => void;
+  onCredentialUse?: (snapshot: CredentialUseSnapshot) => void;
 }
 
 export type UnresolvedCode =
@@ -389,6 +391,15 @@ async function resolveCred(tok: Placeholder, ctx: ResolverContext): Promise<OneR
       message: `credential field '${tok.field}' not present on connector '${tok.slug}' (mode=${credential.mode})`,
     };
   }
+  ctx.onCredentialUse?.({
+    connector_id: row.id,
+    environment: ctx.environment,
+    credential_id: credential.id,
+    credential_generation: credential.credential_generation,
+    connection_id: null,
+    access_token_version: null,
+    identity: credential.verified_identity,
+  });
   ctx.onAuthorityReference?.({
     connector_id: row.id,
     configuration_digest: authorityConnectorDigest(row),

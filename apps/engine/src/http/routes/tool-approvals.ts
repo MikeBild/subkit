@@ -269,7 +269,11 @@ export function registerToolApprovalRoutes(app: OpenAPIHono<AppEnv>): void {
       });
       const { html, status } = approvalStatusPage(
         look,
-        copy.refusedTitle,
+        result.code === "approval_expired"
+          ? look.locale === "de"
+            ? "Frist abgelaufen"
+            : "Deadline expired"
+          : copy.refusedTitle,
         `${approvalDenialCopy(result.code, look.locale)} ${copy.unchanged}`,
       );
       return c.body(html, status, HTML_HEADERS);

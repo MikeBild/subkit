@@ -345,6 +345,7 @@ export const runWorkflowTool: ConversationTool = {
         },
         ctx.db,
         ctx.principal,
+        rbac.workflow_permission,
       );
       const holdWrites = admitted.hold_writes;
       if (args.idempotency_key) {

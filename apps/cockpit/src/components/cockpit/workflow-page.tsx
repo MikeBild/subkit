@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, chatNewHref, connectorHref } from "@/app/links";
 import {
   useWaitingConnector,
@@ -12,6 +13,7 @@ import {
 import {
   CatalogMetadataDialog,
   CatalogMetadataSummary,
+  useCatalogMetadataActions,
 } from "@/components/cockpit/catalog-metadata";
 import { useConnectorRecords } from "@/components/cockpit/connector-names";
 import { ConversationsAbout } from "@/components/cockpit/conversations-about";
@@ -22,7 +24,6 @@ import {
   type ActionMenuItem,
   CollapsibleSection,
   ConfirmDialog,
-  ContextHelp,
   type Fact,
   FactList,
   Page,
@@ -53,9 +54,10 @@ import {
 } from "@/components/cockpit/workflow-steps-list";
 import { WorkflowVersions } from "@/components/cockpit/workflow-versions";
 import { useI18n } from "@/lib/i18n-context";
-import { statusLabel } from "@/lib/status-label";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
 import { removalConsequenceKeys } from "@/lib/workflow-removal";
+import { deletedConnectorReference } from "@/lib/workflow-strip";
+import { workflowVersionAuthor } from "@/lib/workflow-versions";
 
 type RecordValue = Record<string, unknown>;
 
@@ -74,13 +76,18 @@ function draftDefinition(record: RecordValue, steps: readonly RecordValue[]): Re
 }
 
 function useTechnicalFacts(record: RecordValue): Fact[] {
-  const { t, dateTime } = useI18n();
+  const { t } = useI18n();
+  const directory = useActorDirectory(true);
   const slug = text(record, "slug");
-  const lifecycle = text(record, "lifecycle");
-  const created = text(record, "created_at");
-  const updated = text(record, "updated_at");
-  const lastRun = text(record, "last_executed_at");
-  const version = record.current_version;
+  const checksum = text(record, "checksum");
+  const creator =
+    record.creator && typeof record.creator === "object" ? (record.creator as RecordValue) : null;
+  const actor =
+    creator &&
+    (creator.kind === "user" || creator.kind === "system_account") &&
+    typeof creator.id === "string"
+      ? ({ kind: creator.kind, id: creator.id } as const)
+      : null;
   return [
     {
       label: t("resource.field.slug"),
@@ -89,28 +96,18 @@ function useTechnicalFacts(record: RecordValue): Fact[] {
     },
     {
       label: t("catalog.version"),
-      value: typeof version === "number" ? `v${version}` : MISSING,
+      value: typeof record.current_version === "number" ? `v${record.current_version}` : MISSING,
       testId: "workflow-technical-version",
     },
     {
-      label: t("catalog.lifecycle"),
-      value: lifecycle ? statusLabel(t, lifecycle) : MISSING,
-      testId: "workflow-technical-lifecycle",
+      label: t("workflowPage.checksum"),
+      value: checksum ? <span className="break-all font-mono text-xs">{checksum}</span> : MISSING,
+      testId: "workflow-technical-checksum",
     },
     {
-      label: t("resource.field.createdAt"),
-      value: created ? dateTime(created) : MISSING,
-      testId: "workflow-technical-created",
-    },
-    {
-      label: t("catalog.updated"),
-      value: updated ? dateTime(updated) : MISSING,
-      testId: "workflow-technical-updated",
-    },
-    {
-      label: t("catalog.lastRun"),
-      value: lastRun ? dateTime(lastRun) : MISSING,
-      testId: "workflow-technical-last-run",
+      label: t("workflowPage.createdBy"),
+      value: workflowVersionAuthor(actor, directory, t),
+      testId: "workflow-technical-creator",
     },
   ];
 }
@@ -174,12 +171,14 @@ export function WorkflowPage({
     steps: editor.steps,
   });
   const connectorRecords = useConnectorRecords();
-  const waitingConnector = useWaitingConnector(
+  const waitingForCredentials = useWaitingConnector(
     steps.views.map((view) => ({
       connectorId: view.definition.connectorId,
       connector: view.definition.connector,
     })),
   );
+  const waitingConnector =
+    deletedConnectorReference(record.connector_references) ?? waitingForCredentials;
   const technical = useTechnicalFacts(record);
   const lifecycle = useOptimisticAction({
     queryKey: ["catalog-detail", "workflows", id],
@@ -209,7 +208,26 @@ export function WorkflowPage({
     onError: () => toast.error(t("common.actionFailed")),
   });
 
+  const metadataActions = useCatalogMetadataActions({
+    kind: "workflow",
+    id,
+    record,
+    queryKey: ["catalog-detail", "workflows", id],
+    onEdit: () => setDescribing(true),
+  });
+
   const menu: ActionMenuItem[] = [
+    ...(canChat
+      ? [
+          {
+            label: t("detail.changeInChat"),
+            href: absolute(
+              chatNewHref({ workflowId: id, prompt: t("detail.changePrompt", { name: title }) }),
+            ),
+            testId: "workflow-menu-change",
+          },
+        ]
+      : []),
     ...(canWrite
       ? [
           {
@@ -217,6 +235,7 @@ export function WorkflowPage({
             onSelect: () => setRenaming(true),
             testId: "workflow-menu-rename",
           },
+          ...metadataActions,
           disabled
             ? {
                 label: t("workflowStrip.action.enable"),
@@ -290,19 +309,6 @@ export function WorkflowPage({
       ]
         .filter(Boolean)
         .join(" · ")}
-      {build.saved ? (
-        <span
-          className="flex items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 text-xs"
-          data-testid="workflow-build-saved"
-        >
-          {t("workflowPage.savedVersion")}
-          <ContextHelp label={t("workflowPage.savedVersion")} testId="workflow-build-saved-help">
-            {version === null
-              ? t("workflowPage.savedVersionHelpNone")
-              : t("workflowPage.savedVersionHelp", { version: `v${version}` })}
-          </ContextHelp>
-        </span>
-      ) : null}
       {[...connectors.values()].map((entry, index) =>
         entry.href ? (
           <a
@@ -321,6 +327,25 @@ export function WorkflowPage({
       )}
     </span>
   );
+
+  const runDisabledReason = !canRun
+    ? t("run.unavailable.permission")
+    : legacy
+      ? t("run.unavailable.invalid")
+      : disabled
+        ? t("run.unavailable.disabled")
+        : stepRecords.length === 0
+          ? t("run.unavailable.empty")
+          : undefined;
+  const runProps = {
+    quiet: editor.dirty,
+    disabled: Boolean(runDisabledReason),
+    disabledReason: runDisabledReason,
+    approvedVersion: version,
+    workflowId: id,
+    workflowName: title,
+    liveEnvironment: automation.runEnvironment,
+  };
 
   const tabs: PageTab[] = [
     {
@@ -351,7 +376,18 @@ export function WorkflowPage({
           {
             value: "history",
             label: t("workflowPage.tab.history"),
-            content: <WorkflowRuns workflowId={id} />,
+            content: (
+              <WorkflowRuns
+                workflowId={id}
+                emptyAction={
+                  <RunWorkflowDialog
+                    {...runProps}
+                    triggerLabel={t("workflowRuns.runNow")}
+                    triggerTestId="workflow-runs-run"
+                  />
+                }
+              />
+            ),
           },
         ]
       : []),
@@ -360,21 +396,24 @@ export function WorkflowPage({
       label: t("workflowPage.tab.build"),
       content: (
         <>
-          <SummaryLine
-            text={buildSummary}
-            aside={
-              canWrite && !legacy && editor.steps.length > 0 ? (
-                <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
-                  {t("stepEditor.addTitle")}
-                </ActionButton>
-              ) : undefined
-            }
-            testId="workflow-build-summary"
-          />
+          {steps.views.length > 0 ? (
+            <SummaryLine
+              text={buildSummary}
+              aside={
+                canWrite && !legacy && editor.steps.length > 0 ? (
+                  <ActionButton size="sm" onClick={() => setAdding(true)} testId="step-add">
+                    {t("stepEditor.addTitle")}
+                  </ActionButton>
+                ) : undefined
+              }
+              testId="workflow-build-summary"
+            />
+          ) : null}
           <WorkflowTestResult steps={steps} dirty={editor.dirty} />
           <WorkflowStepsList
             key={`${id}:${build.versionId ?? "none"}`}
             steps={steps}
+            workflowName={title}
             canRun={canRun}
             {...(canWrite && !legacy
               ? {
@@ -443,42 +482,9 @@ export function WorkflowPage({
         <PageHeader
           back={{ to: "/workflows", label: t("nav.workflows") }}
           title={title}
-          purpose={
-            <CatalogMetadataSummary
-              record={record}
-              {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
-            />
-          }
-          secondary={
-            canChat ? (
-              <ActionMenu
-                items={[
-                  {
-                    label: t("detail.changeInChat"),
-                    href: absolute(
-                      chatNewHref({
-                        workflowId: id,
-                        prompt: t("detail.changePrompt", { name: title }),
-                      }),
-                    ),
-                    testId: "workflow-menu-change",
-                  },
-                ]}
-              />
-            ) : undefined
-          }
+          purpose={<CatalogMetadataSummary record={record} />}
           menu={menu.length > 0 ? <ActionMenu items={menu} testId="workflow-menu" /> : undefined}
-          action={
-            canRun && !legacy && !disabled ? (
-              <RunWorkflowDialog
-                quiet={editor.dirty}
-                disabled={stepRecords.length === 0}
-                workflowId={id}
-                workflowName={title}
-                liveEnvironment={automation.runEnvironment}
-              />
-            ) : undefined
-          }
+          action={<RunWorkflowDialog {...runProps} />}
         />
       }
     >

@@ -46,12 +46,6 @@ const BASIS_LABEL: Record<FigureBasis, TranslationKey | null> = {
   month: "overview.operations.month",
 };
 
-const PRESSURE_LABEL = {
-  ample: "resource.usage.pressure.ample",
-  tightening: "resource.usage.pressure.tightening",
-  critical: "resource.usage.pressure.critical",
-} as const satisfies Record<string, TranslationKey>;
-
 const PRESSURE_TONE = {
   ample: "text-success",
   tightening: "text-warning",
@@ -163,7 +157,7 @@ function Figure({
       {basis ? ` · ${t(basis)}` : null}
     </p>
   );
-  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-3 py-2";
+  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3";
   if (figure.state !== "value") {
     const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
     return (
@@ -212,7 +206,6 @@ function Figure({
       </div>
     );
   }
-  const compact = new Intl.NumberFormat(tag, { notation: "compact", maximumFractionDigits: 1 });
   const partial = figure.money && figure.money.unpricedCalls > 0;
   const display =
     figure.id === "runs"
@@ -224,12 +217,15 @@ function Figure({
           }).format(figure.value)}`
         : `${figure.value} %`;
   const pressure = figure.budget?.pressure ?? null;
-  const detail = figure.budget
-    ? figure.budget.remainingTokens === null
-      ? null
-      : t("overview.operations.remaining", {
-          remaining: compact.format(figure.budget.remainingTokens),
-        })
+  const detail = figure.detail
+    ? t(
+        figure.detail.kind === "failures"
+          ? "overview.operations.failedCount"
+          : figure.detail.count === 0
+            ? "overview.operations.allConnected"
+            : "overview.operations.connectorsAttention",
+        { count: figure.detail.count },
+      )
     : partial && figure.money
       ? t("overview.operations.unpricedCalls", { calls: figure.money.unpricedCalls })
       : null;
@@ -246,7 +242,7 @@ function Figure({
       <p className="flex min-w-0 items-baseline gap-1.5">
         <span
           className={[
-            "truncate text-xl font-semibold leading-7 tabular-nums",
+            "truncate text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums",
             pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null,
           ]
             .filter(Boolean)
@@ -267,13 +263,8 @@ function Figure({
         {figure.budget ? (
           <span className="truncate text-xs text-muted-foreground">
             {figure.money
-              ? t("overview.operations.budgetShare", {
-                  percent: figure.budget.percent,
-                  budget: compact.format(figure.budget.budgetTokens),
-                })
-              : t("overview.operations.budgetOf", {
-                  budget: compact.format(figure.budget.budgetTokens),
-                })}
+              ? t("overview.operations.tokenPercent", { percent: figure.budget.percent })
+              : null}
           </span>
         ) : figure.uncapped ? (
           <span className="truncate text-xs text-muted-foreground">
@@ -281,17 +272,11 @@ function Figure({
           </span>
         ) : null}
       </p>
-      {pressure || detail ? (
+      {detail ? (
         <p
           className="truncate text-xs text-muted-foreground"
           data-testid={`operations-figure-${figure.id}-detail`}
         >
-          {pressure ? (
-            <span className={`font-medium ${PRESSURE_TONE[pressure]}`}>
-              {t(PRESSURE_LABEL[pressure])}
-            </span>
-          ) : null}
-          {pressure && detail ? " · " : null}
           {detail}
         </p>
       ) : null}

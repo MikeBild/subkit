@@ -52,6 +52,14 @@ describe("connectors that count against health", () => {
     expect(params).not.toHaveProperty("enabled");
   });
 
+  test("kind filtering reaches the server before pagination and stays connector-only", () => {
+    for (const kind of ["oauth", "mcp", "key"] as const) {
+      expect(catalogListParams("connectors", { ...state, kind }).kind).toBe(kind);
+      expect(catalogListParams("workflows", { ...state, kind })).not.toHaveProperty("kind");
+    }
+    expect(catalogListParams("connectors", { ...state, kind: "all" })).not.toHaveProperty("kind");
+  });
+
   test("only the connector list carries it", () => {
     expect(catalogListParams("workflows", state)).not.toHaveProperty("health");
     expect(catalogListParams("connectors", { ...state, health: null })).not.toHaveProperty(

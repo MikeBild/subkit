@@ -39,6 +39,7 @@ import {
 } from "../../../connectors/health-state.ts";
 import { clearReauthIfProved, flagConnectorAuthFailure } from "../../../connectors/reauth.ts";
 import { getConnectorForEnvironment, isCircuitOpenBlocking } from "../../../connectors/service.ts";
+import type { CredentialUseSnapshot } from "../../../credentials/index.ts";
 import type { Db } from "../../../db/client.ts";
 import { connectorEndpointSchemas } from "../../../db/schema/index.ts";
 import type { ResolvedFile } from "../../../files/resolver.ts";
@@ -84,6 +85,7 @@ import {
 import type { RequestStep } from "../../../workflows/types.ts";
 import { combineSignals } from "../../abort.ts";
 import { connectorStepRefusal } from "../../connector-availability.ts";
+import { appendCredentialSnapshot } from "../../credential-snapshots.ts";
 import { type ExpectedRowCount, evaluateExpectedRowCount } from "../../expected-row-count.ts";
 import { resolveScopeForJsonata } from "../../jsonata-bindings.ts";
 import {
@@ -535,14 +537,49 @@ export interface RunRequestStepParams {
 }
 
 export async function runRequestStep(p: RunRequestStepParams): Promise<StepResult> {
+  const dispatchedEffects: Array<"read" | "write"> = [];
+  const result = await dispatchRequestStep(p, (effect) => {
+    dispatchedEffects.push(effect);
+  });
+  if (!dispatchedEffects.length) return result;
+  const metadata: RequestMeta = result.request_meta ?? { driver: "error", url: null };
+  return {
+    ...result,
+    request_meta: {
+      ...metadata,
+      extras: {
+        ...metadata.extras,
+        effect_kind: dispatchedEffects.includes("write") ? "write" : "read",
+      },
+    },
+  };
+}
+
+async function dispatchRequestStep(
+  p: RunRequestStepParams,
+  recordEffect: (effect: "read" | "write") => void,
+): Promise<StepResult> {
   const start = Date.now();
+  const referencedCredentials: CredentialUseSnapshot[] = [];
+  const persistCredentialUse = async (snapshot?: CredentialUseSnapshot) => {
+    const captured = [...referencedCredentials, ...(snapshot ? [snapshot] : [])];
+    const unique = new Map(captured.map((entry) => [JSON.stringify(entry), entry]));
+    for (const entry of unique.values())
+      await appendCredentialSnapshot(
+        p.ctx.db,
+        p.ctx.tenant_id,
+        p.ctx.execution_id,
+        p.ctx.step_row_id,
+        entry,
+      );
+  };
   const referencedAuthorities: ResolvedAuthorityReference[] = [
     ...(p.ctx.prepared_workflow_references ?? []),
   ];
   let configurationDigest = authorityConnectorDigest(null);
   let credentialSnapshot: Pick<
     ResolvedConnectorCredential,
-    "credential_id" | "credential_revision" | "connection_authority"
+    "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
   > = {
     credential_id: null,
     credential_revision: null,
@@ -574,6 +611,12 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
         ...(documentedRead ? { requires_review: false } : {}),
         ...(request ? { request } : {}),
       });
+      await persistCredentialUse(credential.credential_snapshot);
+      recordEffect(
+        documentedRead
+          ? "read"
+          : classifyRequestStepSideEffects(p.step, activeConnector?.driver, request?.method),
+      );
       return documentedRead ? { redirect: "manual" as const } : policy;
     } catch (error) {
       throw new RequestError(
@@ -695,6 +738,9 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
   const signal = combineSignals([p.ctx.signal, timeoutCtrl.signal]);
 
   const resolverCtx = {
+    onCredentialUse: (snapshot: CredentialUseSnapshot) => {
+      referencedCredentials.push(snapshot);
+    },
     onAuthorityReference: (reference: ResolvedAuthorityReference) => {
       if (
         !referencedAuthorities.some(
@@ -1088,6 +1134,8 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                 }),
                 () =>
                   invokeMcpConnectorCall({
+                    on_dispatch: () => recordEffect(classifyRequestStepSideEffects(p.step)),
+                    on_credential_use: persistCredentialUse,
                     db: p.ctx.db,
                     tenant_id: p.ctx.tenant_id,
                     actor_id: p.ctx.principal?.id ?? null,
@@ -1160,6 +1208,10 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
                 ? `/${resolvedKey.replace(/^\/+/, "")}`
                 : (resolvedStepPath ?? resolvedStepUrl ?? "/");
           const params: Parameters<typeof executeS3Request>[0] = {
+            on_credential_use: async (snapshot) => {
+              await persistCredentialUse(snapshot);
+              recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+            },
             db: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
             connector,
@@ -1430,6 +1482,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               ];
               const stepLevelExpectation = p.step.expected_row_count;
               const tx = await pgTransaction({
+                on_credential_use: async () => {
+                  await persistCredentialUse({
+                    connector_id: connector.id,
+                    environment: connector.environment,
+                    credential_id: null,
+                    credential_generation: null,
+                    connection_id: null,
+                    access_token_version: null,
+                    identity: null,
+                  });
+                  recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+                },
                 connector,
                 statements,
                 onStatement: (idx, _rows, rowCount) => {
@@ -1457,6 +1521,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
             }
             if (useCursor && cursor) {
               const rows = await pgQueryCursor({
+                on_credential_use: async () => {
+                  await persistCredentialUse({
+                    connector_id: connector.id,
+                    environment: connector.environment,
+                    credential_id: null,
+                    credential_generation: null,
+                    connection_id: null,
+                    access_token_version: null,
+                    identity: null,
+                  });
+                  recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+                },
                 connector,
                 sql: sqlBlock.query,
                 params: resolvedSqlParams ?? [],
@@ -1465,6 +1541,18 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
               return { output: rows, rowCount: Array.isArray(rows) ? rows.length : null };
             }
             const res = await pgQueryWithCount({
+              on_credential_use: async () => {
+                await persistCredentialUse({
+                  connector_id: connector.id,
+                  environment: connector.environment,
+                  credential_id: null,
+                  credential_generation: null,
+                  connection_id: null,
+                  access_token_version: null,
+                  identity: null,
+                });
+                recordEffect(classifyRequestStepSideEffects(p.step, activeConnector?.driver));
+              },
               connector,
               sql: sqlBlock.query,
               params: resolvedSqlParams ?? [],
@@ -1600,6 +1688,7 @@ export async function runRequestStep(p: RunRequestStepParams): Promise<StepResul
       storedCredentialUsed = plan.stored_credential_used;
       activeCredentialId = plan.credential_id;
       credentialSnapshot = {
+        ...(plan.credential_snapshot ? { credential_snapshot: plan.credential_snapshot } : {}),
         credential_id: plan.credential_id,
         credential_revision: plan.credential_revision,
         connection_authority: plan.connection_authority ?? null,

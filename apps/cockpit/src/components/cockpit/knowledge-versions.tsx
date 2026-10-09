@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
+import type { ActorDirectory } from "@/app/actor-directory-model";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { FocusedDiff } from "@/components/cockpit/diff-card";
 import {
@@ -169,7 +170,7 @@ function KnowledgeVersionSheet({
   kept: readonly KnowledgeVersion[];
   latest: number;
   canWrite: boolean;
-  directory: ReadonlyMap<string, string>;
+  directory: ActorDirectory;
   onClose: () => void;
 }) {
   const { t, dateTime } = useI18n();
@@ -220,6 +221,11 @@ function KnowledgeVersionSheet({
       open={version !== null}
       onOpenChange={(open) => !open && onClose()}
       title={version ? `${sourceName} · v${version.version}` : ""}
+      subtitle={
+        version
+          ? `${authorName(version.author, directory, t)} · ${dateTime(version.created_at)}`
+          : undefined
+      }
       badge={version ? versionBadge(version, t) : undefined}
       action={
         version && canWrite && !version.current ? (

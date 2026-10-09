@@ -5,13 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest, apiText, apiUpload } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
+import { actorDirectoryName } from "@/app/actor-directory-model";
 import { absolute, conversationHref, recordHref, workflowHref } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import {
   CatalogMetadataDialog,
   CatalogMetadataSummary,
   CatalogNameCell,
+  useCatalogMetadataActions,
   useCategoryFilter,
 } from "@/components/cockpit/catalog-metadata";
 import { IconButton } from "@/components/cockpit/icon-button";
@@ -37,7 +41,6 @@ import {
   PageHeader,
   previewKind,
   RecordSheet,
-  SummaryLine,
 } from "@/components/cockpit/patterns";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { LOCALE_TAGS, pluralKey } from "@/lib/i18n";
@@ -45,7 +48,9 @@ import { useI18n } from "@/lib/i18n-context";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
 
-type StoredFile = components["schemas"]["File"];
+type StoredFile = components["schemas"]["File"] & {
+  creator?: { kind: "user" | "system_account"; id: string } | null;
+};
 type ListedFile = components["schemas"]["FileListItem"];
 type FileUsage = components["schemas"]["FileUsage"];
 
@@ -159,14 +164,16 @@ export function FilesPage() {
   const [search, setSearch] = useState("");
   const [upload, setUpload] = useState<{ files: File[]; replace: StoredFile | null } | null>(null);
   const categoryFilter = useCategoryFilter("file");
+  const origin = useCatalogOrigin();
   const list = useInfiniteList<ListedFile>(LIST_PATH, {
     ...LIST_PARAMS,
     q: search.trim() || undefined,
     category: categoryFilter.category,
+    description_source: origin.descriptionSource,
   });
   const { query, items } = list;
   const total = list.total ?? items.length;
-  const unfiltered = search.trim() === "" && !categoryFilter.category;
+  const unfiltered = search.trim() === "" && !categoryFilter.category && !origin.active;
   const hasFiles = items.length > 0 || !unfiltered;
 
   const dropOnPage = useMemo(() => (files: File[]) => setUpload({ files, replace: null }), []);
@@ -231,7 +238,7 @@ export function FilesPage() {
         <PageHeader
           eyebrow={t("nav.group.knowledge")}
           title={t("files.title")}
-          action={items.length > 0 && unfiltered ? uploadAction : undefined}
+          action={hasFiles ? uploadAction : undefined}
         />
       }
     >
@@ -245,9 +252,11 @@ export function FilesPage() {
             testId="files-page-drop"
           />
         ) : null}
-        {items.length > 0 && unfiltered ? (
-          <SummaryLine
+        {items.length > 0 || !unfiltered ? (
+          <CatalogOriginSummary
             testId="files-summary"
+            kind="file"
+            origin={origin}
             text={
               allLoaded
                 ? t(pluralKey("files.summary", total), {
@@ -296,7 +305,11 @@ export function FilesPage() {
               title: t("resource.noMatches"),
               description: t("resource.broaderSearch"),
               resetLabel: t("catalog.clearFilters"),
-              onReset: () => setSearch(""),
+              onReset: () => {
+                setSearch("");
+                categoryFilter.select?.onChange("all");
+                origin.setValue("all");
+              },
             },
           }}
           hasActiveFilters={!unfiltered}
@@ -401,7 +414,7 @@ function UploadDialog({
     if (done.length > 0)
       toast.success(
         replace
-          ? t("files.replaced", { name: replace.filename })
+          ? t("files.replaced", { name: done[0]?.filename ?? replace.filename })
           : done.length === 1
             ? t("files.uploaded", { name: done[0]?.filename ?? "" })
             : t("files.uploadedMany", { count: done.length }),
@@ -528,6 +541,7 @@ function FileSheet({
   onReplace(file: StoredFile): void;
 }) {
   const { t, dateTime, locale } = useI18n();
+  const directory = useActorDirectory(true);
   const client = useQueryClient();
   const live = useLiveQueryOptions();
   const [renaming, setRenaming] = useState(false);
@@ -537,6 +551,13 @@ function FileSheet({
     queryKey: ["file", id],
     queryFn: () => apiRequest<StoredFile>(`/v1/files/${encodeURIComponent(id)}`),
     ...live,
+  });
+  const metadataActions = useCatalogMetadataActions({
+    kind: "file",
+    id,
+    record: fileQuery.data,
+    queryKey: ["file", id],
+    onEdit: () => setDescribing(true),
   });
   const usageQuery = useQuery({
     queryKey: ["file", id, "usage"],
@@ -576,6 +597,7 @@ function FileSheet({
           : t("files.deletePlain");
 
   const menuItems = [
+    ...(canWrite ? metadataActions : []),
     ...(canWrite && file
       ? [
           { label: t("files.replace"), onSelect: () => onReplace(file), testId: "file-replace" },
@@ -636,6 +658,7 @@ function FileSheet({
           if (!open) onClose();
         }}
         title={file?.filename ?? ""}
+        subtitle={file ? <CatalogMetadataSummary record={file} /> : undefined}
         testId="file-sheet"
         closeTestId="file-sheet-close"
         titleTestId="file-sheet-title"
@@ -664,12 +687,6 @@ function FileSheet({
           />
         ) : file ? (
           <>
-            <p className="text-sm text-muted-foreground" data-testid="file-metadata">
-              <CatalogMetadataSummary
-                record={file}
-                {...(canWrite ? { onEdit: () => setDescribing(true) } : {})}
-              />
-            </p>
             <FilePreview
               name={file.filename}
               mimeType={file.content_type}
@@ -686,6 +703,7 @@ function FileSheet({
                 </ContextHelp>
               </span>
               <CopyField
+                labelled
                 value={fileReference(file)}
                 label={t("files.reference")}
                 testId="file-reference-value"
@@ -699,7 +717,16 @@ function FileSheet({
                   label: t("files.fact.size"),
                   value: sizeText(file.size_bytes, LOCALE_TAGS[locale]),
                 },
-                { label: t("files.fact.uploaded"), value: dateTime(file.created_at) },
+                {
+                  label: t("files.fact.uploaded"),
+                  value: t("files.uploadedBy", {
+                    date: dateTime(file.created_at),
+                    name: file.creator
+                      ? (actorDirectoryName(directory, file.creator.kind, file.creator.id) ??
+                        t("runs.caller.unknown"))
+                      : t("runs.caller.unknown"),
+                  }),
+                },
                 ...(file.replaced_at
                   ? [{ label: t("files.fact.replaced"), value: dateTime(file.replaced_at) }]
                   : []),

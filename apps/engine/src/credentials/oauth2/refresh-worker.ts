@@ -140,11 +140,13 @@ export async function refreshIfStale(
     } else {
       bundle = await runRefreshTokenGrant(cfg, decrypted.refresh_token ?? "");
     }
-    await rotateOAuth2Tokens(
+    const rotated = await rotateOAuth2Tokens(
       {
         tenant_id,
         credential_id: credRow.id,
+        expected_generation: credRow.credential_generation,
         access_token: bundle.access_token,
+        verified_identity: bundle.verified_identity ?? null,
         token_type: bundle.token_type,
         scope: bundle.scope ?? undefined,
         refresh_token: bundle.refresh_token ?? decrypted.refresh_token,
@@ -153,6 +155,9 @@ export async function refreshIfStale(
       },
       db,
     );
+    if (rotated.credential_generation !== null)
+      credRow.credential_generation = rotated.credential_generation;
+    credRow.verified_identity = rotated.verified_identity;
     logger.info({
       module: "oauth2",
       action: "oauth2.refresh_success",
@@ -180,6 +185,7 @@ export async function refreshIfStale(
       expires_at: bundle.expires_at,
     };
   } catch (err) {
+    if ((err as { code?: string }).code === "credential_generation_changed") throw err;
     logger.error({
       module: "oauth2",
       action: "oauth2.refresh_error",

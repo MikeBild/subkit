@@ -19,18 +19,14 @@ export const RbacRoleSchema = z
   })
   .openapi("RbacRole");
 
-export const RbacRoleDetailSchema = z
-  .object({
-    id: z.string(),
-    tenant_id: z.string().nullable(),
-    name: z.string(),
-    description: z.string().nullable(),
-    is_builtin: z.boolean(),
-    created_at: z.string(),
-    updated_at: z.string(),
-    permissions: z.array(z.string()),
-  })
-  .openapi("RbacRoleDetail");
+export const RbacRoleDetailSchema = RbacRoleSchema.extend({
+  permissions: z.array(z.string()),
+  member_count: z
+    .number()
+    .int()
+    .nonnegative()
+    .describe("Distinct people in this tenant assigned the role directly or through a group."),
+}).openapi("RbacRoleDetail");
 
 export const RbacGrantSchema = z
   .object({
@@ -58,6 +54,13 @@ export const RbacGroupSchema = z
     updated_at: z.string(),
   })
   .openapi("RbacGroup");
+
+export const RbacGroupDetailSchema = RbacGroupSchema.extend({
+  member_count: z.number().int().nonnegative(),
+  member_ids: z
+    .array(z.string().uuid())
+    .describe("Existing people belonging to this tenant and group."),
+}).openapi("RbacGroupDetail");
 
 export const PermissionCatalogEntrySchema = z
   .object({

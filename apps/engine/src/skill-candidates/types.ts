@@ -153,6 +153,7 @@ export function computeConfidence(
 }
 
 export interface ListSkillCandidatesParams {
+  candidate_ids?: string[];
   tenant_id: string;
   status?: SkillCandidateStatus;
   statuses?: SkillCandidateStatus[];

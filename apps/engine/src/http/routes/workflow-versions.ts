@@ -16,6 +16,8 @@ const VersionSchema = z
     created_at: z.string(),
     dag: z.unknown(),
     invalid: z.boolean(),
+    author: z.object({ kind: z.enum(["user", "system_account"]), id: z.string() }).nullable(),
+    checksum: z.string(),
   })
   .openapi("WorkflowVersion");
 
@@ -107,6 +109,8 @@ export function registerWorkflowVersionRoutes(app: OpenAPIHono<AppEnv>): void {
           created_at: v.created_at.toISOString(),
           dag: v.dag,
           invalid: v.invalid,
+          author: v.author,
+          checksum: v.checksum,
         })),
         total,
       },
@@ -124,7 +128,14 @@ export function registerWorkflowVersionRoutes(app: OpenAPIHono<AppEnv>): void {
     }
     let wf: svc.WorkflowView | null;
     try {
-      wf = await svc.restoreWorkflowVersion(principal.tenant_id, id, v, principal.id, db);
+      wf = await svc.restoreWorkflowVersion(
+        principal.tenant_id,
+        id,
+        v,
+        principal.id,
+        db,
+        principal.kind,
+      );
     } catch (error) {
       if (!(error instanceof svc.VersionNotRestorableError)) throw error;
       throw new HttpError(422, error.code, error.message, {

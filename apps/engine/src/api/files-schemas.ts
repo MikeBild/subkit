@@ -1,10 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { FILE_LINK_RESOURCE_TYPES } from "@shared/index.ts";
 import {
+  AcceptDescriptionSchema,
   CatalogSourceSchema,
   CategoryFilterSchema,
   CategorySchema,
   DescriptionSchema,
+  descriptionAcceptanceValid,
 } from "./catalog-metadata.ts";
 
 export const FileIdSchema = z
@@ -44,6 +46,16 @@ export const FileSchema = z
     size_bytes: z.number().int().nonnegative(),
     sha256: z.string().nullable(),
     scan_result: z.string().nullable(),
+    created_by: z.string().uuid().nullable().openapi({
+      description:
+        "Recorded creator identifier, or null when unknown. Does not imply an actor kind.",
+    }),
+    creator: z
+      .object({ kind: z.enum(["user", "system_account"]), id: z.string().uuid() })
+      .nullable()
+      .describe(
+        "Creator kind established by a retained original creation audit event matching created_by. Null when unknown or ambiguous.",
+      ),
     created_at: z.string(),
     updated_at: z.string(),
     replaced_at: z.string().nullable(),
@@ -158,6 +170,7 @@ const LINKED_TO_PATTERN = new RegExp(
 
 export const ListFilesQuerySchema = z
   .object({
+    description_source: z.enum(["llm", "human"]).optional(),
     status: FileStatusSchema.optional(),
     linked_to: z.string().regex(LINKED_TO_PATTERN).optional(),
     category: CategoryFilterSchema.optional(),
@@ -189,6 +202,7 @@ export const UpdateFileSchema = z
   .object({
     filename: z.string().trim().min(1).max(255).optional(),
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
   })
   .refine(
@@ -196,6 +210,10 @@ export const UpdateFileSchema = z
       body.filename !== undefined || body.description !== undefined || body.category !== undefined,
     { message: "send at least one of filename, description, category" },
   )
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
+  })
   .openapi("UpdateFile");
 
 export const FileUsageSchema = z

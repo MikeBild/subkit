@@ -90,6 +90,21 @@ export const ConnectorSchema = z
       .nullable(),
     created_at: z.string(),
     updated_at: z.string(),
+    last_tested_at: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe(
+        "Last recorded explicit connector probe, successful or failed; null when no retained evidence exists.",
+      ),
+    tools_count: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "Tool count from the most recent retained successful MCP manifest observation; null when unknown.",
+      ),
     credentials: z.array(CredentialSummarySchema).optional(),
   })
   .openapi("Connector");
@@ -200,6 +215,8 @@ export function serialize(view: ConnectorView) {
     sign_in: connectorSignIn(c),
     created_at: c.created_at.toISOString(),
     updated_at: c.updated_at.toISOString(),
+    last_tested_at: null as string | null,
+    tools_count: null as number | null,
   };
 }
 

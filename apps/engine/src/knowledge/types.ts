@@ -1,5 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { CatalogSourceSchema, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
+import {
+  AcceptDescriptionSchema,
+  CatalogSourceSchema,
+  CategorySchema,
+  DescriptionSchema,
+  descriptionAcceptanceValid,
+} from "../api/catalog-metadata.ts";
 import type { Actor } from "../audit/actor.ts";
 import type { RawChunk } from "../docs-ingestion/types.ts";
 
@@ -95,7 +101,16 @@ export type CreateKnowledgeSourceBundleInput = z.infer<typeof CreateKnowledgeSou
 export const UpdateKnowledgeSourceSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
+    source_uri: z
+      .string()
+      .url()
+      .max(2048)
+      .refine((value) => /^https?:\/\//i.test(value), {
+        message: "source_uri must use HTTP or HTTPS",
+      })
+      .optional(),
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
     tags: z.array(z.string().min(1).max(40)).max(20).optional(),
     scope: KnowledgeSourceScopeSchema.optional(),
@@ -103,6 +118,10 @@ export const UpdateKnowledgeSourceSchema = z
     status: z.enum(["active", "inactive"]).optional(),
     refresh_strategy: z.enum(["manual", "scheduled"]).optional(),
     refresh_cron: z.string().nullable().optional(),
+  })
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
   })
   .openapi("UpdateKnowledgeSourceBody");
 
@@ -146,6 +165,7 @@ export interface CreateKnowledgeSourceParams {
 }
 
 export interface ListKnowledgeSourcesParams {
+  description_source?: "llm" | "human";
   tenant_id: string;
   scope?: KnowledgeSourceScope;
   workflow_id?: string;
@@ -192,6 +212,7 @@ export interface IngestKnowledgeSourceParams {
   };
   actor: Actor | null;
   expected_version?: string;
+  expected_source_uri?: string;
   parsed_chunks?: RawChunk[];
   note?: string;
   restored_from?: number;
@@ -215,6 +236,7 @@ export interface UpdateKnowledgeSourceContentParams {
   expected_version: string;
   path: string;
   content: string;
+  note?: string;
   actor: Actor | null;
 }
 

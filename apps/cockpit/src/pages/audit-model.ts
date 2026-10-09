@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import {
   absolute,
   connectorHref,
@@ -14,7 +15,9 @@ import type { TranslationKey } from "@/lib/i18n";
 import { type CatalogLabel, catalogLabel } from "@/lib/machine-label";
 import type { NameIndex } from "@/lib/name-index";
 
-type AuditEntry = components["schemas"]["AuditEntry"];
+type AuditEntry = Omit<components["schemas"]["AuditEntry"], "resource_name"> & {
+  resource_name?: string | null;
+};
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 type FormatDateTime = (value: string | Date) => string;
 
@@ -62,11 +65,11 @@ export function canReadDirectory(session: {
 
 export function auditActorName(
   entry: Pick<AuditEntry, "actor_type" | "actor_id">,
-  directory: ReadonlyMap<string, string>,
+  directory: ActorDirectory,
   t: Translate,
 ): CatalogLabel | null {
   const kind = entry.actor_type?.trim() ?? "";
-  const named = entry.actor_id ? directory.get(entry.actor_id) : undefined;
+  const named = entry.actor_id ? actorDirectoryName(directory, kind, entry.actor_id) : undefined;
   if (named) return { text: named, machine: false };
   if (!kind) return null;
   return actorTypeLabel(kind, t);
@@ -577,6 +580,8 @@ export interface AuditFact {
   label: string;
   value: string | null;
   mono?: boolean;
+  prominent?: boolean;
+  help?: string;
 }
 
 function recordedText(value: string | null | undefined): string | null {
@@ -594,7 +599,7 @@ export function auditDetailFacts(
   entry: AuditEntry,
   t: Translate,
   dateTime: FormatDateTime,
-  directory: ReadonlyMap<string, string> = new Map(),
+  directory: ActorDirectory = new Map(),
 ): AuditFact[] {
   return [
     { label: t("audit.column.time"), value: dateTime(entry.ts) },
@@ -604,7 +609,13 @@ export function auditDetailFacts(
     labelFact(t("audit.column.resource"), auditResourceLabel(entry.resource_type, t)),
     { label: t("audit.detail.resourceId"), value: recordedText(entry.resource_id), mono: true },
     labelFact(t("audit.column.reason"), auditReasonLabel(entry.reason, t)),
-    { label: t("audit.detail.trace"), value: recordedText(entry.trace_id), mono: true },
+    {
+      label: t("audit.detail.trace"),
+      value: recordedText(entry.trace_id),
+      mono: true,
+      prominent: true,
+      help: t("audit.detail.traceHelp"),
+    },
     { label: t("audit.detail.ip"), value: recordedText(entry.ip), mono: true },
     { label: t("audit.detail.userAgent"), value: recordedText(entry.user_agent), mono: true },
     { label: t("audit.detail.record"), value: recordedText(entry.id), mono: true },
@@ -616,4 +627,52 @@ export function shortIdentifier(value: string): string {
     value,
   );
   return looksLikeAnId ? `${value.slice(0, 8)}…` : value;
+}
+
+export const AUDIT_AREAS = {
+  all: [],
+  runs: ["execution", "execution_step"],
+  workflows: ["workflow", "workflow_version", "workflow_execution_authority", "workflow_schedule"],
+  connectors: ["connector", "credential", "connection"],
+  knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
+  files: ["file"],
+  conversations: ["conversation", "conversation_elicitation"],
+  people: [
+    "user",
+    "user_identity",
+    "group",
+    "role",
+    "resource_grant",
+    "api_key",
+    "system_account",
+    "mcp_oauth_client",
+  ],
+} as const;
+
+export type AuditArea = keyof typeof AUDIT_AREAS;
+
+export function auditAreaParams(area: AuditArea): Record<string, string> {
+  return area === "all" ? {} : { resource_types: AUDIT_AREAS[area].join(",") };
+}
+
+export function auditObjectName(
+  entry: Pick<AuditEntry, "resource_type" | "resource_id" | "resource_name">,
+  names: NameIndex,
+  t: Translate,
+): string {
+  if (entry.resource_name?.trim()) return entry.resource_name;
+  if (
+    entry.resource_id &&
+    (entry.resource_type === "workflow" || entry.resource_type === "connector")
+  ) {
+    const name = names[entry.resource_type].get(entry.resource_id);
+    if (name) return name;
+  }
+  return auditResourceLabel(entry.resource_type, t).text;
+}
+
+export function initialAuditFilter(search: string, now: number) {
+  const filter = auditFilterFromUrl(search);
+  if (filter.tsFrom || filter.tsTo || filter.traceId || filter.resourceId) return filter;
+  return { ...filter, tsFrom: new Date(now - 30 * 86_400_000).toISOString() };
 }

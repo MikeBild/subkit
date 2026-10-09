@@ -106,16 +106,15 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
         throw new Error(`${where}: "until revoked" shows ${field}`);
     await assertSingleTriggers(page, `${where}, until revoked`, DIALOG);
     await capture("until-revoked");
-    await page.getByTestId("authority-limit-limited").click();
-    await page.getByTestId("authority-runs").waitFor();
-    if (
-      (await page.getByTestId("authority-runs").inputValue()) !== "210" ||
-      (await page.getByTestId("authority-hours").inputValue()) !== "720"
-    )
-      throw new Error(`${where}: the suggested limits are not the engine's`);
-    const suggestion = await text(page.getByTestId("authority-suggestion"));
-    if (!suggestion.includes("42") || !suggestion.includes("14"))
-      throw new Error(`${where}: the suggestion is not explained: "${suggestion}"`);
+    for (const duration of ["seven-days", "thirty-days"]) {
+      const option = page.getByTestId(`authority-limit-${duration}`);
+      await option.click();
+      if ((await option.getAttribute("data-state")) !== "on")
+        throw new Error(`${where}: ${duration} cannot be selected`);
+      for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
+        if (await page.getByTestId(field).count())
+          throw new Error(`${where}: duration selection exposes obsolete ${field}`);
+    }
     for (const scope of ["authority-scope-environment", "authority-scope-version"])
       if (await page.getByTestId(scope).count())
         throw new Error(`${where}: the ordinary scope is warned about (${scope})`);
@@ -137,11 +136,11 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     if (!scopeText.includes(words.development) || !scopeText.includes(words.production))
       throw new Error(`${where}: the scope warning reads "${scopeText}"`);
     await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
-    await page.getByTestId("authority-runs").waitFor();
-    if ((await page.getByTestId("authority-runs").inputValue()) !== "1")
-      throw new Error(`${where}: a development review inherited production's suggestion`);
-    if (await page.getByTestId("authority-suggestion").count())
-      throw new Error(`${where}: the one-run default is explained`);
+    if ((await page.getByTestId("authority-limit-thirty-days").getAttribute("data-state")) !== "on")
+      throw new Error(`${where}: changing environment lost the selected approval duration`);
+    for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
+      if (await page.getByTestId(field).count())
+        throw new Error(`${where}: development exposes obsolete ${field}`);
     await assertSingleTriggers(page, where, DIALOG);
     await capture("scope-warning");
     await closeDialog(page);

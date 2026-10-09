@@ -4,6 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Db } from "../db/client.ts";
 import { patchCandidates, workflowVersions } from "../db/schema/index.ts";
 import { PatchProposalSchema } from "../llm/flows/repair.ts";
+import { type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { lockWorkflowForVersionWrite } from "../workflows/version-write-lock.ts";
 import { PatchDecisionError } from "./candidate-decision.ts";
 import { readPatchReadiness } from "./candidate-readiness.ts";
@@ -11,7 +12,7 @@ import { applyPatchToWorkflowDag, candidateDriftKind } from "./patch-apply.ts";
 import { resolveCandidateStepKey } from "./step-snapshot.ts";
 
 export async function preparePatchCandidate(
-  params: {
+  params: VersionActor & {
     tenant_id: string;
     candidate_id: string;
     actor_id: string | null;
@@ -74,6 +75,7 @@ export async function preparePatchCandidate(
     const [version] = await tx
       .insert(workflowVersions)
       .values({
+        ...versionAuthorColumns(params),
         tenant_id: params.tenant_id,
         workflow_id: candidate.workflow_id,
         dag: patch.dag,
@@ -85,7 +87,7 @@ export async function preparePatchCandidate(
     await auditAwait(
       {
         tenant_id: params.tenant_id,
-        actor_type: "user",
+        actor_type: params.actor_type ?? (params.actor_id ? "user" : "system"),
         actor_id: params.actor_id,
         action: AuditAction.PATCH_CANDIDATE_PREPARED,
         resource_type: "patch_candidate",

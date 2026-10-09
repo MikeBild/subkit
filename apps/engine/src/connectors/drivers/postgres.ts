@@ -62,6 +62,7 @@ export async function probePgConnector(connector: ConnectorView): Promise<Driver
 }
 
 export interface PgQueryParams {
+  on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
   params?: unknown[];
@@ -80,7 +81,15 @@ export async function pgQueryWithCount<T = unknown>(p: PgQueryParams): Promise<P
     level: "debug",
     thresholdMs: 1000,
     fields: { connector_id: p.connector.id, op: "query" },
-    fn: () => pool.query(p.sql, p.params ?? []),
+    fn: async () => {
+      const client = await pool.connect();
+      try {
+        await p.on_credential_use?.();
+        return await client.query(p.sql, p.params ?? []);
+      } finally {
+        client.release();
+      }
+    },
   });
   return {
     rows: res.rows as T[],
@@ -94,6 +103,7 @@ export interface PgTransactionStatement {
 }
 
 export async function pgTransaction<T = unknown>(p: {
+  on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   statements: PgTransactionStatement[];
   onStatement?: (index: number, rows: T[], rowCount: number | null) => void | Promise<void>;
@@ -116,6 +126,7 @@ export async function pgTransaction<T = unknown>(p: {
         statement_count: p.statements.length,
       },
       fn: async () => {
+        await p.on_credential_use?.();
         await client.query("BEGIN");
         const out: T[][] = [];
         const counts: Array<number | null> = [];
@@ -148,6 +159,7 @@ export async function pgTransaction<T = unknown>(p: {
 }
 
 export async function pgQueryCursor<T = unknown>(p: {
+  on_credential_use?: () => Promise<void>;
   connector: ConnectorView;
   sql: string;
   params?: unknown[];
@@ -164,6 +176,7 @@ export async function pgQueryCursor<T = unknown>(p: {
       thresholdMs: 1000,
       fields: { connector_id: p.connector.id, op: "cursor", fetch_size: p.fetch_size },
       fn: async () => {
+        await p.on_credential_use?.();
         await client.query("BEGIN");
         await client.query(`DECLARE ${cursorName} CURSOR FOR ${p.sql}`, p.params ?? []);
         const out: T[] = [];

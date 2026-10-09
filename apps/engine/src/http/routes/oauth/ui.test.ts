@@ -236,6 +236,7 @@ describe("pages without a way back are dead ends", () => {
     const html = renderServerErrorPage(DE, "<trace>");
     expect(html).toContain("Etwas ist schiefgelaufen");
     expect(html).toContain("&lt;trace&gt;");
+    expect(html).toContain('value="&lt;trace&gt;" readonly');
     expect(html).toContain('data-family-surface="fatal-error"');
     expect(renderNotFoundPage(DE)).toContain('data-family-surface="not-found"');
     expect(renderNotFoundPage(DE)).toContain("Diese Seite gibt es nicht");
@@ -307,8 +308,8 @@ describe("sign-in pages", () => {
     expect(html).toContain("Bei SubKit anmelden");
     expect(html).toContain("SubKit · OAuth 2.1");
     const english = renderProviderChoice(PROVIDERS, EN);
-    expect(english.indexOf("Continue with SSO")).toBeLessThan(
-      english.indexOf("Continue with API key"),
+    expect(english.indexOf("Sign in with work account")).toBeLessThan(
+      english.indexOf("Sign in with API key"),
     );
   });
 
@@ -331,4 +332,27 @@ describe("sign-in pages", () => {
     const html = renderErrorPage("state_expired", '"><script>x</script>', EN);
     expect(html).not.toContain("<script>x</script>");
   });
+});
+
+test("API key sign-in returns to the same authorization attempt and retains escaped state", () => {
+  const html = renderApiKeyLogin(
+    "/v1/identity/login/start",
+    "api-key",
+    "state&value",
+    undefined,
+    DE,
+  );
+  expect(html).toContain("Mit API-Schlüssel anmelden");
+  expect(html).toContain('href="/v1/identity/login/start?login_state=state%26value"');
+  expect(html).toContain('name="login_state" value="state&amp;value"');
+  expect(html).toContain(">Anmelden</button>");
+});
+
+test("only a confirmed missing account gets the account assignment title", () => {
+  expect(renderErrorPage("account_not_assigned", "/v1/identity/login/start", DE)).toContain(
+    "Konto nicht zugeordnet",
+  );
+  expect(renderErrorPage("grant_denied", "/v1/identity/login/start", DE)).not.toContain(
+    "Konto nicht zugeordnet",
+  );
 });

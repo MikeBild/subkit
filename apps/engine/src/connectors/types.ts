@@ -1,5 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { type CatalogSource, CategorySchema, DescriptionSchema } from "../api/catalog-metadata.ts";
+import {
+  AcceptDescriptionSchema,
+  type CatalogSource,
+  CategorySchema,
+  DescriptionSchema,
+  descriptionAcceptanceValid,
+} from "../api/catalog-metadata.ts";
 
 export const DriverEnum = z.enum(["http", "postgres", "s3", "graphql", "mcp"]);
 export type DriverName = z.infer<typeof DriverEnum>;
@@ -226,7 +232,12 @@ export const UpdateConnectorSchema = z
     template_base_url_environment: z.string().min(1).optional(),
     clear_template_binding: z.boolean().optional(),
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
+  })
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
   })
   .openapi("UpdateConnectorBody");
 

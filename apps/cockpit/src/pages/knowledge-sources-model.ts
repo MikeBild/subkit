@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@/lib/i18n";
+
 export type SourceKind = "url" | "discovered" | "file" | "text" | "bundle";
 
 export function sourceKind(sourceType: string): SourceKind {
@@ -110,4 +112,16 @@ export function documentUnderTitle(markdown: string, title: string): string {
     })
     .join("\n")
     .replace(/^\n+/, "");
+}
+
+export function knowledgeSummary(
+  sources: number,
+  sections: number | undefined,
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+): string {
+  const count = t(sources === 1 ? "knowledge.summary.one" : "knowledge.summary.other", {
+    count: sources,
+  });
+  if (sections === undefined || !Number.isInteger(sections) || sections < 0) return count;
+  return `${count} · ${t(sections === 1 ? "knowledge.sections.one" : "knowledge.sections.other", { count: sections })}`;
 }

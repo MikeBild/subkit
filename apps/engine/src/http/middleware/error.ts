@@ -1,5 +1,6 @@
 import { APICallError, NoObjectGeneratedError } from "ai";
 import type { Context, MiddlewareHandler } from "hono";
+import { DescriptionAcceptanceError } from "../../api/catalog-metadata.ts";
 import {
   describeTurnFailure,
   timeoutPhaseOf,
@@ -153,6 +154,8 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
 }
 
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
+  if (err instanceof DescriptionAcceptanceError)
+    return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
   if (err instanceof HttpError) {
     if (err.status >= 500) captureToRing(c, err, err.status, err.code, "http");
     if (err instanceof UnauthorizedError && err.wwwAuthenticate) {

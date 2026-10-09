@@ -317,6 +317,7 @@ async function executeRunWorkflow(
   p: FastPathParams,
   resolution: RunFastPathResolution,
   input: unknown,
+  workflowPermission: import("../execution/index.ts").WorkflowPermission | null,
 ): Promise<RenderPayload & { outcome: ToolCallOutcome }> {
   if (p.actor_id === null) {
     logger.warn({
@@ -340,6 +341,7 @@ async function executeRunWorkflow(
       },
       p.db,
       p.principal,
+      workflowPermission,
     );
     const result = await runExecution({
       db: p.db,
@@ -780,7 +782,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
       if (gate.kind !== "proceed") {
         throw new Error(`fast path cannot shape a ${gate.kind} confirm gate outcome`);
       }
-      const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
+      const payload = await executeRunWorkflow(
+        p,
+        { workflow: resolved },
+        null,
+        rbac.workflow_permission,
+      );
       const persisted = await persistFastPathTurn(
         p,
         "run_workflow",
@@ -1010,7 +1017,12 @@ export async function tryFastPath(p: FastPathParams): Promise<FastPathHit | null
           assistant_text: reply,
         };
       }
-      const payload = await executeRunWorkflow(p, { workflow: resolved }, null);
+      const payload = await executeRunWorkflow(
+        p,
+        { workflow: resolved },
+        null,
+        rbac.workflow_permission,
+      );
       const persisted = await persistFastPathTurn(
         p,
         "run_workflow",

@@ -281,7 +281,7 @@ export function WorkflowScheduleSection({
             items={[
               {
                 label: t("schedule.rhythm"),
-                value: words === schedule.cron ? words : `${words} · ${schedule.cron}`,
+                value: words,
                 testId: "schedule-rhythm-fact",
               },
               {

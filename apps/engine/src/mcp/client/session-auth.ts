@@ -4,6 +4,9 @@ import {
   ClientCredentialsProvider,
   PrivateKeyJwtProvider,
 } from "@modelcontextprotocol/sdk/client/auth-extensions.js";
+import { getDriverFetch } from "../../connectors/index.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
+import { recordCredentialProviderIdentity } from "../../credentials/index.ts";
 import {
   getCredentialForConnector,
   getOAuth2ClientCredential,
@@ -21,6 +24,69 @@ import {
   type McpConnectorRow,
   McpPreflightError,
 } from "./registry.ts";
+import { OAuthTokenEvidence } from "./token-response-evidence.ts";
+
+const m2mCredentialBindings = new WeakMap<
+  OAuthClientProvider,
+  { snapshot: CredentialUseSnapshot; evidence: OAuthTokenEvidence }
+>();
+
+function bindM2mCredential(
+  provider: OAuthClientProvider,
+  snapshot: CredentialUseSnapshot,
+  issuer: string | undefined,
+  db: Db,
+  tenant_id: string,
+  requestSource: RequestSource,
+): OAuthClientProvider {
+  const evidence = new OAuthTokenEvidence(issuer);
+  const captured = structuredClone({ ...snapshot, identity: null });
+  m2mCredentialBindings.set(provider, { snapshot: captured, evidence });
+  provider.saveDiscoveryState = (state) => evidence.saveDiscoveryState(state);
+  const saveTokens = provider.saveTokens.bind(provider);
+  provider.saveTokens = async (tokens) => {
+    await saveTokens(tokens);
+    await recordCredentialProviderIdentity(
+      {
+        tenant_id,
+        snapshot: captured,
+        identity: evidence.identity(
+          tokens.access_token,
+          captured.credential_generation ?? undefined,
+        ),
+        request_source: requestSource,
+      },
+      db,
+    );
+  };
+  return provider;
+}
+
+export async function mcpOAuthCredentialSnapshot(
+  provider: OAuthClientProvider,
+  token: string,
+): Promise<CredentialUseSnapshot | null> {
+  if (provider instanceof McpDbOAuthClientProvider) return provider.credentialSnapshot(token);
+  const binding = m2mCredentialBindings.get(provider);
+  if (!binding || !token || (await provider.tokens())?.access_token !== token) return null;
+  return {
+    ...binding.snapshot,
+    identity: binding.evidence.identity(token, binding.snapshot.credential_generation ?? undefined),
+  };
+}
+
+export async function fetchWithMcpOAuth(
+  provider: OAuthClientProvider,
+  target: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+): Promise<Response> {
+  if (provider instanceof McpDbOAuthClientProvider) return provider.fetch(target, init);
+  const binding = m2mCredentialBindings.get(provider);
+  const generation = binding?.snapshot.credential_generation ?? undefined;
+  const response = await getDriverFetch()(target, init);
+  await binding?.evidence.observeResponse(target, init, response, generation);
+  return response;
+}
 
 export async function resolveAuthHeaders(
   db: Db,
@@ -29,13 +95,23 @@ export async function resolveAuthHeaders(
   auth: McpAuthConfig,
   environment: "dev" | "prod",
 ): Promise<Record<string, string>> {
-  if (auth.kind === "none") return {};
+  return (await resolveAuthMaterial(db, tenant_id, connector_id, auth, environment)).headers;
+}
+
+export async function resolveAuthMaterial(
+  db: Db,
+  tenant_id: string,
+  connector_id: string,
+  auth: McpAuthConfig,
+  environment: "dev" | "prod",
+): Promise<{ headers: Record<string, string>; snapshot: CredentialUseSnapshot | null }> {
+  if (auth.kind === "none") return { headers: {}, snapshot: null };
   if (
     auth.kind === "oauth2" ||
     auth.kind === "oauth2_client_credentials" ||
     auth.kind === "oauth2_private_key_jwt"
   )
-    return {};
+    return { headers: {}, snapshot: null };
 
   const resolved = await getCredentialForConnector(tenant_id, connector_id, environment, db);
   if (!resolved) {
@@ -44,7 +120,18 @@ export async function resolveAuthHeaders(
       `mcp.auth.kind '${auth.kind}' references a credential that does not exist for this connector`,
     );
   }
-  return resolveStaticAuthHeaders(auth, resolved.value);
+  return {
+    headers: resolveStaticAuthHeaders(auth, resolved.value),
+    snapshot: resolved.credential_snapshot ?? {
+      connector_id,
+      environment,
+      credential_id: resolved.row.id,
+      credential_generation: resolved.row.credential_generation,
+      connection_id: null,
+      access_token_version: null,
+      identity: resolved.row.verified_identity,
+    },
+  };
 }
 
 export function resolveStaticAuthHeaders(
@@ -235,11 +322,18 @@ export async function resolveAuthProvider(
           "oauth2_client_credentials server credential is missing client_secret",
         );
       }
-      return new ClientCredentialsProvider({
-        clientId: cred.client_id,
-        clientSecret: cred.client_secret,
-        ...(auth.scope ? { scope: auth.scope } : {}),
-      });
+      return bindM2mCredential(
+        new ClientCredentialsProvider({
+          clientId: cred.client_id,
+          clientSecret: cred.client_secret,
+          ...(auth.scope ? { scope: auth.scope } : {}),
+        }),
+        cred.credential_snapshot,
+        auth.issuer,
+        db,
+        tenant_id,
+        requestSource,
+      );
     }
 
     case "oauth2_private_key_jwt": {
@@ -250,12 +344,19 @@ export async function resolveAuthProvider(
           "oauth2_private_key_jwt server has no private key credential — register the client_id, private_key, and algorithm first",
         );
       }
-      return new PrivateKeyJwtProvider({
-        clientId: cred.client_id,
-        privateKey: cred.private_key,
-        algorithm: cred.algorithm,
-        ...(auth.scope ? { scope: auth.scope } : {}),
-      });
+      return bindM2mCredential(
+        new PrivateKeyJwtProvider({
+          clientId: cred.client_id,
+          privateKey: cred.private_key,
+          algorithm: cred.algorithm,
+          ...(auth.scope ? { scope: auth.scope } : {}),
+        }),
+        cred.credential_snapshot,
+        auth.issuer,
+        db,
+        tenant_id,
+        requestSource,
+      );
     }
 
     default:

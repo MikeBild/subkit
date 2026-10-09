@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { listConversationsAbout } from "@/api/client";
-import { conversationHref } from "@/app/links";
-import { type CockpitColumn, CollapsibleSection } from "@/components/cockpit/patterns";
+import { absolute, chatNewHref, conversationHref } from "@/app/links";
+import { useSession } from "@/app/session";
+import { Button, type CockpitColumn, CollapsibleSection } from "@/components/cockpit/patterns";
 import { RecordTable } from "@/components/cockpit/record-table";
 import { tableColumns } from "@/components/cockpit/table-columns";
 import { formatRelativeTime } from "@/lib/i18n";
@@ -22,6 +23,7 @@ export function ConversationsAbout({
 }) {
   const { t, locale, dateTime } = useI18n();
   const navigate = useNavigate();
+  const { permissions } = useSession();
   const query = useQuery({
     queryKey: ["conversations", "about", target.workflow_id, target.connector_id],
     queryFn: () => listConversationsAbout(target),
@@ -44,7 +46,6 @@ export function ConversationsAbout({
       column.text("when", (row) => row.when, t("catalog.updated"), { width: "w-[30%]" }),
     ];
   }, [t, dateTime]);
-  if (!query.isPending && !query.error && rows.length === 0) return null;
   return (
     <CollapsibleSection
       label={t("catalog.conversations.title")}
@@ -55,7 +56,20 @@ export function ConversationsAbout({
         columns={columns}
         data={rows}
         collectionId="detail-conversation"
-        emptyLine={t("catalog.conversations.title")}
+        emptyLine={t("catalog.conversations.empty")}
+        emptyAction={
+          permissions.includes("conversation:write") ? (
+            <Button variant="outline" asChild data-testid="detail-conversations-ask">
+              <a
+                href={absolute(
+                  chatNewHref({ workflowId: target.workflow_id, connectorId: target.connector_id }),
+                )}
+              >
+                {t("catalog.conversations.ask")}
+              </a>
+            </Button>
+          ) : undefined
+        }
         pending={query.isPending}
         error={
           query.error

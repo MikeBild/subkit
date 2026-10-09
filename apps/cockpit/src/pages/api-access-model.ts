@@ -7,13 +7,15 @@ import { permissionLabel } from "@/pages/admin-model";
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export type ApiKeyItem = components["schemas"]["ApiKey"];
-export type ConnectedClientItem = components["schemas"]["OAuthClient"];
+export type ConnectedClientItem = components["schemas"]["OAuthClient"] & {
+  last_used_at?: string | null;
+};
 
 export const API_KEYS_QUERY = ["admin", "api-keys"] as const;
 
 export const WILDCARD_SCOPE = "*";
 
-export const ROTATE_OVERLAP_MINUTES = 60;
+export const ROTATE_OVERLAP_MINUTES = 1440;
 
 export const UNUSED_KEY_DAYS = 90;
 
@@ -183,4 +185,16 @@ export function keyStateText(state: KeyState, t: Translate): string {
     case "idle":
       return t("apiKeys.state.idle", { days: String(state.days) });
   }
+}
+
+export type KeyScopePreset = "read" | "run" | "manage";
+
+export function keyPresetScopes(preset: KeyScopePreset, permissions: readonly string[]): string[] {
+  return [...new Set(permissions)].filter(
+    (scope) =>
+      scope.includes(":") &&
+      (preset === "manage" ||
+        scopeRisk(scope) === "reads" ||
+        (preset === "run" && scope === "workflow:run")),
+  );
 }

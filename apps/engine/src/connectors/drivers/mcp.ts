@@ -1,4 +1,5 @@
 import type { AuditActorType } from "../../audit/types.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { errorFields, logger } from "../../logging/logger.ts";
@@ -295,6 +296,8 @@ export function mcpEgressInput(p: {
 }
 
 export async function invokeMcpConnectorCall(p: {
+  on_dispatch?: () => void;
+  on_credential_use?: (snapshot: CredentialUseSnapshot) => Promise<void>;
   db: Db;
   tenant_id: string;
   actor_id: string | null;
@@ -307,6 +310,8 @@ export async function invokeMcpConnectorCall(p: {
     p.call.operation === "call_tool" ? buildMcpToolName(p.connector.slug, p.call.tool) : undefined;
   const cfg = parseMcpConnectorConfig(p.connector);
   const res = await invokeRemoteTool({
+    ...(p.on_dispatch ? { on_dispatch: p.on_dispatch } : {}),
+    ...(p.on_credential_use ? { on_credential_use: p.on_credential_use } : {}),
     db: p.db,
     tenant_id: p.tenant_id,
     actor_id: p.actor_id,

@@ -9,15 +9,16 @@ import {
 import { policy } from "../../../auth/index.ts";
 import { roles } from "../../../db/schema/index.ts";
 import * as identity from "../../../identity/index.ts";
+import { can, listTenantGroupMemberships } from "../../../rbac/index.ts";
 import { now } from "../../../utils/clock.ts";
 import { ConflictError, LastAdminConflictError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { enforce } from "../../middleware/policy.ts";
 import { requirePermission } from "../../middleware/require-permission.ts";
 import type { AppEnv } from "../../openapi.ts";
-import { UserSchema } from "./schemas.ts";
+import { UserDetailSchema, UserSchema } from "./schemas.ts";
 
-const UserListResponse = paginatedResponse(UserSchema, "UserListResponse").extend({
+const UserListResponse = paginatedResponse(UserDetailSchema, "UserListResponse").extend({
   total: z.number().int().nonnegative(),
 });
 
@@ -56,7 +57,7 @@ const getRoute = createRoute({
   request: { params: IdParam },
   security: [{ bearerAuth: [] }],
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: UserSchema } } },
+    200: { description: "OK", content: { "application/json": { schema: UserDetailSchema } } },
     401: { description: "Unauthorized", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
@@ -187,11 +188,33 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
       principal.tenant_id,
       new Date(now()),
     );
+    const canReadGroups = (
+      await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "rbac:read",
+        quiet: true,
+      })
+    ).allow;
+    const memberships = canReadGroups
+      ? await listTenantGroupMemberships(
+          db,
+          principal.tenant_id,
+          items.map((user) => user.id),
+        )
+      : [];
+    const groupsByUser = new Map<string, { id: string; name: string }[]>();
+    for (const membership of memberships) {
+      const groups = groupsByUser.get(membership.user_id) ?? [];
+      groups.push({ id: membership.group_id, name: membership.group_name });
+      groupsByUser.set(membership.user_id, groups);
+    }
     return c.json(
       {
-        items: items.map((user) =>
-          serialize(user, roleNames.get(user.role_id) ?? null, connections.get(user.id) ?? 0),
-        ),
+        items: items.map((user) => ({
+          ...serialize(user, roleNames.get(user.role_id) ?? null, connections.get(user.id) ?? 0),
+          groups: canReadGroups ? (groupsByUser.get(user.id) ?? []) : null,
+        })),
         total,
       },
       200,
@@ -229,7 +252,29 @@ export function registerUserRoutes(app: OpenAPIHono<AppEnv>): void {
         ),
       )
       .limit(1);
-    return c.json(serialize(u, role?.name ?? null, connections.get(u.id) ?? 0), 200);
+    const canReadGroups = (
+      await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "rbac:read",
+        quiet: true,
+      })
+    ).allow;
+    const memberships = canReadGroups
+      ? await listTenantGroupMemberships(db, principal.tenant_id, [u.id])
+      : [];
+    return c.json(
+      {
+        ...serialize(u, role?.name ?? null, connections.get(u.id) ?? 0),
+        groups: canReadGroups
+          ? memberships.map((membership) => ({
+              id: membership.group_id,
+              name: membership.group_name,
+            }))
+          : null,
+      },
+      200,
+    );
   });
 
   app.openapi(createRoute_, async (c) => {

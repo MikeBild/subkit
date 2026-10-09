@@ -1,13 +1,21 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, workflowExecutionAuthorities } from "../../db/schema/index.ts";
+import {
+  connectors,
+  executionSteps,
+  users,
+  workflowExecutionAuthorities,
+} from "../../db/schema/index.ts";
+import { builtinRoleId } from "../../rbac/roles.ts";
 import { databaseNow } from "../../test-helpers/database-clock.ts";
 import { previewWorkflowAuthority } from "../../workflows/execution-authorities.ts";
 import {
   admitAuthorizedWorkflowExecution,
   assertExecutionAuthorityCurrent,
 } from "../authority-admission.ts";
+import { callerFromPrincipal } from "../caller-context.ts";
 import { runExecution } from "../engine.ts";
 import {
   createEngineCtx,
@@ -43,6 +51,7 @@ beforeAll(async () => {
       refreshes++;
       jsonResponse(res, 200, {
         access_token: `refreshed-${refreshes}`,
+        sub: "externally-reported-account",
         refresh_token: "refresh-fixture",
         token_type: "Bearer",
         scope: refreshedScope,
@@ -62,9 +71,32 @@ async function fixture(
   steps = 1,
   withOAuth = false,
   shape?: Record<string, unknown>,
+  sensitive = false,
 ) {
   const slug = `authority-runtime-${++sequence}`;
   const db = ctx.testDb.db;
+  let principal: ResolvedPrincipal | null = null;
+  if (sensitive) {
+    const roleId = await builtinRoleId(db, "member");
+    const [person] = await db
+      .insert(users)
+      .values({
+        tenant_id: ctx.tenantId,
+        email: `${slug}@example.test`,
+        role_id: roleId,
+        status: "active",
+      })
+      .returning();
+    if (!person) throw new Error("sensitive caller fixture missing");
+    principal = {
+      provider: "test",
+      kind: "user",
+      id: person.id,
+      tenant_id: ctx.tenantId,
+      roles: ["member"],
+    };
+  }
+  const caller = callerFromPrincipal(principal, ctx.tenantId);
   const [connector] = await db
     .insert(connectors)
     .values({
@@ -121,6 +153,7 @@ async function fixture(
     );
   }
   const workflow = await createWorkflowRow(ctx, {
+    ...(sensitive ? { execution_privacy: "sensitive" } : {}),
     name: slug,
     slug,
     steps: Array.from({ length: steps }, (_, index) => ({
@@ -192,6 +225,7 @@ async function fixture(
           input,
         },
         db,
+        caller,
       );
     },
     async run(input: Record<string, unknown> = {}) {
@@ -204,13 +238,17 @@ async function fixture(
           input,
         },
         db,
+        caller,
       );
       return runExecution({
         db,
         tenant_id: ctx.tenantId,
         source: { kind: "saved", workflow_id: workflow.workflow_id },
         input,
-        options: { existing_execution_id: admitted.execution_id },
+        options: {
+          existing_execution_id: admitted.execution_id,
+          ...(principal ? { principal } : {}),
+        },
       });
     },
     async revoke() {
@@ -280,6 +318,23 @@ for (const driver of ["http", "graphql"] as const) {
     expect(result.status).toBe("failed");
     expect(result.steps[0]?.error).toMatchObject({ code: "execution_authority_changed" });
     expect(writes).toBe(0);
+    const stored = await ctx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(
+        and(
+          eq(executionSteps.tenant_id, ctx.tenantId),
+          eq(executionSteps.execution_id, result.execution_id),
+        ),
+      );
+    expect(stored.flatMap((row) => row.credential_snapshots)).toEqual([]);
+    expect(
+      stored.some(
+        (row) =>
+          (row.request_meta as { extras?: { effect_kind?: string } } | null)?.extras
+            ?.effect_kind !== undefined,
+      ),
+    ).toBe(false);
   });
 
   test(`${driver}: routine token refresh with unchanged scopes preserves authority`, async () => {
@@ -291,7 +346,29 @@ for (const driver of ["http", "graphql"] as const) {
       writes++;
       jsonResponse(res, 200, { data: { sendMessage: { id: "fixture" } } });
     });
-    expect((await f.run()).status).toBe("succeeded");
+    const result = await f.run();
+    expect(result.status).toBe("succeeded");
+    const stored = await ctx.testDb.db
+      .select()
+      .from(executionSteps)
+      .where(
+        and(
+          eq(executionSteps.tenant_id, ctx.tenantId),
+          eq(executionSteps.execution_id, result.execution_id),
+        ),
+      );
+    expect(stored.flatMap((row) => row.credential_snapshots)).toEqual([
+      expect.objectContaining({
+        connector_id: f.connector.id,
+        credential_generation: 2,
+        identity: {
+          issuer: oauth.baseUrl,
+          subject: "externally-reported-account",
+          source: "token_endpoint",
+        },
+      }),
+    ]);
+    expect(stored[0]?.request_meta).toMatchObject({ extras: { effect_kind: "write" } });
     expect(refreshes).toBe(before + 1);
     expect(writes).toBe(1);
   });
@@ -382,4 +459,32 @@ test("the granted boundary is checked again at dispatch, independently of the st
   await expect(check(granted, { retire: "x".repeat(500) })).rejects.toMatchObject({
     code: "execution_authority_changed",
   });
+});
+
+test("sensitive steps retain verified credential attribution without request metadata", async () => {
+  refreshedScope = "write";
+  const f = await fixture("http", 1, true, undefined, true);
+  mock.setHandler((_, res) => jsonResponse(res, 200, { ok: true }));
+  const result = await f.run();
+  expect(result.status).toBe("succeeded");
+  const [stored] = await ctx.testDb.db
+    .select()
+    .from(executionSteps)
+    .where(
+      and(
+        eq(executionSteps.tenant_id, ctx.tenantId),
+        eq(executionSteps.execution_id, result.execution_id),
+      ),
+    );
+  expect(stored?.request_meta).toBeNull();
+  expect(stored?.credential_snapshots).toEqual([
+    expect.objectContaining({
+      credential_generation: 2,
+      identity: {
+        issuer: oauth.baseUrl,
+        subject: "externally-reported-account",
+        source: "token_endpoint",
+      },
+    }),
+  ]);
 });

@@ -120,6 +120,33 @@ function deleteFile(id: string, bearer: string) {
 }
 
 describe("files HTTP integration", () => {
+  test("file metadata preserves unknown creators in detail and list responses", async () => {
+    const response = await post("/v1/files/inline", srv.apiKey, {
+      filename: "unknown-creator.txt",
+      content_base64: Buffer.from("file without historical creator").toString("base64"),
+    });
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as { id: string };
+    await srv.db
+      .update(files)
+      .set({ created_by: null })
+      .where(and(eq(files.tenant_id, srv.tenantId), eq(files.id, parseFileIdOrThrow(created.id))));
+
+    const detail = await getFile(created.id, srv.apiKey);
+    expect(detail.status).toBe(200);
+    expect(await detail.json()).toMatchObject({ created_by: null, creator: null });
+
+    const listed = await fetch(`${srv.baseUrl}/v1/files?q=unknown-creator.txt`, {
+      headers: { authorization: `Bearer ${srv.apiKey}`, connection: "close" },
+    });
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as {
+      items: Array<{ id: string; created_by: string | null }>;
+    };
+    expect(body.items.find((item) => item.id === created.id)?.created_by).toBeNull();
+    expect((await getFile(created.id, tenantBKey)).status).toBe(404);
+  });
+
   test("full inline cycle: POST inline → GET metadata → GET content → DELETE", async () => {
     const content = "hello files";
     const b64 = Buffer.from(content).toString("base64");
@@ -130,15 +157,27 @@ describe("files HTTP integration", () => {
       content_base64: b64,
     });
     expect(cr.status).toBe(201);
-    const created = (await cr.json()) as { id: string; status: string; filename: string };
+    const created = (await cr.json()) as {
+      id: string;
+      status: string;
+      filename: string;
+      created_by: string | null;
+    };
     expect(created.status).toBe("ready");
     expect(created.id).toMatch(/^fid_/);
     expect(created.filename).toBe("hello.txt");
+    expect(created.created_by).toBe(srv.userId);
 
     const gr = await getFile(created.id, srv.apiKey);
     expect(gr.status).toBe(200);
-    const got = (await gr.json()) as { id: string };
+    const got = (await gr.json()) as {
+      id: string;
+      created_by: string | null;
+      creator: { kind: string; id: string } | null;
+    };
     expect(got.id).toBe(created.id);
+    expect(got.created_by).toBe(srv.userId);
+    expect(got.creator).toEqual({ kind: "user", id: srv.userId });
 
     const cr2 = await getContent(created.id, srv.apiKey);
     expect(cr2.status).toBe(200);

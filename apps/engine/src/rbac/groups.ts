@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
-import { groupMembers, groupRoleAssignments, groups } from "../db/schema/index.ts";
+import { groupMembers, groupRoleAssignments, groups, users } from "../db/schema/index.ts";
 
 export interface GroupRow {
   id: string;
@@ -117,4 +117,21 @@ export async function listGroupRoles(db: Db, group_id: string): Promise<string[]
     .from(groupRoleAssignments)
     .where(eq(groupRoleAssignments.group_id, group_id));
   return rows.map((r) => r.role_id);
+}
+
+export async function listTenantGroupMemberships(db: Db, tenant_id: string, userIds?: string[]) {
+  if (userIds?.length === 0) return [];
+  return db
+    .select({ group_id: groups.id, group_name: groups.name, user_id: users.id })
+    .from(groups)
+    .innerJoin(groupMembers, eq(groupMembers.group_id, groups.id))
+    .innerJoin(users, eq(users.id, groupMembers.user_id))
+    .where(
+      and(
+        eq(groups.tenant_id, tenant_id),
+        eq(users.tenant_id, tenant_id),
+        userIds ? inArray(users.id, userIds) : undefined,
+      ),
+    )
+    .orderBy(groups.name, groups.id, users.id);
 }

@@ -47,6 +47,12 @@ const listRoute = createRoute({
     query: z
       .object({
         environment: z.enum(["dev", "prod"]).optional(),
+        kind: z
+          .enum(["oauth", "mcp", "key"])
+          .optional()
+          .describe(
+            "MCP takes precedence over authentication kind. OAuth selects non-MCP OAuth connectors; key selects non-MCP header, query, bearer, basic or AWS signature authentication. Unauthenticated connectors remain in the unfiltered list.",
+          ),
         enabled: z
           .enum(["true", "false"])
           .transform((value) => value === "true")
@@ -65,6 +71,7 @@ const listRoute = createRoute({
         order: z.enum(["asc", "desc"]).optional(),
         limit: z.coerce.number().int().positive().max(1000).optional(),
         offset: z.coerce.number().int().min(0).optional(),
+        description_source: z.enum(["llm", "human"]).optional(),
         category: z
           .string()
           .optional()
@@ -120,6 +127,14 @@ const patchRoute = createRoute({
     body: { content: { "application/json": { schema: UpdateConnectorSchema } } },
   },
   responses: {
+    400: {
+      description: "Invalid description acceptance",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    409: {
+      description: "The reviewed description changed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: { description: "OK", content: { "application/json": { schema: ConnectorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -164,7 +179,9 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const opts: Parameters<typeof connectorSvc.listConnectors>[1] = {};
     if (q.environment) opts.environment = q.environment;
     if (q.category) opts.category = q.category;
+    if (q.description_source) opts.description_source = q.description_source;
     if (q.driver) opts.driver = q.driver;
+    if (q.kind) opts.kind = q.kind;
     if (q.enabled !== undefined) opts.enabled = q.enabled;
     if (q.health_state) opts.health_state = q.health_state;
     if (q.health) opts.health = q.health;
@@ -174,7 +191,12 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.limit !== undefined) opts.limit = q.limit;
     if (q.offset !== undefined) opts.offset = q.offset;
     const { rows, total } = await connectorSvc.listConnectors(principal.tenant_id, opts, db);
-    const items = rows.map((r) => serialize(r));
+    const observations = await connectorSvc.connectorObservations(
+      db,
+      principal.tenant_id,
+      rows.map((row) => row.id),
+    );
+    const items = rows.map((r) => ({ ...serialize(r), ...observations.get(r.id) }));
     const counts = await connectorSvc.connectorCategoryCounts(principal.tenant_id, db);
     const blocks = [...counts.entries()]
       .map(([category, count]) => ({ category, count }))
@@ -210,7 +232,10 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...row,
       connection: connection_id ? (connections.get(connection_id) ?? null) : null,
     }));
-    return c.json({ ...serialize(found), credentials: creds }, 200);
+    const observations = await connectorSvc.connectorObservations(db, principal.tenant_id, [
+      found.id,
+    ]);
+    return c.json({ ...serialize(found), ...observations.get(found.id), credentials: creds }, 200);
   });
 
   app.openapi(patchRoute, async (c) => {

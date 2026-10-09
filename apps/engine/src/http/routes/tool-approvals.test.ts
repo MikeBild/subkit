@@ -100,6 +100,9 @@ describe("GET /v1/tool-approvals/decide?grant=…", () => {
       expect(html).toContain("10");
       expect(html).toContain("UTC");
       expect(html).toContain(locale === "de" ? "Handlungsgrenze" : "Decision boundary");
+      expect(html).toContain(locale === "de" ? "Angefragt von" : "Requested by");
+      expect(html).toContain(locale === "de" ? "Systemkonto" : "System account");
+      expect(html).not.toContain(server.systemAccountId);
       expect(html).not.toContain("Nothing has run");
       expect(html).not.toContain("expires shortly");
       expect(html).not.toContain(approval_id);

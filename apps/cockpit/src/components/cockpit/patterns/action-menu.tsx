@@ -23,11 +23,13 @@ export interface ActionMenuItem {
 
 export function ActionMenu({
   items,
+  alwaysMenu = false,
   size = "default",
   label,
   testId,
 }: {
   items: readonly ActionMenuItem[];
+  alwaysMenu?: boolean;
   label?: string;
   testId?: string;
   size?: "default" | "sm";
@@ -35,7 +37,7 @@ export function ActionMenu({
   const { t } = useI18n();
   const [only] = items;
   if (!only) return null;
-  if (items.length === 1) {
+  if (items.length === 1 && !alwaysMenu) {
     const button = only.href ? (
       <Button variant="outline" size={size} asChild data-testid={only.testId ?? testId}>
         <a href={only.href} data-testid={only.testId ?? testId} {...only.data}>

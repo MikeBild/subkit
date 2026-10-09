@@ -541,7 +541,7 @@ export function createOidcProvider(opts: OidcProviderOptions = {}): AuthProvider
             403,
             "access_denied",
             "signups are disabled and this identity matches no existing account",
-            "grant_denied",
+            "account_not_assigned",
             retryHref,
           );
         }

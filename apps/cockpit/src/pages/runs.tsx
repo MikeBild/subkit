@@ -4,8 +4,10 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
+import { useActorDirectory } from "@/app/actor-directory";
 import { absolute, RUNS_FILTER_PARAMS, runHref, workflowHref } from "@/app/links";
 import { useSession } from "@/app/session";
+import { useNameIndex } from "@/app/use-decisions";
 import {
   ActionButton,
   ActionMenu,
@@ -42,31 +44,34 @@ import { type CursorPage, listPagePath, useInfiniteList } from "@/lib/use-infini
 import { windowFilterLabel } from "@/lib/window-filter";
 import {
   failedStatusesFor,
-  filterFromUrl,
   formatRunDuration,
+  initialRunsFilter,
   isExecutionRecord,
   type OutcomeSentence,
   payloadEvidence,
   previewText,
-  REQUEST_SOURCES,
   RUN_STATUSES,
   RUNS_FILTER_KEYS,
   type RunFact,
   requestSourceLabel,
   rerunFailureText,
-  runAuthorityFacts,
+  runCaller,
   runCauseLinks,
   runCostFacts,
   runDurationMs,
   runName,
   runOutcomeSentence,
   runOverlayFromUrl,
+  runPermissionEvidence,
   runStatusSentence,
   runsFilterSearch,
   runsSummaryText,
+  runTraceEvidence,
   runVerdict,
   SOURCE_KIND_KEYS,
   stepConnectorId,
+  stepCredentialSnapshots,
+  stepEffectKind,
   stepGuidance,
   stoppingStep,
 } from "@/pages/runs-model";
@@ -76,7 +81,7 @@ export { formatRunDuration, RUN_STATUSES, requestSourceLabel, runDurationMs, run
 type Execution = components["schemas"]["Execution"];
 type ExecutionDetail = components["schemas"]["ExecutionDetail"];
 type ExecutionListItem = components["schemas"]["ExecutionListItem"];
-type ExecutionStep = components["schemas"]["ExecutionStep"];
+type ExecutionStep = components["schemas"]["ExecutionStep"] & { credential_snapshots?: unknown };
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
 const PAGE_SIZE = 25;
@@ -137,6 +142,7 @@ function isLive(status: string): boolean {
 function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const { t, dateTime, locale } = useI18n();
   const session = useSession();
+  const directory = useActorDirectory(true);
   const [openStep, setOpenStep] = useState<number | null>(null);
   const detail = useQuery({
     queryKey: ["run", run.id],
@@ -216,26 +222,50 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   const duration =
     runDurationMs(current) === null ? null : formatRunDuration(locale, runDurationMs(current) ?? 0);
 
+  const permissionEvidence = runPermissionEvidence(
+    current as Execution & {
+      permission_basis?: unknown;
+      permission_phase?: unknown;
+      permission_checked_at?: unknown;
+    },
+  );
+
   const facts: Fact[] = (
     [
+      [t("runs.detail.runId"), current.id],
+      ...(current.workflow_version_id
+        ? [[t("authority.version"), current.workflow_version_id] as RunFact]
+        : []),
       [t("runs.column.started"), current.started_at ? dateTime(current.started_at) : MISSING],
       [t("runs.detail.finished"), current.finished_at ? dateTime(current.finished_at) : MISSING],
       [t("runs.column.duration"), duration ?? MISSING],
       [
-        t("runs.column.source"),
-        <LabelText label={requestSourceLabel(current.request_source, t)} />,
-      ],
-      [
         t("resource.field.kind"),
         t(SOURCE_KIND_KEYS[current.source_kind] ?? "runs.sourceKind.saved"),
       ],
-      ...runAuthorityFacts(current, t),
       ...runCostFacts(cost.data, t, locale),
     ] as RunFact[]
   ).map(([label, value, full]) => ({
     label,
     value: full ? <span title={full}>{value}</span> : value,
   }));
+  const trace = runTraceEvidence(current, session.permissions.includes("audit:read"));
+  facts.push({
+    label: t("audit.detail.trace"),
+    value: trace.id ? (
+      trace.href ? (
+        <a href={absolute(trace.href)} className="underline underline-offset-4">
+          {trace.id}
+        </a>
+      ) : (
+        trace.id
+      )
+    ) : (
+      MISSING
+    ),
+  });
+  const caller = runCaller(current, directory, t);
+  const stepNames = useNameIndex(session.permissions, true);
   const step = openStep === null ? null : (stepItems[openStep] ?? null);
   const stepColumns: CockpitColumn<ExecutionStep>[] = useMemo(() => {
     const column = tableColumns<ExecutionStep>({ t, dateTime });
@@ -250,6 +280,25 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
           </span>
         ),
         { width: "w-[45%]" },
+      ),
+      column.custom(
+        "operation",
+        (item) => item.kind,
+        t("resource.field.kind"),
+        (item) => {
+          const effect = stepEffectKind(item);
+          const connector = stepConnectorId(item);
+          return [
+            effect
+              ? t(effect === "read" ? "sideEffects.read" : "sideEffects.write")
+              : t("runs.caller.unknown"),
+            connector
+              ? (stepNames.connector.get(connector) ?? t("inbox.resource.connector"))
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+        },
       ),
       column.custom(
         "status",
@@ -267,7 +316,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         { width: "w-[25%]" },
       ),
     ];
-  }, [t, dateTime, locale]);
+  }, [t, dateTime, locale, stepNames]);
 
   return (
     <div className="flex min-w-0 flex-col gap-6" data-testid="run-detail-body">
@@ -309,7 +358,14 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
             <>
               <span className="font-medium">{verdict.label}</span>
               {" · "}
-              {t("runs.strip.running", { step: String(Math.max(1, stepItems.length)) })}
+              {typeof (outcome as { planned_steps?: number | null } | null)?.planned_steps ===
+                "number" &&
+              Number((outcome as { planned_steps?: number }).planned_steps) >= stepItems.length
+                ? t("runs.strip.runningTotal", {
+                    step: Math.max(1, stepItems.length),
+                    total: Number((outcome as { planned_steps?: number }).planned_steps),
+                  })
+                : t("runs.strip.running", { step: String(Math.max(1, stepItems.length)) })}
             </>
           }
         />
@@ -322,7 +378,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
               <span className="font-medium">{verdict.label}</span>
               {" · "}
               <span data-testid="run-detail-outcome">
-                {sentence ? (
+                {sentence && outcome?.output_contract === "violated" ? (
                   <OutcomeText sentence={sentence} />
                 ) : (
                   t(pluralKey("runs.strip.done", stepItems.length), {
@@ -336,14 +392,24 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         />
       )}
       <SummaryLine
-        text={[
-          current.started_at ? dateTime(current.started_at) : null,
-          requestSourceLabel(current.request_source, t).text,
-          duration,
-        ]
+        text={[current.started_at ? dateTime(current.started_at) : null, duration]
           .filter(Boolean)
           .join(" · ")}
         testId="run-detail-summary"
+      />
+      <FactList
+        testId="run-detail-caller"
+        items={[
+          {
+            label: t("runs.caller.label"),
+            value: (
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <span>{[caller.who, caller.channel].filter(Boolean).join(" · ")}</span>
+                <StatusBadge state={caller.state} label={t(caller.stateLabel)} />
+              </span>
+            ),
+          },
+        ]}
       />
       {detail.error || steps.error ? (
         <DataState
@@ -391,6 +457,52 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                 </Copyable>
               </CollapsibleSection>
             ) : null}
+            <CollapsibleSection label={t("runs.caller.why")} testId="run-detail-why">
+              <FactList
+                items={caller.why
+                  .map(([label, value, full]) => ({
+                    label,
+                    value:
+                      label === t("authority.usedByRun") &&
+                      current.execution_authority_id &&
+                      current.workflow_id &&
+                      canReadWorkflows ? (
+                        <a
+                          href={absolute(
+                            `${workflowHref(current.workflow_id)}#workflow-automation`,
+                          )}
+                          title={current.execution_authority_id}
+                        >
+                          {value}
+                        </a>
+                      ) : full ? (
+                        <span title={full}>{value}</span>
+                      ) : (
+                        value
+                      ),
+                  }))
+                  .concat([
+                    {
+                      label: t("runs.permission.label"),
+                      value: permissionEvidence
+                        ? `${t(`runs.permission.${permissionEvidence.basis}`)} · ${t(`runs.permission.${permissionEvidence.phase}`, { when: dateTime(permissionEvidence.checkedAt) })}`
+                        : t("runs.caller.unknown"),
+                    },
+                    {
+                      label: t("authority.environment"),
+                      value:
+                        (current as Execution & { execution_environment?: string })
+                          .execution_environment === "prod"
+                          ? t("authority.production")
+                          : (current as Execution & { execution_environment?: string })
+                                .execution_environment === "dev"
+                            ? t("authority.development")
+                            : MISSING,
+                    },
+                  ])}
+                testId="run-detail-why-facts"
+              />
+            </CollapsibleSection>
             <CollapsibleSection
               label={t("connectorDetail.technical.title")}
               testId="run-detail-technical"
@@ -414,6 +526,9 @@ function RunStepSheet({
   onClose(): void;
 }) {
   const { t, locale } = useI18n();
+  const session = useSession();
+  const names = useNameIndex(session.permissions, true);
+  const snapshots = stepCredentialSnapshots(step);
   const evidence = [
     { key: "error", label: t("runs.step.error"), text: previewText(step.error) },
     {
@@ -445,6 +560,42 @@ function RunStepSheet({
           },
         ]}
       />
+      <Section label={t("connectorDetail.connection.speaksAs")} testId="run-step-identities">
+        <p className="text-sm text-muted-foreground">{t("runs.step.identityEvidence")}</p>
+        {snapshots.length ? (
+          snapshots.map((snapshot, position) => (
+            <FactList
+              key={position}
+              items={[
+                {
+                  label: t("inbox.resource.connector"),
+                  value: names.connector.get(snapshot.connector_id) ?? t("runs.caller.unknown"),
+                },
+                {
+                  label: t("connectorDetail.connection.speaksAs"),
+                  value: snapshot.identity
+                    ? `${snapshot.identity.subject} · ${snapshot.identity.issuer}`
+                    : t("runs.caller.unknown"),
+                },
+                {
+                  label: t("authority.environment"),
+                  value: t(
+                    snapshot.environment === "prod"
+                      ? "authority.production"
+                      : "authority.development",
+                  ),
+                },
+                {
+                  label: t("runs.step.credentialGeneration"),
+                  value: snapshot.credential_generation ?? snapshot.access_token_version ?? MISSING,
+                },
+              ]}
+            />
+          ))
+        ) : (
+          <p>{t("runs.caller.unknown")}</p>
+        )}
+      </Section>
       {evidence.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="run-step-nothing">
           {t("runs.step.nothingRecorded")}
@@ -466,7 +617,25 @@ function RunStepSheet({
 
 function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   const { t, tn, dateTime, locale } = useI18n();
-  const [initial] = useState(() => filterFromUrl(window.location.search));
+  const session = useSession();
+  const workflowChoices = useQuery({
+    queryKey: ["runs", "workflow-filter-choices"],
+    enabled: session.permissions.includes("workflow:read"),
+    queryFn: async () => {
+      const items: { id: string; name: string }[] = [];
+      let total = 1;
+      while (items.length < total) {
+        const page = await apiRequest<{ items: { id: string; name: string }[]; total: number }>(
+          `/v1/workflows?limit=200&offset=${items.length}`,
+        );
+        if (!page.items.length) break;
+        items.push(...page.items);
+        total = page.total;
+      }
+      return items;
+    },
+  });
+  const [initial] = useState(() => initialRunsFilter(window.location.search, Date.now()));
   const [statusFilter, setStatusFilter] = useState<string>(initial.status);
   const [sourceFilter, setSourceFilter] = useState<string>(initial.source);
   const [search, setSearch] = useState(initial.q);
@@ -506,18 +675,29 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
   );
 
   useEffect(() => {
-    const search = runsFilterSearch(window.location.search, {
-      status: statusFilter,
-      source: sourceFilter,
-      q: debouncedSearch,
-    });
+    const params = new URLSearchParams(
+      runsFilterSearch(window.location.search, {
+        status: statusFilter,
+        source: sourceFilter,
+        q: debouncedSearch,
+      }),
+    );
+    for (const [key, value] of [
+      [RUNS_FILTER_PARAMS.workflowId, workflowFilter],
+      [RUNS_FILTER_PARAMS.startedFrom, startedWindow.from],
+      [RUNS_FILTER_PARAMS.startedTo, startedWindow.to],
+    ] as const) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    const search = params.size ? `?${params.toString()}` : "";
     if (search === window.location.search) return;
     window.history.replaceState(
       window.history.state,
       "",
       `${window.location.pathname}${search}${window.location.hash}`,
     );
-  }, [statusFilter, sourceFilter, debouncedSearch]);
+  }, [statusFilter, sourceFilter, debouncedSearch, workflowFilter, startedWindow]);
 
   const forgetInAddress = useCallback((keys: readonly string[]) => {
     const params = new URLSearchParams(window.location.search);
@@ -606,7 +786,7 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
     <div className="flex flex-col gap-6">
       {list.query.data ? (
         <SummaryLine
-          text={runsSummaryText(list.total ?? rows.length, failedCount, tn)}
+          text={`${runsSummaryText(list.total ?? rows.length, failedCount, tn)}${startedWindow.from || startedWindow.to ? ` · ${windowFilterLabel(startedWindow.from, startedWindow.to, t, dateTime)}` : ""}`}
           testId="runs-summary"
         />
       ) : null}
@@ -636,19 +816,24 @@ function RunsList({ onShowRun }: { onShowRun(id: string): void }) {
                     })),
                   ],
                 },
-                {
-                  value: sourceFilter,
-                  onChange: setSourceFilter,
-                  label: t("runs.filterSource"),
-                  testId: "runs-source-filter",
-                  options: [
-                    { value: "all", label: t("runs.allSources") },
-                    ...REQUEST_SOURCES.map((source) => ({
-                      value: source,
-                      label: requestSourceLabel(source, t).text,
-                    })),
-                  ],
-                },
+                ...(session.permissions.includes("workflow:read")
+                  ? [
+                      {
+                        value: workflowFilter ?? "all",
+                        onChange: (value: string) =>
+                          setWorkflowFilter(value === "all" ? null : value),
+                        label: t("inbox.resource.workflow"),
+                        testId: "runs-workflow-choice",
+                        options: [
+                          { value: "all", label: t("runs.allWorkflows") },
+                          ...(workflowChoices.data ?? []).map((workflow) => ({
+                            value: workflow.id,
+                            label: workflow.name,
+                          })),
+                        ],
+                      },
+                    ]
+                  : []),
               ]}
               segmented={
                 <>
@@ -775,19 +960,6 @@ export function RunOverlays() {
         )
       }
       titleTestId={overlay.runId ? "run-detail-title" : "runs-sheet-title"}
-      badge={
-        overlay.runId && run ? (
-          <StatusBadge
-            state={run.status}
-            label={
-              runVerdict(run.status, (run as ExecutionDetail).outcome ?? null, t, (status) =>
-                statusLabel(t, status),
-              ).label
-            }
-            testId="run-detail-status"
-          />
-        ) : undefined
-      }
       action={
         overlay.runId && run && canRerun ? (
           <RerunAction run={run} onStarted={(id) => show({ list: overlay.list, runId: id })} />

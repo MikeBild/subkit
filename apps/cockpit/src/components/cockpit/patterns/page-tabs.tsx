@@ -77,19 +77,25 @@ export function PageTabs({
   };
 
   return (
-    <Tabs value={active} onValueChange={choose} data-slot="page-tabs" data-testid={testId}>
+    <Tabs
+      value={active}
+      onValueChange={choose}
+      data-slot="page-tabs"
+      data-testid={testId}
+      className="pt-2"
+    >
       <div ref={scroller} style={edgeFade} className="scrollbar-none overflow-x-auto">
         <TabsList
           ref={list}
           variant="line"
-          className="relative w-full min-w-max justify-start gap-4 rounded-none border-b p-0"
+          className="relative h-9 w-full min-w-max justify-start gap-6 rounded-none border-b p-0"
           data-testid={`${testId}-list`}
         >
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className={cn("flex-none px-0", indicator && "after:hidden")}
+              className={cn("h-9 flex-none px-0 text-sm font-medium", indicator && "after:hidden")}
               data-testid={tab.testId ?? `${testId}-tab-${tab.value}`}
             >
               {tab.label}

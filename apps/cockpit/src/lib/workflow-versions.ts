@@ -1,7 +1,23 @@
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { TranslationKey } from "@/lib/i18n";
 
-export type WorkflowVersion = components["schemas"]["WorkflowVersion"];
+export type WorkflowVersion = components["schemas"]["WorkflowVersion"] & {
+  author?: { kind: "user" | "system_account"; id: string } | null;
+  checksum?: string;
+};
+
+export function workflowVersionAuthor(
+  author: WorkflowVersion["author"] | undefined,
+  directory: ActorDirectory,
+  t: (key: TranslationKey) => string,
+): string {
+  if (!author) return t("runs.caller.unknown");
+  return (
+    actorDirectoryName(directory, author.kind, author.id) ??
+    t(author.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
+  );
+}
 
 export type WorkflowVersionState = "current" | "draft" | "invalid" | "superseded";
 

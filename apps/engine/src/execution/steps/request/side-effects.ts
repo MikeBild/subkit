@@ -26,17 +26,21 @@ export function requestRequiresPreparationHold(step: RequestStep, driver?: strin
   );
 }
 
-export function classifyRequestStepSideEffects(step: RequestStep): StepSideEffects {
+export function classifyRequestStepSideEffects(
+  step: RequestStep,
+  driver?: string,
+  method?: string,
+): StepSideEffects {
   return classifyHttpSideEffect({
     override: step.side_effects ?? null,
-    method: step.method ?? null,
+    method: method ?? step.method ?? null,
     graphql: step.graphql
       ? { operation: step.graphql.operation ?? null, query: step.graphql.query }
       : null,
     sql: step.sql
       ? { query: step.sql.query, ...(step.sql.also ? { also: step.sql.also } : {}) }
       : null,
-    s3: Boolean(step.s3),
+    s3: Boolean(step.s3) || driver === "s3",
     mcp: step.mcp ? { operation: step.mcp.operation } : null,
   });
 }

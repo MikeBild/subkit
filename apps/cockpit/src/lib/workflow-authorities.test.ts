@@ -6,8 +6,6 @@ import {
   acceptReview,
   authorityGrantInput,
   DEFAULT_GRANT_LIMIT,
-  type GrantLimit,
-  grantConfirmKey,
   grantLimitBounds,
   observedAuthorityState,
   type WorkflowAuthority,
@@ -115,13 +113,9 @@ describe("exact grant input", () => {
   });
   test("the dialog starts at 'until revoked', and its button follows the choice", () => {
     expect(DEFAULT_GRANT_LIMIT).toBe("until_revoked");
-    expect(grantLimitBounds("until_revoked", "5", "24")).toEqual({ runs: null, hours: null });
-    expect(grantLimitBounds("limited", "5", "24")).toEqual({ runs: "5", hours: "24" });
-    const label = (limit: GrantLimit, runs: string) =>
-      translate("de", grantConfirmKey(limit, runs), { count: runs });
-    expect(label("until_revoked", "5")).toBe("Freigeben");
-    expect(label("limited", "5")).toBe("5 Läufe erlauben");
-    expect(label("limited", "1")).toBe("1 Lauf erlauben");
+    expect(grantLimitBounds("until_revoked")).toEqual({ runs: null, hours: null });
+    expect(grantLimitBounds("7d")).toEqual({ runs: null, hours: "168" });
+    expect(grantLimitBounds("30d")).toEqual({ runs: null, hours: "720" });
   });
   test("rejects invalid counts, windows and an expired review", () => {
     for (const runs of ["", "0", "1.5", "10001", "NaN"])

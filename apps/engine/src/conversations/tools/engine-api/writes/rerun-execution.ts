@@ -55,17 +55,15 @@ export const rerunExecutionTool: ConversationTool = {
       };
     }
 
-    {
-      const rbac = await gateWorkflowRunRbac({
-        db: ctx.db,
-        principal: ctx.principal,
-        workflow_id: original.workflow_id,
-        request_source: "chat",
-        tool: "rerun_execution",
-      });
-      if (!rbac.allow) {
-        return { ok: false, data: { error: "permission_denied", detail: rbac.reason } };
-      }
+    const rbac = await gateWorkflowRunRbac({
+      db: ctx.db,
+      principal: ctx.principal,
+      workflow_id: original.workflow_id,
+      request_source: "chat",
+      tool: "rerun_execution",
+    });
+    if (!rbac.allow) {
+      return { ok: false, data: { error: "permission_denied", detail: rbac.reason } };
     }
 
     if (isSensitivePayload(original.input))
@@ -88,6 +86,7 @@ export const rerunExecutionTool: ConversationTool = {
       },
       ctx.db,
       ctx.principal,
+      rbac.workflow_permission,
     );
     const execution_id = admitted.execution_id;
 

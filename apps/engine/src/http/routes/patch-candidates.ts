@@ -296,6 +296,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
           {
             tenant_id: principal.tenant_id,
             actor_id: principal.id,
+            actor_type: principal.kind,
             candidate_id: c.req.valid("param").id,
             expected_review_digest: c.req.valid("json").expected_review_digest,
           },
@@ -477,6 +478,7 @@ export function registerPatchCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
                   tenant_id: principal.tenant_id,
                   candidate_id: id,
                   actor_id: principal.id,
+                  actor_type: principal.kind,
                   expected_review_digest: body.expected_review_digest,
                 },
                 tx as unknown as Db,

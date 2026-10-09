@@ -117,6 +117,15 @@ describe("bound S3 object dispatch", () => {
       expect(observed[0]).toMatchObject({
         credential_id: expect.any(String),
         credential_revision: 1,
+        credential_snapshot: {
+          connector_id: connector.id,
+          environment: "dev",
+          credential_id: expect.any(String),
+          credential_generation: 1,
+          connection_id: null,
+          access_token_version: null,
+          identity: null,
+        },
       });
       expect(JSON.stringify({ result, observed })).not.toContain("CANARY");
     });
@@ -272,4 +281,38 @@ test("bounded PUT exposes exactly the JSON content type to the authority gate", 
     },
   ]);
   expect(requests).toEqual(["PUT /bucket/reports/daily.json"]);
+});
+
+test("unbound S3 records the used credential while local presigning records no dispatch", async () => {
+  const observed: unknown[] = [];
+  const on_credential_use = async (snapshot: unknown) => {
+    observed.push(snapshot);
+  };
+  await executeS3Request({
+    db: testDb.db,
+    tenant_id: tenant,
+    connector,
+    method: "GET",
+    path: "/object",
+    on_credential_use,
+  });
+  expect(requests).toEqual(["GET /bucket/object"]);
+  expect(observed).toEqual([
+    expect.objectContaining({
+      connector_id: connector.id,
+      credential_generation: 1,
+      identity: null,
+    }),
+  ]);
+  await executeS3Request({
+    db: testDb.db,
+    tenant_id: tenant,
+    connector,
+    method: "GET",
+    path: "/object",
+    presignExpiresIn: 60,
+    on_credential_use,
+  });
+  expect(requests).toHaveLength(1);
+  expect(observed).toHaveLength(1);
 });

@@ -27,7 +27,7 @@ export async function executeBoundS3List(p: {
   credentials: S3Credentials | null;
   credential: Pick<
     ResolvedConnectorCredential,
-    "credential_id" | "credential_revision" | "connection_authority"
+    "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
   >;
 }): Promise<S3Response> {
   const { client, params, credential, credentials } = p;

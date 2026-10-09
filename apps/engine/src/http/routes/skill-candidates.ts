@@ -40,6 +40,7 @@ const listRoute = createRoute({
         scope: z.enum(["global", "connector", "workflow"]).optional(),
         connector_id: z.string().uuid().optional(),
         workflow_id: z.string().uuid().optional(),
+        knowledge_source_id: z.string().uuid().optional(),
         pattern_kind: SkillCandidatePatternSchema.optional(),
         confidence: z.enum(["low", "medium", "high"]).optional(),
         limit: z.coerce.number().int().positive().max(500).optional(),
@@ -51,6 +52,11 @@ const listRoute = createRoute({
     200: {
       description: "OK",
       content: { "application/json": { schema: SkillCandidateListResponse } },
+    },
+    403: { description: "Forbidden", content: { "application/json": { schema: ErrorSchema } } },
+    404: {
+      description: "Knowledge source not found",
+      content: { "application/json": { schema: ErrorSchema } },
     },
   },
 });
@@ -209,7 +215,30 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const q = c.req.valid("query");
+    let candidateIds: string[] | undefined;
+    if (q.knowledge_source_id) {
+      const permission = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "knowledge:read",
+        quiet: true,
+      });
+      if (!permission.allow)
+        throw new HttpError(
+          403,
+          "forbidden",
+          "Reading source-specific proposals needs knowledge:read",
+        );
+      const matching = await svc.knowledgeSourceCandidateIds(
+        principal.tenant_id,
+        q.knowledge_source_id,
+        db,
+      );
+      if (matching === null) throw new NotFoundError("knowledge_source");
+      candidateIds = matching;
+    }
     const params = {
+      ...(candidateIds ? { candidate_ids: candidateIds } : {}),
       tenant_id: principal.tenant_id,
       ...(q.status ? { status: q.status } : {}),
       ...(q.scope ? { scope: q.scope } : {}),

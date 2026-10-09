@@ -137,12 +137,30 @@ export function BootstrapErrorPage({ onRetry }: { onRetry: () => void }) {
     <FamilyFailureState
       kind="fatal-error"
       standalone
-      title={t("familyFailure.fatal.title")}
+      title={t("familyFailure.unreachable.title")}
       description={t("familyFailure.bootstrap.description")}
       icon={<TriangleAlert className="size-5" />}
       primaryAction={
         <Button type="button" onClick={onRetry} data-testid="session-retry">
           {t("familyFailure.retry")}
+        </Button>
+      }
+    />
+  );
+}
+
+export function SessionExpiredPage({ href }: { href: string }) {
+  const { t } = useI18n();
+  return (
+    <FamilyFailureState
+      kind="fatal-error"
+      standalone
+      title={t("familyFailure.expired.title")}
+      description={t("familyFailure.expired.description")}
+      icon={<Lock className="size-5" />}
+      primaryAction={
+        <Button asChild data-testid="session-expired-sign-in">
+          <a href={href}>{t("familyFailure.expired.signIn")}</a>
         </Button>
       }
     />

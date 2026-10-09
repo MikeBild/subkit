@@ -475,6 +475,7 @@ async function runWorkflowToolCall(p: WorkflowToolCallParams): Promise<CallToolR
     },
     db,
     principal,
+    rbac.workflow_permission,
   );
   const executionId = admitted.execution_id;
   const preparation = admitted.hold_writes;

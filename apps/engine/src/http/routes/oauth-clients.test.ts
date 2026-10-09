@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { setConfigKey } from "../../config/loader.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
 import {
@@ -9,6 +9,7 @@ import {
   mcpOauthRefreshTokens,
 } from "../../db/schema/mcp_oauth.ts";
 import { builtinRoleId, createRole } from "../../rbac/roles.ts";
+import { FROZEN_NOW } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
 let ctx: HttpTestServer;
@@ -125,6 +126,37 @@ function memberAuthHeader(): { Authorization: string } {
 }
 
 describe("GET /v1/oauth/clients", () => {
+  test("reports latest recorded token use, including ended connections, without inventing activity", async () => {
+    const clientId = "last-activity-client";
+    const unusedClient = "unused-activity-client";
+    await seedClient(clientId);
+    await seedClient(unusedClient);
+    const earlier = await seedPerson();
+    const later = await seedPerson();
+    await seedApprovedConnection(clientId, earlier.id);
+    await seedApprovedConnection(clientId, later.id, "revoked");
+    for (const [userId, offset] of [
+      [earlier.id, -1000],
+      [later.id, 0],
+    ] as const) {
+      await ctx.db
+        .update(mcpOauthAccessTokens)
+        .set({ last_used_at: new Date(FROZEN_NOW + offset) })
+        .where(
+          and(
+            eq(mcpOauthAccessTokens.tenant_id, ctx.tenantId),
+            eq(mcpOauthAccessTokens.client_id, clientId),
+            eq(mcpOauthAccessTokens.user_id, userId),
+          ),
+        );
+    }
+    const clients = await listClients();
+    expect(clients.find((client) => client.client_id === clientId)?.last_used_at).toBe(
+      new Date(FROZEN_NOW).toISOString(),
+    );
+    expect(clients.find((client) => client.client_id === unusedClient)?.last_used_at).toBeNull();
+  });
+
   test("returns 401 without auth", async () => {
     const res = await fetch(`${ctx.baseUrl}/v1/oauth/clients`);
     expect(res.status).toBe(401);

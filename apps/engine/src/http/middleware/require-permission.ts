@@ -3,6 +3,7 @@ import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
+import { captureWorkflowPermission } from "../../execution/index.ts";
 import { denialDetails, denialHint } from "../../rbac/denial.ts";
 import {
   type ConnectorAccessLevel,
@@ -68,6 +69,12 @@ export async function ensurePermission(
         permission,
       };
   const decision = await can(db, check);
+  if (decision.allow && permission === "workflow:run" && resourceArg?.type === "workflow") {
+    c.set(
+      "workflow_permission",
+      await captureWorkflowPermission(db, principal, resourceArg.id, decision),
+    );
+  }
   if (!decision.allow) {
     try {
       await auditAwait(
@@ -130,6 +137,12 @@ export function requireAnyPermission(
             permission,
           };
       const decision = await can(db, check);
+      if (decision.allow && permission === "workflow:run" && resourceArg?.type === "workflow") {
+        c.set(
+          "workflow_permission",
+          await captureWorkflowPermission(db, principal, resourceArg.id, decision),
+        );
+      }
       if (decision.allow) {
         await next();
         return;

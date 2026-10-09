@@ -7,7 +7,7 @@ import {
   bootstrapLimits,
   onSessionExpired,
 } from "@/api/client";
-import { BootstrapErrorPage, LoginRedirect } from "@/components/failure-state";
+import { BootstrapErrorPage, LoginRedirect, SessionExpiredPage } from "@/components/failure-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n-context";
 
@@ -32,6 +32,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const [expired, setExpired] = useState(false);
   useEffect(() => onSessionExpired(() => setExpired(true)), []);
   const view = sessionView(query, expired);
+  if (view === "expired") return <SessionExpiredPage href={loginHref()} />;
   if (view === "signed-out")
     return <LoginRedirect href={loginHref()} label={t("common.loading")} />;
   if (view === "loading") return <SessionSkeleton label={t("common.loading")} />;
@@ -41,12 +42,14 @@ export function SessionGate({ children }: { children: ReactNode }) {
   return <SessionContext.Provider value={query.data}>{children}</SessionContext.Provider>;
 }
 
-export type SessionView = "signed-out" | "loading" | "failed" | "ready";
+export type SessionView = "expired" | "signed-out" | "loading" | "failed" | "ready";
 
 export function sessionView(
   query: { isPending: boolean; error: unknown; data: Bootstrap | undefined },
   expired: boolean,
 ): SessionView {
+  if (query.data && (expired || (query.error instanceof ApiError && query.error.status === 401)))
+    return "expired";
   if (expired || (query.error instanceof ApiError && query.error.status === 401))
     return "signed-out";
   if (query.data) return "ready";

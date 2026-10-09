@@ -18,6 +18,12 @@ import {
 import { sha256Hex } from "../identity/api-key.ts";
 import { type CallerContext, CallerContextSchema } from "./caller-context.ts";
 
+import {
+  matchingWorkflowPermission,
+  type WorkflowPermission,
+  WorkflowPermissionSchema,
+} from "./workflow-permission.ts";
+
 const SourceSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("api_key"), api_key_id: z.uuid(), credential_version: z.string() })
@@ -41,6 +47,7 @@ const AllowListSchema = z.union([z.array(z.string()), z.literal("all")]);
 export const ExecutionAuthorizationContextSchema = z
   .object({
     source: SourceSchema,
+    workflow_permission: WorkflowPermissionSchema.optional(),
     scopes: z.array(z.string()).optional(),
     allowed_workflows: AllowListSchema.optional(),
     allowed_connectors: AllowListSchema.optional(),
@@ -51,9 +58,23 @@ export type ExecutionAuthorizationContext = z.infer<typeof ExecutionAuthorizatio
 
 export function authorizationContextFromPrincipal(
   principal: ResolvedPrincipal | null | undefined,
+  workflowPermission?: WorkflowPermission | null,
+  workflowId?: string | null,
 ): ExecutionAuthorizationContext | null {
   if (!principal?.auth_source) return null;
+  const proof = matchingWorkflowPermission(
+    workflowPermission,
+    {
+      tenantId: principal.tenant_id,
+      principalId: principal.id,
+      principalKind: principal.kind,
+      provider: principal.provider,
+      productId: principal.product_id ?? null,
+    },
+    workflowId,
+  );
   return ExecutionAuthorizationContextSchema.parse({
+    ...(proof ? { workflow_permission: proof } : {}),
     source: principal.auth_source,
     ...(principal.scopes !== undefined ? { scopes: principal.scopes } : {}),
     ...(principal.allowed_workflows !== undefined

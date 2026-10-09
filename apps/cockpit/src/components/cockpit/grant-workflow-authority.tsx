@@ -9,7 +9,6 @@ import { BoundaryPanels } from "@/components/cockpit/grant-boundary-panels";
 import {
   GrantRemedyAction,
   GrantScopeWarnings,
-  GrantSuggestionNote,
   loadGrantStartedIn,
   useGrantContext,
   useGrantRemedy,
@@ -27,7 +26,6 @@ import {
   FieldGroup,
   FieldLabel,
   FormDialog,
-  Input,
   Section,
   SegmentedControl,
   Select,
@@ -53,7 +51,6 @@ import {
   authorityGrantInput,
   DEFAULT_GRANT_LIMIT,
   type GrantLimit,
-  grantConfirmKey,
   grantLimitBounds,
   type WorkflowAuthority,
   type WorkflowAuthorityPreview,
@@ -108,11 +105,28 @@ export function GrantWorkflowAuthority({
   const session = useSession();
   const connectorNames = useConnectorNames(open);
   const [environment, setEnvironment] = useState<"dev" | "prod">("dev");
-  const [runs, setRuns] = useState("");
-  const [hours, setHours] = useState("");
   const [limit, setLimit] = useState<GrantLimit>(DEFAULT_GRANT_LIMIT);
-  const limited = limit === "limited";
   const [reviewVersionId, setReviewVersionId] = useState(versionId);
+  const titleFacts = useQuery({
+    queryKey: ["authority-title", workflowId, reviewVersionId],
+    enabled: open && session.permissions.includes("workflow:read"),
+    queryFn: async () => {
+      const workflow = await apiRequest<{ name: string }>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}`,
+      );
+      let offset = 0;
+      for (;;) {
+        const history = await apiRequest<{
+          items: { id: string; version: number }[];
+          total: number;
+        }>(`/v1/workflows/${encodeURIComponent(workflowId)}/history?limit=200&offset=${offset}`);
+        const version = history.items.find((entry) => entry.id === reviewVersionId);
+        if (version) return { name: workflow.name, version: version.version };
+        offset += history.items.length;
+        if (history.items.length === 0 || offset >= history.total) return null;
+      }
+    },
+  });
   const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [trialElsewhere, setTrialElsewhere] = useState(false);
@@ -275,21 +289,13 @@ export function GrantWorkflowAuthority({
           }
           setSample(null);
           if (!answer.review) return;
-          setRuns(String(answer.review.suggested_bounds.max_runs));
-          setHours(
-            String(
-              (Date.parse(answer.review.suggested_bounds.valid_until) -
-                Date.parse(answer.review.suggested_bounds.valid_from)) /
-                3_600_000,
-            ),
-          );
           setReview(answer.review);
         },
       },
     );
   }
   const expected = { workflowId, versionId: reviewVersionId, environment };
-  const { runs: grantRuns, hours: grantHours } = grantLimitBounds(limit, runs, hours);
+  const { runs: grantRuns, hours: grantHours } = grantLimitBounds(limit);
   const input = review
     ? authorityGrantInput(review, expected, grantRuns, grantHours, Date.now())
     : null;
@@ -423,10 +429,6 @@ export function GrantWorkflowAuthority({
   const incomplete = review?.execution_shape.requests.some(
     (request) => request.request_review_truncated || request.opaque_payload_omitted,
   );
-  const invalidRuns =
-    limited && (!Number.isInteger(Number(runs)) || Number(runs) < 1 || Number(runs) > 10000);
-  const invalidHours =
-    limited && (!Number.isInteger(Number(hours)) || Number(hours) < 1 || Number(hours) > 744);
   const carriesOver = Boolean(
     activation && review?.approval_carries_over && !unsupported && !incomplete,
   );
@@ -509,19 +511,24 @@ export function GrantWorkflowAuthority({
                   runs: existing.remaining_runs ?? t("authority.headline.runs.unlimited"),
                 },
               )
-          : t(
-              recurringContent
-                ? "authority.content.title"
-                : recurringReport
-                  ? "authority.report.title"
-                  : unsupported
-                    ? "authority.adjustTitle"
-                    : activation
-                      ? "chat.activation.title"
-                      : onGrant
-                        ? "decisions.applyAndAuthorize"
-                        : "authority.grantOpen",
-            )
+          : titleFacts.data && !recurringContent && !recurringReport && !unsupported
+            ? t("authority.namedTitle", {
+                name: titleFacts.data.name,
+                version: `v${titleFacts.data.version}`,
+              })
+            : t(
+                recurringContent
+                  ? "authority.content.title"
+                  : recurringReport
+                    ? "authority.report.title"
+                    : unsupported
+                      ? "authority.adjustTitle"
+                      : activation
+                        ? "chat.activation.title"
+                        : onGrant
+                          ? "decisions.applyAndAuthorize"
+                          : "authority.grantOpen",
+              )
       }
       description={
         existing
@@ -571,8 +578,7 @@ export function GrantWorkflowAuthority({
                           ? "chat.activation.confirm"
                           : onGrant
                             ? "decisions.applyAndAuthorize"
-                            : grantConfirmKey(limit, runs),
-                { count: runs },
+                            : "authority.grantConfirmUntilRevoked",
               ),
               pending: grant.isPending,
               disabled: busy || !input || Boolean(grant.error),
@@ -597,7 +603,7 @@ export function GrantWorkflowAuthority({
             ((prepare.error && sampleRefused === null) ||
               grant.error ||
               (incomplete && !unsupported) ||
-              (boundsVisible && !input && !invalidRuns && !invalidHours)) && (
+              (boundsVisible && !input)) && (
               <Button
                 type="button"
                 variant="outline"
@@ -925,67 +931,40 @@ export function GrantWorkflowAuthority({
             <FieldLabel className="flex items-center gap-1">
               {t("authority.limit.label")}
               <ContextHelp label={t("authority.limit.label")} testId="authority-limit-hint">
-                {t(limited ? "authority.limit.limitedHint" : "authority.limit.untilRevokedHint")}
+                {t(
+                  limit === "until_revoked"
+                    ? "authority.limit.untilRevokedHint"
+                    : "authority.limit.durationHint",
+                )}
               </ContextHelp>
             </FieldLabel>
             <SegmentedControl
               label={t("authority.limit.label")}
               value={limit}
               onValueChange={(next) => {
-                if (!busy && (next === "until_revoked" || next === "limited")) setLimit(next);
+                if (!busy && (next === "until_revoked" || next === "7d" || next === "30d"))
+                  setLimit(next);
               }}
               testId="authority-limit"
               options={[
+                {
+                  value: "7d",
+                  label: t("authority.limit.sevenDays"),
+                  testId: "authority-limit-seven-days",
+                },
+                {
+                  value: "30d",
+                  label: t("authority.limit.thirtyDays"),
+                  testId: "authority-limit-thirty-days",
+                },
                 {
                   value: "until_revoked",
                   label: t("authority.limit.untilRevoked"),
                   testId: "authority-limit-until-revoked",
                 },
-                {
-                  value: "limited",
-                  label: t("authority.limit.limited"),
-                  testId: "authority-limit-limited",
-                },
               ]}
             />
           </Field>
-        )}
-        {boundsVisible && limited && (
-          <>
-            <Field data-invalid={invalidRuns}>
-              <FieldLabel htmlFor="authority-runs">{t("authority.runs")}</FieldLabel>
-              <Input
-                id="authority-runs"
-                data-testid="authority-runs"
-                type="number"
-                min={1}
-                max={10000}
-                step={1}
-                value={runs}
-                disabled={busy}
-                aria-invalid={invalidRuns}
-                onChange={(event) => setRuns(event.target.value)}
-              />
-              {invalidRuns && <FieldError>{t("authority.runsError")}</FieldError>}
-            </Field>
-            <Field data-invalid={invalidHours}>
-              <FieldLabel htmlFor="authority-hours">{t("authority.hours")}</FieldLabel>
-              <Input
-                id="authority-hours"
-                data-testid="authority-hours"
-                type="number"
-                min={1}
-                max={744}
-                step={1}
-                value={hours}
-                disabled={busy}
-                aria-invalid={invalidHours}
-                onChange={(event) => setHours(event.target.value)}
-              />
-              {invalidHours && <FieldError>{t("authority.hoursError")}</FieldError>}
-            </Field>
-            {review && <GrantSuggestionNote review={review} />}
-          </>
         )}
       </FieldGroup>
       {prepare.isPending &&
@@ -1180,7 +1159,7 @@ export function GrantWorkflowAuthority({
               ) : null}
             </Section>
           ) : null}
-          {!input && boundsVisible && !invalidRuns && !invalidHours && (
+          {!input && boundsVisible && (
             <p className="text-sm" data-testid="authority-review-expired">
               {t("authority.reviewExpired")} · {t("authority.reviewExpiredHint")}
             </p>

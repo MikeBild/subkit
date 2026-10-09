@@ -37,6 +37,7 @@ export async function admitWorkflowRun(
   raw: unknown,
   db: Db,
   principal?: import("../auth/types.ts").ResolvedPrincipal | null,
+  workflowPermission?: import("./workflow-permission.ts").WorkflowPermission | null,
 ) {
   const input = schema.parse(raw);
   const resolved = await resolveDefinition(db, input.tenant_id, {
@@ -72,7 +73,7 @@ export async function admitWorkflowRun(
         authorityInput,
         db,
         caller,
-        authorizationContextFromPrincipal(principal),
+        authorizationContextFromPrincipal(principal, workflowPermission, input.workflow_id),
       );
       return { ...admitted, hold_writes: false };
     } catch (error) {
@@ -155,7 +156,11 @@ export async function admitWorkflowRun(
       parent_execution_id: input.parent_execution_id ?? null,
       hold_writes: true,
       caller_context: caller,
-      authorization_context: authorizationContextFromPrincipal(principal),
+      authorization_context: authorizationContextFromPrincipal(
+        principal,
+        workflowPermission,
+        input.workflow_id,
+      ),
       execution_privacy: resolved.def.execution_privacy,
     });
     return {

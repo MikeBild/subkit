@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { VerifiedProviderIdentity } from "../../credentials/provider-identity.ts";
 import {
   bytea,
   catalogMetadata,
@@ -225,6 +226,8 @@ export const credentials = pgTable(
     environment: environmentEnum("environment").notNull(),
     mode: credentialModeEnum("mode").notNull(),
     authority_revision: integer("authority_revision").notNull().default(1),
+    verified_identity: jsonb("verified_identity").$type<VerifiedProviderIdentity | null>(),
+    credential_generation: integer("credential_generation").notNull().default(1),
     ciphertext: bytea("ciphertext").notNull(),
     iv: bytea("iv").notNull(),
     auth_tag: bytea("auth_tag").notNull(),
@@ -242,6 +245,7 @@ export const credentials = pgTable(
   (t) => [
     uniqueIndex("credentials_connector_env_mode_key").on(t.connector_id, t.environment, t.mode),
     check("credentials_authority_revision_positive", sql`${t.authority_revision} > 0`),
+    check("credentials_credential_generation_positive", sql`${t.credential_generation} > 0`),
   ],
 );
 

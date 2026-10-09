@@ -33,6 +33,7 @@ const ListQuery = z
     status: SkillLifecycleSchema.optional(),
     connector_id: z.string().uuid().optional(),
     workflow_id: z.string().uuid().optional(),
+    description_source: z.enum(["llm", "human"]).optional(),
     category: CategoryFilterSchema.optional(),
     q: z.string().min(1).max(200).optional(),
     sort: z.enum(["title", "scope", "status", "version", "updated_at"]).optional(),
@@ -91,6 +92,14 @@ const patchRoute = createRoute({
     body: { content: { "application/json": { schema: UpdateSkillSchema } } },
   },
   responses: {
+    400: {
+      description: "Invalid description acceptance",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
+    409: {
+      description: "The reviewed description changed",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
     200: { description: "OK", content: { "application/json": { schema: SkillSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -235,6 +244,7 @@ export function registerSkillRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(q.connector_id ? { connector_id: q.connector_id } : {}),
       ...(q.workflow_id ? { workflow_id: q.workflow_id } : {}),
       ...(q.category ? { category: q.category } : {}),
+      ...(q.description_source ? { description_source: q.description_source } : {}),
       ...(q.q ? { q: q.q } : {}),
       ...(q.sort ? { sort: q.sort } : {}),
       ...(q.order ? { order: q.order } : {}),

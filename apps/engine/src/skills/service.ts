@@ -179,6 +179,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
 }
 
 export interface ListSkillsParams {
+  description_source?: "llm" | "human";
   tenant_id: string;
   scope?: SkillScope;
   connector_id?: string;
@@ -200,6 +201,9 @@ export async function listSkills(p: ListSkillsParams, exec?: Executor): Promise<
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
   if (p.category) tenantConds.push(eq(skills.category, p.category));
+  if (p.description_source) tenantConds.push(eq(skills.description_source, p.description_source));
+  if (p.description_source === "llm")
+    tenantConds.push(sql`length(trim(coalesce(${skills.description}, ''))) > 0`);
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
@@ -243,6 +247,9 @@ export async function countSkills(
   if (p.workflow_id) tenantConds.push(eq(skills.workflow_id, p.workflow_id));
   if (p.status) tenantConds.push(eq(skills.lifecycle, p.status));
   if (p.category) tenantConds.push(eq(skills.category, p.category));
+  if (p.description_source) tenantConds.push(eq(skills.description_source, p.description_source));
+  if (p.description_source === "llm")
+    tenantConds.push(sql`length(trim(coalesce(${skills.description}, ''))) > 0`);
   if (p.q) {
     const needle = `%${p.q}%`;
     const search = or(
@@ -343,6 +350,9 @@ export async function updateSkill(
       set,
       metadataChange(prior, {
         ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.accept_description !== undefined
+          ? { accept_description: patch.accept_description }
+          : {}),
         ...(patch.category !== undefined ? { category: patch.category } : {}),
       }),
     );

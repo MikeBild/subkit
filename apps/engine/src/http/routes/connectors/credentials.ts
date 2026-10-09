@@ -34,6 +34,7 @@ const credentialsRoute = createRoute({
 
 const CredentialSummary = z
   .object({
+    speaks_as: credsvc.VerifiedProviderIdentitySchema.nullable(),
     mode: z.string(),
     environment: z.enum(["dev", "prod"]),
     connection: ConnectionSummarySchema.nullable(),

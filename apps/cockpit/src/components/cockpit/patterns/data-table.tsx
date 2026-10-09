@@ -267,6 +267,7 @@ export function DataTable<TData extends RowData>({
   sorting,
   onSortingChange,
   onOpen,
+  canOpen,
   rowHref,
   rowLabel,
   linkColumn,
@@ -296,6 +297,7 @@ export function DataTable<TData extends RowData>({
   sorting: SortingState;
   onSortingChange(value: SortingState): void;
   onOpen?(row: TData): void;
+  canOpen?(row: TData): boolean;
   rowHref?(row: TData): string | null;
   rowLabel?(row: TData): string;
   linkColumn?: string;
@@ -430,6 +432,7 @@ export function DataTable<TData extends RowData>({
     />
   );
 
+  const stateOnly = !showSkeleton && Boolean(error || empty);
   return (
     <div
       className="@container flex min-h-0 flex-1 flex-col"
@@ -449,10 +452,7 @@ export function DataTable<TData extends RowData>({
       aria-busy={pending ? true : undefined}
     >
       {toolbarShown ? (
-        <div
-          className="flex flex-wrap items-center gap-2 border-b px-3 py-2 max-sm:px-0"
-          data-family-slot="list-toolbar"
-        >
+        <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
           {usesDefaultSearch && (
             <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
               <span className="sr-only">{searchLabel}</span>
@@ -507,10 +507,15 @@ export function DataTable<TData extends RowData>({
         resultCountLabel
       )}
       <div
-        className={cn("min-h-0 flex-1 overflow-auto", cards ? "hidden @2xl:block" : "block")}
+        className={cn(
+          "min-h-0 overflow-auto",
+          cards ? "hidden @2xl:block" : "block",
+          stateOnly ? null : "rounded-lg border",
+        )}
         data-testid={`${collectionId}-desktop`}
       >
-        <Table>
+        {stateOnly ? stateBlock : null}
+        <Table className={stateOnly ? "hidden" : undefined}>
           <TableHeader className="sticky top-0 z-10 bg-background">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -597,7 +602,10 @@ export function DataTable<TData extends RowData>({
             ) : (
               rows.map((row, index) => {
                 const leaving = leavingAt(index);
-                const open = onOpen && !leaving ? () => onOpen(row.original) : null;
+                const open =
+                  onOpen && !leaving && (canOpen?.(row.original) ?? true)
+                    ? () => onOpen(row.original)
+                    : null;
                 return (
                   <TableRow
                     key={row.id}
@@ -618,10 +626,13 @@ export function DataTable<TData extends RowData>({
                         : undefined
                     }
                   >
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getVisibleCells().map((cell, cellIndex) => (
                       <TableCell
                         key={cell.id}
-                        className={priorityClass(cell.column.columnDef.meta?.priority)}
+                        className={cn(
+                          priorityClass(cell.column.columnDef.meta?.priority),
+                          cellIndex === 0 ? "font-medium" : "text-muted-foreground",
+                        )}
                       >
                         {open && cell.column.id === linkColumnId ? (
                           <LinkedCell
@@ -649,7 +660,7 @@ export function DataTable<TData extends RowData>({
                     ) : null}
                     {hasChevron ? (
                       <TableCell className="w-8 text-muted-foreground" data-slot="row-chevron">
-                        <ChevronRight aria-hidden="true" className="size-4" />
+                        {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
                       </TableCell>
                     ) : null}
                   </TableRow>
@@ -663,10 +674,7 @@ export function DataTable<TData extends RowData>({
         ) : null}
       </div>
       {cards ? (
-        <div
-          className="min-h-0 flex-1 overflow-y-auto @2xl:hidden"
-          data-testid={`${collectionId}-mobile`}
-        >
+        <div className="min-h-0 overflow-y-auto @2xl:hidden" data-testid={`${collectionId}-mobile`}>
           {showSkeleton ? (
             <div
               className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}
@@ -690,12 +698,15 @@ export function DataTable<TData extends RowData>({
               ))}
             </div>
           ) : error || empty ? (
-            <div className="px-4">{stateBlock}</div>
+            stateBlock
           ) : (
-            <div className={cn("grid divide-y", arrivedContent && "sk-fade-in")}>
+            <div className={cn("grid divide-y rounded-lg border", arrivedContent && "sk-fade-in")}>
               {rows.map((row, index) => {
                 const leaving = leavingAt(index);
-                const open = onOpen && !leaving ? () => onOpen(row.original) : null;
+                const open =
+                  onOpen && !leaving && (canOpen?.(row.original) ?? true)
+                    ? () => onOpen(row.original)
+                    : null;
                 const all = row.getVisibleCells();
                 const named = open
                   ? all.find((cell) => cell.column.id === linkColumnId)

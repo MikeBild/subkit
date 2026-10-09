@@ -152,7 +152,7 @@ describe("the sentence", () => {
       execution_id: null,
     };
     expect(sentenceText(attentionSentence(blocked(prepare), de, NOW))).toBe(
-      "Der Workflow „Monatsbericht“ lässt sich in Fassung v9 nicht freigeben – Schritt „send_email“: wer seine E-Mail bekommt, hat noch niemand gesehen — seit gerade eben.",
+      "Der Workflow „Monatsbericht“ lässt sich in Version v9 nicht freigeben – Schritt „send_email“: wer seine E-Mail bekommt, hat noch niemand gesehen — seit gerade eben.",
     );
     const author = {
       ...prepare,
@@ -217,10 +217,10 @@ describe("the sentence", () => {
     expect(
       sentenceText(attentionSentence(waiting({ kind: "schedule", name: null }), de, NOW)),
     ).toBe(
-      "Der Workflow „Monatsbericht“ hat eine neue Fassung v4, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt — seit gerade eben.",
+      "Der Workflow „Monatsbericht“ hat eine neue Version v4, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt — seit gerade eben.",
     );
     const hook = attentionSentence(waiting({ kind: "inbound_hook", name: "findings" }), de, NOW);
-    expect(hook.lead).toContain("Fassung v4");
+    expect(hook.lead).toContain("Version v4");
     expect(hook.lead).toContain("„findings“");
     expect(hook.lead).not.toContain("geplante");
     const unnamed = attentionSentence(waiting({ kind: "inbound_hook", name: null }), de, NOW);

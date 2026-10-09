@@ -1,10 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { absolute, runHref } from "@/app/links";
-import { FormDialog } from "@/components/cockpit/patterns";
+import { ActionButton, FormDialog } from "@/components/cockpit/patterns";
 import { useOpenRunSheet } from "@/components/cockpit/run-sheet";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -166,9 +165,17 @@ export function RunWorkflowDialog({
   liveEnvironment,
   quiet = false,
   disabled = false,
+  disabledReason,
+  approvedVersion,
+  triggerLabel,
+  triggerTestId = "workflow-run-open",
 }: {
   quiet?: boolean;
   disabled?: boolean;
+  disabledReason?: string;
+  approvedVersion?: number | null;
+  triggerLabel?: string;
+  triggerTestId?: string;
   workflowId: string;
   workflowName: string;
   liveEnvironment: RunEnvironment | null | undefined;
@@ -260,6 +267,13 @@ export function RunWorkflowDialog({
   const failureFix = failure?.kind === "connector" ? connectorFix(failure.connector) : null;
   const repeats = failure !== null && failure.kind !== "failed";
 
+  if (disabled)
+    return (
+      <ActionButton disabled disabledReason={disabledReason} testId={triggerTestId}>
+        {triggerLabel ?? t("run.action")}
+      </ActionButton>
+    );
+
   return (
     <FormDialog
       open={open}
@@ -271,14 +285,17 @@ export function RunWorkflowDialog({
         <Button
           variant={quiet || disabled ? "outline" : "default"}
           disabled={disabled}
-          data-testid="workflow-run-open"
+          data-testid={triggerTestId}
         >
-          <Play data-icon="inline-start" />
-          {t("run.action")}
+          {triggerLabel ?? t("run.action")}
         </Button>
       }
       title={t("run.title", { name: workflowName })}
-      description={t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")}
+      description={
+        liveEnvironment && approvedVersion != null
+          ? t("run.consequenceVersion", { version: approvedVersion })
+          : t(liveEnvironment ? "run.consequenceLive" : "run.consequencePreview")
+      }
       submit={{
         label: run.isPending ? t("run.running") : t("run.action"),
         pending: run.isPending,

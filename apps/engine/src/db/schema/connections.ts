@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { VerifiedProviderIdentity } from "../../credentials/provider-identity.ts";
 import { tenantId, timestamps } from "./_common.ts";
 import { tenants, users } from "./identity.ts";
 
@@ -26,6 +27,7 @@ export const outboundConnections = pgTable(
     registration_endpoint: text("registration_endpoint"),
     client_id: text("client_id").notNull(),
     authority_revision: integer("authority_revision").notNull().default(1),
+    verified_identity: jsonb("verified_identity").$type<VerifiedProviderIdentity | null>(),
     scopes: jsonb("scopes").notNull().$type<string[]>(),
     granted_scopes: jsonb("granted_scopes").$type<string[] | null>(),
     service_name: text("service_name"),

@@ -364,6 +364,7 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
   const [target, setTarget] = useState<ConnectorTarget>("web");
   const [signIn, setSignIn] = useState<ConnectorSignIn>(DEFAULT_SIGN_IN);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [address, setAddress] = useState("");
   const [secret, setSecret] = useState("");
   const [oauth, setOAuth] = useState<OAuthClientFields>(EMPTY_OAUTH_CLIENT);
@@ -371,6 +372,7 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
     setTarget("web");
     setSignIn(DEFAULT_SIGN_IN);
     setName("");
+    setDescription("");
     setAddress("");
     setSecret("");
     setOAuth(EMPTY_OAUTH_CLIENT);
@@ -379,9 +381,10 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
     mutationFn: async () => {
       const connector = await apiRequest<Connector>("/v1/connectors", {
         method: "POST",
-        body: JSON.stringify(
-          connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
-        ),
+        body: JSON.stringify({
+          ...connectorCreateBody({ target, signIn, name, slug: slugify(name), address, oauth }),
+          ...(description.trim() ? { description: description.trim() } : {}),
+        }),
       });
       if (needsSecret(signIn))
         await apiRequest(`/v1/connectors/${encodeURIComponent(connector.id)}/credentials`, {
@@ -432,6 +435,12 @@ function useManualConnector(done: () => void, fail: (error: string) => void): Ma
           placeholder={t("create.connector.namePlaceholder")}
           value={name}
           onChange={setName}
+        />
+        <TextField
+          id="create-connector-description"
+          label={t("create.connector.description")}
+          value={description}
+          onChange={setDescription}
         />
         <TextField
           id="create-connector-address"

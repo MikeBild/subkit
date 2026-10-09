@@ -12,6 +12,7 @@ import {
   roleLabel,
   roleName,
 } from "@/pages/admin-model";
+import { grantStatus, membershipNames } from "./admin-model";
 
 const de = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
@@ -178,4 +179,22 @@ describe("a role's permissions are read by area", () => {
     const [group] = permissionGroups(["novel:thing"], de);
     expect(group?.items[0]).toEqual({ text: "novel:thing", machine: true });
   });
+});
+
+test("group membership preserves unknown separately from an empty list", () => {
+  const t = de;
+  expect(membershipNames(null, t)).toBe(t("access.membershipUnknown"));
+  expect(membershipNames(undefined, t)).toBe(t("access.membershipUnknown"));
+  expect(membershipNames([], t)).toBe(t("access.noMemberships"));
+  expect(membershipNames([{ name: "Operations" }, { name: "Support" }], t)).toBe(
+    "Operations, Support",
+  );
+});
+
+test("grant status uses actual expiry and never invents a valid malformed date", () => {
+  const now = Date.parse("2026-01-01T00:00:00Z");
+  expect(grantStatus(null, now)).toBe("active");
+  expect(grantStatus("2026-01-01T00:00:00Z", now)).toBe("expired");
+  expect(grantStatus("2026-01-02T00:00:00Z", now)).toBe("active");
+  expect(grantStatus("invalid", now)).toBe("unknown");
 });

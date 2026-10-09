@@ -73,6 +73,7 @@ const InspectResponse = z
         name: z.string(),
         title: z.string().optional(),
         description: z.string().optional(),
+        input_schema: z.record(z.string(), z.unknown()).nullable(),
         claims: z.enum(["read", "write"]).optional(),
       }),
     ),
@@ -198,6 +199,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
           name: t.name,
           ...(t.title !== undefined ? { title: t.title } : {}),
           ...(t.description !== undefined ? { description: t.description } : {}),
+          input_schema: t.inputSchema ?? null,
           ...(t.annotations ? { claims: classifyMcpToolSideEffect(t.annotations) } : {}),
         })),
         capabilities: set.capabilities,
@@ -466,6 +468,7 @@ export function registerConnectorMcpRoutes(app: OpenAPIHono<AppEnv>): void {
       const result = await sdkAuth(provider, {
         serverUrl: server.url,
         authorizationCode: q.code,
+        fetchFn: provider.fetch,
       });
       if (result !== "AUTHORIZED") {
         throw new Error(`token exchange did not authorize (auth() returned ${result})`);
@@ -602,7 +605,7 @@ async function startMcpAuthorization(p: {
       interactive: true,
       request_source: p.request_source,
     });
-    const result = await sdkAuth(provider, { serverUrl: server.url });
+    const result = await sdkAuth(provider, { serverUrl: server.url, fetchFn: provider.fetch });
     if (result !== "REDIRECT") {
       throw new Error(`unexpected auth() result for interactive flow: ${result}`);
     }

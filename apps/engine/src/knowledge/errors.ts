@@ -1,3 +1,17 @@
+export class KnowledgeSourceAddressConflictError extends Error {
+  constructor() {
+    super("knowledge source address changed while refreshing");
+    this.name = "KnowledgeSourceAddressConflictError";
+  }
+}
+
+export class KnowledgeSourceAddressReadOnlyError extends Error {
+  constructor() {
+    super("only URL knowledge sources have an editable source address");
+    this.name = "KnowledgeSourceAddressReadOnlyError";
+  }
+}
+
 export class KnowledgeVersionConflictError extends Error {
   constructor(
     readonly expected_version: string,

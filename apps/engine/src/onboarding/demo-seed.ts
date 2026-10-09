@@ -4,6 +4,7 @@ import { AuditAction } from "../audit/types.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
+import { type VersionActor, versionAuthorColumns } from "../workflows/index.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
 
 export interface DemoWorkflowSpec {
@@ -89,7 +90,7 @@ export const DEMO_WORKFLOWS: ReadonlyArray<DemoWorkflowSpec> = [
   },
 ];
 
-export interface SeedOnboardingDemoParams {
+export interface SeedOnboardingDemoParams extends VersionActor {
   tenant_id: string;
   actor_id?: string | null;
 }
@@ -133,6 +134,7 @@ export async function seedOnboardingDemo(
     const [version] = await exec
       .insert(workflowVersions)
       .values({
+        ...versionAuthorColumns(p),
         tenant_id: p.tenant_id,
         workflow_id: wf.id,
         version: 1,
@@ -152,7 +154,7 @@ export async function seedOnboardingDemo(
     await auditAwait(
       {
         tenant_id: p.tenant_id,
-        actor_type: p.actor_id ? "user" : "system",
+        actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
         actor_id: p.actor_id ?? null,
         action: AuditAction.WORKFLOW_CREATED,
         resource_type: "workflow",

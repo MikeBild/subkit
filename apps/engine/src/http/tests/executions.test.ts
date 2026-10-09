@@ -12,6 +12,7 @@ import {
   workflows,
   workflowVersions,
 } from "../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -421,5 +422,84 @@ describe("a run's source is who started it, not what the body claims", () => {
       `/v1/executions/${original.body.execution_id}/rerun`,
     );
     expect(rerun.status).toBe(400);
+  });
+});
+
+describe("execution detail trace provenance", () => {
+  const nextTraceId = createDeterministicUuidFactory(0x74726163);
+  async function fixture() {
+    const [execution] = await ctx.db
+      .insert(executions)
+      .values({
+        tenant_id: ctx.tenantId,
+        source_kind: "step",
+        status: "succeeded",
+        request_source: "api",
+        execution_mode: "dev",
+      })
+      .returning();
+    if (!execution) throw new Error("execution fixture missing");
+    return execution.id;
+  }
+  async function start(
+    id: string,
+    trace_id: string | null,
+    overrides: Partial<typeof auditLog.$inferInsert> = {},
+  ) {
+    await ctx.db.insert(auditLog).values({
+      id: nextTraceId(),
+      tenant_id: ctx.tenantId,
+      actor_type: "system",
+      actor_id: null,
+      action: "execution.started",
+      resource_type: "execution",
+      resource_id: id,
+      result: "success",
+      trace_id,
+      ...overrides,
+    });
+  }
+  async function detail(id: string) {
+    const response = await fetch(`${ctx.baseUrl}/v1/executions/${id}`, {
+      headers: { authorization: `Bearer ${ctx.apiKey}` },
+    });
+    expect(response.status).toBe(200);
+    return (await response.json()) as { trace_id: string | null };
+  }
+
+  test("missing or blank start evidence remains unknown", async () => {
+    const id = await fixture();
+    expect((await detail(id)).trace_id).toBeNull();
+    await start(id, "");
+    await start(id, "   ");
+    await start(id, null);
+    expect((await detail(id)).trace_id).toBeNull();
+  });
+
+  test("duplicate matching start traces resolve to one historical trace", async () => {
+    const id = await fixture();
+    await start(id, "recorded-start-trace");
+    await start(id, "recorded-start-trace", {
+      metadata: { via_action: "conversation.run_workflow" },
+    });
+    expect((await detail(id)).trace_id).toBe("recorded-start-trace");
+  });
+
+  test("foreign tenant, other resource, failed starts and unrelated audit actions cannot supply a trace", async () => {
+    const id = await fixture();
+    await start(id, "foreign", { tenant_id: nextTraceId() });
+    await start(id, "other-resource", { resource_type: "workflow" });
+    await start(id, "failed", { result: "error" });
+    await start(id, "later", { action: "execution.completed" });
+    expect((await detail(id)).trace_id).toBeNull();
+    await start(id, "owned");
+    expect((await detail(id)).trace_id).toBe("owned");
+  });
+
+  test("an additional conflicting start record prevents an invented single trace", async () => {
+    const id = await fixture();
+    await start(id, "start-one");
+    await start(id, "start-two", { metadata: { via_action: "conversation.run_workflow" } });
+    expect((await detail(id)).trace_id).toBeNull();
   });
 });

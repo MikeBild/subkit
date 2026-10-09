@@ -7,7 +7,7 @@ import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { log } from "../logging/logger.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
-import { definitionWithoutDescription } from "./canonical-json.ts";
+import { definitionWithoutDescription, workflowJsonDigest } from "./canonical-json.ts";
 import { emitWorkflowLifecycle, getWorkflow, type WorkflowView } from "./service.ts";
 import {
   describeVersionIssues,
@@ -16,9 +16,17 @@ import {
 } from "./stored-definition.ts";
 import { applyTriggerBindings } from "./trigger-bindings.ts";
 import type { WorkflowDef } from "./types.ts";
+import {
+  readVersionAuthor,
+  type VersionActor,
+  type VersionAuthor,
+  versionAuthorColumns,
+} from "./version-author.ts";
 import { lockWorkflowForVersionWrite } from "./version-write-lock.ts";
 
 export interface VersionView {
+  author: VersionAuthor;
+  checksum: string;
   id: string;
   workflow_id: string;
   version: number;
@@ -65,6 +73,8 @@ export async function listWorkflowVersions(
   return {
     rows: rows.map(({ row: r }) => ({
       id: r.id,
+      author: readVersionAuthor(r),
+      checksum: workflowJsonDigest(r.dag),
       workflow_id: r.workflow_id,
       version: r.version,
       dag: r.dag,
@@ -103,6 +113,7 @@ export async function restoreWorkflowVersion(
   version: number,
   actor_id: string | null,
   exec?: Executor,
+  actor_type?: VersionActor["actor_type"],
 ): Promise<WorkflowView | null> {
   const db = exec ?? getDb();
   const updatedId = await db.transaction(async (tx) => {
@@ -134,6 +145,7 @@ export async function restoreWorkflowVersion(
     const [v] = await tx
       .insert(workflowVersions)
       .values({
+        ...versionAuthorColumns({ actor_id, actor_type }),
         tenant_id,
         workflow_id: id,
         version: next,
@@ -156,7 +168,7 @@ export async function restoreWorkflowVersion(
     await auditAwait(
       {
         tenant_id,
-        actor_type: actor_id ? "user" : "system",
+        actor_type: actor_type ?? (actor_id ? "user" : "system"),
         actor_id,
         action: AuditAction.WORKFLOW_VERSION_RESTORED,
         resource_type: "workflow",

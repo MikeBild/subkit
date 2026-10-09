@@ -1,10 +1,16 @@
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import { createHash } from "node:crypto";
+import type {
+  OAuthClientProvider,
+  OAuthDiscoveryState,
+} from "@modelcontextprotocol/sdk/client/auth.js";
 import type {
   OAuthClientInformation,
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { and, desc, eq, gt } from "drizzle-orm";
+import { getDriverFetch } from "../../connectors/index.ts";
+import type { CredentialUseSnapshot, VerifiedProviderIdentity } from "../../credentials/index.ts";
 import {
   getCredentialForConnector,
   getOAuth2ClientCredential,
@@ -16,8 +22,14 @@ import { credentials, mcpOauthStates } from "../../db/schema/index.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
 import { now } from "../../utils/clock.ts";
+import {
+  captureMcpCredentialGeneration,
+  observedMcpCredentialGeneration,
+  observedMcpCredentialId,
+} from "./credential-observation.ts";
 import type { McpAuthConfig } from "./registry.ts";
 import { updateMcpAuthConfig } from "./registry.ts";
+import { OAuthTokenEvidence } from "./token-response-evidence.ts";
 
 const CLIENT_NAME = "sk-mcp-client";
 
@@ -34,6 +46,87 @@ export interface McpDbOAuthClientProviderInput {
 }
 
 export class McpDbOAuthClientProvider implements OAuthClientProvider {
+  private readonly credentialSnapshots = new Map<string, CredentialUseSnapshot | null>();
+  private snapshotCapacityReached = false;
+  private readonly tokenEvidence: OAuthTokenEvidence;
+  private readonly responseCredentials = new Map<
+    string,
+    { generation: number | undefined; credential_id: string | undefined } | null
+  >();
+  private responseCredentialCapacityReached = false;
+
+  readonly fetch = async (
+    target: Parameters<typeof fetch>[0],
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const generation = observedMcpCredentialGeneration(this.connector_id);
+    const credentialId = observedMcpCredentialId(this.connector_id);
+    const tokenRequest = this.tokenEvidence.isTokenRequest(target, init);
+    const response = await getDriverFetch()(target, init);
+    if (tokenRequest && response.ok) {
+      const readJson = response.json.bind(response);
+      response.json = async () => {
+        const body: unknown = await readJson();
+        if (
+          body &&
+          typeof body === "object" &&
+          "access_token" in body &&
+          typeof body.access_token === "string" &&
+          body.access_token
+        ) {
+          this.captureResponseCredential(body.access_token, generation, credentialId);
+        }
+        return body;
+      };
+    }
+    await this.observeTokenResponse(target, init, response, generation);
+    return response;
+  };
+
+  private captureResponseCredential(
+    token: string,
+    generation: number | undefined,
+    credential_id: string | undefined,
+  ): void {
+    if (this.responseCredentialCapacityReached) return;
+    const key = createHash("sha256").update(token).digest("hex");
+    if (this.responseCredentials.has(key)) {
+      if (
+        this.responseCredentials.get(key)?.generation !== generation ||
+        this.responseCredentials.get(key)?.credential_id !== credential_id
+      )
+        this.responseCredentials.set(key, null);
+    } else if (this.responseCredentials.size >= 32) {
+      this.responseCredentialCapacityReached = true;
+      this.responseCredentials.clear();
+    } else this.responseCredentials.set(key, { generation, credential_id });
+  }
+
+  saveDiscoveryState(state: OAuthDiscoveryState): void {
+    this.tokenEvidence.saveDiscoveryState(state);
+  }
+
+  observeTokenResponse(
+    target: Parameters<typeof fetch>[0],
+    init: RequestInit | undefined,
+    response: Response,
+    generation: number | undefined,
+  ): Promise<void> {
+    return this.tokenEvidence.observeResponse(target, init, response, generation);
+  }
+
+  private tokenIdentity(tokens: OAuthTokens): VerifiedProviderIdentity | null {
+    return this.tokenEvidence.identity(
+      tokens.access_token,
+      observedMcpCredentialGeneration(this.connector_id),
+    );
+  }
+
+  credentialSnapshot(token: string): CredentialUseSnapshot | null {
+    if (this.snapshotCapacityReached) return null;
+    return this.credentialSnapshots.get(createHash("sha256").update(token).digest("hex")) ?? null;
+  }
+
   private readonly db: Db;
   private readonly tenant_id: string;
   private readonly connector_id: string;
@@ -45,6 +138,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
   private readonly request_source: RequestSource;
 
   constructor(input: McpDbOAuthClientProviderInput) {
+    this.tokenEvidence = new OAuthTokenEvidence(input.auth.issuer);
     this.db = input.db;
     this.tenant_id = input.tenant_id;
     this.connector_id = input.connector_id;
@@ -136,6 +230,11 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
     if (resolved?.value.mode !== "oauth2") return undefined;
     const v = resolved.value;
     if (!v.access_token) return undefined;
+    captureMcpCredentialGeneration(
+      this.connector_id,
+      resolved.row.credential_generation,
+      resolved.row.id,
+    );
     const expiresAt = resolved.row.oauth2_expires_at ?? null;
     const expired = expiresAt ? expiresAt.getTime() <= now() : false;
     if (expired && !v.refresh_token) return undefined;
@@ -149,10 +248,38 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       const secs = Math.floor((expiresAt.getTime() - now()) / 1000);
       out.expires_in = secs > 0 ? secs : 0;
     }
+    const key = createHash("sha256").update(v.access_token).digest("hex");
+    const snapshot = resolved.credential_snapshot ?? {
+      connector_id: this.connector_id,
+      environment: this.environment,
+      credential_id: resolved.row.id,
+      credential_generation: resolved.row.credential_generation,
+      connection_id: null,
+      access_token_version: null,
+      identity: resolved.row.verified_identity,
+    };
+    if (!this.snapshotCapacityReached) {
+      if (
+        this.credentialSnapshots.has(key) &&
+        JSON.stringify(this.credentialSnapshots.get(key)) !== JSON.stringify(snapshot)
+      ) {
+        this.credentialSnapshots.set(key, null);
+      } else if (!this.credentialSnapshots.has(key)) {
+        if (this.credentialSnapshots.size >= 32) {
+          this.snapshotCapacityReached = true;
+          this.credentialSnapshots.clear();
+        } else this.credentialSnapshots.set(key, snapshot);
+      }
+    }
     return out;
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    const responseCredential = this.responseCredentialCapacityReached
+      ? null
+      : this.responseCredentials.get(
+          createHash("sha256").update(tokens.access_token).digest("hex"),
+        );
     let refresh: string | null = tokens.refresh_token ?? null;
     const prior =
       !this.interactive || !refresh
@@ -170,11 +297,22 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
       if (prior?.value.mode !== "oauth2" || prior.row.connection_id) {
         throw new Error("interactive authorization required before tokens can be saved");
       }
+      if (
+        typeof responseCredential?.generation !== "number" ||
+        !responseCredential.credential_id ||
+        responseCredential.credential_id !== prior.row.id
+      )
+        throw Object.assign(
+          new Error("The refresh response has no unambiguous credential binding."),
+          { code: "credential_generation_changed" },
+        );
       await rotateOAuth2Tokens(
         {
           tenant_id: this.tenant_id,
-          credential_id: prior.row.id,
+          credential_id: responseCredential.credential_id,
+          expected_generation: responseCredential.generation,
           access_token: tokens.access_token,
+          verified_identity: this.tokenIdentity(tokens),
           token_type: tokens.token_type,
           scope: tokens.scope,
           refresh_token: refresh,
@@ -189,6 +327,7 @@ export class McpDbOAuthClientProvider implements OAuthClientProvider {
           tenant_id: this.tenant_id,
           connector_id: this.connector_id,
           environment: this.environment,
+          verified_identity: this.tokenIdentity(tokens),
           mode: "oauth2",
           value: {
             mode: "oauth2",

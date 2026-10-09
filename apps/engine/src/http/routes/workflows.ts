@@ -1,11 +1,15 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import {
+  AcceptDescriptionSchema,
   CategorySchema,
   compareCategoryCounts,
   DescriptionSchema,
+  descriptionAcceptanceValid,
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { AuditAction, auditAwait } from "../../audit/index.ts";
+import { can } from "../../rbac/index.ts";
 import {
   bindingFor,
   createSchedule,
@@ -86,10 +90,12 @@ const listRoute = createRoute({
         limit: z.coerce.number().int().positive().max(200).optional(),
         offset: z.coerce.number().int().min(0).optional(),
         status: z.enum(["draft", "active", "archived"]).optional(),
+        operating_status: z.enum(WORKFLOW_OPERATING_STATUSES).optional(),
         name_contains: z.string().optional(),
         q: z.string().min(1).max(200).optional(),
         sort: z.enum(["name", "lifecycle", "created_at", "updated_at"]).optional(),
         order: z.enum(["asc", "desc"]).optional(),
+        description_source: z.enum(["llm", "human"]).optional(),
         category: z
           .string()
           .optional()
@@ -159,8 +165,13 @@ const WorkflowMetadataPatchBody = z
     slug: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     description: DescriptionSchema.nullable().optional(),
+    accept_description: AcceptDescriptionSchema.optional(),
     category: CategorySchema.nullable().optional(),
     lifecycle: z.enum(["active", "archived"]).optional(),
+  })
+  .refine(descriptionAcceptanceValid, {
+    message: "accept_description requires the exact nonempty description",
+    path: ["accept_description"],
   })
   .openapi("WorkflowMetadataPatchBody");
 
@@ -179,7 +190,10 @@ const metadataRoute = createRoute({
     200: { description: "OK", content: { "application/json": { schema: WorkflowSchema } } },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Not found", content: { "application/json": { schema: ErrorSchema } } },
-    409: { description: "Slug conflict", content: { "application/json": { schema: ErrorSchema } } },
+    409: {
+      description: "Slug or description conflict",
+      content: { "application/json": { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -439,11 +453,28 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     if (q.limit !== undefined) opts.limit = q.limit;
     if (q.offset !== undefined) opts.offset = q.offset;
     if (q.status !== undefined) opts.status = q.status;
+    if (q.operating_status !== undefined) opts.operating_status = q.operating_status;
+    const operatingMay = async (
+      permission: "schedule:read" | "inbound_hook:read" | "connector:read",
+    ) =>
+      (await can(db, { tenant_id: principal.tenant_id, principal, permission, quiet: true })).allow;
+    const [scheduleAccess, hookAccess, connectorAccess] = await Promise.all([
+      operatingMay("schedule:read"),
+      operatingMay("inbound_hook:read"),
+      operatingMay("connector:read"),
+    ]);
+    opts.include_operating_status = true;
+    opts.operating_access = {
+      schedules: scheduleAccess,
+      hooks: hookAccess,
+      connectors: connectorAccess,
+    };
     if (q.name_contains !== undefined) opts.name_contains = q.name_contains;
     if (q.q !== undefined) opts.q = q.q;
     if (q.sort !== undefined) opts.sort = q.sort;
     if (q.order !== undefined) opts.order = q.order;
     if (q.category !== undefined) opts.category = q.category;
+    if (q.description_source) opts.description_source = q.description_source;
     if (q.connector !== undefined) opts.connector = q.connector;
     const { rows, total } = await svc.listWorkflows(principal.tenant_id, opts, db);
     const [vocabulary, connectorRefs, bindings] = await Promise.all([
@@ -661,6 +692,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         def,
         actor_id: principal.id,
+        actor_type: principal.kind,
         ...(category !== undefined ? { metadata: { category } } : {}),
         ...(recipe ? { audit_metadata: svc.recipeAuditMetadata(recipe) } : {}),
       },
@@ -714,6 +746,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         id,
         def: preserveOmittedTrigger(body, existing),
         actor_id: principal.id,
+        actor_type: principal.kind,
         ...(category !== undefined ? { metadata: { category } } : {}),
       },
       db,
@@ -740,6 +773,9 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
         ...(body.slug !== undefined ? { slug: body.slug } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.accept_description !== undefined
+          ? { accept_description: body.accept_description }
+          : {}),
         ...(body.category !== undefined ? { category: body.category } : {}),
         ...(body.lifecycle !== undefined ? { lifecycle: body.lifecycle } : {}),
       },

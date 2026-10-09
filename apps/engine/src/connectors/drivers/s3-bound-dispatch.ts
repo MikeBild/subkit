@@ -14,7 +14,7 @@ export async function executeBoundS3Request(p: {
   params: Parameters<typeof executeS3Request>[0];
   credential: Pick<
     ResolvedConnectorCredential,
-    "credential_id" | "credential_revision" | "connection_authority"
+    "credential_id" | "credential_revision" | "connection_authority" | "credential_snapshot"
   >;
 }): Promise<S3Response> {
   const { params, client, credential } = p;

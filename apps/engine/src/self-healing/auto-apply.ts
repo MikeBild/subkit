@@ -95,6 +95,8 @@ export async function autoApplyPatch(
     : await tx
         .insert(workflowVersions)
         .values({
+          author_user_id: null,
+          author_system_account_id: null,
           tenant_id: params.tenant_id,
           workflow_id: params.workflow_id,
           version: sql<number>`(SELECT COALESCE(MAX(${workflowVersions.version}), 0) + 1

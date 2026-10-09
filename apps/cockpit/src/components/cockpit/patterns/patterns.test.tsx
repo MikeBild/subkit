@@ -25,11 +25,11 @@ import { render, renderInRouter } from "./test-utils";
 const count = (html: string, pattern: RegExp) => [...html.matchAll(pattern)].length;
 
 describe("P1 Page", () => {
-  test("every page but the workspace shares one column, left-aligned and never centred", () => {
+  test("lists take the workbench column, records and settings the working column, all left-aligned", () => {
     for (const [kind, width] of [
       ["list", "max-w-[1280px]"],
-      ["settings", "max-w-[1280px]"],
-      ["detail", "max-w-[1280px]"],
+      ["settings", "max-w-[1120px]"],
+      ["detail", "max-w-[1120px]"],
     ] as const) {
       const html = render(
         <Page kind={kind} scroll="page" testId="p" header={<div>head</div>}>
@@ -206,7 +206,8 @@ describe("P10 Section", () => {
       </CollapsibleSection>,
     );
     expect(html).toContain("Technische Angaben");
-    expect(html).toContain("(4)");
+    expect(html).toMatch(/text-muted-foreground tabular-nums">4<\/span>/);
+    expect(html).not.toContain("(4)");
   });
 });
 
@@ -307,6 +308,17 @@ describe("P16 ActionMenu", () => {
     expect(html).toContain("Im Chat fragen");
     expect(html).toContain('data-variant="outline"');
     expect(html).not.toContain("aria-haspopup");
+  });
+
+  test("an explicitly placed sheet menu stays a menu with one action", () => {
+    const html = render(
+      <ActionMenu
+        alwaysMenu
+        items={[{ label: "Ganzen Vorgang zeigen", href: "/audit?trace_id=operation" }]}
+      />,
+    );
+    expect(html).toContain("aria-haspopup");
+    expect(html).toContain(`aria-label="${translate("de", "pattern.moreActions")}"`);
   });
 
   test("two items are the ⋯ menu", () => {

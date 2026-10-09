@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { actorDirectory } from "@/app/actor-directory-model";
 import { CATALOGS, type TranslationKey, translate } from "@/lib/i18n";
 import {
   authorName,
@@ -14,7 +15,10 @@ const de = (key: TranslationKey, values?: Record<string, string | number>) =>
   translate("de", key, values);
 const USER = "11111111-1111-4111-8111-111111111111";
 const ROBOT = "22222222-2222-4222-8222-222222222222";
-const directory = new Map([[USER, "Lena Koch"]]);
+const directory = actorDirectory(
+  { items: [{ id: USER, email: "lena@example.com" }] },
+  { items: [{ id: USER, name: "Service" }] },
+);
 
 function version(over: Partial<KnowledgeVersion>): KnowledgeVersion {
   return {
@@ -54,7 +58,11 @@ describe("knowledge versions model", () => {
   });
 
   test("an author is named from the directory, else by kind, and no author is SubKit", () => {
-    expect(authorName({ kind: "user", id: USER }, directory, de)).toBe("Lena Koch");
+    expect(authorName({ kind: "user", id: USER }, directory, de)).toBe("lena@example.com");
+    expect(authorName({ kind: "system_account", id: USER }, directory, de)).toBe("Service");
+    expect(versionWhy(`proposed by system_account:${USER}`, directory, de)).toBe(
+      "Vorschlag von Service",
+    );
     expect(authorName({ kind: "user", id: ROBOT }, directory, de)).toBe("Person");
     expect(authorName({ kind: "system_account", id: ROBOT }, directory, de)).toBe("Systemkonto");
     expect(authorName(null, directory, de)).toBe("SubKit");
@@ -62,7 +70,9 @@ describe("knowledge versions model", () => {
 
   test("the engine's notes read as a reason in the viewer's language", () => {
     expect(versionWhy("restored from v2", directory, de)).toBe("Wiederhergestellt aus v2");
-    expect(versionWhy(`proposed by user:${USER}`, directory, de)).toBe("Vorschlag von Lena Koch");
+    expect(versionWhy(`proposed by user:${USER}`, directory, de)).toBe(
+      "Vorschlag von lena@example.com",
+    );
     expect(versionWhy(`proposed by system_account:${ROBOT}`, directory, de)).toBe(
       "Vorschlag von Systemkonto",
     );

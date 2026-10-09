@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { deriveExecutionOutcome, type OutcomeStepRow, pickStoppingStep } from "./outcome.ts";
+import {
+  deriveExecutionOutcome,
+  fixedPlannedSteps,
+  type OutcomeStepRow,
+  pickStoppingStep,
+} from "./outcome.ts";
 
 const at = (s: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, s));
 const row = (over: Partial<OutcomeStepRow> & { step_key: string }): OutcomeStepRow => ({
@@ -193,4 +198,16 @@ describe("deriveExecutionOutcome", () => {
     expect(outcome.kind).toBe("running");
     expect(outcome.steps.skipped).toBe(0);
   });
+});
+
+test("planned count only promises an exact total for fixed request and transform definitions", () => {
+  expect(
+    fixedPlannedSteps([
+      { id: "read", kind: "request" },
+      { id: "format", kind: "transform" },
+    ]),
+  ).toBe(2);
+  expect(fixedPlannedSteps([])).toBeNull();
+  for (const kind of ["loop", "for_each", "branch", "call", "unknown"])
+    expect(fixedPlannedSteps([{ id: "dynamic", kind }])).toBeNull();
 });

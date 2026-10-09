@@ -29,6 +29,7 @@ import {
   type StepMethod,
   stepFromForm,
 } from "@/lib/step-form";
+import { workflowStepChanges } from "@/lib/workflow-step-changes";
 
 type WorkflowDraft = components["schemas"]["WorkflowDraft"];
 type RecordValue = Record<string, unknown>;
@@ -394,23 +395,66 @@ export function StepSaveBar({
   const save = useMutation({
     mutationFn: async () => {
       const expected = typeof record.draft_version_id === "string" ? record.draft_version_id : null;
-      let base: RecordValue = definitionFromRecord(record, []);
+      let base: RecordValue = definitionFromRecord(
+        record,
+        Array.isArray(record.steps) ? record.steps : [],
+      );
       if (expected && expected !== record.current_version_id) {
         const waiting = await apiRequest<WorkflowDraft>(
           `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
         );
         base = { ...(waiting.definition as unknown as RecordValue) };
       }
-      return apiRequest<WorkflowDraft>(`/v1/workflows/${encodeURIComponent(workflowId)}/draft`, {
-        method: "PUT",
-        body: JSON.stringify({
-          definition: { ...base, steps: draft.steps },
-          expected_draft_version_id: expected,
-        }),
-      });
+      const saved = await apiRequest<WorkflowDraft>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/draft`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            definition: { ...base, steps: draft.steps },
+            expected_draft_version_id: expected,
+          }),
+        },
+      );
+      return {
+        saved,
+        changes: workflowStepChanges(
+          Array.isArray(base.steps) ? base.steps : [],
+          saved.definition.steps,
+        ),
+      };
     },
-    onSuccess: async (saved) => {
-      toast.success(t("stepEditor.saved", { version: `v${saved.version}` }));
+    onSuccess: async ({ saved, changes }) => {
+      const summary = [
+        changes.added
+          ? t(changes.added === 1 ? "stepEditor.savedAdded.one" : "stepEditor.savedAdded.other", {
+              count: changes.added,
+            })
+          : null,
+        changes.removed
+          ? t(
+              changes.removed === 1
+                ? "stepEditor.savedRemoved.one"
+                : "stepEditor.savedRemoved.other",
+              { count: changes.removed },
+            )
+          : null,
+        changes.changed
+          ? t(
+              changes.changed === 1
+                ? "stepEditor.savedChanged.one"
+                : "stepEditor.savedChanged.other",
+              { count: changes.changed },
+            )
+          : null,
+        changes.reordered ? t("stepEditor.savedReordered") : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      toast.success(
+        [t("stepEditor.savedVersion", { version: `v${saved.version}` }), summary]
+          .filter(Boolean)
+          .join(" · "),
+      );
       draft.discard();
       await client.invalidateQueries({ queryKey: ["catalog-detail", "workflows", workflowId] });
       await invalidateWorkflowAutomation(client, workflowId);

@@ -91,8 +91,9 @@ export const restoreWorkflowVersionTool: ConversationTool = {
         ctx.tenant_id,
         workflowId,
         args.version,
-        ctx.actor_id,
+        ctx.principal?.id ?? ctx.actor_id,
         ctx.db,
+        ctx.principal?.kind,
       );
     } catch (error) {
       if (!(error instanceof VersionNotRestorableError)) throw error;

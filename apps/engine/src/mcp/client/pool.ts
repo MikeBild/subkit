@@ -6,10 +6,12 @@ import {
   recordMcpExternalToolInvoked,
 } from "../../audit/recorders/index.ts";
 import { getConfig } from "../../config/loader.ts";
+import type { CredentialUseSnapshot } from "../../credentials/index.ts";
 import type { DecryptedCredential } from "../../credentials/types.ts";
 import type { Db } from "../../db/client.ts";
 import { logger } from "../../logging/logger.ts";
 import type { RequestSource } from "../../observability/service-metadata.ts";
+import { withMcpCredentialObserver } from "./credential-observation.ts";
 import {
   capManifest,
   hashManifest,
@@ -344,6 +346,8 @@ export async function connectServerById(
 }
 
 export interface InvokeRemoteToolInput {
+  on_dispatch?: () => void;
+  on_credential_use?: (snapshot: CredentialUseSnapshot) => Promise<void>;
   db: Db;
   tenant_id: string;
   actor_id: string | null;
@@ -380,7 +384,11 @@ function classifyCallFailure(
   return "transport";
 }
 
-export async function invokeRemoteTool(
+export function invokeRemoteTool(args: InvokeRemoteToolInput): Promise<InvokeRemoteToolResult> {
+  return withMcpCredentialObserver(args.on_credential_use, () => invokeRemoteToolWithContext(args));
+}
+
+async function invokeRemoteToolWithContext(
   args: InvokeRemoteToolInput,
 ): Promise<InvokeRemoteToolResult> {
   const environment = args.environment ?? MCP_CREDENTIAL_ENVIRONMENT;
@@ -431,6 +439,7 @@ export async function invokeRemoteTool(
   let structured_content: unknown;
   let hasStructured = false;
   try {
+    args.on_dispatch?.();
     const res = await performRemoteCall(pooled.client, args.call, {
       timeout_ms: args.timeout_ms ?? remoteToolCallTimeoutMs(args.tenant_id),
       ...(args.signal ? { signal: args.signal } : {}),

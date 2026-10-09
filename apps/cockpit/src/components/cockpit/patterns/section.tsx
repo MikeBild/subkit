@@ -47,21 +47,23 @@ export function CollapsibleSection({
 }) {
   return (
     <Collapsible defaultOpen={defaultOpen} data-slot="collapsible-section" data-testid={testId}>
-      <h2 className={SECTION_LABEL} data-slot="section-label">
+      <h2 className="text-sm font-medium" data-slot="section-label">
         <CollapsibleTrigger
-          className="group/section inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="group/section -ml-2 inline-flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors duration-(--sk-dur-fast) hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           data-testid={testId ? `${testId}-toggle` : undefined}
         >
           <ChevronRight
             aria-hidden="true"
-            className="size-3.5 transition-transform duration-(--sk-dur-base) ease-(--sk-ease-standard) group-data-[state=open]/section:rotate-90"
+            className="size-4 text-muted-foreground transition-transform duration-(--sk-dur-base) ease-(--sk-ease-standard) group-data-[state=open]/section:rotate-90"
           />
           {label}
-          {count !== undefined ? <span className="tabular-nums">({count})</span> : null}
+          {count !== undefined ? (
+            <span className="font-normal text-muted-foreground tabular-nums">{count}</span>
+          ) : null}
         </CollapsibleTrigger>
       </h2>
       <CollapsibleContent className="sk-collapsible overflow-hidden">
-        <div className="pt-3">{children}</div>
+        <div className="pt-2 pl-[22px]">{children}</div>
       </CollapsibleContent>
     </Collapsible>
   );

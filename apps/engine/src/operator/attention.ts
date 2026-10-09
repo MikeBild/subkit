@@ -108,7 +108,13 @@ export interface AttentionItem {
     execution_id: string | null;
   };
   cause_class: PreviewClassification | null;
-  counts: { patches?: number; failures?: number; skills?: number; knowledge?: number };
+  counts: {
+    patches?: number;
+    failures?: number;
+    consecutive_failures?: number;
+    skills?: number;
+    knowledge?: number;
+  };
   since: string | null;
   deadline: string | null;
   detail: string | null;

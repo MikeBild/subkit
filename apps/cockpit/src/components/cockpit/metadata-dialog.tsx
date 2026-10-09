@@ -40,10 +40,10 @@ export function MetadataDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={title}
-      description={t("detail.editMetadataDescription")}
+      title={t("workflowPage.renameTitle")}
+      description={t("workflowPage.renameHelp")}
       submit={{
-        label: t("common.saveChanges"),
+        label: t("common.rename"),
         disabled: !name.trim() || name.trim() === title,
         testId: "detail-metadata-save",
       }}

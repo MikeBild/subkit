@@ -45,7 +45,11 @@ export function measureChatLayout() {
       listBoxes.push({ name: "list toggle", edge: round(rect(trigger).left) });
     } else {
       const heading = one("h1", panel);
-      if (heading) list.push({ name: "list title", edge: textLeft(heading) });
+      if (heading)
+        (window.innerWidth < 768 ? list : listBoxes).push({
+          name: "list title",
+          edge: textLeft(heading),
+        });
     }
     const fresh = one('[data-testid="conversation-new"]', panel);
     if (fresh && rect(fresh).left < middle) boxed("new conversation", fresh);

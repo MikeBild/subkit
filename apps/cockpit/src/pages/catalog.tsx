@@ -1,3 +1,4 @@
+import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -6,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, runsHref } from "@/app/links";
+import { CatalogOriginSummary, useCatalogOrigin } from "@/components/cockpit/catalog-categories";
 import { CatalogNameCell } from "@/components/cockpit/catalog-metadata";
 import { CreateAction } from "@/components/cockpit/create-choice";
 import {
@@ -17,17 +19,21 @@ import {
   Page,
   PageHeader,
   StatusBadge,
-  SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
-import { pluralKey, type TranslationKey } from "@/lib/i18n";
+import { cronWords } from "@/lib/cron-words";
+import { LOCALE_TAGS, type Locale, pluralKey, type TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { statusLabel } from "@/lib/status-label";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
-import { catalogListParams } from "@/pages/catalog-model";
+import {
+  catalogListParams,
+  catalogOperatingStatus,
+  OPERATING_STATUS_KEYS,
+} from "@/pages/catalog-model";
 import { driverLabel } from "@/pages/connector-detail-model";
 import {
   type ConnectorHealthFilter,
@@ -41,6 +47,7 @@ type CatalogRow = Record<string, unknown>;
 type WorkflowListItem = components["schemas"]["WorkflowListItem"];
 
 interface CatalogState {
+  kind: "all" | "oauth" | "mcp" | "key";
   q: string;
   status: string;
   category: string;
@@ -67,7 +74,7 @@ interface CatalogConfig {
   summaryKeys: { one: TranslationKey; other: TranslationKey };
   actionKey?: TranslationKey;
   defaultSort: string;
-  statuses: string[];
+  statuses: readonly string[];
 }
 
 const CONFIG: Record<CatalogResource, CatalogConfig> = {
@@ -82,7 +89,7 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     },
     actionKey: "resource.workflows.action",
     defaultSort: "updated_at",
-    statuses: ["draft", "active", "archived"],
+    statuses: WORKFLOW_OPERATING_STATUSES,
   },
   connectors: {
     endpoint: "/v1/connectors",
@@ -116,8 +123,13 @@ function parseState(config: CatalogConfig): CatalogState {
   const order = params.get("order");
   return {
     q: params.get("q") ?? "",
-    status: config.statuses.includes(params.get("status") ?? "")
-      ? (params.get("status") ?? "all")
+    kind:
+      config.endpoint === "/v1/connectors" &&
+      ["oauth", "mcp", "key"].includes(params.get("kind") ?? "")
+        ? (params.get("kind") as "oauth" | "mcp" | "key")
+        : "all",
+    status: config.statuses.includes(params.get("operating_status") ?? "")
+      ? (params.get("operating_status") ?? "all")
       : "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
@@ -143,7 +155,8 @@ function useCatalogState(config: CatalogConfig) {
         const next = { ...current, ...patch };
         const params = new URLSearchParams();
         if (next.q) params.set("q", next.q);
-        if (next.status !== "all") params.set("status", next.status);
+        if (next.kind !== "all") params.set("kind", next.kind);
+        if (next.status !== "all") params.set("operating_status", next.status);
         if (next.category !== "all") params.set("category", next.category);
         if (next.connector) params.set("connector", next.connector);
         if (next.health) params.set("health", next.health);
@@ -199,6 +212,7 @@ function catalogColumns(
   relations: {
     workflowsByConnectorSlug: ReadonlyMap<string, { id: string; name: string }[]>;
     canReadWorkflows: boolean;
+    locale: Locale;
   },
 ): CockpitColumn<CatalogRow>[] {
   const column = tableColumns<CatalogRow>({ t, dateTime });
@@ -216,27 +230,30 @@ function catalogColumns(
         "trigger",
         (row) => row.effective_trigger,
         t("catalog.trigger"),
-        (row) => t(triggerLabelKey(row.effective_trigger as WorkflowListItem["effective_trigger"])),
+        (row) => {
+          const trigger = row.effective_trigger as WorkflowListItem["effective_trigger"];
+          const schedule = row.schedule as WorkflowListItem["schedule"];
+          const label = t(triggerLabelKey(trigger));
+          return trigger.kind === "schedule" && schedule?.cron
+            ? `${label} · ${cronWords(schedule.cron, t, LOCALE_TAGS[relations.locale])}`
+            : label;
+        },
         { width: "w-[18%]" },
       ),
       column.custom(
-        "lifecycle",
-        (row) => row.lifecycle,
+        "operating_status",
+        (row) => row.operating_status,
         t("catalog.status"),
         (row, index) => {
-          const lifecycle = stringField(row, "lifecycle");
+          const status = catalogOperatingStatus(row.operating_status);
           return (
             <span className="flex min-w-0 flex-col items-start gap-1">
-              {lifecycle ? (
-                <StatusBadge state={lifecycle} label={statusLabel(t, lifecycle)} />
-              ) : (
-                MISSING
-              )}
+              <StatusBadge state={status} label={t(OPERATING_STATUS_KEYS[status])} />
               <HealthMark row={row} index={index} />
             </span>
           );
         },
-        { sortable: true, width: "w-[26%]", interactive: true },
+        { width: "w-[26%]", interactive: true },
       ),
       column.date("last_executed_at", (row) => row.last_executed_at, t("catalog.lastRun"), {
         width: "w-[18%]",
@@ -258,6 +275,10 @@ function catalogColumns(
       t("catalog.kind"),
       (row) => {
         const kind = driverLabel(stringField(row, "driver"), t) || MISSING;
+        if (row.driver === "mcp")
+          return typeof row.tools_count === "number"
+            ? `${kind} · ${t(row.tools_count === 1 ? "connectorDetail.tools.count.one" : "connectorDetail.tools.count.other", { count: row.tools_count })}`
+            : kind;
         const slug = stringField(row, "slug");
         if (!relations.canReadWorkflows || !slug) return kind;
         const users = relations.workflowsByConnectorSlug.get(slug)?.length ?? 0;
@@ -275,8 +296,7 @@ function catalogColumns(
       },
       { width: "w-[18%]" },
     ),
-    column.date("updated_at", (row) => row.updated_at, t("catalog.updated"), {
-      sortable: true,
+    column.date("last_tested_at", (row) => row.last_tested_at, t("catalog.tested"), {
       width: "w-[18%]",
     }),
   ];
@@ -289,18 +309,22 @@ export function CatalogPage({
   resource: CatalogResource;
   permissions: readonly string[];
 }) {
-  const { t, dateTime } = useI18n();
+  const { t, dateTime, locale } = useI18n();
   const navigate = useNavigate();
   const config = CONFIG[resource];
   const [state, setState] = useCatalogState(config);
   const [search, setSearch] = useState(state.q);
+  const origin = useCatalogOrigin();
   const debouncedSearch = useDebouncedValue(search);
   useEffect(() => setSearch(state.q), [state.q]);
   useEffect(() => {
     if (debouncedSearch !== state.q) setState({ q: debouncedSearch });
   }, [debouncedSearch, setState, state.q]);
 
-  const params = useMemo(() => catalogListParams(resource, state), [resource, state]);
+  const params = useMemo(
+    () => ({ ...catalogListParams(resource, state), description_source: origin.descriptionSource }),
+    [resource, state, origin.descriptionSource],
+  );
   const list = useInfiniteList<CatalogRow, CatalogListPage>(config.endpoint, params, {
     limit: PAGE_SIZE,
     enabled: permissions.includes(config.permission),
@@ -332,8 +356,9 @@ export function CatalogPage({
       catalogColumns(resource, t, dateTime, {
         workflowsByConnectorSlug,
         canReadWorkflows,
+        locale,
       }),
-    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows],
+    [resource, t, dateTime, workflowsByConnectorSlug, canReadWorkflows, locale],
   );
   const sorting: SortingState = [{ id: state.sort, desc: state.order === "desc" }];
   const rows = list.items;
@@ -345,7 +370,9 @@ export function CatalogPage({
     state.status !== "all" ||
     state.category !== "all" ||
     Boolean(state.connector) ||
-    state.health !== null;
+    state.health !== null ||
+    state.kind !== "all" ||
+    origin.active;
 
   const showsZeroStateAction =
     rows.length === 0 &&
@@ -356,14 +383,16 @@ export function CatalogPage({
 
   const resetFilters = useCallback(() => {
     setSearch("");
+    origin.setValue("all");
     setState({
       q: "",
       status: "all",
       category: "all",
       connector: "",
       health: null,
+      kind: "all",
     });
-  }, [setState]);
+  }, [setState, origin.setValue]);
 
   if (!permissions.includes(config.permission)) {
     return (
@@ -380,6 +409,19 @@ export function CatalogPage({
   }
 
   const selects: FilterSelect[] = [];
+  if (resource === "connectors")
+    selects.push({
+      value: state.kind,
+      onChange: (kind) => setState({ kind: kind as CatalogState["kind"] }),
+      label: t("catalog.kind"),
+      testId: "catalog-kind-filter",
+      options: [
+        { value: "all", label: t("catalog.kindAll") },
+        { value: "oauth", label: t("catalog.kind.oauth") },
+        { value: "mcp", label: t("catalog.kind.mcp") },
+        { value: "key", label: t("catalog.kind.key") },
+      ],
+    });
   if (categories.length > 0)
     selects.push({
       value: state.category,
@@ -402,7 +444,10 @@ export function CatalogPage({
       testId: "catalog-status-filter",
       options: [
         { value: "all", label: t("catalog.allStatuses") },
-        ...config.statuses.map((status) => ({ value: status, label: statusLabel(t, status) })),
+        ...config.statuses.map((status) => ({
+          value: status,
+          label: t(OPERATING_STATUS_KEYS[catalogOperatingStatus(status)]),
+        })),
       ],
     });
 
@@ -438,8 +483,13 @@ export function CatalogPage({
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {rows.length > 0 ? (
-          <SummaryLine text={catalogCountLine(t, resource, total)} testId="catalog-summary" />
+        {rows.length > 0 || hasActiveFilters ? (
+          <CatalogOriginSummary
+            text={catalogCountLine(t, resource, total)}
+            kind={resource === "workflows" ? "workflow" : "connector"}
+            origin={origin}
+            testId="catalog-summary"
+          />
         ) : null}
         <DataTable
           columns={columns}
