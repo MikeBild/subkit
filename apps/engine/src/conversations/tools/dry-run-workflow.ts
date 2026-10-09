@@ -394,7 +394,7 @@ export const dryRunWorkflowTool: ConversationTool = {
             definition,
             ...(draft.name ? { name: draft.name } : {}),
           },
-          input: previewInput ?? null,
+          input: previewInput,
           options: {
             request_source: "chat",
             execution_mode: effectiveEnvironment,
@@ -473,7 +473,7 @@ export const dryRunWorkflowTool: ConversationTool = {
               definition: repaired,
               ...(draft.name ? { name: draft.name } : {}),
             },
-            input: previewInput ?? null,
+            input: previewInput,
             options: {
               request_source: "chat",
               execution_mode: effectiveEnvironment,

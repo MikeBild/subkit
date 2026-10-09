@@ -141,3 +141,30 @@ describe("dry_run_workflow · final_output contract", () => {
     expect(preview?.preview).toEqual(STEP_STRUCTURED_OUTPUT);
   });
 });
+
+describe("dry_run_workflow · omitted input with an object input_schema", () => {
+  test("a preview called without input runs with {} instead of failing input_schema_violation", async () => {
+    const draft = {
+      workflow: {
+        name: "omitted-input",
+        slug: "omitted-input",
+        input_schema: { type: "object", properties: {} },
+        steps: [
+          {
+            id: "make_rows",
+            kind: "transform",
+            language: "javascript",
+            expression: "return { rows: [{ a: 1 }] };",
+          },
+        ],
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: minimal fixture
+    } as any as DraftDocument;
+    const toolCtx = makeCtx(draft);
+    const result = await dryRunWorkflowTool.execute(toolCtx, {});
+    const data = result.data as { error_code?: string; final_output?: unknown };
+    expect(data.error_code).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(data.final_output).toEqual({ rows: [{ a: 1 }] });
+  });
+});
