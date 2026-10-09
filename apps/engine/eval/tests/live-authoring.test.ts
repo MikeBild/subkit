@@ -215,6 +215,35 @@ describe("answerForElicitation", () => {
     });
   });
 
+  test("ask_user_form → the address goes only to the recipient field, subject and content fields get the whole answer", () => {
+    const answer =
+      "Send it to test@example.com by a plain HTTP POST to https://hooks.example.com/report. The data is the first 5 posts.";
+    expect(
+      answerForElicitation(
+        "ask_user_form",
+        {
+          fields: [
+            {
+              name: "report_content",
+              type: "text",
+              label:
+                "What is the report? (describe what data to fetch/include, or paste content directly)",
+            },
+            { name: "recipient_email", type: "text", label: "Recipient email address" },
+            { name: "email_subject", type: "text", label: "Email subject line" },
+          ],
+        },
+        answer,
+      ),
+    ).toEqual({
+      values: {
+        report_content: answer,
+        recipient_email: "test@example.com",
+        email_subject: answer,
+      },
+    });
+  });
+
   test("ask_user_choice → {value}, ask_user_multi → {values}, ask_user_confirm declines", () => {
     expect(
       answerForElicitation(
