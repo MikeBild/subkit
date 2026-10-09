@@ -32,5 +32,6 @@ apps/engine/assets/embeddings/
 
 apps/engine/src/connectors/template-audit-report.json
 
-/key.txt
+/claude-key.txt
+/openai-key.txt
 .devtools
