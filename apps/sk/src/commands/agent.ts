@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { reportCommandError } from "@cli-core/errors";
+import { isEngineError, isTransportError, reportCommandError } from "@cli-core/errors";
 import { printJson } from "@cli-core/format";
 import { defineCommand } from "citty";
 import pc from "picocolors";
@@ -20,7 +20,8 @@ import { EngineClient, type FetchLike } from "../engine-client.ts";
 export const AGENT_FILE_RELPATH = join(".sk", "agent.json");
 const CLAUDE_SETTINGS_RELPATH = join(".claude", "settings.json");
 const CODEX_HOOKS_RELPATH = join(".codex", "hooks.json");
-const SESSION_START_MATCHER = "startup|resume|clear|compact";
+const SESSION_START_MATCHER = "startup|resume|clear|compact|fork";
+const CODEX_SESSION_START_MATCHER = "startup|resume|clear|compact";
 const CODEX_CONTEXT_UNLIMITED = 0;
 const HOOK_COMMAND = "sk agent briefing --hook";
 const CAPTURE_HOOK_COMMAND = "sk agent capture --hook";
@@ -43,12 +44,22 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
   for (;;) {
     const candidate = join(dir, AGENT_FILE_RELPATH);
     if (existsSync(candidate)) {
-      const parsed: unknown = JSON.parse(readFileSync(candidate, "utf8"));
-      const domains =
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(readFileSync(candidate, "utf8"));
+      } catch (err) {
+        throw new Error(`${AGENT_FILE_RELPATH}: invalid JSON`, { cause: err });
+      }
+      const rawDomains =
         parsed && typeof parsed === "object" && Array.isArray((parsed as AgentFile).domains)
-          ? (parsed as AgentFile).domains.filter((d): d is string => typeof d === "string")
-          : [];
-      if (domains.length === 0) return null;
+          ? (parsed as AgentFile).domains
+          : null;
+      const domains = rawDomains
+        ?.filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+        .map((d) => d.trim());
+      if (!domains?.length) {
+        throw new Error(`${AGENT_FILE_RELPATH}: domains must contain at least one domain slug`);
+      }
       const budget = (parsed as AgentFile).budget_tokens;
       return {
         path: candidate,
@@ -65,6 +76,7 @@ export function findAgentFile(startDir: string): { path: string; config: AgentFi
 }
 
 export interface HookPayload {
+  hook_event_name: string | null;
   cwd: string | null;
   session_id: string | null;
   transcript_path: string | null;
@@ -72,13 +84,20 @@ export interface HookPayload {
 }
 
 export function parseHookPayload(raw: string): HookPayload {
-  const empty: HookPayload = { cwd: null, session_id: null, transcript_path: null, prompt: null };
+  const empty: HookPayload = {
+    hook_event_name: null,
+    cwd: null,
+    session_id: null,
+    transcript_path: null,
+    prompt: null,
+  };
   try {
     if (!raw.trim()) return empty;
     const payload = JSON.parse(raw) as Record<string, unknown>;
     const str = (v: unknown): string | null =>
       typeof v === "string" && v.trim().length > 0 ? v : null;
     return {
+      hook_event_name: str(payload.hook_event_name) ?? str(payload.hookEventName),
       cwd: str(payload.cwd),
       session_id: str(payload.session_id),
       transcript_path: str(payload.transcript_path),
@@ -86,6 +105,172 @@ export function parseHookPayload(raw: string): HookPayload {
     };
   } catch {
     return empty;
+  }
+}
+
+export interface BriefingHookOutput {
+  systemMessage: string;
+  hookSpecificOutput?: { hookEventName: string; additionalContext: string };
+}
+
+function briefingStatus(
+  domains: string[],
+  briefing: {
+    skills_full: string[];
+    skills_title_only: string[];
+    knowledge_sources: string[];
+    workflows: string[];
+    connectors: string[];
+    proposed_candidates: number;
+  },
+): string {
+  const counts = [
+    [briefing.skills_full.length + briefing.skills_title_only.length, "skill"],
+    [briefing.knowledge_sources.length, "knowledge source"],
+    [briefing.workflows.length, "workflow"],
+    [briefing.connectors.length, "connector"],
+  ] as const;
+  const included = counts
+    .filter(([count]) => count > 0)
+    .map(([count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`);
+  const summary = included.length > 0 ? included.join(", ") : "no assigned catalog items";
+  const candidates =
+    briefing.proposed_candidates > 0
+      ? `; ${briefing.proposed_candidates} skill proposal${briefing.proposed_candidates === 1 ? "" : "s"} await review (run \`sk learnings review\`)`
+      : "";
+  return `SubKit briefing loaded: ${domains.join(", ")} — ${summary}${candidates}.`;
+}
+
+interface BriefingHookOptions {
+  profile?: ReturnType<typeof resolveProfile>;
+  sessionDirectory?: string;
+  fetchImpl?: FetchLike;
+}
+
+function hookOutput(
+  event: string | null,
+  systemMessage: string,
+  additionalContext?: string,
+): BriefingHookOutput {
+  return {
+    systemMessage,
+    ...(event && additionalContext
+      ? { hookSpecificOutput: { hookEventName: event, additionalContext } }
+      : {}),
+  };
+}
+
+function briefingFailureKind(err: unknown): string {
+  if (err instanceof Error && err.message.startsWith(`${AGENT_FILE_RELPATH}:`)) {
+    return "the repository briefing configuration is invalid";
+  }
+  if (isEngineError(err)) {
+    if (err.status === 401) return "the SubKit API key was rejected";
+    if (err.status === 403) return "the API key lacks permission to read this briefing";
+    if (err.status >= 500) return "the SubKit service returned an error";
+    return "the SubKit request was rejected";
+  }
+  if (isTransportError(err)) {
+    const cause = err.cause;
+    return cause instanceof Error && /timeout|abort/i.test(`${cause.name} ${cause.message}`)
+      ? "the SubKit request timed out"
+      : "the SubKit server could not be reached";
+  }
+  return "the briefing could not be loaded";
+}
+
+export async function getBriefingHookOutput(
+  payload: HookPayload,
+  options: BriefingHookOptions = {},
+): Promise<BriefingHookOutput | null> {
+  const event = payload.hook_event_name;
+  try {
+    if (event !== "SessionStart" && event !== "UserPromptSubmit") {
+      throw new Error("hook input did not name a supported event");
+    }
+    const startDir = payload.cwd ?? process.cwd();
+    const fromFile = findAgentFile(startDir);
+    if (!fromFile) return null;
+    const plan = planBriefing({
+      explicit: null,
+      declared: fromFile.config.domains,
+      hook: true,
+      prompt: payload.prompt,
+    });
+    if (plan.kind === "none") return null;
+
+    const profile = options.profile ?? resolveProfile();
+    const client = agentEngineClient(profile, true, options.fetchImpl);
+    if (!client) {
+      return hookOutput(
+        event,
+        "SubKit briefing unavailable: this profile has no API key. The session will continue without it. Run `sk status`, then `sk login`.",
+        "The SubKit briefing could not be loaded because this profile has no API key. Continue with repository instructions and avoid assuming SubKit-specific facts.",
+      );
+    }
+
+    let domains: string[];
+    let stateResetFailed = false;
+    if (plan.kind === "declared") {
+      domains = plan.domains;
+      if (payload.session_id) {
+        try {
+          forgetBriefed(options.sessionDirectory ?? briefedDir(), payload.session_id);
+        } catch (err) {
+          stateResetFailed = true;
+          debugLog("agent.briefing_hook_failed", {
+            failure: "session_state_reset",
+            error: String(err),
+          });
+        }
+      }
+    } else if (plan.kind === "prompt") {
+      const resolved = await client.resolveAgentDomains({ prompt: plan.prompt });
+      const briefed = payload.session_id
+        ? readBriefed(options.sessionDirectory ?? briefedDir(), payload.session_id)
+        : [];
+      domains = newPromptDomains(resolved.from_prompt, [...plan.declared, ...briefed]);
+      if (domains.length === 0) return null;
+    } else {
+      return null;
+    }
+
+    if (domains.length === 0) return null;
+    const briefing = await client.getAgentBriefing({
+      domains,
+      ...(fromFile.config.budget_tokens !== undefined
+        ? { budget_tokens: fromFile.config.budget_tokens }
+        : {}),
+    });
+
+    let status = briefingStatus(domains, briefing);
+    if (stateResetFailed) {
+      status += " Previous per-session domain state could not be cleared.";
+    }
+    if (payload.prompt && payload.session_id) {
+      try {
+        recordBriefed(options.sessionDirectory ?? briefedDir(), payload.session_id, domains);
+      } catch (err) {
+        debugLog("agent.briefing_hook_failed", {
+          failure: "session_state_write",
+          error: String(err),
+        });
+        status +=
+          " Session tracking could not be saved; this domain may load again on a later prompt.";
+      }
+    }
+    return hookOutput(event, status, briefing.markdown);
+  } catch (err) {
+    const failure = briefingFailureKind(err);
+    debugLog("agent.briefing_hook_failed", {
+      failure,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return hookOutput(
+      event,
+      `SubKit briefing unavailable: ${failure}. The session will continue without it. Run \`sk status\`, then \`sk agent briefing\` in this repository.`,
+      `The SubKit briefing could not be loaded because ${failure}. Continue with repository instructions and avoid assuming SubKit-specific facts.`,
+    );
   }
 }
 
@@ -186,7 +371,7 @@ export function recordBriefed(
 const briefingCommand = defineCommand({
   meta: {
     name: "briefing",
-    description: "Print the domain-scoped session briefing for coding agents",
+    description: "Print or verify the domain-scoped session briefing for coding agents",
   },
   args: {
     domains: {
@@ -198,7 +383,7 @@ const briefingCommand = defineCommand({
     hook: {
       type: "boolean",
       description:
-        "Hook mode (SessionStart or UserPromptSubmit): read hook JSON from stdin, never fail; does nothing outside a repo with .sk/agent.json; with a prompt, brief only the domains the prompt adds",
+        "Hook mode for Codex and Claude Code: inject a repository briefing and show a non-blocking status or warning",
       default: false,
     },
     json: { type: "boolean", description: "JSON output", default: false },
@@ -206,6 +391,19 @@ const briefingCommand = defineCommand({
   async run({ args }) {
     try {
       const payload = args.hook ? readHookPayload() : null;
+      if (args.hook) {
+        const output = await getBriefingHookOutput(
+          payload ?? {
+            hook_event_name: null,
+            cwd: null,
+            session_id: null,
+            transcript_path: null,
+            prompt: null,
+          },
+        );
+        if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+        return;
+      }
       const startDir = payload?.cwd ?? process.cwd();
       const fromFile = args.domains ? null : findAgentFile(startDir);
       const budget = args.budget ? Number(args.budget) : fromFile?.config.budget_tokens;
@@ -217,34 +415,22 @@ const briefingCommand = defineCommand({
               .filter(Boolean)
           : null,
         declared: fromFile?.config.domains ?? [],
-        hook: Boolean(args.hook),
+        hook: false,
         prompt: payload?.prompt ?? null,
       });
-      if (plan.kind === "none" && args.hook) return;
-      const client =
-        plan.kind === "none" ? null : agentEngineClient(resolveProfile(), Boolean(args.hook));
+      const client = plan.kind === "none" ? null : agentEngineClient(resolveProfile(), false);
       if (plan.kind !== "none" && !client) return;
       let domains: string[] = [];
       if (plan.kind === "explicit" || plan.kind === "declared") {
         domains = plan.domains;
-        if (payload?.session_id && plan.kind === "declared") {
-          forgetBriefed(briefedDir(), payload.session_id);
-        }
-      } else if (plan.kind === "prompt" && client) {
-        const resolved = await client.resolveAgentDomains({ prompt: plan.prompt });
-        const briefed = payload?.session_id ? readBriefed(briefedDir(), payload.session_id) : [];
-        domains = newPromptDomains(resolved.from_prompt, [...plan.declared, ...briefed]);
-        if (domains.length === 0) return;
       } else if (plan.kind === "repo" && client) {
         domains = (await client.resolveAgentDomains({ repo: basename(startDir) })).from_repo;
       }
       if (domains.length === 0) {
-        if (!args.hook) {
-          process.stdout.write(
-            `sk agent briefing: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
-          );
-          process.exitCode = 2;
-        }
+        process.stdout.write(
+          `sk agent briefing: no domains — pass --domains or declare ${AGENT_FILE_RELPATH} (sk agent init)\n`,
+        );
+        process.exitCode = 2;
         return;
       }
       if (!client) return;
@@ -252,19 +438,12 @@ const briefingCommand = defineCommand({
         domains,
         ...(budget !== undefined && Number.isFinite(budget) ? { budget_tokens: budget } : {}),
       });
-      if (payload?.prompt && payload.session_id) {
-        recordBriefed(briefedDir(), payload.session_id, domains);
-      }
       if (args.json) {
         printJson(briefing);
         return;
       }
       process.stdout.write(`${briefing.markdown}\n`);
     } catch (err) {
-      if (args.hook) {
-        debugLog("agent.briefing_hook_failed", { error: String(err) });
-        return;
-      }
       reportCommandError(err, { json: Boolean(args.json) });
     }
   },
@@ -376,45 +555,67 @@ function writeJsonFile(path: string, value: Record<string, unknown>): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function eventWired(hooks: Record<string, unknown>, event: string, command: string): boolean {
-  const entries = Array.isArray(hooks[event]) ? (hooks[event] as ClaudeHookEntry[]) : [];
-  return entries.some((entry) =>
-    entry.hooks?.some((h) => typeof h.command === "string" && h.command.includes(command)),
-  );
-}
-
-function appendHookEntry(
+function reconcileCommandHook(
   hooks: Record<string, unknown>,
   event: string,
-  entry: ClaudeHookEntry,
-): Record<string, unknown> {
+  command: string,
+  matcher: string | null,
+  desired: NonNullable<ClaudeHookEntry["hooks"]>[number],
+): { hooks: Record<string, unknown>; changed: boolean } {
   const entries = Array.isArray(hooks[event]) ? (hooks[event] as ClaudeHookEntry[]) : [];
-  return { ...hooks, [event]: [...entries, entry] };
+  const next: ClaudeHookEntry[] = [];
+  let found = false;
+  let append = false;
+
+  for (const entry of entries) {
+    const handlers = Array.isArray(entry.hooks) ? entry.hooks : [];
+    const ours = handlers.filter(
+      (handler) => typeof handler.command === "string" && handler.command.includes(command),
+    );
+    if (ours.length === 0) {
+      next.push(entry);
+      continue;
+    }
+
+    const others = handlers.filter((handler) => !ours.includes(handler));
+    if (!found && others.length === 0) {
+      const handler = { ...ours[0], ...desired };
+      const updated: ClaudeHookEntry = { ...entry, hooks: [handler] };
+      if (matcher === null) delete updated.matcher;
+      else updated.matcher = matcher;
+      next.push(updated);
+      found = true;
+    } else {
+      if (others.length > 0) next.push({ ...entry, hooks: others });
+      if (!found) {
+        found = true;
+        append = true;
+      }
+    }
+  }
+
+  if (!found || append) {
+    next.push({ ...(matcher === null ? {} : { matcher }), hooks: [desired] });
+  }
+  const changed = JSON.stringify(entries) !== JSON.stringify(next);
+  return { hooks: changed ? { ...hooks, [event]: next } : hooks, changed };
 }
 
 export function wireClaudeHooks(settings: Record<string, unknown>): Record<string, unknown> | null {
   let hooks = (settings.hooks ?? {}) as Record<string, unknown>;
   let changed = false;
-  if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
-    hooks = appendHookEntry(hooks, "SessionStart", {
-      matcher: SESSION_START_MATCHER,
-      hooks: [{ type: "command", command: HOOK_COMMAND, timeout: HOOK_TIMEOUT_SECONDS }],
+  for (const [event, matcher, command, timeout] of [
+    ["SessionStart", SESSION_START_MATCHER, HOOK_COMMAND, HOOK_TIMEOUT_SECONDS],
+    ["UserPromptSubmit", null, HOOK_COMMAND, PROMPT_HOOK_TIMEOUT_SECONDS],
+    ["SessionEnd", null, CAPTURE_HOOK_COMMAND, CAPTURE_HOOK_TIMEOUT_SECONDS],
+  ] as const) {
+    const result = reconcileCommandHook(hooks, event, command, matcher, {
+      type: "command",
+      command,
+      timeout,
     });
-    changed = true;
-  }
-  if (!eventWired(hooks, "UserPromptSubmit", HOOK_COMMAND)) {
-    hooks = appendHookEntry(hooks, "UserPromptSubmit", {
-      hooks: [{ type: "command", command: HOOK_COMMAND, timeout: PROMPT_HOOK_TIMEOUT_SECONDS }],
-    });
-    changed = true;
-  }
-  if (!eventWired(hooks, "SessionEnd", CAPTURE_HOOK_COMMAND)) {
-    hooks = appendHookEntry(hooks, "SessionEnd", {
-      hooks: [
-        { type: "command", command: CAPTURE_HOOK_COMMAND, timeout: CAPTURE_HOOK_TIMEOUT_SECONDS },
-      ],
-    });
-    changed = true;
+    hooks = result.hooks;
+    changed ||= result.changed;
   }
   if (!changed) return null;
   return { ...settings, hooks };
@@ -423,32 +624,18 @@ export function wireClaudeHooks(settings: Record<string, unknown>): Record<strin
 export function wireCodexHooks(config: Record<string, unknown>): Record<string, unknown> | null {
   let hooks = (config.hooks ?? {}) as Record<string, unknown>;
   let changed = false;
-  if (!eventWired(hooks, "SessionStart", HOOK_COMMAND)) {
-    hooks = appendHookEntry(hooks, "SessionStart", {
-      matcher: SESSION_START_MATCHER,
-      hooks: [
-        {
-          type: "command",
-          command: HOOK_COMMAND,
-          timeout: HOOK_TIMEOUT_SECONDS,
-          additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
-        },
-      ],
+  for (const [event, matcher, timeout] of [
+    ["SessionStart", CODEX_SESSION_START_MATCHER, HOOK_TIMEOUT_SECONDS],
+    ["UserPromptSubmit", null, PROMPT_HOOK_TIMEOUT_SECONDS],
+  ] as const) {
+    const result = reconcileCommandHook(hooks, event, HOOK_COMMAND, matcher, {
+      type: "command",
+      command: HOOK_COMMAND,
+      timeout,
+      additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
     });
-    changed = true;
-  }
-  if (!eventWired(hooks, "UserPromptSubmit", HOOK_COMMAND)) {
-    hooks = appendHookEntry(hooks, "UserPromptSubmit", {
-      hooks: [
-        {
-          type: "command",
-          command: HOOK_COMMAND,
-          timeout: PROMPT_HOOK_TIMEOUT_SECONDS,
-          additionalContextLimit: CODEX_CONTEXT_UNLIMITED,
-        },
-      ],
-    });
-    changed = true;
+    hooks = result.hooks;
+    changed ||= result.changed;
   }
   if (!changed) return null;
   return { ...config, hooks };
@@ -501,15 +688,15 @@ export function hermesSnippet(engine_url: string): string {
 const initCommand = defineCommand({
   meta: {
     name: "init",
-    description: "Declare this repo's domains and wire coding-agent session hooks",
+    description: "Set up automatic SubKit briefings for this repository in Claude Code and Codex",
   },
   args: {
     domains: {
       type: "string",
       required: true,
-      description: "Comma-separated domain slugs this repo grounds on (e.g. blog-de)",
+      description: "Comma-separated domains for this repository (e.g. accounting, blog-de)",
     },
-    budget: { type: "string", description: "Optional per-session token budget" },
+    budget: { type: "string", description: "Optional token budget for each briefing" },
     "skip-claude": {
       type: "boolean",
       description: "Do not touch ~/.claude/settings.json",
@@ -585,8 +772,20 @@ const initCommand = defineCommand({
       out(`  codex mcp add sk --url ${engine_url}/mcp --bearer-token-env-var SK_API_KEY`);
       out("");
       out(
-        "Next: verify with `sk agent briefing`; optionally `sk skills sync` materializes the domain skills as SKILL.md.",
+        "The model receives the full briefing; the client shows loaded domains, included materials, and pending skill reviews.",
       );
+      out("If SubKit cannot be reached, the agent continues and the client shows a warning.");
+      out(
+        "Start Claude Code or Codex in this repository (or a subdirectory) to receive its briefing.",
+      );
+      out(
+        "Repositories without `.sk/agent.json` stay silent; run `sk agent init` once in each repository.",
+      );
+      out("Verify setup: `sk status`, then `sk agent briefing --json`.");
+      out(
+        "If no status appears, inspect `/hooks` in the client; Codex also needs hooks enabled and trusted.",
+      );
+      out("Optionally run `sk skills sync` to materialize domain skills as SKILL.md.");
     } catch (err) {
       reportCommandError(err, { json: false });
     }
