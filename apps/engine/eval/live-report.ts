@@ -328,6 +328,10 @@ export function placeholderGuardFired(calls: ObservedToolCall[]): boolean {
   });
 }
 
+function isProseQuestion(turn: ObservedTurn): boolean {
+  return turn.status !== "awaiting_input" && /\?/.test(turn.assistant_text);
+}
+
 export function evaluateClarificationTargets(
   spec: LiveScenarioSpec,
   obs: ScenarioObservation,
@@ -340,32 +344,37 @@ export function evaluateClarificationTargets(
     pending_elicitation_id: null,
   };
   const asks = first.tool_calls.filter((c) => ASK_TOOLS.has(c.tool));
-  const singleAsk = asks.length === 1;
-  const awaiting = first.status === "awaiting_input";
+  const authoredFirst = first.tool_calls.filter((c) => AUTHORING_TOOLS.has(c.tool));
+  const proseAsk = asks.length === 0 && authoredFirst.length === 0 && isProseQuestion(first);
+  const structuredAsk = asks.length === 1 && first.status === "awaiting_input";
   const bounded = first.tool_calls.length <= BENCHMARK_TARGETS.clarification_tool_calls_max;
-  if (!singleAsk) notes.push(`first turn asked ${asks.length} clarifying question(s), expected 1`);
-  if (!awaiting)
-    notes.push(`first turn ended with status ${first.status}, expected awaiting_input`);
+  if (proseAsk) notes.push("asked in prose (answered through the composer)");
+  if (!structuredAsk && !proseAsk) {
+    notes.push(
+      `first turn asked ${asks.length} structured question(s) with status ${first.status} and no prose question`,
+    );
+  }
   if (!bounded) {
     notes.push(
       `first turn made ${first.tool_calls.length} tool calls, max ${BENCHMARK_TARGETS.clarification_tool_calls_max}`,
     );
   }
-  const authoredFirst = first.tool_calls.filter((c) => AUTHORING_TOOLS.has(c.tool));
   if (authoredFirst.length > 0) {
     notes.push(`authoring before the answer: ${authoredFirst.map((c) => c.tool).join(", ")}`);
   }
-  const questionChecks = runContentChecks(askCorpus(asks), spec.content_checks);
-  if (asks.length > 0 && !questionChecks.pass) {
+  const questionCorpus = proseAsk ? first.assistant_text : askCorpus(asks);
+  const questionChecks = runContentChecks(questionCorpus, spec.content_checks);
+  if ((asks.length > 0 || proseAsk) && !questionChecks.pass) {
     notes.push(`question does not name missing inputs: ${questionChecks.failed.join(", ")}`);
   }
   const placeholders = findReplyPlaceholders(first);
   if (placeholders.length > 0) notes.push(`placeholder in reply: ${placeholders.join(", ")}`);
 
   const targets: ClarificationTargets = {
-    single_clarifying_question: singleAsk && awaiting && bounded ? "PASS" : "FAIL",
+    single_clarifying_question: (structuredAsk || proseAsk) && bounded ? "PASS" : "FAIL",
     no_authoring_before_answer: authoredFirst.length === 0 ? "PASS" : "FAIL",
-    question_names_missing_inputs: asks.length > 0 && questionChecks.pass ? "PASS" : "FAIL",
+    question_names_missing_inputs:
+      (asks.length > 0 || proseAsk) && questionChecks.pass ? "PASS" : "FAIL",
     no_placeholder_in_reply: placeholders.length === 0 ? "PASS" : "FAIL",
   };
 
@@ -383,9 +392,13 @@ export function evaluateClarificationTargets(
   );
   const stoppedWithoutAuthoring =
     laterCalls.every((c) => !AUTHORING_TOOLS.has(c.tool)) &&
-    later.some((t) => t.status === "awaiting_input");
+    later.some((t) => t.status === "awaiting_input" || isProseQuestion(t));
   const refused = stoppedWithoutAuthoring && refusalNamesPlaceholder;
-  const reAsked = laterCalls.some((c) => ASK_TOOLS.has(c.tool));
+  const reAsked =
+    laterCalls.some((c) => ASK_TOOLS.has(c.tool)) ||
+    later.some(
+      (t) => t.tool_calls.every((c) => !AUTHORING_TOOLS.has(c.tool)) && isProseQuestion(t),
+    );
   const saved =
     obs.results.some((c) => c.tool === "save_workflow_draft") || obs.committed_workflow_id !== null;
   const artifacts = obs.created_artifacts.filter((a) => a.kind !== "conversation");
