@@ -1,29 +1,40 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { GeneratedWorkflowSchema } from "../../../conversations/authoring-pipeline.ts";
 import { zodToJsonSchema7 } from "../../../mcp/json-schema.ts";
+import { startLocalTargetServer } from "../../../test-helpers/local-http.ts";
 import { AiSdkModel } from "../ai-sdk-model.ts";
 
-const realFetch = globalThis.fetch;
+const bodies: Array<Record<string, unknown>> = [];
+let server: { url: string; stop: () => Promise<void> };
+let previousBaseUrl: string | undefined;
 
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
-function captureOpenAiRequests(): Array<Record<string, unknown>> {
-  const bodies: Array<Record<string, unknown>> = [];
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    bodies.push(JSON.parse(String(init?.body ?? "{}")));
+beforeAll(async () => {
+  server = await startLocalTargetServer(async (req) => {
+    bodies.push((await req.json()) as Record<string, unknown>);
     return new Response(JSON.stringify({ error: { message: "captured", type: "test" } }), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
-  }) as typeof fetch;
-  return bodies;
-}
+  });
+  previousBaseUrl = process.env.OPENAI_BASE_URL;
+  process.env.OPENAI_BASE_URL = server.url;
+});
+
+afterAll(async () => {
+  if (previousBaseUrl === undefined) delete process.env.OPENAI_BASE_URL;
+  else process.env.OPENAI_BASE_URL = previousBaseUrl;
+  await server.stop();
+});
+
+type CapturedBody = {
+  text?: { format?: { strict?: boolean; schema?: { properties?: Record<string, unknown> } } };
+  response_format?: {
+    json_schema?: { strict?: boolean; schema?: { properties?: Record<string, unknown> } };
+  };
+};
 
 describe("structured output through the OpenAI provider", () => {
   test("the workflow schema goes out non-strict, so optional fields such as response_filters items are accepted", async () => {
-    const bodies = captureOpenAiRequests();
     const model = new AiSdkModel({
       providerOverride: "openai",
       apiKeyOverride: "sk-test-not-a-real-key",
@@ -38,18 +49,9 @@ describe("structured output through the OpenAI provider", () => {
       .catch(() => undefined);
 
     expect(bodies.length).toBeGreaterThan(0);
-    const body = bodies[0] as {
-      text?: {
-        format?: {
-          type?: string;
-          strict?: boolean;
-          schema?: { properties?: Record<string, unknown> };
-        };
-      };
-      response_format?: { json_schema?: { strict?: boolean } };
-    };
-    const strict = body.text?.format?.strict ?? body.response_format?.json_schema?.strict;
-    expect(strict).toBe(false);
-    expect(Object.keys(body.text?.format?.schema?.properties ?? {})).toContain("response_filters");
+    const body = bodies[0] as CapturedBody;
+    const format = body.text?.format ?? body.response_format?.json_schema;
+    expect(format?.strict).toBe(false);
+    expect(Object.keys(format?.schema?.properties ?? {})).toContain("response_filters");
   });
 });
