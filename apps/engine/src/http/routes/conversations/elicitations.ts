@@ -193,6 +193,7 @@ export function registerElicitationRoutes(app: OpenAPIHono<AppEnv>): void {
         conversation_id: id,
         elicitation_id: elicit.id,
         actor_id: principal.id,
+        principal,
         answer_actor: humanChatAnswer(principal),
         output: body.output,
         turn_abort_ctrl: turnAbortCtrl,
