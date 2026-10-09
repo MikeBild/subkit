@@ -430,6 +430,7 @@ export function DataTable<TData extends RowData>({
     />
   );
 
+  const stateOnly = !showSkeleton && Boolean(error || empty);
   return (
     <div
       className="@container flex min-h-0 flex-1 flex-col"
@@ -449,10 +450,7 @@ export function DataTable<TData extends RowData>({
       aria-busy={pending ? true : undefined}
     >
       {toolbarShown ? (
-        <div
-          className="flex flex-wrap items-center gap-2 border-b px-3 py-2 max-sm:px-0"
-          data-family-slot="list-toolbar"
-        >
+        <div className="flex flex-wrap items-center gap-2 pb-2" data-family-slot="list-toolbar">
           {usesDefaultSearch && (
             <label htmlFor={searchInputId} className="relative min-w-52 flex-1 sm:max-w-xs">
               <span className="sr-only">{searchLabel}</span>
@@ -507,10 +505,15 @@ export function DataTable<TData extends RowData>({
         resultCountLabel
       )}
       <div
-        className={cn("min-h-0 flex-1 overflow-auto", cards ? "hidden @2xl:block" : "block")}
+        className={cn(
+          "min-h-0 flex-1 overflow-auto",
+          cards ? "hidden @2xl:block" : "block",
+          stateOnly ? null : "rounded-lg border",
+        )}
         data-testid={`${collectionId}-desktop`}
       >
-        <Table>
+        {stateOnly ? stateBlock : null}
+        <Table className={stateOnly ? "hidden" : undefined}>
           <TableHeader className="sticky top-0 z-10 bg-background">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -690,9 +693,9 @@ export function DataTable<TData extends RowData>({
               ))}
             </div>
           ) : error || empty ? (
-            <div className="px-4">{stateBlock}</div>
+            stateBlock
           ) : (
-            <div className={cn("grid divide-y", arrivedContent && "sk-fade-in")}>
+            <div className={cn("grid divide-y rounded-lg border", arrivedContent && "sk-fade-in")}>
               {rows.map((row, index) => {
                 const leaving = leavingAt(index);
                 const open = onOpen && !leaving ? () => onOpen(row.original) : null;

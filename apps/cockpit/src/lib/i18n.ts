@@ -1899,6 +1899,7 @@ const EN = {
   "runs.source.scheduler": "Schedule",
   "runs.source.chat": "Chat",
   "runs.source.ui": "Cockpit",
+  "runs.source.queue": "Queue",
   "runs.caller.label": "Requested by",
   "runs.caller.verified": "verified",
   "runs.caller.automatic": "automatic",
@@ -3425,7 +3426,7 @@ const EN = {
   "automation.action.view": "View approval",
   "automation.action.hide": "Hide approval",
   "automation.action.recheck": "Check again",
-  "automation.fact.version": "Version {version}",
+  "automation.fact.version": "{version}",
   "automation.fact.until": "until {until}",
   "automation.fact.runs": "{left} of {max} runs left",
   "automation.headline.grant": "Version {version} is not approved for {environment} yet.",
@@ -3596,7 +3597,7 @@ const EN = {
   "workflowRuns.open": "Run of {when}, {status}",
   "workflowSteps.column.step": "Step",
   "workflowSteps.column.kind": "Kind",
-  "workflowSteps.column.does": "Does",
+  "workflowSteps.column.does": "Target",
   "workflowSteps.column.last": "Last run",
   "workflowApprovals.column.boundary": "Boundary",
   "workflowApprovals.permits": "What it permits",
@@ -3953,7 +3954,6 @@ const EN = {
   "invocation.http.bearer": "API key as bearer token",
   "invocation.http.bearerHelp": "Without a valid key SubKit answers 401.",
   "invocation.http.responses": "Answers 200 with the result, 202 when queued, 409 when refused.",
-  "invocation.http.previewOnly": "Without approval this is only a trial run without effect.",
   "invocation.http.unconfirmed":
     "An approval is stored but not confirmed here — the call may run as a trial without effect.",
   "invocation.http.refused":
@@ -4146,7 +4146,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.content.members.one": "1 festgelegten Inhalt aktualisieren",
   "authority.content.members.other": "{count} festgelegte Inhalte aktualisieren",
   "authority.content.scope":
-    "Nur neue Fassungen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
+    "Nur neue Versionen dieser Inhalte mit jeweils höchstens 1 MB dürfen auf dieser Website veröffentlicht werden. Weitere Inhalte und Löschungen sind ausgeschlossen.",
   "authority.content.targets": "Betroffene Inhalte und Veröffentlichungsziel",
   "authority.content.confirm": "Regelmäßige Veröffentlichung freigeben",
   "authority.report.title": "Regelmäßige Berichte freigeben?",
@@ -4215,7 +4215,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.schedule.review": "Nächsten Schritt prüfen",
   "chat.automationCard.authorized.title": "Automatische Läufe sind freigegeben",
   "chat.automationCard.authorized.hint":
-    "Die laufende Fassung ist freigegeben. Du musst jetzt nichts weiter freigeben.",
+    "Die laufende Version ist freigegeben. Du musst jetzt nichts weiter freigeben.",
   "chat.automationCard.upstream.title": "Bericht noch nicht vollständig geprüft",
   "chat.automationCard.upstream.hint":
     "Benötigte Daten wurden bei der Prüfung nicht abgerufen. Deshalb konnte der Bericht noch nicht geprüft werden und der regelmäßige Versand ist noch nicht freigabefähig. Du musst dazu noch nichts entscheiden.",
@@ -4234,7 +4234,7 @@ const DE: Record<TranslationKey, string> = {
   "chat.automationCard.repair.action": "Ursache ansehen",
   "chat.automationCard.apply.title": "Gespeicherte Änderung wartet auf Übernahme",
   "chat.automationCard.apply.hint":
-    "Öffne die Prüfung, um die gespeicherte Änderung zu sehen. Übernimmst du sie, läuft künftig diese Fassung, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
+    "Öffne die Prüfung, um die gespeicherte Änderung zu sehen. Übernimmst du sie, läuft künftig diese Version, und du kannst eine begrenzte Zahl von Läufen erlauben. Jetzt startet kein Lauf.",
   "chat.automationCard.unknown.title": "Aktuellen Stand prüfen",
   "chat.schedule.completion":
     "Die Entscheidung ist erst erledigt, wenn der Zeitplan eine gültige Freigabe hat.",
@@ -4295,7 +4295,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.scope.version.description":
     "Es läuft {active}. Mit der Freigabe wird die gespeicherte Änderung an ihrer Stelle übernommen.",
   "authority.scope.version.first":
-    "Noch läuft keine Fassung. Mit der Freigabe wird diese übernommen.",
+    "Noch läuft keine Version. Mit der Freigabe wird diese übernommen.",
   "authority.suggestion.schedule":
     "Vorschlag: so viele Läufe, wie der Zeitplan in 30 Tagen startet.",
   "authority.suggestion.hook.one":
@@ -4308,15 +4308,15 @@ const DE: Record<TranslationKey, string> = {
     "Vorschlag: Mindestwert für Webhooks – in den letzten {days} Tagen kamen nur {count} Aufrufe.",
   "authority.repairTitle": "Das kann SubKit selbst herausfinden",
   "authority.repairDescription.one":
-    "1 Schritt sagt nicht, wohin er gehen darf. SubKit hat gelesen, was er tatsächlich getan hat, und kann diese Grenze in eine vorbereitete Fassung schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
+    "1 Schritt sagt nicht, wohin er gehen darf. SubKit hat gelesen, was er tatsächlich getan hat, und kann diese Grenze in eine vorbereitete Version schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
   "authority.repairDescription.other":
-    "{count} Schritte sagen nicht, wohin sie gehen dürfen. SubKit hat gelesen, was jeder von ihnen tatsächlich getan hat, und kann diese Grenzen in eine vorbereitete Fassung schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
+    "{count} Schritte sagen nicht, wohin sie gehen dürfen. SubKit hat gelesen, was jeder von ihnen tatsächlich getan hat, und kann diese Grenzen in eine vorbereitete Version schreiben, die du prüfst — nichts wird dadurch aktiviert oder freigegeben.",
   "authority.repairAction": "SubKit die Grenzen setzen lassen",
   "authority.repairWorking": "Liest, was diese Schritte getan haben\u2026",
   "authority.repairDone.one":
-    "Grenze für 1 Schritt in eine vorbereitete Fassung geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
+    "Grenze für 1 Schritt in eine vorbereitete Version geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
   "authority.repairDone.other":
-    "Grenzen für {count} Schritte in eine vorbereitete Fassung geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
+    "Grenzen für {count} Schritte in eine vorbereitete Version geschrieben. Unten prüfen und in Betrieb nehmen, wenn es stimmt.",
   "authority.repairFailed":
     "Das Schreiben der Grenzen ist nicht durchgegangen, ge\u00e4ndert wurde nichts. Noch einmal versuchen; bleibt es dabei, wurde der Ablauf zwischenzeitlich an anderer Stelle bearbeitet.",
   "authority.repairNone":
@@ -4330,11 +4330,11 @@ const DE: Record<TranslationKey, string> = {
   "authority.hoursError": "Eine ganze Zahl von 1 bis 744 eingeben.",
   "authority.versionPrepared": "{version} · vorbereitet, läuft noch nicht",
   "authority.versionRunning": "{version} · läuft derzeit",
-  "authority.noneActive": "noch keine Fassung",
+  "authority.noneActive": "noch keine Version",
   "authority.activateOnly": "Nur in Betrieb nehmen",
   "authority.carryOver.confirm": "Übernehmen – Freigabe gilt weiter",
   "authority.carryOver.hint":
-    "Diese Fassung erreicht nichts, was die bestehende Freigabe nicht schon abdeckt. Beim Übernehmen gilt die Freigabe weiter; neu freizugeben ist nichts.",
+    "Diese Version erreicht nichts, was die bestehende Freigabe nicht schon abdeckt. Beim Übernehmen gilt die Freigabe weiter; neu freizugeben ist nichts.",
   "authority.activatedOnly": "Die Änderung ist in Betrieb. Eine Freigabe wurde nicht erteilt.",
   "authority.configuredConnector": "Konfigurierter Konnektor",
   "authority.reviewExpired": "Prüfung nicht mehr aktuell",
@@ -4451,7 +4451,7 @@ const DE: Record<TranslationKey, string> = {
     "Alles Folgende führt dieser Workflow bei jedem Start aus. Die Freigabe gilt genau für diese Version; eine neue Version braucht eine neue Freigabe.",
   "schedules.held.since": "Steht seit {when}",
   "schedules.held.reviewRepair": "Workflow reparieren",
-  "schedules.held.reviewPrepared": "Vorbereitete Fassung prüfen",
+  "schedules.held.reviewPrepared": "Vorbereitete Version prüfen",
   "schedules.held.reviewGrant": "Freigabe prüfen",
   "authority.issuesTitle": "Warum das noch nicht freigegeben werden kann",
   "authority.issueStep": "Schritt {step}",
@@ -4489,7 +4489,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.state.notYetValid": "Noch nicht gültig",
   "authority.state.expired": "Abgelaufen",
   "authority.state.revoked": "Widerrufen",
-  "authority.state.superseded": "Von neuer Fassung übernommen",
+  "authority.state.superseded": "Von neuer Version übernommen",
   "authority.headline.untilRevoked": "bis auf Widerruf",
   "authority.headline.runs.unlimited": "unbegrenzte Läufe",
   "authority.runsUnlimited": "Unbegrenzt · bisher {count}",
@@ -4502,7 +4502,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.limit.untilRevoked": "Bis auf Widerruf",
   "authority.limit.limited": "Begrenzen",
   "authority.limit.untilRevokedHint":
-    "Ohne Laufgrenze und ohne Ablaufdatum. Eine neue Fassung behält die Freigabe, solange sie nichts Neues erreicht. Jederzeit widerrufbar.",
+    "Ohne Laufgrenze und ohne Ablaufdatum. Eine neue Version behält die Freigabe, solange sie nichts Neues erreicht. Jederzeit widerrufbar.",
   "authority.limit.limitedHint":
     "Endet nach den Läufen oder Stunden unten – je nachdem, was zuerst eintritt. Jederzeit widerrufbar.",
   "authority.grantConfirmUntilRevoked": "Freigeben",
@@ -4824,17 +4824,17 @@ const DE: Record<TranslationKey, string> = {
   "overview.reason.execution_authority_unavailableHook":
     "{subject} ist angehalten: er nimmt keine Aufrufe vom Webhook „{hook}“ an, bis eine Freigabe erteilt ist",
   "overview.reason.version_awaiting_approval":
-    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
+    "{subject} hat eine neue Version {version}, die auf Freigabe wartet – der nächste geplante Start wird sonst abgelehnt",
   "overview.reason.version_awaiting_approvalHook":
-    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – Aufrufe vom Webhook „{hook}“ werden sonst abgelehnt",
+    "{subject} hat eine neue Version {version}, die auf Freigabe wartet – Aufrufe vom Webhook „{hook}“ werden sonst abgelehnt",
   "overview.reason.version_awaiting_approvalAny":
-    "{subject} hat eine neue Fassung {version}, die auf Freigabe wartet – der nächste automatische Start wird sonst abgelehnt",
+    "{subject} hat eine neue Version {version}, die auf Freigabe wartet – der nächste automatische Start wird sonst abgelehnt",
   "overview.reason.approval_expiring":
     "{subject} ist nur noch kurz freigegeben: Die Freigabe läuft bald ab oder ist fast aufgebraucht",
   "overview.reason.version_needs_repair":
-    "{subject} lässt sich in Fassung {version} nicht freigeben – Schritt „{step}“: {cause}",
+    "{subject} lässt sich in Version {version} nicht freigeben – Schritt „{step}“: {cause}",
   "overview.reason.version_needs_repairBare":
-    "{subject} lässt sich in Fassung {version} nicht freigeben, bevor der Workflow geändert ist",
+    "{subject} lässt sich in Version {version} nicht freigeben, bevor der Workflow geändert ist",
   "overview.repair.more.one": "{sentence} (und 1 weiterer Schritt)",
   "overview.repair.more.many": "{sentence} (und {count} weitere Schritte)",
   "overview.repair.cause.no_boundary": "wohin er Anfragen schickt, ist nicht begrenzt",
@@ -5741,7 +5741,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.action.approvalDispatchDenied": "Ausführung verweigert",
   "audit.action.authorityGranted": "Ausführungsrecht erteilt",
   "audit.action.authorityRevoked": "Ausführungsrecht entzogen",
-  "audit.action.authorityInherited": "Ausführungsrecht auf neue Fassung übernommen",
+  "audit.action.authorityInherited": "Ausführungsrecht auf neue Version übernommen",
   "audit.action.policyDenied": "Durch Richtlinie verweigert",
   "audit.action.roleCreated": "Rolle angelegt",
   "audit.action.roleDeleted": "Rolle gelöscht",
@@ -5762,7 +5762,7 @@ const DE: Record<TranslationKey, string> = {
   "audit.action.scheduleUpdated": "Zeitplan geändert",
   "audit.action.scheduleDeleted": "Zeitplan gelöscht",
   "audit.action.workflowDeleted": "Workflow gelöscht",
-  "audit.action.workflowRestored": "Fassung wiederhergestellt",
+  "audit.action.workflowRestored": "Version wiederhergestellt",
   "audit.action.knowledgeRestored": "Wissensversion wiederhergestellt",
   "audit.action.connectorCreated": "Konnektor angelegt",
   "audit.action.connectorUpdated": "Konnektor geändert",
@@ -5861,14 +5861,14 @@ const DE: Record<TranslationKey, string> = {
   "audit.meta.openConversation": "Unterhaltung öffnen",
   "audit.meta.slug": "Kurzname",
   "audit.meta.name": "Name",
-  "audit.meta.version": "Fassung",
+  "audit.meta.version": "Version",
   "audit.meta.environment": "Umgebung",
   "audit.meta.scope": "Geltung",
   "audit.meta.status": "Zustand",
   "audit.meta.chunkCount": "Abschnitte",
   "audit.meta.count": "Anzahl",
   "audit.detail.refreshFailed":
-    "Dieser Eintrag konnte nicht neu geladen werden. Angezeigt wird die Fassung aus der Liste.",
+    "Dieser Eintrag konnte nicht neu geladen werden. Angezeigt wird die Version aus der Liste.",
   "audit.action.patchApproved": "Korrektur freigegeben",
   "audit.action.patchRejected": "Korrektur abgelehnt",
   "audit.action.patchProposed": "Korrektur vorgeschlagen",
@@ -5968,9 +5968,9 @@ const DE: Record<TranslationKey, string> = {
   "run.startedToast": "Lauf gestartet",
   "run.failed": "Der Lauf konnte nicht gestartet werden.",
   "run.legacy":
-    "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert. Ändere den Workflow im Chat, um ihn neu zu speichern.",
+    "Nicht gestartet: Diese Version ist in einem älteren Format gespeichert. Ändere den Workflow im Chat, um ihn neu zu speichern.",
   "run.legacySteps":
-    "Nicht gestartet: Diese Fassung ist in einem älteren Format gespeichert (Schritte: {steps}). Ändere den Workflow im Chat, um ihn neu zu speichern.",
+    "Nicht gestartet: Diese Version ist in einem älteren Format gespeichert (Schritte: {steps}). Ändere den Workflow im Chat, um ihn neu zu speichern.",
   "run.approvalMissing":
     "Nicht gestartet ({environment}): Für diesen Lauf gibt es keine gültige Freigabe. Gib den Workflow zuerst frei.",
   "run.refusedAgain": "Ein weiterer Versuch würde genauso abgelehnt.",
@@ -6062,6 +6062,7 @@ const DE: Record<TranslationKey, string> = {
   "runs.source.scheduler": "Zeitplan",
   "runs.source.chat": "Chat",
   "runs.source.ui": "Cockpit",
+  "runs.source.queue": "Warteschlange",
   "runs.caller.label": "Auftrag von",
   "runs.caller.verified": "geprüft",
   "runs.caller.automatic": "automatisch",
@@ -6119,7 +6120,7 @@ const DE: Record<TranslationKey, string> = {
   "schedules.held.authorityShort":
     "Für den nächsten Lauf liegt keine gültige Ausführungsfreigabe vor.",
   "schedules.held.preparedShort":
-    "Eine Fassung, die nicht die laufende ist, ist vorbereitet und wartet. Die Prüfung beurteilt diese Fassung; in Betrieb genommen läuft der Zeitplan weiter.",
+    "Eine Version, die nicht die laufende ist, ist vorbereitet und wartet. Die Prüfung beurteilt diese Version; in Betrieb genommen läuft der Zeitplan weiter.",
   "schedules.held.details": "Grund und Zeitplan",
   "schedules.held.schedule": "Zeitplan",
 
@@ -6128,7 +6129,7 @@ const DE: Record<TranslationKey, string> = {
   "schedules.held.authority":
     "Der letzte Start wurde zurückgehalten: Eine gültige Ausführungsfreigabe fehlt, ist abgelaufen, widerrufen oder ausgeschöpft. Im Workflow die genaue Version, Ziele und endlichen Grenzen prüfen und freigeben.",
   "schedules.held.prepared":
-    "Für diesen Workflow wartet eine gespeicherte Fassung, die nicht die laufende ist. Die Prüfung beurteilt die vorbereitete Fassung, nicht die zurückgehaltene.",
+    "Für diesen Workflow wartet eine gespeicherte Version, die nicht die laufende ist. Die Prüfung beurteilt die vorbereitete Version, nicht die zurückgehaltene.",
   "schedules.held.review": "Workflow prüfen",
   "hooks.held.title": "Webhook „{slug}“",
   "hooks.held.concreteShort":
@@ -6141,7 +6142,7 @@ const DE: Record<TranslationKey, string> = {
   "hooks.held.concrete":
     "Aufrufe werden abgewiesen, weil Aktionen und Ziele dieses Workflows für unbeaufsichtigte Läufe nicht geprüft sind. Die Prüfung bereitet mit einem Beispielaufruf einen zurückgehaltenen Lauf vor – es wird nichts gesendet – und fragt dann nach deiner Freigabe.",
   "hooks.held.authority":
-    "Aufrufe werden abgewiesen, weil die Ausführungsfreigabe fehlt, abgelaufen, widerrufen oder aufgebraucht ist. Prüfe Fassung, Ziele und Grenzen und erteile sie neu.",
+    "Aufrufe werden abgewiesen, weil die Ausführungsfreigabe fehlt, abgelaufen, widerrufen oder aufgebraucht ist. Prüfe Version, Ziele und Grenzen und erteile sie neu.",
   "hooks.held.review": "Freigabe prüfen",
   "operational.value.unknown": "Nicht ermittelbar",
   "operational.value.forbidden": "Eingeschränkt",
@@ -6797,7 +6798,7 @@ const DE: Record<TranslationKey, string> = {
   "tool.name.runWorkflow.refused": "Lauf abgelehnt",
   "tool.name.runNamedWorkflow.refused": "Lauf von „{name}“ abgelehnt",
   "tool.refusal.activationRequired": "Gespeicherte Änderung noch nicht übernommen",
-  "tool.refusal.legacy": "Fassung in älterem Format gespeichert",
+  "tool.refusal.legacy": "Version in älterem Format gespeichert",
   "tool.refusal.notSaved": "Workflow noch nicht gespeichert",
   "tool.refusal.notFound": "Workflow nicht gefunden",
   "tool.refusal.permission": "Nicht erlaubt",
@@ -7637,11 +7638,11 @@ const DE: Record<TranslationKey, string> = {
   "automation.action.view": "Freigabe ansehen",
   "automation.action.hide": "Freigabe ausblenden",
   "automation.action.recheck": "Erneut prüfen",
-  "automation.fact.version": "Fassung {version}",
+  "automation.fact.version": "{version}",
   "automation.fact.until": "bis {until}",
   "automation.fact.runs": "noch {left} von {max} Läufen",
-  "automation.headline.grant": "Fassung {version} ist für {environment} noch nicht freigegeben.",
-  "automation.headline.grantUnnamed": "Diese Fassung ist noch nicht freigegeben.",
+  "automation.headline.grant": "Version {version} ist für {environment} noch nicht freigegeben.",
+  "automation.headline.grantUnnamed": "Diese Version ist noch nicht freigegeben.",
   "automation.headline.repair": "Schritt {step} wird abgelehnt.",
   "automation.headline.repairUnnamed": "Ein Schritt wird abgelehnt.",
   "automation.headline.apply": "Gespeicherte Änderung {prepared} wartet; es läuft {active}.",
@@ -7649,10 +7650,10 @@ const DE: Record<TranslationKey, string> = {
   "automation.headline.paused": "Zeitplan und Webhook sind angehalten.",
   "automation.headline.unknown": "Ob er laufen darf, ließ sich nicht prüfen.",
   "automation.headline.invalid":
-    "Diese Fassung ist in einem älteren Format gespeichert und kann nicht laufen, bis sie neu gespeichert ist.",
+    "Diese Version ist in einem älteren Format gespeichert und kann nicht laufen, bis sie neu gespeichert ist.",
   "automation.invalidPrompt":
     "Der Workflow „{name}“ ist in einem älteren Format gespeichert und kann nicht laufen. Speichere ihn im aktuellen Format neu: ",
-  "automation.headline.inactive": "Keine aktive Fassung.",
+  "automation.headline.inactive": "Keine aktive Version.",
   "automation.headline.manual": "Läuft nur auf Abruf – kein Zeitplan, kein Webhook.",
   "automation.noRight": "Du darfst das ansehen, nicht ändern.",
   "automation.repairPrompt":
@@ -7728,9 +7729,9 @@ const DE: Record<TranslationKey, string> = {
   "workflowPage.steps.other": "{count} Schritte",
   "workflowPage.savedVersion": "Gespeichert, noch nicht aktiv",
   "workflowPage.savedVersionHelp":
-    "Aktiv ist {version}. Die gespeicherte Fassung wirkt erst nach der Freigabe.",
+    "Aktiv ist {version}. Die gespeicherte Version wirkt erst nach der Freigabe.",
   "workflowPage.savedVersionHelpNone":
-    "Noch keine Fassung aktiv. Die gespeicherte wirkt erst nach der Freigabe.",
+    "Noch keine Version aktiv. Die gespeicherte wirkt erst nach der Freigabe.",
   "workflowPage.calledBy": "Wird per {kinds} aufgerufen",
   "workflowPage.and": " und ",
   "workflowPage.calledOnRequest": "Wird per HTTP, MCP oder CLI aufgerufen",
@@ -7810,7 +7811,7 @@ const DE: Record<TranslationKey, string> = {
   "workflowRuns.open": "Lauf vom {when}, {status}",
   "workflowSteps.column.step": "Schritt",
   "workflowSteps.column.kind": "Art",
-  "workflowSteps.column.does": "Macht",
+  "workflowSteps.column.does": "Ziel",
   "workflowSteps.column.last": "Letzter Lauf",
   "workflowApprovals.column.boundary": "Grenze",
   "workflowApprovals.permits": "Was sie erlaubt",
@@ -8174,11 +8175,10 @@ const DE: Record<TranslationKey, string> = {
   "invocation.http.bearer": "API-Schlüssel als Bearer-Token",
   "invocation.http.bearerHelp": "Ohne gültigen Schlüssel antwortet SubKit mit 401.",
   "invocation.http.responses": "Antwort: 200 mit Ergebnis, 202 eingereiht, 409 abgelehnt.",
-  "invocation.http.previewOnly": "Ohne Freigabe läuft nur ein Probelauf ohne Wirkung.",
   "invocation.http.unconfirmed":
     "Eine Freigabe ist hinterlegt, hier aber nicht bestätigt – der Aufruf kann als Probelauf ohne Wirkung laufen.",
   "invocation.http.refused":
-    "Die Engine lehnt diesen Aufruf ab: Die Fassung ist in einem älteren Format gespeichert.",
+    "Die Engine lehnt diesen Aufruf ab: Die Version ist in einem älteren Format gespeichert.",
   "invocation.hidden.hooks":
     "Die Webhooks dieses Workflows darfst du nicht sehen; es kann welche geben.",
   "invocation.hidden.schedules":
@@ -8203,7 +8203,7 @@ const DE: Record<TranslationKey, string> = {
   "invocation.schedule.state.active": "Aktiv",
   "invocation.schedule.state.paused": "Pausiert",
   "invocation.schedule.state.held": "Wartet auf Freigabe",
-  "invocation.schedule.state.activationRequired": "Keine aktive Fassung",
+  "invocation.schedule.state.activationRequired": "Keine aktive Version",
   "invocation.cli.command": "Befehl",
   "invocation.cli.runsInDev":
     "Der Befehl nennt keine Umgebung und läuft deshalb in der Entwicklung. Für Produktion nimm den HTTP-Aufruf.",
@@ -8293,7 +8293,7 @@ const DE: Record<TranslationKey, string> = {
   "workflow.fact.onErrorContinue": "läuft weiter",
   "workflow.fact.calls": "Startet",
   "workflow.fact.callsOpen": "Workflow öffnen",
-  "authority.inactiveVersion": "Gilt für eine Fassung, die nicht läuft.",
+  "authority.inactiveVersion": "Gilt für eine Version, die nicht läuft.",
   "workflow.neverRanShort": "noch nie gelaufen",
   "files.title": "Dateien",
   "files.upload": "Hochladen",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { translate } from "@/lib/i18n";
-import { runCaller } from "@/pages/runs-model";
+import { requestSourceLabel, runCaller } from "@/pages/runs-model";
 
 const german = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) =>
   translate("de", key, values);
@@ -98,5 +98,22 @@ describe("who asked for a run", () => {
     expect(line.who).toBe("Webhook");
     expect(line.channel).toBeNull();
     expect(line.state).toBe("automatic");
+  });
+
+  test("every channel the engine records has a name, so no machine value reaches the reader", () => {
+    for (const source of [
+      "api",
+      "cli",
+      "scheduler",
+      "mcp",
+      "webhook",
+      "tool-chain",
+      "ui",
+      "chat",
+      "queue",
+    ]) {
+      expect(requestSourceLabel(source, german).text).not.toBe(source);
+    }
+    expect(requestSourceLabel("queue", german).text).toBe("Warteschlange");
   });
 });

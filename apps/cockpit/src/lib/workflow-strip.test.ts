@@ -93,6 +93,7 @@ describe("workflow status strip (D15, reviewed)", () => {
     const manual = state({ state: "manual", primaryAction: { kind: "grant" } });
     expect(workflowStrip(input({ automation: manual }))).toMatchObject({
       kind: "unapproved",
+      tone: "info",
       action: { kind: "approve", via: "grant" },
     });
   });

@@ -793,7 +793,7 @@ describe("the additional details of one record", () => {
     );
     expect(facts.map((fact) => [fact.label, fact.value])).toEqual([
       ["Workflow", "Wochenbericht"],
-      ["Fassung", "4"],
+      ["Version", "4"],
     ]);
     expect(facts[0]?.href).toContain("6f1d6c2e-0000-4000-8000-000000000001");
     expect(facts[1]?.href).toBeNull();

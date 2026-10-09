@@ -19,15 +19,17 @@ export function useCopy(): (value: string) => Promise<void> {
 export function CopyField({
   value,
   label,
+  labelled = false,
   testId,
 }: {
   value: string;
   label: string;
+  labelled?: boolean;
   testId?: string;
 }) {
   const { t } = useI18n();
   const copy = useCopy();
-  return (
+  const field = (
     <InputGroup data-slot="copy-field" data-testid={testId ? `${testId}-field` : undefined}>
       <InputGroupInput
         readOnly
@@ -48,5 +50,14 @@ export function CopyField({
         </IconButton>
       </InputGroupAddon>
     </InputGroup>
+  );
+  if (!labelled) return field;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5" data-slot="copy-field-labelled">
+      <span className="text-[13px] font-medium" data-slot="copy-field-label">
+        {label}
+      </span>
+      {field}
+    </div>
   );
 }

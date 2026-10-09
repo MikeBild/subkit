@@ -203,7 +203,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
       "https://reports.example.test/monthly",
       "POST",
       locale === "de"
-        ? "Gilt für eine Fassung, die nicht läuft."
+        ? "Gilt für eine Version, die nicht läuft."
         : "For a version that is not running.",
     ]) {
       if (!(await card.innerText()).includes(expected))
