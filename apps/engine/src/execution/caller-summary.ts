@@ -10,7 +10,7 @@ export const CALLER_VERIFICATION_METHODS = [
 
 export const ExecutionCallerSchema = z
   .object({
-    kind: z.enum(["user", "system_account", "engine"]),
+    kind: z.enum(["user", "system_account", "engine", "unknown"]),
     principal_id: z.string().nullable(),
     provider: z.string().nullable(),
     product_id: z.string().nullable(),
@@ -35,7 +35,7 @@ export function describeExecutionCaller(row: CallerRow): ExecutionCaller {
   const caller = row.caller_context;
   const origin = row.authority_root_execution_id;
   return {
-    kind: caller?.principalKind ?? "engine",
+    kind: caller?.principalKind ?? "unknown",
     principal_id: caller?.principalId ?? null,
     provider: caller?.provider ?? null,
     product_id: caller?.productId ?? null,

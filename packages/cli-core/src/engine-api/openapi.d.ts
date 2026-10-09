@@ -20777,7 +20777,7 @@ export interface components {
         };
         ExecutionCaller: {
             /** @enum {string} */
-            kind: "user" | "system_account" | "engine";
+            kind: "user" | "system_account" | "engine" | "unknown";
             principal_id: string | null;
             provider: string | null;
             product_id: string | null;
