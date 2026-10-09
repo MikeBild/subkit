@@ -163,7 +163,7 @@ function Figure({
       {basis ? ` · ${t(basis)}` : null}
     </p>
   );
-  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-3 py-2";
+  const box = "grid min-h-[72px] min-w-0 content-center gap-0.5 rounded-lg border px-4 py-3.5";
   if (figure.state !== "value") {
     const onward = figure.state === "unpriced" || figure.state === "uncapped" ? figure.href : null;
     return (
@@ -246,7 +246,7 @@ function Figure({
       <p className="flex min-w-0 items-baseline gap-1.5">
         <span
           className={[
-            "truncate text-xl font-semibold leading-7 tabular-nums",
+            "truncate text-2xl font-semibold leading-8 tracking-[-0.02em] tabular-nums",
             pressure && pressure !== "ample" ? PRESSURE_TONE[pressure] : null,
           ]
             .filter(Boolean)

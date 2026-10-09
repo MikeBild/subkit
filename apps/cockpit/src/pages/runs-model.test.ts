@@ -84,7 +84,7 @@ describe("run authority evidence", () => {
       runAuthorityFacts({ execution_authority_id: null, workflow_version_id: "exact-id" }, de),
     ).toEqual([
       [
-        "Für diesen Run gespeicherte Freigabe",
+        "Für diesen Lauf gespeicherte Freigabe",
         "Keine Bindung an eine Ausführungsfreigabe gespeichert",
       ],
       ["Version", "exact-id"],
