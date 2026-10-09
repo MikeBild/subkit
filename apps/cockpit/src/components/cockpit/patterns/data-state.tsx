@@ -57,7 +57,10 @@ export function DataState({
   return (
     <div
       role={state === "error" ? "alert" : undefined}
-      className={cn("flex flex-wrap items-center gap-3 py-4 text-left", className)}
+      className={cn(
+        "flex min-h-11 flex-wrap items-center gap-3 rounded-lg border border-dashed px-4 py-2.5 text-left",
+        className,
+      )}
       data-testid={testId}
       data-state={state}
       data-family-slot="data-state"

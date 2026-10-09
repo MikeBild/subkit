@@ -506,7 +506,7 @@ export function DataTable<TData extends RowData>({
       )}
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-auto",
+          "min-h-0 overflow-auto",
           cards ? "hidden @2xl:block" : "block",
           stateOnly ? null : "rounded-lg border",
         )}
@@ -666,10 +666,7 @@ export function DataTable<TData extends RowData>({
         ) : null}
       </div>
       {cards ? (
-        <div
-          className="min-h-0 flex-1 overflow-y-auto @2xl:hidden"
-          data-testid={`${collectionId}-mobile`}
-        >
+        <div className="min-h-0 overflow-y-auto @2xl:hidden" data-testid={`${collectionId}-mobile`}>
           {showSkeleton ? (
             <div
               className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}

@@ -24,6 +24,7 @@ const TONES: Partial<Record<string, BadgeTone>> = {
   expired: "error",
   needs_reauth: "error",
   rejected: "error",
+  denied: "warn",
   timed_out: "error",
   timeout: "error",
   aborted: "error",

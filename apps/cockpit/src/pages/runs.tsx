@@ -320,7 +320,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
               <span className="font-medium">{verdict.label}</span>
               {" · "}
               <span data-testid="run-detail-outcome">
-                {sentence ? (
+                {sentence && outcome?.output_contract === "violated" ? (
                   <OutcomeText sentence={sentence} />
                 ) : (
                   t(pluralKey("runs.strip.done", stepItems.length), {

@@ -4363,11 +4363,11 @@ const DE: Record<TranslationKey, string> = {
   "authority.grantConfirmOne": "1 Lauf erlauben",
   "authority.connector": "Konnektor",
   "authority.directRequest": "Direkte Anfrage ohne Konnektor",
-  "authority.usedByRun": "Für diesen Run gespeicherte Freigabe",
+  "authority.usedByRun": "Für diesen Lauf gespeicherte Freigabe",
   "runs.boundary": "Ausführungsgrenze",
   "runs.preparation": "Vorbereitung",
   "runs.preparationDescription":
-    "Schreibzugriffe zurückgehalten; dieser Run erteilt keine Live-Ausführungsfreigabe.",
+    "Schreibzugriffe zurückgehalten; dieser Lauf erteilt keine Live-Ausführungsfreigabe.",
   "authority.noStoredBinding": "Keine Bindung an eine Ausführungsfreigabe gespeichert",
   "authority.version": "Version",
   "authority.environment": "Umgebung",
@@ -4480,7 +4480,7 @@ const DE: Record<TranslationKey, string> = {
   "authority.revoke": "Freigabe widerrufen",
   "authority.revokeTitle": "Diese exakte Freigabe widerrufen?",
   "authority.revokeDescription":
-    "Sperrt neue Runs und weitere externe Anfragen mit dieser Freigabe. Bereits gesendete Anfragen und erfolgte Änderungen werden nicht rückgängig gemacht. Andere Freigaben bleiben unverändert.",
+    "Sperrt neue Läufe und weitere externe Anfragen mit dieser Freigabe. Bereits gesendete Anfragen und erfolgte Änderungen werden nicht rückgängig gemacht. Andere Freigaben bleiben unverändert.",
   "authority.revokeFailed": "Die Freigabe konnte nicht widerrufen werden.",
   "authority.revoking": "Wird widerrufen…",
   "authority.loadFailed": "Der Freigabeverlauf konnte nicht geladen werden.",
