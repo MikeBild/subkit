@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import type { Db } from "../client.ts";
 import { runMigrations } from "../migrate.ts";
 import {
@@ -48,7 +48,7 @@ async function constraintNames(db: Db, table: string): Promise<string[]> {
 }
 
 async function seedElicitation(decidedBy: string | null): Promise<string> {
-  const id = randomUUID();
+  const id = nextUuid();
   await ctx.db.execute(sql`
     INSERT INTO conversation_elicitations
       (id, tenant_id, conversation_id, tool_name, summary, input, status, decided_by, decided_at)
@@ -61,7 +61,7 @@ async function seedElicitation(decidedBy: string | null): Promise<string> {
 }
 
 async function seedTask(turnSeq: number, actorId: string | null): Promise<string> {
-  const id = randomUUID();
+  const id = nextUuid();
   await ctx.db.execute(sql`
     INSERT INTO mcp_tasks (id, tenant_id, conversation_id, turn_seq, kind, request_source, actor_id)
     VALUES (${id}, ${tenantId}, ${conversationId}, ${turnSeq}, 'start', 'mcp', ${actorId})
@@ -104,6 +104,8 @@ afterAll(async () => {
   await ctx?.cleanup();
 });
 
+const nextUuid = createDeterministicUuidFactory(89);
+
 describe("0089_decider_kind", () => {
   test("before the migration both columns are foreign keys onto users and carry no kind", async () => {
     expect(await constraintNames(ctx.db, "conversation_elicitations")).toContain(
@@ -115,7 +117,7 @@ describe("0089_decider_kind", () => {
         ctx.db.execute(sql`
           INSERT INTO conversation_elicitations
             (tenant_id, conversation_id, tool_name, summary, input, decided_by)
-          VALUES (${tenantId}, ${conversationId}, 'ask_user_confirm', 'bot', '{}'::jsonb, ${randomUUID()})
+          VALUES (${tenantId}, ${conversationId}, 'ask_user_confirm', 'bot', '{}'::jsonb, ${nextUuid()})
         `),
       ),
     ).toMatch(/conversation_elicitations_decided_by_users_id_fk/);
@@ -171,7 +173,7 @@ describe("0089_decider_kind", () => {
   });
 
   test("a system account that is no user may now decide, and the CHECK keeps id and kind paired", async () => {
-    const systemAccountId = randomUUID();
+    const systemAccountId = nextUuid();
     const [decided] = await ctx.db
       .insert(conversationElicitations)
       .values({
