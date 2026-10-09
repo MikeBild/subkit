@@ -17,6 +17,7 @@ import {
   Page,
   PageHeader,
   StatusBadge,
+  SummaryLine,
 } from "@/components/cockpit/patterns";
 import { MISSING, tableColumns } from "@/components/cockpit/table-columns";
 import { ForbiddenState } from "@/components/failure-state";
@@ -63,6 +64,7 @@ interface CatalogConfig {
   permission: string;
   titleKey: TranslationKey;
   emptyKey: TranslationKey;
+  summaryKeys: { one: TranslationKey; other: TranslationKey };
   actionKey?: TranslationKey;
   defaultSort: string;
   statuses: string[];
@@ -74,6 +76,10 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     permission: "workflow:read",
     titleKey: "resource.workflows.title",
     emptyKey: "resource.workflows.empty",
+    summaryKeys: {
+      one: "resource.workflows.summary.one",
+      other: "resource.workflows.summary.other",
+    },
     actionKey: "resource.workflows.action",
     defaultSort: "updated_at",
     statuses: ["draft", "active", "archived"],
@@ -83,11 +89,24 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     permission: "connector:read",
     titleKey: "resource.connectors.title",
     emptyKey: "resource.connectors.empty",
+    summaryKeys: {
+      one: "resource.connectors.summary.one",
+      other: "resource.connectors.summary.other",
+    },
     actionKey: "resource.connectors.action",
     defaultSort: "updated_at",
     statuses: [],
   },
 };
+
+export function catalogCountLine(
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+  resource: CatalogResource,
+  count: number,
+): string {
+  const keys = CONFIG[resource].summaryKeys;
+  return t(count === 1 ? keys.one : keys.other, { count });
+}
 
 const PAGE_SIZE = 25;
 const RELATION_INDEX_LIMIT = 200;
@@ -418,87 +437,92 @@ export function CatalogPage({
         />
       }
     >
-      <DataTable
-        columns={columns}
-        data={rows}
-        toolbar={
-          <>
-            <FilterBar
-              search={{
-                value: search,
-                onChange: setSearch,
-                placeholder: t("resource.search", { resource: title }),
-                testId: "catalog-search",
-              }}
-              selects={selects}
-            />
-            {resource === "connectors" && state.health === "not_ok" ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                data-testid="catalog-health-filter"
-                onClick={() => setState({ health: null })}
-              >
-                {t("catalog.healthNotOkFilter")}
-              </Button>
-            ) : null}
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                data-testid="catalog-clear-filters"
-                onClick={resetFilters}
-              >
-                {t("catalog.clearFilters")}
-              </Button>
-            )}
-          </>
-        }
-        pending={query.isPending && !query.failureReason}
-        error={
-          query.error || query.failureReason
-            ? {
-                title: t("resource.loadFailed", { resource: title }),
-                description: t("resource.loadFailedDescription"),
-                retryLabel: t("session.retry"),
-                onRetry: () => void query.refetch(),
-              }
-            : null
-        }
-        emptyState={{
-          zero: {
-            title: t(config.emptyKey),
-            action: primaryAction("catalog-empty-action"),
-          },
-          filtered: {
-            title: t("resource.noMatches"),
-            description: t("resource.broaderSearch"),
-            resetLabel: t("catalog.clearFilters"),
-            onReset: resetFilters,
-          },
-        }}
-        hasActiveFilters={hasActiveFilters}
-        sorting={sorting}
-        onSortingChange={(next) => {
-          const first = next[0];
-          if (first)
-            setState({
-              sort: first.id,
-              order: first.desc ? "desc" : "asc",
-            });
-        }}
-        onOpen={(row) => {
-          const id = row.id;
-          if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
-        }}
-        rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
-        total={total}
-        infinite={list.infinite}
-        columnsLabel={t("catalog.columns")}
-        pickColumns={false}
-        recordsLabel={t("catalog.records")}
-        actionsLabel={t("common.actions")}
-      />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        {rows.length > 0 ? (
+          <SummaryLine text={catalogCountLine(t, resource, total)} testId="catalog-summary" />
+        ) : null}
+        <DataTable
+          columns={columns}
+          data={rows}
+          toolbar={
+            <>
+              <FilterBar
+                search={{
+                  value: search,
+                  onChange: setSearch,
+                  placeholder: t("resource.search", { resource: title }),
+                  testId: "catalog-search",
+                }}
+                selects={selects}
+              />
+              {resource === "connectors" && state.health === "not_ok" ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="catalog-health-filter"
+                  onClick={() => setState({ health: null })}
+                >
+                  {t("catalog.healthNotOkFilter")}
+                </Button>
+              ) : null}
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="catalog-clear-filters"
+                  onClick={resetFilters}
+                >
+                  {t("catalog.clearFilters")}
+                </Button>
+              )}
+            </>
+          }
+          pending={query.isPending && !query.failureReason}
+          error={
+            query.error || query.failureReason
+              ? {
+                  title: t("resource.loadFailed", { resource: title }),
+                  description: t("resource.loadFailedDescription"),
+                  retryLabel: t("session.retry"),
+                  onRetry: () => void query.refetch(),
+                }
+              : null
+          }
+          emptyState={{
+            zero: {
+              title: t(config.emptyKey),
+              action: primaryAction("catalog-empty-action"),
+            },
+            filtered: {
+              title: t("resource.noMatches"),
+              description: t("resource.broaderSearch"),
+              resetLabel: t("catalog.clearFilters"),
+              onReset: resetFilters,
+            },
+          }}
+          hasActiveFilters={hasActiveFilters}
+          sorting={sorting}
+          onSortingChange={(next) => {
+            const first = next[0];
+            if (first)
+              setState({
+                sort: first.id,
+                order: first.desc ? "desc" : "asc",
+              });
+          }}
+          onOpen={(row) => {
+            const id = row.id;
+            if (typeof id === "string") void navigate({ to: recordHref(resource, id) });
+          }}
+          rowHref={(row) => (typeof row.id === "string" ? recordHref(resource, row.id) : null)}
+          total={total}
+          infinite={list.infinite}
+          columnsLabel={t("catalog.columns")}
+          pickColumns={false}
+          recordsLabel={t("catalog.records")}
+          actionsLabel={t("common.actions")}
+        />
+      </div>
     </Page>
   );
 }
