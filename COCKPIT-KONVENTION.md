@@ -88,8 +88,9 @@ geantwortet hat → „Letzte Fehlschläge": die drei jüngsten gescheiterten L�
 Zeile oder 2 × 2, auf dem Telefon 2 × 2: Ausführungen, Erfolgsquote, Gesunde Konnektoren,
 Nutzung. Ausführungen und Erfolgsquote zählen im gewählten Zeitfenster; „Gesunde Konnektoren"
 ist ein Zustand und trägt „Stand jetzt", „Nutzung" gilt dem Kalendermonat und trägt „Monat".
-Nutzung zeigt die Kosten des Monats, darunter den Anteil am Monatskontingent mit Rest und
-Zustand; ohne Preis nur den Anteil, ohne Kontingent „Kein Kontingent". Jeder Wert führt auf die
+Nutzung zeigt kompakt die Kosten des Monats und den prozentualen Anteil am Tokenkontingent;
+Gesamtkontingent und Restmenge stehen im Aufriss auf Nutzung. Der Kontingentzustand bestimmt
+die Farbgebung. Ohne Preis steht nur der Anteil, ohne Kontingent „Kein Kontingent". Jeder Wert führt auf die
 gefilterte Liste desselben Fensters (§10.1), Nutzung auf die Seite Nutzung, die den Aufriss trägt.
 Die Kosten des Zeitfensters und übernommene Reparaturen stehen nicht in der Leiste: Kosten zeigt
 Nutzung im Aufriss, entschiedene Reparaturen der Audit-Trail (§0.1). Ein Wert,

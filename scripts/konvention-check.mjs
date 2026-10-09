@@ -2008,10 +2008,12 @@ async function checkOperationsBar(page, where) {
       breach("§1", `${where} · budget`, `"${budget.label}" is not the month's usage`);
     if (!/mind\. 87,22\s*\$/.test(budget.text))
       breach("§1", `${where} · budget`, `"${budget.text}" does not lead with the month's money`);
-    if (!/27\s*%/.test(budget.text) || !/150 Mio\. Token/.test(budget.text))
+    if (!/27\s*% des Tokenkontingents/.test(budget.text))
       breach("§1", `${where} · budget`, `"${budget.text}" is not the month's share of the cap`);
-    if (!/109,5 Mio\. übrig/.test(budget.text) || budget.pressure !== "ample")
-      breach("§1", `${where} · budget`, `"${budget.text}" lacks the remainder or its state`);
+    if (/150 Mio\. Token|109,5 Mio\. übrig/.test(budget.text))
+      breach("§1", `${where} · budget`, `"${budget.text}" repeats the detailed token amounts`);
+    if (budget.pressure !== "ample")
+      breach("§1", `${where} · budget`, `"${budget.text}" lost its budget pressure state`);
   } else if (budget) breach("§1", `${where} · budget`, `reads "${budget.text}" (${budget.state})`);
   if (shape.first === false)
     breach("§1", where, "the operations bar stands below the attention list");
@@ -2792,14 +2794,25 @@ async function checkFailureState(page, where) {
     sidebar: Boolean(document.querySelector('[data-testid="cockpit-sidebar"]')),
     mounted: Boolean(document.querySelector('[data-testid="detail-knowledge"]')),
     back: Boolean(document.querySelector('[data-testid="detail-back"]')),
-    state: Boolean(document.querySelector('[data-testid="knowledge-empty"]')),
+    state: document
+      .querySelector('[data-testid="knowledge-load-failed"]')
+      ?.getAttribute("data-state"),
+    failure: document.querySelector('[data-testid="knowledge-load-failed"]')?.textContent ?? "",
+    retry:
+      document.querySelector('[data-testid="knowledge-load-failed-retry"]') instanceof
+        HTMLButtonElement &&
+      !document.querySelector('[data-testid="knowledge-load-failed-retry"]').disabled,
+    empty: Boolean(document.querySelector('[data-testid="knowledge-empty"]')),
     text: document.body.innerText,
   }));
   if (!seen.shell || !seen.sidebar)
     breach("§4", where, "the shell is gone — a catch-all screen replaced the cockpit");
   if (!seen.mounted) breach("§4", where, "the detail page does not mount");
   if (!seen.back) breach("§4", where, "no way back");
-  if (!seen.state) breach("§4", where, "no designed state for the unreadable response");
+  if (seen.state !== "error" || !seen.failure.includes(german("knowledge.contentFailed")))
+    breach("§4", where, "no explicit failure state for the unreadable response");
+  if (!seen.retry) breach("§4", where, "no enabled retry for the unreadable response");
+  if (seen.empty) breach("§4", where, "unreadable content is presented as an empty source");
   for (const phrase of CATCH_ALL_PHRASES) {
     if (seen.text.includes(phrase)) breach("§5", where, `englischer Auffangschirm: "${phrase}"`);
   }
@@ -3358,7 +3371,7 @@ try {
   });
   const brokenPage = await broken.newPage();
   await stand.visit(brokenPage, `knowledge/${ID}`);
-  await brokenPage.waitForTimeout(500);
+  await brokenPage.getByTestId("knowledge-load-failed").waitFor({ state: "visible" });
   await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
   await brokenPage.close();
   await broken.close();

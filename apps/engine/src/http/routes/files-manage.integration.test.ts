@@ -124,7 +124,7 @@ describe("POST /v1/files/{id}/replace", () => {
     expect(await content.text()).toBe("version two");
   });
 
-  test("a replaced file keeps its name and says when its content was replaced", async () => {
+  test("a replaced file adopts its uploaded name and records replacement time", async () => {
     const file = (await upload("first words", "vertrag.txt")) as {
       id: string;
       replaced_at: string | null;
@@ -139,7 +139,10 @@ describe("POST /v1/files/{id}/replace", () => {
       created_at: string;
       replaced_at: string | null;
     };
-    expect(replaced.filename).toBe("vertrag.txt");
+    expect(response.status).toBe(200);
+    expect(replaced.filename).toBe("scan-0042.txt");
+    const persisted = await request("GET", `/v1/files/${file.id}`, srv.apiKey);
+    expect(await persisted.json()).toMatchObject({ id: file.id, filename: "scan-0042.txt" });
     expect(replaced.replaced_at).not.toBeNull();
     expect(Date.parse(replaced.replaced_at ?? "")).toBeGreaterThanOrEqual(
       Date.parse(replaced.created_at),
@@ -148,6 +151,27 @@ describe("POST /v1/files/{id}/replace", () => {
       await request("PATCH", `/v1/files/${file.id}`, srv.apiKey, { filename: "neu.txt" })
     ).json()) as { replaced_at: string | null };
     expect(renamed.replaced_at).toBe(replaced.replaced_at);
+  });
+
+  test("replacement adopts the uploaded name even when its bytes are unchanged", async () => {
+    const file = await upload("unchanged replacement bytes", "original.txt");
+    const before = await request("GET", `/v1/files/${file.id}`, srv.apiKey);
+    const original = (await before.json()) as { slug: string; reference: string };
+    const response = await request("POST", `/v1/files/${file.id}/replace`, srv.apiKey, {
+      filename: "chosen.txt",
+      content_type: "text/plain",
+      content_base64: Buffer.from("unchanged replacement bytes").toString("base64"),
+    });
+    expect(response.status).toBe(200);
+    const persisted = await request("GET", `/v1/files/${file.id}`, srv.apiKey);
+    expect(await persisted.json()).toMatchObject({
+      id: file.id,
+      filename: "chosen.txt",
+      slug: original.slug,
+      reference: original.reference,
+    });
+    const content = await request("GET", `/v1/files/${file.id}/content`, srv.apiKey);
+    expect(await content.text()).toBe("unchanged replacement bytes");
   });
 
   test("refuses content another file already holds", async () => {

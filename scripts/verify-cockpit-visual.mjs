@@ -37,6 +37,7 @@ import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
 import { verifyKnowledgeDetailEvidence } from "./lib/cockpit-knowledge-detail-evidence.mjs";
 import { verifyKnowledgeHistoryProposalsEvidence } from "./lib/cockpit-knowledge-history-proposals-evidence.mjs";
 import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
+import { verifyKnowledgeWriteEvidence } from "./lib/cockpit-knowledge-write-evidence.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
@@ -4470,6 +4471,15 @@ try {
         );
       if (standOn(verifyKnowledgeHistoryProposalsEvidence))
         await verifyKnowledgeHistoryProposalsEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { mockApi, recordId: uuid },
+        );
+      if (standOn(verifyKnowledgeWriteEvidence))
+        await verifyKnowledgeWriteEvidence(
           page,
           stand,
           locale.name,
