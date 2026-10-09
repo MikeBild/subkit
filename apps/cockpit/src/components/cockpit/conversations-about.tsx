@@ -59,8 +59,9 @@ export function ConversationsAbout({
         emptyLine={t("catalog.conversations.empty")}
         emptyAction={
           permissions.includes("conversation:write") ? (
-            <Button variant="outline" asChild data-testid="detail-conversations-ask">
+            <Button variant="outline" asChild>
               <a
+                data-testid="detail-conversations-ask"
                 href={absolute(
                   chatNewHref({ workflowId: target.workflow_id, connectorId: target.connector_id }),
                 )}

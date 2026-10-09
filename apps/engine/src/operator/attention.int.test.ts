@@ -364,7 +364,7 @@ describe("every source, as an admin reads it", () => {
     const ids = attention.items.map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
     const failing = byId(attention.items).get(`workflow:${wf.fail}`);
-    expect(failing?.counts).toEqual({ failures: 2, patches: 1 });
+    expect(failing?.counts).toEqual({ failures: 2, consecutive_failures: 2, patches: 1 });
     expect(failing?.cause_class).toBe("driver_error");
   });
 

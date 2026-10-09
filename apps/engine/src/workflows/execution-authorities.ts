@@ -29,6 +29,7 @@ import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
 import type { ContentPublicationBoundaries } from "./content-publication-proposal.ts";
 import { resolveWorkflowEffectManifest } from "./effect-resolution.ts";
+import type { WorkflowReadFacts } from "./read-facts.ts";
 import type { ReportDeliveryBoundaries } from "./report-delivery-proposal.ts";
 import { normalizeWorkflowRunInput } from "./run-input.ts";
 import { executableDefinition } from "./stored-definition.ts";
@@ -71,6 +72,7 @@ export function previewWorkflowAuthority(
   db: Executor,
   options: {
     include_review?: boolean;
+    facts?: WorkflowReadFacts | undefined;
     report_boundaries?: ReportDeliveryBoundaries;
     content_boundaries?: ContentPublicationBoundaries;
   } = {},

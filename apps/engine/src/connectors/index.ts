@@ -23,7 +23,7 @@ export * from "./service.ts";
 export * from "./services/call-connector.ts";
 export * from "./sign-in.ts";
 export * from "./solutions.ts";
-export { loadConnectorSystem } from "./system.ts";
+export { connectorSystemKey, loadConnectorSystem, loadConnectorSystems } from "./system.ts";
 export * from "./template-binding.ts";
 export * from "./template-credentials.ts";
 export {

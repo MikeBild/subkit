@@ -1108,8 +1108,19 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await page.getByTestId("workflow-menu-rename").waitFor({ state: "visible" });
     if (await page.getByTestId("workflow-menu-category").count())
       throw new Error(`${where}: the menu still offers a second way to change the category`);
-    if (await page.getByTestId("workflow-menu-ask").count())
-      throw new Error(`${where}: the menu offers the chat a second time`);
+    const ask = page.getByTestId("workflow-menu-ask");
+    if ((await ask.count()) !== 1 || (await page.getByTestId("workflow-menu-change").count()) !== 0)
+      throw new Error(`${where}: the menu must offer exactly one question action`);
+    if ((await ask.innerText()).trim() !== (localeName === "de" ? "Im Chat fragen" : "Ask in chat"))
+      throw new Error(`${where}: the workflow menu does not offer asking in chat`);
+    const question = new URL((await ask.getAttribute("href")) ?? "", "http://x");
+    if (
+      question.pathname !== "/cockpit/chat/new" ||
+      question.searchParams.get("workflow_id") !== WORKFLOW ||
+      question.searchParams.has("prompt") ||
+      [...question.searchParams.keys()].length !== 1
+    )
+      throw new Error(`${where}: the question action loses its workflow or seeds an instruction`);
     await page.keyboard.press("Escape");
     await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
     await page.getByTestId("workflow-menu").click();

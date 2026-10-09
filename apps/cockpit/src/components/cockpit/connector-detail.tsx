@@ -453,7 +453,12 @@ export function ConnectorMcpTools({
         }
         emptyAction={
           needle ? (
-            <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearch("")}
+              data-testid="connector-tools-clear-filters"
+            >
               {t("catalog.clearFilters")}
             </Button>
           ) : undefined

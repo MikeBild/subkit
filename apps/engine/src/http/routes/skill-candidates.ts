@@ -221,7 +221,6 @@ export function registerSkillCandidateRoutes(app: OpenAPIHono<AppEnv>): void {
         tenant_id: principal.tenant_id,
         principal,
         permission: "knowledge:read",
-        quiet: true,
       });
       if (!permission.allow)
         throw new HttpError(

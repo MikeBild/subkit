@@ -11,6 +11,7 @@ import {
   CopyField,
   DataState,
   FactList,
+  Section,
   SegmentedControl,
   StatusBadge,
 } from "@/components/cockpit/patterns";
@@ -376,8 +377,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
     queryFn: () => apiRequest<{ items: { id: string; name: string }[] }>("/v1/rbac/groups"),
   });
   return (
-    <section className="flex flex-col gap-2" data-testid="workflow-start-access">
-      <h3 className="text-sm font-medium">{t("invocation.startAccess")}</h3>
+    <Section label={t("invocation.startAccess")} testId="workflow-start-access">
       <FactList
         items={[
           {
@@ -407,7 +407,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
       )}
       <p className={line}>{t("invocation.startExternal")}</p>
       <p className={line}>{t("invocation.startPreview")}</p>
-    </section>
+    </Section>
   );
 }
 

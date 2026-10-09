@@ -220,11 +220,9 @@ export function WorkflowPage({
     ...(canChat
       ? [
           {
-            label: t("detail.changeInChat"),
-            href: absolute(
-              chatNewHref({ workflowId: id, prompt: t("detail.changePrompt", { name: title }) }),
-            ),
-            testId: "workflow-menu-change",
+            label: t("catalog.conversations.ask"),
+            href: absolute(chatNewHref({ workflowId: id })),
+            testId: "workflow-menu-ask",
           },
         ]
       : []),

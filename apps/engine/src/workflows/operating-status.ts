@@ -22,7 +22,9 @@ import {
   workflowsSchedules,
 } from "../db/schema/index.ts";
 import { observeWorkflowAuthority } from "./authority-observation.ts";
+import { previewWorkflowAuthority } from "./execution-authorities.ts";
 import { diagnoseWorkflow } from "./gate-diagnosis.ts";
+import { factVersion, loadWorkflowReadFacts, type WorkflowReadFacts } from "./read-facts.ts";
 import type { WorkflowView } from "./service.ts";
 
 export interface OperatingStatusAccess {
@@ -98,6 +100,12 @@ export async function loadWorkflowOperatingStates(
           .where(and(eq(connectors.tenant_id, tenant_id), isNull(connectors.deleted_at)))
       : [],
   ]);
+  let facts: WorkflowReadFacts | undefined;
+  try {
+    facts = await loadWorkflowReadFacts(db, tenant_id, ids, authorityRows);
+  } catch {
+    facts = undefined;
+  }
   const readiness = await readPatchReadinessBatch(tenant_id, candidates, db);
   const preparedRepairs = new Set(
     candidates
@@ -111,7 +119,7 @@ export async function loadWorkflowOperatingStates(
     let authorities: WorkflowAuthority[] | null = [];
     try {
       for (const row of authorityRows.filter((row) => row.workflow_id === view.id)) {
-        authorities.push(await observeWorkflowAuthority(db, row, view, now));
+        authorities.push(await observeWorkflowAuthority(db, row, view, now, facts));
       }
     } catch {
       authorities = null;
@@ -121,7 +129,7 @@ export async function loadWorkflowOperatingStates(
     if (access.schedules) {
       for (const schedule of schedules) {
         verifiedSchedules.push({
-          ...(await inspectScheduleAutomation(schedule, db)),
+          ...(await inspectScheduleAutomation(schedule, db, facts)),
           cron: schedule.cron,
           timezone: schedule.timezone,
           environment: schedule.execution_mode,
@@ -131,7 +139,7 @@ export async function loadWorkflowOperatingStates(
       if (access.hooks)
         for (const hook of hooks) {
           verifiedHooks.push({
-            ...(await inspectInboundHookAutomation(hook, db)),
+            ...(await inspectInboundHookAutomation(hook, db, facts)),
             slug: hook.slug,
             environment: "prod" as const,
           });
@@ -150,7 +158,36 @@ export async function loadWorkflowOperatingStates(
     let diagnosis = null;
     let diagnosisUnavailable = false;
     try {
-      diagnosis = await diagnoseWorkflow(db, tenant_id, view.id, environment);
+      const workflow = facts?.workflows.get(view.id);
+      const version_id = workflow?.draft_version_id ?? workflow?.current_version_id;
+      const version = facts && version_id ? factVersion(facts, view.id, version_id) : undefined;
+      diagnosis = await diagnoseWorkflow(
+        db,
+        tenant_id,
+        view.id,
+        environment,
+        facts
+          ? {
+              facts: facts.history,
+              workflow: workflow ?? null,
+              definition: version?.dag ?? null,
+              ...(version
+                ? {
+                    preview: await previewWorkflowAuthority(
+                      {
+                        tenant_id,
+                        workflow_id: view.id,
+                        workflow_version_id: version.id,
+                        execution_environment: environment,
+                      },
+                      db,
+                      { facts },
+                    ),
+                  }
+                : {}),
+            }
+          : {},
+      );
     } catch {
       diagnosisUnavailable = true;
     }

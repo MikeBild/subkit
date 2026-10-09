@@ -4,6 +4,7 @@ import type { workflowExecutionAuthorities } from "../db/schema/index.ts";
 import { isOpenEnded, remainingRuns } from "./authority-live.ts";
 import { contentBoundariesFromManifest } from "./content-publication-proposal.ts";
 import { previewWorkflowAuthority } from "./execution-authorities.ts";
+import type { WorkflowReadFacts } from "./read-facts.ts";
 import { reportBoundariesFromManifest } from "./report-delivery-proposal.ts";
 
 export async function observeWorkflowAuthority(
@@ -11,6 +12,7 @@ export async function observeWorkflowAuthority(
   row: typeof workflowExecutionAuthorities.$inferSelect,
   workflow: { lifecycle: string; current_version_id: string | null } | undefined,
   now: Date,
+  facts?: WorkflowReadFacts,
 ) {
   const { tenant_id, workflow_id } = row;
   const active_version =
@@ -37,6 +39,7 @@ export async function observeWorkflowAuthority(
         },
         db,
         {
+          facts,
           report_boundaries: reportBoundariesFromManifest(row.effect_manifest),
           content_boundaries: contentBoundariesFromManifest(row.effect_manifest),
         },

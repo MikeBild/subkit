@@ -3,6 +3,11 @@ import { and, desc, eq } from "drizzle-orm";
 import type { Executor } from "../db/client.ts";
 import { executionSteps, executions, workflowExecutionAuthorities } from "../db/schema/index.ts";
 import {
+  assertHistoryVersion,
+  historyScopeKey,
+  type WorkflowHistoryFacts,
+} from "./history-read-facts.ts";
+import {
   REPORT_MESSAGE_REFUSALS,
   type ReportDeliveryBoundary,
   ReportDeliveryBoundarySchema,
@@ -43,32 +48,47 @@ export async function inspectHeldPreviewEvidence(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
+  facts?: WorkflowHistoryFacts,
 ) {
-  const [run] = await db
-    .select({ id: executions.id, status: executions.status })
-    .from(executions)
-    .where(
-      and(
-        eq(executions.tenant_id, input.tenant_id),
-        eq(executions.workflow_id, input.workflow_id),
-        eq(executions.workflow_version_id, input.workflow_version_id),
-        eq(executions.execution_mode, input.execution_environment),
-        eq(executions.hold_writes, true),
-      ),
-    )
-    .orderBy(desc(executions.created_at), desc(executions.id))
-    .limit(1);
+  if (facts) assertHistoryVersion(facts, input);
+  const run = facts
+    ? facts.held.get(historyScopeKey(input))
+    : (
+        await db
+          .select({ id: executions.id, status: executions.status })
+          .from(executions)
+          .where(
+            and(
+              eq(executions.tenant_id, input.tenant_id),
+              eq(executions.workflow_id, input.workflow_id),
+              eq(executions.workflow_version_id, input.workflow_version_id),
+              eq(executions.execution_mode, input.execution_environment),
+              eq(executions.hold_writes, true),
+            ),
+          )
+          .orderBy(desc(executions.created_at), desc(executions.id))
+          .limit(1)
+      )[0];
   if (!run) return null;
-  const steps = await db
-    .select({
-      step_id: executionSteps.step_key,
-      status: executionSteps.status,
-      meta: executionSteps.request_meta,
-    })
-    .from(executionSteps)
-    .where(
-      and(eq(executionSteps.tenant_id, input.tenant_id), eq(executionSteps.execution_id, run.id)),
-    );
+  const steps = facts
+    ? (facts.steps.get(run.id) ?? []).map((step) => ({
+        step_id: step.key,
+        status: step.status,
+        meta: step.meta,
+      }))
+    : await db
+        .select({
+          step_id: executionSteps.step_key,
+          status: executionSteps.status,
+          meta: executionSteps.request_meta,
+        })
+        .from(executionSteps)
+        .where(
+          and(
+            eq(executionSteps.tenant_id, input.tenant_id),
+            eq(executionSteps.execution_id, run.id),
+          ),
+        );
   return {
     execution_id: run.id,
     status: run.status,
@@ -98,47 +118,65 @@ export async function proposeReportDeliveryBoundaries(
     execution_environment: "dev" | "prod";
   },
   db: Executor,
+  facts?: WorkflowHistoryFacts,
 ): Promise<ReportDeliveryEvidence> {
-  const [authority] = await db
-    .select({ manifest: workflowExecutionAuthorities.effect_manifest })
-    .from(workflowExecutionAuthorities)
-    .where(
-      and(
-        eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
-        eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
-        eq(workflowExecutionAuthorities.workflow_version_id, input.workflow_version_id),
-        eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
-      ),
-    )
-    .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
-    .limit(1);
+  if (facts) assertHistoryVersion(facts, input);
+  const authority = facts
+    ? facts.authorities.get(historyScopeKey(input))
+    : (
+        await db
+          .select({ manifest: workflowExecutionAuthorities.effect_manifest })
+          .from(workflowExecutionAuthorities)
+          .where(
+            and(
+              eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+              eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+              eq(workflowExecutionAuthorities.workflow_version_id, input.workflow_version_id),
+              eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+            ),
+          )
+          .orderBy(
+            desc(workflowExecutionAuthorities.created_at),
+            desc(workflowExecutionAuthorities.id),
+          )
+          .limit(1)
+      )[0];
   if (authority) return { boundaries: reportBoundariesFromManifest(authority.manifest) };
-  const [run] = await db
-    .select({ id: executions.id })
-    .from(executions)
-    .where(
-      and(
-        eq(executions.tenant_id, input.tenant_id),
-        eq(executions.workflow_id, input.workflow_id),
-        eq(executions.workflow_version_id, input.workflow_version_id),
-        eq(executions.execution_mode, input.execution_environment),
-        eq(executions.hold_writes, true),
-      ),
-    )
-    .orderBy(desc(executions.created_at), desc(executions.id))
-    .limit(1);
+  const run = facts
+    ? facts.held.get(historyScopeKey(input))
+    : (
+        await db
+          .select({ id: executions.id })
+          .from(executions)
+          .where(
+            and(
+              eq(executions.tenant_id, input.tenant_id),
+              eq(executions.workflow_id, input.workflow_id),
+              eq(executions.workflow_version_id, input.workflow_version_id),
+              eq(executions.execution_mode, input.execution_environment),
+              eq(executions.hold_writes, true),
+            ),
+          )
+          .orderBy(desc(executions.created_at), desc(executions.id))
+          .limit(1)
+      )[0];
   if (!run)
     return { boundaries: {}, prepared: false, reached: new Set<string>(), inspections: new Map() };
-  const steps = await db
-    .select({
-      key: executionSteps.step_key,
-      status: executionSteps.status,
-      meta: executionSteps.request_meta,
-    })
-    .from(executionSteps)
-    .where(
-      and(eq(executionSteps.tenant_id, input.tenant_id), eq(executionSteps.execution_id, run.id)),
-    );
+  const steps = facts
+    ? (facts.steps.get(run.id) ?? [])
+    : await db
+        .select({
+          key: executionSteps.step_key,
+          status: executionSteps.status,
+          meta: executionSteps.request_meta,
+        })
+        .from(executionSteps)
+        .where(
+          and(
+            eq(executionSteps.tenant_id, input.tenant_id),
+            eq(executionSteps.execution_id, run.id),
+          ),
+        );
   const boundaries: ReportDeliveryBoundaries = {};
   const reached = new Set<string>();
   const inspections = new Map<string, ReportDeliveryObservation[]>();

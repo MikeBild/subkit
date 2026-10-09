@@ -26,6 +26,7 @@ import {
   type ResolvedCall,
   type ResolvedEffectBinding,
 } from "./effect-manifest.ts";
+import { factConnector, factVersion, type WorkflowReadFacts } from "./read-facts.ts";
 import { readPathBoundary, readPathTarget } from "./read-path-boundary.ts";
 import {
   hasRuntimeValue,
@@ -92,30 +93,37 @@ export async function resolveWorkflowEffectManifest(
   db: Executor,
   options: {
     include_review?: boolean;
+    facts?: WorkflowReadFacts | undefined;
     report_boundaries?: ReportDeliveryBoundaries;
     content_boundaries?: ContentPublicationBoundaries;
   } = {},
 ) {
   const input = inputSchema.parse(raw);
-  const [version] = await db
-    .select({ dag: workflowVersions.dag })
-    .from(workflowVersions)
-    .innerJoin(
-      workflows,
-      and(
-        eq(workflows.id, workflowVersions.workflow_id),
-        eq(workflows.tenant_id, workflowVersions.tenant_id),
-      ),
-    )
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, input.tenant_id),
-        eq(workflowVersions.workflow_id, input.workflow_id),
-        eq(workflowVersions.id, input.workflow_version_id),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
+  if (options.facts && options.facts.tenant_id !== input.tenant_id)
+    throw new Error("workflow facts tenant mismatch");
+  const version = options.facts
+    ? factVersion(options.facts, input.workflow_id, input.workflow_version_id)
+    : (
+        await db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .innerJoin(
+            workflows,
+            and(
+              eq(workflows.id, workflowVersions.workflow_id),
+              eq(workflows.tenant_id, workflowVersions.tenant_id),
+            ),
+          )
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, input.tenant_id),
+              eq(workflowVersions.workflow_id, input.workflow_id),
+              eq(workflowVersions.id, input.workflow_version_id),
+              isNull(workflows.deleted_at),
+            ),
+          )
+          .limit(1)
+      )[0];
   if (!version)
     throw Object.assign(new Error("workflow version unavailable"), {
       code: "workflow_version_unavailable",
@@ -132,7 +140,7 @@ export async function resolveWorkflowEffectManifest(
   const callShapes: ResolvedCallShape[] = [];
   for (const step of definition.steps) {
     if (step.kind !== "call") continue;
-    const resolved = await resolveCall(step, input, db);
+    const resolved = await resolveCall(step, input, db, options.facts);
     if (!resolved) continue;
     calls.push(resolved.call);
     callShapes.push(resolved.shape);
@@ -145,11 +153,15 @@ export async function resolveWorkflowEffectManifest(
   const declaredFolders = bindings.flatMap((binding) =>
     binding.storage ? [{ step_id: binding.step_id, key_prefix: binding.storage.key_prefix }] : [],
   );
-  const contradictions = await contradictedStorageBoundaries(db, {
-    tenant_id: input.tenant_id,
-    workflow_id: input.workflow_id,
-    declared: declaredFolders,
-  });
+  const contradictions = await contradictedStorageBoundaries(
+    db,
+    {
+      tenant_id: input.tenant_id,
+      workflow_id: input.workflow_id,
+      declared: declaredFolders,
+    },
+    options.facts?.history,
+  );
   const compiled = compileWorkflowEffectManifest({
     ...input,
     ...(contradictions.length > 0
@@ -196,6 +208,7 @@ async function resolveBindings(
   definition: WorkflowDef,
   db: Executor,
   options: {
+    facts?: WorkflowReadFacts | undefined;
     report_boundaries?: ReportDeliveryBoundaries;
     content_boundaries?: ContentPublicationBoundaries;
   },
@@ -208,6 +221,7 @@ async function resolveBindings(
         .filter((step) => step.kind === "request" && step.method === "PUT")
         .map((step) => step.id),
       db,
+      options.facts?.history,
     ));
   const contentShapes = new Map<string, ReturnType<typeof contentPublicationShape>>();
   let reportEvidence: ReportDeliveryEvidence | undefined =
@@ -228,12 +242,14 @@ async function resolveBindings(
   for (const step of definition.steps) {
     if (step.kind !== "request") continue;
     const system = step.connector_id
-      ? await loadConnectorSystem(
-          input.tenant_id,
-          step.connector_id,
-          input.execution_environment,
-          db,
-        )
+      ? options.facts
+        ? factConnector(options.facts, step.connector_id, input.execution_environment)
+        : await loadConnectorSystem(
+            input.tenant_id,
+            step.connector_id,
+            input.execution_environment,
+            db,
+          )
       : null;
     if (step.connector_id && !system) continue;
     const connector = system?.connector;
@@ -283,7 +299,7 @@ async function resolveBindings(
       supportsContentPublication(step, contentBoundary, contentShape.target);
     if (supportedContent) target = contentShape.target;
     if (reportEvidence === undefined && supportsReportDelivery(step, target))
-      reportEvidence = await proposeReportDeliveryBoundaries(input, db);
+      reportEvidence = await proposeReportDeliveryBoundaries(input, db, options.facts?.history);
     const statedDelivery =
       step.report_delivery && supportsReportDelivery(step, target) ? step.report_delivery : null;
     const contradicted =
@@ -388,6 +404,7 @@ async function resolveCall(
   step: { id: string; workflow_id?: string | undefined; workflow_slug?: string | undefined },
   input: z.infer<typeof inputSchema>,
   db: Executor,
+  facts?: WorkflowReadFacts,
 ): Promise<{
   call: ResolvedCall;
   shape: ResolvedCallShape;
@@ -398,37 +415,54 @@ async function resolveCall(
   const byId = typeof step.workflow_id === "string" && step.workflow_id.length > 0;
   const bySlug = typeof step.workflow_slug === "string" && step.workflow_slug.length > 0;
   if (byId === bySlug) return null;
-  const [row] = await db
-    .select({
-      id: workflows.id,
-      slug: workflows.slug,
-      name: workflows.name,
-      version_id: workflows.current_version_id,
-    })
-    .from(workflows)
-    .where(
-      and(
-        eq(workflows.tenant_id, input.tenant_id),
-        byId
-          ? eq(workflows.id, step.workflow_id as string)
-          : eq(workflows.slug, step.workflow_slug as string),
-        eq(workflows.lifecycle, "active"),
-        isNull(workflows.deleted_at),
-      ),
-    )
-    .limit(1);
+  const found = facts
+    ? [...facts.workflows.values()].find(
+        (workflow) =>
+          workflow.lifecycle === "active" &&
+          (byId ? workflow.id === step.workflow_id : workflow.slug === step.workflow_slug),
+      )
+    : undefined;
+  const row = facts
+    ? found
+      ? { ...found, version_id: found.current_version_id }
+      : undefined
+    : (
+        await db
+          .select({
+            id: workflows.id,
+            slug: workflows.slug,
+            name: workflows.name,
+            version_id: workflows.current_version_id,
+          })
+          .from(workflows)
+          .where(
+            and(
+              eq(workflows.tenant_id, input.tenant_id),
+              byId
+                ? eq(workflows.id, step.workflow_id as string)
+                : eq(workflows.slug, step.workflow_slug as string),
+              eq(workflows.lifecycle, "active"),
+              isNull(workflows.deleted_at),
+            ),
+          )
+          .limit(1)
+      )[0];
   if (!row?.version_id) return null;
-  const [version] = await db
-    .select({ dag: workflowVersions.dag, version: workflowVersions.version })
-    .from(workflowVersions)
-    .where(
-      and(
-        eq(workflowVersions.tenant_id, input.tenant_id),
-        eq(workflowVersions.workflow_id, row.id),
-        eq(workflowVersions.id, row.version_id),
-      ),
-    )
-    .limit(1);
+  const version = facts
+    ? factVersion(facts, row.id, row.version_id)
+    : (
+        await db
+          .select({ dag: workflowVersions.dag, version: workflowVersions.version })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, input.tenant_id),
+              eq(workflowVersions.workflow_id, row.id),
+              eq(workflowVersions.id, row.version_id),
+            ),
+          )
+          .limit(1)
+      )[0];
   const parsed = WorkflowDefSchema.safeParse(version?.dag);
   if (!version || !parsed.success) return null;
   const childInput = {
@@ -449,6 +483,7 @@ async function resolveCall(
         request_refusals: [] as Array<{ step_id: string; reason: RequestBoundaryRefusal }>,
       }
     : await resolveBindings(childInput, parsed.data, db, {
+        facts,
         report_boundaries: {},
         content_boundaries: {},
       });

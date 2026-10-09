@@ -1,13 +1,23 @@
 import {
   type CredentialAuthorityMetadata,
+  credentialAuthorityKey,
   getCredentialAuthorityMetadata,
+  getCredentialAuthorityMetadataBatch,
 } from "../credentials/authority-metadata.ts";
 import { getCredentialForConnector } from "../credentials/service.ts";
 import type { DecryptedCredential } from "../credentials/types.ts";
 import type { Executor } from "../db/client.ts";
 import { listDocs as listConnectorDocs } from "../docs-ingestion/service.ts";
-import { getConnectorForEnvironment } from "./service.ts";
+import {
+  type ConnectorEnvironmentRequest,
+  connectorEnvironmentKey,
+  getConnectorForEnvironment,
+  getConnectorsForEnvironments,
+} from "./service.ts";
+
 import type { ConnectorView, DriverName, Environment } from "./types.ts";
+
+export { connectorEnvironmentKey as connectorSystemKey } from "./service.ts";
 
 export interface ConnectorDocumentSummary {
   id: string;
@@ -44,7 +54,16 @@ export async function loadConnectorSystem(
 ): Promise<ConnectorSystem | null> {
   const connector = await getConnectorForEnvironment(tenant_id, connector_id, environment, exec);
   if (!connector) return null;
-  const resolvedEnv: Environment = connector.environment as Environment;
+  return connectorSystem(tenant_id, connector, exec);
+}
+
+function connectorSystem(
+  tenant_id: string,
+  connector: ConnectorView,
+  exec?: Executor,
+  metadata?: CredentialAuthorityMetadata,
+): ConnectorSystem {
+  const resolvedEnv = connector.environment;
 
   return {
     id: connector.id,
@@ -54,7 +73,9 @@ export async function loadConnectorSystem(
     environment: resolvedEnv,
     connector,
     getAuthorityMetadata() {
-      return getCredentialAuthorityMetadata(tenant_id, connector.id, resolvedEnv, exec);
+      return metadata
+        ? Promise.resolve(structuredClone(metadata))
+        : getCredentialAuthorityMetadata(tenant_id, connector.id, resolvedEnv, exec);
     },
     async getCredentials() {
       const resolved = await getCredentialForConnector(tenant_id, connector.id, resolvedEnv, exec);
@@ -82,4 +103,38 @@ export async function loadConnectorSystem(
       }));
     },
   };
+}
+
+export async function loadConnectorSystems(
+  tenant_id: string,
+  requests: readonly ConnectorEnvironmentRequest[],
+  exec?: Executor,
+): Promise<Map<string, ConnectorSystem | null>> {
+  const connectors = await getConnectorsForEnvironments(tenant_id, requests, exec);
+  const resolved = new Map<string, ConnectorView>();
+  for (const connector of connectors.values()) {
+    if (connector)
+      resolved.set(credentialAuthorityKey(connector.id, connector.environment), connector);
+  }
+  const metadata = await getCredentialAuthorityMetadataBatch(
+    tenant_id,
+    [...resolved.values()].map((connector) => ({
+      connector_id: connector.id,
+      environment: connector.environment,
+    })),
+    exec,
+  );
+  const result = new Map<string, ConnectorSystem | null>();
+  for (const request of requests) {
+    const key = connectorEnvironmentKey(request.connector_id, request.environment);
+    const connector = connectors.get(key);
+    if (!connector) {
+      result.set(key, null);
+      continue;
+    }
+    const authority = metadata.get(credentialAuthorityKey(connector.id, connector.environment));
+    if (!authority) throw new Error("connector authority metadata missing from requested batch");
+    result.set(key, connectorSystem(tenant_id, connector, exec, authority));
+  }
+  return result;
 }

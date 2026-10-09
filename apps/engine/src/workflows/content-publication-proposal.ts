@@ -9,6 +9,12 @@ import {
   type ContentRevisionReceipt,
   ContentRevisionReceiptSchema,
 } from "./content-publication-boundary.ts";
+import {
+  assertHistoryStep,
+  assertHistoryVersion,
+  historyScopeKey,
+  type WorkflowHistoryFacts,
+} from "./history-read-facts.ts";
 
 export type ContentPublicationBoundaries = Record<string, ContentPublicationBoundary>;
 export function contentPublicationLabels(manifest: unknown, inputs: unknown[]) {
@@ -76,48 +82,69 @@ export async function proposeContentPublicationBoundaries(
   },
   stepIds: string[],
   db: Executor,
+  facts?: WorkflowHistoryFacts,
 ): Promise<ContentPublicationBoundaries> {
-  const [authority] = await db
-    .select({ manifest: workflowExecutionAuthorities.effect_manifest })
-    .from(workflowExecutionAuthorities)
-    .where(
-      and(
-        eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
-        eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
-        eq(workflowExecutionAuthorities.workflow_version_id, input.workflow_version_id),
-        eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
-      ),
-    )
-    .orderBy(desc(workflowExecutionAuthorities.created_at), desc(workflowExecutionAuthorities.id))
-    .limit(1);
+  if (facts) {
+    assertHistoryVersion(facts, input);
+    for (const step_id of stepIds)
+      assertHistoryStep(facts, input.tenant_id, input.workflow_id, step_id);
+  }
+  const authority = facts
+    ? facts.authorities.get(historyScopeKey(input))
+    : (
+        await db
+          .select({ manifest: workflowExecutionAuthorities.effect_manifest })
+          .from(workflowExecutionAuthorities)
+          .where(
+            and(
+              eq(workflowExecutionAuthorities.tenant_id, input.tenant_id),
+              eq(workflowExecutionAuthorities.workflow_id, input.workflow_id),
+              eq(workflowExecutionAuthorities.workflow_version_id, input.workflow_version_id),
+              eq(workflowExecutionAuthorities.execution_environment, input.execution_environment),
+            ),
+          )
+          .orderBy(
+            desc(workflowExecutionAuthorities.created_at),
+            desc(workflowExecutionAuthorities.id),
+          )
+          .limit(1)
+      )[0];
   if (authority) return contentBoundariesFromManifest(authority.manifest);
-  const [run] = await db
-    .select({ id: executions.id })
-    .from(executions)
-    .where(
-      and(
-        eq(executions.tenant_id, input.tenant_id),
-        eq(executions.workflow_id, input.workflow_id),
-        eq(executions.workflow_version_id, input.workflow_version_id),
-        eq(executions.execution_mode, input.execution_environment),
-        eq(executions.hold_writes, true),
-        eq(executions.status, "succeeded"),
-      ),
-    )
-    .orderBy(desc(executions.created_at), desc(executions.id))
-    .limit(1);
+  const run = facts
+    ? facts.successful_held.get(historyScopeKey(input))
+    : (
+        await db
+          .select({ id: executions.id })
+          .from(executions)
+          .where(
+            and(
+              eq(executions.tenant_id, input.tenant_id),
+              eq(executions.workflow_id, input.workflow_id),
+              eq(executions.workflow_version_id, input.workflow_version_id),
+              eq(executions.execution_mode, input.execution_environment),
+              eq(executions.hold_writes, true),
+              eq(executions.status, "succeeded"),
+            ),
+          )
+          .orderBy(desc(executions.created_at), desc(executions.id))
+          .limit(1)
+      )[0];
   if (!run) return {};
-  const rows = await db
-    .select({ key: executionSteps.step_key, meta: executionSteps.request_meta })
-    .from(executionSteps)
-    .where(
-      and(
-        eq(executionSteps.tenant_id, input.tenant_id),
-        eq(executionSteps.execution_id, run.id),
-        eq(executionSteps.status, "succeeded"),
-        eq(executionSteps.kind, "request"),
-      ),
-    );
+  const rows = facts
+    ? (facts.steps.get(run.id) ?? []).filter(
+        (step) => step.status === "succeeded" && step.kind === "request",
+      )
+    : await db
+        .select({ key: executionSteps.step_key, meta: executionSteps.request_meta })
+        .from(executionSteps)
+        .where(
+          and(
+            eq(executionSteps.tenant_id, input.tenant_id),
+            eq(executionSteps.execution_id, run.id),
+            eq(executionSteps.status, "succeeded"),
+            eq(executionSteps.kind, "request"),
+          ),
+        );
   const observation = z
     .object({
       extras: z

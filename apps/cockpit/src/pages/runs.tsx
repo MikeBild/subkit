@@ -254,7 +254,11 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
     label: t("audit.detail.trace"),
     value: trace.id ? (
       trace.href ? (
-        <a href={absolute(trace.href)} className="underline underline-offset-4">
+        <a
+          href={absolute(trace.href)}
+          className="underline underline-offset-4"
+          data-testid="run-detail-trace-audit"
+        >
           {trace.id}
         </a>
       ) : (
@@ -473,6 +477,7 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
                             `${workflowHref(current.workflow_id)}#workflow-automation`,
                           )}
                           title={current.execution_authority_id}
+                          data-testid="run-detail-authority-workflow"
                         >
                           {value}
                         </a>

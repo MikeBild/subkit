@@ -16,8 +16,22 @@ describe("authoring execution trust guidance", () => {
     expect(out).toContain("## Execution trust boundaries");
     expect(out).toContain("client context is untrusted input");
     expect(out).toContain("Callerless system runs have null caller");
-    expect(out).toContain("get_execution");
-    expect(out).toContain("do not claim a complete caller/auth graph");
+    expect(out).toContain("SubKit supplies immutable $caller from authentication");
+    expect(out).toContain(
+      "Never substitute the approver, connector credentials or input owner fields for the caller; a child retains the original caller.",
+    );
+    expect(out).toContain("Ground explanations in recorded runs, step results and audit entries.");
+    expect(out).toContain("Raw caller_context and credential material remain private.");
+    expect(out).toContain(
+      "Execution readers expose safe caller, recorded permission phase/time and environment evidence",
+    );
+    expect(out).toContain(
+      "step readers expose persisted credential identity snapshots and dispatch-effect metadata",
+    );
+    expect(out).toContain(
+      "Missing evidence stays unknown, and neither a snapshot nor a dispatch attempt proves provider acceptance.",
+    );
+    expect(out).toContain("Do not claim a complete caller/auth graph.");
     expect(out).not.toContain("untrusted-owner");
   });
 

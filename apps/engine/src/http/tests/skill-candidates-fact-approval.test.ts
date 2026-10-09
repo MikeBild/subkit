@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { proposeLearning } from "../../agent/sessions.ts";
 import { apiKeys, users } from "../../db/schema/index.ts";
+import { getContext } from "../../logging/context.ts";
+import { logger } from "../../logging/logger.ts";
 import { createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { getSkillCandidate } from "../../skill-candidates/service.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -79,4 +81,64 @@ describe("POST /v1/skill-candidates/{id}/approve — a fact writes knowledge", (
     const body = (await res.json()) as { knowledge: { slug: string } | null };
     expect(body.knowledge?.slug).toBe("learnings-ops");
   });
+});
+
+test("source-specific proposals deny a skill-only reader through the normal permission warning", async () => {
+  const role = await createRole(srv.db, srv.tenantId, "skill-only-reader");
+  await grantPermissionToRole(srv.db, srv.tenantId, role.id, "skill:read");
+  const [reader] = await srv.db
+    .insert(users)
+    .values({
+      tenant_id: srv.tenantId,
+      email: "skill-only@test.local",
+      role_id: role.id,
+    })
+    .returning();
+  if (!reader) throw new Error("missing skill reader");
+  const key = "wf_live_skill_only_reader_fixture_token";
+  await srv.db.insert(apiKeys).values({
+    tenant_id: srv.tenantId,
+    user_id: reader.id,
+    prefix: key.slice(0, 12),
+    token_sha256: createHash("sha256").update(key).digest("hex"),
+    scopes: ["*"],
+  });
+  const headers = { authorization: `Bearer ${key}` };
+  const permitted = await fetch(`${srv.baseUrl}/v1/skill-candidates`, { headers });
+  expect(permitted.status).toBe(200);
+  await permitted.text();
+  const warnings: Record<string, unknown>[] = [];
+  const originalWarn = logger.warn;
+  const warning = spyOn(logger, "warn").mockImplementation((fields) => {
+    warnings.push({ ...getContext(), ...fields });
+    originalWarn(fields);
+  });
+  try {
+    const response = await fetch(
+      `${srv.baseUrl}/v1/skill-candidates?knowledge_source_id=00000000-0000-4000-8000-000000000123`,
+      { headers },
+    );
+    expect(response.status).toBe(403);
+    const body = await response.text();
+    expect(body).toContain("Reading source-specific proposals needs knowledge:read");
+    expect(body).not.toContain(key);
+    const denials = warnings.filter(
+      (entry) => entry.module === "rbac" && entry.action === "denied",
+    );
+    expect(denials).toHaveLength(1);
+    expect(denials[0]).toMatchObject({
+      tenant_id: srv.tenantId,
+      principal_id: reader.id,
+      principal_kind: "user",
+      permission: "knowledge:read",
+      request_source: "api",
+    });
+    expect(denials[0]?.resource_id).toBeUndefined();
+    expect(denials[0]?.resource_type).toBeUndefined();
+    expect(JSON.stringify(denials)).not.toContain(key);
+    expect(JSON.stringify(denials)).not.toContain(createHash("sha256").update(key).digest("hex"));
+    expect(JSON.stringify(denials)).not.toContain("Bearer");
+  } finally {
+    warning.mockRestore();
+  }
 });

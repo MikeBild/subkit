@@ -320,22 +320,20 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
     await expectWorkflowTitle(page, where);
     await assertSingleTriggers(page, where);
     await page.getByTestId("workflow-menu").click();
-    const change = page.getByTestId("workflow-menu-change");
-    await change.waitFor({ state: "visible" });
-    if ((await change.innerText()).trim() !== (de ? "Im Chat ändern" : "Change in chat"))
-      throw new Error(`${where}: the menu offers "${await change.innerText()}"`);
-    const href = await change.getAttribute("href");
+    const ask = page.getByTestId("workflow-menu-ask");
+    await ask.waitFor({ state: "visible" });
+    if ((await ask.count()) !== 1 || (await page.getByTestId("workflow-menu-change").count()) !== 0)
+      throw new Error(`${where}: the menu must offer exactly one question action`);
+    if ((await ask.innerText()).trim() !== (de ? "Im Chat fragen" : "Ask in chat"))
+      throw new Error(`${where}: the menu offers "${await ask.innerText()}"`);
+    const href = await ask.getAttribute("href");
     const chat = new URL(href ?? "", "http://x");
     if (chat.pathname !== "/cockpit/chat/new")
       throw new Error(`${where}: the entry leads to ${href}, not a new conversation`);
     if (chat.searchParams.get("workflow_id") !== PLAIN)
       throw new Error(`${where}: the conversation is not about this workflow`);
-    const prompt = chat.searchParams.get("prompt");
-    const intent = de
-      ? `Ändere den Workflow „${NAMES[PLAIN]}“: `
-      : `Change the workflow “${NAMES[PLAIN]}”: `;
-    if (prompt !== intent)
-      throw new Error(`${where}: the conversation opens with "${prompt}", not "${intent}"`);
+    if (chat.searchParams.has("prompt") || [...chat.searchParams.keys()].length !== 1)
+      throw new Error(`${where}: asking about the workflow seeds an unsolicited instruction`);
     await page.keyboard.press("Escape");
 
     where = `/connectors/<expired> (${localeName})`;

@@ -1118,3 +1118,151 @@ test("operating status verifies approval effect binding and does not infer readi
       .total,
   ).toBe(0);
 });
+
+test("batched operating evidence keeps workflow versions, environments and effect boundaries separate", async () => {
+  const f = await fixture();
+  const tenantId = f.workflow.tenant_id;
+  async function approved(name: string, environment: "dev" | "prod", versionNumber: number) {
+    const [connector] = await ctx.db
+      .insert(connectors)
+      .values({
+        tenant_id: tenantId,
+        slug: name,
+        display_name: name,
+        driver: "http",
+        auth_type: "none",
+        environment,
+        base_url: `https://${name}.example.test`,
+      })
+      .returning();
+    const [workflow] = await ctx.db
+      .insert(workflows)
+      .values({
+        tenant_id: tenantId,
+        slug: name,
+        name,
+        lifecycle: "active",
+      })
+      .returning();
+    if (!connector || !workflow) throw new Error("missing batch fixture");
+    const [version] = await ctx.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: workflow.id,
+        version: versionNumber,
+        dag: {
+          name,
+          steps: [
+            {
+              id: "send",
+              kind: "request",
+              connector_id: connector.id,
+              method: "POST",
+              path: "/messages",
+              body: { recipient: "reviewed@example.test" },
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!version) throw new Error("missing batch version");
+    await ctx.db
+      .update(workflows)
+      .set({ current_version_id: version.id })
+      .where(and(eq(workflows.tenant_id, tenantId), eq(workflows.id, workflow.id)));
+    const preview = await previewWorkflowAuthority(
+      {
+        tenant_id: tenantId,
+        workflow_id: workflow.id,
+        workflow_version_id: version.id,
+        execution_environment: environment,
+      },
+      ctx.db,
+    );
+    await grantWorkflowAuthority(
+      workflow.id,
+      {
+        ...f.input,
+        workflow_version_id: version.id,
+        expected_manifest_digest: preview.digest,
+        execution_environment: environment,
+        valid_until: null,
+        max_runs: null,
+      },
+      f.context,
+    );
+    const [schedule] = await ctx.db
+      .insert(workflowsSchedules)
+      .values({
+        tenant_id: tenantId,
+        workflow_id: workflow.id,
+        cron: "0 9 * * *",
+        timezone: "UTC",
+        execution_mode: environment,
+      })
+      .returning();
+    if (!schedule) throw new Error("missing batch schedule");
+    return { workflow, connector, version, schedule };
+  }
+  const first = await approved("batch-a", "dev", 1);
+  const second = await approved("batch-b", "prod", 2);
+  const third = await approved("batch-c", "dev", 3);
+  const opts = {
+    include_operating_status: true,
+    name_contains: "batch-",
+    sort: "name" as const,
+    order: "asc" as const,
+    operating_access: { schedules: true, hooks: true, connectors: true },
+  };
+  const initial = await listWorkflows(tenantId, opts, ctx.db);
+  expect(initial.rows.map((row) => [row.id, row.operating_status])).toEqual([
+    [first.workflow.id, "active"],
+    [second.workflow.id, "active"],
+    [third.workflow.id, "active"],
+  ]);
+  await ctx.db
+    .update(connectors)
+    .set({ base_url: "https://unreviewed.example.test" })
+    .where(and(eq(connectors.tenant_id, tenantId), eq(connectors.id, first.connector.id)));
+  const changed = await listWorkflows(tenantId, opts, ctx.db);
+  expect(changed.rows.map((row) => [row.id, row.operating_status])).toEqual([
+    [first.workflow.id, "stopped"],
+    [second.workflow.id, "active"],
+    [third.workflow.id, "active"],
+  ]);
+  const page = await listWorkflows(
+    tenantId,
+    {
+      ...opts,
+      operating_status: "active",
+      limit: 1,
+      offset: 1,
+    },
+    ctx.db,
+  );
+  expect(page.total).toBe(2);
+  expect(page.rows.map((row) => row.id)).toEqual([third.workflow.id]);
+  const exhausted = await listWorkflows(
+    tenantId,
+    {
+      ...opts,
+      operating_status: "active",
+      limit: 1,
+      offset: 2,
+    },
+    ctx.db,
+  );
+  expect(exhausted.total).toBe(2);
+  expect(exhausted.rows).toEqual([]);
+  const hidden = await listWorkflows(
+    tenantId,
+    { ...opts, operating_access: { schedules: false, hooks: false, connectors: false } },
+    ctx.db,
+  );
+  expect(hidden.rows.map((row) => [row.id, row.operating_status])).toEqual([
+    [first.workflow.id, "unknown"],
+    [second.workflow.id, "unknown"],
+    [third.workflow.id, "unknown"],
+  ]);
+});
