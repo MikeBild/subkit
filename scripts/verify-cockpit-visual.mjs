@@ -34,6 +34,8 @@ import { verifyHookHolds } from "./lib/cockpit-hook-holds.mjs";
 import { standAt } from "./lib/cockpit-identity.mjs";
 import { verifyIdentityEvidence } from "./lib/cockpit-identity-evidence.mjs";
 import { verifyInstallationPages } from "./lib/cockpit-installation.mjs";
+import { verifyKnowledgeDetailEvidence } from "./lib/cockpit-knowledge-detail-evidence.mjs";
+import { verifyKnowledgeHistoryProposalsEvidence } from "./lib/cockpit-knowledge-history-proposals-evidence.mjs";
 import { verifyKnowledgeTotals } from "./lib/cockpit-knowledge-totals.mjs";
 import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
@@ -4450,6 +4452,24 @@ try {
         );
       if (standOn(verifyDescriptionEvidence))
         await verifyDescriptionEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { mockApi, recordId: uuid },
+        );
+      if (standOn(verifyKnowledgeDetailEvidence))
+        await verifyKnowledgeDetailEvidence(
+          page,
+          stand,
+          locale.name,
+          (state) =>
+            shoot(page, `${locale.artifact}-${viewport.name}-${state}`, { fullPage: false }),
+          { mockApi, recordId: uuid },
+        );
+      if (standOn(verifyKnowledgeHistoryProposalsEvidence))
+        await verifyKnowledgeHistoryProposalsEvidence(
           page,
           stand,
           locale.name,
