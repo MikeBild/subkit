@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { type CatalogMetadataColumns, metadataChange } from "../api/catalog-metadata.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks } from "../db/schema/knowledge_sources.ts";
+import { retryTransient } from "../db/transient.ts";
 import { canonicalBundleSerialization, normalizeBundlePath, parseBundle } from "./bundle.ts";
 import { getKnowledgeSource } from "./catalog.ts";
 import {
@@ -70,7 +71,7 @@ export async function upsertKnowledgeBundle(
   p: UpsertKnowledgeBundleParams,
   exec?: Executor,
 ): Promise<KnowledgeBundleUpsertResult> {
-  return upsertKnowledgeBundleInner(p, exec ?? getDb(), false);
+  return retryTransient(() => upsertKnowledgeBundleInner(p, exec ?? getDb(), false));
 }
 
 async function upsertKnowledgeBundleInner(
