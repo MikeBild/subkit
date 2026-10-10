@@ -76,5 +76,5 @@ export function stripCalendarGates(input: unknown): unknown {
   const obj = input as Record<string, unknown>;
   if (!("business_days_only" in obj) && !("skip_dates" in obj)) return input;
   const { business_days_only: _bd, skip_dates: _sd, ...rest } = obj;
-  return Object.keys(rest).length === 0 ? null : rest;
+  return rest;
 }

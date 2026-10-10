@@ -24,6 +24,7 @@ import { WORKFLOW_TIMEOUT_DEFAULT_MS } from "../execution/timeouts.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { can } from "../rbac/evaluator.ts";
+import { stripCalendarGates } from "../scheduler/index.ts";
 import { activateReviewedDraft } from "./activate-reviewed-draft.ts";
 import { carryApprovalsForward } from "./authority-inheritance.ts";
 import { workflowJsonDigest } from "./canonical-json.ts";
@@ -205,7 +206,7 @@ async function resolveGrantedAdmissionHolds(
     if (
       definition.input_schema &&
       !validateAgainstJsonSchema(
-        normalizeWorkflowRunInput(schedule.input) ?? null,
+        normalizeWorkflowRunInput(stripCalendarGates(schedule.input)) ?? null,
         definition.input_schema,
         "$input",
       ).valid

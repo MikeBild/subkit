@@ -73,6 +73,7 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
     const { workflow_id } = await createWorkflowRow(ctx, {
       name: "stripe-daily-charges-digest",
       slug: "stripe-daily-charges-digest",
+      input_schema: { type: "object", properties: {}, additionalProperties: false },
       steps: [{ id: "noop", kind: "transform", expression: "$input" }],
     });
     await grantScheduleAuthorityFixture(ctx.testDb.db, ctx.tenantId, workflow_id);
@@ -134,7 +135,7 @@ describe("scheduler reconciler honours tz + business_days_only + skip_dates", ()
       .where(eq(executions.workflow_id, workflow_id));
     expect(execRows.length).toBe(1);
     expect(execRows[0]?.request_source).toBe("scheduler");
-    expect(execRows[0]?.input).toBeNull();
+    expect(execRows[0]?.input).toEqual({});
     expect(execRows[0]?.caller_context).toBeNull();
 
     const audits = await ctx.testDb.db

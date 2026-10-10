@@ -12,6 +12,7 @@ import { previewWorkflowAuthority } from "../workflows/execution-authorities.ts"
 import { factVersion, type WorkflowReadFacts } from "../workflows/read-facts.ts";
 import { normalizeWorkflowRunInput } from "../workflows/run-input.ts";
 import { WorkflowDefSchema } from "../workflows/types.ts";
+import { stripCalendarGates } from "./calendar-gates.ts";
 import type { ScheduleRow } from "./repo.ts";
 
 export function scheduleNeedsActivation(
@@ -83,7 +84,7 @@ async function inspectAutomationChecked<B extends object>(
     binding.input &&
     definition.input_schema &&
     !validateAgainstJsonSchema(
-      normalizeWorkflowRunInput(binding.input.value) ?? null,
+      normalizeWorkflowRunInput(stripCalendarGates(binding.input.value)) ?? null,
       definition.input_schema,
       "$input",
     ).valid
