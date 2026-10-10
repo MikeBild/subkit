@@ -26,6 +26,7 @@ import {
   STATUS_ENDPOINT,
   type StatsWindow,
   usageWindowFromUrl,
+  usageWindowSearch,
   type WindowBounds,
   windowBounds,
 } from "@/pages/operations-figures";
@@ -84,14 +85,10 @@ export function UsagePage() {
   const chooseWindow = (next: string) => {
     if (!isWindow(next)) return;
     setBounds(windowBounds(next));
-    const params = new URLSearchParams(window.location.search);
-    if (next === "30d") params.delete("window");
-    else params.set("window", next);
-    const query = params.toString();
     window.history.replaceState(
       window.history.state,
       "",
-      `${window.location.pathname}${query ? `?${query}` : ""}`,
+      `${window.location.pathname}${usageWindowSearch(window.location.search, next)}${window.location.hash}`,
     );
   };
 

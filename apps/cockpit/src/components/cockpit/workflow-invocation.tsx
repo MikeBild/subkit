@@ -7,11 +7,11 @@ import { absolute, apiAccessHref } from "@/app/links";
 import { useSession } from "@/app/session";
 import {
   CodeBlock,
+  CollapsibleSection,
   ContextHelp,
   CopyField,
   DataState,
   FactList,
-  Section,
   SegmentedControl,
   StatusBadge,
 } from "@/components/cockpit/patterns";
@@ -377,7 +377,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
     queryFn: () => apiRequest<{ items: { id: string; name: string }[] }>("/v1/rbac/groups"),
   });
   return (
-    <Section label={t("invocation.startAccess")} testId="workflow-start-access">
+    <CollapsibleSection label={t("invocation.startAccess")} testId="workflow-start-access">
       <FactList
         items={[
           {
@@ -407,7 +407,7 @@ function StartAccess({ access }: { access: NonNullable<Invocation["start_access"
       )}
       <p className={line}>{t("invocation.startExternal")}</p>
       <p className={line}>{t("invocation.startPreview")}</p>
-    </Section>
+    </CollapsibleSection>
   );
 }
 

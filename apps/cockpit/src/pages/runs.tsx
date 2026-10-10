@@ -20,6 +20,7 @@ import {
   FactList,
   FilterBar,
   RecordSheet,
+  RowName,
   RowsSkeleton,
   Section,
   StatusBadge,
@@ -279,11 +280,24 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
         (item) => item.step_key,
         t("workflowSteps.column.step"),
         (item, index) => (
-          <span className="font-mono text-xs" data-testid={`run-detail-step-${index}`}>
-            {index + 1} {item.step_key}
-          </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <RowName>
+              <span className="font-mono text-xs" data-testid={`run-detail-step-${index}`}>
+                {index + 1} {item.step_key}
+              </span>
+            </RowName>
+            <CollapsibleSection
+              label={t("connectorDetail.connection.speaksAs")}
+              testId={`run-step-identities-inline-${index}`}
+            >
+              <RunStepIdentityFacts
+                snapshots={stepCredentialSnapshots(item)}
+                connectorNames={stepNames.connector}
+              />
+            </CollapsibleSection>
+          </div>
         ),
-        { width: "w-[35%]" },
+        { width: "w-[35%]", ownsRowLink: true },
       ),
       column.custom(
         "operation",
@@ -522,6 +536,58 @@ function RunDetail({ run }: { run: Execution; onShowRun(id: string): void }) {
   );
 }
 
+export function RunStepIdentityFacts({
+  snapshots,
+  connectorNames,
+}: {
+  snapshots: ReturnType<typeof stepCredentialSnapshots>;
+  connectorNames: ReadonlyMap<string, string>;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex min-w-0 flex-col gap-3 [&_[data-slot=fact-list]>div]:grid-cols-1">
+      <p className="text-sm text-muted-foreground">{t("runs.step.identityEvidence")}</p>
+      {snapshots.length ? (
+        snapshots.map((snapshot, position) => (
+          <FactList
+            key={position}
+            items={[
+              {
+                label: t("inbox.resource.connector"),
+                value: connectorNames.get(snapshot.connector_id) ?? t("runs.caller.unknown"),
+              },
+              {
+                label: t("connectorDetail.connection.speaksAs"),
+                value: snapshot.identity ? (
+                  <span className="[overflow-wrap:anywhere]">
+                    {snapshot.identity.subject} · {snapshot.identity.issuer}
+                  </span>
+                ) : (
+                  t("runs.caller.unknown")
+                ),
+              },
+              {
+                label: t("authority.environment"),
+                value: t(
+                  snapshot.environment === "prod"
+                    ? "authority.production"
+                    : "authority.development",
+                ),
+              },
+              {
+                label: t("runs.step.credentialGeneration"),
+                value: snapshot.credential_generation ?? snapshot.access_token_version ?? MISSING,
+              },
+            ]}
+          />
+        ))
+      ) : (
+        <p>{t("runs.caller.unknown")}</p>
+      )}
+    </div>
+  );
+}
+
 function RunStepSheet({
   step,
   index,
@@ -567,40 +633,7 @@ function RunStepSheet({
         ]}
       />
       <Section label={t("connectorDetail.connection.speaksAs")} testId="run-step-identities">
-        <p className="text-sm text-muted-foreground">{t("runs.step.identityEvidence")}</p>
-        {snapshots.length ? (
-          snapshots.map((snapshot, position) => (
-            <FactList
-              key={position}
-              items={[
-                {
-                  label: t("inbox.resource.connector"),
-                  value: names.connector.get(snapshot.connector_id) ?? t("runs.caller.unknown"),
-                },
-                {
-                  label: t("connectorDetail.connection.speaksAs"),
-                  value: snapshot.identity
-                    ? `${snapshot.identity.subject} · ${snapshot.identity.issuer}`
-                    : t("runs.caller.unknown"),
-                },
-                {
-                  label: t("authority.environment"),
-                  value: t(
-                    snapshot.environment === "prod"
-                      ? "authority.production"
-                      : "authority.development",
-                  ),
-                },
-                {
-                  label: t("runs.step.credentialGeneration"),
-                  value: snapshot.credential_generation ?? snapshot.access_token_version ?? MISSING,
-                },
-              ]}
-            />
-          ))
-        ) : (
-          <p>{t("runs.caller.unknown")}</p>
-        )}
+        <RunStepIdentityFacts snapshots={snapshots} connectorNames={names.connector} />
       </Section>
       {evidence.length === 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="run-step-nothing">
