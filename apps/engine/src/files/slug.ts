@@ -67,17 +67,30 @@ function isSlugConflict(err: unknown): boolean {
   return msg.includes("files_tenant_slug_uq") || cause.includes("files_tenant_slug_uq");
 }
 
+async function lockFileContent(
+  db: Db,
+  tenant_id: string,
+  contentHash: string | null | undefined,
+): Promise<void> {
+  if (!contentHash) return;
+  await db.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant_id}:${contentHash}`}::text, 741938))`,
+  );
+}
+
 async function withFreeSlug<T>(
   db: Db,
   tenant_id: string,
   filename: string,
   write: (tx: Db, slug: string) => Promise<T>,
+  contentHash?: string | null,
 ): Promise<T> {
   for (let attempt = 1; ; attempt++) {
-    const slug = await nextFreeFileSlug(db, tenant_id, filename);
     try {
       return await db.transaction(async (tx) => {
+        await lockFileContent(tx as unknown as Db, tenant_id, contentHash);
         await lockCatalogVocabulary(tx, tenant_id);
+        const slug = await nextFreeFileSlug(tx as unknown as Db, tenant_id, filename);
         return write(tx as unknown as Db, slug);
       });
     } catch (err) {
@@ -90,23 +103,47 @@ export async function insertFileRow(
   db: Db,
   values: Omit<typeof files.$inferInsert, "slug">,
 ): Promise<typeof files.$inferSelect> {
-  return withFreeSlug(db, values.tenant_id, values.filename, async (tx, slug) => {
-    const [row] = await tx
-      .insert(files)
-      .values({ ...values, slug })
-      .returning();
-    if (!row) throw new Error("files insert returned no row");
-    return row;
-  });
+  return withFreeSlug(
+    db,
+    values.tenant_id,
+    values.filename,
+    async (tx, slug) => {
+      const [row] = await tx
+        .insert(files)
+        .values({ ...values, slug })
+        .returning();
+      if (!row) throw new Error("files insert returned no row");
+      return row;
+    },
+    values.sha256,
+  );
 }
 
 export async function reviveFileRow(
   db: Db,
   row: typeof files.$inferSelect,
 ): Promise<typeof files.$inferSelect> {
+  return db.transaction(async (tx) => {
+    await lockFileContent(tx as unknown as Db, row.tenant_id, row.sha256);
+    const [current] = await tx
+      .select()
+      .from(files)
+      .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
+      .limit(1);
+    if (!current) return row;
+    if (!current.deleted_at) return current;
+    return restoreDeletedFileRow(tx as unknown as Db, current);
+  });
+}
+
+async function restoreDeletedFileRow(
+  db: Db,
+  row: typeof files.$inferSelect,
+): Promise<typeof files.$inferSelect> {
   if (row.slug) {
     try {
       const [revived] = await db.transaction(async (tx) => {
+        await lockFileContent(tx as unknown as Db, row.tenant_id, row.sha256);
         await lockCatalogVocabulary(tx, row.tenant_id);
         return tx
           .update(files)
@@ -119,14 +156,20 @@ export async function reviveFileRow(
       if (!isSlugConflict(err)) throw err;
     }
   }
-  return withFreeSlug(db, row.tenant_id, row.filename, async (tx, slug) => {
-    const [revived] = await tx
-      .update(files)
-      .set({ deleted_at: null, slug, updated_at: new Date() })
-      .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
-      .returning();
-    return revived ?? row;
-  });
+  return withFreeSlug(
+    db,
+    row.tenant_id,
+    row.filename,
+    async (tx, slug) => {
+      const [revived] = await tx
+        .update(files)
+        .set({ deleted_at: null, slug, updated_at: new Date() })
+        .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
+        .returning();
+      return revived ?? row;
+    },
+    row.sha256,
+  );
 }
 
 export async function findFileBySlug(
