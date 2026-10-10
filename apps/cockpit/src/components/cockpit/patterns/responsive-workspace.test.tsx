@@ -82,6 +82,7 @@ test("resize preserves inspector state and focus while nested inspectors stay mo
   const { createRoot } = await import("react-dom/client");
   const { ResponsiveWorkspace } = await import("./responsive-workspace");
   const { RecordSheet } = await import("./record-sheet");
+  const { TooltipProvider } = await import("@/components/ui/tooltip");
   const { I18nContext } = await import("@/lib/i18n-context");
   const { i18nValue } = await import("./test-utils");
   const changes: boolean[] = [];
@@ -98,32 +99,34 @@ test("resize preserves inspector state and focus while nested inspectors stay mo
     const [nested, setNested] = useState(false);
     return (
       <I18nContext.Provider value={i18nValue()}>
-        <ResponsiveWorkspace>
-          <button type="button" data-testid="nested-open" onClick={() => setNested(true)}>
-            Nested
-          </button>
-          <RecordSheet
-            dock
-            open={open}
-            onOpenChange={(value) => {
-              changes.push(value);
-              setOpen(value);
-            }}
-            title="Selected record"
-            testId="record"
-          >
-            <StatefulContent />
-          </RecordSheet>
-          <RecordSheet
-            dock
-            open={nested}
-            onOpenChange={setNested}
-            title="Nested record"
-            testId="nested"
-          >
-            Nested content
-          </RecordSheet>
-        </ResponsiveWorkspace>
+        <TooltipProvider>
+          <ResponsiveWorkspace>
+            <button type="button" data-testid="nested-open" onClick={() => setNested(true)}>
+              Nested
+            </button>
+            <RecordSheet
+              dock
+              open={open}
+              onOpenChange={(value) => {
+                changes.push(value);
+                setOpen(value);
+              }}
+              title="Selected record"
+              testId="record"
+            >
+              <StatefulContent />
+            </RecordSheet>
+            <RecordSheet
+              dock
+              open={nested}
+              onOpenChange={setNested}
+              title="Nested record"
+              testId="nested"
+            >
+              Nested content
+            </RecordSheet>
+          </ResponsiveWorkspace>
+        </TooltipProvider>
       </I18nContext.Provider>
     );
   }

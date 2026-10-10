@@ -295,6 +295,7 @@ export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
             <p>{t("catalogCategories.conflict")}</p>
             <Button
               variant="outline"
+              data-testid="catalog-category-conflict-reload"
               onClick={async () => {
                 const refreshed = await query.refetch();
                 if (refreshed.error) {

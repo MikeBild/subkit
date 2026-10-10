@@ -738,6 +738,7 @@ export function IntakePage({ permissions }: { permissions: readonly string[] }) 
               <a
                 className="break-words text-sm text-accent underline-offset-4 hover:underline"
                 href={detailClip.original_snapshot.source_url}
+                data-testid="intake-original-source-link"
                 target="_blank"
                 rel="noreferrer"
               >
