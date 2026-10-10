@@ -593,13 +593,46 @@ try {
       const save = document.querySelector<HTMLButtonElement>("#save");
       return body?.value.includes("Additional article body") && save && !save.disabled;
     });
-    await toolbarPopup.locator("#capture-again").click();
-    await toolbarPopup.waitForFunction(() => {
+    const toolbarDraftId = new URL(toolbarPopup.url()).searchParams.get("draft");
+    assert.ok(toolbarDraftId);
+    await toolbarPopup.close();
+    await nextWorker.evaluate(async (id) => {
+      const extension = globalThis as unknown as {
+        chrome: {
+          storage: {
+            local: {
+              get(key: string): Promise<Record<string, Record<string, unknown>>>;
+              set(value: unknown): Promise<void>;
+            };
+          };
+        };
+      };
+      const key = `draft:${id}`;
+      const saved = (await extension.chrome.storage.local.get(key))[key];
+      await extension.chrome.storage.local.set({
+        [key]: {
+          ...saved,
+          body: "",
+          originalCapture: { metadata: saved?.metadata, body: "" },
+          diagnostics: [{ code: "selection_unavailable" }],
+        },
+      });
+    }, toolbarDraftId);
+    const recoveredPopup = await browser.newPage();
+    await recoveredPopup.goto(`chrome-extension://${extensionId}/popup.html?tab=${toolbarTabId}`);
+    await recoveredPopup.waitForFunction(() => {
       const body = document.querySelector<HTMLTextAreaElement>("#content");
       const save = document.querySelector<HTMLButtonElement>("#save");
       return body?.value.includes("Additional article body") && save && !save.disabled;
     });
-    await toolbarPopup.close();
+    assert.equal(new URL(recoveredPopup.url()).searchParams.get("draft"), toolbarDraftId);
+    await recoveredPopup.locator("#capture-again").click();
+    await recoveredPopup.waitForFunction(() => {
+      const body = document.querySelector<HTMLTextAreaElement>("#content");
+      const save = document.querySelector<HTMLButtonElement>("#save");
+      return body?.value.includes("Additional article body") && save && !save.disabled;
+    });
+    await recoveredPopup.close();
     await toolbarArticle.close();
     assert.deepEqual(errors, []);
     process.stdout.write(
