@@ -235,6 +235,10 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     await stand.visit(page, `workflows/${workflowId}?tab=use`);
     const access = page.getByTestId("workflow-start-access");
     await access.waitFor({ state: "visible" });
+    const accessToggle = access.getByTestId("workflow-start-access-toggle");
+    require((await accessToggle.getAttribute("aria-expanded")) ===
+      "false", "Start access must begin collapsed");
+    await accessToggle.click();
     for (const text of [ROLE_NAME, ACTOR_EMAIL, ACCOUNT_NAME, GROUP_NAME])
       await contains(access, text, "visible start access");
     for (const key of [
@@ -294,6 +298,13 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     }
     await contains(stepRow(0), translate(locale, "sideEffects.read"), "recorded read effect");
     await contains(stepRow(1), translate(locale, "sideEffects.write"), "recorded write effect");
+    const inline = stepRow(0).getByTestId("run-step-identities-inline-0");
+    await inline.getByRole("button").click();
+    for (const subject of [RECORDED_SUBJECT, SECOND_SUBJECT])
+      await contains(inline, `${subject} · ${ISSUER}`, "inline recorded step identity");
+    require((await page.getByTestId("run-step-sheet").count()) ===
+      0, "Inline identity disclosure must not open a separate step sheet");
+    await inline.getByRole("button").click();
     await openStep(0);
     const identities = page.getByTestId("run-step-identities");
     for (const subject of [RECORDED_SUBJECT, SECOND_SUBJECT])
@@ -352,6 +363,7 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     state.unknown = false;
     requests.length = 0;
     await stand.visit(page, `workflows/${workflowId}?tab=use`);
+    await accessToggle.click();
     await contains(access, translate(locale, "invocation.startRulesHidden"), "hidden start rules");
     await contains(access, translate(locale, "invocation.startDenied"), "denied current caller");
     await excludes(

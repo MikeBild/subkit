@@ -12,12 +12,40 @@ import {
   operatingFigures,
   operatingFiguresEndpoint,
   usageWindowFromUrl,
+  usageWindowSearch,
   windowBounds,
   windowBucket,
   windowSpend,
 } from "@/pages/operations-figures";
 import { filterFromUrl } from "@/pages/runs-model";
 import { budgetSummary, windowCost } from "@/pages/usage-model";
+
+describe("usage window URL round trips", () => {
+  test("every selectable period survives navigation with unrelated query parameters", () => {
+    for (const period of ["24h", "7d", "30d"] as const) {
+      for (const initial of [
+        "",
+        "?window=unknown",
+        "?window=30d&filter=one&filter=two&future=kept",
+      ]) {
+        const search = usageWindowSearch(initial, period);
+        expect(usageWindowFromUrl(search)).toBe(period);
+        const before = new URLSearchParams(initial);
+        const after = new URLSearchParams(search);
+        expect(after.getAll("filter")).toEqual(before.getAll("filter"));
+        expect(after.get("future")).toBe(before.get("future"));
+        expect(after.has("window")).toBe(period !== "7d");
+      }
+    }
+  });
+
+  test("missing and unrecognized periods use seven days and canonicalize cleanly", () => {
+    expect(usageWindowFromUrl("")).toBe("7d");
+    expect(usageWindowFromUrl("?window=unknown")).toBe("7d");
+    expect(usageWindowSearch("?window=30d", "7d")).toBe("");
+    expect(usageWindowSearch("?window=7d", "30d")).toBe("?window=30d");
+  });
+});
 
 describe("the engine's operating figures", () => {
   const NOW = new Date("2026-08-10T12:00:00.000Z");

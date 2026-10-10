@@ -45,6 +45,14 @@ export function usageWindowFromUrl(search: string): StatsWindow {
   return (STATS_WINDOWS as readonly string[]).includes(raw ?? "") ? (raw as StatsWindow) : "7d";
 }
 
+export function usageWindowSearch(search: string, window: StatsWindow): string {
+  const params = new URLSearchParams(search);
+  if (window === "7d") params.delete("window");
+  else params.set("window", window);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 function windowQuery(bounds: WindowBounds): string {
   return [
     `bucket=${WINDOW_SHAPE[bounds.window].bucket}`,
