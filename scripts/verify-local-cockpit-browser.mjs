@@ -106,7 +106,7 @@ try {
       await page.getByTestId(detail).waitFor({ state: "visible" });
       receipt.checks.push(`${route}-detail`);
       if (route === "files") {
-        await page.keyboard.press("Escape");
+        await page.getByTestId("file-sheet-close").click();
         await page.getByTestId("file-sheet").waitFor({ state: "hidden" });
       }
     }

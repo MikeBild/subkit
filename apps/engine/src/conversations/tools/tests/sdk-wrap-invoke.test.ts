@@ -57,6 +57,13 @@ describe("ERROR_CODE_ALTERNATIVES · authoring-gate recovery recipes", () => {
     expect(hint).toContain("human approval");
     expect(hint).toContain("Do not retry");
   });
+  it("workflow_version_not_active requires a review of the current exact version", () => {
+    const hint = ERROR_CODE_ALTERNATIVES.workflow_version_not_active;
+    expect(hint).toContain("get_workflow");
+    expect(hint).toContain("review_workflow_automation");
+    expect(hint).toContain("old expected_workflow_version_id");
+    expect(hint).toContain("nothing ran");
+  });
   it("loop_authoring_requires_inspect names dry_run_workflow and the evidence-survival rule", () => {
     const hint = ERROR_CODE_ALTERNATIVES.loop_authoring_requires_inspect;
     expect(hint).toContain("dry_run_workflow");
