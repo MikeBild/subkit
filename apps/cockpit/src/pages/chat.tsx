@@ -105,6 +105,7 @@ import {
   PopoverTrigger,
   previewKind,
   RecordSheet,
+  SectionHeading,
   Select,
   SelectContent,
   SelectItem,
@@ -2781,9 +2782,12 @@ export function ChatPage() {
             aria-labelledby="chat-context-title"
           >
             <div className="flex h-18 shrink-0 items-center gap-2 border-b px-4">
-              <h2 id="chat-context-title" className="min-w-0 flex-1 text-sm font-semibold">
+              <SectionHeading
+                id="chat-context-title"
+                className="min-w-0 flex-1 text-sm font-semibold"
+              >
                 {t("chat.context.title")}
-              </h2>
+              </SectionHeading>
               <IconButton
                 label={t("common.close")}
                 data-testid="chat-context-close"

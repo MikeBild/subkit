@@ -4,6 +4,22 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 
 export const SECTION_LABEL = "text-xs font-medium text-muted-foreground";
 
+export function SectionHeading({
+  id,
+  className = SECTION_LABEL,
+  children,
+}: {
+  id?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <h2 id={id} className={className} data-slot="section-label">
+      {children}
+    </h2>
+  );
+}
+
 export function Section({
   label,
   aside,
@@ -19,11 +35,7 @@ export function Section({
     <section data-slot="section" data-testid={testId} className="flex flex-col gap-3">
       {label || aside ? (
         <div className="flex items-center gap-2">
-          {label ? (
-            <h2 className={SECTION_LABEL} data-slot="section-label">
-              {label}
-            </h2>
-          ) : null}
+          {label ? <SectionHeading>{label}</SectionHeading> : null}
           {aside ? <span className="ml-auto flex items-center gap-2">{aside}</span> : null}
         </div>
       ) : null}

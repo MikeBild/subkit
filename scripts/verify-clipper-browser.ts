@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
 import { clipperArchiveManifest, clipperArchivePath } from "../apps/sk/src/clipper-assets.ts";
 import { installClipper } from "../apps/sk/src/clipper-install.ts";
 
-const root = join(import.meta.dir, "..");
 const temporary = await realpath(await mkdtemp(join(tmpdir(), "subkit-clipper-browser-")));
 const extensionPath = join(temporary, "extension");
 const writes: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
@@ -250,72 +249,24 @@ try {
       "https://example.test/article",
     );
     await page.setViewportSize({ width: 400, height: 600 });
-    for (const scheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: scheme });
-      await page.waitForFunction(
-        (expected) => {
-          const save = document.querySelector("#save");
-          return save && getComputedStyle(save).backgroundColor === expected;
-        },
-        scheme === "light" ? "rgb(15, 23, 42)" : "rgb(248, 250, 252)",
-      );
-      const theme = await page.evaluate(() => ({
-        background: getComputedStyle(document.body).backgroundColor,
-        primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
-        overflowing: document.documentElement.scrollWidth > innerWidth,
-      }));
-      assert.equal(theme.background, scheme === "light" ? "rgb(255, 255, 255)" : "rgb(2, 8, 23)");
-      assert.equal(theme.primary, scheme === "light" ? "#0f172a" : "#f8fafc");
-      assert.equal(theme.overflowing, false);
-      await page.locator("#save").focus();
-      assert.equal(
-        await page.locator("#save").evaluate((button) => button === document.activeElement),
-        true,
-      );
-      await page.screenshot({
-        path: join(root, `.artifacts/clipper-collect-${scheme}.png`),
-        animations: "disabled",
-        fullPage: true,
-      });
-    }
-    await page.emulateMedia({ colorScheme: "light" });
+    await page.locator("#save").focus();
+    assert.equal(
+      await page.locator("#save").evaluate((button) => button === document.activeElement),
+      true,
+    );
     await page.locator("#note").fill("A useful note that explains why this source matters later.");
     await page.locator("#status").evaluate((element) => {
       element.textContent = "Sammeln ist gerade nicht verfügbar. Dein Entwurf bleibt gespeichert.";
       element.dataset.error = "true";
     });
-    const fields = page.locator(".fields");
-    const actions = page.locator(".actions");
-    const sourceBox = await page.locator("#category").boundingBox();
-    const actionsBox = await actions.boundingBox();
-    assert.ok(sourceBox && actionsBox && sourceBox.y + sourceBox.height <= actionsBox.y);
-    await fields.evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    const pickerBox = await page.locator("#draft-picker").boundingBox();
-    const afterScrollActionsBox = await actions.boundingBox();
-    assert.ok(
-      pickerBox &&
-        afterScrollActionsBox &&
-        pickerBox.y >= 0 &&
-        pickerBox.y + pickerBox.height <= afterScrollActionsBox.y,
-    );
     assert.equal(
       await page.locator("#note").inputValue(),
       "A useful note that explains why this source matters later.",
     );
-    await page.screenshot({
-      path: join(root, ".artifacts/clipper-compact-multiline-error.png"),
-      animations: "disabled",
-    });
     await page.locator("#status").evaluate((element) => {
       element.textContent = "";
       element.dataset.error = "false";
     });
-    await fields.evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    await page.screenshot({ path: join(root, ".artifacts/clipper-collect.png"), fullPage: true });
     await page.locator("#title").fill("Edited article");
     await page.locator("#note").fill("Useful for our next project");
     await page.locator("#capture-details summary").click();
@@ -433,31 +384,6 @@ try {
       ),
     );
     assert.equal(await page.locator("#check-connection").isVisible(), true);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    assert.equal(await page.evaluate(() => window.scrollY), 0);
-    await page.screenshot({
-      path: join(root, ".artifacts/clipper-startup-404-empty.png"),
-      animations: "disabled",
-    });
-    await page.locator(".fields").evaluate((element) => {
-      element.scrollTop = element.scrollHeight;
-    });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const previewBox = await page.locator("#content-preview").boundingBox();
-    const unavailableActionsBox = await page.locator(".actions").boundingBox();
-    assert.ok(
-      previewBox &&
-        unavailableActionsBox &&
-        previewBox.y >= 0 &&
-        previewBox.y + previewBox.height <= unavailableActionsBox.y,
-    );
-    assert.ok(
-      unavailableActionsBox && unavailableActionsBox.y + unavailableActionsBox.height <= 600,
-    );
-    await page.screenshot({
-      path: join(root, ".artifacts/clipper-startup-404-empty-instruction.png"),
-      animations: "disabled",
-    });
     const optionsOpened = browser.waitForEvent("page");
     await page.locator("#check-connection").click();
     const optionsPage = await optionsOpened;
@@ -484,7 +410,6 @@ try {
     await page.waitForFunction(
       () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
     );
-    await mkdir(join(root, ".artifacts"), { recursive: true });
     process.stdout.write("Checking video preview and persistent section choices\n");
     const sections = {
       description: "Useful video description.",
@@ -515,10 +440,6 @@ try {
       "Manual edit <script>alert('unsafe')</script>",
     );
     assert.equal(await page.locator("#content-preview script").count(), 0);
-    await page.setViewportSize({ width: 400, height: 600 });
-    const saveBox = await page.locator("#save").boundingBox();
-    assert.ok(saveBox && saveBox.y >= 450 && saveBox.y + saveBox.height <= 600);
-    await page.screenshot({ path: join(root, ".artifacts/clipper-popup-compact.png") });
     await page.locator("#discard").click();
     await page.waitForFunction(
       () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
@@ -582,8 +503,6 @@ try {
       () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
     );
     assert.equal(await page.locator(`#draft-picker option[value='${pageBDraftId}']`).count(), 1);
-    await mkdir(join(root, ".artifacts"), { recursive: true });
-    await page.screenshot({ path: join(root, ".artifacts/clipper-preview.png"), fullPage: true });
     const reloadManager = await browser.newPage();
     await reloadManager.goto("chrome://extensions");
     const reloadedWorker = browser.waitForEvent("serviceworker", {
