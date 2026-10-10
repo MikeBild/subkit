@@ -235,6 +235,45 @@ test("reuses the matching page draft without returning an unrelated one", async 
   expect((await listDrafts(fixture.storage)).map((draft) => draft.id)).toEqual([old.id]);
 });
 
+test("automatic capture recovers failed empty drafts while preserving user fields", async () => {
+  const capture = captured("https://example.test/page");
+  const old = createDraft(capture.metadata, "", "https://engine.test", 7, {
+    diagnostics: [{ code: "selection_unavailable" }],
+  });
+  old.metadata = { ...old.metadata, title: "My title" };
+  old.note = "My note";
+  old.category = "research";
+  const fixture = await workerFixture({ capture, tabUrls: { 7: capture.metadata.sourceUrl } });
+  fixture.values[`draft:${old.id}`] = old;
+  const result = await fixture.send(
+    { type: "start-capture", mode: "auto" },
+    { id: "clipper", url: `${fixture.extensionOrigin}/popup.html?tab=7` },
+  );
+  expect(result).toMatchObject({
+    id: old.id,
+    body: capture.body,
+    metadata: { title: "My title" },
+    note: "My note",
+    category: "research",
+    originalCapture: capture,
+    diagnostics: [],
+  });
+});
+
+test("automatic capture preserves a draft whose captured text was deliberately cleared", async () => {
+  const capture = captured("https://example.test/page");
+  const old = createDraft(capture.metadata, capture.body, "https://engine.test", 7);
+  old.body = "";
+  old.diagnostics = [{ code: "selection_unavailable" }];
+  const fixture = await workerFixture({ capture, tabUrls: { 7: capture.metadata.sourceUrl } });
+  fixture.values[`draft:${old.id}`] = old;
+  const result = await fixture.send(
+    { type: "start-capture", mode: "auto" },
+    { id: "clipper", url: `${fixture.extensionOrigin}/popup.html?tab=7` },
+  );
+  expect(result).toMatchObject({ id: old.id, body: "", originalCapture: capture });
+});
+
 test("reused page drafts follow the tab that initiated the capture", async () => {
   const old = createDraft(
     { title: "Edited title", sourceUrl: "https://example.test/page", capturedAt: "then" },

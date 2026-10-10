@@ -149,7 +149,29 @@ async function captureFromTab(
   }
   const existing = await findDraft(chromeApi.storage.local, settingsAtStart.engineUrl, capturedUrl);
   if (existing && existing.id !== replaceDraftId) {
-    const draft = existing.captureTabId === tabId ? existing : { ...existing, captureTabId: tabId };
+    const recoverEmptyCapture =
+      mode === "auto" &&
+      !existing.body.trim() &&
+      !existing.originalCapture?.body.trim() &&
+      !existing.intakeAttempt &&
+      !existing.attempt &&
+      existing.diagnostics?.some((item) =>
+        ["selection_unavailable", "main_content_unavailable"].includes(item.code),
+      ) &&
+      Boolean(result.body.trim());
+    const draft = recoverEmptyCapture
+      ? {
+          ...existing,
+          ...result,
+          metadata: { ...result.metadata, title: existing.metadata.title },
+          originalCapture: result,
+          diagnostics: result.diagnostics || [],
+          captureTabId: tabId,
+          writeRevision: (existing.writeRevision || 0) + 1,
+        }
+      : existing.captureTabId === tabId
+        ? existing
+        : { ...existing, captureTabId: tabId };
     if (draft !== existing) await queueDraftWrite(() => saveDraft(chromeApi.storage.local, draft));
     if (openDestination) await openDraft(draft.id);
     return draft;

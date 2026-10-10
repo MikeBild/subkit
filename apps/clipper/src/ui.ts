@@ -155,7 +155,7 @@ export const copy: Record<"de" | "en", Copy> = {
     articleFallback:
       "Der Inhalt wurde vereinfacht als Text erfasst. Prüfe die Vorschau auf Vollständigkeit.",
     selectionEmpty:
-      "Die Auswahl ist nicht mehr verfügbar. Markiere den Text erneut und erfasse ihn noch einmal.",
+      "Es wurde kein Text erfasst. Klicke auf „Neu erfassen“, um die Seite zu sammeln. Für einen Ausschnitt markiere vorher den gewünschten Text.",
     words: "Wörter",
     characters: "Zeichen",
     reopenCapture: "Öffne den Clipper über die Symbolleiste auf dieser Seite erneut.",
@@ -234,7 +234,8 @@ export const copy: Record<"de" | "en", Copy> = {
     metadataUnavailable: "Some page information could not be read. Check the title and source.",
     articleFallback:
       "The content was captured as simplified text. Check the preview for completeness.",
-    selectionEmpty: "The selection is no longer available. Select the text and capture it again.",
+    selectionEmpty:
+      "No text was captured. Click ‘Capture again’ to collect the page. For an excerpt, select the text on the page first.",
     words: "words",
     characters: "characters",
     reopenCapture: "Open the clipper from the toolbar on this page again.",
