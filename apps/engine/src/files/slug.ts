@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 
 export const ATTACHMENT_REFERENCE_PREFIX = "@attachment:";
 
@@ -73,17 +74,19 @@ async function withFreeSlug<T>(
   filename: string,
   write: (tx: Db, slug: string) => Promise<T>,
 ): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    const slug = await nextFreeFileSlug(db, tenant_id, filename);
-    try {
-      return await db.transaction(async (tx) => {
-        await lockCatalogVocabulary(tx, tenant_id);
-        return write(tx as unknown as Db, slug);
-      });
-    } catch (err) {
-      if (!isSlugConflict(err) || attempt >= MAX_ATTEMPTS) throw err;
+  return retryTransient(async () => {
+    for (let attempt = 1; ; attempt++) {
+      const slug = await nextFreeFileSlug(db, tenant_id, filename);
+      try {
+        return await db.transaction(async (tx) => {
+          await lockCatalogVocabulary(tx, tenant_id);
+          return write(tx as unknown as Db, slug);
+        });
+      } catch (err) {
+        if (!isSlugConflict(err) || attempt >= MAX_ATTEMPTS) throw err;
+      }
     }
-  }
+  });
 }
 
 export async function insertFileRow(
@@ -106,13 +109,16 @@ export async function reviveFileRow(
 ): Promise<typeof files.$inferSelect> {
   if (row.slug) {
     try {
-      const [revived] = await db.transaction(async (tx) => {
-        await lockCatalogVocabulary(tx, row.tenant_id);
-        return tx
-          .update(files)
-          .set({ deleted_at: null, updated_at: new Date() })
-          .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
-          .returning();
+      const revived = await retryTransient(async () => {
+        const [updated] = await db.transaction(async (tx) => {
+          await lockCatalogVocabulary(tx, row.tenant_id);
+          return tx
+            .update(files)
+            .set({ deleted_at: null, updated_at: new Date() })
+            .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
+            .returning();
+        });
+        return updated;
       });
       return revived ?? row;
     } catch (err) {

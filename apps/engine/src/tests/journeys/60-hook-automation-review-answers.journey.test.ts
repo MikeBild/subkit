@@ -4,6 +4,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { automationReviewStopCondition } from "../../conversations/loop/stop-conditions.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
 import { reviewWorkflowAutomationTool } from "../../conversations/tools/review-workflow-automation.ts";
+import type { DraftDocument } from "../../conversations/types.ts";
 import { users } from "../../db/schema/index.ts";
 import {
   createJourneyCtx,
@@ -34,6 +35,7 @@ const principal = (role: "admin" | "member"): ResolvedPrincipal => ({
 });
 
 async function review(workflow_id: string, role: "admin" | "member" = "admin") {
+  let draft: DraftDocument = { workflow: { name: "", steps: [] } };
   const toolCtx = {
     db: ctx.db,
     tenant_id: ctx.tenantId,
@@ -42,6 +44,10 @@ async function review(workflow_id: string, role: "admin" | "member" = "admin") {
     principal: principal(role),
     connector_id: null,
     workflow_id,
+    getDraft: () => draft,
+    setDraft: async (next: DraftDocument) => {
+      draft = next;
+    },
   } as unknown as ToolContext;
   const output = await reviewWorkflowAutomationTool.execute(toolCtx, { workflow_id });
   const ends = automationReviewStopCondition({

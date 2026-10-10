@@ -226,11 +226,9 @@ describe("listWorkflowToolsForTenant — allowed_workflows", () => {
 
 describe("listWorkflowToolsForTenant — 40-row cap", () => {
   test("default limit caps at 40 rows", async () => {
-    const seeds: Promise<unknown>[] = [];
     for (let i = 0; i < 45; i++) {
-      seeds.push(seedWorkflow({ slug: `cap-wf-${i.toString().padStart(3, "0")}` }));
+      await seedWorkflow({ slug: `cap-wf-${i.toString().padStart(3, "0")}` });
     }
-    await Promise.all(seeds);
 
     const results = await listWorkflowToolsForTenant({ db: tdb.db, principal: makePrincipal() });
     expect(results.length).toBeLessThanOrEqual(40);
