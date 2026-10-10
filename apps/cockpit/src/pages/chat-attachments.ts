@@ -120,12 +120,14 @@ export async function linkAttachment(
 export async function createEmptyConversation(input: {
   target?: ConversationTarget;
   permissionMode?: "auto" | "ask" | "plan";
+  intakeItemIds?: readonly string[];
 }): Promise<Conversation> {
   const created = await apiRequest<{ conversation: Conversation }>("/v1/conversations", {
     method: "POST",
     body: JSON.stringify({
       ...(input.target ?? {}),
       ...(input.permissionMode ? { permission_mode: input.permissionMode } : {}),
+      ...(input.intakeItemIds?.length ? { intake_item_ids: input.intakeItemIds } : {}),
     }),
   });
   return created.conversation;

@@ -11,11 +11,14 @@ import {
   approvalHandleFromElicitationInput,
   elicitationInputForClient,
 } from "../../conversations/tools/ask-user/commit-intent.ts";
+import { resolvePublicBaseUrl } from "../../conversations/tools/usage-guidance.ts";
 import { suggestConversationsByTopic } from "../../conversations/topic-routing.ts";
 import type { Db } from "../../db/client.ts";
+import * as intake from "../../knowledge/index.ts";
 import { logger } from "../../logging/logger.ts";
 import { enqueueConversationRunTurn } from "../../queue/handlers/conversation-run-turn.ts";
 import { getBoss } from "../../queue/index.ts";
+import { can } from "../../rbac/evaluator.ts";
 import { MCP_ELICITATION_BLURB } from "../../tools/policy.ts";
 import { toMcpErrorText } from "../error-adapter.ts";
 import { zodToJsonSchema7 } from "../json-schema.ts";
@@ -43,6 +46,7 @@ const StartArgs = z.object({
   connector_id: z.string().optional(),
   workflow_id: z.string().optional(),
   message: z.string(),
+  intake_item_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
 });
 const AppendArgs = z.object({
   conversation_id: z.string(),
@@ -73,7 +77,7 @@ export function listConversationTools(): Tool[] {
     {
       name: "conversation_start",
       title: "Start conversation",
-      description: `Create or edit a workflow or connector, or set up the domain knowledge and conventions that ground authoring (knowledge sources and skills) — this is the ONLY way to author on this surface, and the entry point for OAuth authorization. There is no separate build, draft, or dry-run tool to call: the engine performs every authoring step inside this conversation and surfaces the results to you here. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
+      description: `Create or edit a workflow or connector, or set up the domain knowledge and conventions that ground authoring (knowledge sources and skills) — this is the ONLY way to author on this surface, and the entry point for OAuth authorization. There is no separate build, draft, or dry-run tool to call: the engine performs every authoring step inside this conversation and surfaces the results to you here. Pass intake_item_ids to begin a persisted, selected clip review; inspect and prepare the clips in the conversation, then use its authenticated Cockpit conversation link for a person's final knowledge confirmation. Opens a new authoring conversation and runs the first turn in the background — returns immediately with a task to poll via conversation_get. ${MCP_ELICITATION_BLURB}.`,
       inputSchema: jsonSchema(StartArgs),
       annotations: buildToolAnnotations("tenant_write", "conversation_start"),
       execution: { taskSupport: "optional" },
@@ -151,6 +155,28 @@ export interface HandleConversationToolResult {
   };
 }
 
+function cockpitConversationHandoff(conversationId: string): {
+  conversation_url?: string;
+  conversation_path: string;
+  conversation_next_action: string;
+} {
+  const conversation_path = `/cockpit/chat/${encodeURIComponent(conversationId)}`;
+  const base = resolvePublicBaseUrl();
+  if (base) {
+    return {
+      conversation_url: `${base}${conversation_path}`,
+      conversation_path,
+      conversation_next_action:
+        "Open the authenticated Cockpit conversation to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge.",
+    };
+  }
+  return {
+    conversation_path,
+    conversation_next_action:
+      "Open this path in the authenticated Cockpit to continue review and preparation. A person must confirm any intake proposal before it becomes knowledge.",
+  };
+}
+
 async function backgroundTurn(p: {
   db: Db;
   principal: ResolvedPrincipal;
@@ -164,6 +190,9 @@ async function backgroundTurn(p: {
   answer_channel?: "model_relay" | "mcp_native";
   reuse_task_id?: string;
   resumed?: boolean;
+  conversation_url?: string;
+  conversation_path?: string;
+  conversation_next_action?: string;
 }): Promise<HandleConversationToolResult> {
   const taskId = p.reuse_task_id
     ? p.reuse_task_id
@@ -246,6 +275,9 @@ async function backgroundTurn(p: {
     conversation_id: p.conversation_id,
     mcp_task_id: taskId,
     ...(p.resumed ? { resumed: true } : {}),
+    ...(p.conversation_url ? { conversation_url: p.conversation_url } : {}),
+    ...(p.conversation_path ? { conversation_path: p.conversation_path } : {}),
+    ...(p.conversation_next_action ? { conversation_next_action: p.conversation_next_action } : {}),
     status: "working",
     poll_with: "conversation_get",
     poll_arg: { conversation_id: p.conversation_id },
@@ -349,18 +381,34 @@ export async function handleConversationTool(
     if (name === "conversation_start") {
       const parsed = StartArgs.safeParse(args);
       if (!parsed.success) return errorText("message is required");
-      const resumable = playground
-        ? null
-        : await findResumableAuthoringConversation(
-            principal.tenant_id,
-            principal.id,
-            parsed.data.message,
-            db,
-            {
-              ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
-              ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
-            },
-          );
+      if (parsed.data.intake_item_ids?.length) {
+        const decision = await can(db, {
+          tenant_id: principal.tenant_id,
+          principal,
+          permission: "intake:read",
+        });
+        if (!decision.allow) return errorText("not authorized to review collected clips");
+        const selected = await Promise.all(
+          parsed.data.intake_item_ids.map((id) =>
+            intake.getIntakeItem(principal.tenant_id, id, db),
+          ),
+        );
+        if (selected.some((item) => item === null))
+          return errorText("selected intake item not found");
+      }
+      const resumable =
+        playground || parsed.data.intake_item_ids?.length
+          ? null
+          : await findResumableAuthoringConversation(
+              principal.tenant_id,
+              principal.id,
+              parsed.data.message,
+              db,
+              {
+                ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
+                ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
+              },
+            );
       if (resumable) {
         const appended = await svc.appendUserMessage(
           {
@@ -391,6 +439,9 @@ export async function handleConversationTool(
           principal,
           ...(parsed.data.connector_id ? { connector_id: parsed.data.connector_id } : {}),
           ...(parsed.data.workflow_id ? { workflow_id: parsed.data.workflow_id } : {}),
+          ...(parsed.data.intake_item_ids?.length
+            ? { intake_item_ids: parsed.data.intake_item_ids }
+            : {}),
           initial_message: parsed.data.message,
           ...(permission_mode ? { permission_mode } : {}),
           ...(playground ? { playground } : {}),
@@ -407,6 +458,7 @@ export async function handleConversationTool(
         user_message_id: created.initial_message_id,
         ...(permission_mode ? { permission_mode } : {}),
         ...(taskAugmented ? { taskAugmented } : {}),
+        ...cockpitConversationHandoff(created.conversation.id),
       });
     }
 

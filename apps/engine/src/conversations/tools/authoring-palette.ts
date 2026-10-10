@@ -56,6 +56,12 @@ const ALWAYS_AVAILABLE_CLEANUP: ReadonlySet<string> = new Set([
   "update_schedule",
   "update_subscription",
   "update_workflow",
+  "create_intake_proposal",
+  "discard_intake_item",
+  "restore_intake_item",
+  "move_intake_item",
+  "set_default_intake_category",
+  "revise_intake_proposal",
 ]);
 
 const CONNECTOR_AUTHORING: ReadonlySet<string> = new Set([
@@ -157,6 +163,9 @@ export const CHAT_READONLY_TOOLS: ReadonlySet<string> = new Set([
   "list_schedules",
   "review_workflow_automation",
   "run_workflow",
+  "list_intake_categories",
+  "list_intake_items",
+  "get_intake_item",
 ]);
 
 export function filterByChatReadOnlyPalette<T extends { name: string }>(tools: readonly T[]): T[] {

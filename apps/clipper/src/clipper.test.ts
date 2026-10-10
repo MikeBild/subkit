@@ -1,14 +1,39 @@
 import { expect, test } from "bun:test";
 import {
   attemptMatchesDocument,
+  clearDraft,
   clipPath,
   createDraft,
+  findDraft,
+  listDrafts,
+  loadDraft,
   markdown,
   normalizeEngineUrl,
   normalizeSourceUrl,
   parseInstallConfig,
   persistedCollectionSlug,
+  saveDraft,
 } from "./clipper.ts";
+
+function draftStorage(initial: Record<string, unknown> = {}) {
+  const values = { ...initial };
+  return {
+    get: async (keys?: string | string[]) => {
+      if (!keys) return { ...values };
+      const selected = Array.isArray(keys) ? keys : [keys];
+      return Object.fromEntries(
+        selected.flatMap((key) => (key in values ? [[key, values[key]]] : [])),
+      );
+    },
+    set: async (next: Record<string, unknown>) => {
+      Object.assign(values, next);
+    },
+    remove: async (keys: string | string[]) => {
+      for (const key of Array.isArray(keys) ? keys : [keys]) delete values[key];
+    },
+    values,
+  };
+}
 
 test("engine URLs permit HTTPS and local HTTP only", () => {
   expect(normalizeEngineUrl("https://engine.example/api/")).toBe("https://engine.example/api");
@@ -56,7 +81,67 @@ test("copy paths and capture ownership remain stable across a retry", async () =
   ).toBe(42);
 });
 
-test("a collection creation retry keeps its original persisted slug", () => {
+test("drafts are isolated by engine and immutable capture URL", async () => {
+  const storage = draftStorage();
+  const first = createDraft(
+    { title: "First", sourceUrl: "https://example.test/page#one", capturedAt: "now" },
+    "body",
+    "https://engine.example",
+  );
+  const second = createDraft(
+    { title: "Second", sourceUrl: "https://example.test/page", capturedAt: "later" },
+    "body",
+    "https://other.example",
+  );
+  await saveDraft(storage, first);
+  await saveDraft(storage, second);
+  expect((await listDrafts(storage)).map((draft) => draft.id)).toContain(first.id);
+  expect(
+    await findDraft(storage, "https://engine.example", "https://example.test/page#two"),
+  ).toMatchObject({
+    id: first.id,
+    captureUrl: "https://example.test/page",
+  });
+  expect(await loadDraft(storage, second.id)).toMatchObject({ id: second.id });
+});
+
+test("legacy draft storage migrates without losing editable fields", async () => {
+  const legacy = createDraft(
+    { title: "Old", sourceUrl: "https://example.test/original", capturedAt: "then" },
+    "body",
+    "https://engine.example",
+  );
+  const { captureUrl: _, createdAt: __, updatedAt: ___, ...oldDraft } = legacy;
+  const storage = draftStorage({ draft: oldDraft });
+  expect(await loadDraft(storage, legacy.id)).toMatchObject({
+    id: legacy.id,
+    captureUrl: "https://example.test/original",
+    metadata: { sourceUrl: "https://example.test/original" },
+  });
+  expect(storage.values.draft).toBeUndefined();
+  expect(storage.values[`draft:${legacy.id}`]).toBeDefined();
+});
+
+test("discarding a draft does not remove other pages", async () => {
+  const storage = draftStorage();
+  const first = createDraft(
+    { title: "First", sourceUrl: "https://example.test/first", capturedAt: "now" },
+    "body",
+    "https://engine.example",
+  );
+  const second = createDraft(
+    { title: "Second", sourceUrl: "https://example.test/second", capturedAt: "now" },
+    "body",
+    "https://engine.example",
+  );
+  await saveDraft(storage, first);
+  await saveDraft(storage, second);
+  await clearDraft(storage, first.id);
+  expect(await loadDraft(storage, first.id)).toBeUndefined();
+  expect(await loadDraft(storage, second.id)).toMatchObject({ id: second.id });
+});
+
+test("a persisted knowledge collection slug wins over a generated slug", () => {
   expect(persistedCollectionSlug("saved-slug", undefined, "new-slug")).toBe("saved-slug");
   expect(persistedCollectionSlug(undefined, "attempt-slug", "new-slug")).toBe("attempt-slug");
 });

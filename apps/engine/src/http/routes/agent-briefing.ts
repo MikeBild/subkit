@@ -43,6 +43,16 @@ const AgentBriefingResponse = z
       .array(z.string())
       .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
     proposed_candidates: z.number().int(),
+    intake: z
+      .object({
+        collected: z.number().int().nonnegative(),
+        reviewing: z.number().int().nonnegative(),
+        proposals: z.number().int().nonnegative(),
+      })
+      .nullable()
+      .describe(
+        "Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content.",
+      ),
   })
   .openapi("AgentBriefingResponse");
 
@@ -156,17 +166,26 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("domains must be comma-separated lowercase slugs (a-z, 0-9, -, _)");
     }
 
-    const [includeKnowledge, workflowVisible, connectorVisible] = await Promise.all([
-      canReadKnowledge(db, principal),
-      catalogVisibility(db, principal, "workflow:read", "workflow"),
-      catalogVisibility(db, principal, "connector:read", "connector"),
-    ]);
+    const [includeKnowledge, workflowVisible, connectorVisible, intakeDecision] = await Promise.all(
+      [
+        canReadKnowledge(db, principal),
+        catalogVisibility(db, principal, "workflow:read", "workflow"),
+        catalogVisibility(db, principal, "connector:read", "connector"),
+        can(db, {
+          tenant_id: principal.tenant_id,
+          principal,
+          permission: "intake:read",
+          quiet: true,
+        }),
+      ],
+    );
 
     const result = await buildAgentBriefing({
       tenant_id: principal.tenant_id,
       domains,
       budget_tokens: q.budget_tokens ?? DEFAULT_BRIEFING_BUDGET_TOKENS,
       include_knowledge_index: includeKnowledge,
+      include_intake: intakeDecision.allow,
       workflow_visible: workflowVisible,
       connector_visible: connectorVisible,
       db,

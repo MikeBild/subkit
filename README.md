@@ -76,32 +76,76 @@ sk
 
 `sk --help` lists every command. The engine describes itself at `/openapi.json` and `/llms.txt`.
 
-## Save web pages to SubKit knowledge
+## Collect ideas and turn them into knowledge
+
+Collect pages and ideas now; decide later what becomes knowledge. Use the shared categories to organize clips, with Inbox as your personal starting default.
+You can choose another default category at any time.
+The process stays the same: **collect → review in chat → confirm → knowledge**.
 
 Run `sk clipper install` to unpack the Chrome extension shipped inside the CLI.
 In Chrome, open `chrome://extensions`, enable Developer mode, choose **Load unpacked**,
 and select the folder printed by the command. The installer prefills the engine URL
 from your active profile. In the extension settings, enter a separate API key with
-`knowledge:read` and `knowledge:write` access and allow access to your engine host.
-You can change the engine URL in those settings; no server address is built into the extension.
+`intake:read` and `intake:write` access and allow access to your engine host.
+The clipper needs no permission to admit knowledge. You can change the engine URL
+in its settings; no server address is built into the extension.
 
 Use the toolbar, page context menu, or a shortcut configured at `chrome://extensions/shortcuts`
-to capture an article or selected text. Review the Markdown, choose a global or
-workflow knowledge collection, then save. A new collection is created with its first clip.
-If a page is already in the collection, choose replacement or a separate copy.
-Image links are retained; image files are not uploaded. Failed saves remain local
-until you retry or discard them.
+to collect an article or selected text. The source address is captured automatically.
+Review the preview, optionally add why it matters, and press **Collect**. Your default
+category is selected, initially Inbox. You can choose an existing category or enter
+a new one. Categories are shared with the rest of SubKit; processing status stays separate.
+The default belongs to the authenticated identity; a shared API key shares that identity.
+Intake visibility follows your tenant's permissions, rather than making categories private.
+
+In the Cockpit, open **Intake** to review and organize collected items using the same
+table and category controls as Knowledge Sources. Open an item to see its content
+and original source, edit its title, content or category, or start a review chat.
+Edits preserve the captured original and require reviewing any affected proposal again.
+The chat links
+to the item's proposal for confirmation; completed decisions remain in its history.
+In a new chat, the category-aware review suggestion helps you review new entries
+together. An item's chat action instead reviews only that selected item, using a visible
+`@` reference. Chat actions for existing workflows, connectors, runs, sources and skills
+also carry a reference to the selected record. You can also ask:
+"Look through my new Research entries. Which are
+useful to us? Suggest what we should retain as knowledge." The chat prepares a proposal
+with the exact content, original sources, and destination. You review it and explicitly
+confirm **Admit as knowledge**. Only then can ordinary knowledge retrieval use the result.
+You can discard an unneeded clip during review and restore it later; discarding
+preserves its original source and never turns it into knowledge.
+Changing the proposal or its sources requires another review. The original clip remains
+linked to the resulting knowledge. Moving clips or renaming a category never admits its clips. Category changes affecting
+a proposal require reviewing it again.
+
+The clipper keeps separate local drafts for each page and engine, including unsent notes.
+Opening another page captures that page; use the draft selector to resume unsent edits.
+An open clipper follows URL changes and tab switches in its source window. If Chrome
+requires access to a new site, open the clipper from that site's toolbar icon. Failed
+captures remain local for retry; a repeated request does not create another item.
+Original source author and publication time stay separate from who collected the page
+and when. Unavailable source metadata remains unknown.
+
+On YouTube, the clipper extracts video metadata, description, and an available original
+transcript. Description and transcript can be included separately under Details.
+Availability depends on the video and access to captions. Extraction removes navigation
+and recommendations without summarizing the content. If no main content can be identified,
+the clipper reports that instead of collecting the entire page. Markdown is editable;
+the original captured text remains preserved. Image links are retained; image files
+are not uploaded.
 
 Run `sk clipper install` after updating the CLI, then reload the extension in Chrome.
 Use `sk clipper install --dir <directory> --no-open` to choose a directory and skip
 opening Chrome. Updating an existing installation preserves its connection settings.
 For a new installation, `--engine-url <url>` overrides the active profile's address.
-The engine also serves the same embedded archive at `/install/clipper.zip`, with its
-SHA-256 in the `x-subkit-sha256` response header. HTTPS engines and local HTTP engines
-on `localhost`, `127.0.0.1`, or `[::1]` are supported, including an optional URL path prefix.
+The engine serves the same embedded archive at `/install/clipper.zip`, with its SHA-256
+in the `x-subkit-sha256` response header. HTTPS engines and local HTTP engines on
+`localhost`, `127.0.0.1`, or `[::1]` are supported, including an optional URL path prefix.
 Changing the engine address requires entering the key for that engine; an existing
-draft stays associated with its original engine. If another person changes the
-collection while you save, review the conflict before trying again.
+draft stays associated with its original engine. Older engines require an update to
+support intake; the clipper never falls back to writing directly into knowledge.
+Existing knowledge sources remain unchanged, and old local drafts can be explicitly
+collected into intake without claiming that edited drafts are original page captures.
 
 ## Execution identity and permission
 
@@ -144,6 +188,61 @@ Run `sk status`, then `sk agent briefing --json` from the repository to verify t
 Hooks walk up from the working directory for `.sk/agent.json`; without it they stay silent. Run `sk agent init --domains <category>[,<category>]` once in each repository and commit that file. Each successful briefing gives the model the full domain context and shows you a concise status with loaded materials and any skill proposals awaiting review. If the engine is unreachable, the key is missing, or the declaration is invalid, the client shows a warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
 
 For open-ended check-ins, the briefing tells the agent to interpret the question using the domain declared by the current repository and the connected sources that best answer it. It distinguishes live service state from repository changes and static knowledge, and reports when a relevant source is unavailable. A repository without `.sk/agent.json` does not inherit another folder's briefing.
+
+### Review collected material with your coding agent
+
+Collected pages remain material to review. With `intake:read`, the briefing adds
+a short tenant-wide count of collected entries and pending knowledge proposals.
+It does not load their text, treat them as instructions, or claim they belong to
+the repository's domain. Without that permission the reminder is omitted.
+
+Ask: "Review the new entries in Research. Which are useful? Propose what we should
+keep as knowledge." Review uses a saved SubKit conversation. MCP clients start
+it through `conversation_start`; `intake_item_ids` selects particular clips and
+keeps that selection fixed. The returned Cockpit link continues the same review.
+Item-reading and proposal tools need this saved conversation and cannot run as
+standalone MCP calls. The clipper's API key needs only intake read/write;
+the person confirming a proposal needs `intake:confirm` and `knowledge:write`.
+
+From the terminal, `sk intake list` shows collected items in your default category. Use
+`sk intake list --category research` to see collected items and
+`sk intake review --category research` to start their review. Without a
+selection, review uses your default category. `--items <comma-separated-ids>`
+selects particular entries; `--json` returns machine-readable results. The command
+prints the Cockpit link for continuing the conversation and reviewing proposals.
+Use `sk intake default --category research` to change your personal default,
+`sk intake move --item <id> --category research` to organize an entry, and
+`sk intake discard --item <id>` or `sk intake restore --item <id>` to change its
+review state. These actions preserve the original clip and never admit knowledge.
+
+The proposal shows its sources, exact text and knowledge destination. An existing
+destination keeps its topic assignment. For a new destination, include the topic
+category or `domain:<slug>` tag in the reviewed proposal so the resulting knowledge
+can appear in the intended repository briefing. Changing that assignment requires
+reviewing the changed proposal. After confirmation, run `sk agent briefing --json`
+to check `knowledge_sources`, then search for the accepted material. The original
+clip remains linked. A new session loads the updated briefing.
+
+### Verify an installed intake API
+
+During intake development, `bun run verify:intake` runs the focused type,
+domain, HTTP, briefing, MCP, CLI and browser checks, including a real local
+PostgreSQL/API smoke flow. It avoids the repository-wide test suite. Visual acceptance is performed manually;
+automated verification retains functional browser checks without a visual matrix.
+
+`bun run verify:intake-live` checks a selected server through its public API.
+Set `SK_ENGINE_URL` and `SK_INTAKE_TEST_KEY` outside the repository. The default
+run is read-only and reports compatibility, readiness and the delivered archive.
+It is separate from the local `bun run verify` gate.
+
+For a synthetic write check, use a dedicated test tenant and its user key:
+add `--allow-writes --test-tenant-id <uuid> --run-id <unique-run-name>
+--json <report-path>`. The tenant must match the authenticated identity. The
+check collects in its own category, tests exclusion before confirmation,
+exact confirmation and retry, provenance, search and the domain briefing.
+It reports timings and retained resource IDs. Intake has no deletion API, so
+test records remain for inspection. This API check does not measure model
+judgment or replace a real browser/chat verification. It never deploys code.
 
 ## License
 

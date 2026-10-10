@@ -23,6 +23,8 @@ import {
 import { type CatalogKind, normalizeCategoryInput } from "./catalog-metadata-model";
 import { catalogAICount } from "./catalog-origin-model";
 
+type CatalogCategoryKind = CatalogKind | "intake";
+
 const WRITE_PERMISSIONS = [
   "workflow:write",
   "connector:write",
@@ -31,7 +33,7 @@ const WRITE_PERMISSIONS = [
   "file:write",
 ];
 
-export function CatalogCategories({ kind }: { kind: CatalogKind }) {
+export function CatalogCategories({ kind }: { kind: CatalogCategoryKind }) {
   const { t } = useI18n();
   const { permissions } = useSession();
   const client = useQueryClient();
@@ -47,13 +49,15 @@ export function CatalogCategories({ kind }: { kind: CatalogKind }) {
     queryKey: ["catalog-categories"],
     queryFn: () => apiRequest<{ categories: CategoryUsage[] }>("/v1/categories"),
   });
-  const canRename = WRITE_PERMISSIONS.every((permission) => permissions.includes(permission));
+  const canRename =
+    WRITE_PERMISSIONS.every((permission) => permissions.includes(permission)) &&
+    (kind !== "intake" || permissions.includes("intake:write"));
   const categories = query.data?.categories ?? [];
   const count = categories.filter(
     (category) =>
       category.category !== UNCATEGORIZED &&
       category.category !== "platform" &&
-      category.counts[kind] > 0,
+      (category.counts[kind] ?? 0) > 0,
   ).length;
   const normalized = normalizeCategoryInput(name);
   const purposeInvalid = purpose.trim().length > 2000;
@@ -96,6 +100,7 @@ export function CatalogCategories({ kind }: { kind: CatalogKind }) {
           "knowledge-source",
           "skill",
           "file",
+          "intake",
         ].map((key) => client.invalidateQueries({ queryKey: [key] })),
       );
     },

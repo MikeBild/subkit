@@ -1,4 +1,14 @@
-import { BookOpen, Cable, CircleAlert, FileText, Layers, Sparkles, Workflow } from "lucide-react";
+import {
+  BookOpen,
+  Cable,
+  CircleAlert,
+  FileText,
+  Inbox,
+  Layers,
+  Play,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 import {
   type KeyboardEvent,
   type RefObject,
@@ -40,6 +50,8 @@ const TYPE_ORDER: MentionCandidateType[] = [
   "workflow",
   "connector",
   "knowledge_source",
+  "execution",
+  "intake_item",
   "skill",
   "file",
 ];
@@ -49,6 +61,8 @@ export const TYPE_ICON: Record<MentionCandidateType, typeof Workflow> = {
   workflow: Workflow,
   connector: Cable,
   knowledge_source: BookOpen,
+  execution: Play,
+  intake_item: Inbox,
   skill: Sparkles,
   file: FileText,
 };
@@ -58,6 +72,8 @@ const GROUP_HEADING = {
   workflow: "chat.mention.workflows",
   connector: "chat.mention.connectors",
   knowledge_source: "chat.mention.sources",
+  execution: "chat.mention.executions",
+  intake_item: "chat.mention.intakeItems",
   skill: "chat.mention.skills",
   file: "chat.mention.files",
 } as const;

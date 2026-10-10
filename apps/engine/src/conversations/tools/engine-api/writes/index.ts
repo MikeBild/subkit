@@ -1,4 +1,5 @@
 import type { ConversationTool } from "../../index.ts";
+import { intakeTools } from "../intake.ts";
 import { analyzeKnowledgeSourceTool } from "./analyze-knowledge-source.ts";
 import { approvePatchCandidateTool, approveSkillCandidateTool } from "./candidates.ts";
 import { cleanupWriteTools } from "./cleanup.ts";
@@ -63,4 +64,5 @@ export const ALL_ENGINE_API_WRITE_TOOLS: ConversationTool[] = [
   updateSubscriptionTool,
   ...scheduleTools,
   ...cleanupWriteTools,
+  ...intakeTools.filter((tool) => tool.category !== "tenant_read"),
 ];

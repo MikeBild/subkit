@@ -2,16 +2,20 @@ import { eq } from "drizzle-orm";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
+import { getConnector } from "../../connectors/service.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
 import type { Db } from "../../db/client.ts";
 import { conversations } from "../../db/schema/index.ts";
+import { getIntakeItem } from "../../knowledge/intake.ts";
 import { getMockProvider } from "../../llm/mock-provider.ts";
 import { log } from "../../logging/logger.ts";
+import { can } from "../../rbac/evaluator.ts";
+import { getWorkflow } from "../../workflows/service.ts";
 import { resolveAttachmentSlugsInText } from "../attachments.ts";
 import { createEmptyDraftDocument, withFocusedExecution } from "../authoring-state.ts";
 import type { ConversationSurface } from "../lifecycle-view.ts";
 import { appendMessage } from "../persist.ts";
-import type { ConversationReference } from "../references.ts";
+import { type ConversationReference, dedupeReferences } from "../references.ts";
 import { listBaselineSlugs, loadActivationCatalog } from "../skill-autoload.ts";
 import { deriveConversationTitle } from "../title.ts";
 import type { ConversationRecord, DraftDocument, LatestExecutionSummary } from "../types.ts";
@@ -33,9 +37,93 @@ export interface CreateConversationParams {
   origin_client?: string | null;
   surface?: ConversationSurface | null;
   playground?: boolean;
+  intake_item_ids?: string[] | null;
 }
 
 const PLAYGROUND_PRELOADED_SKILL = "workflow-authoring";
+
+function canonicalLabel(value: string, fallback: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N} _./-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+  return normalized || fallback;
+}
+
+async function canRead(
+  p: CreateConversationParams,
+  exec: Db,
+  permission: string,
+  resource: { type: string; id: string },
+): Promise<boolean> {
+  if (!p.principal) return true;
+  return (
+    await can(exec, {
+      tenant_id: p.tenant_id,
+      principal: p.principal,
+      permission,
+      resource,
+    })
+  ).allow;
+}
+
+async function canonicalReferences(
+  p: CreateConversationParams,
+  focus: LatestExecutionSummary | null,
+  exec: Db,
+): Promise<ConversationReference[]> {
+  const refs = [...(p.references ?? [])];
+  if (p.workflow_id) {
+    const workflow = await getWorkflow(p.tenant_id, p.workflow_id, exec);
+    if (
+      workflow &&
+      (await canRead(p, exec, "workflow:read", { type: "workflow", id: workflow.id }))
+    )
+      refs.push({
+        type: "workflow",
+        id: workflow.id,
+        label: canonicalLabel(workflow.name, "Workflow"),
+      });
+  }
+  if (p.connector_id) {
+    const connector = await getConnector(p.tenant_id, p.connector_id, exec);
+    if (
+      connector &&
+      (await canRead(p, exec, "connector:read", { type: "connector", id: connector.id }))
+    )
+      refs.push({
+        type: "connector",
+        id: connector.id,
+        label: canonicalLabel(connector.display_name, "Connector"),
+      });
+  }
+  if (
+    focus &&
+    (await canRead(p, exec, "execution:read", { type: "execution", id: focus.execution_id }))
+  ) {
+    const workflow = focus.workflow_id
+      ? await getWorkflow(p.tenant_id, focus.workflow_id, exec)
+      : null;
+    const workflowLabel = workflow ? canonicalLabel(workflow.name, "Workflow") : "Workflow";
+    refs.push({
+      type: "execution",
+      id: focus.execution_id,
+      label: `${workflowLabel} ${focus.status}`,
+    });
+  }
+  for (const id of p.intake_item_ids ?? []) {
+    const item = await getIntakeItem(p.tenant_id, id, exec);
+    if (item && (await canRead(p, exec, "intake:read", { type: "intake_item", id: item.id })))
+      refs.push({
+        type: "intake_item",
+        id: item.id,
+        label: canonicalLabel(item.title, "Collected item"),
+      });
+  }
+  return dedupeReferences(refs);
+}
 
 export interface CreateConversationResult {
   conversation: ConversationRecord;
@@ -52,15 +140,18 @@ export async function createConversation(
   const memory = typeof p.memory === "string" ? p.memory : null;
   const initialPermissionMode = normalizePermissionMode(p.permission_mode) ?? "auto";
   const focus = p.focus_execution ?? null;
+  const references = await canonicalReferences(p, focus, exec);
   const initialDraft: DraftDocument = focus
     ? withFocusedExecution(createEmptyDraftDocument(), focus)
     : createEmptyDraftDocument();
   const playground = p.playground === true;
   const targetWorkflowId = playground ? null : (p.workflow_id ?? focus?.workflow_id ?? null);
-  if (initialPermissionMode || playground) {
+  if (initialPermissionMode || playground || p.intake_item_ids?.length) {
     initialDraft.session = {
       ...(initialPermissionMode ? { permission_mode: initialPermissionMode } : {}),
       ...(playground ? { playground: true } : {}),
+      ...(p.intake_item_ids?.length ? { intake_item_ids: [...new Set(p.intake_item_ids)] } : {}),
+      ...(p.intake_item_ids?.length ? { intake_review_locked: true } : {}),
     };
   }
   const catalog = await loadActivationCatalog(p.tenant_id, exec);
@@ -190,10 +281,10 @@ export async function createConversation(
       ...(p.principal !== undefined ? { principal: p.principal } : {}),
     });
     initialMessage = rewrite.text;
-    const references = p.references && p.references.length > 0 ? p.references : null;
+    const persistedReferences = references.length > 0 ? references : null;
     initialMessageId = await appendMessage(exec, p.tenant_id, row.id, "user", {
       text: initialMessage,
-      ...(references ? { references } : {}),
+      ...(persistedReferences ? { references: persistedReferences } : {}),
     });
     if (row.title === null) {
       row.title = deriveConversationTitle({ text: initialMessage });
@@ -204,7 +295,7 @@ export async function createConversation(
     conversation: rowToRecord(row),
     initial_message: initialMessage,
     initial_message_id: initialMessageId,
-    references: p.references && p.references.length > 0 ? p.references : null,
+    references: references.length > 0 ? references : null,
     user_memory: memory,
   };
 }

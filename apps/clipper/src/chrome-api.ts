@@ -1,4 +1,4 @@
-import type { CaptureMode } from "./types.ts";
+import type { CaptureMode, Draft } from "./types.ts";
 
 type StorageRecord = Record<string, unknown>;
 
@@ -26,9 +26,21 @@ interface ChromeApi {
     openOptionsPage(): Promise<void>;
   };
   tabs: {
-    query(queryInfo: { active?: boolean; currentWindow?: boolean }): Promise<{ id?: number }[]>;
+    query(queryInfo: {
+      active?: boolean;
+      currentWindow?: boolean;
+    }): Promise<{ id?: number; url?: string; windowId?: number }[]>;
+    get(tabId: number): Promise<{ id?: number; url?: string; windowId?: number }>;
     create(createProperties: { url: string }): Promise<void>;
     sendMessage(tabId: number, message: unknown): Promise<unknown>;
+    onActivated: {
+      addListener(listener: (activeInfo: { tabId: number; windowId: number }) => void): void;
+    };
+    onUpdated: {
+      addListener(
+        listener: (tabId: number, changeInfo: { url?: string }, tab: { url?: string }) => void,
+      ): void;
+    };
   };
   scripting: {
     executeScript(details: { target: { tabId: number }; files: string[] }): Promise<unknown>;
@@ -53,6 +65,10 @@ export const chromeApi = (globalThis as unknown as { chrome: ChromeApi }).chrome
 
 export type RuntimeMessage =
   | { type: "capture"; mode: CaptureMode }
-  | { type: "start-capture"; mode: CaptureMode }
-  | { type: "discard-and-capture"; mode: CaptureMode }
+  | { type: "start-capture"; mode: CaptureMode; draftId?: string; captureTabId?: number }
+  | { type: "discard-and-capture"; mode: CaptureMode; draftId?: string; captureTabId?: number }
+  | { type: "list-drafts" }
+  | { type: "load-draft"; draftId: string }
+  | { type: "save-draft"; draft: Draft }
+  | { type: "clear-draft"; draftId: string }
   | { type: "settings-updated" };

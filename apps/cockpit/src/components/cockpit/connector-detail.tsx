@@ -555,7 +555,13 @@ export function ConnectorWorkflows({
             permissions.includes("conversation:write") ? (
               <Button asChild variant="outline" size="sm">
                 <a
-                  href={absolute(chatNewHref({ prompt: t("create.workflow.prompt"), connectorId }))}
+                  href={absolute(
+                    chatNewHref({
+                      prompt: t("create.workflow.prompt"),
+                      connectorId,
+                      references: [{ type: "connector", id: connectorId }],
+                    }),
+                  )}
                   data-testid="connector-workflows-create"
                 >
                   {t("connectorDetail.usage.createInChat")}

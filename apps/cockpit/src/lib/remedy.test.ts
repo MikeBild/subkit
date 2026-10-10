@@ -42,7 +42,17 @@ describe("remedyFor", () => {
     [
       "otherwise the chat, with workflow and run attached",
       base,
-      { kind: "chat", href: chatNewHref({ workflowId: WF, executionId: RUN }) },
+      {
+        kind: "chat",
+        href: chatNewHref({
+          workflowId: WF,
+          executionId: RUN,
+          references: [
+            { type: "workflow", id: WF },
+            { type: "execution", id: RUN },
+          ],
+        }),
+      },
     ],
     [
       "a repair proposal needs no chat permission",
@@ -92,7 +102,17 @@ describe("remedyFor", () => {
 
   test("carries the opening question into the chat address", () => {
     const remedy = remedyFor({ ...base, prompt: "Warum?" });
-    expect(remedy?.href).toBe(chatNewHref({ prompt: "Warum?", workflowId: WF, executionId: RUN }));
+    expect(remedy?.href).toBe(
+      chatNewHref({
+        prompt: "Warum?",
+        workflowId: WF,
+        executionId: RUN,
+        references: [
+          { type: "workflow", id: WF },
+          { type: "execution", id: RUN },
+        ],
+      }),
+    );
   });
 
   test("every remedy address is router-relative", () => {

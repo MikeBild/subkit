@@ -1,4 +1,7 @@
-import type { ConversationReference } from "./references.ts";
+import {
+  type ConversationReference,
+  isConversationReferenceType,
+} from "@shared/conversation-reference.ts";
 import type {
   ContentPart,
   ConversationMessageRecord,
@@ -95,7 +98,7 @@ function isReferenceArray(value: unknown): value is ConversationReference[] {
         typeof r === "object" &&
         r !== null &&
         typeof (r as { id?: unknown }).id === "string" &&
-        typeof (r as { type?: unknown }).type === "string" &&
+        isConversationReferenceType((r as { type?: unknown }).type) &&
         typeof (r as { label?: unknown }).label === "string",
     )
   );

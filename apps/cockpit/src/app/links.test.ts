@@ -265,7 +265,28 @@ describe("a new conversation", () => {
       workflowId: ID,
       connectorId: "c-1",
       executionId: "e-1",
+      intakeItemIds: [],
+      references: [],
     });
+  });
+
+  test("structured references preserve only supported UUID records", () => {
+    const href = chatNewHref({
+      references: [
+        { type: "intake_item", id: ID },
+        { type: "workflow", id: ID },
+        { type: "execution", id: ID },
+        { type: "intake_item", id: ID },
+      ],
+    });
+    expect(chatSeedFromUrl(query(href)).references).toEqual([
+      { type: "intake_item", id: ID },
+      { type: "workflow", id: ID },
+      { type: "execution", id: ID },
+    ]);
+    expect(chatSeedFromUrl(`?references=intake_item:not-an-id,unknown:${ID}`).references).toEqual(
+      [],
+    );
   });
 
   test("a chat opened for a run creates its conversation with that run and its workflow", () => {

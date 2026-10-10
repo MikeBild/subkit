@@ -9,6 +9,12 @@ export {
   isConnectorOperationError,
 } from "./connector-operation-error.ts";
 export {
+  CONVERSATION_REFERENCE_TYPES,
+  type ConversationReference,
+  type ConversationReferenceType,
+  isConversationReferenceType,
+} from "./conversation-reference.ts";
+export {
   OAUTH_AUTHORIZATION_URL_FIELD,
   OAuthApprovalInputSchema,
 } from "./elicitation-constants.ts";

@@ -41,7 +41,7 @@ import {
   prerequisitesForTool,
   type ToolPolicies,
 } from "../../tool-policies.ts";
-import type { TurnEvent } from "../../types.ts";
+import type { DraftDocument, TurnEvent } from "../../types.ts";
 import { withApprovalHandle, withoutApprovalHandle } from "../ask-user/commit-intent.ts";
 import { decodeAskUserPromptEscapes } from "../ask-user/decode-prompt-escapes.ts";
 import { compileDescription } from "../describe.ts";
@@ -78,6 +78,22 @@ import {
 } from "./state.ts";
 
 const PRIOR_APPROVAL_WINDOW_MS = 5 * 60 * 1000;
+
+const INTAKE_REVIEW_KNOWLEDGE_WRITES = new Set([
+  "create_knowledge_source",
+  "update_knowledge_source",
+  "analyze_knowledge_source",
+  "delete_knowledge_source",
+  "save_learning",
+  "approve_skill_candidate",
+]);
+
+export function intakeReviewBlocksKnowledgeWrite(draft: DraftDocument, tool: string): boolean {
+  return Boolean(
+    (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) &&
+      INTAKE_REVIEW_KNOWLEDGE_WRITES.has(tool),
+  );
+}
 
 let heapSnapshotWritten = false;
 
@@ -178,6 +194,16 @@ export function wrapOne(
       });
       await prevChain;
       const executeBody = async (): Promise<WrappedToolOutput> => {
+        if (intakeReviewBlocksKnowledgeWrite(ctx.getDraft(), inner.name)) {
+          return {
+            ok: false,
+            data: {
+              error: "intake_review_requires_human_confirmation",
+              message:
+                "This conversation is reviewing collected clips. Create or revise an intake proposal; a person confirms the exact content, sources, and destination in the review before it becomes knowledge.",
+            },
+          };
+        }
         const needed = prerequisitesForTool(inner.name);
         const missingSkills = needed.filter((slug) => !loadedSkills.includes(slug));
         if (missingSkills.length > 0) {

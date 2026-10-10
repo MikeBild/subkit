@@ -25,6 +25,7 @@ import { healthCommand } from "./commands/health.ts";
 import { hooksCommand } from "./commands/hooks.ts";
 import { initCommand } from "./commands/init.ts";
 import { installCommand } from "./commands/install.ts";
+import { intakeCommand } from "./commands/intake.ts";
 import { invitesCommand } from "./commands/invites.ts";
 import { joinCommand } from "./commands/join.ts";
 import { knowledgeSourcesCommand } from "./commands/knowledge-sources.ts";
@@ -443,6 +444,7 @@ const mainCommand = defineCommand({
     diagnostics: diagnosticsCommand,
     stats: statsCommand,
     init: initCommand,
+    intake: intakeCommand,
     install: installCommand,
     join: joinCommand,
     rbac: rbacCommand,
@@ -610,6 +612,7 @@ export const SUB_COMMANDS: Record<string, SubEntry> = {
   diagnostics: { command: diagnosticsCommand, requires: "audit:read" },
   stats: { command: statsCommand, requires: "stats:read" },
   init: { command: initCommand },
+  intake: { command: intakeCommand, requires: "intake:read" },
   install: { command: installCommand, requires: "connector:write" },
   join: { command: joinCommand },
   rbac: { command: rbacCommand, requires: "rbac:read" },

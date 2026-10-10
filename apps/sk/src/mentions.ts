@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import type { ConversationReferenceType } from "@shared/conversation-reference.ts";
 import type { EngineClient } from "./engine-client.ts";
 
 export interface MentionResolveOptions {
@@ -10,7 +11,7 @@ export interface MentionResolveOptions {
 }
 
 export interface ConversationReference {
-  type: "workflow" | "connector";
+  type: ConversationReferenceType;
   id: string;
   label: string;
 }
@@ -25,12 +26,16 @@ export interface ResolvedMentions {
 const REFERENCE_KINDS: Record<string, ConversationReference["type"]> = {
   workflow: "workflow",
   connector: "connector",
+  skill: "skill",
+  "knowledge-source": "knowledge_source",
+  execution: "execution",
+  "intake-item": "intake_item",
 };
 
 const LABEL_OK = /^[\p{L}\p{N} _./-]{1,200}$/u;
 
 function referenceLabel(payload: Record<string, unknown>, written: string): string {
-  for (const key of ["slug", "name", "display_name"]) {
+  for (const key of ["slug", "name", "display_name", "title"]) {
     const value = payload[key];
     if (typeof value === "string" && LABEL_OK.test(value)) return value;
   }
@@ -82,6 +87,7 @@ export async function resolveMentions(
       user: (id) => `/v1/identity/users/${encodeURIComponent(id)}`,
       audit: (id) => `/v1/audit-log?id=${encodeURIComponent(id)}`,
       "knowledge-source": (id) => `/v1/knowledge-sources/${encodeURIComponent(id)}`,
+      "intake-item": (id) => `/v1/intake/items/${encodeURIComponent(id)}`,
     };
     if (kind && rest && opts.client && ENTITY_PATHS[kind]) {
       try {

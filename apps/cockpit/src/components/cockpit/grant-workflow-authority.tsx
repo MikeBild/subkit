@@ -455,7 +455,13 @@ export function GrantWorkflowAuthority({
     environment,
     open && Boolean(unsupported) && (repairable.data?.proposals.length ?? 0) === 0,
   );
-  const adjustUrl = absolute(chatNewHref({ workflowId, prompt: t("authority.adjustPrompt") }));
+  const adjustUrl = absolute(
+    chatNewHref({
+      workflowId,
+      prompt: t("authority.adjustPrompt"),
+      references: [{ type: "workflow", id: workflowId }],
+    }),
+  );
   function openDialog(value: boolean) {
     if (submitting) return;
     setOpen(value);

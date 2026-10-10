@@ -9,11 +9,21 @@ export interface ChoiceCardItem {
   testId: string;
 }
 
-export function ChoiceCards({ items }: { items: readonly ChoiceCardItem[] }) {
+export function ChoiceCards({
+  items,
+  compact = false,
+}: {
+  items: readonly ChoiceCardItem[];
+  compact?: boolean;
+}) {
   const id = useId();
   return (
     <div
-      className={cn("grid gap-3", items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2")}
+      className={cn(
+        "grid",
+        compact ? "gap-2 sm:grid-cols-2" : "gap-3",
+        !compact && (items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"),
+      )}
       data-slot="choices"
     >
       {items.map((item, index) => (
@@ -23,12 +33,22 @@ export function ChoiceCards({ items }: { items: readonly ChoiceCardItem[] }) {
           onClick={item.onSelect}
           aria-labelledby={`${id}-${index}-t`}
           aria-describedby={`${id}-${index}-d`}
-          className="grid w-full min-w-0 grid-cols-[36px_minmax(0,1fr)] content-start items-start gap-x-3 gap-y-0.5 rounded-lg border bg-background px-4 py-3.5 text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[minmax(0,1fr)] sm:gap-y-1 sm:p-4"
+          className={cn(
+            "grid w-full min-w-0 content-start items-start rounded-lg border bg-background text-left transition-colors hover:border-foreground/20 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+            compact
+              ? "grid-cols-[28px_minmax(0,1fr)] gap-x-2 gap-y-0.5 px-3 py-2"
+              : "grid-cols-[36px_minmax(0,1fr)] gap-x-3 gap-y-0.5 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)] sm:gap-y-1 sm:p-4",
+          )}
           data-slot="choice-card"
           data-testid={item.testId}
         >
           <span
-            className="row-span-2 grid size-9 place-items-center rounded-md bg-muted text-foreground sm:row-span-1 sm:mb-2 [&_svg]:size-[18px]"
+            className={cn(
+              "row-span-2 grid place-items-center rounded-md bg-muted text-foreground",
+              compact
+                ? "size-7 [&_svg]:size-4"
+                : "size-9 sm:row-span-1 sm:mb-2 [&_svg]:size-[18px]",
+            )}
             aria-hidden="true"
           >
             {item.icon}

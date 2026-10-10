@@ -258,7 +258,8 @@ export function WorkflowScheduleSection({
                       href: absolute(
                         chatNewHref({
                           workflowId,
-                          prompt: t("schedule.chatPrompt", { name: workflowName }),
+                          prompt: t("schedule.chatPrompt"),
+                          references: [{ type: "workflow", id: workflowId }],
                         }),
                       ),
                       testId: "schedule-chat",

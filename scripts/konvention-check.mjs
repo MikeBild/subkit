@@ -29,6 +29,7 @@ const MOUNT_MARKERS = {
   chat: '[data-testid="chat-workspace"]',
   "chat/new": '[data-testid="chat-workspace"]',
   "chat/$conversationId": '[data-testid="chat-workspace"]',
+  intake: '[data-testid="intake-page"]',
   people: '[data-testid="admin-people"]',
   access: '[data-testid="admin-people"]',
   "api-access": '[data-testid="admin-api-access"]',

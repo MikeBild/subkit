@@ -17,6 +17,7 @@ import {
   surfaceFromClientHeader,
   unregisterConversationAbort,
 } from "../../../conversations/index.ts";
+import * as intake from "../../../knowledge/index.ts";
 import { BadRequestError, NotFoundError } from "../../errors.ts";
 import { requireAuth } from "../../middleware/auth.ts";
 import { ensurePermission } from "../../middleware/require-permission.ts";
@@ -147,6 +148,19 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+    const referencedIntakeItemIds = body.references
+      ?.filter((reference) => reference.type === "intake_item")
+      .map((reference) => reference.id);
+    const intakeItemIds = [
+      ...new Set([...(body.intake_item_ids ?? []), ...(referencedIntakeItemIds ?? [])]),
+    ];
+    if (intakeItemIds.length) {
+      await ensurePermission(c, "intake:read", undefined);
+      const visible = await Promise.all(
+        intakeItemIds.map((id) => intake.getIntakeItem(principal.tenant_id, id, db)),
+      );
+      if (visible.some((item) => item === null)) throw new NotFoundError("intake_item");
+    }
     if (body.execution_id)
       await ensurePermission(c, "execution:read", { type: "execution", id: body.execution_id });
     const focus = body.execution_id
@@ -173,6 +187,7 @@ export function registerCollectionRoutes(app: OpenAPIHono<AppEnv>): void {
       ...(body.title ? { title: body.title } : {}),
       ...(body.permission_mode ? { permission_mode: body.permission_mode } : {}),
       ...(body.playground ? { playground: body.playground } : {}),
+      ...(intakeItemIds.length ? { intake_item_ids: intakeItemIds } : {}),
       ...(body.references && body.references.length > 0 ? { references: body.references } : {}),
       origin_client: principalOrigin(principal),
       surface: surfaceFromClientHeader(c.req.header("x-subkit-client")),

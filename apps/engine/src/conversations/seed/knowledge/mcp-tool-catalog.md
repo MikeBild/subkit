@@ -9,6 +9,21 @@ version: 5
 
 # MCP Tool Catalog — Overview
 
+## Collected material review
+
+`list_intake_categories` discovers shared intake categories.
+Review individual clips through a persisted `conversation_start` conversation;
+pass `intake_item_ids` to fix the selection. Continue with `conversation_get`
+and `conversation_append`. The returned review URL opens that conversation in
+the authenticated Cockpit. `list_intake_items`, `get_intake_item`,
+`discard_intake_item`, `restore_intake_item`, `move_intake_item`,
+`set_default_intake_category`, `create_intake_proposal`, and
+`revise_intake_proposal` require the saved review
+context and are not executable as standalone MCP calls. There is no MCP tool
+that confirms intake admission. A person reviews the exact content, sources
+and destination in the Cockpit before confirming. Raw clips never become
+ordinary knowledge merely because they were collected or read.
+
 sk exposes its engine over the Model Context Protocol (MCP). A connected client
 sees a `tools/list` catalog and calls tools via `tools/call`. Every run is
 RBAC-checked, audited, and version-pinned.

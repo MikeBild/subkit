@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fromBuffer } from "yauzl";
-import { createClipperArchive } from "../build-clipper.ts";
+import { chromeScriptSource, createClipperArchive } from "../build-clipper.ts";
 
 async function readArchive(archive: Buffer): Promise<Map<string, string>> {
   return new Promise((resolve, reject) => {
@@ -30,6 +30,12 @@ async function readArchive(archive: Buffer): Promise<Map<string, string>> {
 }
 
 describe("clipper release archive", () => {
+  test("escapes Unicode noncharacters rejected by Chrome script injection", () => {
+    expect(chromeScriptSource('const text = "\uffff\ufdd0\u{10ffff}";')).toBe(
+      'const text = "\\uffff\\ufdd0\\udbff\\udfff";',
+    );
+    expect(chromeScriptSource('const text = "Grüße 🎵";')).toBe('const text = "Grüße 🎵";');
+  });
   test("preserves names and bytes in a standard ZIP independently of insertion order", async () => {
     const first = new Map([
       ["popup.html", Buffer.from("<title>SubKit Clipper</title>")],

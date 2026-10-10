@@ -20,3 +20,13 @@ test("uncontended testcontainer teardown completes in under 5 seconds", async ()
   const elapsed = performance.now() - startedAt;
   expect(elapsed).toBeLessThan(5_000);
 });
+
+test("teardown completes after forcibly removing a checked-out client", async () => {
+  const tmp = await createTestDb("teardown-timing-checked-out");
+  const client = await tmp.pool.connect();
+  client.on("error", () => {});
+  const startedAt = performance.now();
+  await tmp.cleanup();
+  const elapsed = performance.now() - startedAt;
+  expect(elapsed).toBeLessThan(5_000);
+});

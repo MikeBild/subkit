@@ -122,4 +122,34 @@ describe("collectReferencedResources", () => {
       },
     ]);
   });
+
+  test("keeps a collected item reference with its readable label", () => {
+    expect(
+      collectReferencedResources([
+        {
+          role: "user",
+          created_at: "2026-10-10T10:00:00Z",
+          parts: [
+            {
+              references: [
+                {
+                  type: "intake_item",
+                  id: "item-1",
+                  label: "Vier-Spuren",
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "intake_item",
+        id: "item-1",
+        label: "Vier-Spuren",
+        at: "2026-10-10T10:00:00Z",
+        unresolved: false,
+      },
+    ]);
+  });
 });

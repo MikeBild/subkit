@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import type { AuthoringSummary, DraftDocument } from "../../types.ts";
 import {
   CHAT_READONLY_TOOLS,
@@ -296,6 +297,8 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
       "delete_workflow",
       "create_knowledge_source",
       "delete_knowledge_source",
+      "create_intake_proposal",
+      "revise_intake_proposal",
       "create_schedule",
       "update_schedule",
       "delete_schedule",
@@ -343,5 +346,13 @@ describe("filterByChatReadOnlyPalette — read-only channel invariants", () => {
     ]) {
       expect(chatNames.has(name), `${name} missing from the chat palette`).toBe(true);
     }
+  });
+
+  test("intake proposals remain available on the regular authoring palette", () => {
+    const visible = filterByAuthoringPalette(registry, createEmptyDraftDocument(), NO_SKILLS).map(
+      (tool) => tool.name,
+    );
+    expect(visible).toContain("create_intake_proposal");
+    expect(visible).toContain("revise_intake_proposal");
   });
 });

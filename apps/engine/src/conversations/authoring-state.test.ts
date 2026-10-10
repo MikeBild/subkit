@@ -230,3 +230,20 @@ describe("authoring-state", () => {
     expect(draft.summary?.next_suggested_tool).toBe("save_workflow_draft");
   });
 });
+
+test("normalizeDraftDocument preserves only valid intake read versions", () => {
+  const draft = normalizeDraftDocument({
+    workflow: { steps: [] },
+    session: {
+      intake_item_ids: ["10000000-0000-4000-8000-000000000001"],
+      intake_read_item_versions: {
+        "10000000-0000-4000-8000-000000000001": 2,
+        invalid: 1,
+        "20000000-0000-4000-8000-000000000002": 0,
+      },
+    },
+  });
+  expect(draft.session?.intake_read_item_versions).toEqual({
+    "10000000-0000-4000-8000-000000000001": 2,
+  });
+});

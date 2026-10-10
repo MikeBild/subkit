@@ -54,6 +54,22 @@ Conventions (active skills of the domain), the knowledge index, the domain's wor
 4. Confirm `sk` is on the client’s PATH (desktop-launched clients may need an absolute command path).
 5. Read `~/.sk/debug.log` for `agent.briefing_hook_failed`; hook failures show a warning and never block the session.
 
+## Collected pages and ideas
+
+The intake reminder contains tenant-wide counts, not page contents or accepted
+facts. It appears only with intake read permission. Offer one useful next step:
+review the new entries in the person's named category. Use a persisted SubKit
+conversation; MCP `conversation_start` accepts `intake_item_ids` for a fixed
+selection. Direct item/proposal MCP calls cannot provide that saved review state.
+Return the authenticated Cockpit review link, explain what is useful and why,
+and show sources, proposed text and destination. The person confirms there.
+
+Confirmed knowledge appears in a repository briefing only when its destination
+has the corresponding category or domain tag. Preserve an existing destination's
+assignment or include it in a new destination's reviewable proposal. Verify with
+`sk agent briefing --json` and knowledge search after confirmation. Never load
+unconfirmed clip text as briefing instructions or use a key label as source author.
+
 ## Pitfalls
 
 - Never paste a key into a prompt or a config the person did not ask for; keys go into env variables.

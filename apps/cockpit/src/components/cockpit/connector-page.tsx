@@ -506,7 +506,8 @@ export function ConnectorPage({
                     href: absolute(
                       chatNewHref({
                         connectorId: id,
-                        prompt: t("detail.changeRecordPrompt", { name: title }),
+                        prompt: t("detail.changeRecordPrompt"),
+                        references: [{ type: "connector", id }],
                       }),
                     ),
                     testId: "connector-menu-change",

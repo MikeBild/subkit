@@ -8,6 +8,7 @@ export interface StarterGates {
   solutions: boolean;
   knowledge: boolean;
   usage: boolean;
+  intake: boolean;
 }
 
 export function starterGates(permissions: readonly string[]): StarterGates {
@@ -16,6 +17,7 @@ export function starterGates(permissions: readonly string[]): StarterGates {
     solutions: permissions.includes("connector:read"),
     knowledge: permissions.includes("knowledge:read"),
     usage: permissions.includes("stats:read"),
+    intake: permissions.includes("intake:read"),
   };
 }
 
@@ -26,7 +28,7 @@ export function retryStarterQuery(failures: number, error: unknown): boolean {
 }
 
 export const MIN_STARTERS = 4;
-export const MAX_STARTERS = 6;
+export const MAX_STARTERS = 10;
 
 export type StarterIcon =
   | "failing"
@@ -67,6 +69,7 @@ export interface StarterSources {
   solutions: readonly StarterSolution[];
   knowledge: readonly { slug: string; name: string }[];
   categories: readonly { category: string; count: number }[];
+  intake: { category: string; collected: number } | null;
 }
 
 function failingWorkflow(attention: readonly StarterAttention[]) {
@@ -147,6 +150,16 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
       prompt: t("chat.starter.knowledge.prompt", { name: knowledge.name }),
     });
   }
+  if (sources.intake) {
+    const prompt = t("intake.chatPrompt", { collection: sources.intake.category });
+    starters.push({
+      id: `intake-${sources.intake.category}`,
+      icon: "knowledge",
+      title: t("intake.starterTitle", { category: sources.intake.category }),
+      line: t("intake.starterDescription"),
+      prompt,
+    });
+  }
   const category = pickCategory(sources.categories);
   if (category) {
     starters.push({
@@ -190,9 +203,6 @@ export function chatStarters(sources: StarterSources, t: Translate): ChatStarter
       prompt: t("chat.starter.lastRun"),
     },
   ];
-  for (const filler of fillers) {
-    if (starters.length >= MIN_STARTERS) break;
-    starters.push(filler);
-  }
+  starters.push(...fillers);
   return starters.slice(0, MAX_STARTERS);
 }

@@ -120,7 +120,7 @@ import { formatDateTime, formatRelativeTime, LOCALE_TAGS } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
 import { nameIdentifiers, type ResolvedIdentifier } from "@/lib/identifiers";
 import type { DiffLine } from "@/lib/line-diff";
-import { reconcileReferences } from "@/lib/mentions";
+import { dedupeReferences, mentionTokenText, reconcileReferences } from "@/lib/mentions";
 import { resolveWorkflowNameBySlug } from "@/lib/name-index";
 import { conversationExcerpt, hideTechnicalIdentifiers, humanFacingText } from "@/lib/presentation";
 import { patchCandidateId, toolNameOf, toolPartVerdict } from "@/lib/tool-parts";
@@ -136,7 +136,7 @@ import {
 } from "@/lib/tool-presentation";
 import { useInfiniteList } from "@/lib/use-infinite-list";
 import { cn } from "@/lib/utils";
-import { useMentionCandidates } from "@/queries/mention-sources";
+import { useMentionCandidates, useSeedMentionReferences } from "@/queries/mention-sources";
 import {
   approvalLine,
   type ChatApproval,
@@ -300,6 +300,7 @@ function catalogHref(kind: string, id: string): string {
   if (kind === "execution") return absolute(runHref(id));
   if (kind === "skill") return absolute(recordHref("skills", id));
   if (kind === "knowledge_source") return absolute(recordHref("knowledge", id));
+  if (kind === "intake_item") return absolute(`/intake?item=${encodeURIComponent(id)}`);
   return absolute(kind === "workflow" ? workflowHref(id) : connectorHref(id));
 }
 
@@ -496,6 +497,17 @@ function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [references, setReferences] = useState<ConversationReference[]>([]);
+  const seedReferences = useMemo(() => chatSeedFromUrl(window.location.search).references, []);
+  const seeded = useSeedMentionReferences(seedReferences);
+  const seededKey = useMemo(
+    () => seeded.references.map((reference) => `${reference.type}:${reference.id}`).join(","),
+    [seeded.references],
+  );
+  const seedsApplied = seedReferences.every((seed) =>
+    references.some((reference) => reference.type === seed.type && reference.id === seed.id),
+  );
+  const seedPending = seeded.isBlocked || !seedsApplied;
+  const appliedSeed = useRef<string | null>(null);
   const setInput = controller.textInput.setInput;
   const [answerRejected, setAnswerRejected] = useState(false);
   const answerId = answer?.id ?? null;
@@ -506,6 +518,14 @@ function ChatComposer({
     setAnswerRejected(false);
     if (answerId && answerDefault && !currentInput.current.trim()) setInput(answerDefault);
   }, [answerId, answerDefault, setInput]);
+  useEffect(() => {
+    if (!seededKey || appliedSeed.current === seededKey) return;
+    appliedSeed.current = seededKey;
+    setReferences((current) => dedupeReferences([...seeded.references, ...current]));
+    const tokens = seeded.references.map(mentionTokenText).join(" ");
+    const text = controller.textInput.value;
+    setInput(text ? `${tokens} ${text}` : tokens);
+  }, [controller.textInput.value, seeded.references, seededKey, setInput]);
   useEffect(() => {
     restoreRef.current = (text, restored) => {
       setInput(text);
@@ -559,6 +579,7 @@ function ChatComposer({
             data-testid="chat-composer"
             inputGroupClassName="h-auto gap-1.5 rounded-xl p-2 has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30"
             onSubmit={async ({ text }) => {
+              if (seedPending) return;
               const trimmed = text.trim();
               if (!trimmed && attachments.length === 0) return;
               if (!composerAnswerAccepted(answer, trimmed)) {
@@ -596,7 +617,7 @@ function ChatComposer({
                 aria-label={t("chat.composer.label")}
                 aria-describedby={describedBy}
                 aria-invalid={answerRejected || undefined}
-                disabled={disabled}
+                disabled={disabled || seedPending}
                 onKeyDown={(event) => {
                   mentions.onKeyDown(event);
                 }}
@@ -645,7 +666,7 @@ function ChatComposer({
                 variant="outline"
                 status={status}
                 onStop={onStop}
-                disabled={streaming ? false : disabled || locked}
+                disabled={streaming ? false : disabled || locked || seedPending}
                 aria-label={t(streaming ? "chat.stop" : "chat.submit")}
                 tooltip={t(streaming ? "chat.stop" : "chat.submit")}
                 data-testid="chat-composer-submit"
@@ -662,6 +683,17 @@ function ChatComposer({
             >
               {t("chat.text.invalid")}
             </p>
+          ) : null}
+          {seeded.isBlocked ? (
+            <div
+              className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"
+              data-testid="chat-reference-seed-pending"
+            >
+              <span>{t("chat.references.unavailable")}</span>
+              <Button variant="ghost" size="sm" onClick={seeded.retry}>
+                {t("chat.activation.retry")}
+              </Button>
+            </div>
           ) : null}
         </div>
       </PopoverAnchor>
@@ -1402,6 +1434,7 @@ export function ChatPage() {
       clearStream();
 
       const target = chatTargetFromUrl(window.location.search);
+      const intakeItemIds = chatSeedFromUrl(window.location.search).intakeItemIds;
       startedConversationId.current = null;
       let targetId = conversationId;
       let text = message;
@@ -1410,6 +1443,7 @@ export function ChatPage() {
           const opened = await createEmptyConversation({
             target,
             permissionMode: newPermissionMode,
+            intakeItemIds,
           });
           targetId = opened.id;
           startedConversationId.current = opened.id;
@@ -1434,6 +1468,7 @@ export function ChatPage() {
               references,
               permissionMode: newPermissionMode,
               target,
+              ...(intakeItemIds.length ? { intake_item_ids: intakeItemIds } : {}),
             },
         (event) => {
           if (event.type === "conversation_started") {

@@ -25,6 +25,7 @@ import { now } from "../utils/clock.ts";
 import type { ChatAdapter } from "./adapter.ts";
 import { mapToolNameToKind } from "./api.ts";
 import { formatChatText } from "./format/outbound-format.ts";
+import { intakeReviewHandoff } from "./intake-handoff.ts";
 import { resolveChatPrincipal } from "./principal.ts";
 
 export type { DispatchOutcome, HandleChatEventOpts } from "./dispatcher-types.ts";
@@ -846,8 +847,10 @@ async function handleChatEventImpl(
         event_count: outcome.events.length,
       });
     }
-    const replyText =
+    const baseReply =
       extracted ?? (outcome.status === "committed" ? "Committed." : "Still thinking on this…");
+    const handoff = intakeReviewHandoff(outcome, conversation_id);
+    const replyText = handoff ? `${baseReply}\n\n${handoff}` : baseReply;
     if (opts.replyDelivery === "capture") {
       captured_reply_text = replyText;
     } else {

@@ -29,6 +29,8 @@ export function redirectTarget(target: string, incomingSearch: string): string {
 
 export const CHAT_ROUTES = ["/chat", "/chat/new", "/chat/$conversationId"] as const;
 
+export const INTAKE_ROUTES = ["/intake"] as const;
+
 export const CATALOG_RESOURCES = [
   "workflows",
   "connectors",
@@ -43,5 +45,6 @@ export const ALL_ROUTE_PATHS: readonly string[] = [
   ...REDIRECT_ROUTES,
   ...PAGE_ROUTES,
   ...CHAT_ROUTES,
+  ...INTAKE_ROUTES,
   ...CATALOG_RESOURCES.flatMap((resource) => [`/${resource}`, `/${resource}/$resourceId`]),
 ];

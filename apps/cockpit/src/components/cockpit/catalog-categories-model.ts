@@ -3,7 +3,7 @@ import type { CatalogKind } from "./catalog-metadata-model";
 export interface CategoryUsage {
   category: string;
   total: number;
-  counts: Record<CatalogKind, number>;
+  counts: Record<CatalogKind, number> & { intake?: number };
   llm_counts?: Partial<Record<CatalogKind, number>>;
   purpose?: string | null;
   purpose_source?: "human" | "llm" | null;

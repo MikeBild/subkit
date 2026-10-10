@@ -274,7 +274,12 @@ export type SendConversationTurnInput = {
       target?: never;
       pendingElicitation?: { id: string; tool_name: string } | null;
     }
-  | { conversationId?: null; target?: ConversationTarget; permissionMode?: "auto" | "ask" | "plan" }
+  | {
+      conversationId?: null;
+      target?: ConversationTarget;
+      permissionMode?: "auto" | "ask" | "plan";
+      intake_item_ids?: readonly string[];
+    }
 );
 
 export async function sendConversationTurn(
@@ -305,6 +310,9 @@ export async function sendConversationTurn(
         ? { permission_mode: input.permissionMode }
         : {}),
       ...input.target,
+      ...("intake_item_ids" in input && input.intake_item_ids?.length
+        ? { intake_item_ids: input.intake_item_ids }
+        : {}),
       ...withReferences(input.references),
     },
     onEvent,

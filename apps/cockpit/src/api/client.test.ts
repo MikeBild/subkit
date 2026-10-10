@@ -72,6 +72,22 @@ describe("sendConversationTurn", () => {
     });
   });
 
+  test("sends the selected intake ids only when the conversation starts", async () => {
+    const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      outcomeResponse(),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await sendConversationTurn({
+      message: "review these",
+      intake_item_ids: ["018f4b4a-6d33-7b3a-9c2d-123456789abc"],
+    });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      initial_message: "review these",
+      intake_item_ids: ["018f4b4a-6d33-7b3a-9c2d-123456789abc"],
+    });
+  });
+
   test("appends through the same API without leaking create-only fields", async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       outcomeResponse(),

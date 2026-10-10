@@ -23,6 +23,7 @@ import {
   serializeFormData,
 } from "./engine-client/http.ts";
 import { identityMethods } from "./engine-client/identity.ts";
+import { intakeMethods } from "./engine-client/intake.ts";
 import { knowledgeMethods } from "./engine-client/knowledge.ts";
 import { oauthMethods } from "./engine-client/oauth.ts";
 import { rbacMethods } from "./engine-client/rbac.ts";
@@ -80,6 +81,7 @@ export type {
   UserInviteIssuedWire,
   UserInviteWire,
 } from "./engine-client/identity.ts";
+export type { IntakeItem } from "./engine-client/intake.ts";
 export type {
   AttentionItem,
   DigestAttention,
@@ -567,6 +569,7 @@ export interface EngineClient
     ApiMethods<typeof executionsMethods>,
     ApiMethods<typeof filesMethods>,
     ApiMethods<typeof identityMethods>,
+    ApiMethods<typeof intakeMethods>,
     ApiMethods<typeof knowledgeMethods>,
     ApiMethods<typeof oauthMethods>,
     ApiMethods<typeof rbacMethods>,
@@ -588,6 +591,7 @@ Object.assign(
   executionsMethods,
   filesMethods,
   identityMethods,
+  intakeMethods,
   knowledgeMethods,
   oauthMethods,
   rbacMethods,

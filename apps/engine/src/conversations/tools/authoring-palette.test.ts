@@ -2,10 +2,32 @@ import { describe, expect, test } from "bun:test";
 import {
   applyExecutionToolGate,
   collectSyntheticWorkflowSlugs,
+  filterByAuthoringPalette,
   isExecutionToolName,
   resolveExecutionToolGate,
   resolveNamedWorkflowSlug,
 } from "./authoring-palette.ts";
+
+describe("intake processing palette", () => {
+  test("exposes discard and restore for an interactive authoring conversation only", () => {
+    const tools = [
+      { name: "discard_intake_item" },
+      { name: "restore_intake_item" },
+      { name: "move_intake_item" },
+      { name: "set_default_intake_category" },
+      { name: "create_intake_proposal" },
+      { name: "get_intake_item" },
+    ];
+    const names = filterByAuthoringPalette(tools, {} as never, new Set()).map((tool) => tool.name);
+    expect(names).toEqual([
+      "discard_intake_item",
+      "restore_intake_item",
+      "move_intake_item",
+      "set_default_intake_category",
+      "create_intake_proposal",
+    ]);
+  });
+});
 
 describe("resolveExecutionToolGate", () => {
   test("default-deny: no bound target and no named slug hides execution", () => {

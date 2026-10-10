@@ -155,12 +155,54 @@ export function auditHref(
   });
 }
 
+export const CHAT_REFERENCE_TYPES = [
+  "workflow",
+  "connector",
+  "skill",
+  "knowledge_source",
+  "execution",
+  "intake_item",
+] as const;
+
+export type ChatReferenceSeed = {
+  type: (typeof CHAT_REFERENCE_TYPES)[number];
+  id: string;
+};
+
+function chatReferenceSeedValue(
+  references: readonly ChatReferenceSeed[] | null | undefined,
+): string | null {
+  const unique = new Set<string>();
+  for (const reference of references ?? []) {
+    if (!CHAT_REFERENCE_TYPES.includes(reference.type)) continue;
+    if (!/^[0-9a-f-]{36}$/i.test(reference.id)) continue;
+    unique.add(`${reference.type}:${reference.id}`);
+  }
+  return unique.size ? [...unique].join(",") : null;
+}
+
+function chatReferenceSeeds(raw: string): ChatReferenceSeed[] {
+  const unique = new Set<string>();
+  return raw.split(",").flatMap((value) => {
+    const [type, id, ...rest] = value.split(":");
+    if (rest.length || !type || !id) return [];
+    if (!CHAT_REFERENCE_TYPES.includes(type as ChatReferenceSeed["type"])) return [];
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return [];
+    const key = `${type}:${id}`;
+    if (unique.has(key)) return [];
+    unique.add(key);
+    return [{ type: type as ChatReferenceSeed["type"], id }];
+  });
+}
+
 export function chatNewHref(
   seed: {
     prompt?: string | null;
     workflowId?: string | null;
     connectorId?: string | null;
     executionId?: string | null;
+    intakeItemIds?: readonly string[] | null;
+    references?: readonly ChatReferenceSeed[] | null;
   } = {},
 ): string {
   return withQuery("/chat/new", {
@@ -168,6 +210,8 @@ export function chatNewHref(
     workflow_id: seed.workflowId,
     connector_id: seed.connectorId,
     execution_id: seed.executionId,
+    intake_item_ids: seed.intakeItemIds?.join(","),
+    references: chatReferenceSeedValue(seed.references),
   });
 }
 
@@ -176,6 +220,8 @@ export function chatSeedFromUrl(search: string): {
   workflowId: string | null;
   connectorId: string | null;
   executionId: string | null;
+  intakeItemIds: string[];
+  references: ChatReferenceSeed[];
 } {
   const params = new URLSearchParams(search);
   return {
@@ -183,6 +229,10 @@ export function chatSeedFromUrl(search: string): {
     workflowId: params.get("workflow_id") || null,
     connectorId: params.get("connector_id") || null,
     executionId: params.get("execution_id") || null,
+    intakeItemIds: (params.get("intake_item_ids") ?? "")
+      .split(",")
+      .filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+    references: chatReferenceSeeds(params.get("references") ?? ""),
   };
 }
 

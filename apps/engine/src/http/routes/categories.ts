@@ -1,9 +1,9 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
-  CATALOG_KINDS,
-  type CatalogKind,
+  CATEGORY_KINDS,
   CategoryEditSchema,
   CategoryFilterSchema,
+  type CategoryKind,
   CategoryMetadataSchema,
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
@@ -12,20 +12,22 @@ import { can } from "../../rbac/index.ts";
 import {
   CategoryRenameRefused,
   CategoryRevisionConflict,
+  categoryRenameAffectsIntake,
   loadCategoryVocabulary,
   renameCategory,
 } from "../../workflows/index.ts";
-import { BadRequestError, ConflictError } from "../errors.ts";
+import { BadRequestError, ConflictError, ForbiddenError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
 
-const READ_PERMISSION: Record<CatalogKind, string> = {
+const READ_PERMISSION: Record<CategoryKind, string> = {
   workflow: "workflow:read",
   connector: "connector:read",
   knowledge_source: "knowledge:read",
   skill: "skill:read",
   file: "file:read",
+  intake: "intake:read",
 };
 
 const KindCountsSchema = z
@@ -35,6 +37,7 @@ const KindCountsSchema = z
     knowledge_source: z.number().int().nonnegative(),
     skill: z.number().int().nonnegative(),
     file: z.number().int().nonnegative(),
+    intake: z.number().int().nonnegative(),
   })
   .openapi("CategoryKindCounts");
 
@@ -45,6 +48,10 @@ const CategoryUsageSchema = z
     total: z.number().int().nonnegative(),
     counts: KindCountsSchema,
     llm_counts: KindCountsSchema,
+    intake_open: z.object({
+      collected: z.number().int().nonnegative(),
+      reviewing: z.number().int().nonnegative(),
+    }),
   })
   .openapi("CategoryUsage");
 
@@ -104,7 +111,7 @@ const renameRoute = createRoute({
 export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use(
     "/v1/categories",
-    requireAnyPermission(CATALOG_KINDS.map((kind) => READ_PERMISSION[kind])),
+    requireAnyPermission(CATEGORY_KINDS.map((kind) => READ_PERMISSION[kind])),
   );
   app.use(
     "/v1/categories/:name/rename",
@@ -118,8 +125,8 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
   app.openapi(listRoute, async (c) => {
     const principal = requireAuth(c);
     const db = c.get("db");
-    const readable = new Set<CatalogKind>();
-    for (const kind of CATALOG_KINDS) {
+    const readable = new Set<CategoryKind>();
+    for (const kind of CATEGORY_KINDS) {
       const decision = await can(db, {
         tenant_id: principal.tenant_id,
         principal,
@@ -132,17 +139,20 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
       .map((usage) => {
         const counts = { ...usage.counts };
         const llm_counts = { ...usage.llm_counts };
-        for (const kind of CATALOG_KINDS)
+        const intake_open = { ...usage.intake_open };
+        for (const kind of CATEGORY_KINDS)
           if (!readable.has(kind)) {
             counts[kind] = 0;
             llm_counts[kind] = 0;
+            if (kind === "intake") intake_open.collected = intake_open.reviewing = 0;
           }
         return {
           ...usage,
           category: usage.category,
           counts,
           llm_counts,
-          total: CATALOG_KINDS.reduce((sum, kind) => sum + counts[kind], 0),
+          intake_open,
+          total: CATEGORY_KINDS.reduce((sum, kind) => sum + counts[kind], 0),
         };
       })
       .filter((usage) => usage.total > 0);
@@ -155,6 +165,15 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
     const { name } = c.req.valid("param");
     const body = c.req.valid("json");
     const { to } = body;
+    if (await categoryRenameAffectsIntake({ tenant_id: principal.tenant_id, from: name }, db)) {
+      const decision = await can(db, {
+        tenant_id: principal.tenant_id,
+        principal,
+        permission: "intake:write",
+        quiet: true,
+      });
+      if (!decision.allow) throw new ForbiddenError("permission_denied:intake:write");
+    }
     try {
       const result = await renameCategory(
         {

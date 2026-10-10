@@ -27,6 +27,9 @@ import {
 } from "./authoring-state/summary.ts";
 import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fingerprint.ts";
 import { canonicalJson } from "./text-line-diff.ts";
+
+const INTAKE_ITEM_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 import type {
   AuthoringCheckpointKey,
   AuthoringCheckpointRecord,
@@ -260,6 +263,32 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
         session.permission_mode = raw.session.permission_mode;
       }
       if (raw.session.playground === true) session.playground = true;
+      if (Array.isArray(raw.session.intake_item_ids)) {
+        const intake_item_ids = [...new Set(raw.session.intake_item_ids)].filter(
+          (id): id is string => typeof id === "string" && INTAKE_ITEM_ID_RE.test(id),
+        );
+        if (intake_item_ids.length > 0 && intake_item_ids.length <= 100) {
+          session.intake_item_ids = intake_item_ids;
+          if (raw.session.intake_review_locked === true) session.intake_review_locked = true;
+        }
+      }
+      if (isRecord(raw.session.intake_read_item_versions)) {
+        const intake_read_item_versions: Record<string, number> = {};
+        for (const [id, version] of Object.entries(raw.session.intake_read_item_versions)) {
+          if (
+            INTAKE_ITEM_ID_RE.test(id) &&
+            typeof version === "number" &&
+            Number.isSafeInteger(version) &&
+            version > 0
+          ) {
+            intake_read_item_versions[id] = version;
+          }
+        }
+        if (Object.keys(intake_read_item_versions).length <= 100) {
+          session.intake_read_item_versions = intake_read_item_versions;
+        }
+      }
+      if (raw.session.intake_review_active === true) session.intake_review_active = true;
       return Object.keys(session).length > 0 ? { session } : {};
     })(),
     ...(isRecord(raw.latest_preview)
