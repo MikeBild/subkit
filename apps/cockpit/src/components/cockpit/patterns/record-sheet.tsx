@@ -1,7 +1,7 @@
 import { ChevronLeft, XIcon } from "lucide-react";
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/cockpit/icon-button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
 import { useInspectorDock } from "./responsive-workspace";
@@ -207,16 +207,16 @@ function DockableRecordSheet(props: RecordSheetProps) {
         ? createPortal(
             <>
               <RecordBody {...props} titleId={titleId} />
-              <Button
+              <IconButton
                 variant="ghost"
                 className="absolute top-3 right-3"
                 size="icon-sm"
-                data-testid={closeTestId}
+                label={t("common.close")}
+                data-testid={closeTestId ?? `${testId}-close`}
                 onClick={() => onOpenChange(false)}
               >
                 <XIcon />
-                <span className="sr-only">{t("common.close")}</span>
-              </Button>
+              </IconButton>
             </>,
             host,
           )

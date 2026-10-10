@@ -691,7 +691,12 @@ function ChatComposer({
               data-testid="chat-reference-seed-pending"
             >
               <span>{t("chat.references.unavailable")}</span>
-              <Button variant="ghost" size="sm" onClick={seeded.retry}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={seeded.retry}
+                data-testid="chat-reference-seed-retry"
+              >
                 {t("chat.activation.retry")}
               </Button>
             </div>
