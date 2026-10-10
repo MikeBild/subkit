@@ -517,6 +517,27 @@ export async function maybeAutoPersistFromElicitation(
         }
         const workflowId = resolved.id;
         const workflowSlug = readString(intent.payload, "workflow_slug") ?? resolved.slug;
+        const expectedWorkflowVersionId = readString(
+          intent.payload,
+          "expected_workflow_version_id",
+        );
+        if (
+          expectedWorkflowVersionId &&
+          expectedWorkflowVersionId !== resolved.current_version_id
+        ) {
+          result = {
+            ok: false,
+            error_code: "workflow_version_not_active",
+            message:
+              "the prepared workflow version is no longer the active version; review the current version before running it",
+            data: {
+              workflow_id: workflowId,
+              expected_workflow_version_id: expectedWorkflowVersionId,
+              current_workflow_version_id: resolved.current_version_id ?? null,
+            },
+          };
+          break;
+        }
         if (!p.principal) {
           result = {
             ok: false,
@@ -602,7 +623,11 @@ export async function maybeAutoPersistFromElicitation(
           {
             tenant_id: p.tenant_id,
             workflow_id: workflowId,
-            workflow_version_id: resolved.current_version_id ?? undefined,
+            workflow_version_id:
+              expectedWorkflowVersionId ?? resolved.current_version_id ?? undefined,
+            ...(expectedWorkflowVersionId
+              ? { expected_workflow_version_id: expectedWorkflowVersionId }
+              : {}),
             execution_environment: environment,
             request_source: "chat",
             input,

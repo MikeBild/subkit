@@ -18,6 +18,8 @@ export const DB_TRANSIENT_RETRY_LABELS = new Set<string>([
   "mcp_oauth_cleanup",
   "chat_dedup_cleanup",
   "compute_desired",
+  "knowledge_seed",
+  "skills_seed",
 ]);
 
 export const CONNECTOR_HEALTH_VALUES = new Set<string>([

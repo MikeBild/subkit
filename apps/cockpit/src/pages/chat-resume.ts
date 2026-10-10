@@ -11,6 +11,26 @@ export interface ResumeSummaryLike {
   pending_approval?: { tool_name: string } | null;
   active_target?: ResumeTargetLike | null;
   focused_run?: { recorded_at: string } | null;
+  live_test?: { execution_id: string; status: string } | null;
+}
+
+export type LiveTestState = "pending" | "running" | "succeeded" | "failed" | "blocked";
+
+export function liveTestState(status: string | null | undefined): LiveTestState {
+  switch (status) {
+    case "queued":
+      return "pending";
+    case "running":
+      return "running";
+    case "succeeded":
+      return "succeeded";
+    case "failed":
+    case "aborted":
+    case "timed_out":
+      return "failed";
+    default:
+      return "blocked";
+  }
 }
 
 type Translate = (key: TranslationKey, values?: Record<string, string>) => string;

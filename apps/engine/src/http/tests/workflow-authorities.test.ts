@@ -11,6 +11,8 @@ import {
   apiKeys,
   auditLog,
   connectors,
+  conversations,
+  executions,
   patchCandidates,
   sessions,
   tenants,
@@ -23,6 +25,7 @@ import {
 import { createBoss, disposeBoss, EXECUTION_RUN_QUEUE } from "../../queue/index.ts";
 import { builtinRoleId, createRole, grantPermissionToRole } from "../../rbac/roles.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
+import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { buildDefaultRegistry, createApp } from "../server.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
@@ -856,6 +859,62 @@ test("chat activation is browser-bound, rejects stale review, and never dispatch
       .select()
       .from(workflowExecutionAuthorities)
       .where(eq(workflowExecutionAuthorities.workflow_id, f.workflow.id)),
+  ).toHaveLength(0);
+});
+
+test("prod activation never continues a pending conversation live test", async () => {
+  const f = await fixture();
+  await ctx.db
+    .update(workflows)
+    .set({ draft_version_id: f.version.id })
+    .where(eq(workflows.id, f.workflow.id));
+  const input = {};
+  const [conversation] = await ctx.db
+    .insert(conversations)
+    .values({
+      tenant_id: ctx.tenantId,
+      owner_id: ctx.userId,
+      status: "active",
+      draft: {
+        workflow: { name: "Pending test", steps: [] },
+        session: {
+          live_test: {
+            workflow_id: f.workflow.id,
+            workflow_version_id: f.version.id,
+            environment: "dev",
+            input,
+            input_digest: workflowJsonDigest(input),
+            idempotency_key: `pending:${f.workflow.id}`,
+            state: "pending",
+          },
+        },
+      },
+    })
+    .returning();
+  if (!conversation) throw new Error("missing conversation");
+  const preview = await app.request(`${f.previewPath}?environment=prod`, {
+    headers: browserHeaders,
+  });
+  expect(preview.status).toBe(200);
+  const reviewed = await preview.json();
+  const response = await app.request(`${f.base}/activate-draft`, {
+    method: "POST",
+    headers: browserHeaders,
+    body: JSON.stringify({
+      workflow_version_id: f.version.id,
+      expected_current_version_id: null,
+      expected_manifest_digest: reviewed.digest,
+      execution_environment: "prod",
+      conversation_id: conversation.id,
+    }),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    activated: true,
+    live_test: { state: "not_requested" },
+  });
+  expect(
+    await ctx.db.select().from(executions).where(eq(executions.workflow_id, f.workflow.id)),
   ).toHaveLength(0);
 });
 

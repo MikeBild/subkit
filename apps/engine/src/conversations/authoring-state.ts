@@ -29,6 +29,7 @@ import { pruneTracesForMutation, retainFingerprintValidTraces } from "./step-fin
 import { canonicalJson } from "./text-line-diff.ts";
 
 const INTAKE_ITEM_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 import type {
   AuthoringCheckpointKey,
@@ -85,6 +86,9 @@ function cloneState(state: AuthoringState): AuthoringState {
         }
       : null,
     judge_breaker: state.judge_breaker ? { ...state.judge_breaker } : null,
+    latest_workflow_save_error: state.latest_workflow_save_error
+      ? { ...state.latest_workflow_save_error }
+      : null,
   };
 }
 
@@ -162,6 +166,7 @@ function applyWorkflowMutation(
   state.stage = workflow.steps.length > 0 ? "workflow_draft_started" : "workflow_targeted";
   if (canonicalJson(normalized.workflow) !== canonicalJson(workflow)) {
     state.workflow_mutation_seq += 1;
+    state.latest_workflow_save_error = null;
   }
   const priorGoal = normalized.workflow?.goal ?? null;
   const nextGoal = workflow.goal ?? null;
@@ -289,6 +294,37 @@ export function normalizeDraftDocument(raw: unknown): DraftDocument {
         }
       }
       if (raw.session.intake_review_active === true) session.intake_review_active = true;
+      if (
+        isRecord(raw.session.live_test) &&
+        typeof raw.session.live_test.workflow_id === "string" &&
+        UUID_RE.test(raw.session.live_test.workflow_id) &&
+        typeof raw.session.live_test.workflow_version_id === "string" &&
+        UUID_RE.test(raw.session.live_test.workflow_version_id) &&
+        raw.session.live_test.environment === "dev" &&
+        typeof raw.session.live_test.input_digest === "string" &&
+        /^[a-f0-9]{64}$/.test(raw.session.live_test.input_digest) &&
+        typeof raw.session.live_test.idempotency_key === "string" &&
+        raw.session.live_test.idempotency_key.length > 0 &&
+        raw.session.live_test.idempotency_key.length <= 200 &&
+        (raw.session.live_test.state === "pending" ||
+          raw.session.live_test.state === "running" ||
+          raw.session.live_test.state === "succeeded" ||
+          raw.session.live_test.state === "failed" ||
+          raw.session.live_test.state === "blocked")
+      ) {
+        session.live_test = {
+          workflow_id: raw.session.live_test.workflow_id,
+          workflow_version_id: raw.session.live_test.workflow_version_id,
+          environment: "dev",
+          input: raw.session.live_test.input,
+          input_digest: raw.session.live_test.input_digest,
+          idempotency_key: raw.session.live_test.idempotency_key,
+          state: raw.session.live_test.state,
+          ...(typeof raw.session.live_test.execution_id === "string"
+            ? { execution_id: raw.session.live_test.execution_id }
+            : {}),
+        };
+      }
       return Object.keys(session).length > 0 ? { session } : {};
     })(),
     ...(isRecord(raw.latest_preview)
@@ -667,6 +703,27 @@ export function withWorkflowPersisted(
   });
 }
 
+export function withWorkflowSaveError(
+  draft: DraftDocument,
+  error: { code: "draft_conflict"; message: string },
+): DraftDocument {
+  const normalized = normalizeDraftDocument(draft);
+  const state = cloneState(normalized.state ?? createEmptyState("workflow"));
+  state.latest_workflow_save_error = {
+    code: error.code,
+    message: error.message.slice(0, 1_000),
+    mutation_seq: state.workflow_mutation_seq,
+  };
+  return refreshDraftSummary({
+    ...normalized,
+    state,
+    summary: {
+      ...(normalized.summary ?? emptySummary()),
+      last_action: "workflow_save_conflict",
+    },
+  });
+}
+
 export const WORKFLOW_BINDING_TOOL = "workflow_binding";
 
 export function bindPersistedWorkflow(
@@ -686,6 +743,7 @@ export function bindPersistedWorkflow(
       ? "execution"
       : "workflow";
   state.judge_breaker = null;
+  state.latest_workflow_save_error = null;
   state = addPersistedResource(state, resource);
   state = recordCheckpoint(
     state,

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { type TranslationKey, translate } from "@/lib/i18n";
-import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "@/pages/chat-resume";
+import {
+  liveTestState,
+  resumeNextAction,
+  resumeStageLabel,
+  resumeSummaryLine,
+} from "@/pages/chat-resume";
 
 const de = (key: TranslationKey, values?: Record<string, string>) => translate("de", key, values);
 const en = (key: TranslationKey, values?: Record<string, string>) => translate("en", key, values);
@@ -30,6 +35,16 @@ function summary(entry: (typeof STAGES)[number]) {
 }
 
 describe("cockpit chat resume", () => {
+  test("maps only a completed successful run to a successful development test", () => {
+    expect(liveTestState("queued")).toBe("pending");
+    expect(liveTestState("running")).toBe("running");
+    expect(liveTestState("succeeded")).toBe("succeeded");
+    expect(liveTestState("failed")).toBe("failed");
+    expect(liveTestState("aborted")).toBe("failed");
+    expect(liveTestState("timed_out")).toBe("failed");
+    expect(liveTestState("held")).toBe("blocked");
+  });
+
   test("speaks German in every state the engine can be in", () => {
     for (const entry of STAGES) {
       const line = summary(entry);

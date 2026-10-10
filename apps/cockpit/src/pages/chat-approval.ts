@@ -151,7 +151,12 @@ export const OPEN_QUESTION_REFRESH_MS = 5_000;
 export function conversationRefreshInterval(
   detail: ConversationDetail | undefined,
 ): number | false {
-  return detail?.resume_summary?.pending_approval ? OPEN_QUESTION_REFRESH_MS : false;
+  const liveTestStatus = detail?.resume_summary?.live_test?.status;
+  return detail?.resume_summary?.pending_approval ||
+    liveTestStatus === "queued" ||
+    liveTestStatus === "running"
+    ? OPEN_QUESTION_REFRESH_MS
+    : false;
 }
 
 export function recordedDecisionKey(part: unknown): TranslationKey | null {

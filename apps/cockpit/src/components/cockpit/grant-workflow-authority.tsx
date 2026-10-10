@@ -42,6 +42,7 @@ import { authorityIssues } from "@/lib/authority-issues";
 import { automationQueryKeys, invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { existingGrant, grantScopeWarnings } from "@/lib/grant-context";
 import { useI18n } from "@/lib/i18n-context";
+import { liveTestState } from "@/lib/live-test-result";
 import { type AuthorityPages, withProvisionalAuthority } from "@/lib/optimistic-authorities";
 import { environmentToCorrectTo, heldEnvironments } from "@/lib/resolved-environment";
 import { useOptimisticAction } from "@/lib/use-optimistic-action";
@@ -57,6 +58,7 @@ import {
 } from "@/lib/workflow-authorities";
 
 export function GrantWorkflowAuthority({
+  conversationId,
   workflowId,
   versionId,
   activation,
@@ -78,6 +80,7 @@ export function GrantWorkflowAuthority({
   withTrigger = false,
   triggerSize = "sm",
 }: {
+  conversationId?: string;
   workflowId: string;
   versionId: string;
   activation?: { expected_current_version_id: string | null };
@@ -100,6 +103,15 @@ export function GrantWorkflowAuthority({
   triggerSize?: "sm" | "default";
 }) {
   const { t, tn, dateTime, locale } = useI18n();
+  function showLiveTestResult(result: unknown): boolean {
+    const state = liveTestState(result);
+    if (!state) return false;
+    const message = t(`chat.liveTest.${state}`);
+    if (state === "succeeded") toast.success(message);
+    else if (state === "failed") toast.error(message);
+    else toast.info(message);
+    return true;
+  }
   const [open, setOpen] = useState(false);
   const client = useQueryClient();
   const session = useSession();
@@ -327,14 +339,19 @@ export function GrantWorkflowAuthority({
         `/v1/workflows/${encodeURIComponent(workflowId)}/execution-authorities`,
         {
           method: "POST",
-          body: JSON.stringify({ ...checked, ...(activation ? { activation } : {}) }),
+          body: JSON.stringify({
+            ...checked,
+            ...(activation ? { activation } : {}),
+            ...(conversationId ? { conversation_id: conversationId } : {}),
+          }),
         },
       );
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       onCompleted?.();
       setOpen(false);
-      toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
+      if (!showLiveTestResult(result))
+        toast.success(t(activation ? "chat.activation.saved" : "authority.grantSaved"));
     },
   });
   const activateOnly = useMutation({
@@ -343,6 +360,7 @@ export function GrantWorkflowAuthority({
       return apiRequest(`/v1/workflows/${encodeURIComponent(workflowId)}/activate-draft`, {
         method: "POST",
         body: JSON.stringify({
+          ...(conversationId && _then !== "single_run" ? { conversation_id: conversationId } : {}),
           workflow_version_id: reviewVersionId,
           expected_current_version_id: activation.expected_current_version_id,
           expected_manifest_digest: review.digest,
@@ -360,7 +378,7 @@ export function GrantWorkflowAuthority({
       if (then === "single_run") onSingleRun?.();
       else {
         onCompleted?.();
-        toast.success(t("authority.activatedOnly"));
+        if (!showLiveTestResult(_result)) toast.success(t("authority.activatedOnly"));
       }
     },
   });

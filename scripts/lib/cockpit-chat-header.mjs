@@ -2,6 +2,22 @@ export async function verifyChatHeader(page, stand, conversation, locale, captur
   const de = locale === "de";
   await stand.visit(page, `chat/${conversation.id}`);
   await page.getByTestId("chat-composer-input").waitFor();
+  const tokenUsage = page.getByTestId("chat-usage-tokens");
+  const costUsage = page.getByTestId("chat-usage-cost");
+  await Promise.all([tokenUsage.waitFor(), costUsage.waitFor()]);
+  const tokenText = (await tokenUsage.innerText()).trim();
+  const costText = (await costUsage.innerText()).trim();
+  if (!tokenText.includes(de ? "gewichtete Tokens" : "weighted tokens"))
+    throw new Error(
+      `the chat token label does not identify weighted tokens: ${JSON.stringify(tokenText)}`,
+    );
+  if (!costText.startsWith(de ? "Modellkosten · mind." : "Model cost · at least"))
+    throw new Error(`the chat cost label is not an approximate floor: ${JSON.stringify(costText)}`);
+  const costTitle = await costUsage.getAttribute("title");
+  if (!costTitle?.includes(de ? "ohne Preis" : "no rate"))
+    throw new Error(
+      `the partly priced cost lacks its missing-rate explanation: ${JSON.stringify(costTitle)}`,
+    );
   const original = await page.evaluate(
     async (id) => (await fetch(`/v1/conversations/${id}`)).json(),
     conversation.id,

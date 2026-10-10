@@ -5140,6 +5140,8 @@ export interface paths {
                         expected_manifest_digest: string;
                         /** @enum {string} */
                         execution_environment: "dev" | "prod";
+                        /** Format: uuid */
+                        conversation_id?: string;
                     };
                 };
             };
@@ -5157,6 +5159,12 @@ export interface paths {
                             activated: true;
                             /** @enum {boolean} */
                             execution_authorized: false;
+                            live_test: {
+                                /** @enum {string} */
+                                state: "not_requested" | "blocked" | "queued" | "running" | "succeeded" | "failed";
+                                /** Format: uuid */
+                                execution_id?: string;
+                            };
                         };
                     };
                 };
@@ -5320,6 +5328,8 @@ export interface paths {
                             /** Format: uuid */
                             expected_current_version_id: string | null;
                         };
+                        /** Format: uuid */
+                        conversation_id?: string;
                     };
                 };
             };
@@ -20144,6 +20154,12 @@ export interface components {
             superseded_by: string | null;
             active_version: boolean;
             ready_for_new_run: boolean;
+            live_test?: {
+                /** @enum {string} */
+                state: "not_requested" | "blocked" | "queued" | "running" | "succeeded" | "failed";
+                /** Format: uuid */
+                execution_id?: string;
+            };
             /** @enum {string} */
             state: "approved" | "not_yet_valid" | "expired" | "revoked" | "superseded" | "exhausted" | "invalidated" | "unavailable";
         };
@@ -23750,6 +23766,10 @@ export interface components {
                     status: string;
                     recorded_at: string;
                 } | null;
+                live_test: {
+                    execution_id: string;
+                    status: string;
+                } | null;
                 last_successful_probe: string | null;
                 last_successful_preview: string | null;
                 unsaved: boolean;
@@ -24438,6 +24458,8 @@ export interface components {
                     /** Format: uuid */
                     expected_current_version_id: string | null;
                 };
+                /** Format: uuid */
+                conversation_id?: string;
             };
         };
         RejectPatchCandidateBody: {

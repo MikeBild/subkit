@@ -88,6 +88,15 @@ export function renderAuthoringContextBlock(input: AuthoringContextInput): strin
     lines.push("## Current authoring state");
     const mode = normalizedDraft.mode ?? "onboarding";
     lines.push(...renderModeEnvelope(mode, normalizedDraft, input.workflow_validation));
+    const saveError = normalizedDraft.state?.latest_workflow_save_error;
+    if (
+      saveError?.code === "draft_conflict" &&
+      saveError.mutation_seq === normalizedDraft.state?.workflow_mutation_seq
+    ) {
+      lines.push(
+        "- Save status: the workflow draft was not saved because the observed saved draft changed. Local changes remain. Do not claim that it was saved, activated, prepared for use, or tested; inspect and reconcile before another save.",
+      );
+    }
   }
 
   if (input.document_analysis && input.document_analysis.endpoint_count > 0) {

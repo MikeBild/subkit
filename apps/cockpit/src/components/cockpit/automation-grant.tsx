@@ -48,10 +48,12 @@ function useAutomationWorkflow(workflowId: string) {
 }
 
 export function AutomationToolCard({
+  conversationId,
   tool,
   onAdjust,
   onPrepareSingleRun,
 }: {
+  conversationId?: string;
   tool: ToolPart;
   onAdjust?: (workflowId: string) => void;
   onPrepareSingleRun?: (workflowId: string) => void;
@@ -68,6 +70,7 @@ export function AutomationToolCard({
     >
       {workflow.data ? (
         <AutomationCardBody
+          conversationId={conversationId}
           workflowId={workflowId}
           workflow={workflow.data.current}
           onAdjust={onAdjust ? () => onAdjust(workflowId) : undefined}
@@ -100,11 +103,13 @@ function CardUnread({ onRetry }: { onRetry: () => void }) {
 }
 
 function AutomationCardBody({
+  conversationId,
   workflowId,
   workflow,
   onAdjust,
   onPrepareSingleRun,
 }: {
+  conversationId?: string;
   workflowId: string;
   workflow: AutomationWorkflow;
   onAdjust?: () => void;
@@ -160,6 +165,7 @@ function AutomationCardBody({
         </Button>
       ) : card.act !== "review" ? null : only && further.length === 0 ? (
         <AutomationGrant
+          conversationId={conversationId}
           workflowId={workflowId}
           environment={only}
           testId="chat-automation-tool-review"
@@ -172,6 +178,7 @@ function AutomationCardBody({
           {card.environments.map((environment) =>
             environment === "prod" ? (
               <AutomationGrant
+                conversationId={conversationId}
                 key={environment}
                 workflowId={workflowId}
                 environment="prod"
@@ -182,6 +189,7 @@ function AutomationCardBody({
               />
             ) : (
               <AutomationGrant
+                conversationId={conversationId}
                 key={environment}
                 workflowId={workflowId}
                 environment="dev"
@@ -200,6 +208,7 @@ function AutomationCardBody({
 }
 
 export function AutomationGrant({
+  conversationId,
   workflowId,
   environment,
   testId,
@@ -208,6 +217,7 @@ export function AutomationGrant({
   onPrepareSingleRun,
   onAdjust,
 }: {
+  conversationId?: string;
   workflowId: string;
   environment: "dev" | "prod";
   testId: string;
@@ -237,6 +247,7 @@ export function AutomationGrant({
   const { current, draft } = workflow.data;
   return (
     <GrantWorkflowAuthority
+      conversationId={conversationId}
       key={versionId}
       workflowId={workflowId}
       versionId={versionId}

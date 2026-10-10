@@ -4,6 +4,7 @@ import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { skills, tenants } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { EMBEDDED_SKILL_SEEDS } from "./embedded-seeds.ts";
 import {
   type SkillActivation,
@@ -203,7 +204,9 @@ export async function applySkillSeedsForAllTenants(
   const allTenants = await db.select({ id: tenants.id }).from(tenants);
   const outcomes: ApplyOutcome[] = [];
   for (const t of allTenants) {
-    const r = await applySkillSeeds(seeds, t.id, db);
+    const r = await retryTransient(() => applySkillSeeds(seeds, t.id, db), {
+      label: "skills_seed",
+    });
     outcomes.push(r);
   }
   return outcomes;

@@ -13,6 +13,7 @@ const TRANSIENT_CODES = new Set<string>([
   "08001",
   "08003",
   "08006",
+  "40001",
 ]);
 
 const TRANSIENT_MESSAGES = [

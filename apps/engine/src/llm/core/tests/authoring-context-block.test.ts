@@ -39,6 +39,34 @@ describe("authoring execution trust guidance", () => {
     const out = renderAuthoringContextBlock({ draft: null, user_message: "hello" });
     expect(out).not.toContain("## Execution trust boundaries");
   });
+
+  it("keeps a current draft conflict visible on the next turn", () => {
+    const out = renderAuthoringContextBlock({
+      draft: {
+        mode: "workflow_authoring",
+        workflow: { name: "Weekly report", steps: [] },
+        state: {
+          mode: "workflow",
+          stage: "workflow_draft_started",
+          connector_mutation_seq: 0,
+          workflow_mutation_seq: 4,
+          checkpoints: {},
+          persisted_resources: [],
+          latest_execution: null,
+          latest_diagnosis: null,
+          latest_workflow_save_error: {
+            code: "draft_conflict",
+            message: "The saved draft changed elsewhere.",
+            mutation_seq: 4,
+          },
+        },
+      },
+      user_message: "continue",
+    });
+
+    expect(out).toContain("Save status: the workflow draft was not saved");
+    expect(out).toContain("Do not claim that it was saved, activated, prepared for use, or tested");
+  });
 });
 
 describe("renderAuthoringContextBlock — Document Analysis section", () => {
