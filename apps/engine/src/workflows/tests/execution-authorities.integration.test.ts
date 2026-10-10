@@ -334,7 +334,9 @@ test("audit failure rolls the grant back", async () => {
 });
 
 test("reviewed active authority resolves exactly its held schedule, audited and retry-safe", async () => {
-  const f = await fixture();
+  const f = await fixture({
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  });
   await ctx.db
     .update(workflows)
     .set({ lifecycle: "active", current_version_id: f.version.id })
@@ -352,6 +354,7 @@ test("reviewed active authority resolves exactly its held schedule, audited and 
       timezone: "UTC",
       execution_mode: "dev",
       admission_hold: hold,
+      input: { business_days_only: false, skip_dates: [] },
       created_at: new Date(new Date(f.input.valid_from).getTime() - 2 * 86_400_000),
     })
     .returning();
@@ -479,6 +482,7 @@ for (const scenario of [
         cron: "0 9 * * *",
         timezone: "UTC",
         execution_mode: scenario === "different_environment" ? "prod" : "dev",
+        input: { business_days_only: false, skip_dates: [] },
         admission_hold: hold,
       })
       .returning();

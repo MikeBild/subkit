@@ -1,4 +1,5 @@
 export { inspectInboundHookAutomation, inspectScheduleAutomation } from "./automation-status.ts";
+export { stripCalendarGates } from "./calendar-gates.ts";
 export { parseCronExpression } from "./cron.ts";
 export { nextScheduleFire } from "./next-fire.ts";
 export { type ReconcilerOptions, SchedulerReconciler } from "./reconciler.ts";
