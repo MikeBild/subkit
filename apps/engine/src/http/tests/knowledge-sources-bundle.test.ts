@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/audit.ts";
 import { apiKeys, files, users } from "../../db/schema/index.ts";
+import { NoopScanner } from "../../files/scanner.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
 import { getObjectStore } from "../../storage/object-store.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
@@ -772,5 +773,29 @@ describe("POST /v1/knowledge-sources/bundle — budget mapping", () => {
     expect(body.outcome).toBe("unchanged");
     expect(body.knowledge_source.scope).toBe("workflow");
     expect(body.knowledge_source.workflow_id).toBe(wf!.id);
+  });
+});
+
+describe("bundle preparation retry boundary", () => {
+  test("does not repeat scanning when preparation fails with a contention-shaped error", async () => {
+    const scan = spyOn(NoopScanner, "scan").mockRejectedValue(
+      Object.assign(new Error("scanner unavailable"), { code: "40001" }),
+    );
+    const store = getObjectStore();
+    const put = spyOn(store, "put");
+    try {
+      const response = await postBundle({
+        name: "Preparation retry boundary",
+        slug: "preparation-retry-boundary",
+        files: [{ path: "boundary.md", content: "Preparation must execute once." }],
+      });
+      expect(response.status).toBe(409);
+      await response.arrayBuffer();
+      expect(scan).toHaveBeenCalledTimes(1);
+      expect(put).toHaveBeenCalledTimes(1);
+    } finally {
+      scan.mockRestore();
+      put.mockRestore();
+    }
   });
 });

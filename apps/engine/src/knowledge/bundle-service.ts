@@ -71,7 +71,7 @@ export async function upsertKnowledgeBundle(
   p: UpsertKnowledgeBundleParams,
   exec?: Executor,
 ): Promise<KnowledgeBundleUpsertResult> {
-  return retryTransient(() => upsertKnowledgeBundleInner(p, exec ?? getDb(), false));
+  return upsertKnowledgeBundleInner(p, exec ?? getDb(), false);
 }
 
 async function upsertKnowledgeBundleInner(
@@ -177,9 +177,11 @@ async function upsertKnowledgeBundleInner(
   }
   const applyMetaMerge = async (): Promise<KnowledgeSourceView | null> =>
     Object.keys(patch).length > 0
-      ? await updateKnowledgeSource(
-          { tenant_id: p.tenant_id, id: existing.id, patch, actor_id: p.actor?.id ?? null },
-          db,
+      ? await retryTransient(() =>
+          updateKnowledgeSource(
+            { tenant_id: p.tenant_id, id: existing.id, patch, actor_id: p.actor?.id ?? null },
+            db,
+          ),
         )
       : null;
 

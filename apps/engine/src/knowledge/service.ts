@@ -8,6 +8,7 @@ import { assertInsertRow } from "../db/assert-insert.ts";
 import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
+import { retryTransient } from "../db/transient.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
 import { dedupChunks } from "../docs-ingestion/dedup.ts";
 import type { FingerprintedChunk } from "../docs-ingestion/types.ts";
@@ -278,8 +279,11 @@ export async function createKnowledgeSource(
   let created: KnowledgeSourceView;
   try {
     created = await (db as Db).transaction(async (tx) => {
-      state.prepared = await prepareKnowledgeCreate(p, tx);
-      return applyKnowledgeCreate(tx, p, state.prepared);
+      const prepared = await prepareKnowledgeCreate(p, tx);
+      state.prepared = prepared;
+      return retryTransient(() =>
+        tx.transaction((writeTx) => applyKnowledgeCreate(writeTx, p, prepared)),
+      );
     });
   } catch (error) {
     await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
@@ -794,8 +798,11 @@ export async function ingestKnowledgeSource(
   let applied: AppliedKnowledgeIngest | null;
   try {
     applied = await (db as Db).transaction(async (tx) => {
-      state.prepared = await prepareKnowledgeIngest(p, tx);
-      return applyKnowledgeIngest(tx, p, state.prepared);
+      const prepared = await prepareKnowledgeIngest(p, tx);
+      state.prepared = prepared;
+      return retryTransient(() =>
+        tx.transaction((writeTx) => applyKnowledgeIngest(writeTx, p, prepared)),
+      );
     });
   } catch (error) {
     await cleanupPersistedKnowledgeFile(db, state.prepared?.persisted ?? null);
