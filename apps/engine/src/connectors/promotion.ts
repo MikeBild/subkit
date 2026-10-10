@@ -122,7 +122,6 @@ export async function promoteConnector(
   );
 
   return await db.transaction(async (tx) => {
-    await lockCatalogVocabulary(tx, input.tenant_id);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idempotencyHash}))`);
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${`${input.tenant_id}:${input.source_connector_id}`}))`,
@@ -148,6 +147,8 @@ export async function promoteConnector(
       }
       return replayResult(prior.response);
     }
+
+    await lockCatalogVocabulary(tx, input.tenant_id);
 
     const sourceRows = await tx
       .select()
