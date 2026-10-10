@@ -360,10 +360,10 @@ async function runServer(): Promise<void> {
           ...errorFields(err),
         });
       }
-    })();
+    })().finally(() => seedKnowledgeAtBoot(db));
+  } else {
+    void seedKnowledgeAtBoot(db);
   }
-
-  void seedKnowledgeAtBoot(db);
 
   const app = createApp({ db, chatRegistry });
   const port = getConfig().server.port;

@@ -141,7 +141,11 @@ import {
 import { listTools, type ToolContext } from "./tools/index.ts";
 import { type TurnSignals, wrapTools } from "./tools/sdk-wrap.ts";
 import { LlmTimeoutError, timeoutBudgetOf, timeoutPhaseOf } from "./turn-failure.ts";
-import { classifyFallbackSynthesis, turnLoopBudgetStopCondition } from "./turn-helpers.ts";
+import {
+  classifyFallbackSynthesis,
+  completionEvidenceGuard,
+  turnLoopBudgetStopCondition,
+} from "./turn-helpers.ts";
 import type { ConversationStatus, DraftDocument, TurnEvent } from "./types.ts";
 
 export const CONVERSE_FIRST_CHUNK_TIMEOUT_MS = PROVIDER_RESPONSE_TIMEOUT_MS;
@@ -1520,16 +1524,35 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     }
   }
 
+  const completionEvidence = completionEvidenceGuard(events, draft);
+  if (completionEvidence && signals.lastAssistantMessageId) {
+    await updateMessageContent(p.db, signals.lastAssistantMessageId, {
+      text: completionEvidence,
+      _synthetic: true,
+      _reason: "completion_evidence_guard",
+    });
+    events.push({
+      type: "message",
+      role: "assistant",
+      content: { text: completionEvidence },
+      id: signals.lastAssistantMessageId,
+      parent_message_id: signals.lastAssistantMessageId,
+    });
+    signals.lastAssistantText = completionEvidence;
+  }
+
   if (
     !signals.lastAssistantText &&
     !signals.pendingElicitation &&
     !signals.committed &&
     !turnAbortCtrl.signal.aborted
   ) {
-    const classified = classifyFallbackSynthesis({
-      events,
-      loopWarnings: signals.totalLoopWarnings,
-    });
+    const classified = completionEvidence
+      ? { text: completionEvidence, reason: "tool_results_summary" as const }
+      : classifyFallbackSynthesis({
+          events,
+          loopWarnings: signals.totalLoopWarnings,
+        });
     if (classified) {
       const synthetic = classified.text;
       const fallbackMessageId = await appendMessage(

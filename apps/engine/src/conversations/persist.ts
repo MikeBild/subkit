@@ -25,7 +25,9 @@ import { dropAssistantTail } from "./replay-tail.ts";
 import { ensureConversationTitle } from "./title.ts";
 import {
   approxValueSize,
+  buildCriticalToolOutputStub,
   buildElidedToolOutputStub,
+  isReplayCriticalToolOutput,
   TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
 } from "./tool-output-elision.ts";
 import type { ToolCallOutcome } from "./tools/result-payload.ts";
@@ -413,7 +415,54 @@ export async function buildModelMessages(
       THEN jsonb_build_object(
         ${sql.raw(`'${ELIDED_SQL_MARKER}'`)}, true,
         '_raw_ref', ${conversationToolCalls.output}->>'_raw_ref',
-        '_orig_bytes', octet_length(${conversationToolCalls.output}::text)
+        '_orig_bytes', octet_length(${conversationToolCalls.output}::text),
+        '_critical', (
+          COALESCE(${conversationToolCalls.output}->>'ok', 'true') = 'false'
+          OR COALESCE(${conversationToolCalls.output}->>'writes_held', 'false') = 'true'
+          OR ${conversationToolCalls.output}->>'error_code' IS NOT NULL
+          OR COALESCE(${conversationToolCalls.output}->>'status', '') = 'failed'
+        ),
+        'ok', ${conversationToolCalls.output}->'ok',
+        'error_code', COALESCE(
+          ${conversationToolCalls.output}->'error_code',
+          ${conversationToolCalls.output}->'data'->'error_code'
+        ),
+        'message', COALESCE(
+          ${conversationToolCalls.output}->'message',
+          ${conversationToolCalls.output}->'data'->'message'
+        ),
+        'writes_held', COALESCE(
+          ${conversationToolCalls.output}->'writes_held',
+          ${conversationToolCalls.output}->'data'->'writes_held'
+        ),
+        'held_step_ids', COALESCE(
+          ${conversationToolCalls.output}->'held_step_ids',
+          ${conversationToolCalls.output}->'data'->'held_step_ids'
+        ),
+        'status', COALESCE(
+          ${conversationToolCalls.output}->'status',
+          ${conversationToolCalls.output}->'data'->'status'
+        ),
+        'execution_id', COALESCE(
+          ${conversationToolCalls.output}->'execution_id',
+          ${conversationToolCalls.output}->'data'->'execution_id'
+        ),
+        'workflow_id', COALESCE(
+          ${conversationToolCalls.output}->'workflow_id',
+          ${conversationToolCalls.output}->'data'->'workflow_id'
+        ),
+        'workflow_version_id', COALESCE(
+          ${conversationToolCalls.output}->'workflow_version_id',
+          ${conversationToolCalls.output}->'data'->'workflow_version_id'
+        ),
+        'resource_id', COALESCE(
+          ${conversationToolCalls.output}->'resource_id',
+          ${conversationToolCalls.output}->'data'->'resource_id'
+        ),
+        'resource_ids', COALESCE(
+          ${conversationToolCalls.output}->'resource_ids',
+          ${conversationToolCalls.output}->'data'->'resource_ids'
+        )
       )
     ELSE ${conversationToolCalls.output}
   END`;
@@ -628,12 +677,21 @@ export async function buildModelMessages(
           const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
           const origBytes = typeof rawOutput._orig_bytes === "number" ? rawOutput._orig_bytes : 0;
           const ref = existingRef ?? rememberRaw(undefined);
-          resultValue = buildElidedToolOutputStub({
-            tool: call.tool,
-            ref,
-            original_size: origBytes,
-            size_unit: "bytes",
-          });
+          resultValue =
+            rawOutput._critical === true || isReplayCriticalToolOutput(rawOutput)
+              ? buildCriticalToolOutputStub({
+                  tool: call.tool,
+                  ref,
+                  original_size: origBytes,
+                  size_unit: "bytes",
+                  output: rawOutput,
+                })
+              : buildElidedToolOutputStub({
+                  tool: call.tool,
+                  ref,
+                  original_size: origBytes,
+                  size_unit: "bytes",
+                });
           out.push({
             role: "tool",
             content: [
@@ -659,12 +717,20 @@ export async function buildModelMessages(
         if (isOutsideVerbatimWindow && augmentedSize > TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS) {
           const existingRef = typeof rawOutput._raw_ref === "string" ? rawOutput._raw_ref : null;
           const ref = existingRef ?? rememberRaw(augmented);
-          resultValue = buildElidedToolOutputStub({
-            tool: call.tool,
-            ref,
-            original_size: augmentedSize,
-            size_unit: "chars",
-          });
+          resultValue = isReplayCriticalToolOutput(augmented)
+            ? buildCriticalToolOutputStub({
+                tool: call.tool,
+                ref,
+                original_size: augmentedSize,
+                size_unit: "chars",
+                output: augmented,
+              })
+            : buildElidedToolOutputStub({
+                tool: call.tool,
+                ref,
+                original_size: augmentedSize,
+                size_unit: "chars",
+              });
         } else {
           const truncated = truncateForLlm(augmented);
           resultValue = truncated.truncated

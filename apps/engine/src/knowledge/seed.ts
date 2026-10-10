@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { PLATFORM_CATEGORY } from "../api/catalog-metadata.ts";
 import { type Db, getDb } from "../db/client.ts";
 import { tenants } from "../db/schema/index.ts";
+import { retryTransient } from "../db/transient.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { EMBEDDED_KNOWLEDGE_SEEDS } from "./embedded-seeds.ts";
 import {
@@ -139,7 +140,9 @@ export async function applyKnowledgeSeedsForAllTenants(
   const allTenants = await db.select({ id: tenants.id }).from(tenants);
   const outcomes: ApplyOutcome[] = [];
   for (const t of allTenants) {
-    const r = await applyKnowledgeSeeds(seeds, t.id, db);
+    const r = await retryTransient(() => applyKnowledgeSeeds(seeds, t.id, db), {
+      label: "knowledge_seed",
+    });
     outcomes.push(r);
   }
   return outcomes;

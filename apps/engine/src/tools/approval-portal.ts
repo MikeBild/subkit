@@ -3,7 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../crypto/aes-gcm.ts";
 import type { Db, Executor } from "../db/client.ts";
 import { systemAccounts, toolApprovals, users } from "../db/schema/index.ts";
-import { CallerContextSchema } from "../execution/index.ts";
+import { CallerContextSchema } from "../execution/caller-context.ts";
 import { sha256Hex } from "../identity/api-key.ts";
 import { engineUrlFromConfig } from "../llm/runtime-context.ts";
 import { logger } from "../logging/logger.ts";

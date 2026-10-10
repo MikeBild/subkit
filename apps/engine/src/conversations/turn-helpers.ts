@@ -1,5 +1,5 @@
 import { isAutomationReviewCard } from "./loop/stop-conditions.ts";
-import type { TurnEvent } from "./types.ts";
+import type { DraftDocument, TurnEvent } from "./types.ts";
 
 export const turnLoopBudgetStopCondition = ({
   steps,
@@ -23,6 +23,99 @@ export type FallbackSynthesisReason =
   | "next_prompt_from_tool"
   | "loop_warnings_no_signal"
   | "tool_results_summary";
+
+function resultRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isFailedToolResult(value: unknown): boolean {
+  const record = resultRecord(value);
+  if (!record) return false;
+  if (
+    record.ok === false ||
+    typeof record.error_code === "string" ||
+    typeof record.error === "string" ||
+    record.status === "failed"
+  ) {
+    return true;
+  }
+  return isFailedToolResult(record.data);
+}
+
+function holdsWrites(value: unknown): boolean {
+  const record = resultRecord(value);
+  if (!record) return false;
+  return record.writes_held === true || holdsWrites(record.data);
+}
+
+function workflowId(value: unknown): string | null {
+  const record = resultRecord(value);
+  if (!record) return null;
+  if (typeof record.workflow_id === "string") return record.workflow_id;
+  return workflowId(record.data);
+}
+
+function workflowVersionId(value: unknown): string | null {
+  const record = resultRecord(value);
+  if (!record) return null;
+  if (typeof record.workflow_version_id === "string") return record.workflow_version_id;
+  return workflowVersionId(record.data);
+}
+
+function workflowRunKey(value: unknown): string {
+  return `${workflowId(value) ?? "current"}:${workflowVersionId(value) ?? "current"}`;
+}
+
+function successfulRun(value: unknown): boolean {
+  const record = resultRecord(value);
+  if (!record || holdsWrites(record) || isFailedToolResult(record)) return false;
+  return record.status === "succeeded" || successfulRun(record.data);
+}
+
+export function completionEvidenceGuard(
+  events: ReadonlyArray<TurnEvent>,
+  draft?: DraftDocument | null,
+): string | null {
+  const successfulSaves = new Set<string>();
+  const successfulRuns = new Set<string>();
+  for (const event of [...events].reverse()) {
+    if (event.type !== "tool_result") continue;
+    if (event.tool === "save_workflow_draft") {
+      const key = workflowId(event.output) ?? "current";
+      if (!isFailedToolResult(event.output)) {
+        successfulSaves.add(key);
+        continue;
+      }
+      if (successfulSaves.has(key)) continue;
+      if (isFailedToolResult(event.output)) {
+        return "The workflow draft was not saved. The saved version changed or could not be updated; local changes remain available for review.";
+      }
+    }
+    if (holdsWrites(event.output)) {
+      const key = workflowRunKey(event.output);
+      if (!successfulRuns.has(key)) {
+        return "Some actions were held. This is not a complete live test; the held action still needs the required permission or an explicit live-run decision.";
+      }
+      continue;
+    }
+    if (
+      (event.tool === "run_workflow" || event.tool.startsWith("wf_")) &&
+      successfulRun(event.output)
+    ) {
+      successfulRuns.add(workflowRunKey(event.output));
+    }
+  }
+  const saveError = draft?.state?.latest_workflow_save_error;
+  if (
+    saveError?.code === "draft_conflict" &&
+    saveError.mutation_seq === draft?.state?.workflow_mutation_seq
+  ) {
+    return "The workflow draft was not saved. The saved version changed; local changes remain available for review.";
+  }
+  return null;
+}
 
 function pickFreshestNextPrompt(events: ReadonlyArray<TurnEvent>): string | null {
   const latestEvent = [...events].reverse().find((ev) => ev.type === "tool_result");

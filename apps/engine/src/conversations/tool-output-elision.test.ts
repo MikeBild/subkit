@@ -3,6 +3,7 @@ import type { ModelMessage } from "ai";
 import {
   buildElidedToolOutputStub,
   elideWithinTurnToolOutputs,
+  isReplayCriticalToolOutput,
   TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS,
   WITHIN_TURN_VERBATIM_ITERATIONS,
 } from "./tool-output-elision.ts";
@@ -237,5 +238,48 @@ describe("buildElidedToolOutputStub", () => {
     ).toBe(
       '<elided: tool=list_users, ref=raw_abcd1234, original=12345 chars; call get_raw_result(ref="raw_abcd1234") for the full payload>',
     );
+  });
+});
+
+describe("isReplayCriticalToolOutput", () => {
+  test("retains failed saves and held writes in the replay", () => {
+    expect(isReplayCriticalToolOutput({ ok: false, error_code: "draft_conflict" })).toBe(true);
+    expect(isReplayCriticalToolOutput({ writes_held: true })).toBe(true);
+    expect(isReplayCriticalToolOutput({ data: { status: "failed" } })).toBe(true);
+    expect(isReplayCriticalToolOutput({ ok: true, payload: "x".repeat(10_000) })).toBe(false);
+  });
+
+  test("compacts critical evidence without dropping the failure status", () => {
+    const messages = [
+      ...iteration(0, {
+        ok: false,
+        error_code: "draft_conflict",
+        message: "The saved draft changed elsewhere.",
+        held_step_ids: ["write_customer"],
+        workflow_id: "workflow_1",
+        workflow_version_id: "version_2",
+        resource_ids: ["resource_3"],
+        payload: "x".repeat(TOOL_OUTPUT_ELIDE_THRESHOLD_CHARS + 1_000),
+      }),
+      ...Array.from({ length: WITHIN_TURN_VERBATIM_ITERATIONS }, (_, index) =>
+        iteration(index + 1, SMALL_PAYLOAD()),
+      ).flat(),
+    ];
+    const result = elideWithinTurnToolOutputs(messages, { baseline_index: 0 });
+    expect(result).not.toBeNull();
+    if (!result) throw new Error("expected elision");
+    const stub = toolResultValue(result.messages[1]) as Record<string, unknown>;
+    expect(stub).toMatchObject({
+      _elided: true,
+      _critical: true,
+      ok: false,
+      error_code: "draft_conflict",
+      message: "The saved draft changed elsewhere.",
+      held_step_ids: ["write_customer"],
+      workflow_id: "workflow_1",
+      workflow_version_id: "version_2",
+      resource_ids: ["resource_3"],
+    });
+    expect(JSON.stringify(stub).length).toBeLessThan(1_000);
   });
 });

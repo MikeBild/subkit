@@ -17,6 +17,7 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     grants = 0,
     activations = 0,
     messages = 0;
+  let liveTestStatus = null;
   const routes = [];
   const route = async (pattern, handler) => {
     await page.route(pattern, handler);
@@ -70,6 +71,9 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
           slug: "daily-report",
           environment: "prod",
         },
+        live_test: liveTestStatus
+          ? { execution_id: "00000000-0000-4000-8000-000000000043", status: liveTestStatus }
+          : null,
       },
     }),
   );
@@ -344,7 +348,8 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     if (
       body.workflow_version_id !== draftId ||
       body.activation?.expected_current_version_id !== activeId ||
-      body.execution_environment !== "prod"
+      body.execution_environment !== "prod" ||
+      body.conversation_id !== conversation.id
     )
       throw new Error("Activation lost its exact reviewed boundary");
     grants++;
@@ -369,6 +374,10 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       "max_runs" in body
     )
       throw new Error("One-shot preparation silently granted repeated execution");
+    if (activations === 0 && body.conversation_id !== conversation.id)
+      throw new Error("Activation did not retain its conversation");
+    if (activations > 0 && "conversation_id" in body)
+      throw new Error("Explicit single-run preparation retained activation conversation state");
     activations++;
     return fulfill(r, {
       workflow_version_id: draftId,
@@ -518,6 +527,14 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
     await page.getByRole("dialog").waitFor({ state: "hidden" });
     await page.getByTestId("chat-schedule-next-step").waitFor({ state: "hidden" });
     await page.getByTestId("chat-automation-ready").waitFor();
+    await page.getByTestId("chat-live-test-next-step").waitFor();
+    await page.getByTestId("chat-prepare-live-test").click();
+    await page.waitForTimeout(50);
+    if (messages !== 1 || activations !== 0)
+      throw new Error(
+        "The explicit production test action did not stay a prepared chat continuation",
+      );
+    messages = 0;
     const after = await decisionCount(before - 1);
     if (after !== before - 1)
       throw new Error(`Decision count did not decrease once: ${before} -> ${after}`);
@@ -583,6 +600,23 @@ export async function verifyChatActivation(page, stand, conversation, locale) {
       !page.url().includes(`/chat/${conversation.id}`)
     )
       throw new Error("One-shot handoff did not stay in chat exactly once");
+    const executionId = "00000000-0000-4000-8000-000000000043";
+    for (const [state, expected] of [
+      ["queued", locale === "de" ? "wartet auf den Start" : "waiting to start"],
+      ["failed", locale === "de" ? "fehlgeschlagen" : "failed"],
+      ["succeeded", locale === "de" ? "erfolgreich" : "succeeded"],
+    ]) {
+      liveTestStatus = state;
+      await page.reload();
+      const card = page.getByTestId("chat-live-test-result");
+      await card.waitFor();
+      const text = (await card.innerText()).toLowerCase();
+      if (!text.includes(expected.toLowerCase()))
+        throw new Error(`Reloaded live-test status did not describe ${state}: ${text}`);
+      const href = await page.getByTestId("chat-live-test-run").getAttribute("href");
+      if (!href?.includes(`run=${executionId}`))
+        throw new Error("Reloaded live-test status did not link to its run");
+    }
   } finally {
     for (const [pattern, handler] of routes.reverse()) await page.unroute(pattern, handler);
   }

@@ -1,6 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { can } from "../../rbac/evaluator.ts";
+import { workflowJsonDigest } from "../../workflows/canonical-json.ts";
 import { inspectAutomationReview, savedChangeReviewPath } from "../automation-review.ts";
+import { conversationExecutionSuppressed } from "../execution-suppression.ts";
 import type { ConversationTool, ToolContext } from "./index.ts";
 import { resolveConversationPrincipal } from "./permission-gate.ts";
 import { resolvePublicBaseUrl } from "./usage-guidance.ts";
@@ -9,6 +11,15 @@ const Input = z.object({ workflow_id: z.string().uuid() });
 
 function rendersReviewCard(surface: ToolContext["surface"]): boolean {
   return surface === undefined || surface === "web";
+}
+
+async function executionSuppressed(ctx: ToolContext): Promise<boolean> {
+  return conversationExecutionSuppressed({
+    db: ctx.db,
+    tenant_id: ctx.tenant_id,
+    conversation_id: ctx.conversation_id,
+    recent_user_message: ctx.recentUserMessage ?? null,
+  });
 }
 
 export async function buildAutomationReview(ctx: ToolContext, workflow_id: string) {
@@ -46,7 +57,7 @@ export async function buildAutomationReview(ctx: ToolContext, workflow_id: strin
 export const reviewWorkflowAutomationTool: ConversationTool = {
   name: "review_workflow_automation",
   description:
-    "Hand off to the user-facing review card for a workflow in this chat: its automatic runs (schedules, inbound webhooks) and a saved change that still has to be applied before the workflow can run. Use after inspecting and preparing the workflow, when run_workflow answers workflow_activation_required, or when the user asks for its current readiness. When there is something to review this ends the turn with a structured card; do not narrate internal diagnosis before calling it. When there is nothing (no schedule, no webhook, no unapplied saved change) there is no card: answer the user in prose from the result. This reads status only; the browser dialog separately checks the exact version, effects and finite limits. Never substitute ask_user_confirm, a single run, or an API call: none of them applies a saved change or grants recurring authority.",
+    "Hand off to the user-facing review card for a workflow in this chat: its automatic runs (schedules, inbound webhooks) and a saved change that still has to be applied before the workflow can run. Use after inspecting and preparing the workflow, when run_workflow answers workflow_activation_required, or when the user asks for its current readiness. When there is something to review this ends the turn with a structured card; do not narrate internal diagnosis before calling it. When there is nothing (no schedule, no webhook, no unapplied saved change) there is no card: answer the user in prose from the result. The browser dialog separately checks the exact version, effects and finite limits. A completed DEV preparation records one pending test for this exact version unless the user's current instruction explicitly says not to run live. Never substitute ask_user_confirm, a single run, or an API call: none of them applies a saved change or grants recurring authority.",
   inputSchema: Input,
   category: "tenant_read",
   permission: { action: "schedule:read", resourceType: "schedule" },
@@ -54,6 +65,54 @@ export const reviewWorkflowAutomationTool: ConversationTool = {
     const { workflow_id } = Input.parse(raw);
     const review = await buildAutomationReview(ctx, workflow_id);
     if (!review) return { ok: false, error_code: "workflow_not_found" };
+    const saved = review.saved_change;
+    const draft = ctx.getDraft();
+    const persisted = draft.summary?.persisted_resources.find(
+      (resource) => resource.kind === "workflow" && resource.id === workflow_id,
+    );
+    const preview = draft.latest_preview;
+    const persistedCheckpoint = draft.state?.checkpoints.workflow_persisted;
+    const previewCheckpoint = draft.state?.checkpoints.workflow_previewed;
+    const inputDigest = preview?.input === undefined ? null : workflowJsonDigest(preview.input);
+    if (
+      saved?.environment === "dev" &&
+      saved.workflow_version_id &&
+      persisted?.version_id === saved.workflow_version_id &&
+      persistedCheckpoint?.ok === true &&
+      persistedCheckpoint.mutation_seq === draft.state?.workflow_mutation_seq &&
+      previewCheckpoint?.ok === true &&
+      previewCheckpoint.mutation_seq === draft.state?.workflow_mutation_seq &&
+      preview?.ok === true &&
+      preview.input !== undefined &&
+      inputDigest !== null &&
+      !(await executionSuppressed(ctx))
+    ) {
+      const existing = draft.session?.live_test;
+      if (
+        !existing ||
+        existing.workflow_id !== workflow_id ||
+        existing.workflow_version_id !== saved.workflow_version_id ||
+        existing.input_digest !== inputDigest ||
+        existing.state === "failed" ||
+        existing.state === "blocked"
+      ) {
+        await ctx.setDraft({
+          ...draft,
+          session: {
+            ...(draft.session ?? {}),
+            live_test: {
+              workflow_id,
+              workflow_version_id: saved.workflow_version_id,
+              environment: "dev",
+              input: preview.input,
+              input_digest: inputDigest,
+              idempotency_key: `conversation-live-test:${ctx.conversation_id}:${saved.workflow_version_id}:${inputDigest}`,
+              state: "pending",
+            },
+          },
+        });
+      }
+    }
     return { ok: true, data: review };
   },
 };

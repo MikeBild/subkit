@@ -1,12 +1,14 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import { continueConversationDevLiveTest } from "../../conversations/index.ts";
 import type { Db } from "../../db/client.ts";
 import {
   workflowExecutionAuthorities,
   workflows,
   workflowsSchedules,
 } from "../../db/schema/index.ts";
+import { getBoss } from "../../queue/index.ts";
 import { can } from "../../rbac/index.ts";
 import {
   inboundHookAutomationView,
@@ -64,6 +66,12 @@ const authoritySchema = z
     superseded_by: z.string().uuid().nullable(),
     active_version: z.boolean(),
     ready_for_new_run: z.boolean(),
+    live_test: z
+      .object({
+        state: z.enum(["not_requested", "blocked", "queued", "running", "succeeded", "failed"]),
+        execution_id: z.string().uuid().optional(),
+      })
+      .optional(),
     state: z.enum([
       "approved",
       "not_yet_valid",
@@ -310,6 +318,17 @@ const activateDraft = createRoute({
             workflow_version_id: z.string().uuid(),
             activated: z.literal(true),
             execution_authorized: z.literal(false),
+            live_test: z.object({
+              state: z.enum([
+                "not_requested",
+                "blocked",
+                "queued",
+                "running",
+                "succeeded",
+                "failed",
+              ]),
+              execution_id: z.string().uuid().optional(),
+            }),
           }),
         },
       },
@@ -528,14 +547,25 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
   });
   app.openapi(activateDraft, async (c) => {
     try {
-      return c.json(
-        await activateWorkflowDraft(c.req.valid("param").id, c.req.valid("json"), {
-          principal: requireAuth(c),
-          request: c.req.raw,
-          db: c.get("db"),
-        }),
-        200,
-      );
+      const principal = requireAuth(c);
+      const body = c.req.valid("json");
+      const activated = await activateWorkflowDraft(c.req.valid("param").id, body, {
+        principal,
+        request: c.req.raw,
+        db: c.get("db"),
+      });
+      const live_test =
+        body.execution_environment === "dev" && body.conversation_id
+          ? await continueConversationDevLiveTest({
+              db: c.get("db"),
+              principal,
+              boss: c.get("boss") ?? getBoss(),
+              conversation_id: body.conversation_id,
+              workflow_id: c.req.valid("param").id,
+              workflow_version_id: activated.workflow_version_id,
+            })
+          : { state: "not_requested" as const };
+      return c.json({ ...activated, live_test }, 200);
     } catch (error) {
       return translate(error);
     }
@@ -702,7 +732,22 @@ export function registerWorkflowAuthorityRoutes(app: OpenAPIHono<AppEnv>): void 
         request: c.req.raw,
         db: c.get("db"),
       });
-      return c.json(await readAuthority(c.get("db"), principal.tenant_id, id, row.id), 201);
+      const body = c.req.valid("json");
+      const live_test =
+        body.execution_environment === "dev" && body.conversation_id
+          ? await continueConversationDevLiveTest({
+              db: c.get("db"),
+              principal,
+              boss: c.get("boss") ?? getBoss(),
+              conversation_id: body.conversation_id,
+              workflow_id: id,
+              workflow_version_id: row.workflow_version_id,
+            })
+          : { state: "not_requested" as const };
+      return c.json(
+        { ...(await readAuthority(c.get("db"), principal.tenant_id, id, row.id)), live_test },
+        201,
+      );
     } catch (error) {
       return translate(error);
     }

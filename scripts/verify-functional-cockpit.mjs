@@ -50,6 +50,7 @@ import { verifyLoadFailures } from "./lib/cockpit-load-failures.mjs";
 import { verifyManagementEvidence } from "./lib/cockpit-management-evidence.mjs";
 import { verifyPeopleLoadsPerTab } from "./lib/cockpit-people-tabs.mjs";
 import { startPreviewServer } from "./lib/cockpit-preview-server.mjs";
+import { verifyReleaseNotes } from "./lib/cockpit-release-notes.mjs";
 import { verifyRunDialog } from "./lib/cockpit-run-dialog.mjs";
 import { verifyRunSheet, verifyRunsOverCatalog } from "./lib/cockpit-run-sheet.mjs";
 import { verifyScheduleHolds } from "./lib/cockpit-schedule-holds.mjs";
@@ -128,6 +129,7 @@ const journeys = [
     (page, stand) => verifyRunSheet(page, stand, uuid, locale, "functional/run-sheet"),
   ],
   ["verifyTemplateLists", (page, stand) => verifyTemplateLists(page, stand, capture)],
+  ["verifyReleaseNotes", (page, stand) => verifyReleaseNotes(page, stand, locale)],
   ["verifyWorkflowPage", (page, stand) => verifyWorkflowPage(page, stand, locale, capture)],
   ["verifyConnectorDetail", (page, stand) => verifyConnectorDetail(page, stand, locale, capture)],
   ["verifyCreateConnector", (page, stand) => verifyCreateConnector(page, stand, locale, capture)],

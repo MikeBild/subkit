@@ -12,6 +12,7 @@ import {
   withLatestPreview,
   withWorkflowDraft,
   withWorkflowInspection,
+  withWorkflowSaveError,
   withWorkflowValidation,
 } from "../authoring-state.ts";
 import { getConversation } from "../service.ts";
@@ -116,6 +117,49 @@ async function assertInertSavedWorkflow(workflowId: string | undefined): Promise
 }
 
 describe("workflow save regressions", () => {
+  test("a later no-tool turn replaces an unsupported saved claim after a draft conflict", async () => {
+    const draft = withWorkflowSaveError(
+      readyDraft({ name: "Conflict report", slug: "conflict-report" }),
+      { code: "draft_conflict", message: "The saved draft changed elsewhere." },
+    );
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({
+        tenant_id: ctx.tenant_id,
+        status: "active",
+        owner_id: ctx.user_id,
+        draft: draft as unknown as Record<string, unknown>,
+      })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+    await ctx.testDb.db.insert(conversationDrafts).values({
+      tenant_id: ctx.tenant_id,
+      conversation_id: conversation.id,
+      ordinal: "000001",
+      snapshot: draft as unknown as Record<string, unknown>,
+    });
+    getMockProvider().setConversePlan(conversation.id, [{ text: "Alles gespeichert." }]);
+
+    const result = await appendMessageWithTurn(
+      {
+        tenant_id: ctx.tenant_id,
+        conversation_id: conversation.id,
+        actor_id: ctx.user_id,
+        message: "weiter",
+        permission_mode: "auto",
+      },
+      ctx.testDb.db,
+    );
+
+    const reply = result.result.events
+      .filter((event) => event.type === "message" && event.role === "assistant")
+      .at(-1);
+    expect(reply).toMatchObject({ content: { text: expect.stringContaining("not saved") } });
+    const detail = await getConversation(ctx.tenant_id, conversation.id, ctx.testDb.db);
+    const lastMessage = detail?.messages.at(-1)?.content as { text?: unknown } | undefined;
+    expect(lastMessage?.text).toContain("not saved");
+  });
+
   test("a short auto-mode approval follows the draft summary into save_workflow_draft", async () => {
     const draft = {
       ...readyDraft({

@@ -57,6 +57,26 @@ export function createEmptyState(mode: AuthoringSurfaceMode): AuthoringState {
     latest_execution: null,
     latest_diagnosis: null,
     judge_breaker: null,
+    latest_workflow_save_error: null,
+  };
+}
+
+function normalizeWorkflowSaveError(
+  value: unknown,
+): NonNullable<AuthoringState["latest_workflow_save_error"]> | null {
+  if (!isRecord(value) || value.code !== "draft_conflict") return null;
+  if (typeof value.message !== "string" || value.message.length === 0) return null;
+  if (
+    typeof value.mutation_seq !== "number" ||
+    !Number.isSafeInteger(value.mutation_seq) ||
+    value.mutation_seq < 0
+  ) {
+    return null;
+  }
+  return {
+    code: "draft_conflict",
+    message: value.message.slice(0, 1_000),
+    mutation_seq: value.mutation_seq,
   };
 }
 
@@ -465,6 +485,7 @@ export function normalizeState(raw: unknown, draftMode: AuthoringMode | undefine
       ? state.grounding_connector_ids.filter((id): id is string => typeof id === "string")
       : null,
     last_denied_intent: normalizeLastDeniedIntent(state.last_denied_intent),
+    latest_workflow_save_error: normalizeWorkflowSaveError(state.latest_workflow_save_error),
   };
   if (isRecord(state.checkpoints)) {
     for (const key of CHECKPOINT_KEYS) {

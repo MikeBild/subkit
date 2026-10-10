@@ -3,7 +3,7 @@ import { conversations, workflows } from "../../db/schema/index.ts";
 import { saveWorkflowDraft } from "../../workflows/drafts.ts";
 import { detectSchedulePhrases } from "../../workflows/schedule-phrase-detector.ts";
 import { persistedWorkflowResource } from "../authoring-state/summary.ts";
-import { withWorkflowPersisted } from "../authoring-state.ts";
+import { withWorkflowPersisted, withWorkflowSaveError } from "../authoring-state.ts";
 import { buildGateError, buildPersistencePayload } from "../tools/authoring-contract.ts";
 import type { ToolContext, ToolResult } from "../tools/index.ts";
 import type { DraftDocument } from "../types.ts";
@@ -90,6 +90,31 @@ export async function persistAuthoringWorkflowDraft(input: {
     ctx.db,
   );
   if (!result.draft) {
+    if (result.code === "draft_conflict" && targetId) {
+      const message =
+        "The saved workflow changed since this conversation observed it. Your local changes remain unsaved and have not been discarded. Compare the current saved version with these changes before saving again; do not replace the expected version blindly.";
+      await ctx.setDraft(withWorkflowSaveError(fullDraft, { code: "draft_conflict", message }));
+      const [head] = await ctx.db
+        .select({
+          draft_version_id: workflows.draft_version_id,
+          current_version_id: workflows.current_version_id,
+        })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.tenant_id, ctx.tenant_id),
+            eq(workflows.id, targetId),
+            isNull(workflows.deleted_at),
+          ),
+        )
+        .limit(1);
+      return fail(result.code, message, {
+        expected_draft_version_id: bound?.draft_version_id ?? null,
+        actual_draft_version_id: head?.draft_version_id ?? null,
+        current_version_id: head?.current_version_id ?? null,
+        local_changes_preserved: true,
+      });
+    }
     if (result.code === "slug_conflict") {
       const [conflict] = def.slug
         ? await ctx.db

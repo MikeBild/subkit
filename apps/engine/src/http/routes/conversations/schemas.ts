@@ -168,6 +168,12 @@ export const ConversationDetailSchema = z
             recorded_at: z.string(),
           })
           .nullable(),
+        live_test: z
+          .object({
+            execution_id: z.string(),
+            status: z.string(),
+          })
+          .nullable(),
         last_successful_probe: z.string().nullable(),
         last_successful_preview: z.string().nullable(),
         unsaved: z.boolean(),

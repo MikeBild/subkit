@@ -38,6 +38,10 @@ describe("isTransientDbError — transient codes", () => {
   test("ECONNRESET → true", () => {
     expect(isTransientDbError({ code: "ECONNRESET" })).toBe(true);
   });
+
+  test("40001 serialization_failure → true", () => {
+    expect(isTransientDbError({ code: "40001" })).toBe(true);
+  });
 });
 
 describe("isTransientDbError — codeless connection-teardown messages", () => {

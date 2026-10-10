@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { synthesizeFallbackMessage, turnLoopBudgetStopCondition } from "../turn-helpers.ts";
+import {
+  completionEvidenceGuard,
+  synthesizeFallbackMessage,
+  turnLoopBudgetStopCondition,
+} from "../turn-helpers.ts";
 import type { TurnEvent } from "../types.ts";
 
 describe("turnLoopBudgetStopCondition", () => {
@@ -78,6 +82,142 @@ describe("turnLoopBudgetStopCondition", () => {
         ],
       }),
     ).toBe(true);
+  });
+});
+
+describe("completionEvidenceGuard", () => {
+  test("replaces an ungrounded completion after a failed draft save", () => {
+    expect(
+      completionEvidenceGuard([
+        { type: "text_delta", text: "Alles gespeichert." },
+        {
+          type: "tool_result",
+          call_id: "save-1",
+          tool: "save_workflow_draft",
+          output: { ok: false, error_code: "draft_conflict" },
+        },
+      ]),
+    ).toContain("not saved");
+  });
+
+  test("reports held writes as not live execution", () => {
+    expect(
+      completionEvidenceGuard([
+        {
+          type: "tool_result",
+          call_id: "run-1",
+          tool: "run_workflow",
+          output: { data: { writes_held: true } },
+        },
+      ]),
+    ).toContain("not a complete live test");
+  });
+
+  test("does not let an older held run override a later successful run", () => {
+    expect(
+      completionEvidenceGuard([
+        {
+          type: "tool_result",
+          call_id: "run-1",
+          tool: "run_workflow",
+          output: { workflow_id: "workflow-1", writes_held: true },
+        },
+        {
+          type: "tool_result",
+          call_id: "run-2",
+          tool: "run_workflow",
+          output: { workflow_id: "workflow-1", status: "succeeded" },
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  test("a queued run does not supersede evidence of held writes", () => {
+    expect(
+      completionEvidenceGuard([
+        {
+          type: "tool_result",
+          call_id: "held",
+          tool: "run_workflow",
+          output: { data: { workflow_id: "workflow-1", writes_held: true } },
+        },
+        {
+          type: "tool_result",
+          call_id: "queued",
+          tool: "run_workflow",
+          output: { data: { workflow_id: "workflow-1", status: "queued" } },
+        },
+      ]),
+    ).toContain("not a complete live test");
+  });
+
+  test("keeps a held current version distinct from an older successful version", () => {
+    expect(
+      completionEvidenceGuard([
+        {
+          type: "tool_result",
+          call_id: "run-1",
+          tool: "wf_daily_report",
+          output: {
+            workflow_id: "workflow-1",
+            workflow_version_id: "version-1",
+            status: "succeeded",
+          },
+        },
+        {
+          type: "tool_result",
+          call_id: "run-2",
+          tool: "wf_daily_report",
+          output: {
+            workflow_id: "workflow-1",
+            workflow_version_id: "version-2",
+            writes_held: true,
+          },
+        },
+      ]),
+    ).toContain("not a complete live test");
+  });
+
+  test("guards a later no-tool turn while its draft conflict remains current", () => {
+    expect(
+      completionEvidenceGuard([], {
+        workflow: { name: "Report", steps: [] },
+        state: {
+          mode: "workflow",
+          stage: "workflow_draft_started",
+          connector_mutation_seq: 0,
+          workflow_mutation_seq: 2,
+          checkpoints: {},
+          persisted_resources: [],
+          latest_execution: null,
+          latest_diagnosis: null,
+          latest_workflow_save_error: {
+            code: "draft_conflict",
+            message: "The saved draft changed elsewhere.",
+            mutation_seq: 2,
+          },
+        },
+      }),
+    ).toContain("not saved");
+  });
+
+  test("does not override a successful save after an earlier failed attempt", () => {
+    expect(
+      completionEvidenceGuard([
+        {
+          type: "tool_result",
+          call_id: "save-1",
+          tool: "save_workflow_draft",
+          output: { ok: false, error_code: "draft_conflict" },
+        },
+        {
+          type: "tool_result",
+          call_id: "save-2",
+          tool: "save_workflow_draft",
+          output: { ok: true, committed_workflow_id: "workflow-1" },
+        },
+      ]),
+    ).toBeNull();
   });
 });
 

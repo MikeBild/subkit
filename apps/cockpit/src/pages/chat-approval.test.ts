@@ -209,6 +209,17 @@ test("once the server records the decision, no decision card remains and nobody 
   ).toBe(true);
 });
 
+test("a queued or running live test keeps its result fresh until completion", () => {
+  const detail = gatedConnectorCall();
+  detail.resume_summary!.pending_approval = null;
+  for (const status of ["queued", "running", "succeeded", "failed", "cancelled"]) {
+    detail.resume_summary!.live_test = { execution_id: "execution", status };
+    expect(conversationRefreshInterval(detail)).toBe(
+      status === "queued" || status === "running" ? OPEN_QUESTION_REFRESH_MS : false,
+    );
+  }
+});
+
 test("an open decision keeps the conversation fresh so a decision made elsewhere shows up", () => {
   const open = gatedConnectorCall();
   expect(conversationRefreshInterval(open)).toBe(OPEN_QUESTION_REFRESH_MS);

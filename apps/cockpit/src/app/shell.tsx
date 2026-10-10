@@ -1,6 +1,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ChevronsUpDown,
+  History,
   Languages,
   Loader2,
   LogOut,
@@ -16,6 +17,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
 import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
+import { ReleaseNotesDialog } from "@/components/cockpit/release-notes-dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -295,6 +297,7 @@ function AccountMenu() {
   const { t, preference, setPreference } = useI18n();
   const { theme, setTheme } = useTheme();
   const [signingOut, setSigningOut] = useState(false);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
   const identity = session.principal.email || session.principal.role_name || t("common.member");
   const role = localizedRole(session.principal.role_name || "member", t);
 
@@ -312,114 +315,131 @@ function AccountMenu() {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuButton size="lg" data-testid="account-menu-trigger" tooltip={t("account.menu")}>
-          <Avatar>
-            <AvatarFallback>{initials(identity)}</AvatarFallback>
-          </Avatar>
-          <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-medium" data-testid="account-name">
-              {identity}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton
+            size="lg"
+            data-testid="account-menu-trigger"
+            tooltip={t("account.menu")}
+          >
+            <Avatar>
+              <AvatarFallback>{initials(identity)}</AvatarFallback>
+            </Avatar>
+            <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-medium" data-testid="account-name">
+                {identity}
+              </span>
+              <span className="truncate text-xs text-muted-foreground" data-testid="account-role">
+                {role}
+              </span>
             </span>
-            <span className="truncate text-xs text-muted-foreground" data-testid="account-role">
-              {role}
-            </span>
-          </span>
-          <ChevronsUpDown data-icon="inline-end" className="ml-auto" />
-        </SidebarMenuButton>
-      </DropdownMenuTrigger>
+            <ChevronsUpDown data-icon="inline-end" className="ml-auto" />
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent side="right" align="end" className="w-64" data-testid="account-menu">
-        <DropdownMenuLabel data-testid="account-summary">
-          <span className="block truncate text-sm font-medium text-foreground">{identity}</span>
-          <span className="block truncate font-normal">{session.tenant.display_name}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
+        <DropdownMenuContent side="right" align="end" className="w-64" data-testid="account-menu">
+          <DropdownMenuLabel data-testid="account-summary">
+            <span className="block truncate text-sm font-medium text-foreground">{identity}</span>
+            <span className="block truncate font-normal">{session.tenant.display_name}</span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger data-testid="account-profile-menu">
-            <UserRound data-icon="inline-start" />
-            {t("account.profile")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-72" data-testid="account-profile-content">
-            <DropdownMenuLabel>
-              <span className="block truncate text-sm font-medium text-foreground">{identity}</span>
-              <span className="mt-1 block truncate font-normal">
-                {t("account.role")}: {role}
-              </span>
-              <span className="block truncate font-normal">
-                {t("account.tenant")}: {session.tenant.display_name}
-              </span>
-              <span className="block truncate font-normal">
-                {t("account.engineVersion", { version: session.version })}
-              </span>
-            </DropdownMenuLabel>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+          <DropdownMenuItem
+            onSelect={() => setReleaseNotesOpen(true)}
+            data-testid="account-release-notes"
+          >
+            <History data-icon="inline-start" />
+            {t("releaseNotes.menu")}
+          </DropdownMenuItem>
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger data-testid="account-language-menu">
-            <Languages data-icon="inline-start" />
-            {t("account.language")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent data-testid="account-language-content">
-            <DropdownMenuRadioGroup
-              value={preference}
-              onValueChange={(value) => setPreference(value as LocalePreference)}
-            >
-              {LANGUAGES.map(({ value, label }) => (
-                <DropdownMenuRadioItem
-                  key={value}
-                  value={value}
-                  data-testid={`account-language-${value}`}
-                >
-                  {t(label)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger data-testid="account-profile-menu">
+              <UserRound data-icon="inline-start" />
+              {t("account.profile")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-72" data-testid="account-profile-content">
+              <DropdownMenuLabel>
+                <span className="block truncate text-sm font-medium text-foreground">
+                  {identity}
+                </span>
+                <span className="mt-1 block truncate font-normal">
+                  {t("account.role")}: {role}
+                </span>
+                <span className="block truncate font-normal">
+                  {t("account.tenant")}: {session.tenant.display_name}
+                </span>
+                <span className="block truncate font-normal">
+                  {t("account.engineVersion", { version: session.version })}
+                </span>
+              </DropdownMenuLabel>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger data-testid="account-theme-menu">
-            <Palette data-icon="inline-start" />
-            {t("account.theme")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent data-testid="account-theme-content">
-            <DropdownMenuRadioGroup
-              value={theme}
-              onValueChange={(value) => setTheme(value as Theme)}
-            >
-              {THEMES.map(({ value, label, icon: Icon }) => (
-                <DropdownMenuRadioItem
-                  key={value}
-                  value={value}
-                  data-testid={`account-theme-${value}`}
-                >
-                  <Icon data-icon="inline-start" />
-                  {t(label)}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger data-testid="account-language-menu">
+              <Languages data-icon="inline-start" />
+              {t("account.language")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent data-testid="account-language-content">
+              <DropdownMenuRadioGroup
+                value={preference}
+                onValueChange={(value) => setPreference(value as LocalePreference)}
+              >
+                {LANGUAGES.map(({ value, label }) => (
+                  <DropdownMenuRadioItem
+                    key={value}
+                    value={value}
+                    data-testid={`account-language-${value}`}
+                  >
+                    {t(label)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          variant="destructive"
-          disabled={signingOut}
-          data-testid="account-sign-out"
-          onSelect={() => void signOut()}
-        >
-          {signingOut ? (
-            <Loader2 data-icon="inline-start" className="animate-spin" />
-          ) : (
-            <LogOut data-icon="inline-start" />
-          )}
-          {t(signingOut ? "account.signingOut" : "account.signOut")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger data-testid="account-theme-menu">
+              <Palette data-icon="inline-start" />
+              {t("account.theme")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent data-testid="account-theme-content">
+              <DropdownMenuRadioGroup
+                value={theme}
+                onValueChange={(value) => setTheme(value as Theme)}
+              >
+                {THEMES.map(({ value, label, icon: Icon }) => (
+                  <DropdownMenuRadioItem
+                    key={value}
+                    value={value}
+                    data-testid={`account-theme-${value}`}
+                  >
+                    <Icon data-icon="inline-start" />
+                    {t(label)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={signingOut}
+            data-testid="account-sign-out"
+            onSelect={() => void signOut()}
+          >
+            {signingOut ? (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            ) : (
+              <LogOut data-icon="inline-start" />
+            )}
+            {t(signingOut ? "account.signingOut" : "account.signOut")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ReleaseNotesDialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen} />
+    </>
   );
 }

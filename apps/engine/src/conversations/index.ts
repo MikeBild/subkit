@@ -24,6 +24,7 @@ export {
   validateDraftCredentialSetup,
 } from "./draft-credential-setup.ts";
 export * from "./lifecycle-view.ts";
+export { continueConversationDevLiveTest } from "./live-test-continuation.ts";
 export {
   claimDraftCredentialNativeUrlElicitation,
   completeDraftCredentialNativeUrlElicitation,

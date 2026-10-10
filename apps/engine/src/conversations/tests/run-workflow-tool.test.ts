@@ -138,6 +138,63 @@ function buildToolCtx(params: {
 }
 
 describe("run_workflow tool", () => {
+  test("refuses a prepared run when its exact version is no longer active", async () => {
+    const { workflow_id, version_id } = await seedWorkflow("prepared-version-stale");
+    const [replacement] = await ctx.testDb.db
+      .insert(workflowVersions)
+      .values({
+        tenant_id: ctx.tenant_id,
+        workflow_id,
+        version: 2,
+        dag: {
+          name: "Replacement",
+          slug: "prepared-version-stale",
+          steps: [
+            {
+              id: "shape",
+              kind: "transform",
+              language: "javascript",
+              expression: "return { replacement: true };",
+            },
+          ],
+        },
+      })
+      .returning();
+    if (!replacement) throw new Error("replacement insert failed");
+    await ctx.testDb.db
+      .update(workflows)
+      .set({ current_version_id: replacement.id })
+      .where(and(eq(workflows.tenant_id, ctx.tenant_id), eq(workflows.id, workflow_id)));
+    const draft: DraftDocument = { workflow: { name: "stub", steps: [] } };
+    const [conversation] = await ctx.testDb.db
+      .insert(conversations)
+      .values({ tenant_id: ctx.tenant_id, status: "active", draft })
+      .returning();
+    if (!conversation) throw new Error("conversation insert failed");
+
+    const result = await runWorkflowTool.execute(
+      buildToolCtx({ conversation_id: conversation.id, draft, setDraft: async () => {} }),
+      runWorkflowTool.inputSchema.parse({
+        workflow: workflow_id,
+        environment: "dev",
+        input: { date: "approved input" },
+        expected_workflow_version_id: version_id,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.data).toMatchObject({
+      error_code: "workflow_version_not_active",
+      expected_workflow_version_id: version_id,
+      current_workflow_version_id: replacement.id,
+    });
+    const runs = await ctx.testDb.db
+      .select({ id: executions.id })
+      .from(executions)
+      .where(and(eq(executions.tenant_id, ctx.tenant_id), eq(executions.workflow_id, workflow_id)));
+    expect(runs).toEqual([]);
+  });
+
   test("pins the inspected version when activation changes before execution", async () => {
     const { workflow_id, version_id } = await seedWorkflow("activation-race");
     const [replacement] = await ctx.testDb.db

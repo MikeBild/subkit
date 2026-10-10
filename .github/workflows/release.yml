@@ -32,6 +32,13 @@ jobs:
       - name: Resolve version
         run: echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
 
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.0
+
+      - name: Generate release notes
+        run: bun run gen:release-notes -- --release "$TAG"
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build image
@@ -117,8 +124,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          prev=$(git describe --tags --abbrev=0 --match 'v*.*.*' "$TAG^" 2>/dev/null || true)
-          git log --no-merges --format='- %s' ${prev:+$prev..}"$TAG" > notes.md
+          bun -e 'import { RELEASE_HISTORY } from "./apps/cockpit/src/app/release-notes.generated.ts"; const release = RELEASE_HISTORY.releases.find((entry) => entry.version === process.env.TAG); if (!release) throw new Error(`missing release notes for ${process.env.TAG}`); process.stdout.write(release.notes.length ? release.notes.map((note) => `- ${note}`).join("\n") + "\n" : "No short notes were recorded for this version.\n");' > notes.md
           gh release create "$TAG" assets/engine_* assets/sk_* assets/SHA256SUMS assets/SHA256SUMS.sig --title "$TAG" --notes-file notes.md
 
       - name: Request production deployment

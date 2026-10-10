@@ -5,6 +5,7 @@ import {
   conversationMessages,
   conversations,
   conversationToolCalls,
+  executions,
 } from "../../db/schema/index.ts";
 import { stripFileSentinelsForDisplay } from "../../files/sentinel.ts";
 import { loadDraft } from "../draft.ts";
@@ -192,6 +193,19 @@ export async function getConversation(
         expires_at: pendingElicitationRows[0].expires_at.toISOString(),
       }
     : null;
+  const liveTest = draft?.session?.live_test;
+  const [liveTestExecution] = liveTest
+    ? await exec
+        .select({ execution_id: executions.id, status: executions.status })
+        .from(executions)
+        .where(
+          and(
+            eq(executions.tenant_id, tenant_id),
+            eq(executions.idempotency_key, liveTest.idempotency_key),
+          ),
+        )
+        .limit(1)
+    : [];
   const resumeSummary = shouldShowResumeSummary({
     conversation: conversationRecord,
     draft,
@@ -201,6 +215,9 @@ export async function getConversation(
         conversation: conversationRecord,
         draft,
         pendingElicitation,
+        liveTestExecution: liveTestExecution
+          ? { execution_id: liveTestExecution.execution_id, status: liveTestExecution.status }
+          : null,
       })
     : null;
   const owners = await loadOwners(tenant_id, [conversationRecord.owner_id], exec);

@@ -19,6 +19,10 @@ export interface ResumeSummary {
     status: string;
     recorded_at: string;
   } | null;
+  live_test: {
+    execution_id: string;
+    status: string;
+  } | null;
   last_successful_probe: string | null;
   last_successful_preview: string | null;
   unsaved: boolean;
@@ -52,6 +56,7 @@ export interface BuildResumeSummaryParams {
     summary?: string | null;
     expires_at: string;
   } | null;
+  liveTestExecution?: { execution_id: string; status: string } | null;
 }
 
 export function shouldShowResumeSummary(params: BuildResumeSummaryParams): boolean {
@@ -81,6 +86,9 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     d.state?.checkpoints.workflow_persisted?.verified_by_tool === WORKFLOW_BINDING_TOOL;
   const workflowSaved = workflowPersisted && !openedOnly;
   const workflowOpen = workflowPersisted && openedOnly;
+  const workflowSaveConflict =
+    d.state?.latest_workflow_save_error?.code === "draft_conflict" &&
+    d.state.latest_workflow_save_error.mutation_seq === d.state.workflow_mutation_seq;
   const latestRun = d.state?.latest_execution ?? null;
   const focusedRun =
     workflowOpen &&
@@ -92,6 +100,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
           recorded_at: latestRun.recorded_at,
         }
       : null;
+  const liveTest = params.liveTestExecution ?? null;
   const connector = d.connector ?? null;
   const connectorSaved = typeof connector?.saved_connector_id === "string";
   const workflow = d.workflow;
@@ -154,6 +163,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     hasWorkflow,
     workflowSaved,
     workflowOpen,
+    workflowSaveConflict,
     focusedRun: focusedRun !== null,
     probe,
     preview,
@@ -166,6 +176,7 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     hasWorkflow,
     workflowSaved,
     workflowOpen,
+    workflowSaveConflict,
     focusedRun: focusedRun !== null,
     probe,
     preview,
@@ -191,10 +202,13 @@ export function buildResumeSummary(params: BuildResumeSummaryParams): ResumeSumm
     },
     stage,
     focused_run: focusedRun,
+    live_test: liveTest,
     last_successful_probe: lastProbe,
     last_successful_preview: lastPreview,
     unsaved:
-      activeKind === "connector" ? !connectorSaved : hasWorkflow && !workflowSaved && !workflowOpen,
+      activeKind === "connector"
+        ? !connectorSaved
+        : hasWorkflow && (workflowSaveConflict || (!workflowSaved && !workflowOpen)),
     pending_approval: pendingApproval,
     next_action: nextAction,
     one_sentence: oneSentence,
@@ -208,6 +222,7 @@ interface NextActionInputs {
   hasWorkflow: boolean;
   workflowSaved: boolean;
   workflowOpen: boolean;
+  workflowSaveConflict: boolean;
   focusedRun: boolean;
   probe: ConnectorProbe | null;
   preview: WorkflowDraftPreviewSummary | null;
@@ -225,6 +240,9 @@ function computeNextAction(p: NextActionInputs): string {
     return "Save the connector draft now that the probe succeeded.";
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (p.workflowSaveConflict) {
+      return "The saved draft changed elsewhere. Your local changes are still here; inspect the saved draft and reconcile the difference before saving again.";
+    }
     if (p.workflowSaved)
       return "Workflow saved. Review activation and automatic-run permission in the workflow.";
     if (p.focusedRun) return "Ask what went wrong in this run, or how to repair it.";
@@ -248,6 +266,7 @@ function computeStage(
     | "hasWorkflow"
     | "workflowSaved"
     | "workflowOpen"
+    | "workflowSaveConflict"
     | "focusedRun"
     | "probe"
     | "preview"
@@ -260,6 +279,7 @@ function computeStage(
     return "connector_drafting";
   }
   if (p.activeKind === "workflow" || (p.connectorSaved && p.hasWorkflow)) {
+    if (p.workflowSaveConflict) return "workflow_draft_conflict";
     if (p.workflowSaved) return "workflow_saved";
     if (p.focusedRun) return "run_focus";
     if (p.workflowOpen) return "workflow_open";
@@ -297,6 +317,8 @@ function buildOneSentence(p: OneSentenceInputs): string {
       return `You were drafting ${target}${env} but have not probed it yet. ${p.nextAction}`;
     case "workflow_saved":
       return `You saved ${target}. ${p.nextAction}`;
+    case "workflow_draft_conflict":
+      return `The saved draft changed while you were editing ${target}. Your local changes remain. ${p.nextAction}`;
     case "run_focus":
       return `You are looking into a run of ${target}. ${p.nextAction}`;
     case "workflow_open":

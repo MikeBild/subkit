@@ -41,6 +41,13 @@ const Input = z
       .describe(
         "Use the workflow schedule environment when omitted; specify only for an explicit environment change.",
       ),
+    expected_workflow_version_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        "Run only this exact active version. Use for a test that was prepared against a reviewed version.",
+      ),
     idempotency_key: z.string().min(1).max(200).optional(),
     include_step_trace: z.boolean().optional(),
     include_step_results: z.boolean().optional(),
@@ -50,7 +57,7 @@ const Input = z
 
 type RunWorkflowArgs = z.infer<typeof Input>;
 
-type RunWorkflowStatus = "succeeded" | "failed" | "partial_success";
+type RunWorkflowStatus = "succeeded" | "failed" | "partial_success" | "running";
 
 function withStatus(
   data: Record<string, unknown>,
@@ -116,6 +123,25 @@ export const runWorkflowTool: ConversationTool = {
     }
     const wf = await ctx.engineClient.workflows.get(workflowId);
     if (!wf) return { ok: false, data: withStatus({ error: "workflow_not_found" }, "failed") };
+    if (
+      args.expected_workflow_version_id &&
+      args.expected_workflow_version_id !== wf.current_version_id
+    ) {
+      return {
+        ok: false,
+        data: withStatus(
+          {
+            error_code: "workflow_version_not_active",
+            message:
+              "the prepared workflow version is no longer the active version; review the current version before running it",
+            workflow_id: workflowId,
+            expected_workflow_version_id: args.expected_workflow_version_id,
+            current_workflow_version_id: wf.current_version_id ?? null,
+          },
+          "failed",
+        ),
+      };
+    }
     const environment =
       args.environment ?? (await workflowExecutionEnvironment(ctx.db, ctx.tenant_id, workflowId));
     const bound = currentDraft.state?.persisted_resources.find(
@@ -215,6 +241,9 @@ export const runWorkflowTool: ConversationTool = {
                 workflow_slug: wf.slug,
                 environment,
                 input_partial: suppliedMap,
+                ...(args.expected_workflow_version_id
+                  ? { expected_workflow_version_id: args.expected_workflow_version_id }
+                  : {}),
                 ...(args.execute_writes === false ? { execute_writes: false } : {}),
               },
               description: `Run workflow "${wf.slug}" with the submitted input`,
@@ -336,7 +365,10 @@ export const runWorkflowTool: ConversationTool = {
         {
           tenant_id: ctx.tenant_id,
           workflow_id: workflowId,
-          workflow_version_id: wf.current_version_id,
+          workflow_version_id: args.expected_workflow_version_id ?? wf.current_version_id,
+          ...(args.expected_workflow_version_id
+            ? { expected_workflow_version_id: args.expected_workflow_version_id }
+            : {}),
           execution_environment: environment,
           request_source: "chat",
           input: suppliedInput,
@@ -353,6 +385,7 @@ export const runWorkflowTool: ConversationTool = {
           ? { id: admitted.execution_id, status: admitted.status }
           : null;
         if (existing) {
+          const replayRunning = ["queued", "running"].includes(existing.status);
           return {
             ok: true,
             data: withStatus(
@@ -367,9 +400,11 @@ export const runWorkflowTool: ConversationTool = {
                     }
                   : {}),
                 idempotent_replay: true,
-                message: `nothing new was started — execution ${existing.id} already ran under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`,
+                message: replayRunning
+                  ? `nothing new was started — execution ${existing.id} is still running under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`
+                  : `nothing new was started — execution ${existing.id} already ran under idempotency key '${args.idempotency_key}' (status: ${existing.status}); inspect it with get_execution`,
               },
-              existing.status === "succeeded" ? "succeeded" : "failed",
+              existing.status === "succeeded" ? "succeeded" : replayRunning ? "running" : "failed",
             ),
           };
         }

@@ -7,6 +7,7 @@ import {
   withLatestPreview,
   withWorkflowDraft,
   withWorkflowPersisted,
+  withWorkflowSaveError,
 } from "../authoring-state.ts";
 import { buildResumeSummary, shouldShowResumeSummary } from "../resume.ts";
 import type { ConversationRecord, DraftDocument } from "../types.ts";
@@ -262,6 +263,35 @@ describe("saved workflow resume", () => {
     });
     expect(result.stage).toBe("awaiting_approval");
     expect(result.unsaved).toBe(false);
+  });
+
+  test("a current draft conflict directs reconciliation without claiming a save", () => {
+    const conflicted = withWorkflowSaveError(saved(), {
+      code: "draft_conflict",
+      message: "The saved draft changed elsewhere.",
+    });
+    const result = buildResumeSummary({ conversation: conv(), draft: conflicted });
+
+    expect(result.stage).toBe("workflow_draft_conflict");
+    expect(result.unsaved).toBe(true);
+    expect(result.next_action).toContain("reconcile");
+    expect(result.one_sentence).toContain("local changes remain");
+  });
+
+  test("a local edit clears a prior draft conflict before the next save", () => {
+    const conflicted = withWorkflowSaveError(saved(), {
+      code: "draft_conflict",
+      message: "The saved draft changed elsewhere.",
+    });
+    const edited = withWorkflowDraft(conflicted, {
+      ...conflicted.workflow,
+      name: "Updated weekly report",
+    });
+
+    expect(edited.state?.latest_workflow_save_error).toBeNull();
+    expect(buildResumeSummary({ conversation: conv(), draft: edited }).stage).toBe(
+      "workflow_drafting",
+    );
   });
 });
 

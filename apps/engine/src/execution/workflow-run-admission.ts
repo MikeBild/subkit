@@ -19,6 +19,7 @@ const schema = z
     tenant_id: z.string().uuid(),
     workflow_id: z.string().uuid(),
     workflow_version_id: z.string().uuid().optional(),
+    expected_workflow_version_id: z.string().uuid().optional(),
     execution_authority_id: z.string().uuid().optional(),
     execution_environment: z.enum(["dev", "prod"]),
     request_source: RequestSourceSchema,
@@ -40,6 +41,16 @@ export async function admitWorkflowRun(
   workflowPermission?: import("./workflow-permission.ts").WorkflowPermission | null,
 ) {
   const input = schema.parse(raw);
+  if (
+    input.expected_workflow_version_id &&
+    input.workflow_version_id &&
+    input.expected_workflow_version_id !== input.workflow_version_id
+  ) {
+    fail(
+      "execution_boundary_mismatch",
+      "the prepared workflow version differs from the requested workflow version",
+    );
+  }
   const resolved = await resolveDefinition(db, input.tenant_id, {
     kind: "saved",
     workflow_id: input.workflow_id,
@@ -67,7 +78,11 @@ export async function admitWorkflowRun(
   }
   let downgraded_from: { code: string; message: string } | undefined;
   if (input.hold_writes !== true) {
-    const { hold_writes: _hold, ...authorityInput } = input;
+    const {
+      hold_writes: _hold,
+      expected_workflow_version_id: _expectedWorkflowVersionId,
+      ...authorityInput
+    } = input;
     try {
       const admitted = await admitAuthorizedWorkflowExecution(
         authorityInput,
@@ -90,6 +105,7 @@ export async function admitWorkflowRun(
         ].includes(code ?? "")
       )
         throw error;
+      if (input.expected_workflow_version_id) throw error;
       downgraded_from = { code: code ?? "", message: (error as Error).message };
     }
   }

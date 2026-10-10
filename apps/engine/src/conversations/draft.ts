@@ -135,7 +135,11 @@ export async function hydrateBoundWorkflow(
     const ref = normalized.summary?.persisted_resources.find(
       (item) => item.kind === "workflow" && item.id === target_workflow_id,
     );
-    if (state && ref?.version_id && ref.draft_version_id === undefined) {
+    if (
+      state &&
+      ref?.version_id &&
+      (ref.draft_version_id === undefined || ref.draft_version_id === ref.version_id)
+    ) {
       const [head] = await exec
         .select({
           current_version_id: workflows.current_version_id,

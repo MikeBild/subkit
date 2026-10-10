@@ -241,6 +241,11 @@ export interface AuthoringState {
   grounding_fingerprint?: string | null;
   grounding_connector_ids?: string[] | null;
   last_denied_intent?: { fingerprint: string; timestamp: string } | null;
+  latest_workflow_save_error?: {
+    code: "draft_conflict";
+    message: string;
+    mutation_seq: number;
+  } | null;
 }
 
 export interface WorkflowDraftDocument {
@@ -368,6 +373,16 @@ export interface DraftDocument {
     intake_read_item_versions?: Record<string, number> | null;
     intake_review_locked?: boolean | null;
     intake_review_active?: boolean | null;
+    live_test?: {
+      workflow_id: string;
+      workflow_version_id: string;
+      environment: "dev";
+      input: unknown;
+      input_digest: string;
+      idempotency_key: string;
+      state: "pending" | "running" | "succeeded" | "failed" | "blocked";
+      execution_id?: string | null;
+    } | null;
   };
 }
 
@@ -473,6 +488,10 @@ export interface ConversationResumeSummary {
     execution_id: string;
     status: string;
     recorded_at: string;
+  } | null;
+  live_test: {
+    execution_id: string;
+    status: string;
   } | null;
   last_successful_probe: string | null;
   last_successful_preview: string | null;

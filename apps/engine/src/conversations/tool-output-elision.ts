@@ -21,6 +21,21 @@ export interface ElidedToolOutputStub {
   [key: string]: unknown;
 }
 
+export interface CriticalToolOutputStub extends ElidedToolOutputStub {
+  _critical: true;
+  ok?: false;
+  error_code?: string;
+  message?: string;
+  writes_held?: true;
+  held_step_ids?: string[];
+  status?: string;
+  execution_id?: string;
+  workflow_id?: string;
+  workflow_version_id?: string;
+  resource_id?: string;
+  resource_ids?: string[];
+}
+
 export function buildElidedToolOutputStub(args: {
   tool: string;
   ref: string;
@@ -35,6 +50,41 @@ export function buildElidedToolOutputStub(args: {
   };
 }
 
+export function buildCriticalToolOutputStub(args: {
+  tool: string;
+  ref: string;
+  original_size: number;
+  size_unit: "bytes" | "chars";
+  output: unknown;
+}): CriticalToolOutputStub {
+  const source = criticalEvidenceSource(args.output);
+  const stub: CriticalToolOutputStub = {
+    ...buildElidedToolOutputStub(args),
+    _critical: true,
+  };
+  if (source?.ok === false) stub.ok = false;
+  if (source?.writes_held === true) stub.writes_held = true;
+  for (const key of [
+    "error_code",
+    "status",
+    "execution_id",
+    "workflow_id",
+    "workflow_version_id",
+    "resource_id",
+  ] as const) {
+    if (typeof source?.[key] === "string") stub[key] = source[key];
+  }
+  for (const key of ["held_step_ids", "resource_ids"] as const) {
+    if (Array.isArray(source?.[key])) {
+      stub[key] = source[key]
+        .filter((value): value is string => typeof value === "string")
+        .slice(0, 50);
+    }
+  }
+  if (typeof source?.message === "string") stub.message = source.message.slice(0, 500);
+  return stub;
+}
+
 function isElidedStub(value: unknown): boolean {
   return (
     typeof value === "object" &&
@@ -47,6 +97,43 @@ function existingRawRef(value: unknown): string | null {
   if (typeof value !== "object" || value === null) return null;
   const ref = (value as Record<string, unknown>)._raw_ref;
   return typeof ref === "string" ? ref : null;
+}
+
+export function isReplayCriticalToolOutput(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (
+    record.ok === false ||
+    record.writes_held === true ||
+    typeof record.error_code === "string" ||
+    record.status === "failed"
+  ) {
+    return true;
+  }
+  const data = record.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    !Array.isArray(data) &&
+    isReplayCriticalToolOutput(data)
+  );
+}
+
+function criticalEvidenceSource(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    record.ok === false ||
+    record.writes_held === true ||
+    typeof record.error_code === "string" ||
+    record.status === "failed"
+  ) {
+    return record;
+  }
+  const data = record.data;
+  return typeof data === "object" && data !== null && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : null;
 }
 
 export interface WithinTurnElisionResult {
@@ -91,12 +178,20 @@ export function elideWithinTurnToolOutputs(
       const size = typeof value === "string" ? value.length : approxValueSize(value);
       if (size <= threshold) return part;
       const ref = existingRawRef(value) ?? rememberRaw(value);
-      const stub = buildElidedToolOutputStub({
-        tool: part.toolName,
-        ref,
-        original_size: size,
-        size_unit: "chars",
-      });
+      const stub = isReplayCriticalToolOutput(value)
+        ? buildCriticalToolOutputStub({
+            tool: part.toolName,
+            ref,
+            original_size: size,
+            size_unit: "chars",
+            output: value,
+          })
+        : buildElidedToolOutputStub({
+            tool: part.toolName,
+            ref,
+            original_size: size,
+            size_unit: "chars",
+          });
       contentChanged = true;
       elidedCount += 1;
       elidedChars += size;

@@ -4953,6 +4953,29 @@
           "ready_for_new_run": {
             "type": "boolean"
           },
+          "live_test": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "not_requested",
+                  "blocked",
+                  "queued",
+                  "running",
+                  "succeeded",
+                  "failed"
+                ]
+              },
+              "execution_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
           "state": {
             "type": "string",
             "enum": [
@@ -19332,6 +19355,24 @@
                   "recorded_at"
                 ]
               },
+              "live_test": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "execution_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "execution_id",
+                  "status"
+                ]
+              },
               "last_successful_probe": {
                 "type": [
                   "string",
@@ -19536,6 +19577,7 @@
               "active_target",
               "stage",
               "focused_run",
+              "live_test",
               "last_successful_probe",
               "last_successful_preview",
               "unsaved",
@@ -22352,6 +22394,10 @@
                   "expected_current_version_id"
                 ],
                 "additionalProperties": false
+              },
+              "conversation_id": {
+                "type": "string",
+                "format": "uuid"
               }
             },
             "required": [
@@ -34075,6 +34121,10 @@
                       "dev",
                       "prod"
                     ]
+                  },
+                  "conversation_id": {
+                    "type": "string",
+                    "format": "uuid"
                   }
                 },
                 "required": [
@@ -34111,12 +34161,36 @@
                       "enum": [
                         false
                       ]
+                    },
+                    "live_test": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "not_requested",
+                            "blocked",
+                            "queued",
+                            "running",
+                            "succeeded",
+                            "failed"
+                          ]
+                        },
+                        "execution_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ]
                     }
                   },
                   "required": [
                     "workflow_version_id",
                     "activated",
-                    "execution_authorized"
+                    "execution_authorized",
+                    "live_test"
                   ]
                 }
               }
@@ -34368,6 +34442,10 @@
                       "expected_current_version_id"
                     ],
                     "additionalProperties": false
+                  },
+                  "conversation_id": {
+                    "type": "string",
+                    "format": "uuid"
                   }
                 },
                 "required": [

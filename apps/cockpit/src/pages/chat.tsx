@@ -184,7 +184,12 @@ import { type AuthoringMode, storedAuthoringMode } from "./chat-permission";
 import { type ChatReauth, chatReauth } from "./chat-reauth";
 import { ChatReauthCard } from "./chat-reauth-card";
 import { collectReferencedResources, namedResources, referencesFromPart } from "./chat-references";
-import { resumeNextAction, resumeStageLabel, resumeSummaryLine } from "./chat-resume";
+import {
+  liveTestState,
+  resumeNextAction,
+  resumeStageLabel,
+  resumeSummaryLine,
+} from "./chat-resume";
 import {
   activeConversationId,
   type ConversationSelection,
@@ -847,12 +852,13 @@ function UsagePills({
               : t("chat.usage.costTitle")
           }
         >
-          {cost.floor ? `${t("overview.operations.atLeast")} ` : ""}
-          {new Intl.NumberFormat(locale, {
-            style: "currency",
-            currency: cost.currency,
-            maximumFractionDigits: cost.amount < 1 ? 4 : 2,
-          }).format(cost.amount)}
+          {t(cost.floor ? "chat.usage.costFloor" : "chat.usage.cost", {
+            cost: new Intl.NumberFormat(locale, {
+              style: "currency",
+              currency: cost.currency,
+              maximumFractionDigits: cost.amount < 1 ? 4 : 2,
+            }).format(cost.amount),
+          })}
         </span>
       )}
       {budget && (
@@ -876,6 +882,7 @@ function UsagePills({
 }
 
 function ChatMessage({
+  conversationId,
   message,
   messageIndex,
   pendingApprovalId,
@@ -899,6 +906,7 @@ function ChatMessage({
   attachmentFor = () => null,
   onOpenFile = () => {},
 }: {
+  conversationId?: string;
   message: UiMessage;
   messageIndex: number;
   pendingApprovalId: string | null;
@@ -1086,6 +1094,7 @@ function ChatMessage({
               <AutomationToolCard
                 key={`${message.id}-automation-${partIndex}`}
                 tool={tool}
+                conversationId={conversationId}
                 onAdjust={onAutomationAdjust}
                 onPrepareSingleRun={onAutomationSingleRun}
               />
@@ -2009,13 +2018,34 @@ export function ChatPage() {
   const budget = budgetPill(budgetPressure(budgetSummary(monthStatus.data)));
   const busy = send.isPending || decide.isPending;
   const showPreparation = Boolean(
-    resume?.unsaved && targetWorkflowId && !anyQuestion && status === "ready",
+    resume?.unsaved &&
+      resume?.stage !== "workflow_draft_conflict" &&
+      targetWorkflowId &&
+      !anyQuestion &&
+      status === "ready",
   );
+  const showDraftConflict = Boolean(
+    resume?.stage === "workflow_draft_conflict" &&
+      targetWorkflowId &&
+      !anyQuestion &&
+      status === "ready",
+  );
+  const liveTest = resume?.live_test ?? null;
   const showScheduleStep = Boolean(
     heldTarget &&
       !resume?.unsaved &&
       targetWorkflowId &&
       !reviewCards.has(targetWorkflowId) &&
+      !anyQuestion &&
+      status === "ready",
+  );
+  const showProdLiveTest = Boolean(
+    resume?.active_target.environment === "prod" &&
+      !heldTarget &&
+      !resume?.unsaved &&
+      !liveTest &&
+      readyAutomations > 0 &&
+      targetWorkflowId &&
       !anyQuestion &&
       status === "ready",
   );
@@ -2184,6 +2214,7 @@ export function ChatPage() {
               <span className="flex flex-col items-start gap-2">
                 <span>{t("chat.schedule.effect")}</span>
                 <AutomationGrant
+                  conversationId={activeId ?? undefined}
                   workflowId={targetWorkflowId}
                   environment={heldTarget.execution_mode}
                   testId="chat-context-review-schedule"
@@ -2441,6 +2472,7 @@ export function ChatPage() {
                     messages.map((message, index) => (
                       <MessageScrollerItem key={message.id}>
                         <ChatMessage
+                          conversationId={activeId ?? undefined}
                           message={message}
                           messageIndex={index}
                           pendingApprovalId={
@@ -2507,6 +2539,7 @@ export function ChatPage() {
                   {showOptimistic && optimistic ? (
                     <MessageScrollerItem key="optimistic" data-testid="chat-pending-message">
                       <ChatMessage
+                        conversationId={activeId ?? undefined}
                         message={optimisticUiMessage(optimistic)}
                         messageIndex={messages.length}
                         pendingApprovalId={null}
@@ -2638,6 +2671,38 @@ export function ChatPage() {
                         }
                       />
                     )}
+                    {showDraftConflict && (
+                      <ChatCard
+                        testId="chat-draft-conflict-next-step"
+                        title={t("chat.draftConflict.title")}
+                        line={t("chat.draftConflict.effect")}
+                        action={
+                          <Button
+                            onClick={() => void submitTurn(t("chat.draftConflict.prompt"))}
+                            data-testid="chat-reconcile-draft-conflict"
+                          >
+                            {t("chat.draftConflict.continue")}
+                          </Button>
+                        }
+                      />
+                    )}
+                    {liveTest && (
+                      <ChatCard
+                        testId="chat-live-test-result"
+                        title={t("chat.liveTest.title")}
+                        line={t(`chat.liveTest.${liveTestState(liveTest.status)}`)}
+                        action={
+                          <Button asChild variant="outline">
+                            <a
+                              href={absolute(runHref(liveTest.execution_id))}
+                              data-testid="chat-live-test-run"
+                            >
+                              {t("chat.liveTest.openRun")}
+                            </a>
+                          </Button>
+                        }
+                      />
+                    )}
 
                     {showScheduleStep && heldTarget && targetWorkflowId && (
                       <ChatCard
@@ -2646,6 +2711,7 @@ export function ChatPage() {
                         line={t("chat.schedule.effect")}
                         action={
                           <AutomationGrant
+                            conversationId={activeId ?? undefined}
                             workflowId={targetWorkflowId}
                             environment={heldTarget.execution_mode}
                             testId="chat-review-schedule"
@@ -2654,6 +2720,21 @@ export function ChatPage() {
                             }
                             onAdjust={() => void submitTurn(t("authority.adjustPrompt"))}
                           />
+                        }
+                      />
+                    )}
+                    {showProdLiveTest && (
+                      <ChatCard
+                        testId="chat-live-test-next-step"
+                        title={t("chat.liveTest.prepareTitle")}
+                        line={t("chat.liveTest.prepareEffect")}
+                        action={
+                          <Button
+                            onClick={() => void submitTurn(t("chat.activation.singlePrompt"))}
+                            data-testid="chat-prepare-live-test"
+                          >
+                            {t("chat.liveTest.prepare")}
+                          </Button>
                         }
                       />
                     )}
