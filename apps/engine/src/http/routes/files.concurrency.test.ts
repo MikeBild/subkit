@@ -54,3 +54,64 @@ describe("files inline upload — concurrent dedup", () => {
     expect(Number(rows[0]!.n)).toBe(1);
   });
 });
+
+describe("files inline upload — concurrent restoration", () => {
+  test.each([false, true])(
+    "parallel restoration preserves the canonical file; occupied slug: %s",
+    async (occupiedSlug) => {
+      const content = `concurrent-restore-bytes-unique-${occupiedSlug}`;
+      const headers = {
+        authorization: `Bearer ${srv.apiKey}`,
+        "content-type": "application/json",
+        connection: "close",
+      };
+      const post = () =>
+        fetch(`${srv.baseUrl}/v1/files/inline`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            filename: `restore-${occupiedSlug}.txt`,
+            content_type: "text/plain",
+            content_base64: Buffer.from(content).toString("base64"),
+          }),
+        });
+      const initial = await post();
+      expect(initial.status).toBe(201);
+      const original = (await initial.json()) as { id: string };
+      const removed = await fetch(`${srv.baseUrl}/v1/files/${original.id}`, {
+        method: "DELETE",
+        headers,
+      });
+      expect(removed.status).toBe(204);
+      if (occupiedSlug) {
+        const replacement = await fetch(`${srv.baseUrl}/v1/files/inline`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            filename: `restore-${occupiedSlug}.txt`,
+            content_type: "text/plain",
+            content_base64: Buffer.from("replacement-content").toString("base64"),
+          }),
+        });
+        expect(replacement.status).toBe(201);
+        await replacement.arrayBuffer();
+      }
+      const [first, second] = await Promise.all([post(), post()]);
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      const firstFile = (await first.json()) as { id: string; slug: string };
+      const secondFile = (await second.json()) as { id: string; slug: string };
+      expect(firstFile.id).toBe(original.id);
+      expect(secondFile.id).toBe(original.id);
+      expect(firstFile.slug).toBe(secondFile.slug);
+      expect(firstFile.slug).toBe(`restore-${occupiedSlug}${occupiedSlug ? "-2" : ""}`);
+      const sha256 = createHash("sha256").update(content).digest("hex");
+      const restored = await srv.db
+        .select({ deleted_at: files.deleted_at })
+        .from(files)
+        .where(and(eq(files.tenant_id, srv.tenantId), eq(files.sha256, sha256)));
+      expect(restored).toHaveLength(1);
+      expect(restored[0]?.deleted_at).toBeNull();
+    },
+  );
+});
