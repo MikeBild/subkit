@@ -7,6 +7,7 @@ import {
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { auditLog, skillCandidates, skills } from "../db/schema/index.ts";
@@ -109,6 +110,7 @@ export async function createSkill(p: CreateSkillParams, exec?: Executor): Promis
     doc_refs: p.input.doc_refs ?? [],
   };
   return await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
     const inserted = await tx
       .insert(skills)
       .values({
@@ -308,6 +310,7 @@ export async function updateSkill(
 ): Promise<Skill | null> {
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, tenant_id);
     const existingRows = await tx
       .select()
       .from(skills)

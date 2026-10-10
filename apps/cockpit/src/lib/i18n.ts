@@ -60,6 +60,30 @@ const EN = {
   "connectorDetail.runtime.rateLimit": "Rate limit",
   "connectorDetail.runtime.retries": "Retries",
   "connectorDetail.runtime.timeout": "Time limit",
+  "catalogCategories.search": "Search names, purposes and alternate words",
+  "catalogCategories.noMatches": "No matching categories.",
+  "catalogCategories.purpose": "Purpose",
+  "catalogCategories.purposeHelp":
+    "Describe when this category applies. Leave blank to request an AI proposal; it will only appear after generation succeeds.",
+  "catalogCategories.aliases": "Alternate words",
+  "catalogCategories.aliasesHelp":
+    "Separate alternate words with commas. Up to 32 words or phrases, each up to 80 characters.",
+  "catalogCategories.originAI": "Suggested by AI. Saving adopts this purpose as your own.",
+  "catalogCategories.originHuman": "Written by a person.",
+  "catalogCategories.originDraft": "Saving records this purpose as your own.",
+  "catalogCategories.blankPurpose": "No purpose entered. Saving requests an AI proposal.",
+  "catalogCategories.generationPending":
+    "Category saved. An AI purpose proposal has been requested.",
+  "catalogCategories.merge":
+    "Saving moves {count} objects to “{name}” and merges the categories. The target purpose stays; alternate words and the old name are combined.",
+  "catalogCategories.mergePurpose": "Purpose retained: {purpose}",
+  "catalogCategories.mergeNoPurpose": "The target currently has no purpose.",
+  "catalogCategories.conflict":
+    "This category or its merge target changed. Reload and review before saving again.",
+  "catalogCategories.reload": "Reload and discard this draft",
+  "catalogCategories.purposeLimit": "Use at most 2,000 characters.",
+  "catalogCategories.aliasesLimit":
+    "Use at most 32 alternate words or phrases, each up to 80 characters.",
   "catalogCategories.name": "Name",
   "catalogCategories.saved": "Category saved",
   "catalogCategories.usage": "{count} objects",
@@ -4334,6 +4358,32 @@ const DE: Record<TranslationKey, string> = {
   "connectorDetail.runtime.rateLimit": "Ratenlimit",
   "connectorDetail.runtime.retries": "Wiederholungen",
   "connectorDetail.runtime.timeout": "Zeitlimit",
+  "catalogCategories.search": "Namen, Zwecke und alternative Wörter durchsuchen",
+  "catalogCategories.noMatches": "Keine passenden Kategorien.",
+  "catalogCategories.purpose": "Zweck",
+  "catalogCategories.purposeHelp":
+    "Beschreibe, wann diese Kategorie passt. Leer lassen, um einen KI-Vorschlag anzufordern; er erscheint erst nach erfolgreicher Erzeugung.",
+  "catalogCategories.aliases": "Alternative Wörter",
+  "catalogCategories.aliasesHelp":
+    "Alternative Wörter mit Kommas trennen. Bis zu 32 Wörter oder Wortgruppen mit jeweils höchstens 80 Zeichen.",
+  "catalogCategories.originAI":
+    "Von KI vorgeschlagen. Speichern übernimmt diesen Zweck als deine eigene Angabe.",
+  "catalogCategories.originHuman": "Von einer Person verfasst.",
+  "catalogCategories.originDraft": "Speichern übernimmt diesen Zweck als deine eigene Angabe.",
+  "catalogCategories.blankPurpose":
+    "Kein Zweck eingetragen. Speichern fordert einen KI-Vorschlag an.",
+  "catalogCategories.generationPending":
+    "Kategorie gespeichert. Ein KI-Vorschlag für den Zweck wurde angefordert.",
+  "catalogCategories.merge":
+    "Speichern verschiebt {count} Einträge nach „{name}“ und führt die Kategorien zusammen. Der Zielzweck bleibt; alternative Wörter und der bisherige Name werden zusammengeführt.",
+  "catalogCategories.mergePurpose": "Beibehaltener Zweck: {purpose}",
+  "catalogCategories.mergeNoPurpose": "Das Ziel hat derzeit keinen Zweck.",
+  "catalogCategories.conflict":
+    "Diese Kategorie oder ihr Zusammenführungsziel wurde geändert. Lade neu und prüfe die Angaben vor erneutem Speichern.",
+  "catalogCategories.reload": "Neu laden und diesen Entwurf verwerfen",
+  "catalogCategories.purposeLimit": "Verwende höchstens 2.000 Zeichen.",
+  "catalogCategories.aliasesLimit":
+    "Verwende höchstens 32 alternative Wörter oder Wortgruppen mit jeweils bis zu 80 Zeichen.",
   "catalogCategories.name": "Name",
   "catalogCategories.saved": "Kategorie gespeichert",
   "catalogCategories.usage": "{count} Einträge",

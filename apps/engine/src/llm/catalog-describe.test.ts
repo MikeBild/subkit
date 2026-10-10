@@ -63,8 +63,9 @@ describe("catalogInputHash", () => {
 describe("buildDescribePrompt", () => {
   test("offers the existing categories by size and never the catch-all as a block to join", () => {
     const prompt = buildDescribePrompt(workflow, vocabulary);
-    expect(prompt).toContain("reports (9), billing (4)");
-    expect(prompt).not.toContain("other (12)");
+    expect(prompt).toContain('"category":"reports","total":9');
+    expect(prompt).toContain('"category":"billing","total":4');
+    expect(prompt).not.toContain('"category":"other"');
   });
 
   test("keeps hostile object text inside the data fence", () => {

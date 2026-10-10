@@ -5,6 +5,7 @@ import { auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../db/schema/knowledge_sources.ts";
 import { fingerprintChunks } from "../docs-ingestion/chunker.ts";
@@ -167,6 +168,7 @@ export async function applyKnowledgeCreate(
   p: CreateKnowledgeSourceParams,
   prepared: PreparedKnowledgeCreate,
 ): Promise<KnowledgeSourceView> {
+  await lockCatalogVocabulary(tx, p.tenant_id);
   const { slug, accepted } = prepared;
   await assertTenantKnowledgeBudget(tx, p.tenant_id, prepared.total_bytes);
 
@@ -314,6 +316,7 @@ export async function updateKnowledgeSource(
   const db = exec ?? getDb();
 
   return await (db as Db).transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
     const existing = await tx
       .select()
       .from(knowledgeSources)

@@ -9,6 +9,7 @@ import {
   type SeededRoleIds,
   seedBuiltinRolesAndPermissions,
 } from "../rbac/seed.ts";
+import { lockCatalogVocabulary } from "./catalog-vocabulary.ts";
 import type { Db, Executor } from "./client.ts";
 import {
   apiKeys,
@@ -136,6 +137,7 @@ export async function seedTenantBootstrap(
       );
     }
 
+    await lockCatalogVocabulary(tx, tenant.id);
     let [user] = await tx
       .select()
       .from(users)
@@ -378,6 +380,7 @@ async function seedDevFixtures(db: Db, rbacIds: SeededRoleIds): Promise<IssuedKe
       })
       .returning();
     if (!tenant) throw new Error("seed: tenant insert returned no row");
+    await lockCatalogVocabulary(tx, tenant.id);
     await auditAwait(
       {
         tenant_id: tenant.id,

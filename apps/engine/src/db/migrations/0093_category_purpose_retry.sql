@@ -1,0 +1,1 @@
+ALTER TABLE "catalog_categories" ADD COLUMN "purpose_attempted_at" timestamp with time zone;

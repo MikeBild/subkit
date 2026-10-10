@@ -10366,6 +10366,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description Metadata changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -22463,6 +22472,10 @@ export interface components {
             categories: components["schemas"]["CategoryUsage"][];
         };
         CategoryUsage: {
+            purpose: string | null;
+            purpose_source: components["schemas"]["CatalogMetadataSource"] & (string | null);
+            aliases: string[];
+            revision: number | null;
             category: string;
             total: number;
             counts: components["schemas"]["CategoryKindCounts"];
@@ -22480,10 +22493,22 @@ export interface components {
             to: string;
             total: number;
             moved: components["schemas"]["CategoryKindCounts"];
+            metadata: {
+                purpose: string | null;
+                purpose_source: components["schemas"]["CatalogMetadataSource"] & (string | null);
+                aliases: string[];
+                revision: number | null;
+            };
+            /** @enum {string} */
+            purpose_generation: "pending" | "not_requested";
         };
-        /** @description Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two. */
         RenameCategoryBody: {
             to: components["schemas"]["CatalogCategory"];
+            purpose: string | null;
+            aliases: string[];
+            preserve_purpose?: boolean;
+            expected_source_revision: number | null;
+            expected_target_revision: number | null;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];

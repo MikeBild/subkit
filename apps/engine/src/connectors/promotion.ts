@@ -9,6 +9,7 @@ import {
 } from "../credentials/index.ts";
 import type { CredentialMode, DecryptedCredential } from "../credentials/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
   connectorPromotions,
@@ -121,6 +122,7 @@ export async function promoteConnector(
   );
 
   return await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idempotencyHash}))`);
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${`${input.tenant_id}:${input.source_connector_id}`}))`,

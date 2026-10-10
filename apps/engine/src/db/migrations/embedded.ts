@@ -108,6 +108,9 @@ import sql0087TenantLlmSettingsDropped from "./0087_tenant_llm_settings_dropped.
 import sql0088AbsentSugarMan from "./0088_absent_sugar_man.sql" with { type: "text" };
 import sql0089DeciderKind from "./0089_decider_kind.sql" with { type: "text" };
 import sql0090AmbiguousVertigo from "./0090_ambiguous_vertigo.sql" with { type: "text" };
+import sql0091CatalogCategoryMetadata from "./0091_catalog_category_metadata.sql" with { type: "text" };
+import sql0092CatalogCategoryAssignment from "./0092_catalog_category_assignment.sql" with { type: "text" };
+import sql0093CategoryPurposeRetry from "./0093_category_purpose_retry.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -223,6 +226,9 @@ const SQL_BY_TAG: Record<string, string> = {
   "0088_absent_sugar_man": sql0088AbsentSugarMan,
   "0089_decider_kind": sql0089DeciderKind,
   "0090_ambiguous_vertigo": sql0090AmbiguousVertigo,
+  "0091_catalog_category_metadata": sql0091CatalogCategoryMetadata,
+  "0092_catalog_category_assignment": sql0092CatalogCategoryAssignment,
+  "0093_category_purpose_retry": sql0093CategoryPurposeRetry,
 };
 
 const journal = journalMeta as unknown as Journal;

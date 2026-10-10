@@ -22,6 +22,7 @@ import {
   FileReplacedMetadataSchema,
   readRequestSource,
 } from "../../audit/index.ts";
+import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import { writeEvent } from "../../db/events.ts";
 import {
   conversations,
@@ -100,87 +101,100 @@ export function registerFileManageRoutes(app: OpenAPIHono<AppEnv>): void {
     const body = c.req.valid("json");
     const principal = requireAuth(c);
     const db = c.get("db");
-    let row: typeof files.$inferSelect;
-    try {
-      row = await requireFileForTenant(db, principal.tenant_id, parseFileIdOrThrow(id));
-    } catch {
-      return c.json(notFound, 404);
-    }
-    if (row.deleted_at) return c.json(notFound, 404);
-    const metadata = metadataChange(row, {
-      ...(body.description !== undefined ? { description: body.description } : {}),
-      ...(body.accept_description !== undefined
-        ? { accept_description: body.accept_description }
-        : {}),
-      ...(body.category !== undefined ? { category: body.category } : {}),
+    return db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, principal.tenant_id);
+      let row: typeof files.$inferSelect;
+      try {
+        const fid = parseFileIdOrThrow(id);
+        const uuid = fid.startsWith("fid_") ? fid.slice(4) : fid;
+        const [found] = await tx
+          .select()
+          .from(files)
+          .where(and(eq(files.tenant_id, principal.tenant_id), eq(files.id, uuid)))
+          .for("update")
+          .limit(1);
+        if (!found) return c.json(notFound, 404);
+        row = found;
+      } catch {
+        return c.json(notFound, 404);
+      }
+      if (row.deleted_at) return c.json(notFound, 404);
+      const metadata = metadataChange(row, {
+        ...(body.description !== undefined ? { description: body.description } : {}),
+        ...(body.accept_description !== undefined
+          ? { accept_description: body.accept_description }
+          : {}),
+        ...(body.category !== undefined ? { category: body.category } : {}),
+      });
+      const renamed = body.filename !== undefined && body.filename !== row.filename;
+      if (!renamed && !metadata) return c.json(toFileWire(row), 200);
+      const [updated] = await tx
+        .update(files)
+        .set({
+          ...(renamed ? { filename: body.filename } : {}),
+          ...metadata,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(files.tenant_id, principal.tenant_id),
+            eq(files.id, row.id),
+            isNull(files.deleted_at),
+            ...(body.accept_description && typeof body.description === "string"
+              ? [eq(files.description, body.description)]
+              : []),
+          ),
+        )
+        .returning();
+      if (!updated && body.accept_description)
+        throw new DescriptionAcceptanceError("description_changed");
+      if (renamed) {
+        await auditAwait(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: actorType(principal),
+            actor_id: principal.id,
+            action: AuditAction.FILE_RENAMED,
+            resource_type: "file",
+            resource_id: row.id,
+            result: "success",
+            metadata: FileRenamedMetadataSchema.parse({
+              file_id: row.id,
+              request_source: readRequestSource(c),
+            }),
+          },
+          tx,
+        );
+      }
+      if (metadata) {
+        await auditAwait(
+          {
+            tenant_id: principal.tenant_id,
+            actor_type: actorType(principal),
+            actor_id: principal.id,
+            action: AuditAction.CATALOG_METADATA_UPDATED,
+            resource_type: "file",
+            resource_id: row.id,
+            result: "success",
+            before: { description: row.description, category: row.category },
+            after: {
+              description:
+                metadata.description === undefined ? row.description : metadata.description,
+              category: updated?.category ?? row.category,
+            },
+            metadata: {
+              request_source: readRequestSource(c),
+              ...(metadata.description_source
+                ? { description_source: metadata.description_source }
+                : {}),
+              ...(metadata.category_source ? { category_source: metadata.category_source } : {}),
+            },
+          },
+          tx,
+        );
+      }
+      return c.json(toFileWire(updated ?? row), 200);
     });
-    const renamed = body.filename !== undefined && body.filename !== row.filename;
-    if (!renamed && !metadata) return c.json(toFileWire(row), 200);
-    const [updated] = await db
-      .update(files)
-      .set({
-        ...(renamed ? { filename: body.filename } : {}),
-        ...metadata,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(files.tenant_id, principal.tenant_id),
-          eq(files.id, row.id),
-          isNull(files.deleted_at),
-          ...(body.accept_description && typeof body.description === "string"
-            ? [eq(files.description, body.description)]
-            : []),
-        ),
-      )
-      .returning();
-    if (!updated && body.accept_description)
-      throw new DescriptionAcceptanceError("description_changed");
-    if (renamed) {
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: actorType(principal),
-          actor_id: principal.id,
-          action: AuditAction.FILE_RENAMED,
-          resource_type: "file",
-          resource_id: row.id,
-          result: "success",
-          metadata: FileRenamedMetadataSchema.parse({
-            file_id: row.id,
-            request_source: readRequestSource(c),
-          }),
-        },
-        db,
-      );
-    }
-    if (metadata) {
-      await auditAwait(
-        {
-          tenant_id: principal.tenant_id,
-          actor_type: actorType(principal),
-          actor_id: principal.id,
-          action: AuditAction.CATALOG_METADATA_UPDATED,
-          resource_type: "file",
-          resource_id: row.id,
-          result: "success",
-          before: { description: row.description, category: row.category },
-          after: {
-            description:
-              metadata.description === undefined ? row.description : metadata.description,
-            category: metadata.category ?? row.category,
-          },
-          metadata: {
-            ...(metadata.description_source
-              ? { description_source: metadata.description_source }
-              : {}),
-            ...(metadata.category_source ? { category_source: metadata.category_source } : {}),
-          },
-        },
-        db,
-      );
-    }
-    return c.json(toFileWire(updated ?? row), 200);
   });
 
   const replaceRoute = createRoute({

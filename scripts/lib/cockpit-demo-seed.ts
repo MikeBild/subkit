@@ -1,5 +1,23 @@
 import { createHash } from "node:crypto";
 
+export const demoCategories = [
+  {
+    name: "demo",
+    purpose: "Beispiele zum sicheren Ausprobieren der lokalen Installation.",
+    aliases: ["Beispiele", "Übung"],
+  },
+  {
+    name: "vertrieb",
+    purpose: "Kunden, Bestellungen und Umsatzberichte gemeinsam bearbeiten.",
+    aliases: ["Kunden", "Verkauf", "Sales"],
+  },
+  {
+    name: "betrieb",
+    purpose: "Freigaben, Betriebsregeln und die Bearbeitung von Fehlern.",
+    aliases: ["Administration", "Operations"],
+  },
+];
+
 export const demoFiles = [
   {
     filename: "Willkommen-im-lokalen-Cockpit.md",
@@ -65,6 +83,7 @@ export const cockpitDemoManifest = {
   auditEntries: 25,
   usageEntries: 24,
   files: demoFiles.length,
+  categoryMetadata: demoCategories.length,
   limitations: [
     "Historische Läufe und Verbrauch sind synthetisch.",
     "Freigaben werden nicht vorgetäuscht; lokale Workflows können manuell freigegeben werden.",
@@ -85,6 +104,11 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
   const id = (name: string) => cockpitDemoId(tenantId, name);
   const statements: string[] = [];
   const repairs: string[] = [];
+  for (const category of demoCategories) {
+    repairs.push(
+      `INSERT INTO catalog_categories (tenant_id,name,purpose,purpose_source,aliases) VALUES (${quote(tenantId)},${quote(category.name)},${quote(category.purpose)},'human',${quote(JSON.stringify(category.aliases))}::jsonb) ON CONFLICT (tenant_id,name) DO UPDATE SET purpose=EXCLUDED.purpose,purpose_source=EXCLUDED.purpose_source,aliases=EXCLUDED.aliases,purpose_pending=false,revision=catalog_categories.revision+1 WHERE catalog_categories.revision=1 AND catalog_categories.purpose IS NULL AND catalog_categories.purpose_source IS NULL AND catalog_categories.redirect_to IS NULL AND catalog_categories.aliases='[]'::jsonb;`,
+    );
+  }
   const insert = (table: string, row: Record<string, unknown>) => {
     const values = Object.values(row).map((value) =>
       value === null

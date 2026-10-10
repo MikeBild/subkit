@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { _drainAuditWritesForTests } from "../../audit/audit.ts";
 import {
   auditLog,
+  catalogCategories,
   connectors,
   files,
   knowledgeSources,
@@ -16,6 +17,7 @@ import { MemoryObjectStore, setObjectStoreForTesting } from "../../storage/objec
 import {
   describeOne,
   describePendingCatalog,
+  describePendingCategoryPurposes,
   hasPendingCatalogDescriptions,
 } from "../catalog-describe.ts";
 import { createWorkflow, updateWorkflowMetadata } from "../service.ts";
@@ -174,6 +176,13 @@ describe("catalog.describe", () => {
     firstPass.push(...prompts);
     expect(run.described).toBe(5);
     expect(run.failed).toBe(0);
+    expect(await hasPendingCatalogDescriptions(tenant_id, ctx.db)).toBe(true);
+    await describePendingCategoryPurposes(
+      tenant_id,
+      ctx.db,
+      100,
+      async () => "Shared sales reporting",
+    );
     expect(await hasPendingCatalogDescriptions(tenant_id, ctx.db)).toBe(false);
 
     const [wf] = await ctx.db.select().from(workflows).where(eq(workflows.id, ids.workflow));
@@ -207,7 +216,7 @@ describe("catalog.describe", () => {
       .where(
         and(eq(auditLog.tenant_id, tenant_id), eq(auditLog.action, "catalog_metadata.generated")),
       );
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     const wfRow = rows.find((r) => r.resource_id === ids.workflow);
     expect(wfRow?.before).toEqual({ description: null, category: "other" });
     expect(wfRow?.after).toEqual({
@@ -253,6 +262,25 @@ describe("catalog.describe", () => {
   });
 
   test("a new object joins the category its siblings already share", async () => {
+    await ctx.db
+      .insert(catalogCategories)
+      .values({
+        tenant_id,
+        name: "sales-reporting",
+        purpose: "Shared sales reporting",
+        purpose_source: "llm",
+      })
+      .onConflictDoNothing();
+    await ctx.db.insert(connectors).values({
+      tenant_id,
+      slug: "orders-api-sibling",
+      display_name: "Orders API sibling",
+      driver: "http",
+      category: "sales-reporting",
+      description: "Reads sibling orders.",
+      description_source: "human",
+      category_source: "human",
+    });
     await ctx.db.insert(connectors).values({
       tenant_id,
       slug: "orders-api-eu",
@@ -262,7 +290,11 @@ describe("catalog.describe", () => {
     answer = () => ({ description: "Reads EU orders.", category: "sales reporting" });
     mockModel();
     await describePendingCatalog(tenant_id, ctx.db);
-    expect(prompts[0]).toContain("sales-reporting (");
+    const objectPrompt = prompts.find(
+      (prompt) => prompt.includes("kind: connector") && prompt.includes("name: Orders API EU"),
+    );
+    expect(objectPrompt).toContain('"category":"sales-reporting"');
+    expect(objectPrompt).toContain('"purpose":"Shared sales reporting"');
     const [c] = await ctx.db.select().from(connectors).where(eq(connectors.slug, "orders-api-eu"));
     expect(c?.category).toBe("sales-reporting");
   });

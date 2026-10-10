@@ -248,3 +248,33 @@ export function groupByCategory<T>(
       ),
     );
 }
+
+export const CategoryMetadataSchema = z.object({
+  purpose: z.string().max(DESCRIPTION_MAX_LENGTH).nullable(),
+  purpose_source: CatalogSourceSchema.nullable(),
+  aliases: z.array(z.string().trim().min(1).max(80)).max(32),
+  revision: z.number().int().positive().nullable(),
+});
+
+export const CategoryEditSchema = z
+  .object({
+    to: CategorySchema,
+    purpose: z.string().trim().max(DESCRIPTION_MAX_LENGTH).nullable(),
+    aliases: z.array(z.string().trim().min(1).max(80)).max(32),
+    preserve_purpose: z.boolean().optional(),
+    expected_source_revision: z.number().int().positive().nullable(),
+    expected_target_revision: z.number().int().positive().nullable(),
+  })
+  .strict();
+
+export function normalizeCategoryAliases(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value.normalize("NFKC").trim())
+    .filter((value) => {
+      const key = value.toLocaleLowerCase("en-US");
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceRefreshed } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import type { Db, Executor } from "../../db/client.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
@@ -229,9 +230,10 @@ async function writeCache(
   const version = knowledgeContentHash(json);
   const bytes = Buffer.byteLength(json, "utf8");
   const now = new Date();
-  await ctx.db.transaction((tx) =>
-    writeCacheRows(tx, ctx, cache, result, { json, version, bytes, now }),
-  );
+  await ctx.db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, ctx.tenant_id);
+    await writeCacheRows(tx, ctx, cache, result, { json, version, bytes, now });
+  });
 }
 
 async function writeCacheRows(

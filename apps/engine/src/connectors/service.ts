@@ -9,6 +9,7 @@ import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { storedScopes } from "../credentials/authority-scopes.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
 import { connectors, credentials } from "../db/schema/index.ts";
@@ -184,6 +185,7 @@ export async function createConnector(
 ): Promise<ConnectorView> {
   const db = exec ?? getDb();
   return await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
     const resolved = await resolveCreateTemplateBinding(p.tenant_id, p.input, tx);
     const resolvedEffective = resolved.effective;
     const auth_type = resolvedEffective.auth_type ?? "none";
@@ -613,6 +615,7 @@ export async function updateConnector(
 ): Promise<ConnectorView | null> {
   const db = exec ?? getDb();
   const updated = await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, tenant_id);
     const existing = await tx
       .select()
       .from(connectors)
