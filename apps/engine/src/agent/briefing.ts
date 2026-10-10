@@ -10,8 +10,6 @@ import { listSkills } from "../skills/service.ts";
 import type { Skill } from "../skills/types.ts";
 import { listWorkflowSummaries } from "../workflows/service.ts";
 
-export const DOMAIN_SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
-
 export const AGENT_GUIDE_TAG = "agent-briefing";
 
 export const DEFAULT_BRIEFING_BUDGET_TOKENS = 4000;

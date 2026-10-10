@@ -2,7 +2,6 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   buildAgentBriefing,
   DEFAULT_BRIEFING_BUDGET_TOKENS,
-  DOMAIN_SLUG_RE,
   MAX_BRIEFING_BUDGET_TOKENS,
   MIN_BRIEFING_BUDGET_TOKENS,
 } from "../../agent/briefing.ts";
@@ -13,6 +12,7 @@ import {
   resolveDomains,
 } from "../../agent/domains.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
+import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
 import { can, catalogVisibility } from "../../rbac/index.ts";
