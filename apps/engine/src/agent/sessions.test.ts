@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { LearningSchema } from "../api/agent-sessions.ts";
 import {
-  LearningSchema,
   learningFingerprint,
   learningPattern,
   sampleTranscript,

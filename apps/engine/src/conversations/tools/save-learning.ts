@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { LearningKindSchema, proposeLearning } from "../../agent/sessions.ts";
+import { proposeLearning } from "../../agent/sessions.ts";
+import { LearningKindSchema } from "../../api/agent-sessions.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ConversationTool, ToolResult } from "./index.ts";
 import { toolActor } from "./tool-actor.ts";
