@@ -1,7 +1,7 @@
 import Defuddle, { createMarkdownContent } from "defuddle/full";
 import { fallbackArticleText, prepareCaptureDocument } from "./capture-document.ts";
 import { chromeApi } from "./chrome-api.ts";
-import type { CaptureDiagnostic, CapturedClip, ClipMetadata } from "./types.ts";
+import type { CaptureDiagnostic, CapturedClip, CaptureMode, ClipMetadata } from "./types.ts";
 
 const asyncExtractionTimeoutMs = 8_000;
 
@@ -351,9 +351,9 @@ async function youtubeClip(root: Document, sourceUrl: string): Promise<CapturedC
   };
 }
 
-async function capturePage(mode: "article" | "selection"): Promise<CapturedClip> {
+async function capturePage(mode: CaptureMode): Promise<CapturedClip> {
   const sourceUrl = location.href;
-  const selected = mode === "selection" ? selectionHtml() : undefined;
+  const selected = mode !== "article" ? selectionHtml() : undefined;
   if (mode === "selection" && !selected) {
     return {
       metadata: metadata(document, sourceUrl),
@@ -377,8 +377,8 @@ async function capturePage(mode: "article" | "selection"): Promise<CapturedClip>
 
 const pendingArticles = new Map<string, Promise<CapturedClip>>();
 
-export function capture(mode: "article" | "selection"): Promise<CapturedClip> {
-  if (mode === "selection") return capturePage(mode);
+export function capture(mode: CaptureMode): Promise<CapturedClip> {
+  if (mode !== "article") return capturePage(mode);
   const sourceUrl = location.href;
   const pending = pendingArticles.get(sourceUrl);
   if (pending) return pending;
@@ -395,8 +395,10 @@ if (!pageState.subkitCaptureHandler && chromeApi?.runtime) {
   pageState.subkitCaptureHandler = true;
   chromeApi.runtime.onMessage.addListener((message: unknown) => {
     if (!message || typeof message !== "object") return undefined;
-    const request = message as { type?: string; mode?: "article" | "selection" };
+    const request = message as { type?: string; mode?: CaptureMode };
     if (request.type !== "capture") return undefined;
-    return capture(request.mode === "selection" ? "selection" : "article");
+    return capture(
+      request.mode === "selection" ? "selection" : request.mode === "auto" ? "auto" : "article",
+    );
   });
 }

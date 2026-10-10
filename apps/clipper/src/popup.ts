@@ -551,7 +551,7 @@ async function discardAndCapture(): Promise<void> {
     await draftWrite;
     draft = (await chromeApi.runtime.sendMessage({
       type: "discard-and-capture",
-      mode: "selection",
+      mode: "auto",
       ...(draft ? { draftId: draft.id } : {}),
     })) as Draft;
     if (draft) {
@@ -584,7 +584,7 @@ async function initialize(): Promise<void> {
     try {
       draft = (await chromeApi.runtime.sendMessage({
         type: "start-capture",
-        mode: "selection",
+        mode: "auto",
       })) as Draft;
     } catch (error) {
       setStatus(

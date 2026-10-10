@@ -42,10 +42,14 @@ test("capture keeps article content and excludes page navigation", async () => {
     const range = document.createRange();
     range.selectNodeContents(document.querySelector("#selection") as Node);
     window.getSelection()?.addRange(range);
+    const automaticSelection = await capture("auto");
+    expect(automaticSelection.body).not.toContain("Another relevant paragraph");
     const selected = await capture("selection");
     expect(selected.body).toContain("https://example.test/relative");
     expect(selected.body).toContain("https://example.test/image.png");
     window.getSelection()?.removeAllRanges();
+    const automaticArticle = await capture("auto");
+    expect(automaticArticle.body).toContain("Another relevant paragraph");
     const fallback = await capture("selection");
     expect(fallback.body).toBe("");
     expect(fallback.diagnostics).toContainEqual({ code: "selection_unavailable" });

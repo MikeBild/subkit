@@ -1,4 +1,4 @@
-export type CaptureMode = "article" | "selection";
+export type CaptureMode = "article" | "selection" | "auto";
 
 export interface ClipMetadata {
   title: string;
