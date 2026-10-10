@@ -1,3 +1,4 @@
+import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 export async function verifyReviewCloseHistory(page, stand, label) {
   const open = page
     .locator('[data-testid="attention-list"] [data-attention-verb="review"]:visible')
@@ -55,8 +56,7 @@ export async function verifyNotificationActions(page, stand, label) {
     await page.getByTestId(sheet).waitFor({ state: "visible" });
   };
   const closeSheet = async (sheet) => {
-    await page.getByTestId(sheet).locator('[data-slot="sheet-close"]').click();
-    await page.getByTestId(sheet).waitFor({ state: "detached" });
+    await closeRecordSheet(page.getByTestId(sheet));
   };
   await openRow("notifications-rules-table", 1, "notifications-rule-sheet");
   const ruleSheet = page.getByTestId("notifications-rule-sheet");

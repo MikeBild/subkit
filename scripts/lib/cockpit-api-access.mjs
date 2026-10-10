@@ -1,3 +1,5 @@
+import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
+
 const TAB_NAMES = {
   de: ["Schlüssel", "Apps"],
   en: ["Keys", "Apps"],
@@ -135,8 +137,7 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
     throw new Error(`${where}: a key's sheet does not say how the key starts`);
   if (!(await sheet.getByTestId("api-key-sheet-menu").count()))
     throw new Error(`${where}: a live key's sheet offers no way to rotate or revoke it`);
-  await sheet.locator('[data-slot="sheet-close"]').click();
-  await sheet.waitFor({ state: "detached" });
+  await closeRecordSheet(sheet);
 
   const taskLists = await page
     .locator('[data-testid="api-access-attention"], [data-testid="attention-list"]')

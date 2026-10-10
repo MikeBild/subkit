@@ -1,5 +1,6 @@
 import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
 import { WORKFLOW_OPERATING_STATUSES } from "../../packages/shared/src/workflow-operating-status.ts";
+import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 
 const CREATED = "2024-01-01T12:00:00.000Z";
 const UPDATED = "2025-07-11T12:00:00.000Z";
@@ -491,10 +492,7 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         await dialog.getByRole("button", { name: t("common.close"), exact: true }).click();
         await search.fill("");
       }
-      await page
-        .getByTestId("catalog-categories-sheet")
-        .locator('[data-slot="sheet-close"]')
-        .click();
+      await closeRecordSheet(page.getByTestId("catalog-categories-sheet"));
       const originRequestStart = requests.length;
       await page.getByTestId("catalog-origin-llm").click();
       await expectRows(
