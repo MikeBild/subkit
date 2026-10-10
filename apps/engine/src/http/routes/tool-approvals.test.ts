@@ -5,6 +5,7 @@ import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { setConfigKey } from "../../config/loader.ts";
 import { auditLog, sessions, toolApprovals } from "../../db/schema/index.ts";
 import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
+import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { requestApproval } from "../../tools/approval.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
 
@@ -278,6 +279,161 @@ async function decide(
 }
 
 describe("POST /v1/tool-approvals/decide", () => {
+  for (const locale of ["de", "en"] as const) {
+    test(`a decision-time expiry renders its specific server result in ${locale}`, async () => {
+      const { approval_id, approval_url } = await seedApproval();
+      const opened = await fetch(approval_url, {
+        headers: { cookie: browserCookie, "accept-language": locale },
+        signal: AbortSignal.timeout(5_000),
+      });
+      expect(opened.status).toBe(200);
+      const csrf = /name="csrf_token" value="([^"]+)"/.exec(await opened.text())?.[1];
+      expect(csrf).toBeTruthy();
+      const blocker = await server.testDb.pool.connect();
+      let transactionOpen = false;
+      let pending: Promise<PromiseSettledResult<Response>[]> | undefined;
+      let results: PromiseSettledResult<Response>[] = [];
+      try {
+        await blocker.query("BEGIN");
+        transactionOpen = true;
+        const locked = await blocker.query<{ id: string }>(
+          "SELECT id FROM tool_approvals WHERE tenant_id = $1 AND id = $2 AND expires_at > now() FOR UPDATE",
+          [server.tenantId, approval_id],
+        );
+        expect(locked.rows).toHaveLength(1);
+        const pid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        const blockerPid = pid.rows[0]?.pid;
+        expect(blockerPid).toBeDefined();
+        pending = Promise.allSettled([
+          fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+            method: "POST",
+            signal: AbortSignal.timeout(5_000),
+            headers: {
+              cookie: browserCookie,
+              "content-type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              grant: grantParam(approval_url),
+              csrf_token: csrf ?? "",
+              decision: "approve",
+              language: locale,
+            }).toString(),
+          }),
+        ]);
+        await waitFor(
+          async () => {
+            const { rows } = await server.testDb.pool.query<{ waiting: number }>(
+              `SELECT count(*)::integer AS waiting FROM pg_stat_activity
+               WHERE datname = current_database() AND wait_event_type = 'Lock'
+                 AND query ILIKE '%update%tool_approvals%'
+                 AND $1::integer = ANY(pg_blocking_pids(pid))`,
+              [blockerPid],
+            );
+            return rows[0]?.waiting === 1;
+          },
+          {
+            label: "authenticated approval decision waiting on its held row",
+            tries: 200,
+            sleepMs: 5,
+          },
+        );
+        const expired = await blocker.query(
+          "UPDATE tool_approvals SET expires_at = $3 WHERE tenant_id = $1 AND id = $2",
+          [server.tenantId, approval_id, ONE_SECOND_AGO],
+        );
+        expect(expired.rowCount).toBe(1);
+        await blocker.query("COMMIT");
+        transactionOpen = false;
+      } finally {
+        if (transactionOpen) await blocker.query("ROLLBACK");
+        blocker.release();
+        if (pending) results = await pending;
+      }
+      const result = results[0];
+      if (!result || result.status !== "fulfilled") throw new Error("approval HTTP request failed");
+      expect(result.value.status).toBe(400);
+      const html = await result.value.text();
+      expect(html).toContain(locale === "de" ? "Frist abgelaufen" : "Deadline expired");
+      expect(html).not.toContain(
+        locale === "de"
+          ? "Freigabelink abgelaufen oder nicht verfügbar"
+          : "Approval link expired or unavailable",
+      );
+      const row = await approvalRow(approval_id);
+      expect(row?.granted_at).toBeNull();
+      expect(row?.declined_at).toBeNull();
+      expect(row?.consumed_at).toBeNull();
+      const audits = await server.db
+        .select({ action: auditLog.action, result: auditLog.result, reason: auditLog.reason })
+        .from(auditLog)
+        .where(and(eq(auditLog.tenant_id, server.tenantId), eq(auditLog.resource_id, approval_id)));
+      expect(
+        audits.some(
+          (audit) =>
+            audit.action === "approval.granted" &&
+            audit.result === "denied" &&
+            audit.reason === "approval_expired",
+        ),
+      ).toBe(true);
+      expect(
+        audits.some((audit) => audit.action === "approval.granted" && audit.result === "success"),
+      ).toBe(false);
+    }, 30_000);
+  }
+
+  for (const locale of ["de", "en"] as const) {
+    test(`expiry after opening keeps token submission neutral in ${locale}`, async () => {
+      const { approval_id, approval_url } = await seedApproval();
+      const opened = await fetch(approval_url, {
+        headers: { cookie: browserCookie, "accept-language": locale },
+        signal: AbortSignal.timeout(5_000),
+      });
+      expect(opened.status).toBe(200);
+      const csrf = /name="csrf_token" value="([^"]+)"/.exec(await opened.text())?.[1];
+      expect(csrf).toBeTruthy();
+      await server.db
+        .update(toolApprovals)
+        .set({ expires_at: ONE_SECOND_AGO })
+        .where(
+          and(eq(toolApprovals.tenant_id, server.tenantId), eq(toolApprovals.id, approval_id)),
+        );
+      const submitted = await fetch(`${server.baseUrl}/v1/tool-approvals/decide`, {
+        method: "POST",
+        signal: AbortSignal.timeout(5_000),
+        headers: { cookie: browserCookie, "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant: grantParam(approval_url),
+          csrf_token: csrf ?? "",
+          decision: "approve",
+          language: locale,
+        }).toString(),
+      });
+      expect(submitted.status).toBe(400);
+      const expected =
+        locale === "de"
+          ? "Freigabelink abgelaufen oder nicht verfügbar"
+          : "Approval link expired or unavailable";
+      const html = await submitted.text();
+      expect(html).toContain(expected);
+      expect(html).not.toContain(locale === "de" ? "Frist abgelaufen" : "Deadline expired");
+      const expiredGet = await fetch(approval_url, {
+        headers: { "accept-language": locale },
+        signal: AbortSignal.timeout(5_000),
+      });
+      const unknownGet = await fetch(
+        `${server.baseUrl}/v1/tool-approvals/decide?grant=skag_not-a-real-token-0000000000000000`,
+        { headers: { "accept-language": locale }, signal: AbortSignal.timeout(5_000) },
+      );
+      expect(expiredGet.status).toBe(400);
+      expect(unknownGet.status).toBe(400);
+      expect(await expiredGet.text()).toBe(await unknownGet.text());
+      const row = await approvalRow(approval_id);
+      expect(row?.granted_at).toBeNull();
+      expect(row?.declined_at).toBeNull();
+      expect(row?.consumed_at).toBeNull();
+    }, 30_000);
+  }
+
   test("a user-owned API key cannot render or submit a human approval", async () => {
     const { approval_id, approval_url } = await seedApproval();
     const headers = { authorization: `Bearer ${server.apiKey}` };
