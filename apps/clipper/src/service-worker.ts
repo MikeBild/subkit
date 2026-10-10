@@ -225,7 +225,7 @@ chromeApi.contextMenus.onClicked.addListener((info, tab) => {
 
 chromeApi.commands.onCommand.addListener((command) => {
   if (command !== "capture-current-page") return;
-  void activeTabId().then((tabId) => runBackgroundCapture(tabId, "selection"));
+  void activeTabId().then((tabId) => runBackgroundCapture(tabId, "auto"));
 });
 
 chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
@@ -259,7 +259,7 @@ chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
   }
   if (request.type === "start-capture") {
     return startCapture(
-      request.mode === "selection" ? "selection" : "article",
+      request.mode === "selection" ? "selection" : request.mode === "auto" ? "auto" : "article",
       false,
       undefined,
       requestedTabId,
@@ -268,7 +268,7 @@ chromeApi.runtime.onMessage.addListener((message: unknown, sender) => {
   }
   if (request.type === "discard-and-capture") {
     return startCapture(
-      request.mode === "selection" ? "selection" : "article",
+      request.mode === "selection" ? "selection" : request.mode === "auto" ? "auto" : "article",
       false,
       draftId,
       requestedTabId,

@@ -570,6 +570,37 @@ try {
     assert.ok(afterReload.body.includes("Additional article body"));
     await article.close();
     await reloadManager.close();
+    const toolbarArticle = await browser.newPage();
+    await toolbarArticle.goto(`${new URL(engineUrl).origin}/fixture?toolbar-capture`);
+    const toolbarTabId = await nextWorker.evaluate(async () => {
+      const extension = globalThis as unknown as {
+        chrome: {
+          tabs: {
+            query(query: {
+              active: boolean;
+              currentWindow: boolean;
+            }): Promise<Array<{ id: number }>>;
+          };
+        };
+      };
+      return (await extension.chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    });
+    assert.ok(toolbarTabId);
+    const toolbarPopup = await browser.newPage();
+    await toolbarPopup.goto(`chrome-extension://${extensionId}/popup.html?tab=${toolbarTabId}`);
+    await toolbarPopup.waitForFunction(() => {
+      const body = document.querySelector<HTMLTextAreaElement>("#content");
+      const save = document.querySelector<HTMLButtonElement>("#save");
+      return body?.value.includes("Additional article body") && save && !save.disabled;
+    });
+    await toolbarPopup.locator("#capture-again").click();
+    await toolbarPopup.waitForFunction(() => {
+      const body = document.querySelector<HTMLTextAreaElement>("#content");
+      const save = document.querySelector<HTMLButtonElement>("#save");
+      return body?.value.includes("Additional article body") && save && !save.disabled;
+    });
+    await toolbarPopup.close();
+    await toolbarArticle.close();
     assert.deepEqual(errors, []);
     process.stdout.write(
       "Clipper loaded in Chromium; selection/article capture, protected storage, settings, draft persistence, intake selection, original provenance, safe old-server behavior and idempotent retry passed.\n",
