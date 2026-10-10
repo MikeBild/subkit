@@ -1117,10 +1117,13 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     if (
       question.pathname !== "/cockpit/chat/new" ||
       question.searchParams.get("workflow_id") !== WORKFLOW ||
+      question.searchParams.get("references") !== `workflow:${WORKFLOW}` ||
       question.searchParams.has("prompt") ||
-      [...question.searchParams.keys()].length !== 1
+      [...question.searchParams.keys()].length !== 2
     )
-      throw new Error(`${where}: the question action loses its workflow or seeds an instruction`);
+      throw new Error(
+        `${where}: the question action loses its workflow reference or seeds an instruction`,
+      );
     await page.keyboard.press("Escape");
     await page.getByTestId("workflow-menu-rename").waitFor({ state: "hidden" });
     await page.getByTestId("workflow-menu").click();

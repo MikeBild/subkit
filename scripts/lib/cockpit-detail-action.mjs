@@ -332,8 +332,14 @@ export async function verifyDetailAction(page, stand, uuid, localeName, capture)
       throw new Error(`${where}: the entry leads to ${href}, not a new conversation`);
     if (chat.searchParams.get("workflow_id") !== PLAIN)
       throw new Error(`${where}: the conversation is not about this workflow`);
-    if (chat.searchParams.has("prompt") || [...chat.searchParams.keys()].length !== 1)
-      throw new Error(`${where}: asking about the workflow seeds an unsolicited instruction`);
+    if (
+      chat.searchParams.get("references") !== `workflow:${PLAIN}` ||
+      chat.searchParams.has("prompt") ||
+      [...chat.searchParams.keys()].length !== 2
+    )
+      throw new Error(
+        `${where}: asking about the workflow loses its reference or seeds an unsolicited instruction`,
+      );
     await page.keyboard.press("Escape");
 
     where = `/connectors/<expired> (${localeName})`;
