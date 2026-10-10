@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
+import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import { patchCandidates, tenants, workflows, workflowVersions } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { approvePatchCandidate } from "../../self-healing/candidate-decision.ts";
@@ -44,7 +45,7 @@ function definition(slug: string, description: string) {
   });
 }
 
-for (const writer of ["update", "restore", "rotation", "repair"] as const) {
+for (const writer of ["restore", "rotation", "repair"] as const) {
   test(`${writer} waits for draft allocation before reading the next workflow version`, async () => {
     const initial = await createWorkflow(
       { tenant_id, actor_id: null, def: definition(writer, "initial") },
@@ -91,29 +92,24 @@ for (const writer of ["update", "restore", "rotation", "repair"] as const) {
     });
     await locked.promise;
     const writing =
-      writer === "update"
-        ? updateWorkflow(
-            { tenant_id, id, actor_id: null, def: definition(writer, "updated") },
-            ctx.db,
-          )
-        : writer === "restore"
-          ? restoreWorkflowVersion(tenant_id, id, 1, null, ctx.db)
-          : writer === "rotation"
-            ? ctx.db.transaction((tx) =>
-                rotateWorkflowVersionInternal(
-                  {
-                    tenant_id,
-                    workflow_id: id,
-                    def: definition(writer, "rotated"),
-                    note: "test rotation",
-                  },
-                  tx,
-                ),
-              )
-            : approvePatchCandidate(
-                { tenant_id, candidate_id: candidate.id, actor_id: null },
-                ctx.db,
-              );
+      writer === "restore"
+        ? restoreWorkflowVersion(tenant_id, id, 1, null, ctx.db)
+        : writer === "rotation"
+          ? ctx.db.transaction((tx) =>
+              rotateWorkflowVersionInternal(
+                {
+                  tenant_id,
+                  workflow_id: id,
+                  def: definition(writer, "rotated"),
+                  note: "test rotation",
+                },
+                tx,
+              ),
+            )
+          : approvePatchCandidate(
+              { tenant_id, candidate_id: candidate.id, actor_id: null },
+              ctx.db,
+            );
     const completed = Promise.allSettled([holder, writing]);
     try {
       await waitFor(
@@ -153,3 +149,67 @@ for (const writer of ["update", "restore", "rotation", "repair"] as const) {
     expect(workflow?.current_version_id).toBe(versions[2]?.id);
   });
 }
+
+test("update fails fast while draft allocation owns catalog vocabulary", async () => {
+  const initial = await createWorkflow(
+    { tenant_id, actor_id: null, def: definition("update", "initial") },
+    ctx.db,
+  );
+  if (!initial.workflow) throw new Error(initial.errors.join("; "));
+  const id = initial.workflow.id;
+  const locked = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const holder = ctx.db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, tenant_id);
+    const saved = await saveWorkflowDraft(
+      {
+        tenant_id,
+        workflow_id: id,
+        expected_draft_version_id: null,
+        actor_id: null,
+        request_source: "api",
+        def: definition("update", "inert draft"),
+      },
+      tx,
+    );
+    locked.resolve();
+    await release.promise;
+    return saved;
+  });
+  await locked.promise;
+  try {
+    await expect(
+      updateWorkflow(
+        { tenant_id, id, actor_id: null, def: definition("update", "updated") },
+        ctx.db,
+      ),
+    ).rejects.toMatchObject({ code: "40001" });
+  } finally {
+    release.resolve();
+  }
+  const draft = await holder;
+  expect(draft.draft?.version).toBe(2);
+  const versions = await ctx.db
+    .select()
+    .from(workflowVersions)
+    .where(and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.workflow_id, id)))
+    .orderBy(asc(workflowVersions.version));
+  expect(versions.map((row) => row.version)).toEqual([1, 2]);
+  const retried = await updateWorkflow(
+    { tenant_id, id, actor_id: null, def: definition("update", "updated") },
+    ctx.db,
+  );
+  if (!retried.workflow) throw new Error(retried.errors.join("; "));
+  const finalVersions = await ctx.db
+    .select()
+    .from(workflowVersions)
+    .where(and(eq(workflowVersions.tenant_id, tenant_id), eq(workflowVersions.workflow_id, id)))
+    .orderBy(asc(workflowVersions.version));
+  expect(finalVersions.map((row) => row.version)).toEqual([1, 2, 3]);
+  const [workflow] = await ctx.db
+    .select()
+    .from(workflows)
+    .where(and(eq(workflows.tenant_id, tenant_id), eq(workflows.id, id)));
+  expect(workflow?.draft_version_id).toBe(finalVersions[1]?.id);
+  expect(workflow?.current_version_id).toBe(finalVersions[2]?.id);
+});
