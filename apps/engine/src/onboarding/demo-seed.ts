@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Executor } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import { logger } from "../logging/logger.ts";
@@ -104,77 +105,80 @@ export async function seedOnboardingDemo(
   p: SeedOnboardingDemoParams,
   exec: Executor,
 ): Promise<SeedOnboardingDemoResult> {
-  const created: string[] = [];
-  const skipped: string[] = [];
+  return exec.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
+    const created: string[] = [];
+    const skipped: string[] = [];
 
-  for (const spec of DEMO_WORKFLOWS) {
-    WorkflowDefSchema.parse(spec.dag);
+    for (const spec of DEMO_WORKFLOWS) {
+      WorkflowDefSchema.parse(spec.dag);
 
-    const existing = await exec
-      .select({ id: workflows.id })
-      .from(workflows)
-      .where(and(eq(workflows.tenant_id, p.tenant_id), eq(workflows.slug, spec.slug)))
-      .limit(1);
-    if (existing.length > 0) {
-      skipped.push(spec.slug);
-      continue;
+      const existing = await tx
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(and(eq(workflows.tenant_id, p.tenant_id), eq(workflows.slug, spec.slug)))
+        .limit(1);
+      if (existing.length > 0) {
+        skipped.push(spec.slug);
+        continue;
+      }
+
+      const [wf] = await tx
+        .insert(workflows)
+        .values({
+          tenant_id: p.tenant_id,
+          slug: spec.slug,
+          name: spec.name,
+          lifecycle: "active",
+        })
+        .returning();
+      if (!wf) throw new Error(`demo seed: workflow insert returned no row for ${spec.slug}`);
+
+      const [version] = await tx
+        .insert(workflowVersions)
+        .values({
+          ...versionAuthorColumns(p),
+          tenant_id: p.tenant_id,
+          workflow_id: wf.id,
+          version: 1,
+          dag: spec.dag as object,
+          note: "Seeded by onboarding-demo-seed.",
+        })
+        .returning();
+      if (!version) {
+        throw new Error(`demo seed: workflow_versions insert returned no row for ${spec.slug}`);
+      }
+
+      await tx
+        .update(workflows)
+        .set({ current_version_id: version.id })
+        .where(eq(workflows.id, wf.id));
+
+      await auditAwait(
+        {
+          tenant_id: p.tenant_id,
+          actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
+          actor_id: p.actor_id ?? null,
+          action: AuditAction.WORKFLOW_CREATED,
+          resource_type: "workflow",
+          resource_id: wf.id,
+          result: "success",
+          metadata: { slug: spec.slug, seeded: true },
+        },
+        tx,
+      );
+      created.push(spec.slug);
     }
 
-    const [wf] = await exec
-      .insert(workflows)
-      .values({
-        tenant_id: p.tenant_id,
-        slug: spec.slug,
-        name: spec.name,
-        lifecycle: "active",
-      })
-      .returning();
-    if (!wf) throw new Error(`demo seed: workflow insert returned no row for ${spec.slug}`);
+    logger.info({
+      module: "onboarding",
+      action: "demo_seed.completed",
+      msg: "onboarding demo seed completed",
+      tenant_id: p.tenant_id,
+      created,
+      skipped,
+    });
 
-    const [version] = await exec
-      .insert(workflowVersions)
-      .values({
-        ...versionAuthorColumns(p),
-        tenant_id: p.tenant_id,
-        workflow_id: wf.id,
-        version: 1,
-        dag: spec.dag as object,
-        note: "Seeded by onboarding-demo-seed.",
-      })
-      .returning();
-    if (!version) {
-      throw new Error(`demo seed: workflow_versions insert returned no row for ${spec.slug}`);
-    }
-
-    await exec
-      .update(workflows)
-      .set({ current_version_id: version.id })
-      .where(eq(workflows.id, wf.id));
-
-    await auditAwait(
-      {
-        tenant_id: p.tenant_id,
-        actor_type: p.actor_type ?? (p.actor_id ? "user" : "system"),
-        actor_id: p.actor_id ?? null,
-        action: AuditAction.WORKFLOW_CREATED,
-        resource_type: "workflow",
-        resource_id: wf.id,
-        result: "success",
-        metadata: { slug: spec.slug, seeded: true },
-      },
-      exec,
-    );
-    created.push(spec.slug);
-  }
-
-  logger.info({
-    module: "onboarding",
-    action: "demo_seed.completed",
-    msg: "onboarding demo seed completed",
-    tenant_id: p.tenant_id,
-    created,
-    skipped,
+    return { created, skipped };
   });
-
-  return { created, skipped };
 }

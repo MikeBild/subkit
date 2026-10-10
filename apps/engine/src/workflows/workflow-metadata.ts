@@ -13,10 +13,11 @@ export async function writeWorkflowMetadata(
 ): Promise<boolean> {
   const change = metadataChange(wf, patch);
   if (!change) return false;
-  await tx
+  const [updated] = await tx
     .update(workflows)
     .set({ ...change, updated_at: new Date() })
-    .where(and(eq(workflows.tenant_id, wf.tenant_id), eq(workflows.id, wf.id)));
+    .where(and(eq(workflows.tenant_id, wf.tenant_id), eq(workflows.id, wf.id)))
+    .returning({ category: workflows.category });
   await auditAwait(
     {
       tenant_id: wf.tenant_id,
@@ -29,7 +30,7 @@ export async function writeWorkflowMetadata(
       before: { description: wf.description, category: wf.category },
       after: {
         description: change.description === undefined ? wf.description : change.description,
-        category: change.category ?? wf.category,
+        category: updated?.category ?? wf.category,
       },
     },
     tx,

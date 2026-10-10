@@ -4,6 +4,7 @@ import { actorFromColumns, actorIds, auditActor } from "../audit/actor.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Db, type Executor, getDb } from "../db/client.ts";
 import { patchCandidates } from "../db/schema/executions.ts";
 import { skillCandidateEvidence, skillCandidates } from "../db/schema/skills.ts";
@@ -757,6 +758,7 @@ export async function approveSkillCandidate(
         proposer: actorFromColumns(row.proposed_by_user_id, row.proposed_by_system_account_id),
       });
     } else {
+      await lockCatalogVocabulary(tx, p.tenant_id);
       const skill = await createSkill(
         {
           tenant_id: p.tenant_id,

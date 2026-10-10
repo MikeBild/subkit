@@ -7,8 +7,10 @@ import {
 } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import {
+  catalogCategories,
   connectors,
   fileLinks,
   files,
@@ -24,6 +26,7 @@ import {
   type CategoryCount,
   catalogInputHash,
   describeCatalogObject,
+  describeCategoryPurpose,
 } from "../llm/catalog-describe.ts";
 import { errorFields, logger } from "../logging/logger.ts";
 import { loadCategoryVocabulary } from "./catalog-view.ts";
@@ -101,7 +104,22 @@ export async function hasPendingCatalogDescriptions(
       .limit(1);
     if (row) return true;
   }
-  return false;
+  const [pendingCategory] = await db
+    .select({ name: catalogCategories.name })
+    .from(catalogCategories)
+    .where(
+      and(
+        eq(catalogCategories.tenant_id, tenant_id),
+        eq(catalogCategories.purpose_pending, true),
+        or(
+          isNull(catalogCategories.purpose_attempted_at),
+          lt(catalogCategories.purpose_attempted_at, sql`now() - interval '6 hours'`),
+        ),
+        isNull(catalogCategories.redirect_to),
+      ),
+    )
+    .limit(1);
+  return Boolean(pendingCategory);
 }
 
 interface PendingRef {
@@ -452,6 +470,8 @@ export async function describeOne(
     (await loadCategoryVocabulary(p.tenant_id, db)).map((v) => ({
       category: v.category,
       total: v.total,
+      purpose: v.purpose,
+      aliases: v.aliases,
     }));
   const generated = await describeCatalogObject({ tenant_id: p.tenant_id, input, vocabulary }, db);
   if (!generated) {
@@ -468,6 +488,7 @@ export async function describeOne(
     category?: string;
   } = { catalog_input_hash: hash, catalog_described_at: now };
   const applied = await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, p.tenant_id);
     const [current] = await tx
       .select({
         description: table.description,
@@ -484,10 +505,12 @@ export async function describeOne(
     if (current.updated_at.getTime() !== owned.updated_at.getTime()) return null;
     if (current.description_source === "llm") set.description = generated.description;
     if (current.category_source === "llm") set.category = generated.category;
-    await tx
+    const [written] = await tx
       .update(table)
       .set(set)
-      .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)));
+      .where(and(eq(table.tenant_id, p.tenant_id), eq(table.id, p.id)))
+      .returning({ category: table.category });
+    if (set.category !== undefined && written) set.category = written.category;
     const changed =
       (set.description !== undefined && set.description !== current.description) ||
       (set.category !== undefined && set.category !== current.category);
@@ -531,6 +554,7 @@ export async function describePendingCatalog(
   limit = CATALOG_DESCRIBE_BATCH,
 ): Promise<CatalogDescribeRun> {
   const db = exec ?? getDb();
+  await describePendingCategoryPurposes(tenant_id, db, limit);
   const refs = await pendingRefs(tenant_id, limit, db);
   const run: CatalogDescribeRun = {
     described: 0,
@@ -560,6 +584,103 @@ export async function describePendingCatalog(
         .where(and(eq(table.id, ref.id), eq(table.tenant_id, tenant_id)));
     }
   }
-  run.remaining = refs.length >= limit && (await hasPendingCatalogDescriptions(tenant_id, db));
+  run.remaining = await hasPendingCatalogDescriptions(tenant_id, db);
   return run;
+}
+
+export async function describePendingCategoryPurposes(
+  tenant_id: string,
+  db: Executor,
+  limit: number,
+  generate = describeCategoryPurpose,
+): Promise<void> {
+  const pending = await db
+    .select()
+    .from(catalogCategories)
+    .where(
+      and(
+        eq(catalogCategories.tenant_id, tenant_id),
+        eq(catalogCategories.purpose_pending, true),
+        or(
+          isNull(catalogCategories.purpose_attempted_at),
+          lt(catalogCategories.purpose_attempted_at, sql`now() - interval '6 hours'`),
+        ),
+        isNull(catalogCategories.redirect_to),
+      ),
+    )
+    .limit(limit);
+  for (const snapshot of pending) {
+    const claimed = await db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, tenant_id);
+      const rows = await tx
+        .update(catalogCategories)
+        .set({ purpose_attempted_at: sql`now()` })
+        .where(
+          and(
+            eq(catalogCategories.tenant_id, tenant_id),
+            eq(catalogCategories.name, snapshot.name),
+            eq(catalogCategories.revision, snapshot.revision),
+            eq(catalogCategories.purpose_pending, true),
+            or(
+              isNull(catalogCategories.purpose_attempted_at),
+              lt(catalogCategories.purpose_attempted_at, sql`now() - interval '6 hours'`),
+            ),
+          ),
+        )
+        .returning({ name: catalogCategories.name });
+      return rows.length > 0;
+    });
+    if (!claimed) continue;
+    let purpose: string | null;
+    try {
+      purpose = await generate(tenant_id, snapshot.name, snapshot.aliases, db);
+    } catch (error) {
+      logger.warn({
+        module: "catalog",
+        action: "category.purpose_failed",
+        msg: "Category purpose generation remains pending",
+        tenant_id,
+        ...errorFields(error),
+      });
+      continue;
+    }
+    if (!purpose) continue;
+    await db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, tenant_id);
+      const [updated] = await tx
+        .update(catalogCategories)
+        .set({
+          purpose,
+          purpose_source: "llm",
+          purpose_pending: false,
+          revision: sql`${catalogCategories.revision} + 1`,
+          updated_at: sql`now()`,
+        })
+        .where(
+          and(
+            eq(catalogCategories.tenant_id, tenant_id),
+            eq(catalogCategories.name, snapshot.name),
+            eq(catalogCategories.revision, snapshot.revision),
+            eq(catalogCategories.purpose_pending, true),
+            isNull(catalogCategories.purpose),
+            isNull(catalogCategories.redirect_to),
+          ),
+        )
+        .returning({ name: catalogCategories.name });
+      if (!updated) return;
+      await auditAwait(
+        {
+          tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.CATALOG_METADATA_GENERATED,
+          resource_type: "catalog_category",
+          resource_id: snapshot.name,
+          result: "success",
+          after: { purpose, purpose_source: "llm" },
+        },
+        tx,
+      );
+    });
+  }
 }

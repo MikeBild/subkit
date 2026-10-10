@@ -3,6 +3,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { recordKnowledgeSourceCandidatesSynthesized } from "../../audit/recorders/index.ts";
 import { assertInsertRow } from "../../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../../db/catalog-vocabulary.ts";
 import { knowledgeChunks, knowledgeSources } from "../../db/schema/knowledge_sources.ts";
 import { knowledgeContentHash, recordKnowledgeVersion } from "../../knowledge/version-record.ts";
 import { invoke } from "../../llm/core/invoke.ts";
@@ -359,6 +360,7 @@ async function persistCandidates(
     text: json,
   };
   return ctx.db.transaction(async (db) => {
+    await lockCatalogVocabulary(db, ctx.tenant_id);
     const existing = await db
       .select()
       .from(knowledgeSources)

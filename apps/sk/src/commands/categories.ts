@@ -35,7 +35,7 @@ const renameCommand = defineCommand({
   meta: {
     name: "rename",
     description:
-      "Rename a category for every kind at once; naming an existing category merges the two",
+      "Rename across all kinds with revision checks; preserve purpose ownership and merge into an existing target",
   },
   args: {
     from: { type: "positional", required: true, description: "Current category" },

@@ -2,18 +2,20 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   CATALOG_KINDS,
   type CatalogKind,
+  CategoryEditSchema,
   CategoryFilterSchema,
-  CategorySchema,
+  CategoryMetadataSchema,
 } from "../../api/catalog-metadata.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { actorType } from "../../audit/index.ts";
 import { can } from "../../rbac/index.ts";
 import {
   CategoryRenameRefused,
+  CategoryRevisionConflict,
   loadCategoryVocabulary,
   renameCategory,
 } from "../../workflows/index.ts";
-import { BadRequestError } from "../errors.ts";
+import { BadRequestError, ConflictError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requireAnyPermission, requirePermission } from "../middleware/require-permission.ts";
 import type { AppEnv } from "../openapi.ts";
@@ -38,6 +40,7 @@ const KindCountsSchema = z
 
 const CategoryUsageSchema = z
   .object({
+    ...CategoryMetadataSchema.shape,
     category: z.string(),
     total: z.number().int().nonnegative(),
     counts: KindCountsSchema,
@@ -49,13 +52,17 @@ const CategoryListResponse = z
   .object({ categories: z.array(CategoryUsageSchema) })
   .openapi("CategoryListResponse");
 
-const RenameCategoryBody = z.object({ to: CategorySchema }).openapi("RenameCategoryBody", {
-  description:
-    "Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two.",
-});
+const RenameCategoryBody = CategoryEditSchema.openapi("RenameCategoryBody");
 
 const RenameCategoryResponse = z
-  .object({ from: z.string(), to: z.string(), total: z.number().int(), moved: KindCountsSchema })
+  .object({
+    from: z.string(),
+    to: z.string(),
+    total: z.number().int(),
+    moved: KindCountsSchema,
+    metadata: CategoryMetadataSchema,
+    purpose_generation: z.enum(["pending", "not_requested"]),
+  })
   .openapi("RenameCategoryResponse");
 
 const listRoute = createRoute({
@@ -85,6 +92,10 @@ const renameRoute = createRoute({
     200: {
       description: "Renamed",
       content: { "application/json": { schema: RenameCategoryResponse } },
+    },
+    409: {
+      description: "Metadata changed",
+      content: { "application/json": { schema: ErrorSchema } },
     },
     400: { description: "Bad request", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -127,6 +138,7 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
             llm_counts[kind] = 0;
           }
         return {
+          ...usage,
           category: usage.category,
           counts,
           llm_counts,
@@ -141,14 +153,14 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const { name } = c.req.valid("param");
-    const { to } = c.req.valid("json");
-    if (name === to) throw new BadRequestError("the category already has that name");
+    const body = c.req.valid("json");
+    const { to } = body;
     try {
       const result = await renameCategory(
         {
           tenant_id: principal.tenant_id,
           from: name,
-          to,
+          ...body,
           actor_type: actorType(principal),
           actor_id: principal.id,
         },
@@ -156,6 +168,7 @@ export function registerCategoryRoutes(app: OpenAPIHono<AppEnv>): void {
       );
       return c.json({ from: name, to, ...result }, 200);
     } catch (err) {
+      if (err instanceof CategoryRevisionConflict) throw new ConflictError(err.message);
       if (err instanceof CategoryRenameRefused) throw new BadRequestError(err.message);
       throw err;
     }

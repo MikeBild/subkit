@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "9.9.0",
+    "version": "9.10.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -16240,6 +16240,42 @@
       "CategoryUsage": {
         "type": "object",
         "properties": {
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "purpose_source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CatalogMetadataSource"
+              },
+              {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            ]
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 32
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
           "category": {
             "type": "string"
           },
@@ -16255,6 +16291,10 @@
           }
         },
         "required": [
+          "purpose",
+          "purpose_source",
+          "aliases",
+          "revision",
           "category",
           "total",
           "counts",
@@ -16307,13 +16347,69 @@
           },
           "moved": {
             "$ref": "#/components/schemas/CategoryKindCounts"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "purpose": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 2000
+              },
+              "purpose_source": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CatalogMetadataSource"
+                  },
+                  {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                ]
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "maxItems": 32
+              },
+              "revision": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "purpose",
+              "purpose_source",
+              "aliases",
+              "revision"
+            ]
+          },
+          "purpose_generation": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "not_requested"
+            ]
           }
         },
         "required": [
           "from",
           "to",
           "total",
-          "moved"
+          "moved",
+          "metadata",
+          "purpose_generation"
         ]
       },
       "RenameCategoryBody": {
@@ -16321,12 +16417,49 @@
         "properties": {
           "to": {
             "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 32
+          },
+          "preserve_purpose": {
+            "type": "boolean"
+          },
+          "expected_source_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "expected_target_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
           }
         },
         "required": [
-          "to"
+          "to",
+          "purpose",
+          "aliases",
+          "expected_source_revision",
+          "expected_target_revision"
         ],
-        "description": "Moves every workflow, connector, knowledge source, skill and file of the category to `to`. Naming an existing category merges the two."
+        "additionalProperties": false
       },
       "KnowledgeSourceVersionListResponse": {
         "type": "object",
@@ -39597,6 +39730,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Metadata changed",
             "content": {
               "application/json": {
                 "schema": {

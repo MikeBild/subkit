@@ -12,6 +12,7 @@ import {
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { type ListResult, resolveWindowTotal, totalOverWindow } from "../db/list-result.ts";
@@ -245,6 +246,7 @@ export async function createWorkflow(
   let result: string;
   try {
     result = await db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, input.tenant_id);
       const [wf] = await tx
         .insert(workflows)
         .values({
@@ -344,6 +346,7 @@ export async function updateWorkflow(
   if (!storageGate.ok) return { errors: storageGate.errors };
   const def = annotateRuntime(validation.workflow);
   const updated = await db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
     const wf = await lockWorkflowForVersionWrite(tx, input.tenant_id, input.id);
     if (!wf) return null;
     const dedup = await isUnchangedFromCurrentVersion({
@@ -501,6 +504,7 @@ export async function updateWorkflowMetadata(
   }
   try {
     const result = await db.transaction(async (tx) => {
+      await lockCatalogVocabulary(tx, input.tenant_id);
       const wfRows = await tx
         .select()
         .from(workflows)
@@ -553,7 +557,11 @@ export async function updateWorkflowMetadata(
       ) {
         return { id: wf.id, noop: true as const };
       }
-      await tx.update(workflows).set(patch).where(eq(workflows.id, wf.id));
+      const [updatedMetadata] = await tx
+        .update(workflows)
+        .set(patch)
+        .where(and(eq(workflows.tenant_id, input.tenant_id), eq(workflows.id, wf.id)))
+        .returning({ category: workflows.category });
       if (patch.lifecycle === "archived") {
         await inboundService.unbindFromWorkflow(input.tenant_id, wf.id, input.actor_id ?? null, tx);
         await scheduleRepo.unbindFromWorkflow(tx, input.tenant_id, wf.id, input.actor_id ?? null);
@@ -603,7 +611,7 @@ export async function updateWorkflowMetadata(
               name: patch.name ?? wf.name,
               description:
                 patch.description === undefined ? (wf.description ?? null) : patch.description,
-              category: patch.category ?? wf.category,
+              category: updatedMetadata?.category ?? wf.category,
               lifecycle: patch.lifecycle ?? wf.lifecycle,
             },
           },

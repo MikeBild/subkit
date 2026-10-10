@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import type { Db } from "../db/client.ts";
 import { files } from "../db/schema/index.ts";
 
@@ -75,7 +76,10 @@ async function withFreeSlug<T>(
   for (let attempt = 1; ; attempt++) {
     const slug = await nextFreeFileSlug(db, tenant_id, filename);
     try {
-      return await db.transaction(async (tx) => write(tx as unknown as Db, slug));
+      return await db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, tenant_id);
+        return write(tx as unknown as Db, slug);
+      });
     } catch (err) {
       if (!isSlugConflict(err) || attempt >= MAX_ATTEMPTS) throw err;
     }
@@ -102,13 +106,14 @@ export async function reviveFileRow(
 ): Promise<typeof files.$inferSelect> {
   if (row.slug) {
     try {
-      const [revived] = await db.transaction(async (tx) =>
-        tx
+      const [revived] = await db.transaction(async (tx) => {
+        await lockCatalogVocabulary(tx, row.tenant_id);
+        return tx
           .update(files)
           .set({ deleted_at: null, updated_at: new Date() })
-          .where(eq(files.id, row.id))
-          .returning(),
-      );
+          .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
+          .returning();
+      });
       return revived ?? row;
     } catch (err) {
       if (!isSlugConflict(err)) throw err;
@@ -118,7 +123,7 @@ export async function reviveFileRow(
     const [revived] = await tx
       .update(files)
       .set({ deleted_at: null, slug, updated_at: new Date() })
-      .where(eq(files.id, row.id))
+      .where(and(eq(files.tenant_id, row.tenant_id), eq(files.id, row.id)))
       .returning();
     return revived ?? row;
   });

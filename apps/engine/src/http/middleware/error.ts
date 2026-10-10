@@ -154,6 +154,17 @@ function mapLlmError(c: Context<AppEnv>, err: unknown): Response | null {
 }
 
 export function mapKnownErrorResponse(c: Context<AppEnv>, err: unknown): Response | null {
+  let databaseError = err;
+  for (let depth = 0; depth < 4 && databaseError instanceof Error; depth++) {
+    if ("code" in databaseError && databaseError.code === "40001")
+      return envelope(
+        c,
+        409,
+        "catalog_vocabulary_changed",
+        "Catalog changed concurrently; reload and retry",
+      );
+    databaseError = databaseError.cause;
+  }
   if (err instanceof DescriptionAcceptanceError)
     return envelope(c, err.code === "description_changed" ? 409 : 400, err.code, err.message);
   if (err instanceof HttpError) {

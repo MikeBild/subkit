@@ -1,5 +1,6 @@
 export * from "./_common.ts";
 export * from "./audit.ts";
+export * from "./catalog_categories.ts";
 export * from "./chat.ts";
 export * from "./connections.ts";
 export * from "./connector_docs.ts";

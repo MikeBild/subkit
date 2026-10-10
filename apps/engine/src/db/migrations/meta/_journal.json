@@ -638,6 +638,27 @@
       "when": 1791560287712,
       "tag": "0090_ambiguous_vertigo",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1791634253301,
+      "tag": "0091_catalog_category_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1791634257198,
+      "tag": "0092_catalog_category_assignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1791634423473,
+      "tag": "0093_category_purpose_retry",
+      "breakpoints": true
     }
   ]
 }

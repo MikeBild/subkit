@@ -271,6 +271,10 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
     };
     return {
       category,
+      purpose: category === "finance" ? "Invoices and receipts" : null,
+      purpose_source: category === "finance" ? "llm" : null,
+      aliases: category === "finance" ? ["Accounting"] : [],
+      revision: category === "finance" ? 3 : category === "support" ? 7 : null,
       total: counts.workflow + counts.connector,
       counts,
       llm_counts: {
@@ -286,9 +290,27 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
       },
     };
   });
+  const categoryWrites = [];
   const handler = async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
     const url = new URL(route.request().url());
+    if (route.request().method() === "POST" && url.pathname === "/v1/categories/finance/rename") {
+      const body = route.request().postDataJSON();
+      categoryWrites.push(body);
+      if (body.to === "support")
+        return route.fulfill({
+          status: 409,
+          json: { code: "conflict", message: "Category changed" },
+        });
+      const category = categoryResponse.find((item) => item.category === "finance");
+      category.purpose = body.purpose;
+      category.purpose_source = body.purpose ? "human" : null;
+      category.aliases = body.aliases;
+      category.revision += 1;
+      return route.fulfill({
+        json: { purpose_generation: body.purpose ? "not_requested" : "pending" },
+      });
+    }
+    if (route.request().method() !== "GET") return route.fallback();
     if (url.pathname === "/v1/categories")
       return route.fulfill({ json: { categories: categoryResponse } });
     const source =
@@ -413,6 +435,62 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         "category link target",
       );
       await capture(`catalog-${resource}-categories`);
+      if (resource === "workflows") {
+        const sheet = page.getByTestId("catalog-categories-sheet");
+        const search = page.getByTestId("catalog-categories-search");
+        for (const text of ["Invoices", "Accounting", "finance"]) {
+          await search.fill(text);
+          await contains(sheet.locator("li"), "Finance", "category metadata search");
+          require((await sheet.locator("li").count()) ===
+            1, "Purpose and alias search must narrow the category list");
+        }
+        await sheet.getByTestId("catalog-category-edit").click();
+        const dialog = page.getByTestId("catalog-category-dialog");
+        await contains(
+          dialog.getByTestId("catalog-category-origin"),
+          t("catalogCategories.originAI"),
+          "AI purpose adoption hint",
+        );
+        await dialog.getByRole("button", { name: t("common.save"), exact: true }).click();
+        await dialog.waitFor({ state: "hidden" });
+        require(categoryWrites[0]?.purpose === "Invoices and receipts" &&
+          categoryWrites[0]?.expected_source_revision === 3 &&
+          categoryWrites[0]?.expected_target_revision ===
+            3, "Adopting AI purpose must retain text and both reviewed revisions");
+        await sheet.getByTestId("catalog-category-edit").click();
+        await page.getByTestId("catalog-category-purpose").fill("");
+        await dialog.getByRole("button", { name: t("common.save"), exact: true }).click();
+        await dialog.waitFor({ state: "hidden" });
+        require(categoryWrites[1]?.purpose === null &&
+          categoryWrites[1]?.expected_source_revision ===
+            4, "Blank purpose must request generation against the current revision");
+        await search.fill("finance");
+        await sheet.getByTestId("catalog-category-edit").click();
+        await page.getByTestId("catalog-category-name").fill("support");
+        await contains(
+          dialog.getByTestId("catalog-category-merge"),
+          t("catalogCategories.mergeNoPurpose"),
+          "merge target purpose consequence",
+        );
+        await dialog.getByRole("button", { name: t("common.save"), exact: true }).click();
+        await dialog.getByRole("alert").waitFor({ state: "visible" });
+        require(categoryWrites[2]?.expected_source_revision === 5 &&
+          categoryWrites[2]?.expected_target_revision ===
+            7, "Merge must carry both displayed revisions");
+        require(await dialog
+          .getByRole("button", { name: t("common.save"), exact: true })
+          .isDisabled(), "Conflicting edit must not automatically retry");
+        await dialog
+          .getByRole("button", { name: t("catalogCategories.reload"), exact: true })
+          .click();
+        await dialog
+          .locator('input[data-testid="catalog-category-name"][value="finance"]')
+          .waitFor();
+        require((await page.getByTestId("catalog-category-name").inputValue()) ===
+          "finance", "Explicit conflict reload must return to reviewed source metadata");
+        await dialog.getByRole("button", { name: t("common.close"), exact: true }).click();
+        await search.fill("");
+      }
       await page
         .getByTestId("catalog-categories-sheet")
         .locator('[data-slot="sheet-close"]')

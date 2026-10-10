@@ -4,13 +4,23 @@ import {
   CATALOG_KINDS,
   type CatalogKind,
   compareCategoryCounts,
+  normalizeCategoryAliases,
   PLATFORM_CATEGORY,
   UNCATEGORIZED,
 } from "../api/catalog-metadata.ts";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction, type AuditActorType } from "../audit/types.ts";
+import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
-import { connectors, files, knowledgeSources, skills, workflows } from "../db/schema/index.ts";
+import {
+  catalogCategories,
+  connectors,
+  files,
+  knowledgeSources,
+  skills,
+  workflows,
+} from "../db/schema/index.ts";
+import { getContext } from "../logging/context.ts";
 import { workflowIdsUsingConnector } from "./connector-refs.ts";
 import type { OperatingStatusAccess } from "./operating-status.ts";
 
@@ -100,6 +110,10 @@ const CATALOG_TABLES = {
 
 export interface CategoryUsage {
   category: string;
+  purpose: string | null;
+  purpose_source: "human" | "llm" | null;
+  aliases: string[];
+  revision: number | null;
   total: number;
   counts: Record<CatalogKind, number>;
   llm_counts: Record<CatalogKind, number>;
@@ -134,6 +148,10 @@ export async function loadCategoryVocabulary(
     for (const row of rows) {
       const usage = byCategory.get(row.category) ?? {
         category: row.category,
+        purpose: null,
+        purpose_source: null,
+        aliases: [],
+        revision: null,
         total: 0,
         counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
         llm_counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
@@ -144,6 +162,20 @@ export async function loadCategoryVocabulary(
       byCategory.set(row.category, usage);
     }
   }
+  const metadata = await db
+    .select()
+    .from(catalogCategories)
+    .where(eq(catalogCategories.tenant_id, tenant_id));
+  for (const row of metadata) {
+    const usage = byCategory.get(row.name);
+    if (usage && !row.redirect_to)
+      Object.assign(usage, {
+        purpose: row.purpose,
+        purpose_source: row.purpose_source,
+        aliases: row.aliases,
+        revision: row.revision,
+      });
+  }
   return [...byCategory.values()].sort((a, b) =>
     compareCategoryCounts(
       { category: a.category, count: a.total },
@@ -153,55 +185,172 @@ export async function loadCategoryVocabulary(
 }
 
 export class CategoryRenameRefused extends Error {}
+export class CategoryRevisionConflict extends Error {}
 
 export interface RenameCategoryInput {
   tenant_id: string;
   from: string;
   to: string;
+  purpose: string | null;
+  aliases: string[];
+  preserve_purpose?: boolean | undefined;
+  expected_source_revision: number | null;
+  expected_target_revision: number | null;
   actor_type?: AuditActorType;
   actor_id?: string | null;
 }
 
-export async function renameCategory(
-  input: RenameCategoryInput,
-  exec?: Executor,
-): Promise<{ moved: Record<CatalogKind, number>; total: number }> {
+export async function renameCategory(input: RenameCategoryInput, exec?: Executor) {
   const db = exec ?? getDb();
-  const moved: Record<CatalogKind, number> = {
-    workflow: 0,
-    connector: 0,
-    knowledge_source: 0,
-    skill: 0,
-    file: 0,
-  };
-  if (input.from === input.to) return { moved, total: 0 };
-  if (input.from === UNCATEGORIZED || input.from === PLATFORM_CATEGORY) {
-    throw new CategoryRenameRefused(`\`${input.from}\` cannot be renamed`);
+  if ([UNCATEGORIZED, PLATFORM_CATEGORY].includes(input.from) || input.to === PLATFORM_CATEGORY) {
+    throw new CategoryRenameRefused("Reserved categories cannot be edited");
   }
-  if (input.to === PLATFORM_CATEGORY) {
-    throw new CategoryRenameRefused(
-      `\`${PLATFORM_CATEGORY}\` is reserved for the engine's own guidance`,
-    );
-  }
-  await db.transaction(async (tx) => {
-    for (const kind of CATALOG_KINDS) {
-      const table = CATALOG_TABLES[kind];
-      const updated = await tx
-        .update(table)
-        .set(
-          input.to === UNCATEGORIZED
-            ? {
-                category: input.to,
-                category_source: "llm",
-                catalog_input_hash: null,
-                catalog_described_at: null,
-              }
-            : { category: input.to, category_source: "human" },
-        )
-        .where(and(eq(table.tenant_id, input.tenant_id), eq(table.category, input.from)))
-        .returning({ id: table.id });
-      moved[kind] = updated.length;
+  return db.transaction(async (tx) => {
+    await lockCatalogVocabulary(tx, input.tenant_id);
+    const rows = await tx
+      .select()
+      .from(catalogCategories)
+      .where(eq(catalogCategories.tenant_id, input.tenant_id))
+      .orderBy(catalogCategories.name)
+      .for("update");
+    const byName = new Map(rows.map((row) => [row.name, row]));
+    const source = byName.get(input.from);
+    const target = byName.get(input.to);
+    if (source?.redirect_to)
+      throw new CategoryRevisionConflict("The source category was renamed; reload before saving");
+    if (
+      (source?.revision ?? null) !== input.expected_source_revision ||
+      (target?.redirect_to ? null : (target?.revision ?? null)) !== input.expected_target_revision
+    ) {
+      throw new CategoryRevisionConflict(
+        "Category metadata changed; reload and review before saving",
+      );
     }
+    if (target?.redirect_to && target.redirect_to !== input.from) {
+      throw new CategoryRevisionConflict("The target category was renamed; reload before saving");
+    }
+    const sourceUsage = await loadCategoryVocabulary(input.tenant_id, tx);
+    if (!sourceUsage.some((usage) => usage.category === input.from)) {
+      throw new CategoryRevisionConflict(
+        "The source category no longer has catalog objects; reload before saving",
+      );
+    }
+    const merging =
+      input.from !== input.to &&
+      !target?.redirect_to &&
+      (Boolean(target) || sourceUsage.some((usage) => usage.category === input.to));
+    const aliases = normalizeCategoryAliases([
+      ...(merging ? (target?.aliases ?? []) : []),
+      ...input.aliases,
+      ...(input.from !== input.to ? [input.from] : []),
+    ]).filter((alias) => alias.toLowerCase() !== input.to.toLowerCase());
+    if (aliases.length > 32)
+      throw new CategoryRenameRefused(
+        "The merged category exceeds 32 aliases; reduce aliases first",
+      );
+    const purpose = merging
+      ? (target?.purpose ?? null)
+      : input.preserve_purpose
+        ? (source?.purpose ?? null)
+        : input.purpose?.trim() || null;
+    const purpose_source = merging
+      ? (target?.purpose_source ?? null)
+      : input.preserve_purpose
+        ? (source?.purpose_source ?? null)
+        : purpose
+          ? ("human" as const)
+          : null;
+    const revision = (target?.revision ?? 0) + 1;
+    const purpose_pending = merging
+      ? (target?.purpose_pending ?? false)
+      : input.preserve_purpose
+        ? (source?.purpose_pending ?? false)
+        : !purpose;
+    const purpose_attempted_at = merging
+      ? (target?.purpose_attempted_at ?? null)
+      : input.preserve_purpose
+        ? (source?.purpose_attempted_at ?? null)
+        : null;
+    await tx
+      .insert(catalogCategories)
+      .values({
+        tenant_id: input.tenant_id,
+        name: input.to,
+        purpose,
+        purpose_source,
+        aliases,
+        revision,
+        purpose_pending,
+        purpose_attempted_at,
+        redirect_to: null,
+      })
+      .onConflictDoUpdate({
+        target: [catalogCategories.tenant_id, catalogCategories.name],
+        set: {
+          purpose,
+          purpose_source,
+          aliases,
+          revision,
+          purpose_pending,
+          purpose_attempted_at,
+          redirect_to: null,
+          updated_at: sql`now()`,
+        },
+      });
+    const moved: Record<CatalogKind, number> = {
+      workflow: 0,
+      connector: 0,
+      knowledge_source: 0,
+      skill: 0,
+      file: 0,
+    };
+    if (input.from !== input.to) {
+      await tx
+        .update(catalogCategories)
+        .set({
+          redirect_to: input.to,
+          revision: sql`${catalogCategories.revision} + 1`,
+          updated_at: sql`now()`,
+        })
+        .where(
+          and(
+            eq(catalogCategories.tenant_id, input.tenant_id),
+            eq(catalogCategories.redirect_to, input.from),
+          ),
+        );
+      await tx
+        .insert(catalogCategories)
+        .values({ tenant_id: input.tenant_id, name: input.from, redirect_to: input.to })
+        .onConflictDoUpdate({
+          target: [catalogCategories.tenant_id, catalogCategories.name],
+          set: {
+            redirect_to: input.to,
+            purpose_pending: false,
+            revision: sql`${catalogCategories.revision} + 1`,
+            updated_at: sql`now()`,
+          },
+        });
+      for (const kind of CATALOG_KINDS) {
+        const table = CATALOG_TABLES[kind];
+        const updated = await tx
+          .update(table)
+          .set(
+            input.to === UNCATEGORIZED
+              ? {
+                  category: input.to,
+                  category_source: "llm",
+                  catalog_input_hash: null,
+                  catalog_described_at: null,
+                }
+              : { category: input.to, category_source: "human" },
+          )
+          .where(and(eq(table.tenant_id, input.tenant_id), eq(table.category, input.from)))
+          .returning({ id: table.id });
+        moved[kind] = updated.length;
+      }
+    }
+    const total = Object.values(moved).reduce((sum, n) => sum + n, 0);
+    const metadata = { purpose, purpose_source, aliases, revision };
     await auditAwait(
       {
         tenant_id: input.tenant_id,
@@ -215,14 +364,23 @@ export async function renameCategory(
           from: input.from,
           to: input.to,
           moved,
-          total: Object.values(moved).reduce((sum, n) => sum + n, 0),
+          total,
+          request_source: getContext().request_source ?? "api",
         },
+        before: source
+          ? { purpose: source.purpose, aliases: source.aliases, revision: source.revision }
+          : null,
+        after: metadata,
       },
       tx,
     );
+    return {
+      moved,
+      total,
+      metadata,
+      purpose_generation: purpose_pending ? ("pending" as const) : ("not_requested" as const),
+    };
   });
-  const total = Object.values(moved).reduce((sum, n) => sum + n, 0);
-  return { moved, total };
 }
 
 const CATALOG_SUMMARY_MAX_BLOCKS = 15;

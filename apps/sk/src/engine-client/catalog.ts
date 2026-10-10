@@ -4,18 +4,34 @@ export interface CatalogCategoryUsage {
   category: string;
   total: number;
   counts: Record<"workflow" | "connector" | "knowledge_source" | "skill" | "file", number>;
+  purpose: string | null;
+  purpose_source: "human" | "llm" | null;
+  aliases: string[];
+  revision: number | null;
 }
 
 export const catalogMethods = {
   listCategories(this: EngineClient): Promise<{ categories: CatalogCategoryUsage[] }> {
     return this.request("GET", "/v1/categories");
   },
-  renameCategory(
+  async renameCategory(
     this: EngineClient,
     name: string,
     to: string,
   ): Promise<{ from: string; to: string; total: number; moved: CatalogCategoryUsage["counts"] }> {
-    return this.request("POST", `/v1/categories/${encodeURIComponent(name)}/rename`, { to });
+    const { categories } = await this.listCategories();
+    const source = categories.find((category) => category.category === name);
+    if (!source)
+      throw new Error("Source category is unavailable; list categories and review the name.");
+    const target = categories.find((category) => category.category === to);
+    return this.request("POST", `/v1/categories/${encodeURIComponent(name)}/rename`, {
+      to,
+      purpose: source.purpose ?? null,
+      aliases: source.aliases ?? [],
+      expected_source_revision: source.revision ?? null,
+      expected_target_revision: target?.revision ?? null,
+      preserve_purpose: true,
+    });
   },
   patchWorkflowMetadata(
     this: EngineClient,
