@@ -97,38 +97,16 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
     const field = active?.closest('[data-testid^="setting-item-"]');
     return field?.getAttribute("data-setting-path") === "tokens.monthly_budget";
   });
-  const drift = await page.evaluate(() => {
-    const main = document.querySelector('[data-testid="admin-settings"]');
-    const region = main?.querySelector('[data-family-slot="scroll-region"]');
-    const content = main?.querySelector('[data-family-slot="content"]');
-    const h1 = main?.querySelector("h1");
-    const heading =
-      h1?.parentElement?.querySelector('[data-testid="sidebar-trigger"]') ?? h1 ?? null;
-    const link = main?.querySelector('[data-testid="settings-section-link-tokens"]');
-    const row = document.activeElement?.closest('[data-testid^="setting-item-"]');
-    if (!region || !content || !heading || !link || !row) return { missing: true };
-    return {
-      missing: false,
-      documentScrollLeft: document.documentElement.scrollLeft,
-      regionScrollLeft: region.scrollLeft,
-      regionOverflow: region.scrollWidth - region.clientWidth,
-      contentLeft: Math.round(content.getBoundingClientRect().left),
-      headingLeft: Math.round(heading.getBoundingClientRect().left),
-      sectionCurrent: link.getAttribute("aria-current") === "page",
-      rowHighlighted: row.getAttribute("data-highlighted") === "true",
-    };
-  });
-  if (drift.missing) throw new Error("/settings: the leaf deep link's page parts are missing");
-  if (drift.documentScrollLeft !== 0 || drift.regionScrollLeft !== 0)
-    throw new Error(
-      `/settings?leaf=: the page is scrolled sideways (document ${drift.documentScrollLeft}px, region ${drift.regionScrollLeft}px)`,
-    );
-  if (drift.regionOverflow > 0)
-    throw new Error(`/settings?leaf=: the page is ${drift.regionOverflow}px wider than its frame`);
-  if (Math.abs(drift.contentLeft - drift.headingLeft) > 1)
-    throw new Error(
-      `/settings?leaf=: the content starts at ${drift.contentLeft}px, its heading at ${drift.headingLeft}px`,
-    );
+  const drift = await page.evaluate(() => ({
+    sectionCurrent:
+      document
+        .querySelector('[data-testid="settings-section-link-tokens"]')
+        ?.getAttribute("aria-current") === "page",
+    rowHighlighted:
+      document.activeElement
+        ?.closest('[data-testid^="setting-item-"]')
+        ?.getAttribute("data-highlighted") === "true",
+  }));
   if (!drift.sectionCurrent)
     throw new Error("/settings?leaf=: the setting's section is not the open one in the list");
   if (!drift.rowHighlighted)
@@ -154,8 +132,6 @@ export async function verifyInstallationPages(page, stand, locale, capture, sett
   await assertTabOpensTooltip(page, "/settings?section=server", '[data-testid="settings-panel"]');
   await assertTapTogglesHelp(page, "/settings?section=server", '[data-testid="settings-panel"]');
   await verifySettingRows(page, settings.settingRows, "server", "/settings?section=server");
-
-  await verifySettingsSections(page, stand, settings, capture);
 }
 
 async function verifySettingRows(page, rows, section, where) {
@@ -210,77 +186,4 @@ async function verifySettingRows(page, rows, section, where) {
   await page.locator('[data-testid="admin-settings"] h1').first().hover();
   await page.mouse.move(0, 0, { steps: 8 });
   await tip.waitFor({ state: "hidden", timeout: 5_000 });
-}
-
-const SETTINGS_WIDTHS = [
-  { width: 1280, height: 800 },
-  { width: 1024, height: 768 },
-  { width: 390, height: 844 },
-];
-
-async function verifySettingsSections(page, stand, { settingsSections, viewport }, capture) {
-  try {
-    for (const size of SETTINGS_WIDTHS) {
-      const where = `/settings at ${size.width}px`;
-      await page.setViewportSize(size);
-      await stand.visit(page, "settings");
-      await page.getByTestId("settings-panel").waitFor({ state: "visible" });
-      if (!(await page.getByTestId("settings-section-list").isVisible())) {
-        if (!(await page.getByTestId("settings-section-picker").isVisible()))
-          throw new Error(`${where}: neither the section list nor its select is shown`);
-        const overflow = await page.evaluate(
-          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        );
-        if (overflow > 0)
-          throw new Error(`${where}: the page is ${overflow}px wider than the viewport`);
-        await capture(`settings-sections-${size.width}`);
-        continue;
-      }
-      const shape = await page.evaluate(() => {
-        const main = document.querySelector('[data-testid="admin-settings"]');
-        const list = main?.querySelector('[data-testid="settings-section-list"]');
-        const region = main?.querySelector('[data-family-slot="scroll-region"]');
-        if (!main || !list || !region) return { missing: true };
-        const box = list.getBoundingClientRect();
-        const links = [...list.querySelectorAll('a[data-testid^="settings-section-link-"]')];
-        const inside = links.filter((link) => {
-          const rect = link.getBoundingClientRect();
-          return (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            rect.left >= box.left - 1 &&
-            rect.right <= box.right + 1 &&
-            rect.left >= -1 &&
-            rect.right <= window.innerWidth + 1
-          );
-        });
-        return {
-          missing: false,
-          tablists: list.querySelectorAll('[role="tablist"], [role="tab"]').length,
-          listOverflow: list.scrollWidth - list.clientWidth,
-          documentOverflow:
-            document.documentElement.scrollWidth - document.documentElement.clientWidth,
-          regionOverflow: region.scrollWidth - region.clientWidth,
-          links: links.length,
-          inside: inside.length,
-        };
-      });
-      if (shape.missing) throw new Error(`${where}: the section list is missing`);
-      if (shape.tablists > 0)
-        throw new Error(`${where}: the sections are tabs (${shape.tablists} tab roles)`);
-      if (shape.listOverflow > 0)
-        throw new Error(`${where}: the section list scrolls sideways by ${shape.listOverflow}px`);
-      if (shape.documentOverflow > 0 || shape.regionOverflow > 0)
-        throw new Error(
-          `${where}: the page is wider than the viewport (document ${shape.documentOverflow}px, region ${shape.regionOverflow}px)`,
-        );
-      if (shape.inside !== settingsSections)
-        throw new Error(
-          `${where}: ${shape.inside} of ${settingsSections} sections stand fully inside the list (${shape.links} links)`,
-        );
-      await capture(`settings-sections-${size.width}`);
-    }
-  } finally {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  }
 }

@@ -156,25 +156,6 @@ export async function verifyHookHolds(page, stand, workflowId, locale, capture) 
     const reason = card.getByTestId("inbound-hook-admission-reason");
     await action.waitFor();
     await reason.waitFor();
-    const [actionBox, reasonBox] = await card.evaluate((element) =>
-      [
-        '[data-testid="inbound-hook-admission-review"]',
-        '[data-testid="inbound-hook-admission-reason"]',
-      ].map((selector) => {
-        const box = element.querySelector(selector)?.getBoundingClientRect();
-        return box ? { x: box.x, y: box.y, height: box.height } : null;
-      }),
-    );
-    if (!actionBox || !reasonBox)
-      throw new Error("The hook card's action or reason is not laid out");
-    if (actionBox.y < reasonBox.y + reasonBox.height - 1)
-      throw new Error(
-        `The hook card's action sits beside its text (action top ${actionBox.y}, text bottom ${reasonBox.y + reasonBox.height})`,
-      );
-    if (Math.abs(actionBox.x - reasonBox.x) > 2)
-      throw new Error(
-        `The hook card's action is not aligned with its text (action left ${actionBox.x}, text left ${reasonBox.x})`,
-      );
     await capture("hook-card");
     const address = page.url();
     await action.click();

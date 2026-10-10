@@ -522,6 +522,7 @@ export function AuditPage() {
       />
 
       <RecordSheet
+        dock
         open={Boolean(selected)}
         onOpenChange={(open) => !open && setSelected(null)}
         testId="audit-detail"

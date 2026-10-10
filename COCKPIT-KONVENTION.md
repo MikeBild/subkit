@@ -125,6 +125,8 @@ ruhiger Zustand, kein inszenierter Erfolg.
 
 Sechs Zustände, jedes Produkt implementiert seine eigene Badge-Komponente mit denselben Namen und Farbrollen. Immer Punkt/Icon + Wort, nie Farbe allein.
 
+**Ein Statusmuster im gesamten Cockpit.** Sichtbare Objektzustände verwenden dieselbe Status-Badge-Komponente in Listen, Detailansichten und ergänzenden Zustandsanzeigen. Gleicher Zustand bedeutet gleichen Wortlaut, gleiche semantische Farbe, Form, Typografie und Innenabstände – unabhängig vom Objekttyp. Ein zusätzlicher Zustand steht als weiteres Badge mit dem gemeinsamen Abstand neben oder unter dem Hauptstatus. Keine Sonderform aus freiem Farbpunkt und Text, kein sichtbarer Präfix „Zustand:“ und keine Unterstreichung im Badge. Ein Badge darf zur zugehörigen Ursache verlinken; Tastaturfokus und aussagekräftiger zugänglicher Linkname bleiben erhalten. Kontext darf Zustandsbedeutungen präzisieren, aber nicht dieselbe Bedeutung je Seite anders einfärben. In SubKit ist `StatusBadge` die gemeinsame Implementierung; Zustandsfarben kommen aus `statusTone`.
+
 | Zustand | Rolle | Licht (bg / fg) |
 |---|---|---|
 | Läuft | blau | #eff6ff / #1d4ed8 |
@@ -171,6 +173,12 @@ Produktnamen nicht nennt oder ihn anders schreibt als seine Geschwister, ist an 
 uneinheitlich, an der es zuerst gelesen wird.
 
 **Einstellungen** gliedern ihre Bereiche als gruppierte, senkrechte Liste — keine Tabs, keine Zähler, kein seitliches Scrollen bei keiner Breite: ab 720px Inhaltsbreite steht die Liste links neben dem gewählten Bereich, darunter ist sie die Startansicht, und ein Bereich öffnet sich mit „← Alle Bereiche" an ihrer Stelle. Eine Zeile zeigt das passende Bedienelement (Auswahl, Schalter, Zahl mit Einheit) und nur dann „Geändert · Standard: X · Zurücksetzen", wenn der Wert vom Standard abweicht; Zurücksetzen legt nur einen Entwurf an. „Alle | Geändert" steht neben der Suche und ist adressierbar. Ein Geheimnis zeigt nie seinen Wert, nur „Hinterlegt · Ersetzen" oder „Nicht hinterlegt · Hinterlegen". Entwürfe gehören der Seite, nicht dem Bereich: eine Leiste „N ungespeicherte Änderungen · Verwerfen · Speichern" speichert alle auf einmal, nie automatisch; hat inzwischen jemand gespeichert, sagt die Leiste das und die Entwürfe bleiben. Wer nur lesen darf, liest „Du darfst ansehen, nicht ändern."
+
+**Responsive Arbeitsfläche.** Maßgeblich ist die tatsächlich verfügbare Inhaltsbreite nach Navigation und weiteren Spalten, nicht allein die Bildschirmbreite. Listen, Detailinhalte und Chat nutzen diese Fläche mit ihren gemeinsamen Achsen; breite Tabellen erhalten Platz für sprechende Namen statt gleich breiter, überwiegend leerer Spalten. Chat-Titel, Verlauf und Eingabe folgen derselben Achse. Höhe und Breite passen unabhängig: Navigation, Hauptinhalt und Kontext können jeweils scrollen; Eingabe und Schließen bleiben erreichbar.
+
+**Details neben dem Arbeitsinhalt.** Eine geöffnete Objektansicht steht bei ausreichender Arbeitsbreite als echte rechte Spalte neben dem weiter bedienbaren Hauptinhalt, ohne Abdunklung, Overlay oder Fokusfalle. Bei schmaler Arbeitsbreite wird dieselbe Auswahl im modalen Seitenblatt, mobil über die volle Breite gezeigt. Ohne Auswahl wird kein Objekt erfunden und keine leere Detailspalte reserviert. Es gibt höchstens eine angedockte Objektansicht; verschachtelte Dialoge bleiben modal. Formulare und Entscheidungen mit Freigabe-, Wiederherstellungs- oder Berechtigungswirkung behalten ihre explizite modale Interaktion. Größenwechsel allein darf weder Auswahl noch Eingaben, aufgeklappte Details oder Entwürfe verwerfen und löst keine fachliche Aktion aus. Ein angedockter Bereich hat einen zugänglichen Namen und einen Schließen-Knopf; Escape gilt für den fokussierten Bereich, verschachtelte Dialoge haben Vorrang. Nach Schließen kehrt der Fokus zum noch vorhandenen Auslöser zurück.
+
+**Chat-Kontext.** Der vorhandene Kontext einer geladenen Unterhaltung erscheint bei ausreichender Arbeitsbreite automatisch neben dem Verlauf. Die ausdrücklich gewählte offene oder geschlossene Darstellung wird gespeichert und hat Vorrang vor der Automatik. Bei geringerer Breite bleibt der Kontext über denselben Schalter erreichbar. Responsive Anpassung verändert die Darstellung der vorhandenen Informationen, nicht die verbindliche Designreferenz oder die fachlichen Abläufe.
 
 ## 7. Drift-Kontrolle ohne Shared Code
 

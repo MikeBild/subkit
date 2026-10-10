@@ -26,12 +26,12 @@ describe("cockpit-ui family contract", () => {
     const ids = [...contractDoc.matchAll(/\bCUI-[A-Z0-9]+-\d+\b/g)].map((match) => match[0]);
     const conformance = JSON.parse(
       readFileSync(join(root, "contract/conformance.cockpit-ui.json"), "utf8"),
-    ) as { contract: string; rules: Record<string, { enforced_by: string[] }> };
+    ) as { contract: string; rules: Record<string, { enforced_by: string[]; why?: string }> };
 
     expect(conformance.contract).toBe("cockpit-ui");
     expect(Object.keys(conformance.rules).sort()).toEqual([...new Set(ids)].sort());
     for (const rule of Object.values(conformance.rules)) {
-      expect(rule.enforced_by.length).toBeGreaterThan(0);
+      if (rule.enforced_by.length === 0) expect(rule.why?.trim().length ?? 0).toBeGreaterThan(0);
       for (const file of rule.enforced_by) expect(existsSync(join(root, file))).toBe(true);
     }
   });

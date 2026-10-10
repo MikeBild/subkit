@@ -25,11 +25,11 @@ import { render, renderInRouter } from "./test-utils";
 const count = (html: string, pattern: RegExp) => [...html.matchAll(pattern)].length;
 
 describe("P1 Page", () => {
-  test("lists take the workbench column, records and settings the working column, all left-aligned", () => {
+  test("lists and records use centered responsive measures", () => {
     for (const [kind, width] of [
-      ["list", "max-w-[1280px]"],
-      ["settings", "max-w-[1120px]"],
-      ["detail", "max-w-[1120px]"],
+      ["list", "max-w-[1760px]"],
+      ["settings", "max-w-[1440px]"],
+      ["detail", "max-w-[1440px]"],
     ] as const) {
       const html = render(
         <Page kind={kind} scroll="page" testId="p" header={<div>head</div>}>
@@ -38,7 +38,7 @@ describe("P1 Page", () => {
       );
       expect(html).toContain(`data-page-kind="${kind}"`);
       expect(count(html, new RegExp(width.replace(/[[\]]/g, "\\$&"), "g"))).toBe(2);
-      expect(html).not.toContain("mx-auto");
+      expect(count(html, /mx-auto/g)).toBe(2);
       expect(html).toContain('data-family-slot="scroll-region"');
     }
   });

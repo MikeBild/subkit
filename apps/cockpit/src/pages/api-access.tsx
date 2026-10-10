@@ -385,6 +385,7 @@ function KeysSection({
         </CollapsibleSection>
       ) : null}
       <RecordSheet
+        dock
         open={opened !== null}
         onOpenChange={(next) => !next && setOpened(null)}
         title={opened?.name || t("apiKeys.unnamed")}

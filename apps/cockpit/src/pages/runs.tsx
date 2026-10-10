@@ -949,6 +949,7 @@ export function RunOverlays() {
       : t("resource.runs.title");
   return (
     <RecordSheet
+      dock
       open={open}
       onOpenChange={(next) => !next && show({ list: false, runId: null })}
       size="wide"

@@ -480,6 +480,7 @@ function StepSheet({
   ];
   return (
     <RecordSheet
+      dock
       open
       onOpenChange={(next) => !next && onClose()}
       title={t("workflowSteps.sheetTitle", { number: index + 1, name: definition.id })}

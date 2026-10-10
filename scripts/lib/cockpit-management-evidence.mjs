@@ -111,6 +111,35 @@ export async function verifyManagementEvidence(
           ...body.items.map((account) => ({ ...timestamps, ...account })),
         ],
       }));
+    if (path === "/v1/rbac/roles")
+      return transform(route, mockApi, (body) => {
+        require(body.items.length >= 3, "Role evidence requires three canonical role records");
+        return {
+          ...body,
+          items: [
+            {
+              ...body.items[0],
+              name: "Evidence pair",
+              permissions: ["workflow:read", "workflow:run"],
+              member_count: 7,
+            },
+            {
+              ...body.items[1],
+              name: "Evidence expanded",
+              permissions: [
+                "workflow:read",
+                "workflow:run",
+                "connector:read",
+                "knowledge:read",
+                "file:read",
+              ],
+              member_count: 19,
+            },
+            { ...body.items[2], name: "Evidence empty", permissions: [], member_count: 0 },
+          ],
+          total: 3,
+        };
+      });
     if (path === "/v1/rbac/groups")
       return transform(route, mockApi, (body) => ({
         ...body,
@@ -244,6 +273,34 @@ export async function verifyManagementEvidence(
     require((await page.getByTestId("groups-members-note").innerText()).trim() ===
       "1", "Group member_count must be the stored count");
     await capture("management-group-count");
+
+    await stand.visit(page, "people?section=roles");
+    for (const [name, visibleRights, overflow, members] of [
+      ["Evidence pair", 2, null, "7"],
+      ["Evidence expanded", 4, translate(locale, "people.change.more", { count: "2" }), "19"],
+      ["Evidence empty", 0, null, "0"],
+    ]) {
+      const role = page
+        .locator('[data-testid^="roles-list-row-"], [data-testid^="roles-list-mobile-row-"]')
+        .filter({ visible: true })
+        .filter({ has: page.getByText(name, { exact: true }) })
+        .filter({ has: page.getByTestId("role-row-permissions") });
+      await role.waitFor({ state: "visible" });
+      const rights = role.getByTestId("role-row-permissions").locator(":scope > li");
+      require((await rights.count()) ===
+        visibleRights, `${name}: incorrect visible rights or remainder count`);
+      if (overflow !== null)
+        require((await rights.last().innerText()).trim() ===
+          overflow, `${name}: five rights must retain the two hidden rights`);
+      const cells = role.locator(":scope > td");
+      const count =
+        (await cells.count()) > 0
+          ? cells.nth(2)
+          : role.locator('[data-family-slot="card-fact"]').last();
+      require((await count.innerText()).trim() ===
+        members, `${name}: incorrect stored member count`);
+    }
+    await capture("management-role-rights-members");
 
     await stand.visit(page, "api-access?section=keys");
     const usedText = await page.evaluate(

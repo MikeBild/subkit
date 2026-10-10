@@ -157,7 +157,7 @@ function connectorApi(state, variant) {
     const url = new URL(request.url());
     const path = url.pathname;
     if (path === `/v1/connectors/${MCP_ID}`) {
-      const record = mcpRecord(state.trusted);
+      const record = { ...mcpRecord(state.trusted), template_version: 17 };
       if (variant === "zero") delete record.config.mcp.remote_tool_call_timeout_ms;
       return json(route, record);
     }
@@ -683,23 +683,13 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
   try {
     await openConnection(MCP_ID);
     await assertConfiguration(12000);
-
-    const order = await page.evaluate(() =>
-      [
-        "connector-connection-facts",
-        "connector-credentials",
-        "connector-runtime-section",
-        "connector-technical",
-      ].map((id) => {
-        const element = document.querySelector(`[data-testid="${id}"]`);
-        return element ? element.getBoundingClientRect().top + window.scrollY : null;
-      }),
-    );
-    if (order.some((top) => top === null))
-      throw new Error(`${where}: a section is missing — ${JSON.stringify(order)}`);
-    for (let i = 1; i < order.length; i += 1)
-      if (order[i] < order[i - 1])
-        throw new Error(`${where}: the sections are not in reading order`);
+    await unfold(page, "connector-technical");
+    const templateVersion = page.getByTestId("connector-template-version").locator("dd");
+    await templateVersion.waitFor({ state: "visible" });
+    if ((await templateVersion.innerText()).trim() !== "17")
+      throw new Error(`${where}: the saved numeric template version is not shown`);
+    await capture("connector-template-version-known");
+    await unfold(page, "connector-technical");
 
     const copy = page.getByTestId("connector-copy-address");
     if (!(await copy.count())) throw new Error(`${where}: a plain address cannot be copied`);
@@ -820,6 +810,13 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
 
     await openConnection(PG_ID);
     await assertConfiguration(null);
+    await unfold(page, "connector-technical");
+    const unknownTemplate = page.getByTestId("connector-template-version").locator("dd");
+    await unknownTemplate.waitFor({ state: "visible" });
+    if ((await unknownTemplate.innerText()).trim() !== "—")
+      throw new Error(`${where}: an unknown template version is invented`);
+    await capture("connector-template-version-unknown");
+    await unfold(page, "connector-technical");
     if (await page.getByTestId("connector-tabs-tab-tools").count())
       throw new Error("/connectors/<postgres>: server tools on a database connector");
     const kind = await page.getByTestId("connector-fact-kind").textContent();

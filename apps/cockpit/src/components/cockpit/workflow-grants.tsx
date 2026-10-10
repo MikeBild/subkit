@@ -105,6 +105,7 @@ function ApprovalSheet({
   ];
   return (
     <RecordSheet
+      dock
       open
       onOpenChange={(next) => !next && onClose()}
       title={<span title={authority.id}>{authorityHeadline(authority, t, locale)}</span>}

@@ -182,26 +182,19 @@ function HealthMark({ row, index }: { row: CatalogRow; index: number }) {
   const state = stringField(row, "health_state");
   const id = stringField(row, "id");
   if (!state || state === "ok") return null;
-  const tone = state === "degraded" ? "bg-destructive" : "bg-warning";
-  const sentence = t("workflows.health", { state: statusLabel(t, state) });
-  return (
-    <span className="flex items-start gap-1.5 text-xs text-muted-foreground">
-      <span aria-hidden="true" className={`mt-1 size-2 shrink-0 rounded-full ${tone}`} />
-      <span className="flex min-w-0 flex-col">
-        {id ? (
-          <a
-            href={absolute(runsHref({ workflowId: id, status: "failed" }))}
-            className="min-w-0 underline underline-offset-4"
-            data-testid={`workflow-health-link-${index}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            {sentence}
-          </a>
-        ) : (
-          <span className="min-w-0">{sentence}</span>
-        )}
-      </span>
-    </span>
+  const badge = <StatusBadge state={state} />;
+  return id ? (
+    <a
+      href={absolute(runsHref({ workflowId: id, status: "failed" }))}
+      className="inline-flex rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={t("workflows.health", { state: statusLabel(t, state) })}
+      data-testid={`workflow-health-link-${index}`}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {badge}
+    </a>
+  ) : (
+    badge
   );
 }
 

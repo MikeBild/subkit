@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Info, PanelRight, Paperclip, SendHorizontal, X } from "lucide-react";
 import { Fragment, type MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   ApiError,
@@ -36,6 +37,7 @@ import {
 } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
+import { CHAT_COLUMN } from "@/app/shell-header";
 import { useHeldSchedules } from "@/app/use-decisions";
 import { useDirtyGuard } from "@/app/version-notice";
 import { BackgroundTools } from "@/components/ai-elements/background-tools";
@@ -102,7 +104,6 @@ import {
   PopoverContent,
   PopoverTrigger,
   previewKind,
-  READING_COLUMN,
   RecordSheet,
   Select,
   SelectContent,
@@ -207,6 +208,7 @@ import {
 import { ChatStart } from "./chat-start";
 import { type ChatText, chatText, composerAnswerAccepted, questionExcerpt } from "./chat-text";
 import { dedupeBackground, groupMessageParts } from "./chat-transcript";
+import { useChatWorkspace } from "./chat-workspace";
 import { budgetPressure, budgetSummary } from "./usage-model";
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -287,7 +289,7 @@ function ReadingColumn({
       )}
       data-testid={testId}
     >
-      <div className={READING_COLUMN}>{children}</div>
+      <div className={CHAT_COLUMN}>{children}</div>
     </div>
   );
 }
@@ -1299,7 +1301,6 @@ export function ChatPage() {
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null);
   const [renameTitle, setRenameTitle] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
-  const [contextOpen, setContextOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [sessionKey, setSessionKey] = useState(0);
   const [startedHere, setStartedHere] = useState(() => selection.kind === "new");
@@ -1695,6 +1696,35 @@ export function ChatPage() {
     },
   });
   const current = detail.data?.conversation;
+  const chatWorkspace = useChatWorkspace(Boolean(current));
+  const [contextContainer] = useState(() => document.createElement("div"));
+  const contextDock = useRef<HTMLElement>(null);
+  const contextToggle = useRef<HTMLButtonElement>(null);
+  const closeContext = () => {
+    chatWorkspace.setOpen(false);
+    contextToggle.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    const dock = contextDock.current;
+    if (!dock) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeContext();
+    };
+    dock.addEventListener("keydown", dismiss);
+    return () => dock.removeEventListener("keydown", dismiss);
+  }, [chatWorkspace.docked, chatWorkspace.open, chatWorkspace.setOpen]);
+  const attachContext = (host: HTMLDivElement | null) => {
+    if (host && contextContainer.parentElement !== host) host.append(contextContainer);
+  };
   const messages = detail.data?.messages ?? [];
   const resume = detail.data?.resume_summary;
   const openQuestionId = resume?.pending_approval?.id ?? null;
@@ -2022,8 +2052,11 @@ export function ChatPage() {
         </Button>
         <IconButton
           label={t("chat.toggleContext")}
+          ref={contextToggle}
           data-testid="chat-context-toggle"
-          onClick={() => setContextOpen((value) => !value)}
+          aria-expanded={chatWorkspace.open}
+          aria-controls="chat-context-content"
+          onClick={() => chatWorkspace.setOpen(!chatWorkspace.open)}
         >
           <PanelRight />
         </IconButton>
@@ -2114,11 +2147,11 @@ export function ChatPage() {
                   environment={heldTarget.execution_mode}
                   testId="chat-context-review-schedule"
                   onPrepareSingleRun={() => {
-                    setContextOpen(false);
+                    chatWorkspace.setOpen(false);
                     void submitTurn(t("chat.activation.singlePrompt"));
                   }}
                   onAdjust={() => {
-                    setContextOpen(false);
+                    chatWorkspace.setOpen(false);
                     void submitTurn(t("authority.adjustPrompt"));
                   }}
                 />
@@ -2228,11 +2261,25 @@ export function ChatPage() {
     },
   };
 
+  const contextContent = (
+    <div id="chat-context-content" className="min-w-0">
+      {contextFacts.length > 0 ? (
+        <FactList items={contextFacts} testId="chat-context-facts" />
+      ) : (
+        <DataState state="empty" line={t("chat.context.empty")} testId="chat-context-empty" />
+      )}
+    </div>
+  );
+
   return (
     <Page kind="workspace" scroll="content" testId="chat-workspace" header={null}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row" data-testid="chat-layout">
+      <div
+        ref={chatWorkspace.ref}
+        className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row"
+        data-testid="chat-layout"
+      >
         <aside
-          className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
+          className="grid min-h-0 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b md:flex md:w-66 md:flex-col md:items-stretch px-4 md:border-r md:border-b-0"
           data-testid="chat-list-panel"
         >
           <div className="md:-mx-4 md:h-18 md:border-b md:px-2">{chatHeader}</div>
@@ -2333,7 +2380,7 @@ export function ChatPage() {
                 className="px-4 py-6"
                 style={{ scrollbarGutter: "stable both-edges" }}
               >
-                <MessageScrollerContent className={READING_COLUMN}>
+                <MessageScrollerContent className={CHAT_COLUMN}>
                   {conversationFailed ? (
                     <DataState
                       state="error"
@@ -2610,7 +2657,7 @@ export function ChatPage() {
             data-testid="chat-composer-area"
             hidden={conversationFailed}
           >
-            <div className={READING_COLUMN}>
+            <div className={CHAT_COLUMN}>
               {busy && (
                 <div
                   role="status"
@@ -2690,23 +2737,45 @@ export function ChatPage() {
             </div>
           </div>
         </div>
+        {chatWorkspace.docked && chatWorkspace.open ? (
+          <aside
+            ref={contextDock}
+            className="flex min-h-0 w-80 shrink-0 flex-col border-l bg-background"
+            data-testid="chat-context"
+            data-presentation="docked"
+            aria-labelledby="chat-context-title"
+          >
+            <div className="flex h-18 shrink-0 items-center gap-2 border-b px-4">
+              <h2 id="chat-context-title" className="min-w-0 flex-1 text-sm font-semibold">
+                {t("chat.context.title")}
+              </h2>
+              <IconButton
+                label={t("common.close")}
+                data-testid="chat-context-close"
+                onClick={closeContext}
+              >
+                <X />
+              </IconButton>
+            </div>
+            <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4">
+              <div ref={attachContext} />
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       <AttachmentPreviewSheet preview={preview} onClose={() => setPreview(null)} />
 
       <RecordSheet
-        open={contextOpen}
-        onOpenChange={setContextOpen}
+        open={!chatWorkspace.docked && chatWorkspace.open}
+        onOpenChange={chatWorkspace.setOpen}
         title={t("chat.context.title")}
         testId="chat-context"
         closeTestId="chat-context-close"
       >
-        {contextFacts.length > 0 ? (
-          <FactList items={contextFacts} testId="chat-context-facts" />
-        ) : (
-          <DataState state="empty" line={t("chat.context.empty")} testId="chat-context-empty" />
-        )}
+        <div ref={attachContext} />
       </RecordSheet>
+      {current || chatWorkspace.open ? createPortal(contextContent, contextContainer) : null}
 
       <FormDialog
         open={Boolean(renameTarget)}

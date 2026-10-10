@@ -11,6 +11,10 @@ import {
   renderUnavailablePage,
 } from "../../apps/engine/src/http/routes/oauth/ui.ts";
 import {
+  approvalCopy,
+  approvalDenialCopy,
+} from "../../apps/engine/src/http/routes/tool-approval-copy.ts";
+import {
   approvalStatusPage,
   buildApprovalDecisionHtml,
 } from "../../apps/engine/src/http/routes/tool-approval-ui.ts";
@@ -29,8 +33,100 @@ const PORTAL_VIEW = {
   preview: null,
 };
 
+function portalEvidencePages(look) {
+  const copy = approvalCopy(look.locale);
+  const boundTarget = "https://ledger.example.test/entries";
+  const requester = { kind: "user", id: "requesting-user", label: "requester@example.test" };
+  const view = {
+    ...PORTAL_VIEW,
+    requester,
+    preview: {
+      would_write: [{ step: "untrusted", method: "DELETE", url: "https://wrong.example.test" }],
+      direct_connector: {
+        schema_version: 1,
+        tool: "call_connector",
+        references: [],
+        target: {
+          connector_id: "00000000-0000-4000-8000-000000000001",
+          environment: "prod",
+          configuration_digest: "a".repeat(64),
+          credential_binding_digest: null,
+          credential_id: null,
+          credential_revision: null,
+          connection_authority: null,
+        },
+        review: { step: "call_connector: ledger (prod)", method: "POST", url: boundTarget },
+      },
+    },
+  };
+  const title = copy.titleForTarget.replace("{operation}", "POST").replace("{target}", boundTarget);
+  return [
+    ...[
+      ["portal-requester-distinct", "deciding-user", false],
+      ["portal-requester-self", requester.id, true],
+    ].map(([name, user_id, own]) => ({
+      name,
+      primaries: 1,
+      html: buildApprovalDecisionHtml(
+        view,
+        "grant",
+        { user_id, email: "decider@example.test" },
+        "csrf",
+        look,
+      ),
+      heading: title,
+      facts: [
+        [
+          copy.requester,
+          `${requester.label} · ${copy.person}${own ? ` · ${copy.ownRequest}` : ""}`,
+        ],
+        [copy.decider, "decider@example.test"],
+      ],
+      absent: own ? ["wrong.example.test"] : ["wrong.example.test", copy.ownRequest],
+    })),
+    {
+      name: "portal-requester-undocumented",
+      primaries: 1,
+      html: buildApprovalDecisionHtml(
+        { ...view, requester: null, preview: { would_write: view.preview.would_write } },
+        "grant",
+        { email: "decider@example.test" },
+        "csrf",
+        look,
+      ),
+      heading: copy.title,
+      facts: [
+        [copy.requester, copy.unspecified],
+        [copy.decider, "decider@example.test"],
+      ],
+      absent: [copy.ownRequest],
+    },
+    {
+      name: "portal-confirmed-expired-result",
+      primaries: 1,
+      links: 1,
+      html: approvalStatusPage(
+        look,
+        look.locale === "de" ? "Frist abgelaufen" : "Deadline expired",
+        `${approvalDenialCopy("approval_expired", look.locale)} ${copy.unchanged}`,
+      ).html,
+      heading: look.locale === "de" ? "Frist abgelaufen" : "Deadline expired",
+      absent: [copy.deadTitle],
+    },
+    {
+      name: "portal-unavailable-token",
+      primaries: 1,
+      links: 1,
+      html: approvalStatusPage(look, copy.deadTitle, copy.deadMessage).html,
+      heading: copy.deadTitle,
+      absent: [look.locale === "de" ? "Frist abgelaufen" : "Deadline expired"],
+    },
+  ];
+}
+
 export function enginePages(look) {
   return [
+    ...portalEvidencePages(look),
     {
       name: "sign-in",
       primaries: 1,
@@ -176,14 +272,37 @@ export function enginePageBreaches(page, measured, look, expected = familyGeomet
   return breaches;
 }
 
-export async function verifyEnginePages(page, look, label, capture) {
+export async function verifyEnginePages(
+  page,
+  look,
+  label,
+  capture,
+  { functionalOnly = false } = {},
+) {
   for (const engine of enginePages(look)) {
     await page.setContent(engine.html, { waitUntil: "load" });
-    const breaches = enginePageBreaches(engine, await page.evaluate(measure), look);
-    if (breaches.length > 0)
-      throw new Error(
-        `${label}/engine-${engine.name} leaves the cockpit design: ${breaches.join("; ")}`,
-      );
+    if (!functionalOnly) {
+      const breaches = enginePageBreaches(engine, await page.evaluate(measure), look);
+      if (breaches.length > 0)
+        throw new Error(
+          `${label}/engine-${engine.name} leaves the cockpit design: ${breaches.join("; ")}`,
+        );
+    }
+    if (engine.heading && (await page.locator("main h1").innerText()) !== engine.heading)
+      throw new Error(`${engine.name}: expected exact bound heading`);
+    for (const [label, expected] of engine.facts ?? []) {
+      const actual = await page
+        .locator("main dt")
+        .filter({ hasText: label })
+        .locator("xpath=following-sibling::dd[1]")
+        .innerText();
+      if (actual !== expected)
+        throw new Error(`${engine.name}: ${label} does not match recorded identity`);
+    }
+    const visible = await page.locator("main").innerText();
+    for (const absent of engine.absent ?? [])
+      if (visible.includes(absent))
+        throw new Error(`${engine.name}: unbound or misleading text ${absent}`);
     await capture(engine.name);
   }
 }

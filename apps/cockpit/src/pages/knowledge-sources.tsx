@@ -805,6 +805,7 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
         </div>
       </div>
       <RecordSheet
+        dock
         open={openSection !== null}
         onOpenChange={(open) => !open && setOpenSection(null)}
         title={openSection?.title ?? ""}

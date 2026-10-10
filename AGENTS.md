@@ -56,3 +56,16 @@ call of the release models that has no bypass: pass the deployed route as
 `bun run release:tag -- --models anthropic:<primary>,openai:<fallback>`; keys come from
 `./claude-key.txt` (Anthropic) and `./openai-key.txt` (OpenAI), both gitignored. Run the narrowest relevant checks while iterating.
 Report any skipped validation.
+
+Cockpit visual acceptance is performed manually in the local demo with test data.
+Do not run automatic visual sweeps or add them to iteration, pre-push, release, or
+CI/CD commands. Keep functional, security, invariant, drift, and build checks.
+`bun run verify:functional-cockpit` runs user journeys once with no screenshots or
+visual matrix; it remains part of `bun run verify`.
+
+Before handing a changed local demo installation to the user, verify the affected
+functional journeys against the actual local services. `bun run demo:local:verify`
+covers real API and browser flows, including a real provider chat response.
+Mocked browser fixtures and configuration readback alone are not evidence that
+local chat works. Reuse valid results; run only affected journey groups again.
+Keep user data intact and let the user perform visual acceptance manually.
