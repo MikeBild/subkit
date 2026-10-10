@@ -1,5 +1,5 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { TRANSCRIPT_MAX_CHARS } from "../../agent/sessions.ts";
+import { TRANSCRIPT_MAX_CHARS } from "../../api/agent-sessions.ts";
 import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import { AuditAction, actorOf, audit, auditActor } from "../../audit/index.ts";

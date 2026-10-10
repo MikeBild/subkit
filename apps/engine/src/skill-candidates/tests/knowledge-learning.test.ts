@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, asc, eq } from "drizzle-orm";
-import { type LearningKind, proposeLearning } from "../../agent/sessions.ts";
+import { proposeLearning } from "../../agent/sessions.ts";
+import type { LearningKind } from "../../api/agent-sessions.ts";
 import type { Actor } from "../../audit/actor.ts";
 import { approveSkillCandidateTool } from "../../conversations/tools/engine-api/writes/candidates.ts";
 import type { ToolContext } from "../../conversations/tools/index.ts";
