@@ -107,6 +107,15 @@ describe("conversation tools — registration", () => {
     "list_discovery_artifacts",
     "get_discovery_artifact",
     "approve_discovery_artifact",
+    "list_intake_categories",
+    "list_intake_items",
+    "get_intake_item",
+    "discard_intake_item",
+    "restore_intake_item",
+    "move_intake_item",
+    "set_default_intake_category",
+    "create_intake_proposal",
+    "revise_intake_proposal",
     "list_capability_gaps",
     "run_workflow",
     "rerun_execution",
@@ -167,6 +176,11 @@ describe("conversation tools — registration", () => {
     expect(tool).toBeDefined();
     expect(tool!.name).toBe("propose_skill");
     expect(tool!.description).toContain("Skill");
+  });
+
+  test("intake proposal confirmation is never a conversation tool", () => {
+    expect(getTool("confirm_intake_proposal")).toBeUndefined();
+    expect(listTools().some((tool) => tool.name === "confirm_intake_proposal")).toBe(false);
   });
 
   test("tool names are unique", () => {

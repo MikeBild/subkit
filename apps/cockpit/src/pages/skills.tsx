@@ -563,7 +563,10 @@ function SkillRecord({ id, permissions }: { id: string; permissions: readonly st
               <Button asChild variant="outline">
                 <a
                   href={absolute(
-                    chatNewHref({ prompt: t("detail.changeRecordPrompt", { name: skill.title }) }),
+                    chatNewHref({
+                      prompt: t("detail.changeRecordPrompt"),
+                      references: [{ type: "skill", id: skill.id }],
+                    }),
                   )}
                   data-testid="detail-action"
                 >

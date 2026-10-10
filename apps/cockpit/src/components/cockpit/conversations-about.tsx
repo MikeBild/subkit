@@ -63,7 +63,18 @@ export function ConversationsAbout({
               <a
                 data-testid="detail-conversations-ask"
                 href={absolute(
-                  chatNewHref({ workflowId: target.workflow_id, connectorId: target.connector_id }),
+                  chatNewHref({
+                    workflowId: target.workflow_id,
+                    connectorId: target.connector_id,
+                    references: [
+                      ...(target.workflow_id
+                        ? [{ type: "workflow" as const, id: target.workflow_id }]
+                        : []),
+                      ...(target.connector_id
+                        ? [{ type: "connector" as const, id: target.connector_id }]
+                        : []),
+                    ],
+                  }),
                 )}
               >
                 {t("catalog.conversations.ask")}

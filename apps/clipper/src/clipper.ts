@@ -1,7 +1,9 @@
-import type { ClipMetadata, Draft, Settings, WriteAttempt } from "./types.ts";
+import type { CapturedClip, ClipMetadata, Draft, Settings, WriteAttempt } from "./types.ts";
 
 const settingsKey = "settings";
 const draftKey = "draft";
+const draftsKey = "drafts";
+const draftPrefix = "draft:";
 
 export function normalizeEngineUrl(input: string): string {
   const url = new URL(input.trim());
@@ -61,13 +63,21 @@ export function createDraft(
   body: string,
   engineUrl: string,
   captureTabId?: number,
+  captured?: Pick<CapturedClip, "sections" | "diagnostics">,
 ): Draft {
+  const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
     engineUrl,
     ...(captureTabId === undefined ? {} : { captureTabId }),
+    captureUrl: normalizeSourceUrl(metadata.sourceUrl),
+    createdAt: now,
+    updatedAt: now,
     metadata,
     body,
+    originalCapture: structuredClone({ metadata, body, ...captured }),
+    ...(captured?.sections ? { sections: captured.sections } : {}),
+    ...(captured?.diagnostics ? { diagnostics: captured.diagnostics } : {}),
     state: "ready",
   };
 }
@@ -119,21 +129,97 @@ export async function saveSettings(
   await storage.set({ [settingsKey]: settings });
 }
 
-export async function loadDraft(storage: {
+type DraftStorage = {
   get(keys?: string | string[]): Promise<Record<string, unknown>>;
-}): Promise<Draft | undefined> {
-  const stored = await storage.get(draftKey);
-  const draft = stored[draftKey];
-  return draft && typeof draft === "object" ? (draft as Draft) : undefined;
+  set(values: Record<string, unknown>): Promise<void>;
+  remove(keys: string | string[]): Promise<void>;
+};
+
+function isDraft(value: unknown): value is Draft {
+  return Boolean(value) && typeof value === "object" && typeof (value as Draft).id === "string";
 }
 
-export async function saveDraft(
-  storage: { set(values: Record<string, unknown>): Promise<void> },
-  draft: Draft,
-): Promise<void> {
-  await storage.set({ [draftKey]: draft });
+function restoreDraft(value: Draft): Draft {
+  const capturedAt = value.metadata?.capturedAt || new Date().toISOString();
+  const legacy = value as Draft & { collectionSlug?: unknown; collectionName?: unknown };
+  const category =
+    typeof legacy.category === "string"
+      ? legacy.category
+      : typeof legacy.collectionSlug === "string"
+        ? legacy.collectionSlug
+        : undefined;
+  const { collectionSlug: _, collectionName: __, ...current } = legacy;
+  return {
+    ...current,
+    ...(category ? { category } : {}),
+    captureUrl: current.captureUrl || normalizeSourceUrl(current.metadata.sourceUrl),
+    createdAt: current.createdAt || capturedAt,
+    updatedAt: current.updatedAt || capturedAt,
+  };
 }
 
-export async function clearDraft(storage: { remove(keys: string): Promise<void> }): Promise<void> {
-  await storage.remove(draftKey);
+async function storedDrafts(storage: DraftStorage): Promise<Record<string, Draft>> {
+  const stored = await storage.get();
+  const restored = Object.fromEntries(
+    Object.entries(stored).flatMap(([key, value]) =>
+      key.startsWith(draftPrefix) && isDraft(value) ? [[value.id, restoreDraft(value)]] : [],
+    ),
+  );
+  const storedDraftMap = stored[draftsKey];
+  const migratedDrafts =
+    storedDraftMap && typeof storedDraftMap === "object"
+      ? Object.fromEntries(
+          Object.entries(storedDraftMap).flatMap(([id, value]) =>
+            isDraft(value) && !restored[id] ? [[id, restoreDraft(value)]] : [],
+          ),
+        )
+      : {};
+  const storedSingleDraft = stored[draftKey];
+  const migrated =
+    isDraft(storedSingleDraft) &&
+    !restored[storedSingleDraft.id] &&
+    !migratedDrafts[storedSingleDraft.id]
+      ? { ...migratedDrafts, [storedSingleDraft.id]: restoreDraft(storedSingleDraft) }
+      : migratedDrafts;
+  if (Object.keys(migrated).length) {
+    await storage.set(
+      Object.fromEntries(
+        Object.values(migrated).map((draft) => [`${draftPrefix}${draft.id}`, draft]),
+      ),
+    );
+  }
+  if (storedDraftMap || storedSingleDraft) await storage.remove([draftsKey, draftKey]);
+  return { ...restored, ...migrated };
+}
+
+export async function listDrafts(storage: DraftStorage): Promise<Draft[]> {
+  return Object.values(await storedDrafts(storage)).sort((left, right) =>
+    right.updatedAt.localeCompare(left.updatedAt),
+  );
+}
+
+export async function loadDraft(storage: DraftStorage, id: string): Promise<Draft | undefined> {
+  return (await storedDrafts(storage))[id];
+}
+
+export async function findDraft(
+  storage: DraftStorage,
+  engineUrl: string,
+  captureUrl: string,
+): Promise<Draft | undefined> {
+  const normalized = normalizeSourceUrl(captureUrl);
+  return (await listDrafts(storage)).find(
+    (draft) => draft.engineUrl === engineUrl && draft.captureUrl === normalized,
+  );
+}
+
+export async function saveDraft(storage: DraftStorage, draft: Draft): Promise<void> {
+  await storedDrafts(storage);
+  const updated = { ...draft, updatedAt: new Date().toISOString() };
+  await storage.set({ [`${draftPrefix}${draft.id}`]: updated });
+}
+
+export async function clearDraft(storage: DraftStorage, id: string): Promise<void> {
+  await storedDrafts(storage);
+  await storage.remove(`${draftPrefix}${id}`);
 }

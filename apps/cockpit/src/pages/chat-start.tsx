@@ -33,6 +33,10 @@ import {
 } from "./chat-start-model";
 
 type RecipePack = components["schemas"]["RecipePackResponse"];
+type IntakeCategoryUsage = {
+  category: string;
+  intake_open: { collected: number; reviewing: number };
+};
 
 const ICONS: Record<StarterIcon, ReactNode> = {
   failing: <Activity />,
@@ -59,6 +63,20 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     retry: retryStarterQuery,
     queryFn: () => apiRequest<RecipePack>("/v1/recipe-packs/solutions"),
   });
+  const intake = useQuery({
+    queryKey: ["chat", "starter-intake"],
+    enabled: gates.intake,
+    staleTime: 30_000,
+    retry: retryStarterQuery,
+    queryFn: async () => {
+      const [defaultCategory, catalog] = await Promise.all([
+        apiRequest<{ category: string }>("/v1/intake/default-category"),
+        apiRequest<{ categories: IntakeCategoryUsage[] }>("/v1/categories"),
+      ]);
+      const usage = catalog.categories.find((entry) => entry.category === defaultCategory.category);
+      return { category: defaultCategory.category, collected: usage?.intake_open.collected ?? 0 };
+    },
+  });
   const knowledge = useQuery({
     queryKey: ["chat", "starter-knowledge"],
     enabled: gates.knowledge,
@@ -67,7 +85,8 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     queryFn: () =>
       apiRequest<{ items: { slug: string; name: string }[] }>("/v1/knowledge-sources?limit=20"),
   });
-  if ((attention.enabled && attention.query.isLoading) || catalog.isLoading) return null;
+  if ((attention.enabled && attention.query.isLoading) || catalog.isLoading || intake.isLoading)
+    return null;
   const tag = LOCALE_TAGS[locale];
   const starters = chatStarters(
     {
@@ -85,6 +104,7 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
       }),
       knowledge: knowledge.data?.items ?? [],
       categories: catalog.categories,
+      intake: intake.data ?? null,
     },
     t,
   );
@@ -92,6 +112,7 @@ export function ChatStart({ onPick }: { onPick(prompt: string): void }) {
     <div className="grid w-full content-start gap-3" data-testid="chat-starters">
       <p className="text-sm text-muted-foreground">{t("chat.start.label")}</p>
       <ChoiceCards
+        compact
         items={starters.map((starter) => ({
           icon: ICONS[starter.icon],
           title: starter.title,

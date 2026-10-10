@@ -1,5 +1,6 @@
 import type { components } from "@cli-core/engine-api/openapi.d.ts";
 import type { EngineError } from "@cli-core/errors.ts";
+import type { ConversationReferenceType } from "@shared/conversation-reference.ts";
 import { z } from "zod";
 import { type DebugCorrelationFields, debugLog } from "../debug.ts";
 import type { EngineClient } from "../engine-client.ts";
@@ -274,7 +275,8 @@ export const conversationsMethods = {
       title?: string;
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       step_budget?: number;
-      references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
+      references?: Array<{ type: ConversationReferenceType; id: string; label: string }>;
+      intake_item_ids?: string[];
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {
@@ -309,7 +311,7 @@ export const conversationsMethods = {
       step_budget?: number;
       client_suppress?: boolean;
       event?: RequestCredentialFormEvent;
-      references?: Array<{ type: "workflow" | "connector"; id: string; label: string }>;
+      references?: Array<{ type: ConversationReferenceType; id: string; label: string }>;
     },
     debugContext?: DebugCorrelationFields,
   ): Promise<ConversationRunOutcome> {

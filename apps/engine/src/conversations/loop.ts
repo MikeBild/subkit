@@ -811,6 +811,12 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
 
   const tools = wrappedTools;
 
+  if (draft.session?.intake_review_active || draft.session?.intake_item_ids?.length) {
+    delete tools.create_knowledge_source;
+    delete tools.update_knowledge_source;
+    delete tools.analyze_knowledge_source;
+  }
+
   const syntheticWorkflowSlugs = collectSyntheticWorkflowSlugs(Object.keys(tools));
   const hasBoundSavedWorkflowTarget =
     workflowIdForTurn !== null ||

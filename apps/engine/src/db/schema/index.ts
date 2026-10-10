@@ -19,6 +19,7 @@ export * from "./executions.ts";
 export * from "./external_call_metering.ts";
 export * from "./files.ts";
 export * from "./identity.ts";
+export * from "./intake.ts";
 export * from "./knowledge_sources.ts";
 export * from "./llm.ts";
 export * from "./mcp_oauth.ts";

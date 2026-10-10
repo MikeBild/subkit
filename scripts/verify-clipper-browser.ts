@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,18 +10,11 @@ const root = join(import.meta.dir, "..");
 const temporary = await realpath(await mkdtemp(join(tmpdir(), "subkit-clipper-browser-")));
 const extensionPath = join(temporary, "extension");
 const writes: Array<{ method: string; path: string; body: Record<string, unknown> }> = [];
-let version = "initial";
-let conflict = true;
-const documents: Array<{ path: string; content: string }> = [];
-let loseCreateResponse = false;
-const newCollections: Array<{
-  id: string;
-  name: string;
-  slug: string;
-  source_type: string;
-  scope: string;
-  documents: Array<{ path: string; content: string }>;
-}> = [];
+let loseResponse = true;
+let supportsIntake = true;
+const defaultCategory = "research";
+const categories = ["inbox", "research"];
+const collected = new Map<string, Record<string, unknown>>();
 const server = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
@@ -41,99 +33,39 @@ const server = Bun.serve({
       );
     }
     if (!url.pathname.startsWith("/engine/")) return new Response(null, { status: 404 });
+    if (url.pathname === "/engine/cockpit/chat/new") return new Response("Chat review");
     assert.equal(request.headers.get("Authorization"), "Bearer browser-test-key");
-    assert.ok(url.pathname.startsWith("/engine/v1/knowledge-sources"));
-    if (request.method === "GET" && url.pathname.endsWith("/knowledge-sources")) {
+    assert.ok(
+      !url.pathname.includes("knowledge-sources"),
+      "Clipper must never write directly to knowledge",
+    );
+    if (!supportsIntake) return Response.json({ message: "Not found" }, { status: 404, headers });
+    if (request.method === "GET" && url.pathname.endsWith("/categories"))
       return Response.json(
-        {
-          items: [
-            {
-              id: "global-bundle",
-              name: "Global collection",
-              source_type: "bundle",
-              scope: "global",
-              slug: "global",
-            },
-            {
-              id: "workflow-bundle",
-              name: "Workflow collection",
-              source_type: "bundle",
-              scope: "workflow",
-              workflow_id: "workflow",
-              slug: "workflow",
-            },
-            { id: "inline", name: "Individual source", source_type: "inline", scope: "global" },
-            ...newCollections,
-          ],
-          total: 3 + newCollections.length,
-        },
+        { categories: categories.map((category) => ({ category })) },
         { headers },
       );
-    }
-    if (request.method === "GET" && url.pathname.endsWith("/content")) {
-      const sourceId = url.pathname.split("/").at(-2);
-      const collection = newCollections.find((item) => item.id === sourceId);
-      return Response.json(
-        {
-          knowledge_source_id: sourceId,
-          version,
-          editable: true,
-          documents: collection?.documents ?? documents,
-        },
-        { headers },
-      );
-    }
+    if (request.method === "GET" && url.pathname.endsWith("/intake/default-category"))
+      return Response.json({ category: defaultCategory }, { headers });
     const body = (await request.json()) as Record<string, unknown>;
     writes.push({ method: request.method, path: url.pathname, body });
-    if (url.pathname.endsWith("/bundle")) {
-      assert.equal(body.create_only, true);
-      const existing = newCollections.find((item) => item.slug === body.slug);
-      if (existing)
-        return Response.json(
-          { code: "slug_exists", details: { knowledge_source_id: existing.id } },
-          { status: 409, headers },
-        );
-      const created = {
-        id: `new-${newCollections.length}`,
-        name: String(body.name),
-        slug: String(body.slug),
-        source_type: "bundle",
-        scope: "global",
-        documents: body.files as Array<{ path: string; content: string }>,
+    assert.ok(url.pathname.endsWith("/intake/items"));
+    const key = String(body.client_request_id);
+    let item = collected.get(key);
+    if (!item) {
+      item = {
+        ...body,
+        id: `00000000-0000-4000-8000-${String(collected.size + 1).padStart(12, "0")}`,
+        category: body.category || defaultCategory,
+        state: "collected",
       };
-      newCollections.push(created);
-      if (loseCreateResponse) {
-        loseCreateResponse = false;
-        created.documents.push({ path: "/concurrent.md", content: "Another writer's content" });
-        return Response.json({ message: "Response lost after commit" }, { status: 503, headers });
-      }
-      return Response.json({ knowledge_source: created }, { headers });
+      collected.set(key, item);
+    } else assert.equal(item.body, body.body);
+    if (loseResponse) {
+      loseResponse = false;
+      return Response.json({ message: "Connection lost after saving" }, { status: 503, headers });
     }
-    if (conflict) {
-      conflict = false;
-      return Response.json(
-        { code: "version_conflict", message: "Collection changed" },
-        { status: 409, headers },
-      );
-    }
-    if (body.expected_version !== version)
-      return Response.json(
-        { code: "version_conflict", message: "Collection changed" },
-        { status: 409, headers },
-      );
-    const existing = documents.find((document) => document.path === body.path);
-    if (request.method === "POST" && existing)
-      return Response.json(
-        { code: "path_exists", message: "Document exists" },
-        { status: 409, headers },
-      );
-    version = `saved-${writes.length}`;
-    if (existing) existing.content = String(body.content);
-    else documents.push({ path: String(body.path), content: String(body.content) });
-    return Response.json(
-      { knowledge_source_id: "workflow-bundle", version, path: body.path },
-      { status: 201, headers },
-    );
+    return Response.json(item, { headers });
   },
 });
 const engineUrl = `http://127.0.0.1:${server.port}/engine`;
@@ -281,37 +213,164 @@ try {
       });
       return { article, protectedStorage: storageProbe[0]?.result };
     });
-    assert.ok(fallback.article.body.includes("Additional article body"));
+    assert.equal(fallback.article.body, "");
     assert.equal(fallback.protectedStorage, true);
 
-    process.stdout.write("Checking saved draft\n");
-    await page.goto(`chrome-extension://${extensionId}/popup.html`);
-    await page.locator("#source option[value='workflow-bundle']").waitFor({ state: "attached" });
-    assert.equal(await page.locator("#source option").count(), 3);
-    await page.locator("#title").fill("Edited article");
-    await page.locator("#content").fill("# Edited\n\nRetained draft content.");
-    await page.locator("#source").selectOption("workflow-bundle");
+    process.stdout.write("Checking intake draft and idempotent retries\n");
+    await page.goto(`chrome-extension://${extensionId}/popup.html?draft=browser-draft`);
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    await worker.evaluate(async (url) => {
+      const extension = globalThis as unknown as {
+        chrome: { storage: { local: { set(values: unknown): Promise<void> } } };
+      };
+      await extension.chrome.storage.local.set({
+        "draft:other-browser-draft": {
+          id: "other-browser-draft",
+          engineUrl: url,
+          captureUrl: "https://example.test/other",
+          createdAt: "2020-01-01T00:00:00Z",
+          updatedAt: "2020-01-01T00:00:00Z",
+          metadata: {
+            title: "Other browser article",
+            sourceUrl: "https://example.test/other",
+            capturedAt: "2020-01-01T00:00:00Z",
+          },
+          body: "Other selected content.",
+          state: "ready",
+        },
+      });
+    }, engineUrl);
     await page.reload();
-    await page.locator("#source option[value='workflow-bundle']").waitFor({ state: "attached" });
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    assert.equal(await page.locator("#draft-picker-label").isVisible(), true);
+    assert.equal(await page.locator("#draft-picker option").count(), 2);
+    assert.equal(await page.locator("#category").inputValue(), "research");
+    assert.equal(
+      await page.locator("#source-url").getAttribute("href"),
+      "https://example.test/article",
+    );
+    await page.setViewportSize({ width: 400, height: 600 });
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.waitForFunction(
+        (expected) => {
+          const save = document.querySelector("#save");
+          return save && getComputedStyle(save).backgroundColor === expected;
+        },
+        scheme === "light" ? "rgb(15, 23, 42)" : "rgb(248, 250, 252)",
+      );
+      const theme = await page.evaluate(() => ({
+        background: getComputedStyle(document.body).backgroundColor,
+        primary: getComputedStyle(document.documentElement).getPropertyValue("--primary").trim(),
+        overflowing: document.documentElement.scrollWidth > innerWidth,
+      }));
+      assert.equal(theme.background, scheme === "light" ? "rgb(255, 255, 255)" : "rgb(2, 8, 23)");
+      assert.equal(theme.primary, scheme === "light" ? "#0f172a" : "#f8fafc");
+      assert.equal(theme.overflowing, false);
+      await page.locator("#save").focus();
+      assert.equal(
+        await page.locator("#save").evaluate((button) => button === document.activeElement),
+        true,
+      );
+      await page.screenshot({
+        path: join(root, `.artifacts/clipper-collect-${scheme}.png`),
+        animations: "disabled",
+        fullPage: true,
+      });
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.locator("#note").fill("A useful note that explains why this source matters later.");
+    await page.locator("#status").evaluate((element) => {
+      element.textContent = "Sammeln ist gerade nicht verfügbar. Dein Entwurf bleibt gespeichert.";
+      element.dataset.error = "true";
+    });
+    const fields = page.locator(".fields");
+    const actions = page.locator(".actions");
+    const sourceBox = await page.locator("#category").boundingBox();
+    const actionsBox = await actions.boundingBox();
+    assert.ok(sourceBox && actionsBox && sourceBox.y + sourceBox.height <= actionsBox.y);
+    await fields.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const pickerBox = await page.locator("#draft-picker").boundingBox();
+    const afterScrollActionsBox = await actions.boundingBox();
+    assert.ok(
+      pickerBox &&
+        afterScrollActionsBox &&
+        pickerBox.y >= 0 &&
+        pickerBox.y + pickerBox.height <= afterScrollActionsBox.y,
+    );
+    assert.equal(
+      await page.locator("#note").inputValue(),
+      "A useful note that explains why this source matters later.",
+    );
+    await page.screenshot({
+      path: join(root, ".artifacts/clipper-compact-multiline-error.png"),
+      animations: "disabled",
+    });
+    await page.locator("#status").evaluate((element) => {
+      element.textContent = "";
+      element.dataset.error = "false";
+    });
+    await fields.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await page.screenshot({ path: join(root, ".artifacts/clipper-collect.png"), fullPage: true });
+    await page.locator("#title").fill("Edited article");
+    await page.locator("#note").fill("Useful for our next project");
+    await page.locator("#capture-details summary").click();
+    await page.locator("#content").fill("# Edited\n\nRetained draft content.");
+    await page.locator("#category").selectOption("inbox");
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
     assert.equal(await page.locator("#title").inputValue(), "Edited article");
-    assert.equal(await page.locator("#source").inputValue(), "workflow-bundle");
+    assert.equal(await page.locator("#note").inputValue(), "Useful for our next project");
+    assert.equal(await page.locator("#category").inputValue(), "inbox");
     await page.locator("#save").click();
     await page.waitForFunction(
       () => document.querySelector("#status")?.getAttribute("data-error") === "true",
     );
-    assert.equal(await page.locator("#duplicate").isVisible(), false);
-    assert.equal(writes.length, 1);
+    assert.equal(collected.size, 1);
+    assert.equal(await page.locator("#title").isDisabled(), true);
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
     await page.locator("#save").click();
     await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesichert"),
+      document.querySelector("#status")?.textContent?.includes("Gesammelt"),
     );
-    assert.equal(writes.length, 2);
-    assert.equal(writes[1]?.path, "/engine/v1/knowledge-sources/workflow-bundle/documents");
-    assert.match(String(writes[1]?.body.path), /^\/clips\/[a-f0-9]{12}\.md$/);
-    assert.ok(String(writes[1]?.body.content).includes("Retained draft content."));
-    async function seedDraft(body: string, sourceId?: string): Promise<void> {
+    assert.equal(collected.size, 1);
+    const submissions = writes.filter((item) => item.path.endsWith("/intake/items"));
+    assert.equal(submissions.length, 2);
+    assert.deepEqual(submissions[0]?.body, submissions[1]?.body);
+    assert.ok(submissions[0]);
+    assert.equal(submissions[0].body.note, "Useful for our next project");
+    assert.equal(
+      (submissions[0].body.original_snapshot as { origin: string }).origin,
+      "restored_draft",
+    );
+    assert.equal(defaultCategory, "research");
+    assert.equal(await page.locator("#review").isVisible(), true);
+    const reviewOpened = browser.waitForEvent("page");
+    await page.locator("#review").click();
+    const reviewPage = await reviewOpened;
+    await reviewPage.waitForURL("**/cockpit/chat/new?intake_item_ids=*");
+    assert.equal(
+      new URL(reviewPage.url()).searchParams.get("intake_item_ids"),
+      [...collected.values()][0]?.id,
+    );
+    assert.ok(new URL(reviewPage.url()).searchParams.get("prompt")?.includes("Quelle"));
+    assert.equal(
+      new URL(reviewPage.url()).searchParams.get("references"),
+      `intake_item:${[...collected.values()][0]?.id}`,
+    );
+    await reviewPage.close();
+    async function seedDraft(
+      body: string,
+      sourceId?: string,
+      sections?: { description: string; transcript: string; transcriptLanguage?: string },
+    ): Promise<void> {
       await worker.evaluate(
-        async ({ engineUrl, body, sourceId }) => {
+        async ({ engineUrl, body, sourceId, sections }) => {
           const extension = globalThis as unknown as {
             chrome: { storage: { local: { set(value: unknown): Promise<void> } } };
           };
@@ -325,83 +384,204 @@ try {
                 capturedAt: "2020-01-01T00:00:00Z",
               },
               body,
+              ...(sections ? { sections } : {}),
               state: "ready",
-              ...(sourceId ? { sourceId } : { collectionName: "New collection" }),
+              ...(sourceId ? { category: sourceId } : { category: "new-category" }),
             },
           });
         },
-        { engineUrl, body, sourceId },
+        { engineUrl, body, sourceId, sections },
       );
-      await page.reload();
+      await page.goto(`chrome-extension://${extensionId}/popup.html?draft=next-draft`);
       await page.waitForFunction(
         (expected) => document.querySelector<HTMLTextAreaElement>("#content")?.value === expected,
         body,
       );
-      await page.locator("#source option[value='workflow-bundle']").waitFor({ state: "attached" });
+      await page.locator("#category option[value='research']").waitFor({ state: "attached" });
     }
-    await seedDraft("Replacement content", "workflow-bundle");
-    await page.locator("#save").click();
-    await page.locator("#duplicate").waitFor({ state: "visible" });
-    const beforeReplace = writes.length;
-    await page.locator("#replace").click();
-    await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesichert"),
-    );
-    assert.equal(writes.length, beforeReplace + 1);
-    assert.equal(writes.at(-1)?.method, "PUT");
-    assert.ok(documents[0]?.content.includes("Replacement content"));
-    await seedDraft("Copy content", "workflow-bundle");
-    await page.locator("#save").click();
-    await page.locator("#duplicate").waitFor({ state: "visible" });
-    await page.locator("#copy").click();
-    await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesichert"),
-    );
-    assert.equal(documents.length, 2);
-    assert.ok(documents[0]?.content.includes("Replacement content"));
-    assert.ok(documents[1]?.content.includes("Copy content"));
-    await seedDraft("Conflicting replacement", "workflow-bundle");
-    await page.locator("#save").click();
-    await page.locator("#duplicate").waitFor({ state: "visible" });
-    version = "concurrent-change";
-    const originalDocument = documents[0];
-    assert.ok(originalDocument);
-    originalDocument.content = "Changed by another writer";
-    const beforeConflict = writes.length;
-    await page.locator("#replace").click();
-    await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>("#save")?.disabled);
-    assert.equal(writes.length, beforeConflict + 1);
-    assert.equal(originalDocument.content, "Changed by another writer");
-    await page.locator("#save").click();
-    await page.locator("#duplicate").waitFor({ state: "visible" });
-    const changedUrl = "https://example.test/changed-url";
-    await page.locator("#source-url").fill(changedUrl);
+    await seedDraft("First category clip");
     await page.locator("#save").click();
     await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesichert"),
+      document.querySelector("#status")?.textContent?.includes("Gesammelt"),
     );
-    assert.equal(documents.length, 3);
+    assert.equal(collected.size, 2);
+    await seedDraft("", "research");
+    assert.equal(await page.locator("#save").isDisabled(), true);
+    supportsIntake = false;
+    await page.reload();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#status")
+        ?.textContent?.includes("Sammeln ist gerade nicht verfügbar"),
+    );
+    assert.equal(await page.locator("#save").isDisabled(), true);
     assert.equal(
-      documents[2]?.path,
-      `/clips/${createHash("sha256").update(changedUrl).digest("hex").slice(0, 12)}.md`,
+      await page.locator("#category option:checked").textContent(),
+      "Kategorien gerade nicht verfügbar",
     );
-    assert.equal(originalDocument.content, "Changed by another writer");
-    await seedDraft("First collection clip");
-    loseCreateResponse = true;
-    await page.locator("#save").click();
+    assert.equal(await page.locator("#content").inputValue(), "");
+    await page.locator("#note").fill("Keep this note while the engine is unavailable.");
+    assert.equal(
+      await page
+        .locator("#status")
+        .evaluate((element) => element.textContent?.includes("Request failed")),
+      false,
+    );
+    assert.ok(
+      (await page.locator("#content-preview").textContent())?.includes(
+        "Markiere den gewünschten Text",
+      ),
+    );
+    assert.equal(await page.locator("#check-connection").isVisible(), true);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    assert.equal(await page.evaluate(() => window.scrollY), 0);
+    await page.screenshot({
+      path: join(root, ".artifacts/clipper-startup-404-empty.png"),
+      animations: "disabled",
+    });
+    await page.locator(".fields").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const previewBox = await page.locator("#content-preview").boundingBox();
+    const unavailableActionsBox = await page.locator(".actions").boundingBox();
+    assert.ok(
+      previewBox &&
+        unavailableActionsBox &&
+        previewBox.y >= 0 &&
+        previewBox.y + previewBox.height <= unavailableActionsBox.y,
+    );
+    assert.ok(
+      unavailableActionsBox && unavailableActionsBox.y + unavailableActionsBox.height <= 600,
+    );
+    await page.screenshot({
+      path: join(root, ".artifacts/clipper-startup-404-empty-instruction.png"),
+      animations: "disabled",
+    });
+    const optionsOpened = browser.waitForEvent("page");
+    await page.locator("#check-connection").click();
+    const optionsPage = await optionsOpened;
+    await optionsPage.waitForURL("**/options.html");
+    await optionsPage.close();
+    assert.equal(collected.size, 2);
+    supportsIntake = true;
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    assert.equal(await page.locator("#check-connection").isVisible(), false);
+    assert.equal(await page.locator("#save").isDisabled(), true);
+    assert.equal(await page.locator("#category").inputValue(), "research");
+    assert.equal(
+      await page.locator("#note").inputValue(),
+      "Keep this note while the engine is unavailable.",
+    );
+    if (await page.locator("#capture-details").evaluate((element) => !element.hasAttribute("open")))
+      await page.locator("#capture-details summary").click();
+    await page.locator("#content").fill("Recovered content after the engine update.");
     await page.waitForFunction(
-      () => document.querySelector("#status")?.getAttribute("data-error") === "true",
+      () => document.querySelector<HTMLButtonElement>("#save")?.disabled === false,
     );
-    const afterUncertainCreate = writes.length;
-    assert.equal(newCollections.length, 1);
-    assert.equal(newCollections[0]?.documents.length, 2);
-    await page.locator("#save").click();
+    await page.locator("#discard").click();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
+    );
+    await mkdir(join(root, ".artifacts"), { recursive: true });
+    process.stdout.write("Checking video preview and persistent section choices\n");
+    const sections = {
+      description: "Useful video description.",
+      transcript: "**0:00** · Useful spoken content.",
+      transcriptLanguage: "en",
+    };
+    await seedDraft(
+      `## Description\n\n${sections.description}\n\n## Transcript\n\n${sections.transcript}`,
+      "research",
+      sections,
+    );
+    await page.locator("#capture-details summary").click();
+    await page.locator("#include-transcript").uncheck();
+    assert.ok(!(await page.locator("#content").inputValue()).includes("Useful spoken content"));
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    assert.equal(await page.locator("#include-transcript").isChecked(), false);
+    await page.locator("#capture-details summary").click();
+    await page.locator("#include-transcript").check();
+    assert.ok((await page.locator("#content").inputValue()).includes("Useful spoken content"));
+    await page.locator("#content").fill("Manual edit <script>alert('unsafe')</script>");
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    await page.locator("#capture-details summary").click();
+    await page.locator("#include-transcript").click();
+    assert.equal(
+      await page.locator("#content").inputValue(),
+      "Manual edit <script>alert('unsafe')</script>",
+    );
+    assert.equal(await page.locator("#content-preview script").count(), 0);
+    await page.setViewportSize({ width: 400, height: 600 });
+    const saveBox = await page.locator("#save").boundingBox();
+    assert.ok(saveBox && saveBox.y >= 450 && saveBox.y + saveBox.height <= 600);
+    await page.screenshot({ path: join(root, ".artifacts/clipper-popup-compact.png") });
+    await page.locator("#discard").click();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
+    );
+    process.stdout.write("Checking page-scoped drafts and navigation recapture\n");
+    const tabId = await worker.evaluate(async (url) => {
+      const extension = globalThis as unknown as {
+        chrome: {
+          tabs: {
+            query(query: Record<string, never>): Promise<Array<{ id: number; url?: string }>>;
+          };
+        };
+      };
+      const tabs = await extension.chrome.tabs.query({});
+      const tab = tabs.find((item) => item.url === url);
+      if (!tab) throw new Error("Source fixture tab missing");
+      return tab.id;
+    }, article.url());
+    await page.goto(`chrome-extension://${extensionId}/popup.html?tab=${tabId}`);
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    assert.equal(await page.locator("#video-sections").isVisible(), false);
+    await page.locator("#title").fill("Preserved page A edit");
+    const pageADraftId = new URL(page.url()).searchParams.get("draft");
+    assert.ok(pageADraftId);
+    await article.evaluate(() => {
+      history.pushState({}, "", "/fixture?second=1");
+      document.querySelector("h1")!.textContent = "Second fixture article";
+      document.title = "Second fixture article";
+    });
     await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesichert"),
+      document.querySelector<HTMLAnchorElement>("#source-url")?.href.includes("second=1"),
     );
-    assert.equal(writes.length, afterUncertainCreate);
-    assert.equal(newCollections.length, 1);
-    assert.equal(newCollections[0]?.documents[1]?.content, "Another writer's content");
+    const pageBDraftId = new URL(page.url()).searchParams.get("draft");
+    assert.ok(pageBDraftId && pageBDraftId !== pageADraftId);
+    await page.reload();
+    await page.locator("#category option[value='research']").waitFor({ state: "attached" });
+    assert.ok(
+      ((await page.locator("#source-url").getAttribute("href")) || "").includes("second=1"),
+    );
+    const anotherArticle = await browser.newPage();
+    await anotherArticle.goto(`${new URL(engineUrl).origin}/fixture?third=1`);
+    await page.bringToFront();
+    await anotherArticle.bringToFront();
+    await page.waitForFunction(() =>
+      document.querySelector<HTMLAnchorElement>("#source-url")?.href.includes("third=1"),
+    );
+    await article.bringToFront();
+    await page.waitForFunction(() =>
+      document.querySelector<HTMLAnchorElement>("#source-url")?.href.includes("second=1"),
+    );
+    await page.bringToFront();
+    await page.locator("#draft-picker").selectOption(pageADraftId);
+    await page.waitForFunction(
+      () => document.querySelector<HTMLInputElement>("#title")?.value === "Preserved page A edit",
+    );
+    assert.ok(
+      !((await page.locator("#source-url").getAttribute("href")) || "").includes("second=1"),
+    );
+    await page.locator("#discard").click();
+    await page.waitForFunction(
+      () => document.querySelector<HTMLTextAreaElement>("#content")?.value === "",
+    );
+    assert.equal(await page.locator(`#draft-picker option[value='${pageBDraftId}']`).count(), 1);
     await mkdir(join(root, ".artifacts"), { recursive: true });
     await page.screenshot({ path: join(root, ".artifacts/clipper-preview.png"), fullPage: true });
     const reloadManager = await browser.newPage();
@@ -473,7 +653,7 @@ try {
     await reloadManager.close();
     assert.deepEqual(errors, []);
     process.stdout.write(
-      "Clipper loaded in Chromium; selection/article capture, protected storage, settings, draft persistence, collection selection and conflict retry passed.\n",
+      "Clipper loaded in Chromium; selection/article capture, protected storage, settings, draft persistence, intake selection, original provenance, safe old-server behavior and idempotent retry passed.\n",
     );
   } finally {
     await browser.close();

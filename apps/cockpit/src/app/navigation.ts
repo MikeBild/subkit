@@ -5,6 +5,7 @@ import {
   FileText,
   Gauge,
   History,
+  Inbox,
   KeyRound,
   ListChecks,
   type LucideIcon,
@@ -39,6 +40,7 @@ export const ATTENTION_READ_PERMISSIONS = [
   "connection:read",
   "settings:read",
   "skill:read",
+  "intake:read",
 ] as const;
 
 export const NAVIGATION: readonly NavigationGroup[] = [
@@ -92,6 +94,13 @@ export const NAVIGATION: readonly NavigationGroup[] = [
     id: "knowledge",
     labelKey: "nav.group.knowledge",
     items: [
+      {
+        labelKey: "nav.inbox",
+        path: "/intake",
+        permission: "intake:read",
+        icon: Inbox,
+        api: ["GET /v1/categories", "GET /v1/intake/default-category", "GET /v1/intake/items"],
+      },
       {
         labelKey: "nav.knowledgeSources",
         path: "/knowledge",

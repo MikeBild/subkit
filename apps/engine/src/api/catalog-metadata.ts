@@ -31,6 +31,10 @@ export const CATALOG_KINDS = [
 
 export type CatalogKind = (typeof CATALOG_KINDS)[number];
 
+export const CATEGORY_KINDS = [...CATALOG_KINDS, "intake"] as const;
+
+export type CategoryKind = (typeof CATEGORY_KINDS)[number];
+
 export const CatalogSourceSchema = z.enum(["human", "llm"]).openapi("CatalogMetadataSource");
 
 export type CatalogSource = z.infer<typeof CatalogSourceSchema>;

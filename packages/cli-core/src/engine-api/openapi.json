@@ -16288,6 +16288,23 @@
           },
           "llm_counts": {
             "$ref": "#/components/schemas/CategoryKindCounts"
+          },
+          "intake_open": {
+            "type": "object",
+            "properties": {
+              "collected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reviewing": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "collected",
+              "reviewing"
+            ]
           }
         },
         "required": [
@@ -16298,7 +16315,8 @@
           "category",
           "total",
           "counts",
-          "llm_counts"
+          "llm_counts",
+          "intake_open"
         ]
       },
       "CategoryKindCounts": {
@@ -16323,6 +16341,10 @@
           "file": {
             "type": "integer",
             "minimum": 0
+          },
+          "intake": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": [
@@ -16330,7 +16352,8 @@
           "connector",
           "knowledge_source",
           "skill",
-          "file"
+          "file",
+          "intake"
         ]
       },
       "RenameCategoryResponse": {
@@ -16460,6 +16483,531 @@
           "expected_target_revision"
         ],
         "additionalProperties": false
+      },
+      "IntakeDefaultCategory": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          }
+        },
+        "required": [
+          "category"
+        ]
+      },
+      "IntakeItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "original_snapshot": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IntakeOriginalSnapshot"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "source_url",
+                  "captured_at",
+                  "body",
+                  "origin"
+                ]
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "collected",
+              "reviewing",
+              "admitted",
+              "discarded"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "collected_by": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "system_account"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          "admitted_knowledge_source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "category",
+          "client_request_id",
+          "original_snapshot",
+          "title",
+          "body",
+          "note",
+          "state",
+          "version",
+          "collected_by",
+          "admitted_knowledge_source_id",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "IntakeOriginalSnapshot": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "source_author": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "published_at": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "capture",
+              "restored_draft"
+            ]
+          }
+        }
+      },
+      "CreateIntakeItemBody": {
+        "type": "object",
+        "properties": {
+          "client_request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "source_author": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "published_at": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "captured_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "original_snapshot": {
+            "$ref": "#/components/schemas/IntakeOriginalSnapshot"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "title",
+          "source_url",
+          "captured_at",
+          "body"
+        ]
+      },
+      "PatchIntakeItemBody": {
+        "type": "object",
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "collected",
+              "reviewing",
+              "discarded"
+            ]
+          }
+        },
+        "required": [
+          "expected_version"
+        ]
+      },
+      "IntakeProposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "stale",
+              "confirmed",
+              "rejected"
+            ]
+          },
+          "current_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "confirmed_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "confirmed_knowledge_source_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "rejected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stale_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "target": {
+                "$ref": "#/components/schemas/IntakeProposalTarget"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "source_url": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version",
+                    "title",
+                    "source_url"
+                  ]
+                }
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "revision",
+              "digest",
+              "title",
+              "body",
+              "target",
+              "items",
+              "created_at"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "status",
+          "current_revision",
+          "confirmed_revision",
+          "confirmed_knowledge_source_id",
+          "rejected_at",
+          "stale_reason",
+          "created_at",
+          "updated_at",
+          "revision"
+        ]
+      },
+      "IntakeProposalTarget": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "knowledge_source_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expected_version": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "knowledge_source_id",
+              "expected_version"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "category": {
+                "$ref": "#/components/schemas/CatalogCategory"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "maxItems": 20
+              }
+            },
+            "required": [
+              "name"
+            ]
+          }
+        ]
+      },
+      "CreateIntakeProposalBody": {
+        "type": "object",
+        "properties": {
+          "item_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000000
+          },
+          "target": {
+            "$ref": "#/components/schemas/IntakeProposalTarget"
+          }
+        },
+        "required": [
+          "item_ids",
+          "title",
+          "body",
+          "target"
+        ]
+      },
+      "ReviseIntakeProposalBody": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateIntakeProposalBody"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "expected_revision"
+            ]
+          }
+        ]
+      },
+      "ConfirmIntakeProposalBody": {
+        "type": "object",
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "digest"
+        ]
+      },
+      "RejectIntakeProposalBody": {
+        "type": "object",
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "expected_revision"
+        ]
       },
       "KnowledgeSourceVersionListResponse": {
         "type": "object",
@@ -17891,6 +18439,32 @@
           },
           "proposed_candidates": {
             "type": "integer"
+          },
+          "intake": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "collected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reviewing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "proposals": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "collected",
+              "reviewing",
+              "proposals"
+            ],
+            "description": "Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content."
           }
         },
         "required": [
@@ -17907,7 +18481,8 @@
           "connectors",
           "connectors_omitted",
           "guides",
-          "proposed_candidates"
+          "proposed_candidates",
+          "intake"
         ]
       },
       "AgentSessionCaptureResponse": {
@@ -18606,6 +19181,15 @@
           "playground": {
             "type": "boolean"
           },
+          "intake_item_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
           "references": {
             "type": "array",
             "items": {
@@ -18624,7 +19208,9 @@
               "workflow",
               "connector",
               "skill",
-              "knowledge_source"
+              "knowledge_source",
+              "execution",
+              "intake_item"
             ]
           },
           "id": {
@@ -39740,6 +40326,727 @@
           },
           "409": {
             "description": "Metadata changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/default-category": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Read the caller's personal default shared category",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeDefaultCategory"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Set the caller's personal default shared category",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntakeDefaultCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeDefaultCategory"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/items": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "List collected clips without adding them to knowledge retrieval",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "$ref": "#/components/schemas/CatalogCategory"
+            },
+            "required": false,
+            "description": "The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it.",
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "collected",
+                "reviewing",
+                "admitted",
+                "discarded"
+              ]
+            },
+            "required": false,
+            "name": "state",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntakeItem"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Collect an immutable source clip",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeItemBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/items/mentions": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "List metadata-only intake references for mentions",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "source_url": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "category": {
+                            "$ref": "#/components/schemas/CatalogCategory"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "collected",
+                              "reviewing",
+                              "admitted",
+                              "discarded"
+                            ]
+                          },
+                          "version": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "source_url",
+                          "category",
+                          "state",
+                          "version"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/items/{id}": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Read an intake clip and its immutable provenance",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Organize an intake clip without changing its original source snapshot",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchIntakeItemBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/proposals": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "List reviewable knowledge proposals",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "stale",
+                "confirmed",
+                "rejected"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntakeProposal"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Create a versioned proposal from collected clips",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeProposalBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeProposal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/proposals/{id}": {
+      "get": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Read the current proposal revision, source references, and digest",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeProposal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Revise a proposal, creating a new reviewable revision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseIntakeProposalBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeProposal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/proposals/{id}/confirm": {
+      "post": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Confirm the exact reviewed proposal revision and publish it as knowledge",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmIntakeProposalBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeProposal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Human confirmation required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/intake/proposals/{id}/reject": {
+      "post": {
+        "tags": [
+          "intake"
+        ],
+        "summary": "Reject a proposal revision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectIntakeProposalBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeProposal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed",
             "content": {
               "application/json": {
                 "schema": {

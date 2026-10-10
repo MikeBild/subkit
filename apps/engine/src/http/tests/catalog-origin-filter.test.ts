@@ -86,7 +86,15 @@ test("category origin totals count every object and exclude pending descriptions
   const row = body.categories.find((entry: { category: string }) => entry.category === category);
   expect(row).toMatchObject({
     total: 20,
-    counts: { workflow: 4, connector: 4, knowledge_source: 4, skill: 4, file: 4 },
-    llm_counts: { workflow: 2, connector: 2, knowledge_source: 2, skill: 2, file: 2 },
+    counts: { workflow: 4, connector: 4, knowledge_source: 4, skill: 4, file: 4, intake: 0 },
+    llm_counts: {
+      workflow: 2,
+      connector: 2,
+      knowledge_source: 2,
+      skill: 2,
+      file: 2,
+      intake: 0,
+    },
+    intake_open: { collected: 0, reviewing: 0 },
   });
 });

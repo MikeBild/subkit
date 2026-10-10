@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { listProposedSkillCandidates } from "@/api/decisions";
+import { listIntakeClips } from "@/api/intake";
 import { loadKnowledgeChunks } from "@/api/knowledge";
 import type { components } from "@/api/schema";
 import { absolute, chatNewHref, recordHref, workflowHref } from "@/app/links";
@@ -524,6 +525,11 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     enabled: Boolean(query.data) && sourceKind(query.data?.source_type ?? "") === "text",
     ...live,
   });
+  const intakeBacklinks = useQuery({
+    queryKey: ["intake", "knowledge-backlinks", id],
+    queryFn: () => listIntakeClips(),
+    enabled: canRead && permissions.includes("intake:read") && Boolean(id),
+  });
   const [reviewing, setReviewing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [describing, setDescribing] = useState(false);
@@ -710,6 +716,9 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
     { label: t("knowledge.fact.size"), value: bytes(source.bytes_total) },
     { label: t("knowledge.fact.created"), value: dateTime(source.created_at) },
   ];
+  const originalClips = (intakeBacklinks.data?.items ?? []).filter(
+    (item) => item.admitted_knowledge_source_id === source.id,
+  );
   const menu = [
     ...(canWrite ? metadataActions : []),
     ...(canWrite && primary !== "edit"
@@ -767,7 +776,10 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
               <Button asChild variant="outline">
                 <a
                   href={absolute(
-                    chatNewHref({ prompt: t("detail.changeRecordPrompt", { name: source.name }) }),
+                    chatNewHref({
+                      prompt: t("detail.changeRecordPrompt"),
+                      references: [{ type: "knowledge_source", id: source.id }],
+                    }),
                   )}
                   data-testid="detail-action"
                 >
@@ -797,6 +809,22 @@ export function KnowledgeSourcePage({ permissions }: { permissions: readonly str
           onRetry={() => void chunks.refetch()}
           onOpen={setOpenSection}
         />
+        {originalClips.length > 0 ? (
+          <Section label={t("intake.originalClips")}>
+            <div className="flex flex-col gap-2">
+              {originalClips.map((clip) => (
+                <a
+                  key={clip.id}
+                  className="w-fit text-sm text-accent underline-offset-4 hover:underline"
+                  href={absolute(`/intake?item=${encodeURIComponent(clip.id)}`)}
+                  data-testid={`knowledge-intake-clip-${clip.id}`}
+                >
+                  {t("intake.openOriginalClip", { name: clip.title })}
+                </a>
+              ))}
+            </div>
+          </Section>
+        ) : null}
         <div className="flex flex-col gap-2">
           <KnowledgeVersions sourceId={source.id} sourceName={source.name} canWrite={canWrite} />
           <CollapsibleSection label={t("knowledge.technical")} testId="detail-overview">

@@ -57,6 +57,10 @@ export function remedyFor(input: RemedyInput): Remedy | null {
         prompt: input.prompt ?? null,
         workflowId: input.workflowId ?? null,
         executionId: input.executionId ?? null,
+        references: [
+          ...(input.workflowId ? [{ type: "workflow" as const, id: input.workflowId }] : []),
+          ...(input.executionId ? [{ type: "execution" as const, id: input.executionId }] : []),
+        ],
       }),
     };
   }

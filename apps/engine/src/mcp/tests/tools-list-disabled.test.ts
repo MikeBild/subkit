@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, count, eq } from "drizzle-orm";
 import { auditLog } from "../../db/schema/index.ts";
-import { DRAFT_WRITE_MCP_UNAVAILABLE_REASON } from "../../tools/policy.ts";
+import {
+  DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON,
+  DRAFT_WRITE_MCP_UNAVAILABLE_REASON,
+} from "../../tools/policy.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
@@ -134,5 +137,27 @@ describe("mcp tools/call — disabled tools short-circuit", () => {
     };
     expect(data.error_code).toBe("not_available_on_surface");
     expect(data.reason).toBe(DRAFT_WRITE_MCP_UNAVAILABLE_REASON);
+  });
+
+  test("intake review tools require a conversation draft over MCP", async () => {
+    const authoringClient = await suite.connect();
+    const calls = [
+      { client: authoringClient, name: "list_intake_items", arguments: {} },
+      {
+        client: authoringClient,
+        name: "get_intake_item",
+        arguments: { id: "10000000-0000-4000-8000-000000000001" },
+      },
+    ] as const;
+
+    for (const call of calls) {
+      const { client, ...request } = call;
+      const result = await client.callTool(request);
+      expect(result.isError).toBe(true);
+      const content = result.content as Array<{ type: string; text: string }>;
+      const data = JSON.parse(content[0]!.text) as { error_code?: string; reason?: string };
+      expect(data.error_code).toBe("not_available_on_surface");
+      expect(data.reason).toBe(DRAFT_REQUIRED_MCP_UNAVAILABLE_REASON);
+    }
   });
 });

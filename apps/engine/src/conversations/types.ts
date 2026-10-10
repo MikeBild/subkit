@@ -364,6 +364,10 @@ export interface DraftDocument {
   session?: {
     permission_mode?: ConversationPermissionMode | null;
     playground?: boolean | null;
+    intake_item_ids?: string[] | null;
+    intake_read_item_versions?: Record<string, number> | null;
+    intake_review_locked?: boolean | null;
+    intake_review_active?: boolean | null;
   };
 }
 

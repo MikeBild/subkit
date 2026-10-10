@@ -353,6 +353,12 @@ function DiagnosisFixAction({
                 workflowId: diagnosis.workflow_id,
                 executionId: entry.evidence.execution_id ?? null,
                 prompt: t("diagnosis.chatPrompt", { step: entry.subject.step_id }),
+                references: [
+                  { type: "workflow", id: diagnosis.workflow_id },
+                  ...(entry.evidence.execution_id
+                    ? [{ type: "execution" as const, id: entry.evidence.execution_id }]
+                    : []),
+                ],
               }),
             ),
             testId: `${testId}-chat`,

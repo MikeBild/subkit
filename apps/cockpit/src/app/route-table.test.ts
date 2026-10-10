@@ -4,6 +4,7 @@ import { NAVIGATION } from "@/app/navigation";
 import {
   ALL_ROUTE_PATHS,
   CATALOG_RESOURCES,
+  INTAKE_ROUTES,
   movedTarget,
   PAGE_ROUTES,
   REDIRECT_ROUTES,
@@ -53,6 +54,12 @@ describe("cockpit route table", () => {
       expect(ALL_ROUTE_PATHS).toContain(`/${resource}`);
       expect(ALL_ROUTE_PATHS).toContain(`/${resource}/$resourceId`);
     }
+  });
+
+  test("keeps intake as one review surface with query deep links", () => {
+    expect(INTAKE_ROUTES).toEqual(["/intake"]);
+    expect(ALL_ROUTE_PATHS).toContain("/intake");
+    expect(ALL_ROUTE_PATHS).not.toContain("/intake/$resourceId");
   });
 
   test("names the routes no menu links to, which is why they are here", () => {

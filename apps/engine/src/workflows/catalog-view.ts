@@ -1,8 +1,9 @@
 import type { WorkflowOperatingStatus } from "@shared/workflow-operating-status.ts";
-import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   CATALOG_KINDS,
   type CatalogKind,
+  type CategoryKind,
   compareCategoryCounts,
   normalizeCategoryAliases,
   PLATFORM_CATEGORY,
@@ -16,6 +17,11 @@ import {
   catalogCategories,
   connectors,
   files,
+  intakeCategoryDefaults,
+  intakeItems,
+  intakeProposalItems,
+  intakeProposalRevisions,
+  intakeProposals,
   knowledgeSources,
   skills,
   workflows,
@@ -115,8 +121,9 @@ export interface CategoryUsage {
   aliases: string[];
   revision: number | null;
   total: number;
-  counts: Record<CatalogKind, number>;
-  llm_counts: Record<CatalogKind, number>;
+  counts: Record<CategoryKind, number>;
+  llm_counts: Record<CategoryKind, number>;
+  intake_open: { collected: number; reviewing: number };
 }
 
 function liveRows(kind: CatalogKind) {
@@ -153,14 +160,49 @@ export async function loadCategoryVocabulary(
         aliases: [],
         revision: null,
         total: 0,
-        counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
-        llm_counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0 },
+        counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+        llm_counts: {
+          workflow: 0,
+          connector: 0,
+          knowledge_source: 0,
+          skill: 0,
+          file: 0,
+          intake: 0,
+        },
+        intake_open: { collected: 0, reviewing: 0 },
       };
       usage.counts[kind] = Number(row.c);
       usage.llm_counts[kind] = Number(row.llm);
       usage.total += Number(row.c);
       byCategory.set(row.category, usage);
     }
+  }
+  const intakeRows = await db
+    .select({
+      category: intakeItems.category,
+      total: sql<number>`count(*)::int`,
+      collected: sql<number>`count(*) FILTER (WHERE ${intakeItems.state} = 'collected')::int`,
+      reviewing: sql<number>`count(*) FILTER (WHERE ${intakeItems.state} = 'reviewing')::int`,
+    })
+    .from(intakeItems)
+    .where(eq(intakeItems.tenant_id, tenant_id))
+    .groupBy(intakeItems.category);
+  for (const row of intakeRows) {
+    const usage = byCategory.get(row.category) ?? {
+      category: row.category,
+      purpose: null,
+      purpose_source: null,
+      aliases: [],
+      revision: null,
+      total: 0,
+      counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+      llm_counts: { workflow: 0, connector: 0, knowledge_source: 0, skill: 0, file: 0, intake: 0 },
+      intake_open: { collected: 0, reviewing: 0 },
+    };
+    usage.counts.intake = Number(row.total);
+    usage.total += Number(row.total);
+    usage.intake_open = { collected: Number(row.collected), reviewing: Number(row.reviewing) };
+    byCategory.set(row.category, usage);
   }
   const metadata = await db
     .select()
@@ -182,6 +224,56 @@ export async function loadCategoryVocabulary(
       { category: b.category, count: b.total },
     ),
   );
+}
+
+export async function categoryRenameAffectsIntake(
+  p: { tenant_id: string; from: string },
+  exec?: Executor,
+): Promise<boolean> {
+  const db = exec ?? getDb();
+  const [item] = await db
+    .select({ id: intakeItems.id })
+    .from(intakeItems)
+    .where(and(eq(intakeItems.tenant_id, p.tenant_id), eq(intakeItems.category, p.from)))
+    .limit(1);
+  if (item) return true;
+  const [defaultCategory] = await db
+    .select({ category: intakeCategoryDefaults.category })
+    .from(intakeCategoryDefaults)
+    .where(
+      and(
+        eq(intakeCategoryDefaults.tenant_id, p.tenant_id),
+        eq(intakeCategoryDefaults.category, p.from),
+      ),
+    )
+    .limit(1);
+  if (defaultCategory) return true;
+  const [proposal] = await db
+    .select({ id: intakeProposals.id })
+    .from(intakeProposals)
+    .innerJoin(
+      intakeProposalRevisions,
+      and(
+        eq(intakeProposalRevisions.proposal_id, intakeProposals.id),
+        eq(intakeProposalRevisions.revision, intakeProposals.current_revision),
+      ),
+    )
+    .leftJoin(
+      knowledgeSources,
+      and(
+        eq(knowledgeSources.tenant_id, p.tenant_id),
+        sql`${knowledgeSources.id}::text = ${intakeProposalRevisions.target}->>'knowledge_source_id'`,
+      ),
+    )
+    .where(
+      and(
+        eq(intakeProposals.tenant_id, p.tenant_id),
+        eq(intakeProposals.status, "draft"),
+        sql`(${intakeProposalRevisions.target}->>'category' = ${p.from} OR ${knowledgeSources.category} = ${p.from})`,
+      ),
+    )
+    .limit(1);
+  return Boolean(proposal);
 }
 
 export class CategoryRenameRefused extends Error {}
@@ -297,14 +389,41 @@ export async function renameCategory(input: RenameCategoryInput, exec?: Executor
           updated_at: sql`now()`,
         },
       });
-    const moved: Record<CatalogKind, number> = {
+    const moved: Record<CategoryKind, number> = {
       workflow: 0,
       connector: 0,
       knowledge_source: 0,
       skill: 0,
       file: 0,
+      intake: 0,
     };
     if (input.from !== input.to) {
+      const stale = await tx
+        .select({ id: intakeProposals.id })
+        .from(intakeProposals)
+        .innerJoin(
+          intakeProposalRevisions,
+          and(
+            eq(intakeProposalRevisions.proposal_id, intakeProposals.id),
+            eq(intakeProposalRevisions.revision, intakeProposals.current_revision),
+          ),
+        )
+        .leftJoin(
+          knowledgeSources,
+          and(
+            eq(knowledgeSources.tenant_id, input.tenant_id),
+            sql`${knowledgeSources.id}::text = ${intakeProposalRevisions.target}->>'knowledge_source_id'`,
+          ),
+        )
+        .where(
+          and(
+            eq(intakeProposals.tenant_id, input.tenant_id),
+            eq(intakeProposals.status, "draft"),
+            sql`(${intakeProposalRevisions.target}->>'category' = ${input.from} OR ${knowledgeSources.category} = ${input.from})`,
+          ),
+        );
+      const staleIds = [...new Set(stale.map((row) => row.id))];
+
       await tx
         .update(catalogCategories)
         .set({
@@ -348,6 +467,65 @@ export async function renameCategory(input: RenameCategoryInput, exec?: Executor
           .returning({ id: table.id });
         moved[kind] = updated.length;
       }
+      const intake = await tx
+        .update(intakeItems)
+        .set({
+          category: input.to,
+          version: sql`${intakeItems.version} + 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(eq(intakeItems.tenant_id, input.tenant_id), eq(intakeItems.category, input.from)),
+        )
+        .returning({ id: intakeItems.id });
+      moved.intake = intake.length;
+      const sourceStale = intake.length
+        ? await tx
+            .select({ id: intakeProposals.id })
+            .from(intakeProposals)
+            .innerJoin(
+              intakeProposalRevisions,
+              and(
+                eq(intakeProposalRevisions.proposal_id, intakeProposals.id),
+                eq(intakeProposalRevisions.revision, intakeProposals.current_revision),
+              ),
+            )
+            .innerJoin(
+              intakeProposalItems,
+              eq(intakeProposalItems.proposal_revision_id, intakeProposalRevisions.id),
+            )
+            .where(
+              and(
+                eq(intakeProposals.tenant_id, input.tenant_id),
+                eq(intakeProposals.status, "draft"),
+                inArray(
+                  intakeProposalItems.item_id,
+                  intake.map((item) => item.id),
+                ),
+              ),
+            )
+        : [];
+      staleIds.push(...sourceStale.map((row) => row.id));
+      const uniqueStaleIds = [...new Set(staleIds)];
+      await tx
+        .update(intakeCategoryDefaults)
+        .set({ category: input.to, updated_at: new Date() })
+        .where(
+          and(
+            eq(intakeCategoryDefaults.tenant_id, input.tenant_id),
+            eq(intakeCategoryDefaults.category, input.from),
+          ),
+        );
+      if (uniqueStaleIds.length)
+        await tx
+          .update(intakeProposals)
+          .set({ status: "stale", stale_reason: "category_renamed", updated_at: new Date() })
+          .where(
+            and(
+              eq(intakeProposals.tenant_id, input.tenant_id),
+              inArray(intakeProposals.id, uniqueStaleIds),
+            ),
+          );
     }
     const total = Object.values(moved).reduce((sum, n) => sum + n, 0);
     const metadata = { purpose, purpose_source, aliases, revision };

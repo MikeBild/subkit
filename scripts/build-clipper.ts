@@ -1,11 +1,23 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, relative } from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 const root = join(import.meta.dir, "..");
 const app = join(root, "apps/clipper");
 const output = join(root, "assets/clipper");
+
+export function chromeScriptSource(source: string): string {
+  return source.replace(/[\uFDD0-\uFFFF\u{10000}-\u{10FFFF}]/gu, (character) => {
+    const point = character.codePointAt(0) ?? 0;
+    if ((point < 0xfdd0 || point > 0xfdef) && (point & 0xffff) < 0xfffe) return character;
+    return character
+      .split("")
+      .map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`)
+      .join("");
+  });
+}
 
 function crc32(bytes: Uint8Array): number {
   let value = 0xffffffff;
@@ -81,11 +93,22 @@ export async function buildClipper(check = false): Promise<string> {
   const files = new Map<string, Uint8Array>();
   await staticFiles(join(app, "public"), files);
   for (const [name, license] of [
-    ["readability", "@mozilla/readability/LICENSE.md"],
+    ["defuddle", "defuddle/LICENSE"],
     ["turndown", "turndown/LICENSE"],
   ] as const) {
     files.set(`licenses/${name}.txt`, await readFile(join(root, "node_modules", license)));
   }
+  const dependency = createRequire(import.meta.resolve("defuddle"));
+  for (const [name, license] of [
+    ["mathml-to-latex", "LICENSE.md"],
+    ["temml", "LICENSE"],
+  ] as const) {
+    const directory = dirname(dependency.resolve(`${name}/package.json`));
+    files.set(`licenses/${name}.txt`, await readFile(join(directory, license)));
+  }
+  const mathDependency = createRequire(dependency.resolve("mathml-to-latex/package.json"));
+  const xmlDirectory = dirname(mathDependency.resolve("@xmldom/xmldom/package.json"));
+  files.set("licenses/xmldom.txt", await readFile(join(xmlDirectory, "LICENSE")));
   for (const name of ["service-worker", "capture", "popup", "options"]) {
     const result = await Bun.build({
       entrypoints: [join(app, "src", `${name}.ts`)],
@@ -98,7 +121,7 @@ export async function buildClipper(check = false): Promise<string> {
     if (result.outputs.length !== 1) throw new Error(`Unexpected clipper outputs for ${name}`);
     const artifact = result.outputs[0];
     if (!artifact) throw new Error(`Missing clipper output for ${name}`);
-    files.set(`${name}.js`, new Uint8Array(await artifact.arrayBuffer()));
+    files.set(`${name}.js`, new TextEncoder().encode(chromeScriptSource(await artifact.text())));
   }
   const archive = createClipperArchive(files);
   const sha256 = createHash("sha256").update(archive).digest("hex");

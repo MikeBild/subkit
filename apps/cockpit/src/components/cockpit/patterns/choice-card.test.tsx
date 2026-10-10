@@ -35,6 +35,13 @@ describe("P22 ChoiceCards", () => {
     expect(html).toContain("aria-describedby=");
   });
 
+  test("compact cards keep the horizontal two-column layout without changing the default cards", () => {
+    const html = render(<ChoiceCards compact items={items} />);
+    expect(html).toContain("gap-2");
+    expect(html).toContain("sm:grid-cols-2");
+    expect(html).toContain("grid-cols-[28px_minmax(0,1fr)]");
+  });
+
   test("three ways sit side by side from 640px, two or more than three keep two columns", () => {
     const third = {
       ...items[0],

@@ -6,33 +6,62 @@
     <title>SubKit Clipper</title>
     <link rel="stylesheet" href="clipper.css" />
   </head>
-  <body>
+  <body class="clipper-popup">
     <main class="clipper">
       <header class="masthead">
-        <span class="mark">S</span>
-        <div><p class="eyebrow">SubKit</p><h1 data-i18n="heading">In Wissen sichern</h1></div>
+        <span class="mark" aria-hidden="true">S</span>
+        <div class="masthead-copy"><p class="eyebrow">SubKit</p><h1 data-i18n="heading">Für später sammeln</h1></div>
         <button id="setup" class="quiet" type="button" aria-label="Einstellungen">⚙</button>
       </header>
       <form id="clip-form">
-        <label><span data-i18n="titleField">Titel</span> <input id="title" required /></label>
-        <label><span data-i18n="sourceField">Quelladresse</span> <input id="source-url" type="url" required /></label>
-        <label><span data-i18n="author">Autor</span> <input id="author" /></label>
-        <label><span data-i18n="publishedAt">Veröffentlicht am</span> <input id="published-at" /></label>
-        <label><span data-i18n="source">Wissenssammlung</span> <select id="source"></select></label>
-        <input id="collection-name" placeholder="Name der neuen Sammlung" />
-        <label><span data-i18n="content">Markdown</span> <textarea id="content" rows="13" required></textarea></label>
-        <p id="status" class="status" aria-live="polite"></p>
-        <section id="duplicate" class="duplicate" hidden>
-          <p data-i18n="duplicate">Dieser Clip existiert bereits.</p>
-          <button id="replace" class="quiet" type="button" data-i18n="replace">Ersetzen</button>
-          <button id="copy" class="quiet" type="button" data-i18n="copy">Als Kopie sichern</button>
-        </section>
-        <button id="retry-attempt" class="quiet" type="button" hidden data-i18n="retryAttempt">Neuen Speicherversuch starten</button>
-        <button id="save" class="primary" type="submit" data-i18n="save">Sichern</button>
-        <div class="draft-actions">
-          <button id="capture-again" class="quiet" type="button" data-i18n="newCapture">Neu erfassen</button>
-          <button id="discard" class="quiet" type="button" data-i18n="discard">Entwurf verwerfen</button>
+        <div class="fields">
+          <p class="journey" data-i18n="journey">Sammeln → im Chat prüfen → bestätigen → Wissen</p>
+          <label><span data-i18n="titleField">Titel</span><input id="title" required /></label>
+          <section class="source-card" aria-label="Quelladresse">
+            <span data-i18n="sourceField">Quelladresse</span>
+            <a id="source-url" href="about:blank" target="_blank" rel="noreferrer" hidden>Quelle</a>
+          </section>
+          <label><span data-i18n="note">Warum ist das interessant? (optional)</span><textarea id="note" rows="2"></textarea></label>
+          <label><span data-i18n="category">Kategorie</span><select id="category"></select></label>
+          <div class="category-name-field"><span id="category-name-label" data-i18n="categoryName">Neue Kategorie</span><input id="category-name" aria-labelledby="category-name-label" placeholder="neue-kategorie" hidden /></div>
+          <section class="content-details">
+            <p id="capture-diagnostics" class="hint" role="status" hidden></p>
+            <p id="content-size" class="hint"></p>
+            <details open><summary data-i18n="contentPreview">Vorschau</summary><div id="content-preview"></div></details>
+          </section>
+          <details id="capture-details">
+            <summary data-i18n="details">Details und Inhalt bearbeiten</summary>
+            <div class="detail-fields">
+              <label><span data-i18n="author">Autor der Quelle</span><input id="author" readonly /></label>
+              <label><span data-i18n="publishedAt">Veröffentlicht am</span><input id="published-at" readonly /></label>
+              <section id="video-sections" class="video-sections" hidden>
+                <span class="section-label" data-i18n="content">Markdown</span>
+                <label><input id="include-description" type="checkbox" /><span data-i18n="description">Beschreibung</span></label>
+                <label><input id="include-transcript" type="checkbox" /><span data-i18n="transcript">Transkript</span></label>
+                <p id="transcript-state" class="hint" hidden></p>
+              </section>
+              <label><span data-i18n="content">Markdown</span><textarea id="content" rows="8" required></textarea></label>
+            </div>
+          </details>
+          <label id="draft-picker-label" class="draft-picker"><span data-i18n="drafts">Entwürfe</span><select id="draft-picker"></select></label>
         </div>
+        <section id="saved-clip" class="saved-clip" hidden>
+          <p class="saved-clip-label" data-i18n="savedForReview">Gesammelt für die Prüfung</p>
+          <p id="saved-clip-title" class="saved-clip-title"></p>
+          <a id="saved-clip-source" href="about:blank" target="_blank" rel="noreferrer" data-i18n="sourceField">Quelladresse</a>
+        </section>
+        <footer class="actions">
+          <div class="status-row">
+            <p id="status" class="status" aria-live="polite"></p>
+            <button id="check-connection" class="status-action" type="button" hidden data-i18n="checkConnection">Verbindung prüfen</button>
+          </div>
+          <button id="save" class="primary" type="submit" data-i18n="save">Sammeln</button>
+          <button id="review" class="quiet" type="button" hidden data-i18n="review">Im Chat prüfen</button>
+          <div class="draft-actions">
+            <button id="capture-again" class="quiet" type="button" data-i18n="newCapture">Neu erfassen</button>
+            <button id="discard" class="quiet" type="button" data-i18n="discard">Entwurf verwerfen</button>
+          </div>
+        </footer>
       </form>
     </main>
     <script type="module" src="popup.js"></script>

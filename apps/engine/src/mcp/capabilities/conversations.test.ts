@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
-import { getConfig, loadConfig } from "../../config/loader.ts";
+import { getConfig, loadConfig, setConfigKey } from "../../config/loader.ts";
 import { withWorkflowPersisted } from "../../conversations/authoring-state.ts";
 import { appendSnapshot, loadDraft } from "../../conversations/draft.ts";
 import type { DraftDocument } from "../../conversations/types.ts";
@@ -20,11 +20,15 @@ import {
   workflowVersions,
 } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
+import { createIntakeItem } from "../../knowledge/index.ts";
 import { resetMockProvider } from "../../llm/mock-provider.ts";
 import { startBoss, stopBoss } from "../../queue/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { stampMcpTaskProgress } from "../tasks/store.ts";
 import { handleConversationTool } from "./conversations.ts";
+
+const nextIntakeUuid = createDeterministicUuidFactory(0x1a2b_3c4d);
 
 let testDb: TestDb;
 let principal: ResolvedPrincipal;
@@ -112,11 +116,13 @@ describe("conversation_start", () => {
       poll_with: string;
       conversation_id: string;
       mcp_task_id: string;
+      conversation_path?: string;
     };
     expect(body.status).toBe("working");
     expect(body.poll_with).toBe("conversation_get");
     expect(body.conversation_id.length).toBeGreaterThan(0);
     expect(body.mcp_task_id.length).toBeGreaterThan(0);
+    expect(body.conversation_path).toBe(`/cockpit/chat/${body.conversation_id}`);
 
     const [conv] = await testDb.db
       .select()
@@ -130,6 +136,86 @@ describe("conversation_start", () => {
     expect(taskRows).toHaveLength(1);
     expect(taskRows[0]?.kind).toBe("start");
     expect(taskRows[0]?.job_id).toBeTruthy();
+  });
+
+  test("selected intake clips start a locked review conversation with an absolute Cockpit handoff", async () => {
+    const priorPublicBaseUrl = getConfig().server.public_base_url ?? "";
+    await setConfigKey("server.public_base_url", "https://subkit.example/", { force: true });
+    try {
+      const clip = await createIntakeItem(
+        {
+          tenant_id: principal.tenant_id,
+          actor: { kind: "user", id: principal.id },
+          client_request_id: nextIntakeUuid(),
+          title: "Collected clip",
+          source_url: "https://example.test/clip",
+          captured_at: "2026-10-10T07:00:00.000Z",
+          body: "Source material remains in the intake record.",
+        },
+        testDb.db,
+      );
+      const result = await handleConversationTool({
+        db: testDb.db,
+        principal,
+        name: "conversation_start",
+        args: {
+          message: "Review the selected clips and propose useful knowledge.",
+          intake_item_ids: [clip.id],
+        },
+      });
+      expect(result.isError).toBe(false);
+      const body = JSON.parse(result.content[0]?.text ?? "{}") as {
+        conversation_id: string;
+        conversation_url?: string;
+        conversation_path?: string;
+      };
+      expect(body.conversation_url).toBe(
+        `https://subkit.example/cockpit/chat/${body.conversation_id}`,
+      );
+      expect(body.conversation_path).toBe(`/cockpit/chat/${body.conversation_id}`);
+      const draft = await loadDraft(principal.tenant_id, body.conversation_id, testDb.db);
+      expect(draft.session).toMatchObject({
+        intake_item_ids: [clip.id],
+        intake_review_locked: true,
+      });
+    } finally {
+      await setConfigKey("server.public_base_url", priorPublicBaseUrl, { force: true });
+    }
+  });
+
+  test("selected intake clips return an explicit Cockpit review path when no public URL is configured", async () => {
+    const priorPublicBaseUrl = getConfig().server.public_base_url ?? "";
+    await setConfigKey("server.public_base_url", "", { force: true });
+    try {
+      const clip = await createIntakeItem(
+        {
+          tenant_id: principal.tenant_id,
+          actor: { kind: "user", id: principal.id },
+          client_request_id: nextIntakeUuid(),
+          title: "Path-only collected clip",
+          source_url: "https://example.test/path-only-clip",
+          captured_at: "2026-10-10T07:00:00.000Z",
+          body: "Source material remains in the intake record.",
+        },
+        testDb.db,
+      );
+      const result = await handleConversationTool({
+        db: testDb.db,
+        principal,
+        name: "conversation_start",
+        args: { message: "Review this clip.", intake_item_ids: [clip.id] },
+      });
+      const body = JSON.parse(result.content[0]?.text ?? "{}") as {
+        conversation_url?: string;
+        conversation_path?: string;
+        conversation_next_action?: string;
+      };
+      expect(body.conversation_url).toBeUndefined();
+      expect(body.conversation_path).toMatch(/^\/cockpit\/chat\//);
+      expect(body.conversation_next_action).toContain("authenticated Cockpit");
+    } finally {
+      await setConfigKey("server.public_base_url", priorPublicBaseUrl, { force: true });
+    }
   });
 
   test("Tasks-capable client → CreateTaskResult with status working", async () => {

@@ -5,6 +5,8 @@ const REFERENCE_TYPES: readonly ConversationReference["type"][] = [
   "connector",
   "skill",
   "knowledge_source",
+  "execution",
+  "intake_item",
 ];
 
 export type ReferencedResource = ConversationReference & {

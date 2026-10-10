@@ -241,6 +241,12 @@ export const TOOL_POLICIES: Readonly<Record<string, ToolPolicyDefinition>> = {
       };
     },
   },
+  discard_intake_item: { computeModeFromInput: () => "no_confirm" },
+  restore_intake_item: { computeModeFromInput: () => "no_confirm" },
+  move_intake_item: { computeModeFromInput: () => "no_confirm" },
+  set_default_intake_category: { computeModeFromInput: () => "no_confirm" },
+  create_intake_proposal: { computeModeFromInput: () => "no_confirm" },
+  revise_intake_proposal: { computeModeFromInput: () => "no_confirm" },
   approve_patch_candidate: {
     defaultMode: "confirm_before_execution",
     buildPendingOutput: (input) => pickFields(input, ["candidate_id", "kind", "scope"]),

@@ -16,6 +16,7 @@ const de = (key: TranslationKey, values?: Record<string, string | number>) =>
 const EMPTY: StarterSources = {
   attention: [],
   usage: false,
+  intake: null,
   solutions: [],
   knowledge: [],
   categories: [],
@@ -58,6 +59,7 @@ const FULL: StarterSources = {
     { category: "billing", count: 4 },
     { category: "ops", count: 2 },
   ],
+  intake: { category: "inbox", collected: 2 },
 };
 
 const ids = (starters: ChatStarter[]) => starters.map((starter) => starter.id);
@@ -70,12 +72,17 @@ describe("chat start: example cards drawn from the installation", () => {
       "usage",
       "solution-webhook-to-slack",
       "knowledge-handbook",
+      "intake-inbox",
       "catalog-billing",
+      "capabilities",
+      "create",
+      "connect",
+      "run",
     ]);
   });
 
   test("each card names its subject and fills the composer with a question about it", () => {
-    const [failing, usage, solution, knowledge, catalog] = chatStarters(FULL, de);
+    const [failing, usage, solution, knowledge, intake, catalog] = chatStarters(FULL, de);
     expect(failing).toEqual(
       expect.objectContaining({
         title: "Warum schlug etwas fehl?",
@@ -93,6 +100,15 @@ describe("chat start: example cards drawn from the installation", () => {
     );
     expect(knowledge?.title).toBe("Was gilt im Betrieb?");
     expect(knowledge?.line).toBe("Quelle · Handbuch");
+    expect(intake).toEqual(
+      expect.objectContaining({
+        id: "intake-inbox",
+        title: "Eingang prüfen",
+        line: "Gesammelte Ideen prüfen und Wissen vorschlagen.",
+        prompt:
+          "Schau meine neuen Einträge in „inbox“ durch. Welche davon helfen uns? Zeige zu jedem Vorschlag den genauen Text, Quellen und das Wissensziel zur Bestätigung.",
+      }),
+    );
     expect(catalog?.line).toBe("billing · 4 Workflows");
     expect(catalog?.prompt).toBe("Zeig mir die Workflows in @kategorie/billing");
   });
@@ -134,7 +150,7 @@ describe("chat start: example cards drawn from the installation", () => {
     expect(starters[1]?.prompt).toBe(de("create.workflow.prompt"));
   });
 
-  test("never fewer than four and never more than six cards", () => {
+  test("keeps the general support cards alongside contextual suggestions", () => {
     const variants: StarterSources[] = [
       EMPTY,
       { ...EMPTY, usage: true },
@@ -147,9 +163,11 @@ describe("chat start: example cards drawn from the installation", () => {
       expect(count).toBeGreaterThanOrEqual(MIN_STARTERS);
       expect(count).toBeLessThanOrEqual(MAX_STARTERS);
     }
-    expect(
-      chatStarters({ ...FULL, categories: [{ category: "solo", count: 1 }] }, de).at(-1)?.line,
-    ).toBe("solo · 1 Workflow");
+    const starters = chatStarters({ ...FULL, categories: [{ category: "solo", count: 1 }] }, de);
+    expect(starters.map((starter) => starter.id)).toContain("intake-inbox");
+    expect(starters.map((starter) => starter.id)).toEqual(
+      expect.arrayContaining(["capabilities", "create", "connect", "run"]),
+    );
   });
 
   test("only failing workflows with a name become a failure card; empty blocks are skipped", () => {
@@ -162,6 +180,15 @@ describe("chat start: example cards drawn from the installation", () => {
   });
 });
 
+test("keeps the intake review starter when the personal category has no collected items", () => {
+  expect(
+    ids(chatStarters({ ...EMPTY, intake: { category: "inbox", collected: 1 } }, de)),
+  ).toContain("intake-inbox");
+  expect(
+    ids(chatStarters({ ...EMPTY, intake: { category: "inbox", collected: 0 } }, de)),
+  ).toContain("intake-inbox");
+});
+
 describe("chat start: what each person's cards may read", () => {
   test("solutions need connector:read, so a person without it never asks for them", () => {
     expect(starterGates(["workflow:read", "conversation:write"])).toEqual({
@@ -169,10 +196,18 @@ describe("chat start: what each person's cards may read", () => {
       solutions: false,
       knowledge: false,
       usage: false,
+      intake: false,
     });
     expect(
       starterGates(["workflow:read", "connector:read", "knowledge:read", "stats:read"]),
-    ).toEqual({ workflows: true, solutions: true, knowledge: true, usage: true });
+    ).toEqual({ workflows: true, solutions: true, knowledge: true, usage: true, intake: false });
+    expect(starterGates(["intake:read"])).toEqual({
+      workflows: false,
+      solutions: false,
+      knowledge: false,
+      usage: false,
+      intake: true,
+    });
   });
 
   test("a refused read is never retried; an outage is retried once", () => {
@@ -189,7 +224,12 @@ describe("chat start: what each person's cards may read", () => {
       "failing-w1",
       "usage",
       "knowledge-handbook",
+      "intake-inbox",
       "catalog-billing",
+      "capabilities",
+      "create",
+      "connect",
+      "run",
     ]);
   });
 });

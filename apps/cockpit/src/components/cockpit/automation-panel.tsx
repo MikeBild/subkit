@@ -578,7 +578,8 @@ export function WorkflowStatus({
           href: absolute(
             chatNewHref({
               workflowId: automation.workflowId,
-              prompt: t("automation.invalidPrompt", { name: workflowName }),
+              prompt: t("automation.invalidPrompt"),
+              references: [{ type: "workflow", id: automation.workflowId }],
             }),
           ),
         };

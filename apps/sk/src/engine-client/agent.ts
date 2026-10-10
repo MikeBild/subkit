@@ -15,6 +15,7 @@ export interface AgentBriefing {
   connectors_omitted: number;
   guides: string[];
   proposed_candidates: number;
+  intake?: { collected: number; reviewing: number; proposals: number } | null;
 }
 
 export interface AgentDomains {

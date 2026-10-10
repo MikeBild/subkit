@@ -30,7 +30,8 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
       {
         name: "sk_conversation_create",
         title: "sk_conversation_create",
-        description: "Create a new conversation and optionally drive the first turn.",
+        description:
+          "Create a new conversation and optionally drive the first turn. intake_item_ids starts a selected clip review; inspect and prepare it here, then use authenticated Cockpit for a person's final knowledge confirmation.",
         inputSchema: {
           type: "object",
           properties: {
@@ -40,6 +41,16 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
             workflow_id: { type: "string" },
             model: { type: "string" },
             title: { type: "string" },
+            intake_item_ids: {
+              type: "array",
+              minItems: 1,
+              maxItems: 100,
+              items: {
+                type: "string",
+                pattern:
+                  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+              },
+            },
           },
           additionalProperties: false,
         },
@@ -103,6 +114,22 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
         };
       }
       if (name === "sk_conversation_create") {
+        const intakeItemIds = args.intake_item_ids;
+        if (
+          intakeItemIds !== undefined &&
+          (!Array.isArray(intakeItemIds) ||
+            intakeItemIds.length === 0 ||
+            intakeItemIds.length > 100 ||
+            intakeItemIds.some(
+              (id) =>
+                typeof id !== "string" ||
+                !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                  id,
+                ),
+            ))
+        ) {
+          throw new Error("intake_item_ids must contain 1 to 100 UUIDs");
+        }
         const created = await client.createConversation({
           ...(typeof args.initial_message === "string"
             ? { initial_message: args.initial_message }
@@ -112,6 +139,7 @@ export async function runMcpProxy(profile: ResolvedProfile): Promise<void> {
           ...(typeof args.workflow_id === "string" ? { workflow_id: args.workflow_id } : {}),
           ...(typeof args.model === "string" ? { model: args.model } : {}),
           ...(typeof args.title === "string" ? { title: args.title } : {}),
+          ...(intakeItemIds ? { intake_item_ids: intakeItemIds } : {}),
         });
         return { content: [{ type: "text", text: JSON.stringify(created, null, 2) }] };
       }

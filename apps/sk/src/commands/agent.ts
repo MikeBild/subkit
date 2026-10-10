@@ -135,6 +135,7 @@ function briefingStatus(
     workflows: string[];
     connectors: string[];
     proposed_candidates: number;
+    intake?: { collected: number; reviewing: number; proposals: number } | null;
   },
 ): string {
   const counts = [
@@ -151,7 +152,13 @@ function briefingStatus(
     briefing.proposed_candidates > 0
       ? `; ${briefing.proposed_candidates} skill proposal${briefing.proposed_candidates === 1 ? "" : "s"} await review (run \`sk learnings review\`)`
       : "";
-  return `SubKit briefing loaded: ${domains.join(", ")} — ${summary}${candidates}.`;
+  const intake = briefing.intake;
+  const pending = intake ? intake.collected + intake.reviewing : 0;
+  const intakeStatus =
+    intake && (pending > 0 || intake.proposals > 0)
+      ? `; ${pending} collected entries and ${intake.proposals} knowledge proposals await review in this workspace — ask to review your collected entries`
+      : "";
+  return `SubKit briefing loaded: ${domains.join(", ")} — ${summary}${candidates}${intakeStatus}.`;
 }
 
 interface BriefingHookOptions {

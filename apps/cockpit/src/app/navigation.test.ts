@@ -37,7 +37,7 @@ describe("cockpit navigation contract", () => {
     expect(NAVIGATION.map((group) => group.items.map((item) => item.path))).toEqual([
       ["/", "/chat"],
       ["/workflows", "/connectors"],
-      ["/knowledge", "/skills", "/files"],
+      ["/intake", "/knowledge", "/skills", "/files"],
       ["/usage", "/audit", "/people", "/api-access", "/settings"],
     ]);
     expect(NAVIGATION.map((group) => group.labelKey)).toEqual([
@@ -61,12 +61,14 @@ describe("cockpit navigation contract", () => {
       expect(all).not.toContain(gone);
   });
 
-  test("Wissen is a heading over three entries, each behind its own read and active on its records", () => {
+  test("Wissen is a heading over four entries, each behind its own read and active on its records", () => {
+    expect(navigationItem("/intake")?.labelKey).toBe("nav.inbox");
     expect(navigationItem("/knowledge/abc")?.labelKey).toBe("nav.knowledgeSources");
     expect(navigationItem("/skills/abc")?.labelKey).toBe("nav.skills");
     expect(navigationItem("/files")?.labelKey).toBe("nav.files");
     expect(paths(["skill:read"])).toEqual(["/", "/skills"]);
     expect(paths(["file:read"])).toEqual(["/files"]);
+    expect(paths(["intake:read"])).toEqual(["/", "/intake"]);
     const icons = NAVIGATION.flatMap((group) => group.items).map((item) => item.icon);
     expect(new Set(icons).size).toBe(icons.length);
   });

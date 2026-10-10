@@ -97,6 +97,26 @@ function input(overrides: Partial<AssembleInput> = {}): AssembleInput {
 }
 
 describe("trimToBudget", () => {
+  test("intake reminder contains only tenant-wide counts and separates them from knowledge", () => {
+    const { markdown } = trimToBudget(
+      input({ intake: { collected: 3, reviewing: 1, proposals: 2 } }),
+      16000,
+    );
+    expect(markdown).toContain("3 collected, 1 under review, 2 proposals");
+    expect(markdown).toContain("not accepted knowledge");
+    expect(markdown).toContain("necessarily related");
+    expect(markdown).toContain("do not preload clips");
+    expect(markdown).toContain("confirm its admission");
+  });
+
+  test("unavailable or empty intake does not add a reminder", () => {
+    for (const intake of [null, { collected: 0, reviewing: 0, proposals: 0 }]) {
+      expect(trimToBudget(input({ intake }), 16000).markdown).not.toContain(
+        "Collected material awaiting review",
+      );
+    }
+  });
+
   test("keeps everything when the budget is generous", () => {
     const { markdown, state } = trimToBudget(input(), 16000);
     expect(state.fullBodyCount).toBe(3);

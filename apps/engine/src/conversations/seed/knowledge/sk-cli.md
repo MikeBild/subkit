@@ -111,6 +111,22 @@ Admin/config: `/config`, `/config-form`, `/settings` (5-tab palette: Status / Co
 
 # sk mcp — stdio MCP Proxy
 
+## Collected pages and ideas
+
+`sk intake list` lists collected items in the personal default category. `sk intake list --category research`
+lists that shared category's new entries. `sk intake review --category research`
+starts a saved review conversation and prints the authenticated Cockpit link.
+Without a selection, review uses the caller's default category; it never
+silently selects all tenant entries. `--items <comma-separated-ids>` selects
+particular clips, and `--json` returns structured output. The reviewer sees
+sources, proposed text and destination before confirming in the Cockpit.
+The CLI and MCP proxy preserve `intake_item_ids` as structured conversation input.
+Use `sk intake default --category research`, `sk intake move --item <id> --category research`,
+`sk intake discard --item <id>`, or `sk intake restore --item <id>` for reversible organization.
+Item changes check the current version; a concurrent change is reported without overwriting it.
+These commands never confirm knowledge admission.
+They do not expose an intake-confirmation tool.
+
 `sk mcp` runs a stdio Model Context Protocol server that proxies the most-used conversation surfaces to the engine, so an IDE/MCP client can drive sk without the TUI. It requires a logged-in profile (else `sk mcp: not logged in` / exit 2). It authenticates with the resolved profile — i.e. `--api-key`/`--engine-url` flags, the `SUBKIT_API_KEY`/`SUBKIT_ENGINE_URL` environment variables, or the on-disk profile — not any `SK_*`-named variable. (`SK_API_KEY` appears only as a placeholder in the curl/python snippets `sk workflows invoke-snippet` generates for your own scripts; the CLI itself does not read it. The snippet always states where the call runs: `--environment prod` (the default) or `--environment dev` is printed as the `x-subkit-environment` header, because a call without that header runs in development.)
 
 The proxy exposes a small local toolset that forwards to engine HTTP endpoints: ping the engine, create a conversation, append a message, fetch a conversation, and list your conversations. This stdio proxy is distinct from the engine's own remote MCP server: the engine's MCP palette (reached over HTTP at the engine URL by clients like claude.ai/ChatGPT) uses underscore tool names — `wf_<slug>`, `conversation_start`, `conversation_append`, `conversation_get`, `conversation_commit`, `conversation_respond_elicitation`, `run_workflow`, `search_knowledge`, `list_knowledge_sources`, `get_engine_status`, `whoami`, `get_token_budget`, `get_llm_usage`, `list_inbound_hooks`, `get_inbound_hook` — never dotted.

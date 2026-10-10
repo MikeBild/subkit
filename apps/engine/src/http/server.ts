@@ -78,6 +78,7 @@ import { registerInstallRoute } from "./routes/install.ts";
 import { registerInstallBinaryRoute } from "./routes/install-binary.ts";
 import { registerInstallClipperRoute } from "./routes/install-clipper.ts";
 import { registerInstallSkillRoute } from "./routes/install-skill.ts";
+import { registerIntakeRoutes } from "./routes/intake.ts";
 import { registerKnowledgeSourceRoutes } from "./routes/knowledge-sources.ts";
 import { registerLlmsTxtRoutes } from "./routes/llms-txt.ts";
 import { registerMcpCatalogRoutes } from "./routes/mcp-catalog.ts";
@@ -302,6 +303,7 @@ export function createApp(opts: CreateAppOptions = {}): OpenAPIHono<AppEnv> {
   registerCredentialRoutes(app);
   registerSkillRoutes(app);
   registerCategoryRoutes(app);
+  registerIntakeRoutes(app);
   registerKnowledgeSourceRoutes(app);
   registerSkillCandidateRoutes(app);
   registerAgentBriefingRoutes(app);

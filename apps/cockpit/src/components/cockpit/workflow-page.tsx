@@ -221,7 +221,7 @@ export function WorkflowPage({
       ? [
           {
             label: t("catalog.conversations.ask"),
-            href: absolute(chatNewHref({ workflowId: id })),
+            href: absolute(chatNewHref({ workflowId: id, references: [{ type: "workflow", id }] })),
             testId: "workflow-menu-ask",
           },
         ]

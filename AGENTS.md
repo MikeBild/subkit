@@ -21,6 +21,129 @@ Canonical repo-wide instructions for the SubKit engine and CLI. Closer AGENTS.md
   does not grow and is asked for again when it grows. It may stand until
   revoked or be limited by runs and time; revoking it is always possible.
 
+## Clippings: collection to knowledge
+
+Accepted product direction for the clipper, knowledge domain, Cockpit, and chat.
+This is a target contract, not a claim that the current implementation already
+supports the process. Describe it as available only after the complete flow is
+implemented and verified.
+
+- Preserve the user journey: Sammeln → Inbox → im Chat prüfen und aufbereiten →
+  Übernahme bestätigen → Wissen.
+- Inbox is the initial default category, not a reserved name or a permission
+  boundary. Reuse shared categories without a separate intake collection level.
+  Each authenticated identity may choose its default, including an empty category.
+- Keep category membership, processing state, and knowledge admission separate.
+  Collecting, renaming, or moving a clip never admits it to regular knowledge
+  retrieval. Intake content is available for explicit review and preparation;
+  normal knowledge retrieval excludes it until a person confirms the proposal.
+- Chat proposes what to retain, with source references and a reviewable result.
+  A person explicitly confirms the content and destination of the knowledge
+  admission. Do not confuse this content decision with an environment's standing
+  connector or execution approval.
+- Preserve the original clip and provenance, linked to the resulting knowledge.
+  Keep source author/publication time separate from collector/capture time.
+  A credential label must never stand in for the original author's identity.
+- Explain the same process in onboarding, intake empty states, the clipper, and
+  chat review. Use the user's actual category name in contextual text. Show
+  where an item is in the process and its next available action.
+- Suggested user explanation: "Sammle Seiten, Ideen und Hinweise in deiner
+  Kategorie. Im Chat prüfst du, was davon nützlich ist, und lässt es aufbereiten.
+  Erst wenn du die Übernahme bestätigst, wird daraus Wissen, das SubKit bei
+  passenden Fragen heranziehen kann. Die ursprüngliche Quelle bleibt erhalten."
+- Suggested chat starter: "Schau meine neuen Inbox-Einträge durch. Welche davon
+  helfen uns? Schlage vor, was wir als Wissen übernehmen sollten." Substitute
+  the chosen category name for Inbox.
+- Before shipping, cover category rename/move without admission, exclusion
+  before confirmation, explicit intake review, proposal confirmation, and
+  preserved provenance with acceptance tests. Keep README and generated
+  self-description aligned with delivered behavior through existing generators.
+- Completion also requires the whole user journey across Cockpit chat, sk CLI,
+  MCP, HTTP, and supported chat channels. Reuse the same domain operations and
+  human confirmation boundary. A surface may link to an authenticated review
+  page when it cannot present the exact proposal safely; describe and verify
+  that handoff instead of claiming native confirmation support.
+- Coding-agent briefings must distinguish collected material from confirmed
+  knowledge. Show a bounded, permission-scoped intake reminder and a useful
+  next action; never preload clip bodies as instructions or accepted facts.
+  Confirmed material must be discoverable in its intended knowledge domain.
+  Hook status messages must tell the person what is available and what to do.
+- Offer contextual review prompts using the actual category name. Measure
+  discovery, review, confirmation, provenance, and retrieval separately, with
+  explicit acceptance criteria and reproducible evidence. Prompt suggestions
+  must never imply that a clip has already been accepted as knowledge.
+- Keep setup guidance, README, generated llms assets, API contracts, and client
+  capabilities aligned. Match Clipper controls, typography, colors, spacing,
+  focus, and feedback to the existing SubKit design system.
+- Provide a short public-API smoke verification suitable for an explicitly
+  selected production test scope. Keep credentials and hosts outside the
+  repository, require explicit opt-in for writes, and report timing, assertions,
+  created resources, cleanup, and failures. Do not infer permission to deploy
+  or modify ordinary production content from a request for this verifier.
+- During development run focused checks for the changed behavior. Run the
+  broad completion gate after architecture, implementation, review, and test
+  agents have checked the complete agreed acceptance scope.
+- The active intake implementation goal includes a complete parity recheck after
+  the shared-category cutover: Clipper, sk CLI, MCP, HTTP, Cockpit chat, and
+  Google Chat. Check collection, category selection, discovery, review,
+  discard/restore, proposal, authenticated confirmation handoff, provenance,
+  and retrieval. Unsupported native actions must expose a working continuation,
+  not claim success. Report simulated and live evidence separately; a missing
+  connected-channel run remains an explicit verification gap.
+- Recheck Codex and Claude Code briefings, session hooks, human-facing output,
+  and contextual prompt suggestions. Confirmed sources must appear in the
+  intended domain; raw clips must remain excluded and only produce a bounded
+  permission-scoped review reminder. Cover updated generated llms assets,
+  setup instructions, and shipped binaries in the same acceptance scope.
+- Required cross-surface evidence: zero ordinary knowledge-search hits from an
+  unconfirmed clip; every proposed source remains traceable; repeated identical
+  confirmation produces exactly one admission; both coding-agent hooks can
+  discover the confirmed source in the intended domain; briefing output never
+  contains raw clip bodies. Verify restricted permissions and stale proposals
+  as negative cases. A mock-only browser run is not production evidence.
+- Reuse persisted conversations for review across clients, and keep clients
+  thin. Present one primary category-aware review suggestion, with optional
+  comparison and preparation prompts. Human-facing results explain what is
+  useful, why, its sources, the proposed text and destination, and the next
+  action. Derive effectiveness measures from existing audit events; separate
+  deterministic contract checks from a bounded real-model evaluation.
+
+## Cockpit consistency
+
+Before changing a Cockpit view, inspect the matching existing view and reuse its
+established design templates and shared components. Lists, category navigation
+and editing, filters, row actions, and bulk actions must follow the existing
+Cockpit patterns. Do not invent a new card layout, selector, checkbox interaction,
+or category-management variant when the established pattern already serves the
+user flow. Introduce a new pattern only when an existing one cannot support the
+required behavior, and explain that gap first.
+Use the existing form dialogs for editing product records. Do not use browser
+`prompt`, `alert`, or `confirm` dialogs as product editing or approval surfaces.
+
+For Intake, use the same DataTable and shared category-management drawer as
+Knowledge Sources. Clicking an item opens its internal detail view; the source
+address is a separate link in those details. Category management means editing
+categories and assigning items, not starting a category review chat. Keep chat
+review as an action on the collected item.
+An item's chat action uses the existing visible @ reference mechanism, bound to
+that item's ID, with a short review instruction. Never use a category-wide or
+plural review prompt after the user selects a single item. Intake references
+remain unreviewed source material and never become ordinary knowledge implicitly.
+For every chat action with an @ reference, keep the accompanying instruction
+action-only: do not repeat the referenced record's title or name in the prompt.
+The item editor exposes title, content, and category in the existing form dialog.
+Do not add a separate notes field. Preserve existing stored notes and the original
+source snapshot; editing the working copy requires reviewing affected proposals again.
+Show a knowledge proposal and its confirmation in the associated item's details
+only when a proposal exists. Chat links open those details directly. Do not add
+an empty global review section to the intake list. Chat preparation and explicit
+human admission remain separate decisions.
+
+Keep synthetic verification data in a separate test tenant or isolated fixture.
+Do not populate the user's manual acceptance Inbox with generated test clips or
+knowledge. Track created fixture IDs and clean those exact fixtures after checks;
+never remove unrelated user content.
+
 ## Sources and workflow
 
 Read touched code and the nearest AGENTS.md:
@@ -32,6 +155,10 @@ The engine currently contains 48 directories under `apps/engine/src/`; the
 subsystem-count contract keeps this navigation summary aligned with the tree.
 
 Work directly on `main`. Prefer focused changes, existing abstractions, and generated-source workflows. Never discard unrelated dirty-worktree state.
+Before starting implementation, synchronize with `git pull --ff-only origin main`.
+Secure existing tracked and untracked work first and restore it afterward without
+dropping unrelated changes. Verify both checkout and running engine versions;
+do not infer the deployed or local runtime version from the checkout alone.
 
 ## Non-negotiable rules
 
@@ -48,6 +175,12 @@ Work directly on `main`. Prefer focused changes, existing abstractions, and gene
 - Commit messages are one conventional-commit line.
 
 ## Validation
+
+Visual acceptance is performed manually by the user. Do not run automated visual
+matrices across viewports, themes, or languages during implementation, verification,
+or release preparation. `bun run verify` excludes that matrix. Run visual matrix
+tools only when the user explicitly requests them again. Functional browser tests
+for actions, navigation, permissions, persistence, and handoffs remain automated.
 
 There is no CI. The pre-push hook (lint, typecheck, invariants, drift, commit
 messages, gitleaks, build) and `bun run verify` before every release tag are the

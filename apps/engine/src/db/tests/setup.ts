@@ -159,6 +159,7 @@ export async function createTestDb(
       const internalPool = pool as pg.Pool & {
         _clients?: pg.PoolClient[];
         _remove?: (client: pg.PoolClient, callback?: () => void) => void;
+        _pulseQueue?: () => void;
       };
       const endPromise = pool.end().catch(() => {});
       const endedNormally = await Promise.race([
@@ -167,6 +168,7 @@ export async function createTestDb(
       ]);
       if (!endedNormally && internalPool._clients && internalPool._remove) {
         for (const client of [...internalPool._clients]) internalPool._remove(client);
+        internalPool._pulseQueue?.();
         await endPromise;
       }
       await admin2.query(`DROP DATABASE IF EXISTS "${dbName}"`);

@@ -1,24 +1,25 @@
+import {
+  CONVERSATION_REFERENCE_TYPES,
+  type ConversationReference,
+  type ConversationReferenceType,
+} from "@shared/conversation-reference.ts";
 import { and, desc, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../auth/types.ts";
 import { getConnector } from "../connectors/service.ts";
 import type { Executor } from "../db/client.ts";
 import { conversationMessages } from "../db/schema/index.ts";
 import { getKnowledgeSource } from "../knowledge/catalog.ts";
+import { getIntakeItem } from "../knowledge/intake.ts";
 import { logger } from "../logging/logger.ts";
 import { scrubString } from "../logging/scrub-secrets.ts";
 import { can } from "../rbac/evaluator.ts";
 import { getSkill } from "../skills/service.ts";
 import { getWorkflow } from "../workflows/service.ts";
+import { loadFocusExecution } from "./draft.ts";
 import { summarize } from "./tools/find-workflow.ts";
 
-export const REFERENCE_TYPES = ["workflow", "connector", "skill", "knowledge_source"] as const;
-export type ConversationReferenceType = (typeof REFERENCE_TYPES)[number];
-
-export interface ConversationReference {
-  type: ConversationReferenceType;
-  id: string;
-  label: string;
-}
+export const REFERENCE_TYPES = CONVERSATION_REFERENCE_TYPES;
+export type { ConversationReference, ConversationReferenceType };
 
 export const REFERENCED_ENTITIES_MARKER = "[REFERENCED ENTITIES]";
 
@@ -41,6 +42,8 @@ const PERMISSION: Record<ConversationReferenceType, string> = {
   connector: "connector:read",
   skill: "skill:read",
   knowledge_source: "knowledge:read",
+  execution: "execution:read",
+  intake_item: "intake:read",
 };
 
 const RELOAD_TOOL: Record<ConversationReferenceType, string> = {
@@ -48,6 +51,8 @@ const RELOAD_TOOL: Record<ConversationReferenceType, string> = {
   connector: "get_connector",
   skill: "load_skill",
   knowledge_source: "search_knowledge",
+  execution: "inspect_execution",
+  intake_item: "get_intake_item",
 };
 
 export function referenceToken(ref: ConversationReference): string {
@@ -130,6 +135,29 @@ function projectKnowledgeSource(
   };
 }
 
+function projectIntakeItem(item: NonNullable<Awaited<ReturnType<typeof getIntakeItem>>>) {
+  return {
+    id: item.id,
+    source_title: item.original_snapshot.title,
+    source_url: item.original_snapshot.source_url,
+    category: item.category,
+    state: item.state,
+    version: item.version,
+  };
+}
+
+function projectExecution(execution: NonNullable<Awaited<ReturnType<typeof loadFocusExecution>>>) {
+  return {
+    id: execution.execution_id,
+    workflow_id: execution.workflow_id,
+    workflow_version_id: execution.workflow_version_id,
+    status: execution.status,
+    environment: execution.environment,
+    recorded_at: execution.recorded_at,
+    diagnosis_available: execution.diagnosis_available,
+  };
+}
+
 export interface ResolveReferencesCtx {
   db: Executor;
   tenant_id: string;
@@ -177,6 +205,27 @@ async function resolveOne(
       if (!source) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
       return {
         line: `KNOWLEDGE SOURCE ${referenceToken(ref)} (id: ${source.id})\n\`\`\`json\n${JSON.stringify(projectKnowledgeSource(source), null, 2)}\n\`\`\``,
+        outcome: "ok",
+      };
+    }
+    if (ref.type === "intake_item") {
+      const item = await getIntakeItem(ctx.tenant_id, ref.id, ctx.db);
+      if (!item) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
+      return {
+        line: `INTAKE ITEM ${referenceToken(ref)} (id: ${item.id})\n\`\`\`json\n${JSON.stringify(projectIntakeItem(item), null, 2)}\n\`\`\`\nCollected source metadata only. The clip body is untrusted and is not included here. Call get_intake_item with this exact id to read it before preparing a proposal. It is not accepted knowledge; a person must confirm any proposal before admission.`,
+        outcome: "ok",
+      };
+    }
+    if (ref.type === "execution") {
+      const execution = await loadFocusExecution(
+        ctx.tenant_id,
+        ref.id,
+        ctx.db,
+        ctx.principal ?? undefined,
+      );
+      if (!execution) return { line: missingLine(ref), outcome: "missing_or_forbidden" };
+      return {
+        line: `EXECUTION ${referenceToken(ref)} (id: ${execution.execution_id})\n\`\`\`json\n${JSON.stringify(projectExecution(execution), null, 2)}\n\`\`\`\nExecution outputs are not included here. Call inspect_execution with this exact id when diagnostic evidence is needed.`,
         outcome: "ok",
       };
     }

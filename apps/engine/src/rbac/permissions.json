@@ -316,6 +316,22 @@
   },
 
   {
+    "name": "intake:read",
+    "description": "Read collected clips, intake collections, and knowledge proposals",
+    "resource_type": "intake"
+  },
+  {
+    "name": "intake:write",
+    "description": "Collect and organize clips, intake collections, and knowledge proposals",
+    "resource_type": "intake"
+  },
+  {
+    "name": "intake:confirm",
+    "description": "Confirm a reviewed knowledge proposal for publication",
+    "resource_type": "intake"
+  },
+
+  {
     "name": "discovery:read",
     "description": "Read discovery runs and artifacts",
     "resource_type": "discovery"

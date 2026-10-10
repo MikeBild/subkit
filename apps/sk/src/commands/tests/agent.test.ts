@@ -535,6 +535,38 @@ describe("briefing hook output", () => {
     }
   });
 
+  test("shows a short review action for collected entries without exposing clip contents", async () => {
+    for (const event of ["SessionStart", "UserPromptSubmit"]) {
+      const root = fixture();
+      const fetchImpl = (async (input: RequestInfo | URL) => {
+        if (String(input).includes("/v1/agent/domains")) {
+          return Response.json({ domains: ["blog-de"], from_prompt: ["blog-de"], from_repo: [] });
+        }
+        return Response.json({
+          markdown: "# Briefing\nCollected material is awaiting review.",
+          skills_full: [],
+          skills_title_only: [],
+          knowledge_sources: [],
+          workflows: [],
+          connectors: [],
+          proposed_candidates: 0,
+          intake: { collected: 3, reviewing: 1, proposals: 2 },
+        });
+      }) as typeof fetch;
+      const result = await getBriefingHookOutput(payload(root, event), {
+        profile,
+        fetchImpl,
+        sessionDirectory: join(root, "sessions"),
+      });
+      expect(result?.systemMessage).toContain(
+        "4 collected entries and 2 knowledge proposals await review",
+      );
+      expect(result?.systemMessage).toContain("ask to review your collected entries");
+      expect(result?.systemMessage).not.toContain("intake:");
+      expect(result?.hookSpecificOutput?.hookEventName).toBe(event);
+    }
+  });
+
   test("routes open-ended check-ins through the declared SubKit domain and live status tools", async () => {
     const root = fixture(["subkit"]);
     const fetchImpl = (async () =>

@@ -111,6 +111,11 @@ import sql0090AmbiguousVertigo from "./0090_ambiguous_vertigo.sql" with { type: 
 import sql0091CatalogCategoryMetadata from "./0091_catalog_category_metadata.sql" with { type: "text" };
 import sql0092CatalogCategoryAssignment from "./0092_catalog_category_assignment.sql" with { type: "text" };
 import sql0093CategoryPurposeRetry from "./0093_category_purpose_retry.sql" with { type: "text" };
+import sql0094BentBushwacker from "./0094_bent_bushwacker.sql" with { type: "text" };
+import sql0095IntakeRelations from "./0095_intake_relations.sql" with { type: "text" };
+import sql0096AmbiguousLockheed from "./0096_ambiguous_lockheed.sql" with { type: "text" };
+import sql0097BentMadelynePryor from "./0097_bent_madelyne_pryor.sql" with { type: "text" };
+import sql0098IntakeCategoryAssignment from "./0098_intake_category_assignment.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -229,6 +234,11 @@ const SQL_BY_TAG: Record<string, string> = {
   "0091_catalog_category_metadata": sql0091CatalogCategoryMetadata,
   "0092_catalog_category_assignment": sql0092CatalogCategoryAssignment,
   "0093_category_purpose_retry": sql0093CategoryPurposeRetry,
+  "0094_bent_bushwacker": sql0094BentBushwacker,
+  "0095_intake_relations": sql0095IntakeRelations,
+  "0096_ambiguous_lockheed": sql0096AmbiguousLockheed,
+  "0097_bent_madelyne_pryor": sql0097BentMadelynePryor,
+  "0098_intake_category_assignment": sql0098IntakeCategoryAssignment,
 };
 
 const journal = journalMeta as unknown as Journal;

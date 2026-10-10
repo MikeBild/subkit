@@ -1,43 +1,76 @@
 import { expect, test } from "bun:test";
-import { type ApiError, KnowledgeApi } from "./api.ts";
+import { IntakeApi } from "./api.ts";
+import { createDraft } from "./clipper.ts";
+import { intakeSubmission } from "./intake.ts";
 
-test("create-only bundle requests preserve a slug conflict identifier", async () => {
+test("category lookup retains its error code", async () => {
   const originalFetch = globalThis.fetch;
   let request: Request | undefined;
   Object.assign(globalThis, {
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       request = new Request(input, init);
-      return new Response(
-        JSON.stringify({
-          code: "slug_exists",
-          details: { knowledge_source_id: "source-id" },
-          message: "already exists",
-        }),
-        { status: 409, headers: { "content-type": "application/json" } },
+      return Response.json(
+        { code: "request_conflict", message: "already exists" },
+        { status: 409 },
       );
     },
   });
   try {
     await expect(
-      new KnowledgeApi("https://engine.example", "key").createBundle(
-        "Clips",
-        "clips-one",
-        "/clips/a.md",
-        "content",
-      ),
+      new IntakeApi("https://engine.example/prefix", "key").categories(),
     ).rejects.toMatchObject({
       status: 409,
-      code: "slug_exists",
-      details: { knowledge_source_id: "source-id" },
-    } satisfies Partial<ApiError>);
-    expect(await request?.json()).toEqual({
-      name: "Clips",
-      slug: "clips-one",
-      scope: "global",
-      create_only: true,
-      files: [{ path: "/clips/a.md", content: "content" }],
+      code: "request_conflict",
     });
+    expect(request?.url).toBe("https://engine.example/prefix/v1/categories");
   } finally {
     Object.assign(globalThis, { fetch: originalFetch });
   }
+});
+
+test("category payload keeps original capture separate from title edits and notes", () => {
+  const draft = createDraft(
+    {
+      title: "Original",
+      sourceUrl: "https://example.test/page",
+      capturedAt: "2020-01-01T00:00:00Z",
+      author: "Source author",
+    },
+    "Original text",
+    "https://engine.example",
+  );
+  draft.metadata = {
+    ...draft.metadata,
+    title: "My title",
+    sourceUrl: "https://example.test/edited",
+  };
+  draft.body = "Edited extract";
+  draft.note = "Useful idea";
+  draft.category = "research";
+  const submitted = intakeSubmission(draft, "request");
+  expect(submitted.title).toBe("My title");
+  expect(submitted.body).toBe("Edited extract");
+  expect(submitted.note).toBe("Useful idea");
+  expect(submitted.source_url).toBe("https://example.test/page");
+  expect(submitted.original_snapshot).toMatchObject({
+    title: "Original",
+    body: "Original text",
+    source_author: "Source author",
+    origin: "capture",
+  });
+  expect(submitted.category).toBe("research");
+});
+
+test("restored drafts never claim to be a verified original page capture", () => {
+  const draft = createDraft(
+    {
+      title: "Edited before update",
+      sourceUrl: "https://example.test",
+      capturedAt: "2020-01-01T00:00:00Z",
+    },
+    "Edited draft",
+    "https://engine.example",
+  );
+  delete draft.originalCapture;
+  expect(intakeSubmission(draft, "request").original_snapshot.origin).toBe("restored_draft");
 });

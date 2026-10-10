@@ -10383,6 +10383,579 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/intake/default-category": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the caller's personal default shared category */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeDefaultCategory"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the caller's personal default shared category */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["IntakeDefaultCategory"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeDefaultCategory"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/intake/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List collected clips without adding them to knowledge retrieval */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description The catalog block this object belongs to. One vocabulary is shared by workflows, connectors, knowledge sources, skills and files of a tenant; `GET /v1/categories` lists it. */
+                    category?: components["schemas"]["CatalogCategory"];
+                    state?: "collected" | "reviewing" | "admitted" | "discarded";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["IntakeItem"][];
+                            total: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Collect an immutable source clip */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateIntakeItemBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeItem"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/intake/items/mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List metadata-only intake references for mentions */
+        get: {
+            parameters: {
+                query?: {
+                    id?: string;
+                    q?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                /** Format: uuid */
+                                id: string;
+                                title: string;
+                                /** Format: uri */
+                                source_url: string;
+                                category: components["schemas"]["CatalogCategory"];
+                                /** @enum {string} */
+                                state: "collected" | "reviewing" | "admitted" | "discarded";
+                                version: number;
+                            }[];
+                            total: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/intake/items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an intake clip and its immutable provenance */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeItem"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Organize an intake clip without changing its original source snapshot */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["PatchIntakeItemBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeItem"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/intake/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List reviewable knowledge proposals */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "draft" | "stale" | "confirmed" | "rejected";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["IntakeProposal"][];
+                            total: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a versioned proposal from collected clips */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateIntakeProposalBody"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeProposal"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/intake/proposals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current proposal revision, source references, and digest */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeProposal"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Revise a proposal, creating a new reviewable revision */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ReviseIntakeProposalBody"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeProposal"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/v1/intake/proposals/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the exact reviewed proposal revision and publish it as knowledge */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmIntakeProposalBody"];
+                };
+            };
+            responses: {
+                /** @description Confirmed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeProposal"];
+                    };
+                };
+                /** @description Human confirmation required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/intake/proposals/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a proposal revision */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RejectIntakeProposalBody"];
+                };
+            };
+            responses: {
+                /** @description Rejected */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IntakeProposal"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Changed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/knowledge-sources/{id}/history": {
         parameters: {
             query?: never;
@@ -22480,6 +23053,10 @@ export interface components {
             total: number;
             counts: components["schemas"]["CategoryKindCounts"];
             llm_counts: components["schemas"]["CategoryKindCounts"];
+            intake_open: {
+                collected: number;
+                reviewing: number;
+            };
         };
         CategoryKindCounts: {
             workflow: number;
@@ -22487,6 +23064,7 @@ export interface components {
             knowledge_source: number;
             skill: number;
             file: number;
+            intake: number;
         };
         RenameCategoryResponse: {
             from: string;
@@ -22509,6 +23087,137 @@ export interface components {
             preserve_purpose?: boolean;
             expected_source_revision: number | null;
             expected_target_revision: number | null;
+        };
+        IntakeDefaultCategory: {
+            category: components["schemas"]["CatalogCategory"];
+        };
+        IntakeItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            category: components["schemas"]["CatalogCategory"];
+            /** Format: uuid */
+            client_request_id: string;
+            original_snapshot: components["schemas"]["IntakeOriginalSnapshot"] & {
+                title: string;
+                body: string;
+            };
+            title: string;
+            body: string;
+            note: string;
+            /** @enum {string} */
+            state: "collected" | "reviewing" | "admitted" | "discarded";
+            version: number;
+            collected_by: {
+                /** @enum {string} */
+                kind: "user" | "system_account";
+                /** Format: uuid */
+                id: string;
+            };
+            /** Format: uuid */
+            admitted_knowledge_source_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        IntakeOriginalSnapshot: {
+            title?: string;
+            /** Format: uri */
+            source_url?: string;
+            source_author?: string;
+            published_at?: string;
+            /** Format: date-time */
+            captured_at?: string;
+            body?: string;
+            /** @enum {string} */
+            origin?: "capture" | "restored_draft";
+        };
+        CreateIntakeItemBody: {
+            /** Format: uuid */
+            client_request_id: string;
+            category?: components["schemas"]["CatalogCategory"];
+            title: string;
+            /** Format: uri */
+            source_url: string;
+            source_author?: string;
+            published_at?: string;
+            /** Format: date-time */
+            captured_at: string;
+            body: string;
+            note?: string;
+            original_snapshot?: components["schemas"]["IntakeOriginalSnapshot"];
+        };
+        PatchIntakeItemBody: {
+            expected_version: number;
+            category?: components["schemas"]["CatalogCategory"];
+            title?: string;
+            body?: string;
+            note?: string;
+            /** @enum {string} */
+            state?: "collected" | "reviewing" | "discarded";
+        };
+        IntakeProposal: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            /** @enum {string} */
+            status: "draft" | "stale" | "confirmed" | "rejected";
+            current_revision: number;
+            confirmed_revision: number | null;
+            /** Format: uuid */
+            confirmed_knowledge_source_id: string | null;
+            /** Format: date-time */
+            rejected_at: string | null;
+            stale_reason: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            revision: {
+                revision: number;
+                digest: string;
+                title: string;
+                body: string;
+                target: components["schemas"]["IntakeProposalTarget"];
+                items: {
+                    /** Format: uuid */
+                    id: string;
+                    version: number;
+                    title: string;
+                    /** Format: uri */
+                    source_url: string;
+                }[];
+                /** Format: date-time */
+                created_at: string;
+            };
+        };
+        IntakeProposalTarget: {
+            /** Format: uuid */
+            knowledge_source_id: string;
+            expected_version: string;
+        } | {
+            name: string;
+            category?: components["schemas"]["CatalogCategory"];
+            tags?: string[];
+        };
+        CreateIntakeProposalBody: {
+            item_ids: string[];
+            title: string;
+            body: string;
+            target: components["schemas"]["IntakeProposalTarget"];
+        };
+        ReviseIntakeProposalBody: components["schemas"]["CreateIntakeProposalBody"] & {
+            expected_revision: number;
+        };
+        ConfirmIntakeProposalBody: {
+            expected_revision: number;
+            digest: string;
+        };
+        RejectIntakeProposalBody: {
+            expected_revision: number;
         };
         KnowledgeSourceVersionListResponse: {
             items: components["schemas"]["KnowledgeSourceVersion"][];
@@ -22836,6 +23545,12 @@ export interface components {
             /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
             guides: string[];
             proposed_candidates: number;
+            /** @description Tenant-wide intake counts; null when the caller cannot read intake. Never includes clip content. */
+            intake: {
+                collected: number;
+                reviewing: number;
+                proposals: number;
+            } | null;
         };
         AgentSessionCaptureResponse: {
             queued: boolean;
@@ -23003,11 +23718,12 @@ export interface components {
             permission_mode?: "auto" | "ask" | "plan" | "yolo";
             step_budget?: number;
             playground?: boolean;
+            intake_item_ids?: string[];
             references?: components["schemas"]["ConversationReference"][];
         };
         ConversationReference: {
             /** @enum {string} */
-            type: "workflow" | "connector" | "skill" | "knowledge_source";
+            type: "workflow" | "connector" | "skill" | "knowledge_source" | "execution" | "intake_item";
             /** Format: uuid */
             id: string;
             label: string;

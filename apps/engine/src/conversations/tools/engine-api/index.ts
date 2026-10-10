@@ -9,6 +9,7 @@ export {
 export { executionReadTools } from "./executions.ts";
 export { hookReadTools } from "./hooks.ts";
 export { identityReadTools } from "./identity.ts";
+export { intakeTools } from "./intake.ts";
 export { knowledgeSourceReadTools } from "./knowledge-sources.ts";
 export { metricsReadTools } from "./metrics.ts";
 export { patchCandidateReadTools } from "./patch-candidates.ts";
@@ -30,6 +31,7 @@ import {
 import { executionReadTools } from "./executions.ts";
 import { hookReadTools } from "./hooks.ts";
 import { identityReadTools } from "./identity.ts";
+import { intakeTools } from "./intake.ts";
 import { knowledgeSourceReadTools } from "./knowledge-sources.ts";
 import { metricsReadTools } from "./metrics.ts";
 import { patchCandidateReadTools } from "./patch-candidates.ts";
@@ -51,6 +53,7 @@ export const ALL_ENGINE_API_READ_TOOLS: ConversationTool[] = [
   ...auditReadTools,
   ...metricsReadTools,
   ...identityReadTools,
+  ...intakeTools.filter((tool) => tool.category === "tenant_read"),
   ...rbacReadTools,
   ...hookReadTools,
   ...subscriptionReadTools,
