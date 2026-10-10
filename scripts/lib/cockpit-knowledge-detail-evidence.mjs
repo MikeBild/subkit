@@ -1,4 +1,5 @@
 import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
+import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 
 const READ_AT = "2024-03-19T12:00:00.000Z";
 const UPDATED_AT = "2025-07-11T12:00:00.000Z";
@@ -115,8 +116,7 @@ export async function verifyKnowledgeDetailEvidence(
     ), "Read timestamp must not use source updated_at");
     await contains(sheet, "Call the operator and record the outcome.");
     await capture("knowledge-section-recorded-facts");
-    await sheet.locator('[data-slot="sheet-close"]').click();
-    await sheet.waitFor({ state: "hidden" });
+    await closeRecordSheet(sheet);
     if (!(await page.getByTestId("knowledge-edit").isVisible()))
       await page.getByTestId("detail-menu").click();
     await page.getByTestId("knowledge-edit").click();

@@ -1,5 +1,6 @@
 import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
 import { verifyPeopleLoadsPerTab } from "./cockpit-people-tabs.mjs";
+import { closeRecordSheet } from "./cockpit-record-sheet.mjs";
 
 const ACTOR_ID = "8b18c6a4-00e7-4c3b-b044-2a04d6915842";
 const GROUP_ID = "15683d9a-42c7-49d8-9549-40a19eb15f44";
@@ -266,7 +267,7 @@ export async function verifyManagementEvidence(
     await openRow(page, "people-list", 0);
     await contains(page.getByTestId("people-sheet-groups"), GROUP, "saved human group membership");
     await capture("management-person-groups");
-    await page.getByTestId("people-sheet").locator('[data-slot="sheet-close"]').click();
+    await closeRecordSheet(page.getByTestId("people-sheet"));
     await stand.visit(page, "people?section=groups");
     await contains(row(page, "groups-list", 0), GROUP, "group list name");
     await openRow(page, "groups-list", 0);
@@ -336,7 +337,7 @@ export async function verifyManagementEvidence(
         "API key last use in detail",
       );
       await capture(index === 0 ? "management-key-used-human" : "management-key-unused-service");
-      await page.getByTestId("api-key-sheet").locator('[data-slot="sheet-close"]').click();
+      await closeRecordSheet(page.getByTestId("api-key-sheet"));
     }
   } finally {
     await page.unroute(ROUTE, handler);
