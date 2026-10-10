@@ -287,8 +287,8 @@ export function anthropicWebSearchApplies(
   return provider === "anthropic" && /claude/i.test(modelId) && enabled === true;
 }
 
-export function buildAnthropicWebSearchTool(maxUses: number): Tool {
-  const provider = createAnthropic(anthropicOptions());
+export function buildAnthropicWebSearchTool(maxUses: number, tenantId?: string): Tool {
+  const provider = createAnthropic(anthropicOptions(tenantId));
   return provider.tools.webSearch_20250305({ maxUses }) as unknown as Tool;
 }
 

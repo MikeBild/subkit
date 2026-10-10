@@ -955,7 +955,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
     })();
     const webSearchEnabled = anthropicWebSearchApplies(attemptProvider, modelId, webSearchSetting);
     const turnTools: ToolSet = webSearchEnabled
-      ? { ...tools, web_search: buildAnthropicWebSearchTool(5) }
+      ? { ...tools, web_search: buildAnthropicWebSearchTool(5, p.tenant_id) }
       : tools;
     const result = streamText({
       model: resolvedModel,
