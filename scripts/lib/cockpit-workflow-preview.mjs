@@ -129,8 +129,12 @@ export async function verifyWorkflowPreview(page, stand, workflowId, locale) {
     if (requests.length !== 2 || requests[1]?.source !== "step") {
       throw new Error("Step preview lost its exact source or dispatched twice");
     }
-    await page.keyboard.press("Escape");
-    await page.getByTestId("workflow-step-0-sheet").waitFor({ state: "detached" });
+    const stepSheet = page.getByTestId("workflow-step-0-sheet");
+    await stepSheet.focus();
+    if (!(await stepSheet.evaluate((element) => element === document.activeElement)))
+      throw new Error("Step inspector must receive keyboard focus before scoped Escape");
+    await stepSheet.press("Escape");
+    await stepSheet.waitFor({ state: "hidden" });
     await page.getByTestId("step-savebar-discard").click();
     await page.getByTestId("step-savebar").waitFor({ state: "detached" });
     if (await page.getByTestId("workflow-test-result").count())
