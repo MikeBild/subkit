@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { MockLanguageModelV4 } from "ai/test";
 import { _resetConfigForTests, loadConfig, setConfigKey } from "../../../config/loader.ts";
 import {
+  buildAnthropicWebSearchTool,
   detectConfiguredProvider,
   initializeModel,
   ProviderMisconfiguredError,
@@ -194,6 +195,26 @@ describe("initializeModel", () => {
     expect(r.provider).toBe("anthropic");
     expect(r.modelId).toBe("claude-sonnet-4-5");
     expect(typeof r.model).toBe("object");
+  });
+
+  it("builds web search with tenant credentials without borrowing another tenant's key", async () => {
+    configDir = mkdtempSync(join(tmpdir(), "sk-web-search-tenant-"));
+    await loadConfig({
+      env: { DATABASE_URL: "postgres://x", NODE_ENV: "test" },
+      configPathOverride: join(configDir, "subkit.config.json"),
+    });
+    await setConfigKey("llm.providers.anthropic.api_key", "tenant-ant-key", {
+      tenantId: "tenant-a",
+      force: true,
+    });
+
+    expect(() => buildAnthropicWebSearchTool(5)).toThrow(ProviderMisconfiguredError);
+    expect(() => buildAnthropicWebSearchTool(5, "tenant-b")).toThrow(ProviderMisconfiguredError);
+    expect(buildAnthropicWebSearchTool(5, "tenant-a")).toMatchObject({
+      type: "provider",
+      id: "anthropic.web_search_20250305",
+      args: { maxUses: 5 },
+    });
   });
 
   it("does not fall back to legacy env vars after config has explicitly cleared a leaf", async () => {
