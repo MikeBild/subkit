@@ -36,8 +36,8 @@ type FamilyPageProps = HTMLAttributes<HTMLDivElement> & {
 
 const measures = {
   reading: "max-w-[780px]",
-  working: "max-w-[1120px]",
-  workbench: "max-w-[1280px]",
+  working: "max-w-[1440px]",
+  workbench: "max-w-[1760px]",
   wide: "max-w-none",
 } as const;
 

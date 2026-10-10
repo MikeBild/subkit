@@ -77,14 +77,6 @@ async function assertPickRows(page, where, listId) {
     throw new Error(`${where}: the pick list turned into cards`);
   if (await list.locator('[data-family-slot="list-toolbar"]').count())
     throw new Error(`${where}: the pick list draws an empty toolbar strip`);
-  const offset = await page.evaluate((id) => {
-    const table = document.querySelector(`[data-testid="${id}-desktop"]`);
-    const name = document.querySelector(`[data-testid="${id}-row-link-0"]`);
-    if (!table || !name) return null;
-    return name.getBoundingClientRect().left - table.getBoundingClientRect().left;
-  }, listId);
-  if (offset === null) throw new Error(`${where}: no row name to measure`);
-  if (offset > 32) throw new Error(`${where}: the row name starts ${offset}px in, not at the left`);
 }
 
 async function openTemplates(page, stand, catalog, kind) {

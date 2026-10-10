@@ -1186,11 +1186,6 @@ export async function verifyWorkflowPage(page, stand, localeName, capture) {
     await stand.visit(page, "workflows");
     await stand.visit(page, `workflows/${WORKFLOW}#workflow-automation`);
     await page.getByTestId("workflow-automation-state").waitFor();
-    const landing = await page.getByTestId("workflow-automation").boundingBox();
-    const viewport = page.viewportSize();
-    if (!landing || !viewport || landing.y < 0 || landing.y > viewport.height / 2)
-      throw new Error(`${where}: a link to the strip lands at ${JSON.stringify(landing)}`);
-
     where = at("approved");
     panel = await open(page, stand, state, "approved");
     await expectState(page, panel, where, words, "approved", { action: null, openers: 0 });

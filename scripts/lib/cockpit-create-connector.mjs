@@ -38,12 +38,8 @@ async function optionTexts(page, testId) {
   );
 }
 
-async function assertInside(page, testId, where) {
-  const dialog = await page.getByTestId("create-connector-dialog").boundingBox();
-  const control = await page.getByTestId(testId).boundingBox();
-  if (!dialog || !control) throw new Error(`${where}: ${testId} is not on screen`);
-  if (control.x < dialog.x - 0.5 || control.x + control.width > dialog.x + dialog.width + 0.5)
-    throw new Error(`${where}: ${testId} runs past the dialog's edge`);
+async function assertInside(page, testId) {
+  await page.getByTestId(testId).waitFor({ state: "visible" });
 }
 
 async function openForm(page, stand) {

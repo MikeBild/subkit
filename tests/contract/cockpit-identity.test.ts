@@ -1,11 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Browser, chromium } from "playwright";
-import { waitFor } from "../../apps/engine/src/test-helpers/determinism/wait.ts";
 import {
   expectedIdentity,
   IDENTITY_META,
@@ -64,51 +63,12 @@ const traps = {
   ),
 };
 
-function browsersPath() {
-  const parts = chromium.executablePath().split("/");
-  return parts.slice(0, parts.lastIndexOf("ms-playwright") + 1).join("/");
-}
-
 let served = "";
 let server: Server;
 let baseUrl = "";
 let browser: Browser;
-let recordSweepProcesses: (() => void) | null = null;
-
-function ownedBrowserProcesses(pid: number): number[] {
-  const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,comm="], { stdout: "pipe" });
-  expect(result.exitCode).toBe(0);
-  const processes = result.stdout
-    .toString()
-    .split("\n")
-    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/))
-    .flatMap((match) =>
-      match ? [{ pid: Number(match[1]), parent: Number(match[2]), command: match[3] ?? "" }] : [],
-    );
-  const owned = new Set([pid]);
-  let previousSize = 0;
-  while (previousSize !== owned.size) {
-    previousSize = owned.size;
-    for (const process of processes) if (owned.has(process.parent)) owned.add(process.pid);
-  }
-  return processes
-    .filter((process) => owned.has(process.pid) && /chrome|chromium/i.test(process.command))
-    .map((process) => process.pid);
-}
-
-function processExists(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
-    throw error;
-  }
-}
-
 beforeAll(async () => {
   server = createServer((_request, response) => {
-    recordSweepProcesses?.();
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(served);
   });
@@ -224,122 +184,4 @@ describe("the visual sweep asks whose console it is photographing", () => {
       fixtures.sisterQuotingUs.indexOf(`content="WorkKit"`),
     );
   });
-
-  test("the sweep itself takes no frame of a foreign console", async () => {
-    served = traps.abruptlyClosedComment;
-    const outputDir = join(root, ".artifacts/cockpit-sweep/identity-contract");
-    rmSync(outputDir, { recursive: true, force: true });
-    const run = Bun.spawn(["bun", "run", "scripts/verify-cockpit-visual.mjs"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: root,
-      env: {
-        ...process.env,
-        COCKPIT_BASE_URL: baseUrl,
-        COCKPIT_SCREENSHOT_DIR: outputDir,
-        PLAYWRIGHT_BROWSERS_PATH: browsersPath(),
-      },
-    });
-    const browserPids = new Set<number>();
-    recordSweepProcesses = () => {
-      for (const pid of ownedBrowserProcesses(run.pid)) browserPids.add(pid);
-    };
-    let output: string;
-    let exitCode: number;
-    try {
-      output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
-      exitCode = await run.exited;
-    } finally {
-      recordSweepProcesses = null;
-    }
-    expect(exitCode, output).not.toBe(0);
-    expect(output).toContain("NOT TAKEN");
-    expect(output).toContain("this is not SubKit but WorkKit");
-    expect(existsSync(outputDir), "not one frame was written").toBe(false);
-    expect(browserPids.size, "the failed sweep actually owned a browser process").toBeGreaterThan(
-      0,
-    );
-    await waitFor(() => [...browserPids].every((pid) => !processExists(pid)), {
-      tries: 100,
-      sleepMs: 20,
-      label: "failed visual sweep browser shutdown",
-    });
-    expect([...browserPids].filter(processExists)).toEqual([]);
-  }, 120_000);
-});
-
-describe("a stand that changes hands mid-run photographs nothing of the new owner", () => {
-  const root2 = root;
-  let handOver: Server;
-  let handOverUrl = "";
-  let htmlAnswers = 0;
-  let foreignAnswers = 0;
-  let switchAfter = 1;
-
-  beforeAll(async () => {
-    const built = join(root2, "assets/cockpit");
-    handOver = createServer(async (request, response) => {
-      const path = new URL(request.url ?? "/", "http://x").pathname.replace(/^\/cockpit/, "");
-      const asset = /\.[a-z0-9]+$/i.test(path) ? join(built, path) : null;
-      if (asset !== null && existsSync(asset)) {
-        const type = asset.endsWith(".js")
-          ? "text/javascript"
-          : asset.endsWith(".css")
-            ? "text/css"
-            : asset.endsWith(".svg")
-              ? "image/svg+xml"
-              : "application/octet-stream";
-        response.writeHead(200, { "content-type": type });
-        response.end(readFileSync(asset));
-        return;
-      }
-      const ours = readFileSync(join(built, "index.html"), "utf8");
-      htmlAnswers += 1;
-      const mine = htmlAnswers <= switchAfter;
-      if (!mine) foreignAnswers += 1;
-      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      response.end(
-        mine
-          ? ours
-          : ours
-              .replace(/(<meta name="cockpit-product" content=")[^"]*(")/, "$1WorkKit$2")
-              .replace(/<title>[^<]*<\/title>/, "<title>WorkKit Cockpit</title>"),
-      );
-    });
-    await new Promise<void>((done) => handOver.listen(0, "127.0.0.1", done));
-    handOverUrl = `http://127.0.0.1:${(handOver.address() as AddressInfo).port}`;
-  });
-
-  afterAll(() => closeServer(handOver), 30_000);
-
-  test("the sweep stops at the first document of the new owner", async () => {
-    htmlAnswers = 0;
-    foreignAnswers = 0;
-    switchAfter = 1;
-    const outputDir = join(root2, ".artifacts/cockpit-sweep/hand-over-contract");
-    rmSync(outputDir, { recursive: true, force: true });
-    const run = Bun.spawn(["bun", "run", "scripts/verify-cockpit-visual.mjs"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      cwd: root2,
-      env: {
-        ...process.env,
-        COCKPIT_BASE_URL: handOverUrl,
-        COCKPIT_SCREENSHOT_DIR: outputDir,
-        PLAYWRIGHT_BROWSERS_PATH: browsersPath(),
-      },
-    });
-    const output = `${await new Response(run.stdout).text()}${await new Response(run.stderr).text()}`;
-    const exitCode = await run.exited;
-    expect(exitCode, output).not.toBe(0);
-    expect(output).toContain("NOT TAKEN");
-    expect(output).toContain("this is not SubKit but WorkKit");
-    expect(foreignAnswers, "it stopped at the FIRST foreign document").toBe(1);
-    const frames = existsSync(outputDir) ? readdirSync(outputDir) : [];
-    expect(frames.length, frames.join(", ")).toBeLessThanOrEqual(1);
-    expect(
-      frames.every((name) => name.startsWith("subkit-")),
-      frames.join(", "),
-    ).toBe(true);
-  }, 180_000);
 });

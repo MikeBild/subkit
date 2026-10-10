@@ -29,6 +29,10 @@ docker/binaries/
 .tmp/
 .artifacts/
 .agent-prime.json
+claude-key.txt
+openai-key.txt
+creds.txt
+subkit.config.json
 .superdesign/
 .docker-*-home/
 apps/engine/.devtools/

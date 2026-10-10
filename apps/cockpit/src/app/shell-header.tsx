@@ -10,7 +10,7 @@ import {
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useI18n } from "@/lib/i18n-context";
 
-export const CHAT_COLUMN = "mx-auto w-full max-w-[1280px]";
+export const CHAT_COLUMN = "w-full min-w-0";
 
 export type TriggerOwner = "bar" | "page";
 

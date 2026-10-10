@@ -16,7 +16,7 @@ export type PageSurface =
 
 export function pageColumn(kind: PageKind): string {
   if (kind === "workspace") return "w-full";
-  return kind === "list" ? "w-full max-w-[1280px]" : "w-full max-w-[1120px]";
+  return kind === "list" ? "mx-auto w-full max-w-[1760px]" : "mx-auto w-full max-w-[1440px]";
 }
 
 function gutter(kind: PageKind): string {
@@ -45,7 +45,7 @@ export function Page({
   return (
     <ColumnToggleScope>
       <main
-        className="flex min-h-0 flex-1 flex-col"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
         data-testid={testId}
         data-family-surface={surface}
         data-family-contract-version={FAMILY_UI_VERSION}
@@ -67,10 +67,10 @@ export function Page({
           </div>
         ) : null}
         {scroll === "content" ? (
-          <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", pad)}>
+          <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", pad)}>
             <div
               data-family-slot="content"
-              className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", column)}
+              className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", column)}
             >
               {children}
             </div>
@@ -78,7 +78,7 @@ export function Page({
         ) : (
           <div
             data-family-slot="scroll-region"
-            className={cn("min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-6", pad)}
+            className={cn("min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pb-6", pad)}
           >
             <div data-family-slot="content" className={column}>
               {children}

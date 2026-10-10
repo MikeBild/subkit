@@ -15,6 +15,7 @@ import {
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { logout } from "@/api/client";
+import { ResponsiveWorkspace } from "@/components/cockpit/patterns/responsive-workspace";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -250,14 +251,16 @@ function ShellContent() {
             <SidebarToggle className="-ml-1" />
           </header>
         ))}
-      <div
-        ref={content}
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-        data-testid="page-content"
-      >
-        <Outlet />
-      </div>
-      <RunOverlays />
+      <ResponsiveWorkspace>
+        <div
+          ref={content}
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          data-testid="page-content"
+        >
+          <Outlet />
+        </div>
+        <RunOverlays />
+      </ResponsiveWorkspace>
     </ShellHeaderProvider>
   );
 }

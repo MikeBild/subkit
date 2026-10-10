@@ -628,6 +628,7 @@ function PersonSheet({
   return (
     <>
       <RecordSheet
+        dock
         open={Boolean(user)}
         onOpenChange={(open) => !open && close()}
         title={<span className="break-all">{user?.email}</span>}
@@ -1189,6 +1190,7 @@ function GroupSheet({ group, onClose }: { group: GroupItem | null; onClose(): vo
   return (
     <>
       <RecordSheet
+        dock
         open={Boolean(group)}
         onOpenChange={(open) => !open && onClose()}
         title={group?.name}
@@ -1403,6 +1405,7 @@ function GrantSheet({ grant, onClose }: { grant: GrantItem | null; onClose(): vo
   return (
     <>
       <RecordSheet
+        dock
         open={Boolean(grant)}
         onOpenChange={(open) => !open && onClose()}
         title={grant ? grantTitle(names, grant) : null}

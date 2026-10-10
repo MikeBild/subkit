@@ -14,7 +14,7 @@ let konventionVersionImRepo = null;
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const previewPort = Number(process.env.COCKPIT_PREVIEW_PORT || 4176);
 const externalBaseUrl = process.env.COCKPIT_BASE_URL?.replace(/\/$/, "");
-const baseUrl = externalBaseUrl || `http://127.0.0.1:${previewPort}`;
+let baseUrl = externalBaseUrl || `http://127.0.0.1:${previewPort}`;
 
 const ROUTES = ALL_ROUTE_PATHS.map((path) => path.replace(/^\//, ""));
 
@@ -3069,7 +3069,7 @@ async function sweepDetailSurface(page, route) {
 
 class NichtGemessen extends Error {}
 
-const stand = standAt({
+let stand = standAt({
   baseUrl,
   refuse: (satz, optionen) => new NichtGemessen(satz, optionen),
 });
@@ -3235,231 +3235,260 @@ let server = null;
 let browser = null;
 let besuchteRouten = 0;
 let routenDurchlaufen = false;
-try {
-  const preview = await startPreview();
-  server = preview.server;
 
-  browser = await chromium.launch({ headless: true });
-  const schale = await browser.newPage();
+export async function verifyConventionJourneys(functionalBrowser, targetUrl) {
+  baseUrl = targetUrl;
+  stand = standAt({ baseUrl, refuse: (message) => new Error(message) });
+  violations.length = 0;
+  const context = await germanContext(functionalBrowser, apiMock(true));
   try {
-    await stand.visit(schale, "", { waitUntil: "domcontentloaded" });
+    await checkReviewSheet(context);
+    await checkStaleReview(context);
+    await checkCatalogOpensInApp(context);
+    await checkConnectorCallback(context);
+    await checkAccessRedirect(context);
+    const chat = await openPage(context, "chat");
+    await checkResumeLine(chat);
+    await checkModeGates(chat);
+    await chat.close();
+    await checkCollectionDataStates(functionalBrowser);
+    await checkUnknownDecisionKind(functionalBrowser);
+    await checkOverviewUnreadable(functionalBrowser);
+    await checkReviewNotPermitted(functionalBrowser);
+    if (violations.length) throw new Error(JSON.stringify(violations));
   } finally {
-    await schale.close();
+    await context.close();
   }
+}
 
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-    locale: "de-DE",
-  });
-  await context.addInitScript(() => {
-    localStorage.setItem("sk-cockpit-locale", "de");
-    localStorage.setItem("sk-cockpit-theme", "light");
-  });
-  await context.route("**/v1/**", apiMock(true));
+if (import.meta.main) {
+  try {
+    const preview = await startPreview();
+    server = preview.server;
 
-  const today = await openPage(context, "");
-  await checkWordmark(today);
-  await checkBrowserTitle(today);
-  await checkFavicon(today);
-  await checkRoleLabel(today);
-  await checkAdminGroupName(today);
-  await checkInstallationEntries(today);
-  const badge = await checkOverviewNavEntry(today);
-  await checkOverviewGateOpen(today, badge);
-  await checkHistoryLink(today);
-  await today.close();
-
-  await checkReviewSheet(context);
-  await checkStaleReview(context);
-  await checkCatalogOpensInApp(context);
-
-  const auditHistory = await context.newPage();
-  await stand.visit(auditHistory, "audit?scope=decisions");
-  await auditHistory
-    .locator('[data-testid="resource-audit"]')
-    .waitFor({ state: "visible", timeout: 15_000 });
-  await checkDecisionHistoryIsReadable(auditHistory);
-  await auditHistory.close();
-
-  const chat = await openPage(context, "chat");
-  await checkResumeLine(chat);
-  await checkModeGates(chat);
-  await chat.close();
-
-  const rights = await openPage(context, "api-access");
-  await checkRightsPage(rights);
-  await rights.close();
-  const workflowList = await openPage(context, "workflows");
-  await checkSidebarToggle(workflowList, "/workflows");
-  await checkWorkflowListHealth(workflowList);
-  await workflowList.close();
-  await checkConnectorCallback(context);
-  await checkAccessRedirect(context);
-
-  const connector = await context.newPage();
-  await stand.visit(connector, `connectors/${ID}?tab=connection`);
-  await connector
-    .locator('[data-testid="connector-credentials"]')
-    .waitFor({ state: "visible", timeout: 15_000 });
-  await checkConnectorSignIn(connector);
-  await connector.close();
-
-  for (const route of ROUTES) {
-    besuchteRouten += 1;
-    console.error(`route ${besuchteRouten}/${ROUTES.length}: /${route}`);
-    let page;
+    browser = await chromium.launch({ headless: true });
+    const schale = await browser.newPage();
     try {
-      page = await openPage(context, route);
-    } catch (error) {
-      if (error instanceof NichtGemessen) throw error;
-      await assertStandStillAnswers(error);
-      breach("§6", `/${route}`, `page does not mount: ${error.message}`);
-      continue;
+      await stand.visit(schale, "", { waitUntil: "domcontentloaded" });
+    } finally {
+      await schale.close();
     }
-    await checkNoUnknownState(page, `/${route}`);
-    await checkActionLabels(page, `/${route}`);
-    await checkNoRefreshButton(page, `/${route}`);
-    await checkNoIdentifiers(page, `/${route}`);
-    await checkCuratedFieldLabels(page, `/${route}`);
-    await checkNoRawTimestamps(page, `/${route}`);
-    await checkScreenReaderLanguage(page, `/${route}`);
-    await checkNoZeroKpiTile(page, `/${route}`);
-    if (route === "usage") await checkUsageMirrorsNoFigures(page);
-    await checkRowsOpenByTheirName(page, `/${route}`);
-    await sweepDetailSurface(page, route);
-    await page.close();
-  }
-  routenDurchlaufen = true;
-  await context.close();
 
-  await checkCollectionDataStates(browser);
-  await checkUnknownDecisionKind(browser);
-  await checkOverviewUnreadable(browser);
-  await checkReviewNotPermitted(browser);
-
-  for (const failedAttentionSource of [null, "connectors"]) {
-    const calm = await browser.newContext({
+    const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       locale: "de-DE",
     });
-    await calm.addInitScript(() => {
+    await context.addInitScript(() => {
       localStorage.setItem("sk-cockpit-locale", "de");
       localStorage.setItem("sk-cockpit-theme", "light");
     });
-    await calm.route("**/v1/**", apiMock(false, { failedAttentionSource }));
-    const calmToday = await openPage(calm, "");
-    if (failedAttentionSource) await checkOverviewFailedSource(calmToday);
-    else await checkOverviewCalm(calmToday);
-    await checkNoZeroKpiTile(calmToday, "/ (calm)");
-    await calmToday.close();
-    await calm.close();
+    await context.route("**/v1/**", apiMock(true));
+
+    const today = await openPage(context, "");
+    await checkWordmark(today);
+    await checkBrowserTitle(today);
+    await checkFavicon(today);
+    await checkRoleLabel(today);
+    await checkAdminGroupName(today);
+    await checkInstallationEntries(today);
+    const badge = await checkOverviewNavEntry(today);
+    await checkOverviewGateOpen(today, badge);
+    await checkHistoryLink(today);
+    await today.close();
+
+    await checkReviewSheet(context);
+    await checkStaleReview(context);
+    await checkCatalogOpensInApp(context);
+
+    const auditHistory = await context.newPage();
+    await stand.visit(auditHistory, "audit?scope=decisions");
+    await auditHistory
+      .locator('[data-testid="resource-audit"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await checkDecisionHistoryIsReadable(auditHistory);
+    await auditHistory.close();
+
+    const chat = await openPage(context, "chat");
+    await checkResumeLine(chat);
+    await checkModeGates(chat);
+    await chat.close();
+
+    const rights = await openPage(context, "api-access");
+    await checkRightsPage(rights);
+    await rights.close();
+    const workflowList = await openPage(context, "workflows");
+    await checkSidebarToggle(workflowList, "/workflows");
+    await checkWorkflowListHealth(workflowList);
+    await workflowList.close();
+    await checkConnectorCallback(context);
+    await checkAccessRedirect(context);
+
+    const connector = await context.newPage();
+    await stand.visit(connector, `connectors/${ID}?tab=connection`);
+    await connector
+      .locator('[data-testid="connector-credentials"]')
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await checkConnectorSignIn(connector);
+    await connector.close();
+
+    for (const route of ROUTES) {
+      besuchteRouten += 1;
+      console.error(`route ${besuchteRouten}/${ROUTES.length}: /${route}`);
+      let page;
+      try {
+        page = await openPage(context, route);
+      } catch (error) {
+        if (error instanceof NichtGemessen) throw error;
+        await assertStandStillAnswers(error);
+        breach("§6", `/${route}`, `page does not mount: ${error.message}`);
+        continue;
+      }
+      await checkNoUnknownState(page, `/${route}`);
+      await checkActionLabels(page, `/${route}`);
+      await checkNoRefreshButton(page, `/${route}`);
+      await checkNoIdentifiers(page, `/${route}`);
+      await checkCuratedFieldLabels(page, `/${route}`);
+      await checkNoRawTimestamps(page, `/${route}`);
+      await checkScreenReaderLanguage(page, `/${route}`);
+      await checkNoZeroKpiTile(page, `/${route}`);
+      if (route === "usage") await checkUsageMirrorsNoFigures(page);
+      await checkRowsOpenByTheirName(page, `/${route}`);
+      await sweepDetailSurface(page, route);
+      await page.close();
+    }
+    routenDurchlaufen = true;
+    await context.close();
+
+    await checkCollectionDataStates(browser);
+    await checkUnknownDecisionKind(browser);
+    await checkOverviewUnreadable(browser);
+    await checkReviewNotPermitted(browser);
+
+    for (const failedAttentionSource of [null, "connectors"]) {
+      const calm = await browser.newContext({
+        viewport: { width: 1440, height: 1000 },
+        locale: "de-DE",
+      });
+      await calm.addInitScript(() => {
+        localStorage.setItem("sk-cockpit-locale", "de");
+        localStorage.setItem("sk-cockpit-theme", "light");
+      });
+      await calm.route("**/v1/**", apiMock(false, { failedAttentionSource }));
+      const calmToday = await openPage(calm, "");
+      if (failedAttentionSource) await checkOverviewFailedSource(calmToday);
+      else await checkOverviewCalm(calmToday);
+      await checkNoZeroKpiTile(calmToday, "/ (calm)");
+      await calmToday.close();
+      await calm.close();
+    }
+
+    const broken = await browser.newContext({
+      viewport: { width: 1440, height: 1000 },
+      locale: "de-DE",
+    });
+    await broken.addInitScript(() => {
+      localStorage.setItem("sk-cockpit-locale", "de");
+      localStorage.setItem("sk-cockpit-theme", "light");
+    });
+    const busyMock = apiMock(true);
+    await broken.route("**/v1/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === `/v1/knowledge-sources/${ID}/chunks`) return json(route, { documents: [] });
+      return busyMock(route);
+    });
+    const brokenPage = await broken.newPage();
+    await stand.visit(brokenPage, `knowledge/${ID}`);
+    await brokenPage.getByTestId("knowledge-load-failed").waitFor({ state: "visible" });
+    await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
+    await brokenPage.close();
+    await broken.close();
+  } catch (error) {
+    abbruch = error;
+    if (!(error instanceof NichtGemessen)) {
+      try {
+        await assertStandStillAnswers(error);
+      } catch (dead) {
+        abbruch = dead instanceof NichtGemessen ? dead : error;
+      }
+    }
+  } finally {
+    await browser?.close();
+    server?.kill();
   }
 
-  const broken = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-    locale: "de-DE",
-  });
-  await broken.addInitScript(() => {
-    localStorage.setItem("sk-cockpit-locale", "de");
-    localStorage.setItem("sk-cockpit-theme", "light");
-  });
-  const busyMock = apiMock(true);
-  await broken.route("**/v1/**", async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === `/v1/knowledge-sources/${ID}/chunks`) return json(route, { documents: [] });
-    return busyMock(route);
-  });
-  const brokenPage = await broken.newPage();
-  await stand.visit(brokenPage, `knowledge/${ID}`);
-  await brokenPage.getByTestId("knowledge-load-failed").waitFor({ state: "visible" });
-  await checkFailureState(brokenPage, "/knowledge/… (Fixture mit unlesbarer Antwort)");
-  await brokenPage.close();
-  await broken.close();
-} catch (error) {
-  abbruch = error;
-  if (!(error instanceof NichtGemessen)) {
-    try {
-      await assertStandStillAnswers(error);
-    } catch (dead) {
-      abbruch = dead instanceof NichtGemessen ? dead : error;
+  const nichtGemessen =
+    abbruch instanceof NichtGemessen || (Boolean(abbruch) && !routenDurchlaufen);
+  const gescheitert = violations.length > 0 || Boolean(abbruch);
+  const report = gescheitert ? console.error : console.log;
+
+  const massstab = konventionVersionImRepo
+    ? `COCKPIT-KONVENTION.md v${konventionVersionImRepo}`
+    : "COCKPIT-KONVENTION.md (header line without a readable version)";
+  const pruefstand =
+    stand.identity === null
+      ? `${baseUrl} — WHOSE console answered there is unresolved, so nothing is said about what was measured`
+      : externalBaseUrl
+        ? `foreign stand at ${externalBaseUrl} · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`
+        : `the BUILT version — vite preview on ${baseUrl}, the stand the engine ships rather than the dev server · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`;
+
+  report(
+    `Standard: ${massstab} (header line of the repo copy) · this check is written by hand against v${KONVENTION_VERSION}`,
+  );
+  report(`Stand: ${pruefstand}`);
+  report("Language: de only (sk-cockpit-locale=de, browser locale de-DE)");
+  report(
+    abbruch
+      ? `Measured: incomplete — the run aborted at route ${besuchteRouten} of ${ROUTES.length} in the router table, ${ROUTES.length - besuchteRouten} were never looked at`
+      : `Measured: ${ROUTES.length} routes from the router table` +
+          (swept.length > 0
+            ? `, plus ${swept.length} detail surface(s) without a route of their own (${swept.join(", ")})`
+            : ", no detail surface without a route of its own"),
+  );
+  if (gaps.length > 0) {
+    report(`Not measured: ${gaps.length}`);
+    for (const { where, why } of gaps) report(`  ${where} — ${why}`);
+  }
+  report("");
+
+  function printViolations() {
+    for (const { rule, where, actual } of violations) {
+      console.error(`  ${rule} · ${where}\n      is: ${actual}`);
     }
   }
-} finally {
-  await browser?.close();
-  server?.kill();
-}
 
-const nichtGemessen = abbruch instanceof NichtGemessen || (Boolean(abbruch) && !routenDurchlaufen);
-const gescheitert = violations.length > 0 || Boolean(abbruch);
-const report = gescheitert ? console.error : console.log;
-
-const massstab = konventionVersionImRepo
-  ? `COCKPIT-KONVENTION.md v${konventionVersionImRepo}`
-  : "COCKPIT-KONVENTION.md (header line without a readable version)";
-const pruefstand =
-  stand.identity === null
-    ? `${baseUrl} — WHOSE console answered there is unresolved, so nothing is said about what was measured`
-    : externalBaseUrl
-      ? `foreign stand at ${externalBaseUrl} · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`
-      : `the BUILT version — vite preview on ${baseUrl}, the stand the engine ships rather than the dev server · identity ${stand.identity} (from <meta name="${IDENTITY_META}"> of the served document)`;
-
-report(
-  `Standard: ${massstab} (header line of the repo copy) · this check is written by hand against v${KONVENTION_VERSION}`,
-);
-report(`Stand: ${pruefstand}`);
-report("Language: de only (sk-cockpit-locale=de, browser locale de-DE)");
-report(
-  abbruch
-    ? `Measured: incomplete — the run aborted at route ${besuchteRouten} of ${ROUTES.length} in the router table, ${ROUTES.length - besuchteRouten} were never looked at`
-    : `Measured: ${ROUTES.length} routes from the router table` +
-        (swept.length > 0
-          ? `, plus ${swept.length} detail surface(s) without a route of their own (${swept.join(", ")})`
-          : ", no detail surface without a route of its own"),
-);
-if (gaps.length > 0) {
-  report(`Not measured: ${gaps.length}`);
-  for (const { where, why } of gaps) report(`  ${where} — ${why}`);
-}
-report("");
-
-function printViolations() {
-  for (const { rule, where, actual } of violations) {
-    console.error(`  ${rule} · ${where}\n      is: ${actual}`);
-  }
-}
-
-if (abbruch) {
-  console.error(
-    nichtGemessen
-      ? `Convention check NOT MEASURED: ${abbruch.message}\n` +
-          "This run says NOTHING about the surface. What follows comes from the checks that need no\n" +
-          "stand (§7, convention version) and from the routes reached before the abort; an empty list\n" +
-          "here is not an acquittal but a measurement that did not happen.\n"
-      : `Convention check ABORTED: ${abbruch?.message ?? String(abbruch)}\n` +
-          "A run that could not finish measuring is not a passing run. What was found up to the abort\n" +
-          "is below — everything after it is unmeasured, not clean.\n",
-  );
-  if (violations.length > 0) {
+  if (abbruch) {
     console.error(
       nichtGemessen
-        ? `Noted before the abort: ${violations.length} — not a work list, the run did not measure\n`
-        : `Found before the abort: ${violations.length} breaches of ${massstab}\n`,
+        ? `Convention check NOT MEASURED: ${abbruch.message}\n` +
+            "This run says NOTHING about the surface. What follows comes from the checks that need no\n" +
+            "stand (§7, convention version) and from the routes reached before the abort; an empty list\n" +
+            "here is not an acquittal but a measurement that did not happen.\n"
+        : `Convention check ABORTED: ${abbruch?.message ?? String(abbruch)}\n` +
+            "A run that could not finish measuring is not a passing run. What was found up to the abort\n" +
+            "is below — everything after it is unmeasured, not clean.\n",
     );
-    printViolations();
-    console.error("");
+    if (violations.length > 0) {
+      console.error(
+        nichtGemessen
+          ? `Noted before the abort: ${violations.length} — not a work list, the run did not measure\n`
+          : `Found before the abort: ${violations.length} breaches of ${massstab}\n`,
+      );
+      printViolations();
+      console.error("");
+    }
+    console.error(abbruch?.stack ?? String(abbruch));
+    process.exit(nichtGemessen ? 2 : 1);
   }
-  console.error(abbruch?.stack ?? String(abbruch));
-  process.exit(nichtGemessen ? 2 : 1);
-}
 
-if (violations.length === 0) {
-  console.log(
-    `Convention check passed: no breaches of ${massstab} on ${ROUTES.length} routes of the\n` +
-      'built version, measured in German. What stands above under "Not measured" is not covered by this.',
-  );
-  process.exit(0);
-}
+  if (violations.length === 0) {
+    console.log(
+      `Convention check passed: no breaches of ${massstab} on ${ROUTES.length} routes of the\n` +
+        'built version, measured in German. What stands above under "Not measured" is not covered by this.',
+    );
+    process.exit(0);
+  }
 
-console.error(`Convention check: ${violations.length} breaches of ${massstab}\n`);
-printViolations();
-process.exit(1);
+  console.error(`Convention check: ${violations.length} breaches of ${massstab}\n`);
+  printViolations();
+  process.exit(1);
+}

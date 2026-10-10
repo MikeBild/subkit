@@ -1,6 +1,35 @@
 import { describe, expect, test } from "bun:test";
 import { JSDOM } from "jsdom";
-import { opensRow, rowLinkColumn } from "./data-table";
+import { opensRow, rowLinkColumn, tableColumnWidths } from "./data-table";
+
+describe("data table column allocation", () => {
+  test("reserves action and navigation space from declared column proportions", () => {
+    const widths = tableColumnWidths(["w-[36%]", "w-[14%]", "w-[14%]", "w-[18%]", "w-[18%]"], {
+      actions: true,
+      chevron: true,
+    });
+    expect(widths).toEqual([
+      "calc(36.0000cqw - 5.7600rem)",
+      "calc(14.0000cqw - 2.2400rem)",
+      "calc(14.0000cqw - 2.2400rem)",
+      "calc(18.0000cqw - 2.8800rem)",
+      "calc(18.0000cqw - 2.8800rem)",
+    ]);
+  });
+
+  test("normalizes overfull width hints and supports tables without controls", () => {
+    expect(
+      tableColumnWidths(["w-[70%]", "w-[70%]"], {
+        actions: false,
+        chevron: false,
+      }),
+    ).toEqual(["calc(50.0000cqw - 0.0000rem)", "calc(50.0000cqw - 0.0000rem)"]);
+    expect(tableColumnWidths([undefined, undefined], { actions: false, chevron: false })).toEqual([
+      "calc(50.0000cqw - 0.0000rem)",
+      "calc(50.0000cqw - 0.0000rem)",
+    ]);
+  });
+});
 
 describe("the column that carries a row's link", () => {
   const name = { id: "name" };

@@ -143,6 +143,25 @@ export function rowLinkColumn(
   return visible.find((column) => !column.interactive)?.id;
 }
 
+export function tableColumnWidths(
+  widths: readonly (string | undefined)[],
+  controls: { actions: boolean; chevron: boolean },
+): string[] {
+  const specified = widths.map((width) => {
+    const match = width?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
+    return match ? Number(match[1]) : undefined;
+  });
+  const known = specified.filter((weight): weight is number => weight !== undefined);
+  const fallback = known.length ? known.reduce((sum, weight) => sum + weight, 0) / known.length : 1;
+  const weights = specified.map((weight) => weight ?? fallback);
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const reservedRem = (controls.actions ? 14 : 0) + (controls.chevron ? 2 : 0);
+  return weights.map((weight) => {
+    const share = weight / total;
+    return `calc(${(share * 100).toFixed(4)}cqw - ${(share * reservedRem).toFixed(4)}rem)`;
+  });
+}
+
 export const cockpitTableFeatures = tableFeatures({
   columnVisibilityFeature,
   rowSortingFeature,
@@ -231,7 +250,7 @@ function RowLink({
   children: ReactNode;
 }) {
   const className =
-    "min-w-0 rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+    "block w-full min-w-0 rounded-sm text-left font-medium underline-offset-4 hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   if (href)
     return (
       <a
@@ -365,6 +384,13 @@ export function DataTable<TData extends RowData>({
   );
   const hasActionColumn = Boolean(rowActions);
   const hasChevron = Boolean(onOpen);
+  const contentColumnWidths = tableColumnWidths(
+    visibleColumns.map((column) => column.columnDef.meta?.width),
+    { actions: hasActionColumn, chevron: hasChevron },
+  );
+  const widthByColumnId = new Map(
+    visibleColumns.map((column, index) => [column.id, contentColumnWidths[index]]),
+  );
   const bodySpan = visibleColumns.length + (hasActionColumn ? 1 : 0) + (hasChevron ? 1 : 0);
   const linkColumnId = rowLinkColumn(
     visibleColumns.map((column) => ({
@@ -508,7 +534,7 @@ export function DataTable<TData extends RowData>({
       )}
       <div
         className={cn(
-          "min-h-0 overflow-auto",
+          "@container min-h-0 overflow-auto",
           cards ? "hidden @2xl:block" : "block",
           stateOnly ? null : "rounded-lg border",
         )}
@@ -524,6 +550,7 @@ export function DataTable<TData extends RowData>({
                   return (
                     <TableHead
                       key={header.id}
+                      style={{ width: widthByColumnId.get(header.column.id) }}
                       className={cn(
                         header.column.columnDef.meta?.width,
                         priorityClass(header.column.columnDef.meta?.priority),
@@ -553,11 +580,13 @@ export function DataTable<TData extends RowData>({
                   );
                 })}
                 {hasActionColumn ? (
-                  <TableHead className="w-32">
+                  <TableHead className="w-56" style={{ width: "14rem" }}>
                     <span className="sr-only">{actionsLabel}</span>
                   </TableHead>
                 ) : null}
-                {hasChevron ? <TableHead className="w-8" aria-hidden="true" /> : null}
+                {hasChevron ? (
+                  <TableHead className="w-8" style={{ width: "2rem" }} aria-hidden="true" />
+                ) : null}
               </TableRow>
             ))}
           </TableHeader>
@@ -581,6 +610,7 @@ export function DataTable<TData extends RowData>({
                   {visibleColumns.map((column, columnIndex) => (
                     <TableCell
                       key={column.id}
+                      style={{ width: widthByColumnId.get(column.id) }}
                       className={priorityClass(column.columnDef.meta?.priority)}
                     >
                       <Skeleton
@@ -591,8 +621,10 @@ export function DataTable<TData extends RowData>({
                       />
                     </TableCell>
                   ))}
-                  {hasActionColumn ? <TableCell /> : null}
-                  {hasChevron ? <TableCell className="w-8" /> : null}
+                  {hasActionColumn ? (
+                    <TableCell className="w-56" style={{ width: "14rem" }} />
+                  ) : null}
+                  {hasChevron ? <TableCell className="w-8" style={{ width: "2rem" }} /> : null}
                 </TableRow>
               ))
             ) : error || empty ? (
@@ -629,6 +661,7 @@ export function DataTable<TData extends RowData>({
                     {row.getVisibleCells().map((cell, cellIndex) => (
                       <TableCell
                         key={cell.id}
+                        style={{ width: widthByColumnId.get(cell.column.id) }}
                         className={cn(
                           priorityClass(cell.column.columnDef.meta?.priority),
                           cellIndex === 0 ? "font-medium" : "text-muted-foreground",
@@ -652,14 +685,22 @@ export function DataTable<TData extends RowData>({
                       </TableCell>
                     ))}
                     {hasActionColumn ? (
-                      <TableCell>
+                      <TableCell
+                        className="w-56 whitespace-nowrap"
+                        style={{ width: "14rem" }}
+                        data-slot="row-actions"
+                      >
                         <span className="flex items-center justify-end gap-1">
                           {rowActions?.(row.original, index)}
                         </span>
                       </TableCell>
                     ) : null}
                     {hasChevron ? (
-                      <TableCell className="w-8 text-muted-foreground" data-slot="row-chevron">
+                      <TableCell
+                        className="w-8 text-muted-foreground"
+                        style={{ width: "2rem" }}
+                        data-slot="row-chevron"
+                      >
                         {open ? <ChevronRight aria-hidden="true" className="size-4" /> : null}
                       </TableCell>
                     ) : null}

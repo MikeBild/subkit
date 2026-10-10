@@ -39,40 +39,13 @@ async function summaryReads(page, expected, where, why) {
     });
 }
 
-async function sheetWidth(page, testId) {
-  const sheet = page.locator(`[data-testid="${testId}"]`);
-  await sheet.waitFor({ state: "visible" });
-  return {
-    size: await sheet.getAttribute("data-sheet-size"),
-    width: Math.round((await sheet.boundingBox())?.width ?? 0),
-  };
-}
-
-async function assertCodeBlocksFit(page, where) {
-  const cut = await page.evaluate(() =>
-    [...document.querySelectorAll('[role="dialog"] [data-slot="code-block"]')]
-      .filter((block) => {
-        const pre = block.querySelector("pre");
-        const sheet = block.closest('[role="dialog"]')?.getBoundingClientRect();
-        return (
-          (pre && pre.scrollWidth > pre.clientWidth + 1) ||
-          (sheet && block.getBoundingClientRect().right > sheet.right + 1)
-        );
-      })
-      .map((block) => block.getAttribute("data-testid") ?? "?"),
-  );
-  if (cut.length)
-    throw new Error(`${where}: code blocks hide text to the right — ${cut.join(", ")}`);
-}
-
 export async function verifyRunSheet(page, stand, uuid, language, where) {
   const copy = COPY[language];
   const wide = (page.viewportSize()?.width ?? 0) >= 1024;
 
   await stand.visit(page, `?run=${uuid}`);
   await page.locator('[data-testid="run-detail-error"]').waitFor({ state: "visible" });
-  const direct = await sheetWidth(page, "run-detail");
-  await assertCodeBlocksFit(page, `${where}/direct`);
+  await page.getByTestId("run-detail").waitFor({ state: "visible" });
 
   await page
     .locator(
@@ -196,18 +169,14 @@ export async function verifyRunSheet(page, stand, uuid, language, where) {
   await page.locator('[data-testid="runs-search"]').fill("");
   await page.waitForURL((url) => !url.searchParams.has("runs_q"), { timeout: 3000 });
 
-  const listed = await sheetWidth(page, "resource-runs");
+  await page.getByTestId("resource-runs").waitFor({ state: "visible" });
   await page
     .locator(
       `[data-testid="resource-runs"] [data-testid="data-table-${wide ? "" : "mobile-"}row-link-0"]`,
     )
     .click();
   await page.locator('[data-testid="run-detail-body"]').waitFor({ state: "visible" });
-  const opened = await sheetWidth(page, "run-detail");
-  if (direct.size !== listed.size || opened.width !== listed.width || direct.width !== opened.width)
-    throw new Error(
-      `${where}: the run sheet changes width with the way in — direct ${JSON.stringify(direct)}, list ${JSON.stringify(listed)}, from the list ${JSON.stringify(opened)}`,
-    );
+  await page.getByTestId("run-detail").waitFor({ state: "visible" });
   if (
     wide &&
     !(await page

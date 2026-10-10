@@ -16,6 +16,34 @@ Keep `MASTER_KEY`. It encrypts stored secrets; losing it loses them.
 
 From a checkout, `bun run start:local` starts the stack and completes first-run setup with the `mock` LLM provider.
 
+### Local installation for manual Cockpit testing
+
+Run `bun run demo:local`. This builds changed application sources when needed, starts an isolated installation at `http://localhost:3000/cockpit`, runs migrations and first-run setup, seeds the synthetic dataset, configures the real AI providers and checks API-key browser login. Docker must be running. Put your Anthropic key in `claude-key.txt` and/or your OpenAI key in `openai-key.txt`; these files are excluded from Git and Docker build contexts. The default primary route is Anthropic `claude-sonnet-4-6`, with OpenAI `gpt-5.6-sol` as fallback when both keys exist. Setup itself makes no paid model probe. For an explicitly offline installation, use `bun run demo:local -- --mock`.
+
+Startup measures free space inside Docker, requiring 12 GiB before an image build and 1 GiB before services and fixture setup. It checks again after building and aborts clearly when storage is low. Increase Docker Desktop's disk image limit or explicitly reclaim unused build cache with `docker builder prune`; the startup check never deletes data or volumes. Free space on the host alone is not sufficient.
+
+
+The command prints the current local user API key and stores it with owner-only permissions in `.artifacts/cockpit-demo/api-key.txt`. Open the Cockpit and choose API-key sign-in. Real provider settings are stored encrypted through the engine's settings API. You can change models and settings in the Cockpit; ordinary starts preserve those changes. Replacing a provider key file updates the provider configuration on the next start.
+
+| Command | Result |
+| --- | --- |
+| `bun run demo:local` | Start or resume; build only when application sources changed; retain manual edits. |
+| `bun run demo:local:stop` | Stop the demo and preserve its named database/object volumes and API key. |
+| `bun run demo:local:restart` | Restart the demo services and check readiness. |
+| `bun run demo:local:rebuild` | Rebuild the current checkout and resume the same data. |
+| `bun run demo:local:reset` | Delete only this demo project's data, run migrations/setup again, restore fixtures and issue a new API key. |
+| `bun run demo:local:status` | Show local service health and authenticated readiness. |
+| `bun run demo:local:key` | Print the current local login key. |
+| `bun run demo:local:verify` | Run real local API and browser journeys, including one paid chat response and workflow approval/execution; no screenshots. |
+
+The fixtures cover all main Cockpit areas: six connectors, twelve demo workflows plus three installation starters, twenty-four recorded runs with successful/failed/cancelled outcomes and usage, seven conversations including a pending question and hidden chat, six knowledge sources with twelve sections, eight skills, six learning proposals, five downloadable files, and four people with roles/groups. Long names, Unicode, categories and multiple statuses support manual review. Historical runs and costs are clearly synthetic; recorded fixtures are not claims of real execution. A local API service provides contacts, orders, reports, echo writes and a deliberate failure endpoint for new real workflow runs. Workflows retain normal approval gates. External OAuth/MCP accounts and external delivery services require their own credentials; the three installation starter workflows use public demo endpoints when run.
+
+The fixed Compose project is `subkit-cockpit-demo`; PostgreSQL and object storage have dedicated named volumes. The existing development/production installations are independent. `SUBKIT_TEST_PORT` changes the loopback host port; use the same value for subsequent commands. The local receipt is `.artifacts/cockpit-demo/receipt.json`.
+
+Run `bun run demo:local:verify` after setup when you want to verify the running installation before manual review. It uses disposable resources and the real local services, checks API-key login, catalog navigation, file/source/skill changes, workflow permission boundaries and browser approval/execution, and requests one real AI response. It does not reset your data. Evidence is saved under `.artifacts/cockpit-demo/`; failed checks exit nonzero. `verify:cockpit-local` runs only the API portion; `verify:cockpit-local-browser -- --read-only` checks browser login/navigation without chat or workflow changes. `SUBKIT_DEMO_URL` selects a loopback test address. These live installation journeys are separate from the isolated functional fixtures in the normal release gate.
+
+Visual acceptance is manual. Automated functional browser journeys, API/security tests, migrations, builds, type checks and release checks remain enabled; automated screenshot matrices and visual layout sweeps are removed from the verification pipeline.
+
 ## First-run setup
 
 ```bash

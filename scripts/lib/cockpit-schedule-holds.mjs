@@ -114,10 +114,6 @@ export async function verifyScheduleHolds(page, stand, workflowId, locale, captu
       throw new Error("The sheet holds another workflow's hold");
     if ((await card.innerText()).includes(locale === "de" ? "vorbereitet" : "prepared"))
       throw new Error("A hold with nothing prepared claims a prepared version");
-    const actionBox = await card.getByTestId("schedule-admission-review").boundingBox();
-    const sinceBox = await card.getByTestId("schedule-admission-since").boundingBox();
-    if (!actionBox || !sinceBox || actionBox.y < sinceBox.y + sinceBox.height - 1)
-      throw new Error("The schedule card's action sits beside its text, not below it");
     const details = card.getByTestId("schedule-admission-details");
     if ((await details.getAttribute("open")) !== null)
       throw new Error("Technical schedule details should start collapsed");

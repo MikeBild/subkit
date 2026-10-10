@@ -653,6 +653,7 @@ function FileSheet({
   return (
     <>
       <RecordSheet
+        dock
         open
         onOpenChange={(open) => {
           if (!open) onClose();

@@ -1,7 +1,10 @@
-import { ChevronLeft } from "lucide-react";
-import type { ReactNode } from "react";
+import { ChevronLeft, XIcon } from "lucide-react";
+import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useI18n } from "@/lib/i18n-context";
+import { useInspectorDock } from "./responsive-workspace";
 import { Loadable, RowsSkeleton, Skeleton } from "./skeleton";
 
 export type SheetSize = "default" | "wide";
@@ -30,22 +33,7 @@ function SheetBodySkeleton() {
   );
 }
 
-export function RecordSheet({
-  open,
-  onOpenChange,
-  size = "default",
-  title,
-  subtitle,
-  badge,
-  back,
-  action,
-  menu,
-  testId,
-  closeTestId,
-  titleTestId,
-  loading,
-  children,
-}: {
+export interface RecordSheetProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   size?: SheetSize;
@@ -60,8 +48,187 @@ export function RecordSheet({
   titleTestId?: string;
   loading?: boolean;
   children: ReactNode;
-}) {
+  dock?: boolean;
+}
+
+function RecordBody({
+  title,
+  subtitle,
+  badge,
+  back,
+  action,
+  menu,
+  testId,
+  titleTestId,
+  loading,
+  children,
+  titleId,
+}: RecordSheetProps & { titleId?: string }) {
+  return (
+    <>
+      <SheetHeader className="gap-1 pr-10">
+        {back ? (
+          <button
+            type="button"
+            onClick={back.onClick}
+            data-slot="sheet-back"
+            data-testid={`${testId}-back`}
+            className="inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />
+            {back.label}
+          </button>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <SheetTitle
+            {...(titleId ? { id: titleId } : {})}
+            data-testid={titleTestId}
+            className="flex min-w-0 items-center gap-2"
+          >
+            {title}
+          </SheetTitle>
+          {badge}
+          {action || menu ? (
+            <span className="ml-auto flex items-center gap-2">
+              {menu}
+              {action}
+            </span>
+          ) : null}
+        </div>
+        {subtitle ? (
+          <div className="text-sm text-muted-foreground" data-testid={`${testId}-subtitle`}>
+            {subtitle}
+          </div>
+        ) : null}
+      </SheetHeader>
+      <Loadable
+        loading={loading}
+        skeleton={<SheetBodySkeleton />}
+        className="flex flex-col gap-6 p-4 pt-0"
+      >
+        {children}
+      </Loadable>
+    </>
+  );
+}
+
+function DockableRecordSheet(props: RecordSheetProps) {
+  const { open, onOpenChange, size = "default", testId, closeTestId } = props;
   const { t } = useI18n();
+  const titleId = useId();
+  const { docked, host: dockHost } = useInspectorDock(open, size);
+  const [host, setHost] = useState<HTMLDivElement | null>(() =>
+    typeof document === "undefined" ? null : document.createElement("div"),
+  );
+  const [modalHost, setModalHost] = useState<HTMLDivElement | null>(null);
+  const previousOpen = useRef(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const focused = useRef<HTMLElement | null>(null);
+  const dockedRef = useRef(docked);
+  dockedRef.current = docked;
+  useLayoutEffect(() => {
+    if (!host) setHost(document.createElement("div"));
+  }, [host]);
+  useLayoutEffect(
+    () => () => {
+      if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    if (!docked || !host) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"]'))
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenChange(false);
+    };
+    host.addEventListener("keydown", dismiss);
+    return () => host.removeEventListener("keydown", dismiss);
+  }, [docked, host, onOpenChange]);
+  useLayoutEffect(() => {
+    if (open && !previousOpen.current)
+      opener.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!open && previousOpen.current && opener.current?.isConnected)
+      opener.current.focus({ preventScroll: true });
+    previousOpen.current = open;
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!host || !open) return;
+    const target = docked ? dockHost : modalHost;
+    if (!target) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && host.contains(active)) focused.current = active;
+    target.appendChild(host);
+    host.className =
+      "relative flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-y-auto bg-popover text-sm text-popover-foreground";
+    host.dataset.testid = testId;
+    host.dataset.sheetSize = size;
+    host.dataset.presentation = docked ? "docked" : "modal";
+    host.tabIndex = -1;
+    if (docked) {
+      host.setAttribute("role", "complementary");
+      host.setAttribute("aria-labelledby", titleId);
+    } else {
+      host.removeAttribute("role");
+      host.removeAttribute("aria-labelledby");
+    }
+    if (focused.current?.isConnected && host.contains(focused.current))
+      focused.current.focus({ preventScroll: true });
+    else if (!docked) host.focus({ preventScroll: true });
+    return () => {
+      const current = document.activeElement;
+      if (current instanceof HTMLElement && host.contains(current)) focused.current = current;
+      host.remove();
+    };
+  }, [host, docked, dockHost, modalHost, open, size, testId, titleId]);
+  return (
+    <Sheet open={open && !docked} onOpenChange={onOpenChange}>
+      <SheetContent
+        className={`overflow-hidden data-[side=right]:w-full ${sheetWidthClass(size)}`}
+        showCloseButton={false}
+        aria-labelledby={titleId}
+        aria-describedby={undefined}
+        onCloseAutoFocus={(event) => {
+          if (dockedRef.current) event.preventDefault();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          if (focused.current?.isConnected) focused.current.focus({ preventScroll: true });
+          else host?.focus({ preventScroll: true });
+        }}
+      >
+        <div ref={setModalHost} className="min-h-0 flex-1" />
+      </SheetContent>
+      {open && host
+        ? createPortal(
+            <>
+              <RecordBody {...props} titleId={titleId} />
+              <Button
+                variant="ghost"
+                className="absolute top-3 right-3"
+                size="icon-sm"
+                data-testid={closeTestId}
+                onClick={() => onOpenChange(false)}
+              >
+                <XIcon />
+                <span className="sr-only">{t("common.close")}</span>
+              </Button>
+            </>,
+            host,
+          )
+        : null}
+    </Sheet>
+  );
+}
+
+export function RecordSheet(props: RecordSheetProps) {
+  const { t } = useI18n();
+  const { open, onOpenChange, size = "default", testId, closeTestId } = props;
+  if (props.dock) return <DockableRecordSheet {...props} />;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -72,44 +239,7 @@ export function RecordSheet({
         data-sheet-size={size}
         aria-describedby={undefined}
       >
-        <SheetHeader className="gap-1 pr-10">
-          {back ? (
-            <button
-              type="button"
-              onClick={back.onClick}
-              data-slot="sheet-back"
-              data-testid={`${testId}-back`}
-              className="inline-flex w-fit items-center gap-0.5 rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline"
-            >
-              <ChevronLeft aria-hidden="true" className="-ml-1 size-4" />
-              {back.label}
-            </button>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <SheetTitle data-testid={titleTestId} className="flex min-w-0 items-center gap-2">
-              {title}
-            </SheetTitle>
-            {badge}
-            {action || menu ? (
-              <span className="ml-auto flex items-center gap-2">
-                {menu}
-                {action}
-              </span>
-            ) : null}
-          </div>
-          {subtitle ? (
-            <div className="text-sm text-muted-foreground" data-testid={`${testId}-subtitle`}>
-              {subtitle}
-            </div>
-          ) : null}
-        </SheetHeader>
-        <Loadable
-          loading={loading}
-          skeleton={<SheetBodySkeleton />}
-          className="flex flex-col gap-6 p-4 pt-0"
-        >
-          {children}
-        </Loadable>
+        <RecordBody {...props} />
       </SheetContent>
     </Sheet>
   );
