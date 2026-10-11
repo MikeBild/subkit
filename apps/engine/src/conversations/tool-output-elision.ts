@@ -46,7 +46,7 @@ export function buildElidedToolOutputStub(args: {
     _elided: true,
     _tool: args.tool,
     _raw_ref: args.ref,
-    _note: `<elided: tool=${args.tool}, ref=${args.ref}, original=${args.original_size} ${args.size_unit}; call get_raw_result(ref="${args.ref}") for the full payload>`,
+    _note: `<elided: tool=${args.tool}, ref=${args.ref}, original=${args.original_size} ${args.size_unit}; call get_raw_result(ref="${args.ref}") and follow its bounded field retrieval instructions>`,
   };
 }
 

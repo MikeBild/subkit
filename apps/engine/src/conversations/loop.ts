@@ -104,6 +104,7 @@ import {
   noProgressRepairStopCondition,
   pausedStopCondition,
 } from "./loop/stop-conditions.ts";
+import { throwForStreamError } from "./loop/stream-result.ts";
 import { buildNextSuggestionFrame } from "./loop/suggest-next-emitter.ts";
 import { detectToolHallucinatedAbsence } from "./loop/tool-not-available-guard.ts";
 import { readStepUsage, stepPromptTokens, stepTotalTokens } from "./loop/usage.ts";
@@ -1412,7 +1413,7 @@ export async function runLoop(p: RunLoopParams): Promise<RunLoopResult> {
         if (tailDelta) events.push({ type: "text_delta", text: tailDelta });
         stopHeartbeat();
       }
-      await result.finishReason;
+      throwForStreamError(await result.finishReason, capturedError);
     } catch (err) {
       if (streamTimeout.error) throw streamTimeout.error;
       const thrown = capturedError ?? err;
