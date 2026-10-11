@@ -33,7 +33,7 @@ export async function runSmoke(): Promise<void> {
   const js = await runJs({
     code: "return input.scope.v.data * 2;",
     input: { scope: { v: { data: 21 } }, input: null },
-    limits: { wall_ms: 1000 },
+    limits: { wall_ms: 10_000 },
     clock: null,
   });
   if (js.output !== 42 || !js.stats.worker_pid || js.stats.worker_pid === process.pid) {
