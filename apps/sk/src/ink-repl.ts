@@ -8,6 +8,7 @@ import {
   type TurnEvent,
 } from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
+import { AgentBriefingContext } from "./agent-context.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
 import { ConnectionPinger, type ConnectionSnapshot } from "./connection-pinger.ts";
 import {
@@ -99,6 +100,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   let currentConversationId: string | null = opts.resumeConversationId ?? null;
   let currentClient = client;
   let currentProfile = opts.profile;
+  let briefingContext = new AgentBriefingContext({
+    profile: currentProfile,
+    cwd: process.cwd(),
+    ...(currentConversationId ? { sessionId: currentConversationId } : {}),
+  });
+  let briefingReady = briefingContext.start();
+  let initialContextStatus = (await briefingReady).status;
   let profileVersion = 0;
   const personaListeners = new Set<
     (snap: { persona: ResolvedPersona; profile: ResolvedProfile; version: number }) => void
@@ -140,8 +148,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     promptOpts?: {
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       event?: RequestCredentialFormEvent;
+      raw_prompt?: string;
     },
-  ): Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }> => {
+  ): Promise<{
+    events: AsyncIterable<TurnEvent>;
+    conversationId: string;
+    contextStatus?: string | null;
+  }> => {
     const turn_id = newDebugTurnId("ink");
     const baseCtx = (): DebugCorrelationFields => ({
       mode: "ink",
@@ -159,6 +172,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       baseCtx(),
     );
     try {
+      await briefingReady;
+      const briefingUpdate = await briefingContext.beforePrompt(promptOpts?.raw_prompt ?? text);
+      if (briefingUpdate.status) initialContextStatus = briefingUpdate.status;
       const resolved = await resolveMentions(text, {
         cwd: process.cwd(),
         additionalDirectories: settings.merged.additionalDirectories ?? [],
@@ -185,10 +201,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         ? "append_message"
         : "create_conversation";
       const isCreate = operation === "create_conversation";
-      const turnMemory =
-        isCreate && pendingDigestContext
-          ? [memory.content, pendingDigestContext].filter(Boolean).join("\n\n---\n\n")
-          : memory.content;
+      const turnMemory = briefingContext.memory(
+        memory.content,
+        isCreate ? pendingDigestContext : null,
+      );
       pendingDigestContext = null;
       const stream = isCreate
         ? await currentClient.createConversationStream(
@@ -208,7 +224,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
             {
               message: resolved.prompt,
               ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
-              ...(memory.content ? { memory: memory.content } : {}),
+              ...(turnMemory ? { memory: turnMemory } : {}),
               ...(promptOpts?.permission_mode
                 ? { permission_mode: promptOpts.permission_mode }
                 : {}),
@@ -397,6 +413,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       return {
         events: iterTurnEvents(),
         conversationId: currentConversationId ?? "",
+        contextStatus: briefingUpdate.status,
       };
     } catch (err) {
       debugLog(
@@ -595,6 +612,12 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
   const onSelectConversation = async (id: string): Promise<void> => {
     currentConversationId = id;
+    briefingContext = new AgentBriefingContext({
+      profile: currentProfile,
+      cwd: process.cwd(),
+      sessionId: id,
+    });
+    initialContextStatus = (await briefingContext.start()).status;
     void refreshStatus();
   };
 
@@ -618,6 +641,8 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     currentClient = newClient;
     currentProfile = newProfile;
     currentConversationId = null;
+    briefingContext = new AgentBriefingContext({ profile: newProfile, cwd: process.cwd() });
+    initialContextStatus = (await briefingContext.start()).status;
     bootSnapshot = { ...bootSnapshot, mentions: [] };
     for (const listener of bootSnapshotListeners) listener(bootSnapshot);
 
@@ -688,6 +713,15 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         session: liveSession,
         setConversationId: (next) => {
           currentConversationId = next;
+          briefingContext = new AgentBriefingContext({
+            profile: currentProfile,
+            cwd: process.cwd(),
+            ...(next ? { sessionId: next } : {}),
+          });
+          briefingReady = briefingContext.start();
+          void briefingReady.then((update) => {
+            initialContextStatus = update.status;
+          });
         },
         allowedPermissions: Array.from(currentPersona.allowed ?? []),
         switchProfile: switchProfileFn,
@@ -804,6 +838,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         ? { nextCommandPreviewEnabled: settings.merged.nextCommandPreviewEnabled }
         : {}),
       initialConversationId: currentConversationId,
+      initialContextStatus,
       model: settings.merged.model ?? null,
       cwd: process.cwd(),
       statusSnapshot: snap,
