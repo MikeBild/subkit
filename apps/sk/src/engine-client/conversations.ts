@@ -138,8 +138,22 @@ export interface ResumeSummary {
   unsaved: boolean;
   pending_approval: {
     id: string;
+    tool_call_id?: string | null;
     tool_name: string;
     summary: string;
+    prompt?: {
+      question: string;
+      kind?: string;
+      summary?: string;
+      destructive?: boolean;
+      risk_level?: string;
+      target_label?: string;
+      reversible?: boolean;
+      default?: string;
+      options?: unknown[];
+      fields?: unknown[];
+      diffs?: unknown[];
+    };
   } | null;
   next_action: string;
   one_sentence: string;

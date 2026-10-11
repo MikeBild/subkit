@@ -369,23 +369,24 @@ export function buildTranscript(input: TranscriptBuildInput): TranscriptBuildRes
 
   staticRows.unshift(welcomeRow);
 
-  const elicitFallback =
-    session.pendingElicitation && elicitAnchor === null
-      ? ((pendingElicitation) => (
-          <ElicitRouter
-            elicitation={pendingElicitation}
-            inputDisabled={elicitInputDisabled}
-            onResponse={(out) => {
-              const resp = out as ElicitationResponse;
-              const reason =
-                "decision_reason" in resp && typeof resp.decision_reason === "string"
-                  ? resp.decision_reason
-                  : undefined;
-              onRespondElicitation(pendingElicitation.id, resp, reason);
-            }}
-          />
-        ))(session.pendingElicitation)
-      : null;
+  if (session.pendingElicitation && elicitAnchor === null) {
+    const pendingElicitation = session.pendingElicitation;
+    dynamicRows.push(
+      <ElicitRouter
+        key={`elicit-${pendingElicitation.id}`}
+        elicitation={pendingElicitation}
+        inputDisabled={elicitInputDisabled}
+        onResponse={(out) => {
+          const resp = out as ElicitationResponse;
+          const reason =
+            "decision_reason" in resp && typeof resp.decision_reason === "string"
+              ? resp.decision_reason
+              : undefined;
+          onRespondElicitation(pendingElicitation.id, resp, reason);
+        }}
+      />,
+    );
+  }
 
-  return { staticRows, dynamicRows, pagerEntries, elicitFallback };
+  return { staticRows, dynamicRows, pagerEntries, elicitFallback: null };
 }
