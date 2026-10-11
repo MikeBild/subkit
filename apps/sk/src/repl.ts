@@ -10,6 +10,7 @@ import {
   type SkSessionState,
   type TurnEvent,
 } from "@cli-core/index.ts";
+import { AgentBriefingContext } from "./agent-context.ts";
 import type { ResolvedProfile } from "./config.ts";
 import {
   type DebugCorrelationFields,
@@ -127,6 +128,13 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
   line(`   type a prompt, /help for commands, /exit to leave.`);
 
   let session: SkSessionState = initialSessionState(opts.resumeConversationId ?? null);
+  let briefingContext = new AgentBriefingContext({
+    profile: opts.profile,
+    cwd: process.cwd(),
+    ...(opts.resumeConversationId ? { sessionId: opts.resumeConversationId } : {}),
+  });
+  const initialBriefing = await briefingContext.start();
+  if (initialBriefing.status) line(initialBriefing.status);
   if (opts.resumeConversationId) {
     line(`   resumed conversation ${opts.resumeConversationId.slice(0, 8)}`);
   }
@@ -298,6 +306,9 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           "sk: warning — the assistant asked for explicit confirmation but did not emit an elicit_request. Your reply will be sent as a NEW prompt, not as an approval. This usually means an engine policy-gate bug; see logs for `policy.gate_skipped` or `commit_gate.denied`.\n",
         );
       }
+      const briefingUpdate = await briefingContext.beforePrompt(input);
+      if (briefingUpdate.status) line(briefingUpdate.status);
+      const turnMemory = briefingContext.memory(memory.content);
       const resolved = await resolveMentions(input, {
         cwd: process.cwd(),
         additionalDirectories: settings.merged.additionalDirectories ?? [],
@@ -327,7 +338,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           {
             initial_message: resolved.prompt,
             ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
-            ...(memory.content ? { memory: memory.content } : {}),
+            ...(turnMemory ? { memory: turnMemory } : {}),
             ...(settings.merged.model ? { model: settings.merged.model } : {}),
           },
           traceContext(),
@@ -360,7 +371,7 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
           {
             message: resolved.prompt,
             ...(resolved.references.length > 0 ? { references: resolved.references } : {}),
-            ...(memory.content ? { memory: memory.content } : {}),
+            ...(turnMemory ? { memory: turnMemory } : {}),
           },
           traceContext(),
         );
@@ -516,6 +527,14 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         session,
         setConversationId: (next) => {
           session = initialSessionState(next);
+          briefingContext = new AgentBriefingContext({
+            profile: opts.profile,
+            cwd: process.cwd(),
+            ...(next ? { sessionId: next } : {}),
+          });
+          void briefingContext.start().then((update) => {
+            if (update.status) line(update.status);
+          });
         },
         allowedPermissions: Array.from(persona.allowed),
         statusSnapshot: await client.statusSummary().catch(() => null),
@@ -601,6 +620,11 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
       case "clear":
       case "new":
         session = initialSessionState(null);
+        briefingContext = new AgentBriefingContext({ profile: opts.profile, cwd: process.cwd() });
+        {
+          const update = await briefingContext.start();
+          if (update.status) line(update.status);
+        }
         line("session cleared");
         return;
       case "resume": {
@@ -615,6 +639,15 @@ export async function runRepl(opts: ReplRunOptions): Promise<number> {
         const first = res.items[0];
         if (first) {
           session = initialSessionState(first.id);
+          briefingContext = new AgentBriefingContext({
+            profile: opts.profile,
+            cwd: process.cwd(),
+            sessionId: first.id,
+          });
+          {
+            const update = await briefingContext.start();
+            if (update.status) line(update.status);
+          }
           line(`attached to ${first.id}`);
         }
         return;

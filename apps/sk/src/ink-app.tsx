@@ -85,6 +85,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   permissionMode = "ask",
   historyPath,
   onPrompt,
+  initialContextStatus,
   onSlash,
   onSelectConversation,
   onElicitResponse,
@@ -156,6 +157,13 @@ export const InkApp: React.FC<InkAppProps> = ({
   const setTransientStatus = useCallback((msg: string | null) => {
     transientStatusRef.current = msg;
   }, []);
+  useEffect(() => {
+    if (!initialContextStatus) return;
+    showInfo(initialContextStatus);
+    setTransientStatus(initialContextStatus);
+    const timer = setTimeout(() => setTransientStatus(null), 5000);
+    return () => clearTimeout(timer);
+  }, [initialContextStatus, setTransientStatus, showInfo]);
   const recentListsRef = useRef<Map<string, unknown[]>>(new Map());
 
   const {
@@ -391,10 +399,16 @@ export const InkApp: React.FC<InkAppProps> = ({
               messages: [...session.messages, { role: "user", content: trimmed }],
             };
         if (!alreadyEchoed) setSession(optimisticSession);
-        const { events, conversationId } = await onPrompt(finalPrompt, {
+        const { events, conversationId, contextStatus } = await onPrompt(finalPrompt, {
           permission_mode: activeMode,
+          raw_prompt: trimmed,
           ...(redirectEvent ? { event: redirectEvent } : {}),
         });
+        if (contextStatus) {
+          showInfo(contextStatus);
+          setTransientStatus(contextStatus);
+          setTimeout(() => setTransientStatus(null), 5000);
+        }
         const finalState = await applyEventStream(
           { ...optimisticSession, conversationId },
           events,

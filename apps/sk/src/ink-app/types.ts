@@ -21,6 +21,7 @@ export interface InkAppProps {
   };
   statusLineConfig?: StatusLineConfig;
   initialConversationId?: string | null;
+  initialContextStatus?: string | null;
   model?: string | null;
   cwd?: string;
   statusSnapshot?: StatusSummary | null;
@@ -53,8 +54,13 @@ export interface InkAppProps {
     opts?: {
       permission_mode?: "auto" | "ask" | "plan" | "yolo";
       event?: RequestCredentialFormEvent;
+      raw_prompt?: string;
     },
-  ) => Promise<{ events: AsyncIterable<TurnEvent>; conversationId: string }>;
+  ) => Promise<{
+    events: AsyncIterable<TurnEvent>;
+    conversationId: string;
+    contextStatus?: string | null;
+  }>;
   onSlash?: (
     name: string,
     raw: string,
