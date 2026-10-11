@@ -57,6 +57,23 @@ describe("ConfigSchema", () => {
     );
   });
 
+  test("sandbox worker controls have bounded defaults and preserve per-tenant fairness", () => {
+    const parsed = ConfigSchema.parse({ database: { url: "postgres://x" } });
+    expect(parsed.sandbox.queue_limit).toBe(32);
+    expect(parsed.sandbox.tenant_queue_limit).toBe(8);
+    expect(parsed.sandbox.ipc_max_bytes).toBe(32 * 1024 * 1024);
+    expect(parsed.sandbox.worker_rss_bytes).toBe(512 * 1024 * 1024);
+    const r = ConfigSchema.safeParse({
+      database: { url: "postgres://x" },
+      sandbox: { queue_limit: 4, tenant_queue_limit: 5 },
+    });
+    expect(r.success).toBe(false);
+    if (r.success) return;
+    expect(r.error.issues.some((i) => i.path.join(".") === "sandbox.tenant_queue_limit")).toBe(
+      true,
+    );
+  });
+
   test("rejects an invalid log.level", () => {
     const r = ConfigSchema.safeParse({
       database: { url: "postgres://x" },

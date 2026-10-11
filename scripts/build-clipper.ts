@@ -92,6 +92,33 @@ async function staticFiles(directory: string, files: Map<string, Uint8Array>): P
 export async function buildClipper(check = false): Promise<string> {
   const files = new Map<string, Uint8Array>();
   await staticFiles(join(app, "public"), files);
+  const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {
+    version: string;
+  };
+  const version = packageJson.version;
+  if (!/^\d+(?:\.\d+){0,3}$/.test(version)) {
+    throw new Error("SubKit package version cannot be used as a Chrome extension version");
+  }
+  const sourceManifest = files.get("manifest.json");
+  if (!sourceManifest) throw new Error("Clipper manifest is missing");
+  const extensionManifest = JSON.parse(new TextDecoder().decode(sourceManifest)) as Record<
+    string,
+    unknown
+  >;
+  extensionManifest.version = version;
+  files.set(
+    "manifest.json",
+    new TextEncoder().encode(`${JSON.stringify(extensionManifest, null, 2)}\n`),
+  );
+  for (const name of ["popup.html", "options.html"]) {
+    const source = files.get(name);
+    if (!source) throw new Error(`Clipper page is missing: ${name}`);
+    const page = new TextDecoder().decode(source);
+    if (!page.includes("@@SUBKIT_VERSION@@")) {
+      throw new Error(`Clipper page has no version slot: ${name}`);
+    }
+    files.set(name, new TextEncoder().encode(page.replaceAll("@@SUBKIT_VERSION@@", version)));
+  }
   for (const [name, license] of [
     ["defuddle", "defuddle/LICENSE"],
     ["turndown", "turndown/LICENSE"],

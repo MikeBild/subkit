@@ -3,6 +3,7 @@ import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
   describeUnknownFunction,
+  evaluate as evaluateJsonata,
   findUnknownFunctionCalls,
   formatError as formatJsonataError,
 } from "../execution/jsonata-engine.ts";
@@ -239,9 +240,8 @@ async function evaluateWithTimeout(
   root: unknown,
   bindings: Record<string, unknown>,
 ): Promise<{ ok: true; value: unknown } | { ok: false; message: string; position?: number }> {
-  let compiled: ReturnType<typeof compileJsonata>;
   try {
-    compiled = compileJsonata(expression);
+    compileJsonata(expression);
   } catch (err) {
     const e = formatJsonataError(err, expression);
     return {
@@ -253,9 +253,7 @@ async function evaluateWithTimeout(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const value = await Promise.race<unknown>([
-      compiled.evaluate(root, bindings).catch((err: unknown) => {
-        throw formatJsonataError(err, expression);
-      }),
+      evaluateJsonata(expression, root, bindings),
       new Promise((_, reject) => {
         timer = setTimeout(
           () => reject(new Error(`recorded evaluation exceeded ${EVAL_TIMEOUT_MS}ms`)),

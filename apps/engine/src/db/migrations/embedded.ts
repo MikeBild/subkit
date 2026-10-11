@@ -116,6 +116,7 @@ import sql0095IntakeRelations from "./0095_intake_relations.sql" with { type: "t
 import sql0096AmbiguousLockheed from "./0096_ambiguous_lockheed.sql" with { type: "text" };
 import sql0097BentMadelynePryor from "./0097_bent_madelyne_pryor.sql" with { type: "text" };
 import sql0098IntakeCategoryAssignment from "./0098_intake_category_assignment.sql" with { type: "text" };
+import sql0099YummyFantasticFour from "./0099_yummy_fantastic_four.sql" with { type: "text" };
 import journalMeta from "./meta/_journal.json" with { type: "json" };
 
 interface JournalEntry {
@@ -239,6 +240,7 @@ const SQL_BY_TAG: Record<string, string> = {
   "0096_ambiguous_lockheed": sql0096AmbiguousLockheed,
   "0097_bent_madelyne_pryor": sql0097BentMadelynePryor,
   "0098_intake_category_assignment": sql0098IntakeCategoryAssignment,
+  "0099_yummy_fantastic_four": sql0099YummyFantasticFour,
 };
 
 const journal = journalMeta as unknown as Journal;

@@ -1,6 +1,6 @@
 import type { ConstructorOptions, QueueResult } from "pg-boss";
 import { PgBoss } from "pg-boss";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { setDlqJobCount, setQueueDepth, setQueueLag } from "../observability/instrumentation.ts";
 import { QUEUE_DEFINITIONS, QUEUE_NAMES, type QueueName } from "./queues.ts";
 
@@ -30,7 +30,7 @@ async function pollQueueDepths(boss: PgBoss): Promise<void> {
       module: "queue",
       action: "boss.depth_poll_failed",
       msg: "queue depth poll failed",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
 }
@@ -70,7 +70,7 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
       module: "queue",
       action: "boss.error",
       msg: "pg-boss emitted error",
-      error: err.message,
+      ...errorFields(err),
     });
   });
 
@@ -93,7 +93,7 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
         action: "queue.create_failed",
         msg: "could not create DLQ",
         queue: dlq,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     }
   }
@@ -109,7 +109,7 @@ export async function createBoss(opts: StartBossOptions): Promise<PgBoss> {
         action: "queue.create_failed",
         msg: "could not create queue (ignoring — probably exists)",
         queue: name,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     }
   }
@@ -165,7 +165,7 @@ export async function stopBoss(timeoutMs = 10_000): Promise<void> {
       module: "queue",
       action: "boss.stop_failed",
       msg: "pg-boss stop threw",
-      error: err instanceof Error ? err.message : String(err),
+      ...errorFields(err),
     });
   }
   logger.info({

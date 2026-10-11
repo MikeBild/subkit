@@ -81,7 +81,11 @@ describe("scope labels", () => {
     expect(
       scopeCatalogue(["rbac:write", "workflow:run", "workflow:read", "workflow:read"]),
     ).toEqual(["*", "workflow:read", "workflow:run", "rbac:write"]);
-    expect(defaultKeyScopes(["workflow:read"])).toEqual(["workflow:read"]);
+    expect(defaultKeyScopes(["workflow:read", "intake:read", "intake:write"])).toEqual([
+      "workflow:read",
+      "intake:read",
+      "intake:write",
+    ]);
   });
 });
 
@@ -309,10 +313,33 @@ test("one valid approval reads singular, more read plural — no (n)", () => {
 });
 
 test("key presets never grant permissions the issuer does not hold", () => {
-  const held = ["workflow:read", "workflow:run", "rbac:write", "workflow:read"];
-  expect(keyPresetScopes("read", held)).toEqual(["workflow:read"]);
-  expect(keyPresetScopes("run", held)).toEqual(["workflow:read", "workflow:run"]);
-  expect(keyPresetScopes("manage", held)).toEqual(["workflow:read", "workflow:run", "rbac:write"]);
+  const held = [
+    "workflow:read",
+    "workflow:run",
+    "intake:read",
+    "intake:write",
+    "rbac:write",
+    "workflow:read",
+  ];
+  expect(keyPresetScopes("read", held)).toEqual(["workflow:read", "intake:read"]);
+  expect(keyPresetScopes("run", held)).toEqual([
+    "workflow:read",
+    "workflow:run",
+    "intake:read",
+    "intake:write",
+  ]);
+  expect(keyPresetScopes("run", ["workflow:read", "workflow:run", "intake:read"])).toEqual([
+    "workflow:read",
+    "workflow:run",
+    "intake:read",
+  ]);
+  expect(keyPresetScopes("manage", held)).toEqual([
+    "workflow:read",
+    "workflow:run",
+    "intake:read",
+    "intake:write",
+    "rbac:write",
+  ]);
   expect(keyPresetScopes("manage", [])).toEqual([]);
   expect(keyPresetScopes("manage", ["*"])).toEqual([]);
   expect(ROTATE_OVERLAP_MINUTES).toBe(24 * 60);

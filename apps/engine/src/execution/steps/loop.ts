@@ -4,7 +4,7 @@ import { runJs } from "../../sandboxes/quickjs/runtime.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { LoopStep } from "../../workflows/types.ts";
 import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
-import { compile as compileJsonata } from "../jsonata-engine.ts";
+import { evaluate as evaluateJsonata } from "../jsonata-engine.ts";
 import { applySelector } from "../selectors.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
@@ -48,6 +48,7 @@ async function runLoopBody(
             now_ms: p.ctx.started_at.getTime(),
             seed: `${p.ctx.evaluation_seed ?? p.ctx.execution_id}:${p.step.id}`,
           },
+          signal: p.ctx.signal,
         });
         collection = (out as { output: unknown }).output;
       } catch (err) {
@@ -85,7 +86,13 @@ async function runLoopBody(
         collection = applySelector(p.step.over, p.scope);
       } else {
         const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
-        collection = await compileJsonata(p.step.over).evaluate(p.scope, bindings);
+        collection = await evaluateJsonata(p.step.over, p.scope, {
+          ...bindings,
+          clock: {
+            now_ms: p.ctx.started_at.getTime(),
+            ...(p.ctx.evaluation_seed ? { seed: p.ctx.evaluation_seed } : {}),
+          },
+        });
       }
     } else {
       return {

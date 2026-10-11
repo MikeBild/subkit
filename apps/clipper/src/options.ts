@@ -1,3 +1,4 @@
+import { connectionErrorMessage, IntakeApi } from "./api.ts";
 import { chromeApi } from "./chrome-api.ts";
 import { loadSettings, normalizeEngineUrl, parseInstallConfig, saveSettings } from "./clipper.ts";
 import type { Copy } from "./ui.ts";
@@ -35,6 +36,25 @@ async function initialize(): Promise<void> {
   text = copy[selectedLanguage];
   document.documentElement.lang = selectedLanguage;
   applyText(text);
+  if (settings.engineUrl && settings.apiKey) {
+    await verifyConnection(settings.engineUrl, settings.apiKey);
+  }
+}
+
+async function verifyConnection(engineUrl: string, apiKey: string): Promise<void> {
+  setStatus(text.checkingConnection);
+  try {
+    const result = await new IntakeApi(engineUrl, apiKey).checkConnection();
+    if (result.canCollect === false) {
+      setStatus(text.missingIntakeWritePermission, true);
+    } else if (result.canCollect === true) {
+      setStatus(text.connectionVerified);
+    } else {
+      setStatus(text.connectionReadOnlyVerified);
+    }
+  } catch (error) {
+    setStatus(connectionErrorMessage(error, text), true);
+  }
 }
 
 form?.addEventListener("submit", async (event) => {
@@ -66,7 +86,7 @@ form?.addEventListener("submit", async (event) => {
     }
     initialEngineUrl = nextUrl;
     await chromeApi.runtime.sendMessage({ type: "settings-updated" });
-    setStatus(text.savedConnection);
+    await verifyConnection(nextUrl, enteredKey || oldSettings.apiKey || "");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : text.invalidEngine, true);
   }
@@ -81,6 +101,7 @@ clearKey?.addEventListener("click", async () => {
   const { apiKey: _, ...withoutKey } = settings;
   await saveSettings(chromeApi.storage.local, withoutKey);
   if (apiKey) apiKey.value = "";
+  await chromeApi.runtime.sendMessage({ type: "settings-updated" });
   setStatus(text.keyCleared);
 });
 

@@ -30,6 +30,7 @@ function outcome(kind: ExecutionOutcome["kind"], partial: Partial<ExecutionOutco
     connector: null,
     steps: { total: 2, succeeded: 1, failed: 0, held: 1, skipped: 0 },
     output_contract: "none",
+    rerun_safety: { mode: "prepare_only", reason: "Review effects before repeating" },
     ...partial,
   } satisfies ExecutionOutcome;
 }

@@ -15,6 +15,7 @@ describe("executionOutcomeLine", () => {
         connector: null,
         steps,
         output_contract: "none",
+        rerun_safety: { mode: "prepare_only", reason: "fixture" },
       }),
     ).toBe(
       "failed at step fetch (request) · auth_failed, http_4xx · steps 1/3 ok, 1 failed, 1 skipped",
@@ -31,6 +32,7 @@ describe("executionOutcomeLine", () => {
       connector: null,
       steps: { total: 2, succeeded: 1, failed: 0, held: 1, skipped: 0 },
       output_contract: "none",
+      rerun_safety: { mode: "prepare_only", reason: "fixture" },
     });
     expect(line).toStartWith("held — writes held, nothing written");
     expect(line).not.toContain("succeeded");

@@ -16,9 +16,12 @@ afterEach(() => {
 
 describe("JSONATA_BUILTIN_FUNCTIONS", () => {
   test("every entry is a function the installed jsonata binds (static frame + now/millis)", async () => {
-    expect(JSONATA_BUILTIN_FUNCTIONS.size).toBe(65);
+    expect(JSONATA_BUILTIN_FUNCTIONS.size).toBe(62);
     expect(JSONATA_BUILTIN_FUNCTIONS.has("now")).toBe(true);
     expect(JSONATA_BUILTIN_FUNCTIONS.has("millis")).toBe(true);
+    for (const name of ["random", "shuffle", "eval"]) {
+      expect(JSONATA_BUILTIN_FUNCTIONS.has(name)).toBe(false);
+    }
     for (const name of JSONATA_BUILTIN_FUNCTIONS) {
       expect(await evaluate<boolean>(`$type($${name}) = "function"`, {})).toBe(true);
     }

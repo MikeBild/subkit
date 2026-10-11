@@ -66,21 +66,23 @@ const ENGINE_DEFAULT_ENVIRONMENT: RunEnvironment = "dev";
 
 const UNSET = "__unset";
 
-function InputFieldControl({
+export function InputFieldControl({
   field,
   index,
   value,
   invalid,
   onChange,
+  idPrefix = "workflow-run-input",
 }: {
   field: InputField;
   index: number;
   value: string;
   invalid: boolean;
   onChange: (value: string) => void;
+  idPrefix?: string;
 }) {
   const { t } = useI18n();
-  const id = `workflow-run-input-${index}`;
+  const id = `${idPrefix}-${index}`;
   const control = inputControl(field);
   const sample = inputSampleText(field);
   const item = inputItemTypeKey(field);

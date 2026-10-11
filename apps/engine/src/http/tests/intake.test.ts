@@ -380,7 +380,10 @@ describe("intake HTTP flow", () => {
   test("uses an actor default shared category and lets the actor replace it", async () => {
     const initial = await request("/v1/intake/default-category", "GET");
     expect(initial.status).toBe(200);
-    expect((await initial.json()) as { category: string }).toEqual({ category: "inbox" });
+    expect((await initial.json()) as { category: string; can_collect: boolean }).toEqual({
+      category: "inbox",
+      can_collect: true,
+    });
 
     const updated = await request("/v1/intake/default-category", "PATCH", {
       category: "research",

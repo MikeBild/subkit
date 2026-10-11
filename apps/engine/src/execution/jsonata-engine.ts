@@ -1,7 +1,9 @@
 import jsonata, { type Expression } from "jsonata";
 import { instrument } from "../observability/runtime-telemetry.ts";
+import { runSandboxWorkerJob } from "../sandboxes/quickjs/runtime.ts";
 
 export type EvalBindings = {
+  [name: string]: unknown;
   input?: unknown;
   caller?: unknown;
   scope?: Record<string, unknown>;
@@ -10,6 +12,7 @@ export type EvalBindings = {
   env?: Record<string, string>;
   loop_index?: number;
   loop_item?: unknown;
+  clock?: { now_ms: number; seed?: string };
 };
 
 export class JSONataError extends Error {
@@ -39,13 +42,46 @@ export class JSONataError extends Error {
 
 const CACHE_LIMIT = 4096;
 const cache = new Map<string, Expression>();
+const JSONATA_AST_DEPTH_CAP = 256;
+const JSONATA_SEQUENCE_CAP = 100_000;
+const JSONATA_SOURCE_CAP = 256 * 1024;
+function rejectsNondeterminism(source: string): void {
+  if (/\$\s*(?:random|shuffle|eval)\b/i.test(source)) {
+    throw new JSONataError(
+      source,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "JSONata random, shuffle, and eval functions are not available in deterministic execution",
+    );
+  }
+}
 
 export function compile(source: string): Expression {
+  if (Buffer.byteLength(source) > JSONATA_SOURCE_CAP) {
+    throw new JSONataError(
+      source,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "JSONata expression exceeds the maximum source length",
+    );
+  }
+  rejectsNondeterminism(source);
   const existing = cache.get(source);
   if (existing) return existing;
   let expr: Expression;
   try {
     expr = jsonata(source);
+    expr.registerFunction("random", () => {
+      throw new Error("JSONata random is not available in deterministic execution");
+    });
+    expr.registerFunction("shuffle", () => {
+      throw new Error("JSONata shuffle is not available in deterministic execution");
+    });
+    assertAstDepth(expr, source);
   } catch (err) {
     throw formatError(err, source);
   }
@@ -57,12 +93,48 @@ export function compile(source: string): Expression {
   return expr;
 }
 
+function assertAstDepth(expr: Expression, source: string): void {
+  const ast = (expr as Expression & { ast?: () => unknown }).ast?.();
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > JSONATA_AST_DEPTH_CAP) {
+      throw new JSONataError(
+        source,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        "JSONata expression exceeds the maximum AST depth",
+      );
+    }
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry, depth + 1);
+      return;
+    }
+    for (const entry of Object.values(value)) visit(entry, depth + 1);
+  };
+  visit(ast, 0);
+}
+
+function assertResultSize(value: unknown, source: string): void {
+  if (Array.isArray(value) && value.length > JSONATA_SEQUENCE_CAP) {
+    throw new JSONataError(
+      source,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "JSONata result exceeds the maximum sequence length",
+    );
+  }
+}
+
 export async function evaluate<T = unknown>(
   source: string,
   data: unknown,
   bindings: EvalBindings = {},
 ): Promise<T> {
-  const expr = compile(source);
+  compile(source);
   const flat = flattenBindings(bindings);
   return instrument({
     module: "execution",
@@ -71,12 +143,49 @@ export async function evaluate<T = unknown>(
     thresholdMs: 250,
     fn: async () => {
       try {
-        return (await expr.evaluate(data, flat)) as T;
+        return (await runSandboxWorkerJob({
+          op: "evaluate_jsonata",
+          source,
+          data,
+          bindings: flat,
+          clock: bindings.clock ?? null,
+          wall_ms: 1_000,
+        })) as T;
       } catch (err) {
         throw formatError(err, source);
       }
     },
   });
+}
+
+export async function evaluateJsonataInCurrentProcess<T = unknown>(p: {
+  source: string;
+  data: unknown;
+  bindings: Record<string, unknown>;
+  clock: { now_ms: number; seed?: string } | null;
+}): Promise<T> {
+  const expr = compile(p.source);
+  try {
+    expr.registerFunction("random", () => {
+      throw new Error("JSONata random is not available in deterministic execution");
+    });
+    expr.registerFunction("shuffle", () => {
+      throw new Error("JSONata shuffle is not available in deterministic execution");
+    });
+    expr.registerFunction("eval", () => {
+      throw new Error("JSONata eval is not available in deterministic execution");
+    });
+    if (p.clock) {
+      const nowMs = p.clock.now_ms;
+      expr.registerFunction("now", () => new Date(nowMs).toISOString());
+      expr.registerFunction("millis", () => nowMs);
+    }
+    const value = await expr.evaluate(p.data, p.bindings);
+    assertResultSize(value, p.source);
+    return value as T;
+  } catch (err) {
+    throw formatError(err, p.source);
+  }
 }
 
 export function flattenBindings(bindings: EvalBindings): Record<string, unknown> {
@@ -90,6 +199,10 @@ export function flattenBindings(bindings: EvalBindings): Record<string, unknown>
   };
   if (bindings.loop_index !== undefined) flat.loop_index = bindings.loop_index;
   if (bindings.loop_item !== undefined) flat.loop_item = bindings.loop_item;
+  for (const [name, value] of Object.entries(bindings)) {
+    if (name === "clock" || name in flat || value === undefined) continue;
+    flat[name] = value;
+  }
   return flat;
 }
 
@@ -173,7 +286,6 @@ export const JSONATA_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
   "abs",
   "sqrt",
   "power",
-  "random",
   "boolean",
   "not",
   "map",
@@ -194,7 +306,6 @@ export const JSONATA_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
   "assert",
   "type",
   "sort",
-  "shuffle",
   "distinct",
   "encodeUrlComponent",
   "encodeUrl",
@@ -202,7 +313,6 @@ export const JSONATA_BUILTIN_FUNCTIONS: ReadonlySet<string> = new Set([
   "decodeUrl",
   "base64encode",
   "base64decode",
-  "eval",
   "toMillis",
   "fromMillis",
   "clone",

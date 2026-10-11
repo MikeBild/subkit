@@ -485,6 +485,9 @@ function CreateKeyDialog({
   const [name, setName] = useState("");
   const [preset, setPreset] = useState<KeyScopePreset>("run");
   const picked = keyPresetScopes(preset, session.permissions);
+  const missingIntakeScopes = ["intake:read", "intake:write"].filter(
+    (scope) => !session.permissions.includes(scope),
+  );
   const issue = useMutation({
     mutationFn: () =>
       apiRequest<IssuedApiKey>("/v1/identity/api-keys", {
@@ -550,6 +553,17 @@ function CreateKeyDialog({
           <p className="text-sm text-muted-foreground" data-testid="api-key-preset-permissions">
             {scopeWords(picked, t)}
           </p>
+          {missingIntakeScopes.length > 0 ? (
+            <p
+              className="text-sm text-destructive"
+              data-testid="api-key-intake-permission-missing"
+              role="status"
+            >
+              {t("apiKeys.webClipperPermissionsMissing", {
+                permissions: missingIntakeScopes.join(", "),
+              })}
+            </p>
+          ) : null}
         </Field>
       </FieldGroup>
     </FormDialog>

@@ -14,7 +14,8 @@ export function logScheduleFireFailure(
     error instanceof Error &&
     "code" in error &&
     (error.code === "execution_authority_required" ||
-      error.code === "execution_authority_unavailable")
+      error.code === "execution_authority_unavailable" ||
+      error.code === "input_required")
   ) {
     logger.warn({
       module: "scheduler",

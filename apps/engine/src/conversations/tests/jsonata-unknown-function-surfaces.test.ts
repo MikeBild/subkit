@@ -219,8 +219,9 @@ describe("generation prompt · JSONata contract", () => {
     );
     expect(prompt).toContain("- Built-ins: $sum $count $max");
     expect(prompt).toContain(
-      "$base64encode $base64decode $eval $toMillis $fromMillis $clone $now $millis.",
+      "$base64encode $base64decode $toMillis $fromMillis $clone $now $millis.",
     );
+    expect(prompt).not.toContain("$eval");
     expect(prompt).toContain("indexOf → `($arr#$i[$ = value].$i)[0]`");
     expect(prompt).toContain(`verified idiom: \`${JSONATA_ARGMAX_IDIOM}\``);
     expect(prompt).toContain(

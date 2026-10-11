@@ -1,0 +1,93 @@
+{
+  "sha256": "86474c3d25f51bf5d3c5feec0f13522955cf04f185af72001e011f29d6d1f068",
+  "bytes": 1333514,
+  "bundles": {
+    "money": {
+      "sha256": "03b19906285facb6ea3c6b80bd59d4f75479fcbb55df062dbbdf17600ff4646d",
+      "bytes": 7745
+    },
+    "csv": {
+      "sha256": "208c34d99a0dffde3557e0a39fdfcae3e97a25827e5cf1b5a32ae6087c73c2e4",
+      "bytes": 20511
+    },
+    "date": {
+      "sha256": "bf1e92debd0fa5c0b9e55b0b54dc6efa4371024837771bbc275cbaaa636cfebd",
+      "bytes": 935550
+    },
+    "schema": {
+      "sha256": "0651d00249a071d1f6b62673b3925ab21a5fd032dfbc6b587731e6c76dfdd61e",
+      "bytes": 116691
+    },
+    "assert": {
+      "sha256": "f3e2ac6cab3239bf134b6a3a373f4c9bf7480c8e72281357d9a5cff4e562b9d0",
+      "bytes": 116762
+    },
+    "url": {
+      "sha256": "e112c884b7a4c990228f92b5f6c91bbb5fa123939408b43fd94734e5fc4e7d11",
+      "bytes": 48596
+    },
+    "xml": {
+      "sha256": "402007429aa0c39ec055014030ffbab95d9135e95a5a4084e0d62e8cb231599d",
+      "bytes": 66944
+    },
+    "template": {
+      "sha256": "257e026919df26fd9524b2a3dd8fb83729a16c1cee5ae266989fd56f239344a0",
+      "bytes": 3027
+    },
+    "diff": {
+      "sha256": "265f434b2b61c7b963238dedf6aebefb6b099adbeb11fed387606448510fe1fa",
+      "bytes": 3027
+    },
+    "core": {
+      "sha256": "406bfb1e7b64ec939eb9b770a564d1f9092de311835d818ee023e76c9011450b",
+      "bytes": 14661
+    }
+  },
+  "packages": [
+    {
+      "name": "big.js",
+      "version": "7.0.1",
+      "license": "MIT"
+    },
+    {
+      "name": "papaparse",
+      "version": "5.7.0",
+      "license": "MIT"
+    },
+    {
+      "name": "@js-joda/core",
+      "version": "6.3.0",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "@js-joda/timezone",
+      "version": "3.1.0",
+      "license": "BSD-3-Clause"
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT"
+    },
+    {
+      "name": "core-js-pure",
+      "version": "3.50.0",
+      "license": "MIT"
+    },
+    {
+      "name": "fast-xml-parser",
+      "version": "5.11.2",
+      "license": "MIT"
+    }
+  ],
+  "legal_notices": [
+    "//! @copyright (c) 2007-present, Stephen Colebourne & Michael Nascimento Santos",
+    "//! @copyright (c) 2015-present, Philipp Thürwächter, Pattrick Hüper & js-joda contributors",
+    "//! @license BSD-3-Clause (see LICENSE in the root directory of this source tree)",
+    "//! @version @js-joda/core - 6.3.0",
+    "//! @version @js-joda/timezone - 3.1.0-2026e"
+  ],
+  "js_joda_license": "BSD License\n\nFor js-joda software\n\nCopyright (c) 2016, Philipp Thürwächter & Pattrick Hüper\n \nAll rights reserved.\n \nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n \n * Redistributions of source code must retain the above copyright notice,\n   this list of conditions and the following disclaimer.\n \n * Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n \n * Neither the name of js-joda nor the names of its contributors\n   may be used to endorse or promote products derived from this software\n   without specific prior written permission.\n \nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR\nCONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,\nEXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,\nPROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR\nPROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF\nLIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING\nNEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\nSOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n\n",
+  "timezone_data": "embedded full IANA dataset from the pinned timezone package",
+  "polyfill_identifiers": "monotonic counter with fixed suffix; no random source"
+}

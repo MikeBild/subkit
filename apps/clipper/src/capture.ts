@@ -60,6 +60,11 @@ function isYoutubeVideo(sourceUrl: string): boolean {
   return path === "/watch" || path.startsWith("/shorts/") || path.startsWith("/live/");
 }
 
+function isCockpitChat(sourceUrl: string): boolean {
+  const url = new URL(sourceUrl);
+  return url.pathname.startsWith("/cockpit/chat/");
+}
+
 function metadata(
   root: Document,
   sourceUrl: string,
@@ -99,6 +104,14 @@ function cleanArticle(
   body: string;
   diagnostics?: CaptureDiagnostic[];
 } {
+  if (isCockpitChat(sourceUrl)) {
+    const body = fallbackArticleText(root);
+    return {
+      metadata: metadata(root, sourceUrl),
+      body,
+      diagnostics: [{ code: body ? "article_fallback" : "main_content_unavailable" }],
+    };
+  }
   const prepared = prepareCaptureDocument(root);
   const diagnostics: CaptureDiagnostic[] = [];
   if (prepared.metadataSkipped) diagnostics.push({ code: "metadata_unavailable" });

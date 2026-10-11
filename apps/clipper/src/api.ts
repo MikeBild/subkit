@@ -5,11 +5,38 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string | undefined,
+    readonly traceId: string | undefined,
     message: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+export class CollectionPermissionError extends Error {
+  constructor() {
+    super("intake:write is not allowed");
+    this.name = "CollectionPermissionError";
+  }
+}
+
+export function connectionErrorMessage(
+  error: unknown,
+  copy: {
+    invalidApiKey: string;
+    missingIntakeReadPermission: string;
+    missingIntakeWritePermission: string;
+    connectionFailed: string;
+    apiResponseFailed: string;
+  },
+): string {
+  if (error instanceof CollectionPermissionError) return copy.missingIntakeWritePermission;
+  if (error instanceof ApiError) {
+    if (error.status === 401) return copy.invalidApiKey;
+    if (error.status === 403) return copy.missingIntakeReadPermission;
+    return `${copy.apiResponseFailed} (HTTP ${error.status}${error.traceId ? `, Trace: ${error.traceId}` : ""})`;
+  }
+  return copy.connectionFailed;
 }
 
 export class IntakeApi {
@@ -37,6 +64,7 @@ export class IntakeApi {
       throw new ApiError(
         response.status,
         payload.code || payload.reason,
+        (payload as { trace_id?: string }).trace_id,
         payload.error || payload.message || `Request failed (${response.status})`,
       );
     }
@@ -47,8 +75,16 @@ export class IntakeApi {
     return this.request("/v1/categories");
   }
 
-  defaultCategory(): Promise<{ category: string }> {
+  defaultCategory(): Promise<{ category: string; can_collect?: boolean }> {
     return this.request("/v1/intake/default-category");
+  }
+
+  async checkConnection(): Promise<{ category: string; canCollect?: boolean }> {
+    const [_, preference] = await Promise.all([this.categories(), this.defaultCategory()]);
+    return {
+      category: preference.category,
+      ...(preference.can_collect === undefined ? {} : { canCollect: preference.can_collect }),
+    };
   }
 
   collect(input: IntakeSubmission): Promise<IntakeItem> {

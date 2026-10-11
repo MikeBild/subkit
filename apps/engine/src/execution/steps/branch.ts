@@ -2,7 +2,7 @@ import { logger } from "../../logging/logger.ts";
 import { extractStepIdReferences, suggestClosest } from "../../workflows/levenshtein.ts";
 import type { BranchStep } from "../../workflows/types.ts";
 import { buildJsonataBindings, resolveScopeForJsonata } from "../jsonata-bindings.ts";
-import { compile as compileJsonata } from "../jsonata-engine.ts";
+import { evaluate as evaluateJsonata } from "../jsonata-engine.ts";
 import type { StepResult, StepRunContext } from "../types.ts";
 import { buildStepErrorDetail } from "./error-detail.ts";
 
@@ -13,10 +13,15 @@ export async function runBranchStep(p: {
 }): Promise<StepResult> {
   const start = Date.now();
   try {
-    const expr = compileJsonata(p.step.when);
     p.scope = await resolveScopeForJsonata(p.ctx.db, p.ctx.tenant_id, p.scope, p.ctx.signal);
     const bindings = buildJsonataBindings(p.scope, (p.scope as { $input?: unknown }).$input);
-    const matched = await expr.evaluate(p.scope, bindings);
+    const matched = await evaluateJsonata(p.step.when, p.scope, {
+      ...bindings,
+      clock: {
+        now_ms: p.ctx.started_at.getTime(),
+        ...(p.ctx.evaluation_seed ? { seed: p.ctx.evaluation_seed } : {}),
+      },
+    });
     const truthy = !!matched;
 
     const warnings: NonNullable<StepResult["warnings"]> = [];

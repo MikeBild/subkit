@@ -26,6 +26,7 @@ function outcome(partial: Partial<ExecutionOutcome> = {}): ExecutionOutcome {
     connector: null,
     steps: { total: 3, succeeded: 2, failed: 1, held: 0, skipped: 0 },
     output_contract: "none",
+    rerun_safety: { mode: "prepare_only", reason: "Review effects before repeating" },
     ...partial,
   };
 }

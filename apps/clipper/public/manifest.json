@@ -2,7 +2,6 @@
   "manifest_version": 3,
   "name": "SubKit Clipper",
   "description": "Collect pages and ideas in SubKit, review them in chat, and confirm what becomes knowledge.",
-  "version": "1.0.0",
   "permissions": ["activeTab", "scripting", "contextMenus", "storage"],
   "optional_host_permissions": [
     "https://*/*",

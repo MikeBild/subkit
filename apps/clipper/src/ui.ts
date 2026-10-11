@@ -33,6 +33,16 @@ export interface Copy {
   categoryRequired: string;
   needsClipApi: string;
   intakeUnavailable: string;
+  invalidApiKey: string;
+  missingIntakeReadPermission: string;
+  missingIntakeWritePermission: string;
+  connectionFailed: string;
+  apiResponseFailed: string;
+  collectionRejected: string;
+  connectionRetrySucceeded: string;
+  checkingConnection: string;
+  connectionVerified: string;
+  connectionReadOnlyVerified: string;
   categoryUnavailable: string;
   categoriesUnavailable: string;
   categoriesLoading: string;
@@ -121,6 +131,22 @@ export const copy: Record<"de" | "en", Copy> = {
     categoryRequired: "Gib eine gültige Kategorie ein.",
     needsClipApi: "Sammeln ist hier noch nicht verfügbar.",
     intakeUnavailable: "Sammeln ist gerade nicht verfügbar. Dein Entwurf bleibt gespeichert.",
+    invalidApiKey:
+      "Der API-Schlüssel ist ungültig oder abgelaufen. Öffne über das Zahnrad die Verbindungseinstellungen und speichere einen gültigen Schlüssel.",
+    missingIntakeReadPermission:
+      "Dem API-Schlüssel fehlt intake:read. Öffne über das Zahnrad die Verbindungseinstellungen und verwende einen Schlüssel mit diesem Recht.",
+    missingIntakeWritePermission:
+      "Die Verbindung steht, aber dem API-Schlüssel fehlt intake:write. Erstelle im Cockpit unter API-Zugriff einen Schlüssel mit „Ausführen & sammeln“ und speichere ihn hier. Dein Entwurf bleibt erhalten.",
+    connectionFailed:
+      "Die SubKit-API ist nicht erreichbar. Prüfe Engine-Adresse, Internetverbindung und den Chrome-Zugriff auf diese Adresse.",
+    apiResponseFailed: "Die SubKit-API hat die Anfrage abgelehnt.",
+    collectionRejected:
+      "SubKit hat den Clip abgelehnt. Dein Entwurf bleibt gespeichert. Prüfe Kategorie und Inhalt und versuche es erneut.",
+    connectionRetrySucceeded: "Verbindung aktiv. Kategorien wurden aktualisiert.",
+    checkingConnection: "Einstellungen gespeichert. Verbindung wird geprüft …",
+    connectionVerified: "Verbindung geprüft. Kategorien geladen und Sammelrecht bestätigt.",
+    connectionReadOnlyVerified:
+      "Verbindung steht. Die Engine kann noch nicht prüfen, ob dein Schlüssel Clips speichern darf. Beim Sammeln wird das geprüft.",
     categoryUnavailable:
       "Die gespeicherte Kategorie ist nicht verfügbar. Wähle eine andere Kategorie.",
     categoriesUnavailable: "Kategorien gerade nicht verfügbar",
@@ -133,7 +159,7 @@ export const copy: Record<"de" | "en", Copy> = {
     permissionDenied: "Erlaube den Zugriff auf diese Engine, um die Verbindung zu speichern.",
     invalidEngine: "Nutze HTTPS oder HTTP auf localhost.",
     keyRequired: "Gib einen API-Schlüssel für die neue Engine ein.",
-    savedConnection: "Gespeichert",
+    savedConnection: "Einstellungen gespeichert. Verbindung noch nicht geprüft.",
     keyCleared: "API-Schlüssel gelöscht",
     retryAttempt: "Neuen Speicherversuch starten",
     previousSaved: "Der vorige Inhalt wurde gespeichert. Deine Änderungen sind noch ein Entwurf.",
@@ -204,6 +230,23 @@ export const copy: Record<"de" | "en", Copy> = {
     categoryRequired: "Enter a valid category.",
     needsClipApi: "Collecting is not available here.",
     intakeUnavailable: "Collecting is currently unavailable. Your draft remains saved.",
+    invalidApiKey:
+      "The API key is invalid or expired. Open connection settings with the gear and save a valid key.",
+    missingIntakeReadPermission:
+      "The API key lacks intake:read. Open connection settings with the gear and use a key with this permission.",
+    missingIntakeWritePermission:
+      "The connection works, but the API key lacks intake:write. Create a key with “Run & collect” under API Access in Cockpit, then save it here. Your draft remains available.",
+    connectionFailed:
+      "The SubKit API could not be reached. Check the engine address, internet connection, and Chrome access to this address.",
+    apiResponseFailed: "The SubKit API rejected the request.",
+    collectionRejected:
+      "SubKit rejected the clip. Your draft remains saved. Check its category and content, then retry.",
+    connectionRetrySucceeded: "Connection is active. Categories were refreshed.",
+    checkingConnection: "Settings saved. Checking connection …",
+    connectionVerified:
+      "Connection checked. Categories loaded and collection permission confirmed.",
+    connectionReadOnlyVerified:
+      "Connection is active. This engine cannot check whether your key may save clips yet. That is checked when you collect.",
     categoryUnavailable: "The saved category is unavailable. Choose another category.",
     categoriesUnavailable: "Categories currently unavailable",
     categoriesLoading: "Loading categories.",
@@ -215,7 +258,7 @@ export const copy: Record<"de" | "en", Copy> = {
     permissionDenied: "Allow access to this engine to save the connection.",
     invalidEngine: "Use an HTTPS address or HTTP on localhost.",
     keyRequired: "Enter an API key for the new engine.",
-    savedConnection: "Saved",
+    savedConnection: "Settings saved. Connection has not been checked yet.",
     keyCleared: "API key cleared",
     retryAttempt: "Start a new save attempt",
     previousSaved: "The previous content was saved. Your changes remain a draft.",

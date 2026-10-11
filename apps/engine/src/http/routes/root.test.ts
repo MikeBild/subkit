@@ -83,7 +83,7 @@ describe("the self-description set", () => {
       "In each repository, run `sk agent init --domains <category>[,<category>]`",
     );
     expect(page).toContain("Run `sk status`, then `sk agent briefing --json`");
-    expect(page).toContain("Hooks do not infer the repository's domains on their own.");
+    expect(page).toContain("Hooks first read `.sk/agent.json` when present.");
     expect(page).toContain(
       "Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI.",
     );

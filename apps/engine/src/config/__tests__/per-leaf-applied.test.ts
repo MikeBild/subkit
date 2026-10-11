@@ -84,6 +84,14 @@ function valueFor(leaf: ConfigLeaf, salt: number): unknown {
     case "string":
       return pickStringCandidate(leaf, tag);
     case "number": {
+      const sandboxValues: Record<string, number> = {
+        "sandbox.queue_limit": 64,
+        "sandbox.tenant_queue_limit": 4,
+        "sandbox.ipc_max_bytes": 1024 * 1024,
+        "sandbox.worker_rss_bytes": 256 * 1024 * 1024,
+      };
+      const sandboxValue = sandboxValues[dottedPath(leaf)];
+      if (sandboxValue !== undefined) return sandboxValue;
       const candidates = [((salt + 5) % 45) + 5, 0.5, 200, 1_000, 60_000, 100_000, 3_600_000];
       for (const c of candidates) {
         if (leaf.schema.safeParse(c).success) return c;

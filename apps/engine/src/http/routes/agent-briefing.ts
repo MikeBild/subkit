@@ -15,7 +15,7 @@ import { ErrorSchema } from "../../api/common-schemas.ts";
 import { DOMAIN_SLUG_RE } from "../../api/domain-slug.ts";
 import type { ResolvedPrincipal } from "../../auth/index.ts";
 import type { Db } from "../../db/client.ts";
-import { can, catalogVisibility } from "../../rbac/index.ts";
+import { can, catalogVisibility, resourceAccess } from "../../rbac/index.ts";
 import { BadRequestError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -39,6 +39,15 @@ const AgentBriefingResponse = z
       .array(z.string())
       .describe("Slugs of the domain's connectors the caller may read, as listed in the briefing."),
     connectors_omitted: z.number().int(),
+    files: z.array(
+      z.object({
+        name: z.string(),
+        slug: z.string().nullable(),
+        category: z.string(),
+        description: z.string().nullable(),
+      }),
+    ),
+    files_omitted: z.number().int(),
     guides: z
       .array(z.string())
       .describe("Slugs of the skills that teach how to work with sk, listed for every domain."),
@@ -61,6 +70,7 @@ const AgentDomainsResponse = z
     domains: z.array(z.string()),
     from_prompt: z.array(z.string()),
     from_repo: z.array(z.string()),
+    from_folder: z.array(z.string()),
   })
   .openapi("AgentDomainsResponse");
 
@@ -68,11 +78,11 @@ const domainsRoute = createRoute({
   method: "post",
   path: "/v1/agent/domains",
   tags: ["agent"],
-  summary: "Resolve which known domains a prompt or repository is about",
+  summary: "Resolve which known domains a prompt, repository, or current folder is about",
   description:
-    "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge " +
-    "source) matches when every part of its slug appears as a word in the prompt or the " +
-    "repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads " +
+    "Deterministic: prompt and repository matching use domain words; current-folder matching " +
+    "uses its normalized basename as an exact shared catalog category. Coding-agent hooks use " +
+    "it to brief only what a turn is about. Reads " +
     "only; the prompt travels in the body so it stays out of URLs and access logs.",
   security: [{ bearerAuth: [] }],
   request: {
@@ -83,6 +93,13 @@ const domainsRoute = createRoute({
             .object({
               prompt: z.string().max(DOMAIN_PROMPT_MAX_CHARS).optional(),
               repo: z.string().max(DOMAIN_REPO_MAX_CHARS).optional(),
+              folder: z
+                .string()
+                .max(DOMAIN_REPO_MAX_CHARS)
+                .refine((value) => !value.includes("/") && !value.includes("\\"), {
+                  message: "folder must be a basename, not a path",
+                })
+                .optional(),
             })
             .openapi("AgentDomainsBody"),
         },
@@ -103,7 +120,8 @@ const briefingRoute = createRoute({
     "Returns a budgeted markdown grounding block for the requested domains: " +
     "prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge " +
     "index, the domain's workflows and connectors (category or slug prefix equals the " +
-    "domain), and the search-first grounding rule. Intended for coding-agent hooks.",
+    "domain), readable file metadata without file contents, and the search-first grounding " +
+    "rule. Intended for coding-agent hooks.",
   security: [{ bearerAuth: [] }],
   request: {
     query: z
@@ -140,6 +158,19 @@ async function canReadKnowledge(db: Db, principal: ResolvedPrincipal): Promise<b
   return decision.allow;
 }
 
+async function fileVisibility(
+  db: Db,
+  principal: ResolvedPrincipal,
+): Promise<Awaited<ReturnType<typeof resourceAccess>>> {
+  return resourceAccess(db, {
+    tenant_id: principal.tenant_id,
+    principal,
+    permission: "file:read",
+    resource_type: "file",
+    quiet: true,
+  });
+}
+
 export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
   app.use("/v1/agent/briefing", requirePermission("skill:read"));
   app.use("/v1/agent/domains", requirePermission("skill:read"));
@@ -148,12 +179,32 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
     const principal = requireAuth(c);
     const db = c.get("db");
     const body = c.req.valid("json");
+    const [includeKnowledge, workflowVisible, connectorVisible, fileAccess] = await Promise.all([
+      canReadKnowledge(db, principal),
+      catalogVisibility(db, principal, "workflow:read", "workflow"),
+      catalogVisibility(db, principal, "connector:read", "connector"),
+      fileVisibility(db, principal),
+    ]);
     const known = await listKnownDomains(
       principal.tenant_id,
-      { include_knowledge: await canReadKnowledge(db, principal) },
+      {
+        include_knowledge: includeKnowledge,
+        workflow_visible: workflowVisible,
+        connector_visible: connectorVisible,
+        file_visible: fileAccess.any ? fileAccess.allows : null,
+        file_tenant_wide: fileAccess.tenantWide.allow,
+      },
       db,
     );
-    return c.json(resolveDomains({ prompt: body.prompt, repo_hint: body.repo, known }), 200);
+    return c.json(
+      resolveDomains({
+        prompt: body.prompt,
+        repo_hint: body.repo,
+        folder_hint: body.folder,
+        known,
+      }),
+      200,
+    );
   });
 
   app.openapi(briefingRoute, async (c) => {
@@ -166,19 +217,19 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       throw new BadRequestError("domains must be comma-separated lowercase slugs (a-z, 0-9, -, _)");
     }
 
-    const [includeKnowledge, workflowVisible, connectorVisible, intakeDecision] = await Promise.all(
-      [
+    const [includeKnowledge, workflowVisible, connectorVisible, fileAccess, intakeDecision] =
+      await Promise.all([
         canReadKnowledge(db, principal),
         catalogVisibility(db, principal, "workflow:read", "workflow"),
         catalogVisibility(db, principal, "connector:read", "connector"),
+        fileVisibility(db, principal),
         can(db, {
           tenant_id: principal.tenant_id,
           principal,
           permission: "intake:read",
           quiet: true,
         }),
-      ],
-    );
+      ]);
 
     const result = await buildAgentBriefing({
       tenant_id: principal.tenant_id,
@@ -188,6 +239,8 @@ export function registerAgentBriefingRoutes(app: OpenAPIHono<AppEnv>): void {
       include_intake: intakeDecision.allow,
       workflow_visible: workflowVisible,
       connector_visible: connectorVisible,
+      file_visible: fileAccess.any ? fileAccess.allows : null,
+      file_tenant_wide: fileAccess.tenantWide.allow,
       db,
     });
     return c.json(result, 200);

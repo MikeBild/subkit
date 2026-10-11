@@ -27,6 +27,15 @@ describe("compile cache", () => {
     const b = compile("$.bar");
     expect(a).not.toBe(b);
   });
+
+  test("rejects nondeterministic builtins", () => {
+    expect(() => compile("$random()")).toThrow(JSONataError);
+    expect(() => compile("$shuffle([1, 2])")).toThrow(JSONataError);
+  });
+
+  test("rejects nondeterministic aliases at evaluation", async () => {
+    await expect(evaluate("($r := $random; $r())", {})).rejects.toBeInstanceOf(JSONataError);
+  });
 });
 
 describe("structured errors", () => {
@@ -96,6 +105,31 @@ describe("evaluate", () => {
       loop_item: "hi",
     });
     expect(out).toBe("3:hi");
+  });
+
+  test("uses the execution clock for now and millis", async () => {
+    const nowMs = 1_700_000_000_000;
+    const out = await evaluate("[$millis(), $now()]", {}, { clock: { now_ms: nowMs } });
+    expect(out).toEqual([nowMs, new Date(nowMs).toISOString()]);
+  });
+
+  test("uses current time when no execution clock is supplied", async () => {
+    const out = await evaluate("$millis()", {});
+    expect(out).toBeGreaterThan(1_000_000_000_000);
+  });
+
+  test("does not retain bindings from an earlier worker job", async () => {
+    await expect(
+      evaluate("$cred.api.token", {}, { cred: { api: { token: "private" } } }),
+    ).resolves.toBe("private");
+    await expect(evaluate("$cred.api.token", {}, {})).resolves.toBeUndefined();
+  });
+
+  test("terminates a stalled expression and accepts the next job", async () => {
+    await expect(
+      evaluate("$reduce([1..100000000], function($a, $b) { $a + $b }, 0)", {}),
+    ).rejects.toBeInstanceOf(JSONataError);
+    await expect(evaluate("$.healthy", { healthy: true })).resolves.toBe(true);
   });
 });
 

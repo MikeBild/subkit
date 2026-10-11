@@ -1,4 +1,4 @@
-import { ApiError, IntakeApi } from "./api.ts";
+import { ApiError, CollectionPermissionError, connectionErrorMessage, IntakeApi } from "./api.ts";
 import { chromeApi } from "./chrome-api.ts";
 import { apiUrl, isDraftForEngine, loadSettings, normalizeSourceUrl } from "./clipper.ts";
 import { intakeSubmission } from "./intake.ts";
@@ -61,6 +61,22 @@ let sourceWindowId: number | undefined;
 let categoriesState: "idle" | "loading" | "ready" | "error" = "idle";
 let categoryLoad = 0;
 let connectionReady = false;
+let connectionFailure: unknown;
+
+function connectionFailureMessage(error: unknown): string {
+  return connectionErrorMessage(error, text);
+}
+
+function collectionFailureMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return text.invalidApiKey;
+    if (error.status === 403) return text.missingIntakeWritePermission;
+    if ([400, 422].includes(error.status)) return text.collectionRejected;
+    if (error.status === 409) return text.duplicate;
+    return `${text.apiResponseFailed} (HTTP ${error.status}${error.traceId ? `, Trace: ${error.traceId}` : ""})`;
+  }
+  return connectionFailureMessage(error);
+}
 
 function setStatus(message: string, isError = false, showConnection = false): void {
   if (status) {
@@ -92,7 +108,7 @@ function showSavedClip(current: Draft): void {
 
 function showCaptureStatus(_current: Draft, captureMessage?: string): void {
   if (categoriesState === "error") {
-    setStatus(text.intakeUnavailable, true, true);
+    setStatus(connectionFailureMessage(connectionFailure), true, true);
     return;
   }
   if (captureMessage) setStatus(captureMessage, true);
@@ -435,6 +451,8 @@ async function loadCategories(): Promise<void> {
     const api = new IntakeApi(settings.engineUrl, settings.apiKey);
     const [vocabulary, preference] = await Promise.all([api.categories(), api.defaultCategory()]);
     if (request !== categoryLoad) return;
+    if (preference.can_collect === false) throw new CollectionPermissionError();
+    connectionFailure = undefined;
     connectionReady = true;
     categories = [
       ...new Set([
@@ -462,8 +480,9 @@ async function loadCategories(): Promise<void> {
       categoryInput.value = category.value === "__new__" ? savedCategory || "" : "";
     }
     categoriesState = "ready";
-  } catch (_error) {
+  } catch (error) {
     if (request !== categoryLoad) return;
+    connectionFailure = error;
     categoriesState = "error";
     if (category) category.replaceChildren(new Option(text.categoriesUnavailable, ""));
   } finally {
@@ -531,7 +550,7 @@ async function save(): Promise<void> {
       await queueDraft({ ...retryable, state: "ready" });
     }
     setStatus(
-      draft?.intakeAttempt ? text.retryPending : text.intakeUnavailable,
+      draft?.intakeAttempt ? text.retryPending : collectionFailureMessage(error),
       true,
       !draft?.intakeAttempt,
     );
@@ -648,7 +667,14 @@ discard?.addEventListener("click", () => {
 });
 captureAgain?.addEventListener("click", () => void discardAndCapture());
 setup?.addEventListener("click", () => void chromeApi.runtime.openOptionsPage());
-checkConnection?.addEventListener("click", () => void chromeApi.runtime.openOptionsPage());
+checkConnection?.addEventListener("click", () => {
+  const current = draft;
+  if (!current) return;
+  void loadCategories().then(() => {
+    if (categoriesState === "ready") setStatus(text.connectionRetrySucceeded);
+    else showCaptureStatus(current);
+  });
+});
 
 chromeApi.tabs.onActivated.addListener(({ tabId, windowId }) => {
   if (isSourceWindow(sourceWindowId, windowId)) scheduleSourceRefresh(tabId);

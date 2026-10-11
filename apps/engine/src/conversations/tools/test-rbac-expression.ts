@@ -2,7 +2,7 @@ import { z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import { roles, systemAccounts, users } from "../../db/schema/index.ts";
-import { compile as compileJsonata } from "../../execution/jsonata-engine.ts";
+import { evaluate as evaluateJsonata } from "../../execution/jsonata-engine.ts";
 import { can } from "../../rbac/evaluator.ts";
 import type { ConversationTool } from "./index.ts";
 
@@ -51,8 +51,7 @@ export const testRbacExpressionTool: ConversationTool = {
         };
       }
       try {
-        const expr = compileJsonata(args.expression);
-        const result = await expr.evaluate(args.step_config, {
+        const result = await evaluateJsonata(args.expression, args.step_config, {
           config: args.step_config,
         });
         return {

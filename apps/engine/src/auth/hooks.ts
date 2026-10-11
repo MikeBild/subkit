@@ -136,6 +136,7 @@ async function runHook(
       input: hookInput,
       limits: HOOK_LIMITS,
       clock: null,
+      priority: "hook",
     });
     if (!output || typeof output !== "object") {
       return { allowed: false, reason: "hook_error" };
@@ -169,6 +170,7 @@ export async function lintHookSource(
       input: { lint: true },
       limits: { tick_budget: 50_000, wall_ms: 1_000, memory_bytes: 16 * 1024 * 1024 },
       clock: null,
+      priority: "hook",
     });
     return { ok: true };
   } catch (err) {

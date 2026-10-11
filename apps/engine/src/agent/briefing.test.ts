@@ -90,6 +90,7 @@ function input(overrides: Partial<AssembleInput> = {}): AssembleInput {
     includeKnowledgeIndex: true,
     workflows: [makeEntry("wf", 1), makeEntry("wf", 2)],
     connectors: [makeEntry("conn", 1), makeEntry("conn", 2)],
+    files: [],
     guides: [],
     proposedCandidates: 2,
     ...overrides,
@@ -127,7 +128,9 @@ describe("trimToBudget", () => {
     expect(markdown).toContain("never do the bad thing");
     expect(markdown).toContain("## Knowledge index");
     expect(markdown).toContain("**Source 2**");
-    expect(markdown).toContain("2 proposed skill candidate(s)");
+    expect(markdown).toContain("2 suggestions are ready for review");
+    expect(markdown).toContain("in the user's language");
+    expect(markdown).not.toContain("sk learnings review");
     expect(markdown).toContain('search_knowledge` with `tags: ["domain:blog-de"]');
   });
 
@@ -147,6 +150,30 @@ describe("trimToBudget", () => {
     expect(markdown).toContain("- **Connector 2** (`blog-de-conn-2`, content)");
   });
 
+  test("lists safe file metadata and trims it within the budget", () => {
+    const files = [
+      {
+        name: "Invoices.csv",
+        slug: "invoices-schema",
+        category: "blog-de",
+        description: "Import schema.",
+      },
+      {
+        name: "Archive.csv",
+        slug: null,
+        category: "blog-de",
+        description: null,
+      },
+    ];
+    const fileInput = input({ files, workflows: [], connectors: [] });
+    const full = trimToBudget(fileInput, 16000);
+    expect(full.markdown).toContain("## Files");
+    expect(full.markdown).toContain("Invoices.csv");
+    const trimmed = trimToBudget(fileInput, countTokens(full.markdown) - 1);
+    expect(trimmed.state.fileCount).toBeLessThan(2);
+    expect(trimmed.markdown).toContain("call `list_files` for the rest.");
+  });
+
   test("trims the catalog first — connectors, then workflows — before the knowledge index", () => {
     const full = trimToBudget(input(), 16000);
     const oneLess = trimToBudget(input(), countTokens(full.markdown) - 1);
@@ -155,6 +182,7 @@ describe("trimToBudget", () => {
       knowledgeCount: 2,
       workflowCount: 2,
       connectorCount: 1,
+      fileCount: 0,
     });
     expect(oneLess.markdown).toContain("…and 1 more — call `find_connector` for the rest.");
     const noConnectors = trimToBudget(input({ connectors: [] }), 16000);
@@ -219,6 +247,20 @@ describe("trimToBudget", () => {
   test("renders no curation reminder when nothing is proposed", () => {
     const { markdown } = trimToBudget(input({ proposedCandidates: 0 }), 16000);
     expect(markdown).not.toContain("proposed skill candidate");
+  });
+
+  test("describes collected material without a CLI action or implicit admission", () => {
+    const { markdown } = trimToBudget(
+      input({ intake: { collected: 1, reviewing: 0, proposals: 0 } }),
+      16000,
+    );
+    expect(markdown).toContain(
+      "Offer to review collected entries when relevant, in the user's language",
+    );
+    expect(markdown).toContain(
+      "A person must review the exact proposal and confirm its admission in the Cockpit.",
+    );
+    expect(markdown).not.toContain("sk learnings review");
   });
 
   test("multi-domain header and search tags list every domain", () => {

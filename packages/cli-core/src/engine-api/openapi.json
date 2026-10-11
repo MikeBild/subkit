@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "subkit engine",
-    "version": "9.10.0",
+    "version": "9.11.0",
     "description": "Backend workflow engine. See /docs for the interactive reference and /openapi.json for the raw spec. LLM clients can ground themselves on /llms.txt (index) or /llms-full.txt (full docs in one fetch), per https://llmstxt.org."
   },
   "components": {
@@ -9129,7 +9129,8 @@
                 "type": "string",
                 "enum": [
                   "execution_authority_required",
-                  "execution_authority_unavailable"
+                  "execution_authority_unavailable",
+                  "input_required"
                 ]
               },
               "observed_at": {
@@ -9309,7 +9310,8 @@
                 "type": "string",
                 "enum": [
                   "execution_authority_required",
-                  "execution_authority_unavailable"
+                  "execution_authority_unavailable",
+                  "input_required"
                 ]
               },
               "observed_at": {
@@ -9320,6 +9322,41 @@
             "required": [
               "reason_code",
               "observed_at"
+            ]
+          },
+          "input_error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "checked_version_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "message"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "checked_version_id",
+              "issues"
             ]
           },
           "workflow_slug": {
@@ -9367,6 +9404,7 @@
           "id",
           "workflow_id",
           "admission_hold",
+          "input_error",
           "workflow_slug",
           "workflow_name",
           "prepared_version_id",
@@ -11095,6 +11133,26 @@
               "none"
             ]
           },
+          "rerun_safety": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "repeat_safe",
+                  "prepare_only",
+                  "unavailable"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "reason"
+            ]
+          },
           "planned_steps": {
             "type": [
               "integer",
@@ -11112,7 +11170,8 @@
           "refusal_reason",
           "connector",
           "steps",
-          "output_contract"
+          "output_contract",
+          "rerun_safety"
         ]
       },
       "ExecutionStepListResponse": {
@@ -16507,6 +16566,21 @@
         ],
         "additionalProperties": false
       },
+      "IntakeDefaultCategoryCheck": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/CatalogCategory"
+          },
+          "can_collect": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "category",
+          "can_collect"
+        ]
+      },
       "IntakeDefaultCategory": {
         "type": "object",
         "properties": {
@@ -18373,12 +18447,19 @@
             "items": {
               "type": "string"
             }
+          },
+          "from_folder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
           "domains",
           "from_prompt",
-          "from_repo"
+          "from_repo",
+          "from_folder"
         ]
       },
       "AgentDomainsBody": {
@@ -18389,6 +18470,10 @@
             "maxLength": 2000
           },
           "repo": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "folder": {
             "type": "string",
             "maxLength": 200
           }
@@ -18453,6 +18538,41 @@
           "connectors_omitted": {
             "type": "integer"
           },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "slug": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "category": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "slug",
+                "category",
+                "description"
+              ]
+            }
+          },
+          "files_omitted": {
+            "type": "integer"
+          },
           "guides": {
             "type": "array",
             "items": {
@@ -18503,6 +18623,8 @@
           "workflows_omitted",
           "connectors",
           "connectors_omitted",
+          "files",
+          "files_omitted",
           "guides",
           "proposed_candidates",
           "intake"
@@ -40432,7 +40554,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IntakeDefaultCategory"
+                  "$ref": "#/components/schemas/IntakeDefaultCategoryCheck"
                 }
               }
             }
@@ -42748,8 +42870,8 @@
         "tags": [
           "agent"
         ],
-        "summary": "Resolve which known domains a prompt or repository is about",
-        "description": "Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.",
+        "summary": "Resolve which known domains a prompt, repository, or current folder is about",
+        "description": "Deterministic: prompt and repository matching use domain words; current-folder matching uses its normalized basename as an exact shared catalog category. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.",
         "security": [
           {
             "bearerAuth": []
@@ -42784,7 +42906,7 @@
           "agent"
         ],
         "summary": "Domain-scoped session briefing for external coding agents",
-        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.",
+        "description": "Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, and the search-first grounding rule. Intended for coding-agent hooks.",
         "security": [
           {
             "bearerAuth": []

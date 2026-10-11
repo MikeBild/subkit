@@ -519,6 +519,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
             r.paused || !named.find((w) => w?.id === r.workflow_id && w.lifecycle !== "archived")
               ? null
               : r.admission_hold,
+          input_error: r.paused ? null : r.input_error,
           cron: r.cron,
           timezone: r.timezone,
           execution_mode: r.execution_mode,
@@ -546,6 +547,7 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
       workflow_name: wf?.name ?? null,
       prepared_version_id: preparedVersionId(wf),
       admission_hold: row.paused || !wf || wf.lifecycle === "archived" ? null : row.admission_hold,
+      input_error: row.paused ? null : row.input_error,
       cron: row.cron,
       timezone: row.timezone,
       execution_mode: row.execution_mode,
@@ -559,6 +561,15 @@ export function registerWorkflowRoutes(app: OpenAPIHono<AppEnv>): void {
     const code = (err as { code?: string } | null)?.code;
     if (code === "invalid_cron") {
       throw new BadRequestError(err instanceof Error ? err.message : "invalid cron");
+    }
+    if (code === "input_schema_violation") {
+      const details = (err as { details?: unknown } | null)?.details;
+      throw new BadRequestError(
+        err instanceof Error ? err.message : "schedule input does not match the active workflow",
+        details && typeof details === "object" && !Array.isArray(details)
+          ? (details as Record<string, unknown>)
+          : undefined,
+      );
     }
     if (code === "workflow_not_found") throw new NotFoundError("workflow");
     if (code === "workflow_archived") {

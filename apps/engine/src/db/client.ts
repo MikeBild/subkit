@@ -1,7 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { getConfig } from "../config/loader.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import * as schema from "./schema/index.ts";
 
@@ -37,7 +37,7 @@ export function getPool(): pg.Pool {
       module: "db",
       action: "pool.error",
       msg: "postgres pool emitted error",
-      error: err.message,
+      ...errorFields(err),
     });
   });
   logger.debug({
@@ -82,7 +82,7 @@ export function createDbFromUrl(url: string): {
       module: "db",
       action: "pool.error",
       msg: "postgres pool emitted error",
-      error: err.message,
+      ...errorFields(err),
     });
   });
   const db = instrumentTransactions(drizzle(pool, { schema }));
@@ -102,7 +102,7 @@ export function createMigrationDbFromUrl(url: string): {
       module: "db",
       action: "migration_pool.error",
       msg: "postgres migration pool emitted error",
-      error: err.message,
+      ...errorFields(err),
     });
   });
   return { pool, db: drizzle(pool, { schema }) };

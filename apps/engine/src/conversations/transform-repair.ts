@@ -4,6 +4,7 @@ import { buildJsonataBindings } from "../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
   describeUnknownFunction,
+  evaluate as evaluateJsonata,
   findUnknownFunctionCalls,
   flattenBindings,
   formatError as formatJsonataError,
@@ -287,9 +288,8 @@ async function verifyJsonataCandidate(
   finding: TransformRepairFinding,
   evaluation: TransformEvaluation | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  let compiled: ReturnType<typeof compileJsonata>;
   try {
-    compiled = compileJsonata(candidate);
+    compileJsonata(candidate);
   } catch (err) {
     return { ok: false, error: formatJsonataError(err, candidate).message };
   }
@@ -299,14 +299,11 @@ async function verifyJsonataCandidate(
   if (evaluation.kind === "workflow_output") {
     try {
       const value = await withTimeout(
-        compiled
-          .evaluate(
-            evaluation.root,
-            flattenBindings({ input: evaluation.input ?? null, scope: evaluation.scope }),
-          )
-          .catch((err: unknown) => {
-            throw formatJsonataError(err, candidate);
-          }),
+        evaluateJsonata(
+          candidate,
+          evaluation.root,
+          flattenBindings({ input: evaluation.input ?? null, scope: evaluation.scope }),
+        ),
       );
       return workflowOutputVerdict(value, finding, evaluation);
     } catch (err) {
@@ -319,14 +316,11 @@ async function verifyJsonataCandidate(
   if (finding.kind === "compile_error") return { ok: true };
   try {
     const value = await withTimeout(
-      compiled
-        .evaluate(
-          evaluation.scope,
-          buildJsonataBindings(evaluation.scope, evaluation.input ?? null),
-        )
-        .catch((err: unknown) => {
-          throw formatJsonataError(err, candidate);
-        }),
+      evaluateJsonata(
+        candidate,
+        evaluation.scope,
+        buildJsonataBindings(evaluation.scope, evaluation.input ?? null),
+      ),
     );
     if (finding.kind === "empty_result" && isEmptyEvalResult(value)) {
       return {

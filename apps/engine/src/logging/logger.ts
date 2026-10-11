@@ -101,6 +101,68 @@ export type LogFields = {
   [key: string]: unknown;
 };
 
+const SENSITIVE_DATABASE_FIELD = /^(?:sql|query|params?|parameters?|bindings?)$/i;
+const SAFE_SQLSTATES = new Set([
+  "08000",
+  "08001",
+  "08003",
+  "08006",
+  "23503",
+  "23505",
+  "23514",
+  "40001",
+  "40P01",
+  "53300",
+  "53400",
+  "57014",
+  "57P01",
+]);
+
+function isDatabaseQueryError(value: unknown): boolean {
+  if (!(value instanceof Error)) return false;
+  return (
+    /failed query:|\bparams:\s*/i.test(value.message) ||
+    isSqlstate((value as Error & { code?: unknown }).code)
+  );
+}
+
+function isSqlstate(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9A-Z]{5}$/.test(value);
+}
+
+function sanitizeDatabaseValue(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
+  if (depth > 32) return "[depth limit]";
+  if (value !== null && typeof value === "object") {
+    if (seen.has(value)) return "[circular]";
+    seen.add(value);
+    const code = (value as { code?: unknown }).code;
+    if (isSqlstate(code))
+      return {
+        error: "database query failed",
+        ...(allowedSqlstate(code) ? { sqlstate: code } : {}),
+      };
+  }
+  if (typeof value === "string") {
+    if (/failed query:|\bparams:\s*/i.test(value)) return "database query failed";
+    return value;
+  }
+  if (Array.isArray(value))
+    return value.map((entry) => sanitizeDatabaseValue(entry, seen, depth + 1));
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_DATABASE_FIELD.test(key)) continue;
+      out[key] = sanitizeDatabaseValue(entry, seen, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
+function allowedSqlstate(value: unknown): string | undefined {
+  return typeof value === "string" && SAFE_SQLSTATES.has(value) ? value : undefined;
+}
+
 function emitPretty(level: LogLevel, fields: LogFields): void {
   const ctx = getContext();
   const ts = formatTimestampPretty(new Date());
@@ -121,7 +183,7 @@ function emitPretty(level: LogLevel, fields: LogFields): void {
       : "";
   const msg = fields.msg ?? "";
   const { module: _m, action: _a, msg: _msg, ...rest } = fields;
-  const redacted = redact(rest);
+  const redacted = rest;
   const restStr = Object.keys(redacted as object).length > 0 ? ` ${JSON.stringify(redacted)}` : "";
 
   const line = `${pc.dim(ts)} ${lvl} ${ctxStr}${moduleAction}${msg}${restStr}`;
@@ -165,7 +227,7 @@ function truncateLongStrings(value: unknown): unknown {
 
 function emitNdjson(level: LogLevel, fields: LogFields): void {
   const ctx = getContext();
-  const redactedFields = truncateLongStrings(redact(fields)) as Record<string, unknown>;
+  const redactedFields = fields;
   const record: Record<string, unknown> = {
     ts: new Date().toISOString(),
     level,
@@ -187,7 +249,7 @@ function shouldLog(level: LogLevel): boolean {
 function recordToRing(level: LogLevel, fields: LogFields): void {
   const { module: m, action: a, msg, ...rest } = fields;
   const ctx = getContext() as Record<string, unknown>;
-  const redactedRest = redact(rest) as Record<string, unknown>;
+  const redactedRest = rest;
   const entry = {
     ts: Date.now(),
     level,
@@ -207,6 +269,7 @@ function recordToRing(level: LogLevel, fields: LogFields): void {
 
 function emit(level: LogLevel, fields: LogFields): void {
   if (!shouldLog(level)) return;
+  fields = truncateLongStrings(redact(sanitizeDatabaseValue(fields))) as LogFields;
   if (getContext().execution_privacy === "sensitive") {
     const allowed = new Set([
       "module",
@@ -234,16 +297,32 @@ export function errorFields(err: unknown): {
   error_class: ErrorClass;
   cause?: string;
   stack?: string;
+  sqlstate?: string;
 } {
   const error_class = classifyError(err);
   if (!(err instanceof Error)) return { error: String(err), error_class };
-  const out: { error: string; error_class: ErrorClass; cause?: string; stack?: string } = {
-    error: err.message,
+  const queryError = isDatabaseQueryError(err);
+  const out: {
+    error: string;
+    error_class: ErrorClass;
+    cause?: string;
+    stack?: string;
+    sqlstate?: string;
+  } = {
+    error: queryError ? "database query failed" : (sanitizeDatabaseValue(err.message) as string),
     error_class,
   };
-  if (err.cause instanceof Error) out.cause = err.cause.message;
-  else if (err.cause !== undefined) out.cause = String(err.cause);
-  if (err.stack) out.stack = err.stack;
+  const source = err.cause instanceof Error ? err.cause : err;
+  const sqlstate = allowedSqlstate((source as { code?: unknown }).code);
+  if (sqlstate) out.sqlstate = sqlstate;
+  if (err.cause instanceof Error) {
+    out.cause =
+      queryError || isDatabaseQueryError(err.cause)
+        ? "database query failed"
+        : (sanitizeDatabaseValue(err.cause.message) as string);
+  } else if (err.cause !== undefined) out.cause = "database error cause omitted";
+  if (err.stack && !queryError && !isDatabaseQueryError(err.cause))
+    out.stack = sanitizeDatabaseValue(err.stack) as string;
   return out;
 }
 

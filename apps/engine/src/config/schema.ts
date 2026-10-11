@@ -841,6 +841,40 @@ const SandboxSection = z
       .default(2 * 1024 * 1024)
       .describe("Max stack size for a JS sandbox run, in bytes. Default 2 MB.")
       .meta(global()),
+    queue_limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(256)
+      .default(32)
+      .describe("Maximum queued sandbox jobs across one worker lane. Default 32.")
+      .meta(global()),
+    tenant_queue_limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(256)
+      .default(8)
+      .describe("Maximum queued sandbox jobs for one tenant in one worker lane. Default 8.")
+      .meta(global()),
+    ipc_max_bytes: z
+      .number()
+      .int()
+      .min(64 * 1024)
+      .max(32 * 1024 * 1024)
+      .default(32 * 1024 * 1024)
+      .describe("Maximum sandbox worker request or response size in bytes. Default 32 MB.")
+      .meta(global()),
+    worker_rss_bytes: z
+      .number()
+      .int()
+      .min(32 * 1024 * 1024)
+      .max(2 * 1024 * 1024 * 1024)
+      .default(512 * 1024 * 1024)
+      .describe(
+        "RSS threshold that recycles a sandbox worker after a job, in bytes. Default 512 MB.",
+      )
+      .meta(global()),
     transform_wall_ms: z
       .number()
       .int()
@@ -861,6 +895,15 @@ const SandboxSection = z
           "with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min.",
       )
       .meta(global()),
+  })
+  .superRefine((value, ctx) => {
+    if (value.tenant_queue_limit > value.queue_limit) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tenant_queue_limit"],
+        message: "tenant_queue_limit must not exceed queue_limit",
+      });
+    }
   })
   .prefault({})
   .describe("QuickJS JS sandbox limits");

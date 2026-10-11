@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import type { components } from "@/api/schema";
@@ -15,6 +15,7 @@ import {
   FormDialog,
   SegmentedControl,
 } from "@/components/cockpit/patterns";
+import { InputFieldControl } from "@/components/cockpit/run-workflow-dialog";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import { cronWords } from "@/lib/cron-words";
 import { LOCALE_TAGS } from "@/lib/i18n";
@@ -27,11 +28,40 @@ import {
   rhythmToCron,
   validTime,
 } from "@/lib/schedule-rhythm";
+import {
+  buildFormInput,
+  formFields,
+  type InputSchemaSource,
+  initialInputValues,
+  inputForm,
+  invalidInputs,
+  missingRequired,
+} from "@/lib/workflow-inputs";
 
 type ScheduleEntry = components["schemas"]["ScheduleEntry"];
 type ScheduleList = components["schemas"]["ScheduleListResponse"];
 
+interface InputSchemaResponse {
+  source: InputSchemaSource;
+  schema: Record<string, unknown> | null;
+}
+
 const localZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+function valuesFromScheduleInput(
+  fields: ReturnType<typeof formFields>,
+  input: unknown,
+): Record<string, string> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const record = input as Record<string, unknown>;
+  return Object.fromEntries(
+    fields.flatMap((field) => {
+      const value = record[field.name];
+      if (value === undefined || value === null) return [];
+      return [[field.name, typeof value === "string" ? value : JSON.stringify(value)]];
+    }),
+  );
+}
 
 function useWorkflowSchedule(workflowId: string) {
   const live = useLiveQueryOptions();
@@ -64,13 +94,38 @@ function ScheduleDialog({
     () => (schedule ? cronToRhythm(schedule.cron) : null) ?? DEFAULT_RHYTHM,
   );
   const [error, setError] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>(() => ({}));
   const zone = schedule?.timezone ?? localZone();
+  const schema = useQuery({
+    queryKey: ["workflow", workflowId, "input-schema"],
+    enabled: open,
+    queryFn: () =>
+      apiRequest<InputSchemaResponse>(
+        `/v1/workflows/${encodeURIComponent(workflowId)}/input-schema`,
+      ),
+  });
+  const form = inputForm(schema.data?.schema ?? null);
+  const fields = formFields(form);
+  const filled = {
+    ...initialInputValues(fields),
+    ...values,
+  };
+  const missing = missingRequired(fields, filled);
+  const invalid = invalidInputs(fields, filled);
+  useEffect(() => {
+    if (!open) return;
+    setValues(valuesFromScheduleInput(fields, schedule?.input));
+  }, [open, schedule?.id, schedule?.input, schema.data]);
   const save = useMutation({
-    mutationFn: (cron: string) =>
+    mutationFn: ({ cron, input }: { cron: string; input: unknown }) =>
       schedule
         ? apiRequest(`/v1/schedules/${encodeURIComponent(schedule.id)}`, {
             method: "PUT",
-            body: JSON.stringify({ cron, timezone: zone }),
+            body: JSON.stringify({
+              cron,
+              timezone: zone,
+              ...(input === undefined ? {} : { input }),
+            }),
           })
         : apiRequest("/v1/schedules", {
             method: "POST",
@@ -79,11 +134,13 @@ function ScheduleDialog({
               cron,
               timezone: zone,
               execution_mode: "prod",
+              ...(input === undefined ? {} : { input }),
             }),
           }),
     onSuccess: async () => {
       toast.success(t(schedule ? "schedule.saved" : "schedule.created"));
       onOpenChange(false);
+      setValues({});
       await invalidateWorkflowAutomation(client, workflowId);
       await client.invalidateQueries({ queryKey: ["workflow-invocation", workflowId] });
     },
@@ -97,8 +154,9 @@ function ScheduleDialog({
       submit={{ label: t(schedule ? "common.save" : "schedule.create"), pending: save.isPending }}
       onSubmit={() => {
         if (!validTime(value.time)) return setError(t("schedule.timeInvalid"));
+        if (missing.length > 0 || invalid.length > 0) return setError(t("schedule.inputInvalid"));
         setError(null);
-        save.mutate(rhythmToCron(value));
+        save.mutate({ cron: rhythmToCron(value), input: buildFormInput(form, filled) });
       }}
       error={error}
       testId="schedule-dialog"
@@ -107,6 +165,31 @@ function ScheduleDialog({
         items={[{ label: t("schedule.zone"), value: zone, help: t("schedule.zoneHelp") }]}
       />
       <ScheduleFields value={value} onChange={setValue} invalid={Boolean(error)} />
+      {fields.length > 0 ? (
+        <div className="grid gap-3" data-testid="schedule-inputs">
+          {fields.map((field, index) => (
+            <InputFieldControl
+              key={field.name}
+              field={field}
+              index={index}
+              idPrefix="schedule-input"
+              value={filled[field.name] ?? ""}
+              invalid={invalid.includes(field.name)}
+              onChange={(next) => setValues((current) => ({ ...current, [field.name]: next }))}
+            />
+          ))}
+        </div>
+      ) : null}
+      {missing.length > 0 ? (
+        <p className="text-xs text-muted-foreground" data-testid="schedule-input-missing">
+          {t("schedule.inputMissing", { fields: missing.join(", ") })}
+        </p>
+      ) : null}
+      {invalid.length > 0 ? (
+        <p className="text-destructive text-xs" data-testid="schedule-input-invalid">
+          {t("schedule.inputInvalid")}
+        </p>
+      ) : null}
     </FormDialog>
   );
 }
@@ -325,6 +408,11 @@ export function WorkflowScheduleSection({
         ) : null}
       </div>
       {dialog}
+      {schedule.input_error ? (
+        <p className="text-destructive text-sm" data-testid="schedule-input-required">
+          {t("schedule.inputRequired", { issue: schedule.input_error.issues[0]?.message ?? "" })}
+        </p>
+      ) : null}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

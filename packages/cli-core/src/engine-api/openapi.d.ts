@@ -10416,7 +10416,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["IntakeDefaultCategory"];
+                        "application/json": components["schemas"]["IntakeDefaultCategoryCheck"];
                     };
                 };
             };
@@ -12218,8 +12218,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Resolve which known domains a prompt or repository is about
-         * @description Deterministic: a known domain (a `domain:<slug>` tag on an active skill or knowledge source) matches when every part of its slug appears as a word in the prompt or the repository hint. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.
+         * Resolve which known domains a prompt, repository, or current folder is about
+         * @description Deterministic: prompt and repository matching use domain words; current-folder matching uses its normalized basename as an exact shared catalog category. Coding-agent hooks use it to brief only what a turn is about. Reads only; the prompt travels in the body so it stays out of URLs and access logs.
          */
         post: {
             parameters: {
@@ -12260,7 +12260,7 @@ export interface paths {
         };
         /**
          * Domain-scoped session briefing for external coding agents
-         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), and the search-first grounding rule. Intended for coding-agent hooks.
+         * @description Returns a budgeted markdown grounding block for the requested domains: prescriptive conventions (active skills tagged `domain:<slug>`), a knowledge index, the domain's workflows and connectors (category or slug prefix equals the domain), readable file metadata without file contents, and the search-first grounding rule. Intended for coding-agent hooks.
          */
         get: {
             parameters: {
@@ -21223,7 +21223,7 @@ export interface components {
             execution_mode: "dev" | "prod";
             admission_hold: {
                 /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
                 observed_at: string;
             } | null;
             /** @enum {string} */
@@ -21259,9 +21259,17 @@ export interface components {
             workflow_id: string;
             admission_hold: {
                 /** @enum {string} */
-                reason_code: "execution_authority_required" | "execution_authority_unavailable";
+                reason_code: "execution_authority_required" | "execution_authority_unavailable" | "input_required";
                 /** Format: date-time */
                 observed_at: string;
+            } | null;
+            input_error: {
+                /** Format: uuid */
+                checked_version_id: string;
+                issues: {
+                    path: string;
+                    message: string;
+                }[];
             } | null;
             workflow_slug: string | null;
             workflow_name: string | null;
@@ -21749,6 +21757,11 @@ export interface components {
             };
             /** @enum {string} */
             output_contract: "passed" | "violated" | "none";
+            rerun_safety: {
+                /** @enum {string} */
+                mode: "repeat_safe" | "prepare_only" | "unavailable";
+                reason: string;
+            };
             /** @description Fixed request/transform step count from the persisted workflow version. Null when dynamic expansion or unavailable definition prevents an exact count. */
             planned_steps?: number | null;
         };
@@ -23104,6 +23117,10 @@ export interface components {
             expected_source_revision: number | null;
             expected_target_revision: number | null;
         };
+        IntakeDefaultCategoryCheck: {
+            category: components["schemas"]["CatalogCategory"];
+            can_collect: boolean;
+        };
         IntakeDefaultCategory: {
             category: components["schemas"]["CatalogCategory"];
         };
@@ -23538,10 +23555,12 @@ export interface components {
             domains: string[];
             from_prompt: string[];
             from_repo: string[];
+            from_folder: string[];
         };
         AgentDomainsBody: {
             prompt?: string;
             repo?: string;
+            folder?: string;
         };
         AgentBriefingResponse: {
             markdown: string;
@@ -23558,6 +23577,13 @@ export interface components {
             /** @description Slugs of the domain's connectors the caller may read, as listed in the briefing. */
             connectors: string[];
             connectors_omitted: number;
+            files: {
+                name: string;
+                slug: string | null;
+                category: string;
+                description: string | null;
+            }[];
+            files_omitted: number;
             /** @description Slugs of the skills that teach how to work with sk, listed for every domain. */
             guides: string[];
             proposed_candidates: number;

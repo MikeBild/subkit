@@ -2,7 +2,7 @@ import { and, asc, eq, gt, max, sql } from "drizzle-orm";
 import pg from "pg";
 import type { Db } from "../db/client.ts";
 import { events as eventsTable, outboxCursors } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import { setOutboxCursorLag } from "../observability/instrumentation.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { globalEmitter, type PubSubEmitter } from "./emitter.ts";
@@ -115,7 +115,7 @@ export class PubSubListener {
           action: "listener.reconnect_failed",
           msg: "pub/sub reconnect attempt failed",
           listener_id: this.listenerId,
-          error: err instanceof Error ? err.message : String(err),
+          ...errorFields(err),
         });
         this.backoffMs = Math.min(BACKOFF_MAX_MS, this.backoffMs * 2);
         this.scheduleReconnect();
@@ -132,7 +132,7 @@ export class PubSubListener {
         action: "listener.client_error",
         msg: "LISTEN pg client emitted error",
         listener_id: this.listenerId,
-        error: err.message,
+        ...errorFields(err),
       });
       this.connected = false;
       this.client = null;

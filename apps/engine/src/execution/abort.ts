@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { executions } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 
 interface RegisteredAbort {
   controller: AbortController;
@@ -92,7 +92,7 @@ export function startAbortMonitor(
             module: "execution",
             action: "abort_monitor.check_failed",
             msg: "durable execution cancellation check failed",
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
           });
         })
         .finally(schedule);
