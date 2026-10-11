@@ -21,6 +21,9 @@ export interface InkAppProps {
   };
   statusLineConfig?: StatusLineConfig;
   initialConversationId?: string | null;
+  initialSession?: SkSessionState | null;
+  sessionVersion?: number;
+  profileNotice?: { version: number; message: string } | null;
   initialContextStatus?: string | null;
   model?: string | null;
   cwd?: string;
@@ -68,6 +71,7 @@ export interface InkAppProps {
     liveSession: SkSessionState,
   ) => Promise<string | null>;
   onSelectConversation?: (id: string) => Promise<void>;
+  onNewSession?: () => void;
   onElicitResponse?: (
     elicitationId: string,
     output: unknown,

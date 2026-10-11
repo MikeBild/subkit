@@ -1,4 +1,10 @@
-import { ExitFlow, HistorySearch, ScrollView, ThemeProvider } from "@chat-ui/index.ts";
+import {
+  ElicitRouter,
+  ExitFlow,
+  HistorySearch,
+  ScrollView,
+  ThemeProvider,
+} from "@chat-ui/index.ts";
 import type { SkSessionState, TurnEvent } from "@cli-core/index.ts";
 import { initialSessionState } from "@cli-core/index.ts";
 import { Box, Static, Text, useApp, useStdout } from "ink";
@@ -75,6 +81,9 @@ export const InkApp: React.FC<InkAppProps> = ({
   persona,
   statusLineConfig,
   initialConversationId,
+  initialSession,
+  sessionVersion = 0,
+  profileNotice,
   model,
   cwd,
   statusSnapshot,
@@ -88,6 +97,7 @@ export const InkApp: React.FC<InkAppProps> = ({
   initialContextStatus,
   onSlash,
   onSelectConversation,
+  onNewSession,
   onElicitResponse,
   onExit,
   onCancelConversation,
@@ -102,9 +112,12 @@ export const InkApp: React.FC<InkAppProps> = ({
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? DEFAULT_RULE_WIDTH;
   const rows = stdout?.rows ?? 30;
-  const [session, setSession] = useState<SkSessionState>(() =>
-    initialSessionState(initialConversationId ?? null),
+  const [session, setSession] = useState<SkSessionState>(
+    () => initialSession ?? initialSessionState(initialConversationId ?? null),
   );
+  useEffect(() => {
+    setSession(initialSession ?? initialSessionState(initialConversationId ?? null));
+  }, [initialConversationId, initialSession, sessionVersion]);
   const deferredMessages = useDeferredValue(session.messages);
   const deferredToolCalls = useDeferredValue(session.toolCalls);
 
@@ -124,6 +137,12 @@ export const InkApp: React.FC<InkAppProps> = ({
 
   const { notices, setNotices, dismissNotice, showInfo, showError, showStructuredError } =
     useNotices();
+  const shownProfileNotice = useRef<number | null>(null);
+  useEffect(() => {
+    if (!profileNotice || shownProfileNotice.current === profileNotice.version) return;
+    shownProfileNotice.current = profileNotice.version;
+    showInfo(profileNotice.message);
+  }, [profileNotice, showInfo]);
 
   const { activeMode, setActiveMode, noteTurnStart, consumeArmAnswer, runYoloSlash } = useYoloMode(
     permissionMode,
@@ -238,6 +257,11 @@ export const InkApp: React.FC<InkAppProps> = ({
       historyCursorRef,
     ],
   );
+
+  const resetSession = useCallback(() => {
+    setSession(initialSessionState(null));
+    onNewSession?.();
+  }, [onNewSession]);
 
   const applyEventStream = useCallback(
     async (
@@ -564,8 +588,12 @@ export const InkApp: React.FC<InkAppProps> = ({
     />
   );
 
+  const activeUnanchoredElicitation =
+    session.pendingElicitation && !session.pendingElicitation.parent_message_id
+      ? session.pendingElicitation
+      : null;
   const { staticRows, dynamicRows, pagerEntries, elicitFallback } = buildTranscript({
-    session,
+    session: activeUnanchoredElicitation ? { ...session, pendingElicitation: null } : session,
     messages: deferredMessages,
     toolCalls: deferredToolCalls,
     columns,
@@ -586,8 +614,26 @@ export const InkApp: React.FC<InkAppProps> = ({
     <Box flexDirection="column">
       <NoticeStack items={notices} />
 
-      {staticRows.length > 0 ? <Static items={staticRows}>{(row) => row}</Static> : null}
-      {dynamicRows.length > 0 ? (
+      {activeUnanchoredElicitation ? (
+        <ElicitRouter
+          elicitation={activeUnanchoredElicitation}
+          inputDisabled={pane !== null || launcherOpen || slashMode}
+          onResponse={(output) => {
+            const reason =
+              "decision_reason" in output && typeof output.decision_reason === "string"
+                ? output.decision_reason
+                : undefined;
+            submitElicitationResponse(activeUnanchoredElicitation.id, output, reason);
+          }}
+        />
+      ) : null}
+
+      {!activeUnanchoredElicitation && staticRows.length > 0 ? (
+        <Static key={`session-${sessionVersion}`} items={staticRows}>
+          {(row) => row}
+        </Static>
+      ) : null}
+      {!activeUnanchoredElicitation && dynamicRows.length > 0 ? (
         <ScrollView active={composerActive && pane === null}>{dynamicRows}</ScrollView>
       ) : null}
 
@@ -606,7 +652,7 @@ export const InkApp: React.FC<InkAppProps> = ({
         showInfo={showInfo}
         showError={showError}
         onSelectConversation={onSelectConversation}
-        onNewSession={() => setSession(initialSessionState(null))}
+        onNewSession={resetSession}
         onSignOut={() => {
           if (onExit) onExit();
           else exit();

@@ -8,7 +8,7 @@ import {
   type TurnEvent,
 } from "@cli-core/index.ts";
 import { VERSION } from "@cli-core/version.ts";
-import { AgentBriefingContext } from "./agent-context.ts";
+import { AgentBriefingContext, type AgentBriefingUpdate } from "./agent-context.ts";
 import { loadConfig, type ResolvedProfile, resolveProfile, saveConfig } from "./config.ts";
 import { ConnectionPinger, type ConnectionSnapshot } from "./connection-pinger.ts";
 import {
@@ -24,6 +24,7 @@ import {
   type SetupValidationResponse,
   type StatusSummary,
 } from "./engine-client.ts";
+import { hydrateConversation } from "./ink-app/hydrate-conversation.ts";
 import { loadMemory } from "./memory.ts";
 import { resolveMentions } from "./mentions.ts";
 import { enableBracketedPaste } from "./repl/bracketed-paste.ts";
@@ -100,6 +101,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   let currentConversationId: string | null = opts.resumeConversationId ?? null;
   let currentClient = client;
   let currentProfile = opts.profile;
+  let currentSession = currentConversationId
+    ? await currentClient
+        .getConversation(currentConversationId)
+        .then(hydrateConversation)
+        .catch(() => null)
+    : null;
+  let profileNotice: { version: number; message: string } | null = null;
+  let profileNoticeVersion = 0;
+  const profileNoticeListeners = new Set<(notice: { version: number; message: string }) => void>();
+  const publishProfileNotice = (message: string): void => {
+    profileNotice = { version: ++profileNoticeVersion, message };
+    for (const listener of profileNoticeListeners) listener(profileNotice);
+  };
   let briefingContext = new AgentBriefingContext({
     profile: currentProfile,
     cwd: process.cwd(),
@@ -107,6 +121,43 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   });
   let briefingReady = briefingContext.start();
   let initialContextStatus = (await briefingReady).status;
+  let sessionVersion = 0;
+  let conversationSelectionVersion = 0;
+  const sessionListeners = new Set<
+    (snapshot: {
+      conversationId: string | null;
+      session: SkSessionState | null;
+      version: number;
+    }) => void
+  >();
+  const contextStatusListeners = new Set<(status: string | null) => void>();
+  const publishContextStatus = (status: string | null): void => {
+    initialContextStatus = status;
+    for (const listener of contextStatusListeners) listener(status);
+  };
+  const resetBriefingContext = (
+    conversationId: string | null,
+    session: SkSessionState | null = null,
+  ): Promise<AgentBriefingUpdate> => {
+    currentConversationId = conversationId;
+    currentSession = session;
+    publishContextStatus(null);
+    const nextContext = new AgentBriefingContext({
+      profile: currentProfile,
+      cwd: process.cwd(),
+      ...(conversationId ? { sessionId: conversationId } : {}),
+    });
+    briefingContext = nextContext;
+    briefingReady = briefingContext.start();
+    sessionVersion += 1;
+    for (const listener of sessionListeners) {
+      listener({ conversationId, session, version: sessionVersion });
+    }
+    return briefingReady.then((update) => {
+      if (briefingContext === nextContext) publishContextStatus(update.status);
+      return update;
+    });
+  };
   let profileVersion = 0;
   const personaListeners = new Set<
     (snap: { persona: ResolvedPersona; profile: ResolvedProfile; version: number }) => void
@@ -136,12 +187,17 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     last_error_at: null,
   };
   const connectionListeners = new Set<(snap: ConnectionSnapshot) => void>();
-  const pinger = new ConnectionPinger({ client: currentClient });
-  pinger.onChange((snap) => {
-    connectionSnapshot = snap;
-    for (const listener of connectionListeners) listener(snap);
-  });
-  pinger.start();
+  let pinger!: ConnectionPinger;
+  const startPinger = (pingerClient: EngineClient): void => {
+    pinger = new ConnectionPinger({ client: pingerClient });
+    pinger.onChange((snap) => {
+      if (pingerClient !== currentClient) return;
+      connectionSnapshot = snap;
+      for (const listener of connectionListeners) listener(snap);
+    });
+    pinger.start();
+  };
+  startPinger(currentClient);
 
   const onPrompt = async (
     text: string,
@@ -174,7 +230,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     try {
       await briefingReady;
       const briefingUpdate = await briefingContext.beforePrompt(promptOpts?.raw_prompt ?? text);
-      if (briefingUpdate.status) initialContextStatus = briefingUpdate.status;
+      if (briefingUpdate.status) publishContextStatus(briefingUpdate.status);
       const resolved = await resolveMentions(text, {
         cwd: process.cwd(),
         additionalDirectories: settings.merged.additionalDirectories ?? [],
@@ -462,6 +518,10 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       ctx(),
     );
     try {
+      await briefingReady;
+      const briefingPrompt = typeof output === "string" ? output : (JSON.stringify(output) ?? "");
+      const briefingUpdate = await briefingContext.beforePrompt(briefingPrompt);
+      if (briefingUpdate.status) publishContextStatus(briefingUpdate.status);
       const stream = await currentClient.respondElicitationStream(
         currentConversationId,
         elicitationId,
@@ -611,13 +671,19 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
   };
 
   const onSelectConversation = async (id: string): Promise<void> => {
-    currentConversationId = id;
-    briefingContext = new AgentBriefingContext({
-      profile: currentProfile,
-      cwd: process.cwd(),
-      sessionId: id,
-    });
-    initialContextStatus = (await briefingContext.start()).status;
+    const selectionVersion = ++conversationSelectionVersion;
+    let session: SkSessionState | null = null;
+    try {
+      const selectedClient = currentClient;
+      const detail = await selectedClient.getConversation(id);
+      if (selectedClient !== currentClient || selectionVersion !== conversationSelectionVersion)
+        return;
+      session = hydrateConversation(detail);
+    } catch {
+      if (selectionVersion !== conversationSelectionVersion) return;
+      session = null;
+    }
+    await resetBriefingContext(id, session);
     void refreshStatus();
   };
 
@@ -640,9 +706,16 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
 
     currentClient = newClient;
     currentProfile = newProfile;
-    currentConversationId = null;
-    briefingContext = new AgentBriefingContext({ profile: newProfile, cwd: process.cwd() });
-    initialContextStatus = (await briefingContext.start()).status;
+    pinger.stop();
+    connectionSnapshot = {
+      state: "unknown",
+      reason: null,
+      last_ok_at: null,
+      last_error_at: null,
+    };
+    for (const listener of connectionListeners) listener(connectionSnapshot);
+    startPinger(newClient);
+    await resetBriefingContext(null);
     bootSnapshot = { ...bootSnapshot, mentions: [] };
     for (const listener of bootSnapshotListeners) listener(bootSnapshot);
 
@@ -687,9 +760,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     for (const listener of setupListeners) listener(setupSnapshot);
     for (const listener of bootSnapshotListeners) listener(bootSnapshot);
 
-    return healthOk
+    const message = healthOk
       ? `switched to "${name}" (${newProfile.engine_url})`
       : `switched to "${name}" (${newProfile.engine_url}) — engine unreachable`;
+    publishProfileNotice(message);
+    return message;
   };
 
   const onSlash = async (
@@ -712,16 +787,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
         profile: currentProfile,
         session: liveSession,
         setConversationId: (next) => {
-          currentConversationId = next;
-          briefingContext = new AgentBriefingContext({
-            profile: currentProfile,
-            cwd: process.cwd(),
-            ...(next ? { sessionId: next } : {}),
-          });
-          briefingReady = briefingContext.start();
-          void briefingReady.then((update) => {
-            initialContextStatus = update.status;
-          });
+          void resetBriefingContext(next);
         },
         allowedPermissions: Array.from(currentPersona.allowed ?? []),
         switchProfile: switchProfileFn,
@@ -791,6 +857,13 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     const [setup, setSetup] = React.useState<SetupValidationResponse | null>(setupSnapshot);
     const [conn, setConn] = React.useState<ConnectionSnapshot>(connectionSnapshot);
     const [boot, setBoot] = React.useState<OperatorBootSnapshot>(bootSnapshot);
+    const [contextStatus, setContextStatus] = React.useState<string | null>(initialContextStatus);
+    const [sessionTarget, setSessionTarget] = React.useState({
+      conversationId: currentConversationId,
+      session: currentSession,
+      version: sessionVersion,
+    });
+    const [activeProfileNotice, setActiveProfileNotice] = React.useState(profileNotice);
     const [active, setActive] = React.useState<{
       persona: ResolvedPersona;
       profile: ResolvedProfile;
@@ -811,21 +884,35 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       const sul = (next: SetupValidationResponse | null): void => setSetup(next);
       const cl = (next: ConnectionSnapshot): void => setConn(next);
       const bl = (next: OperatorBootSnapshot): void => setBoot(next);
+      const csl = (next: string | null): void => setContextStatus(next);
+      const ssl = (next: {
+        conversationId: string | null;
+        session: SkSessionState | null;
+        version: number;
+      }): void => setSessionTarget(next);
+      const pnl = (next: { version: number; message: string }): void =>
+        setActiveProfileNotice(next);
       statusListeners.add(sl);
       setupListeners.add(sul);
       personaListeners.add(pl);
       connectionListeners.add(cl);
       bootSnapshotListeners.add(bl);
+      contextStatusListeners.add(csl);
+      sessionListeners.add(ssl);
+      profileNoticeListeners.add(pnl);
       return () => {
         statusListeners.delete(sl);
         setupListeners.delete(sul);
         personaListeners.delete(pl);
         connectionListeners.delete(cl);
         bootSnapshotListeners.delete(bl);
+        contextStatusListeners.delete(csl);
+        sessionListeners.delete(ssl);
+        profileNoticeListeners.delete(pnl);
       };
     }, []);
     return React.createElement(InkApp, {
-      key: `app-${active.version}`,
+      key: `app-${active.version}-${sessionTarget.version}`,
       persona: {
         label: active.persona.label,
         tenant: active.persona.tenant ?? active.profile.active_tenant_id,
@@ -837,8 +924,11 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       ...(settings.merged.nextCommandPreviewEnabled !== undefined
         ? { nextCommandPreviewEnabled: settings.merged.nextCommandPreviewEnabled }
         : {}),
-      initialConversationId: currentConversationId,
-      initialContextStatus,
+      initialConversationId: sessionTarget.conversationId,
+      initialSession: sessionTarget.session,
+      sessionVersion: sessionTarget.version,
+      profileNotice: activeProfileNotice,
+      initialContextStatus: contextStatus,
       model: settings.merged.model ?? null,
       cwd: process.cwd(),
       statusSnapshot: snap,
@@ -850,6 +940,9 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       onElicitResponse,
       onSlash,
       onSelectConversation,
+      onNewSession: () => {
+        void resetBriefingContext(null);
+      },
       onCancelConversation: (id: string) => currentClient.cancelConversation(id),
       engineClient: currentClient,
       engineMentionCandidates: boot.mentions,
