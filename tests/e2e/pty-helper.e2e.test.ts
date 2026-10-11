@@ -135,6 +135,28 @@ function spawnExpect(script: string, cwd: string) {
 }
 
 test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
+  "forwards individually quoted command arguments to the PTY child",
+  async () => {
+    const child = childFixture(
+      'if (process.argv[2] !== "argument with spaces" || process.argv[3] !== "literal $[value]") process.exit(9)',
+    );
+    try {
+      const result = await bounded(
+        runPtyScenario([], {
+          binary: child.binary,
+          args: ["argument with spaces", "literal $[value]"],
+          cwd: child.directory,
+        }),
+      );
+      expect(result.exitCode).toBe(0);
+    } finally {
+      child.cleanup();
+    }
+  },
+  30000,
+);
+
+test.skipIf(SKIP_PTY_WHEN_NO_EXPECT)(
   "bounds authoritative wait after a terminal closes with its child alive",
   async () => {
     if (!EXPECT_BIN) throw new Error("missing expect command");

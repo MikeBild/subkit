@@ -219,7 +219,7 @@ export interface SlashHandlerContext {
   session: SkSessionState;
   setConversationId: (id: string | null) => void;
   allowedPermissions: readonly string[];
-  switchProfile?: (name: string) => Promise<string>;
+  switchProfile?: (name: string) => Promise<string | null>;
   statusSnapshot?: StatusSummary | null;
   setupSnapshot?: SetupValidationResponse | null;
   bootstrapSnapshot?: {

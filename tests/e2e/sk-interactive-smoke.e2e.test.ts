@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type ExpectStep, runPtyScenario } from "./_helpers/pty.ts";
-import { boot, type E2EEnv, shutdown } from "./setup.ts";
+import { boot, cli, type E2EEnv, parseJson, shutdown } from "./setup.ts";
 
 let env: E2EEnv;
 beforeAll(async () => {
@@ -16,11 +16,13 @@ const EXPECT_BIN = Bun.which("expect");
 async function runInteractiveScenario(
   steps: readonly ExpectStep[],
   debugFile?: string,
+  args?: readonly string[],
 ): Promise<string> {
   const result = await runPtyScenario(steps, {
     persona: env.personas.admin,
     engineUrl: env.baseUrl,
     ...(debugFile ? { env: { SK_DEBUG_FILE: debugFile } } : {}),
+    ...(args ? { args } : {}),
   });
   expect(result.exitCode).toBe(0);
   return result.visible.replace(/\s+/g, " ");
@@ -29,6 +31,164 @@ const SK_RUN_STARTER_E2E = process.env.SK_RUN_STARTER_E2E === "1";
 const skipStarter = !SK_RUN_STARTER_E2E;
 
 describe("sk interactive smoke", () => {
+  test.skipIf(skipStarter)(
+    "resumes a persisted confirmation in the PTY and submits the answer",
+    async () => {
+      if (!EXPECT_BIN) return;
+      const created = await cli(["--p", "subkit engine onboarding", "--output", "json"], {
+        env,
+        persona: "admin",
+        timeout: 120_000,
+      });
+      expect(created.exitCode).toBe(0);
+      const result = parseJson<{
+        session_id: string;
+        status: string;
+        pending_elicitation?: { id: string; tool_name: string };
+      }>(created);
+      expect(result.status).toBe("awaiting_input");
+      expect(result.pending_elicitation?.tool_name).toBe("ask_user_confirm");
+      const detailResponse = await fetch(`${env.baseUrl}/v1/conversations/${result.session_id}`, {
+        headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` },
+      });
+      expect(detailResponse.status).toBe(200);
+      const detail = (await detailResponse.json()) as {
+        resume_summary?: { pending_approval?: { prompt?: { question?: string } } | null };
+      };
+      const question = detail.resume_summary?.pending_approval?.prompt?.question;
+      expect(question).toBeTruthy();
+
+      const debugDir = mkdtempSync(path.join(tmpdir(), "sk-resume-elicit-"));
+      const debugFile = path.join(debugDir, "debug.log");
+      try {
+        const pty = await runPtyScenario(
+          [
+            { kind: "wait", pattern: "confirm:" },
+            { kind: "sleep", ms: 500 },
+            { kind: "send", text: "y" },
+            { kind: "sleep", ms: 7000 },
+            { kind: "send", text: "\u0004" },
+          ],
+          {
+            persona: env.personas.admin,
+            engineUrl: env.baseUrl,
+            env: { SK_DEBUG_FILE: debugFile },
+            unsetEnv: ["CI", "CONTINUOUS_INTEGRATION"],
+            args: ["--session-id", result.session_id],
+          },
+        );
+        const visible = pty.visible.replace(/\s+/g, " ");
+        if (pty.exitCode !== 0) {
+          throw new Error(
+            `PTY exit ${pty.exitCode}; stderr=${pty.stderr}; visible=${pty.visible.slice(-5000)}; raw=${JSON.stringify(pty.raw.slice(-5000))}; debug=${readFileSync(debugFile, "utf8")}`,
+          );
+        }
+        expect(visible).toContain("confirm:");
+        expect(visible).toContain(question!);
+
+        const records = readFileSync(debugFile, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { kind?: string; method?: string; path?: string });
+        expect(
+          records.some(
+            (record) =>
+              record.kind === "http.request" &&
+              record.method === "POST" &&
+              record.path ===
+                `/v1/conversations/${result.session_id}/elicitations/${result.pending_elicitation?.id}/respond`,
+          ),
+        ).toBe(true);
+
+        const resolvedResponse = await fetch(
+          `${env.baseUrl}/v1/conversations/${result.session_id}`,
+          { headers: { Authorization: `Bearer ${env.personas.admin.apiKey}` } },
+        );
+        const resolved = (await resolvedResponse.json()) as {
+          conversation: { status: string };
+          resume_summary?: { pending_approval?: unknown };
+        };
+        expect(resolved.conversation.status).not.toBe("awaiting_input");
+        expect(resolved.resume_summary?.pending_approval ?? null).toBeNull();
+      } finally {
+        rmSync(debugDir, { recursive: true, force: true });
+      }
+    },
+    150_000,
+  );
+
+  test.skipIf(skipStarter)(
+    "shows and persists the selected profile in a real PTY session",
+    async () => {
+      if (!EXPECT_BIN) return;
+      const home = mkdtempSync(path.join(tmpdir(), "sk-profile-switch-"));
+      mkdirSync(path.join(home, ".sk"), { recursive: true });
+      const configPath = path.join(home, ".sk", "config.json");
+      const debugFile = path.join(home, "debug.log");
+      writeFileSync(
+        configPath,
+        `${JSON.stringify(
+          {
+            active_profile: "default",
+            profiles: {
+              default: {
+                engine_url: env.baseUrl,
+                api_key: env.personas.admin.apiKey,
+                active_tenant_id: env.tenantId,
+                persona_hint: "admin",
+              },
+              member: {
+                engine_url: env.baseUrl,
+                api_key: env.personas.member.apiKey,
+                active_tenant_id: env.tenantId,
+                persona_hint: "member",
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      try {
+        const result = await runPtyScenario(
+          [
+            { kind: "wait", pattern: "Resume work, create a connector" },
+            { kind: "ready" },
+            { kind: "send", text: "/profile member" },
+            { kind: "sleep", ms: 100 },
+            { kind: "send", text: "\r" },
+            { kind: "wait", pattern: "profile member" },
+            { kind: "terminate" },
+          ],
+          {
+            engineUrl: env.baseUrl,
+            env: {
+              HOME: home,
+              XDG_CONFIG_HOME: home,
+              SK_DEBUG_FILE: debugFile,
+              SUBKIT_API_KEY: "",
+              SUBKIT_TENANT: "",
+            },
+            unsetEnv: ["CI", "CONTINUOUS_INTEGRATION"],
+          },
+        );
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `PTY exit ${result.exitCode}; stderr=${result.stderr.slice(0, 1200)}; visible=${result.visible.slice(-5000)}; debug=${readFileSync(debugFile, "utf8")}`,
+          );
+        }
+        expect(result.visible).toContain("profile member");
+        const saved = JSON.parse(readFileSync(configPath, "utf8")) as {
+          active_profile: string;
+        };
+        expect(saved.active_profile).toBe("member");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+    120_000,
+  );
+
   test.skipIf(skipStarter)(
     "boots through whoami + RBAC + status without surfacing the startup 500 banner",
     async () => {
