@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { count, eq } from "drizzle-orm";
 import { loadDraft } from "../../conversations/draft.ts";
-import { apiKeys, knowledgeSources } from "../../db/schema/index.ts";
+import { apiKeys, intakeItems, knowledgeSources } from "../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -39,7 +40,131 @@ function testKey(value: string): { plaintext: string; prefix: string; token_sha2
   };
 }
 
+async function issueUserKey(name: string, scopes: string[]): Promise<string> {
+  const response = await request("/v1/identity/api-keys", "POST", {
+    owner_kind: "user",
+    owner_id: ctx.userId,
+    name,
+    scopes,
+  });
+  expect(response.status).toBe(201);
+  return ((await response.json()) as { plaintext_key: string }).plaintext_key;
+}
+
 describe("intake HTTP flow", () => {
+  test("enforces read, collection, and knowledge admission as separate API-key personas", async () => {
+    const readerKey = await issueUserKey("intake-reader", ["intake:read"]);
+    const defaultCategory = await request(
+      "/v1/intake/default-category",
+      "GET",
+      undefined,
+      readerKey,
+    );
+    expect(defaultCategory.status).toBe(200);
+    expect((await defaultCategory.json()) as { can_collect: boolean }).toMatchObject({
+      can_collect: false,
+    });
+    expect((await request("/v1/intake/items", "GET", undefined, readerKey)).status).toBe(200);
+
+    const beforeDeniedWrite = await ctx.db
+      .select({ value: count() })
+      .from(intakeItems)
+      .where(eq(intakeItems.tenant_id, ctx.tenantId));
+    const deniedCollection = await request(
+      "/v1/intake/items",
+      "POST",
+      {
+        client_request_id: "10000000-0000-4000-8000-000000000008",
+        title: "Reader must not collect",
+        source_url: "https://example.test/reader-denied",
+        captured_at: "2026-10-10T07:00:00.000Z",
+        body: "This item must not be persisted.",
+      },
+      readerKey,
+    );
+    expect(deniedCollection.status).toBe(403);
+    const afterDeniedWrite = await ctx.db
+      .select({ value: count() })
+      .from(intakeItems)
+      .where(eq(intakeItems.tenant_id, ctx.tenantId));
+    expect(afterDeniedWrite[0]?.value).toBe(beforeDeniedWrite[0]?.value);
+
+    const deniedKeyManagement = await request(
+      "/v1/identity/api-keys",
+      "POST",
+      { owner_kind: "user", owner_id: ctx.userId, name: "escalation", scopes: ["*"] },
+      readerKey,
+    );
+    expect(deniedKeyManagement.status).toBe(403);
+
+    const collectorKey = await issueUserKey("intake-collector", ["intake:read", "intake:write"]);
+    const collected = await request(
+      "/v1/intake/items",
+      "POST",
+      {
+        client_request_id: "10000000-0000-4000-8000-000000000009",
+        category: "recording",
+        title: "Collector persona item",
+        source_url: "https://example.test/collector-persona",
+        captured_at: "2026-10-10T07:00:00.000Z",
+        body: "Collected content remains outside knowledge until confirmed.",
+      },
+      collectorKey,
+    );
+    expect(collected.status).toBe(201);
+    const item = (await collected.json()) as { id: string };
+    const proposed = await request(
+      "/v1/intake/proposals",
+      "POST",
+      {
+        item_ids: [item.id],
+        title: "Collector persona proposal",
+        body: "A prepared proposal awaiting a person with admission rights.",
+        target: { name: "Collector persona knowledge" },
+      },
+      collectorKey,
+    );
+    expect(proposed.status).toBe(201);
+    const proposal = (await proposed.json()) as {
+      id: string;
+      current_revision: number;
+      revision: { digest: string };
+    };
+    const confirmation = {
+      expected_revision: proposal.current_revision,
+      digest: proposal.revision.digest,
+    };
+
+    const intakeConfirmationOnly = await issueUserKey("confirm-without-knowledge-write", [
+      "intake:confirm",
+    ]);
+    const knowledgeWriteOnly = await issueUserKey("knowledge-write-without-confirm", [
+      "knowledge:write",
+    ]);
+    for (const key of [collectorKey, intakeConfirmationOnly, knowledgeWriteOnly]) {
+      const denied = await request(
+        `/v1/intake/proposals/${proposal.id}/confirm`,
+        "POST",
+        confirmation,
+        key,
+      );
+      expect(denied.status).toBe(403);
+    }
+
+    const admissionKey = await issueUserKey("intake-admission", [
+      "intake:confirm",
+      "knowledge:write",
+    ]);
+    const confirmed = await request(
+      `/v1/intake/proposals/${proposal.id}/confirm`,
+      "POST",
+      confirmation,
+      admissionKey,
+    );
+    expect(confirmed.status).toBe(200);
+    expect((await confirmed.json()) as { status: string }).toMatchObject({ status: "confirmed" });
+  });
+
   test("collects, proposes, confirms, and then exposes only confirmed content to knowledge search", async () => {
     const collected = await request("/v1/intake/items", "POST", {
       client_request_id: "10000000-0000-4000-8000-000000000001",

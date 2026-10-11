@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, isNull } from "drizzle-orm";
+import { isCeilingScope } from "../../auth/scopes.ts";
 import type { ResolvedPrincipal } from "../../auth/types.ts";
 import type { Db } from "../../db/client.ts";
 import {
@@ -269,6 +270,28 @@ describe("rbac matrix", () => {
         });
       });
     }
+  });
+
+  describe("scoped-key persona", () => {
+    test("an API-key ceiling contains every catalog permission outside its explicit scopes", async () => {
+      const scopes = ["intake:read", "workflow:run"];
+      const principal: ResolvedPrincipal = {
+        ...principals[BUILTIN_ROLE_NAMES.ADMIN]!,
+        scopes,
+      };
+
+      for (const permission of ALL_PERMISSION_NAMES.filter(isCeilingScope)) {
+        const decision = await can(db, {
+          tenant_id: tenantA,
+          principal,
+          permission,
+        });
+        expect(decision.allow).toBe(scopes.includes(permission));
+        if (!scopes.includes(permission)) {
+          expect(decision.reason).toBe(`credential_ceiling:scope_not_granted`);
+        }
+      }
+    });
   });
 
   describe("decision sources", () => {
