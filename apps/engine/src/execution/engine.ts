@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { VERSION } from "@cli-core/version.ts";
 import { and, eq, isNull } from "drizzle-orm";
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
@@ -17,6 +18,7 @@ import {
 import { getMetrics, METRIC_NAMES } from "../observability/metrics.ts";
 import { instrument } from "../observability/runtime-telemetry.ts";
 import { runJs } from "../sandboxes/quickjs/runtime.ts";
+import { SANDBOX_TOOL_MANIFEST, STDLIB_VERSION } from "../sandboxes/quickjs/stdlib/index.ts";
 import { recordExecutionOutcome } from "../self-healing/outcome-tracker.ts";
 import { buildStepDag, type StepDag, topoSort } from "../workflows/dag.ts";
 import { WorkflowEffectManifestSchema } from "../workflows/effect-manifest.ts";
@@ -392,6 +394,13 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         source_kind: resolved.source_kind,
         request_source,
         parent_execution_id,
+        runtime: {
+          engine: VERSION,
+          stdlib: STDLIB_VERSION,
+          tools: SANDBOX_TOOL_MANIFEST,
+          clock_ms: evaluationInstant.getTime(),
+          evaluation_seed: evaluationSeed,
+        },
       },
     },
     db,
@@ -587,6 +596,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
           now_ms: ctx.started_at.getTime(),
           seed: `${evaluationSeed}:${step.id}`,
         },
+        ctx.signal,
       );
       let fanOutCircuitFailure: StepResult | null = null;
       if (collectionResult.kind === "collection" && step.kind === "request" && step.connector_id) {
@@ -777,6 +787,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         const iterCtx: StepRunContext = {
           ...ctx,
           scope: childScope,
+          evaluation_seed: `${ctx.evaluation_seed ?? execution_id}:for_each:${step.id}:${itemIdx}`,
           step_row_id: iterStepRowId,
         };
         const iterOutcome = await instrument({
@@ -1065,7 +1076,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
               signal,
               scope: childScope,
               started_at: evaluationInstant,
-              evaluation_seed: evaluationSeed,
+              evaluation_seed: `${evaluationSeed}:loop:${loopStep.id}:${itemIdx}`,
               workflow_slug: resolved.workflow_slug,
               trace_id: opts.trace_id ?? null,
               principal: opts.principal ?? null,
@@ -1223,7 +1234,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         },
         fn: () =>
           Promise.all(
-            parallelStep.branches.map(async (branchStepIds) => {
+            parallelStep.branches.map(async (branchStepIds, branchIndex) => {
               const branchScope: Record<string, unknown> = { ...scope };
               const branchOutput: Record<string, unknown> = {};
               const branchHeldIds = new Set<string>();
@@ -1277,7 +1288,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
                   signal,
                   scope: branchScope,
                   started_at: evaluationInstant,
-                  evaluation_seed: evaluationSeed,
+                  evaluation_seed: `${evaluationSeed}:parallel:${parallelStep.id}:${branchIndex}`,
                   workflow_slug: resolved.workflow_slug,
                   trace_id: opts.trace_id ?? null,
                   principal: opts.principal ?? null,
@@ -1443,6 +1454,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
         const transformed = await evaluateJsonata(def.output_transform, lastOutput, {
           input: normalizedInput,
           scope,
+          clock: { now_ms: execution_started_at, seed: `${evaluationSeed}:output_transform` },
         });
         if (transformed !== undefined) lastOutput = transformed;
       } catch (err) {
@@ -1592,6 +1604,7 @@ async function executeRun(p: RunExecutionParams): Promise<RunResult> {
       const verdict = await evaluateJsonata(def.validation_expression, lastOutput, {
         input: normalizedInput,
         scope,
+        clock: { now_ms: execution_started_at, seed: `${evaluationSeed}:validation` },
       });
       if (!verdict) {
         logger.warn({

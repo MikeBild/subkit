@@ -36,7 +36,7 @@ export async function runSmoke(): Promise<void> {
     limits: { wall_ms: 1000 },
     clock: null,
   });
-  if (js.output !== 42) {
+  if (js.output !== 42 || !js.stats.worker_pid || js.stats.worker_pid === process.pid) {
     logger.error({
       module: "engine",
       action: "smoke.quickjs_failed",
@@ -50,6 +50,25 @@ export async function runSmoke(): Promise<void> {
     action: "smoke.quickjs_ok",
     msg: "QuickJS JS-transform sandbox executed in the compiled binary",
   });
+
+  const helpers = await runJs({
+    code: 'return sk.money.add("0.1", "0.2");',
+    input: null,
+    clock: null,
+  });
+  if (helpers.output !== "0.3") throw new Error("Embedded sandbox helpers failed");
+  const { evaluate } = await import("./execution/jsonata-engine.ts");
+  if ((await evaluate("$sum($input)", null, { input: [20, 22] })) !== 42)
+    throw new Error("JSONata worker smoke failed");
+  const { utils, write } = await import("xlsx");
+  const workbook = utils.book_new();
+  utils.book_append_sheet(workbook, utils.aoa_to_sheet([["amount"], [42]]), "Smoke");
+  const { parseBinaryFile } = await import("./docs-ingestion/parsers/index.ts");
+  const parsed = await parseBinaryFile(
+    Buffer.from(write(workbook, { type: "buffer", bookType: "xlsx" })),
+    "xlsx",
+  );
+  if (parsed.sheets.Smoke?.[0]?.amount !== 42) throw new Error("Parser worker smoke failed");
 
   logger.info({
     module: "engine",

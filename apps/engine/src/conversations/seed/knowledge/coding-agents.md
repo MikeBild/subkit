@@ -42,12 +42,12 @@ sk agent init --domains <category>[,<category>]   # e.g. rechnungswesen or blog-
 
 What `init` does:
 
-- writes `.sk/agent.json` (`{"domains":[...],"budget_tokens":4000}` when `--budget` is given); commit it so every checkout is briefed;
+- merges the requested domains into `.sk/agent.json`, preserving its other settings and existing domains; `--budget` sets the budget when given; commit the file so every checkout is briefed;
 - wires Claude Code in `~/.claude/settings.json`: SessionStart (startup, resume, clear, compact, fork) and UserPromptSubmit run `sk agent briefing --hook`, SessionEnd runs `sk agent capture --hook`;
-- wires Codex in `~/.codex/hooks.json`: SessionStart and UserPromptSubmit run `sk agent briefing --hook` with `additionalContextLimit: 0`, so Codex hands the whole briefing to the model instead of spilling it to a file; no capture, because Codex's Stop hook fires after every turn;
+- wires Codex in `~/.codex/hooks.json`: SessionStart and UserPromptSubmit run `sk agent briefing --hook` with `additionalContextLimit: 0`, so Codex hands the whole briefing to the model instead of spilling it to a file; SessionEnd queues transcript capture through a detached process within Codex's three-second hook limit;
 - prints what stays manual: Codex needs `[features] hooks = true` in `~/.codex/config.toml` and the hooks must be trusted once under `/hooks` inside `codex`; Hermes has no hooks and gets the briefing by running `sk agent briefing` in the repository.
 
-`--skip-claude` and `--skip-codex` leave the respective file untouched. Running `init` again reconciles SubKit's hook settings while preserving other tools' hooks. Outside a repository with `.sk/agent.json` the hooks stay silent. A successful hook gives the model the full briefing and shows the person a concise status with loaded domains, included materials, and skill proposals awaiting review. A failed fetch or invalid configuration shows a warning and lets the session continue.
+`--skip-claude` and `--skip-codex` leave the respective file untouched. Running `init` again reconciles SubKit's hook settings while preserving other tools' hooks, and adds the requested domains without deleting existing domains or settings from `.sk/agent.json`. To remove a domain, edit the file directly. Invalid local or global JSON is checked before any setup file is changed. When no `.sk/agent.json` exists, the hook matches the normalized current-folder name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project domain and shared SubKit context when available. With no unique project match, it creates a shared-only declaration when shared SubKit context is available, then asks which project area, knowledge sources, and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions keep checking the folder name as readable catalog categories change. Treat `inferred` and `inferred_folder_domain` as hook-managed fields; remove both to maintain `domains` explicitly. Legacy inferred declarations use their first non-`subkit` domain as the inferred folder domain during migration. This works with or without Git metadata. The briefing tells the agent which declaration it created. A successful hook gives the model the project domain context and shared platform context when available, and shows the person a short, language-neutral ready status. Hooks and the sk REPL use the same 1,800-token briefing budget and enforce a 9,500-character output limit so Claude Code receives useful context instead of an unread hook-output file. The model can offer relevant reviews in the language of the conversation. A failed fetch or invalid configuration shows a warning and lets the session continue.
 
 # What a briefing is
 
@@ -60,7 +60,7 @@ What `init` does:
 - **Working with sk**: pointers to the guides for finding and running workflows, finding and maintaining knowledge, and what to do when something is stuck;
 - a reminder when learnings wait for review.
 
-The default budget is 4,000 tokens (500 to 16,000). When the budget is tight the briefing trims connectors first, then workflows, then the knowledge index, then skill bodies; header, grounding rule and guides are never trimmed. On UserPromptSubmit the hook briefs only domains the prompt names that the session has not seen yet; a prompt names a domain when every part of its slug appears as a word.
+The default budget is 4,000 tokens (500 to 16,000). When the budget is tight the briefing trims connectors first, then file metadata, workflows, the knowledge index, and skill bodies; header, grounding rule and guides are never trimmed. On UserPromptSubmit, the hook keeps the folder's project and shared SubKit context in scope and adds any newly named matching domains; it avoids sending domains already loaded in that session again.
 
 # Getting knowledge into a briefing
 
@@ -85,11 +85,11 @@ At the end of a Claude Code session the transcript goes to the engine; the engin
 
 # When a briefing is missing or a warning appears
 
-- No `.sk/agent.json` up the directory tree: hooks are silent by design. Run `sk agent init --domains <category>` from the repository and commit the file.
-- Start the client in the declared repository or one of its subdirectories. A parent workspace without `.sk/agent.json` is intentionally silent.
+- No `.sk/agent.json`: a unique folder match creates an inferred declaration; otherwise shared SubKit context can still be loaded while the agent asks which project area belongs here. Use `sk agent init --domains <category>` when you want to declare project domains explicitly.
+- Start the client in the relevant folder so the hook can match its name to a known domain. Git metadata is not required. If the hook creates `.sk/agent.json`, review and commit it with the project.
 - Run `sk status`, then `sk agent briefing --json` in the repository to check credentials and the engine response. If the profile has no API key, use `sk login --api-key` or set `SK_API_KEY`.
 - `sk` is not on the PATH of a client started from the desktop: put the absolute path into the hook commands.
 - In either client, inspect `/hooks` to confirm briefing hooks are enabled and see hook errors. Codex also skips edited hooks until trusted and runs no hooks without `[features] hooks = true`.
-- Codex shows only a head-and-tail preview: the hook lacks `additionalContextLimit: 0`; `sk agent init` sets it.
+- If a Codex briefing is missing its middle, check that the hook has `additionalContextLimit: 0`; `sk agent init` sets it. The shared hook output also stays below the clients' context limits.
 - Nothing listed under Knowledge index or Conventions: the sources and skills are in another category and carry no `domain:` tag.
 - Every hook request gives up after four seconds, displays a non-blocking warning, and logs detail to `~/.sk/debug.log` as `agent.briefing_hook_failed` or `agent.capture_hook_failed`.

@@ -66,6 +66,10 @@ export const ExecutionOutcomeSchema = z
       skipped: z.number().int().nonnegative(),
     }),
     output_contract: z.enum(["passed", "violated", "none"]),
+    rerun_safety: z.object({
+      mode: z.enum(["repeat_safe", "prepare_only", "unavailable"]),
+      reason: z.string(),
+    }),
     planned_steps: z
       .number()
       .int()

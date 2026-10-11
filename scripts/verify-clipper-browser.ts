@@ -278,17 +278,22 @@ try {
     assert.equal(await page.locator("#note").inputValue(), "Useful for our next project");
     assert.equal(await page.locator("#category").inputValue(), "inbox");
     await page.locator("#save").click();
-    await page.waitForFunction(
-      () => document.querySelector("#status")?.getAttribute("data-error") === "true",
-    );
+    await page
+      .waitForFunction(
+        () => document.querySelector("#status")?.getAttribute("data-error") === "true",
+      )
+      .catch(async (error) => {
+        throw new Error(
+          `first collection attempt did not fail visibly: ${JSON.stringify({ status: await page.locator("#status").textContent(), error: await page.locator("#status").getAttribute("data-error"), collected: collected.size, writes: writes.length, pageErrors: errors })}`,
+          { cause: error },
+        );
+      });
     assert.equal(collected.size, 1);
     assert.equal(await page.locator("#title").isDisabled(), true);
     await page.reload();
     await page.locator("#category option[value='research']").waitFor({ state: "attached" });
     await page.locator("#save").click();
-    await page.waitForFunction(() =>
-      document.querySelector("#status")?.textContent?.includes("Gesammelt"),
-    );
+    await page.locator("#status:has-text('Gesammelt')").waitFor({ state: "visible" });
     assert.equal(collected.size, 1);
     const submissions = writes.filter((item) => item.path.endsWith("/intake/items"));
     assert.equal(submissions.length, 2);
@@ -360,11 +365,9 @@ try {
     assert.equal(await page.locator("#save").isDisabled(), true);
     supportsIntake = false;
     await page.reload();
-    await page.waitForFunction(() =>
-      document
-        .querySelector("#status")
-        ?.textContent?.includes("Sammeln ist gerade nicht verfügbar"),
-    );
+    await page.locator("#status:has-text('SubKit-API hat die Anfrage abgelehnt')").waitFor({
+      state: "visible",
+    });
     assert.equal(await page.locator("#save").isDisabled(), true);
     assert.equal(
       await page.locator("#category option:checked").textContent(),
@@ -384,13 +387,14 @@ try {
       ),
     );
     assert.equal(await page.locator("#check-connection").isVisible(), true);
-    const optionsOpened = browser.waitForEvent("page");
     await page.locator("#check-connection").click();
-    const optionsPage = await optionsOpened;
-    await optionsPage.waitForURL("**/options.html");
-    await optionsPage.close();
+    await page.locator("#status:has-text('SubKit-API hat die Anfrage abgelehnt')").waitFor({
+      state: "visible",
+    });
     assert.equal(collected.size, 2);
     supportsIntake = true;
+    await page.locator("#check-connection").click();
+    await page.locator("#status:has-text('Verbindung aktiv')").waitFor({ state: "visible" });
     await page.reload();
     await page.locator("#category option[value='research']").waitFor({ state: "attached" });
     assert.equal(await page.locator("#check-connection").isVisible(), false);

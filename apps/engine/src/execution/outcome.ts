@@ -5,12 +5,14 @@ import {
   type ReportDeliveryRefusal,
   reportRefusalReason,
 } from "../workflows/report-delivery-boundary.ts";
+import { WorkflowDefSchema } from "../workflows/types.ts";
 import {
   classifyPersistedFailure,
   type PersistedFailureClass,
   type PreviewClassification,
 } from "./classify.ts";
 import type { OutputContractVerdict, RefusedConnector } from "./state.ts";
+import { requestRequiresPreparationHold } from "./steps/request/side-effects.ts";
 
 export type OutcomeKind = "succeeded" | "failed" | "held" | "partial" | "running";
 
@@ -24,6 +26,7 @@ export interface ExecutionOutcome {
   steps: { total: number; succeeded: number; failed: number; held: number; skipped: number };
   output_contract: OutputContractVerdict;
   planned_steps?: number | null;
+  rerun_safety: { mode: "repeat_safe" | "prepare_only" | "unavailable"; reason: string };
 }
 
 export interface ExecutionFailureSummary {
@@ -34,7 +37,8 @@ export interface ExecutionFailureSummary {
 }
 
 type ExecutionRow = typeof executions.$inferSelect;
-type OutcomeExecution = Pick<ExecutionRow, "status" | "failure" | "output_contract">;
+type OutcomeExecution = Pick<ExecutionRow, "status" | "failure" | "output_contract"> &
+  Partial<Pick<ExecutionRow, "source_kind">>;
 
 export interface OutcomeStepRow {
   step_key: string;
@@ -105,8 +109,17 @@ export function classifyRunFailure(
 export function deriveExecutionOutcome(
   exec: OutcomeExecution,
   rows: readonly OutcomeStepRow[],
-  definitionSteps: ReadonlyArray<{ id: string; kind: string }> = [],
+  definition: unknown = [],
 ): ExecutionOutcome {
+  const definitionSteps = Array.isArray(definition)
+    ? definition.filter(
+        (step): step is { id: string; kind: string } =>
+          Boolean(step) &&
+          typeof step === "object" &&
+          typeof (step as { id?: unknown }).id === "string" &&
+          typeof (step as { kind?: unknown }).kind === "string",
+      )
+    : topLevelSteps(definition);
   const running = exec.status === "queued" || exec.status === "running";
   let succeeded = 0;
   let failed = 0;
@@ -156,6 +169,33 @@ export function deriveExecutionOutcome(
       exec.output_contract && OUTPUT_CONTRACT_VERDICTS.has(exec.output_contract)
         ? (exec.output_contract as OutputContractVerdict)
         : "none",
+    rerun_safety: deriveRerunSafety(exec.source_kind, definition),
+  };
+}
+
+export function deriveRerunSafety(
+  sourceKind: ExecutionRow["source_kind"] | null | undefined,
+  definition: unknown,
+): ExecutionOutcome["rerun_safety"] {
+  if (sourceKind !== "saved")
+    return { mode: "unavailable", reason: "only saved workflow executions can be rerun" };
+  const parsed = WorkflowDefSchema.safeParse(definition);
+  if (!parsed.success)
+    return {
+      mode: "prepare_only",
+      reason: "the persisted workflow definition is unavailable or invalid",
+    };
+  for (const step of parsed.data.steps) {
+    if (step.kind === "call" || (step.kind === "request" && requestRequiresPreparationHold(step))) {
+      return {
+        mode: "prepare_only",
+        reason: "the workflow may repeat external effects and requires preparation",
+      };
+    }
+  }
+  return {
+    mode: "repeat_safe",
+    reason: "the complete workflow definition contains only read or local operations",
   };
 }
 
@@ -176,7 +216,10 @@ function topLevelSteps(dag: unknown): Array<{ id: string; kind: string }> {
 
 export async function loadExecutionOutcome(
   tenantId: string,
-  exec: Pick<ExecutionRow, "id" | "status" | "failure" | "output_contract" | "workflow_version_id">,
+  exec: Pick<
+    ExecutionRow,
+    "id" | "status" | "failure" | "output_contract" | "workflow_version_id" | "source_kind"
+  >,
   db: Executor,
 ): Promise<ExecutionOutcome> {
   const [rows, version] = await Promise.all([
@@ -208,7 +251,7 @@ export async function loadExecutionOutcome(
   ]);
   const definition = topLevelSteps(version[0]?.dag);
   return {
-    ...deriveExecutionOutcome(exec, rows, definition),
+    ...deriveExecutionOutcome(exec, rows, version[0]?.dag ?? definition),
     planned_steps: fixedPlannedSteps(definition),
   };
 }

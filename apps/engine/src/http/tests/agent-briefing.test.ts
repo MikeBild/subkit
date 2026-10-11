@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
-import { apiKeys, connectors, users, workflows } from "../../db/schema/index.ts";
+import { inArray } from "drizzle-orm";
+import { apiKeys, connectors, files, users, workflows } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
 
 let ctx: HttpTestServer;
@@ -44,6 +46,13 @@ beforeAll(async () => {
     tags: ["domain:infra"],
     status: "active",
   });
+  await post("/v1/skills", {
+    scope: "global",
+    title: "Skill-only folder",
+    body: "A category can establish a folder domain.",
+    category: "skill-only",
+    status: "active",
+  });
 
   const ksRes = await post("/v1/knowledge-sources/inline", {
     name: "Blog Betrieb",
@@ -54,6 +63,15 @@ beforeAll(async () => {
   if (ksRes.status !== 201) {
     throw new Error(`seed knowledge failed: ${ksRes.status} ${await ksRes.text()}`);
   }
+  const knowledgeCategory = await post("/v1/knowledge-sources/inline", {
+    name: "Knowledge-only folder",
+    slug: "knowledge-only-folder",
+    content: "A knowledge category can establish a folder domain.",
+    category: "knowledge-only",
+  });
+  if (knowledgeCategory.status !== 201) {
+    throw new Error(`seed categorized knowledge failed: ${knowledgeCategory.status}`);
+  }
 
   await ctx.db.insert(workflows).values([
     {
@@ -63,12 +81,51 @@ beforeAll(async () => {
       description: "Publishes a reviewed article.",
       lifecycle: "active",
     },
+    {
+      tenant_id: ctx.tenantId,
+      slug: "workflow-only-run",
+      name: "Workflow-only",
+      lifecycle: "active",
+      category: "workflow-only",
+    },
     { tenant_id: ctx.tenantId, slug: "infra-backup", name: "Backup", lifecycle: "active" },
     { tenant_id: ctx.tenantId, slug: "blog-de-draft", name: "Entwurf", lifecycle: "draft" },
   ]);
   await ctx.db.insert(connectors).values([
     { tenant_id: ctx.tenantId, slug: "blog-de-cms", display_name: "Blog CMS", driver: "http" },
     { tenant_id: ctx.tenantId, slug: "infra-dns", display_name: "DNS", driver: "http" },
+    {
+      tenant_id: ctx.tenantId,
+      slug: "connector-only-api",
+      display_name: "Connector-only",
+      driver: "http",
+      category: "connector-only",
+    },
+  ]);
+  await ctx.db.insert(files).values({
+    tenant_id: ctx.tenantId,
+    status: "ready",
+    filename: "Invoice schema.csv",
+    storage_uri: "tenant/test/invoice-schema.csv",
+    category: "invoices",
+    description: "Current invoice import schema.",
+  });
+  await ctx.db.insert(files).values([
+    {
+      tenant_id: ctx.tenantId,
+      status: "pending",
+      filename: "Unready.csv",
+      storage_uri: "tenant/test/unready.csv",
+      category: "unready-file",
+    },
+    {
+      tenant_id: ctx.tenantId,
+      status: "ready",
+      filename: "Deleted.csv",
+      storage_uri: "tenant/test/deleted.csv",
+      category: "deleted-file",
+      deleted_at: new Date(getTestNow()),
+    },
   ]);
 });
 
@@ -77,7 +134,7 @@ async function memberKey(role: string): Promise<string> {
     .insert(users)
     .values({
       tenant_id: ctx.tenantId,
-      email: `${role}-briefing@test.local`,
+      email: `${role}-${randomBytes(8).toString("hex")}@briefing.test`, // allow-random: test identity uniqueness
       role_id: await builtinRoleId(ctx.db, role),
     })
     .returning();
@@ -88,6 +145,18 @@ async function memberKey(role: string): Promise<string> {
     prefix: key.slice(0, 12),
     token_sha256: createHash("sha256").update(key).digest("hex"),
     scopes: ["*"],
+  });
+  return key;
+}
+
+async function skillReadOnlyKey(): Promise<string> {
+  const key = `wf_live_skill_read_${randomBytes(16).toString("base64url")}`; // allow-random: test only
+  await ctx.db.insert(apiKeys).values({
+    tenant_id: ctx.tenantId,
+    user_id: ctx.userId,
+    prefix: key.slice(0, 12),
+    token_sha256: createHash("sha256").update(key).digest("hex"),
+    scopes: ["skill:read"],
   });
   return key;
 }
@@ -216,7 +285,51 @@ describe("POST /v1/agent/domains", () => {
       domains: ["blog-de", "infra"],
       from_prompt: ["blog-de"],
       from_repo: ["infra"],
+      from_folder: [],
     });
+  });
+
+  test("resolves an exact current-folder category, including categories backed only by a file", async () => {
+    const res = await postDomains({ folder: "Invoices" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      domains: ["invoices"],
+      from_prompt: [],
+      from_repo: [],
+      from_folder: ["invoices"],
+    });
+  });
+
+  test("resolves categories contributed by every catalog kind", async () => {
+    const folders = ["skill-only", "knowledge-only", "workflow-only", "connector-only"];
+    for (const folder of folders) {
+      const res = await postDomains({ folder });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        domains: [folder],
+        from_prompt: [],
+        from_repo: [],
+        from_folder: [folder],
+      });
+    }
+  });
+
+  test("rejects a folder path so local paths cannot enter the resolver", async () => {
+    const res = await postDomains({ folder: "/Users/example/invoices" });
+    expect([400, 422]).toContain(res.status);
+  });
+
+  test("does not resolve categories backed only by unready or deleted files", async () => {
+    for (const folder of ["unready-file", "deleted-file"]) {
+      const res = await postDomains({ folder });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        domains: [],
+        from_prompt: [],
+        from_repo: [],
+        from_folder: [],
+      });
+    }
   });
 
   test("a prompt over the limit is a validation error, not a silent cut", async () => {
@@ -237,6 +350,92 @@ describe("GET /v1/agent/briefing — catalog follows the caller's read rights", 
     expect(body.workflows).toEqual(["blog-de-publish"]);
     expect(body.connectors).toEqual([]);
     expect(body.markdown).not.toContain("## Connectors");
+  });
+
+  test("does not resolve categories supplied only by an unread connector", async () => {
+    const key = await memberKey("enduser");
+    const res = await fetch(`${ctx.baseUrl}/v1/agent/domains`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ folder: "connector-only" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      domains: [],
+      from_prompt: [],
+      from_repo: [],
+      from_folder: [],
+    });
+  });
+});
+
+describe("GET /v1/agent/briefing — file metadata", () => {
+  test("lists only safe metadata for ready files in the requested domain", async () => {
+    const res = await get("domains=invoices", ctx.apiKey);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      markdown: string;
+      files: Array<{
+        name: string;
+        slug: string | null;
+        category: string;
+        description: string | null;
+      }>;
+      files_omitted: number;
+    };
+    expect(body.files).toEqual([
+      {
+        name: "Invoice schema.csv",
+        slug: null,
+        category: "invoices",
+        description: "Current invoice import schema.",
+      },
+    ]);
+    expect(body.files_omitted).toBe(0);
+    expect(body.markdown).toContain("## Files");
+    expect(body.markdown).toContain("Invoice schema.csv");
+    expect(body.markdown).not.toContain("tenant/test/invoice-schema.csv");
+    expect(body.markdown).not.toContain("content_base64");
+  });
+
+  test("does not expose files without file:read", async () => {
+    const res = await get("domains=invoices", await skillReadOnlyKey());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { files: unknown[]; markdown: string };
+    expect(body.files).toEqual([]);
+    expect(body.markdown).not.toContain("Invoice schema.csv");
+  });
+
+  test("budgets file metadata and reports omitted entries", async () => {
+    const seeded = await ctx.db
+      .insert(files)
+      .values(
+        Array.from({ length: 12 }, (_, index) => ({
+          tenant_id: ctx.tenantId,
+          status: "ready" as const,
+          filename: `Budget fixture ${index}.csv`,
+          storage_uri: `tenant/test/budget-fixture-${index}.csv`,
+          category: "invoices",
+          description: "Metadata retained only when the briefing budget permits. ".repeat(35),
+        })),
+      )
+      .returning({ id: files.id });
+    const ids = seeded.map((file) => file.id);
+    try {
+      const res = await get("domains=invoices&budget_tokens=500", ctx.apiKey);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        used_tokens: number;
+        budget_tokens: number;
+        files: unknown[];
+        files_omitted: number;
+      };
+      expect(body.used_tokens).toBeLessThanOrEqual(body.budget_tokens);
+      expect(body.files_omitted).toBeGreaterThan(0);
+      expect(body.files.length).toBeLessThan(13);
+    } finally {
+      await ctx.db.delete(files).where(inArray(files.id, ids));
+    }
   });
 });
 

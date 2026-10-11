@@ -128,6 +128,10 @@ export const LABEL_BY_PATH: Readonly<Record<string, string>> = {
   "sandbox.tick_budget": "JS sandbox tick budget",
   "sandbox.wall_ms": "JS sandbox wall-clock cap (ms)",
   "sandbox.stack_bytes": "JS sandbox stack cap (bytes)",
+  "sandbox.queue_limit": "Sandbox worker queue limit",
+  "sandbox.tenant_queue_limit": "Per-tenant sandbox queue limit",
+  "sandbox.ipc_max_bytes": "Sandbox worker IPC limit (bytes)",
+  "sandbox.worker_rss_bytes": "Sandbox worker recycle threshold (RSS bytes)",
   "sandbox.transform_wall_ms": "Transform wall-clock cap (ms)",
   "sandbox.max_transform_wall_ms": "Transform wall-clock ceiling (ms)",
 

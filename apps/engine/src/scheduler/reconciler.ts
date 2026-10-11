@@ -47,8 +47,12 @@ import { runFilesCleanup } from "./files-cleanup-runner.ts";
 import { runMcpOAuthCleanup } from "./mcp-oauth-cleanup-runner.ts";
 import { runNotificationInboxRetention } from "./notification-inbox-retention-runner.ts";
 import { runProactiveDriftScanForTenant } from "./proactive-drift-scan-runner.ts";
+import { validateScheduleInput } from "./repo.ts";
 import { runRiskSignalEdges } from "./risk-signal-edges-runner.ts";
-import { recordScheduleAdmission } from "./schedule-admission-state.ts";
+import {
+  recordScheduleAdmission,
+  recordScheduleInputRequired,
+} from "./schedule-admission-state.ts";
 import { logScheduleFireFailure } from "./schedule-fire-failure.ts";
 import { runSkillCandidateAnalysisSweep } from "./skill-candidate-analyze-runner.ts";
 import { runToolApprovalsCleanup } from "./tool-approvals-cleanup-runner.ts";
@@ -544,6 +548,20 @@ export class SchedulerReconciler {
       const last = schedule.last_enqueued_at ?? null;
       const dueBaseline = last ?? schedule.created_at;
       if (!isCronDue(schedule.cron, dueBaseline, now, tz)) continue;
+      const inputError = await validateScheduleInput(
+        this.opts.db,
+        schedule.tenant_id,
+        schedule.workflow_id,
+        schedule.input,
+      );
+      if (inputError) {
+        await recordScheduleInputRequired(
+          this.opts.db,
+          { tenant_id: schedule.tenant_id, schedule_id: schedule.id, observed_at: now },
+          inputError,
+        );
+        continue;
+      }
       const gates = readCalendarGates(schedule.input);
       const skipReason = calendarGateSkipReason(now, tz, gates);
       if (skipReason !== null) {
@@ -1025,6 +1043,20 @@ export class SchedulerReconciler {
       .limit(1);
     if (!schedule) return;
     const now = new Date();
+    const inputError = await validateScheduleInput(
+      this.opts.db,
+      schedule.tenant_id,
+      schedule.workflow_id,
+      schedule.input,
+    );
+    if (inputError) {
+      await recordScheduleInputRequired(
+        this.opts.db,
+        { tenant_id: schedule.tenant_id, schedule_id, observed_at: now },
+        inputError,
+      );
+      return;
+    }
     const minGapMs = Math.max(1000, seconds * 1000 * 0.5);
     const threshold = new Date(now.getTime() - minGapMs);
     const claimed = await this.opts.db

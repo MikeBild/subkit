@@ -134,6 +134,44 @@ describe("scheduler reconciler", () => {
     expect(after?.last_enqueued_at).toBeNull();
   }, 20_000);
 
+  test("an outdated schedule input is held before it is enqueued", async () => {
+    const { workflow_id } = await createWorkflowRow(ctx.engine, {
+      name: "sched-input-hold",
+      slug: "sched-input-hold",
+      input_schema: {
+        type: "object",
+        required: ["account_id"],
+        properties: { account_id: { type: "string" } },
+      },
+      steps: [{ id: "noop", kind: "transform", expression: "$input" }],
+    });
+    const [schedule] = await ctx.engine.testDb.db
+      .insert(workflowsSchedules)
+      .values({
+        tenant_id: ctx.engine.tenantId,
+        workflow_id,
+        cron: "* * * * *",
+        timezone: "UTC",
+        paused: false,
+        input: {},
+        created_at: new Date(getTestNow() - 120_000),
+      })
+      .returning();
+    const reconciler = new SchedulerReconciler({
+      boss: ctx.boss,
+      db: ctx.engine.testDb.db,
+      intervalMs: 60_000,
+    });
+    await reconciler.reconcileWorkflowSchedules(new Date(getTestNow()));
+    const [after] = await ctx.engine.testDb.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.id, schedule!.id));
+    expect(after?.last_enqueued_at).toBeNull();
+    expect(after?.admission_hold?.reason_code).toBe("input_required");
+    expect(after?.input_error?.issues[0]?.path).toBe("$input/account_id");
+  }, 20_000);
+
   test("a fresh cron schedule waits for its first occurrence after creation", async () => {
     const db = ctx.engine.testDb.db;
     const { workflow_id } = await createWorkflowRow(ctx.engine, {

@@ -13,6 +13,8 @@ export interface AgentBriefing {
   workflows_omitted: number;
   connectors: string[];
   connectors_omitted: number;
+  files: { name: string; slug: string | null; category: string; description: string | null }[];
+  files_omitted: number;
   guides: string[];
   proposed_candidates: number;
   intake?: { collected: number; reviewing: number; proposals: number } | null;
@@ -22,6 +24,7 @@ export interface AgentDomains {
   domains: string[];
   from_prompt: string[];
   from_repo: string[];
+  from_folder?: string[];
 }
 
 export const agentMethods = {
@@ -37,11 +40,12 @@ export const agentMethods = {
 
   resolveAgentDomains(
     this: EngineClient,
-    params: { prompt?: string; repo?: string },
+    params: { prompt?: string; repo?: string; folder?: string },
   ): Promise<AgentDomains> {
     return this.request("POST", "/v1/agent/domains", {
       ...(params.prompt ? { prompt: params.prompt } : {}),
       ...(params.repo ? { repo: params.repo } : {}),
+      ...(params.folder ? { folder: params.folder } : {}),
     });
   },
 

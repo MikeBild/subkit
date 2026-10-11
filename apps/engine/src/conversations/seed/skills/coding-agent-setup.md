@@ -38,7 +38,7 @@ Replace `<engine-host>` with this installation's address from `get_engine_status
 sk agent init --domains <category>
 ```
 
-Explain in one sentence what it did: `.sk/agent.json` (commit it), Claude Code hooks in `~/.claude/settings.json`, Codex briefing hooks in `~/.codex/hooks.json`. The command reconciles the SubKit hooks and preserves other tools’ hooks. Claude Code and Codex show you the loaded domains, included materials, and pending skill reviews; the model receives the full briefing. A failed fetch gives a non-blocking warning. Then the two Codex steps that stay manual: `[features] hooks = true` in `~/.codex/config.toml`, and trusting the hooks once under `/hooks`. Hermes: run `sk agent briefing` in the repo and hand the output to the session. Repositories without `.sk/agent.json` stay silent; run this once per repository and commit the generated file.
+Explain in one sentence what it did: `.sk/agent.json` (commit it), Claude Code hooks in `~/.claude/settings.json`, Codex briefing hooks in `~/.codex/hooks.json`. The command adds the requested domains without removing existing domains or settings, reconciles SubKit's hooks, and preserves other tools' hooks. Claude Code and Codex show a short ready status; the model receives the bounded project briefing and can offer relevant reviews in the language of the conversation. A failed fetch gives a non-blocking warning. Then the two Codex steps that stay manual: `[features] hooks = true` in `~/.codex/config.toml`, and trusting the hooks once under `/hooks`. Hermes: run `sk agent briefing` in the repo and hand the output to the session. In a folder without `.sk/agent.json`, the hook tries an exact folder-name match to a readable project category; if it finds one, it creates an inferred declaration and includes shared SubKit context when available. If there is no unique project match, it may create a shared-only declaration and ask which project area belongs here when setup is relevant. Review and commit a hook-created declaration. Use `sk agent init --domains <category>` when you want to declare domains explicitly.
 
 The domain is a catalog category. Use `list_knowledge_sources` or `find_workflow` to name the category the person's work already lives in; do not make one up.
 
@@ -48,7 +48,7 @@ Conventions (active skills of the domain), the knowledge index, the domain's wor
 
 ## 5. When no briefing arrives, check in this order
 
-1. Start the client in the repository or a subdirectory and confirm `.sk/agent.json` exists up the tree.
+1. Start the client in the project folder. If `.sk/agent.json` is missing, the hook tries to match the folder name to one readable project category and creates an inferred declaration when it finds a match; review and commit it. Otherwise use `sk agent init --domains <category>` to declare the project area explicitly.
 2. Run `sk status`, then `sk agent briefing --json` from that repository to separate configuration, credentials, and server problems.
 3. In Claude Code or Codex, open `/hooks` to check whether hooks ran and inspect errors. Codex also needs its feature flag enabled, trusted hooks, and `additionalContextLimit: 0`.
 4. Confirm `sk` is on the client’s PATH (desktop-launched clients may need an absolute command path).
@@ -73,5 +73,5 @@ unconfirmed clip text as briefing instructions or use a key label as source auth
 ## Pitfalls
 
 - Never paste a key into a prompt or a config the person did not ask for; keys go into env variables.
-- Do not promise capture for Codex; Codex's Stop hook fires every turn, so capture is optional and off by default.
+- SessionEnd capture is installed for both Claude Code and Codex; Codex queues it asynchronously because its hook has a three-second deadline.
 - Authoring is not done from the agent; point to the `sk` CLI or the cockpit for changes.

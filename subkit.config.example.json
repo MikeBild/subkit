@@ -191,6 +191,10 @@
     "tick_budget": 10000000,
     "wall_ms": 30000,
     "stack_bytes": 2097152,
+    "queue_limit": 32,
+    "tenant_queue_limit": 8,
+    "ipc_max_bytes": 33554432,
+    "worker_rss_bytes": 536870912,
     "transform_wall_ms": 60000,
     "max_transform_wall_ms": 300000
   },

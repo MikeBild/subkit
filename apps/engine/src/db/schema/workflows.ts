@@ -203,8 +203,15 @@ export const workflowsSchedules = pgTable(
     execution_mode: executionModeEnum("execution_mode").default("prod").notNull(),
     input: jsonb("input"),
     admission_hold: jsonb("admission_hold").$type<{
-      reason_code: "execution_authority_required" | "execution_authority_unavailable";
+      reason_code:
+        | "execution_authority_required"
+        | "execution_authority_unavailable"
+        | "input_required";
       observed_at: string;
+    }>(),
+    input_error: jsonb("input_error").$type<{
+      checked_version_id: string;
+      issues: { path: string; message: string }[];
     }>(),
     last_enqueued_at: timestamp("last_enqueued_at", { withTimezone: true }),
     ...timestamps,

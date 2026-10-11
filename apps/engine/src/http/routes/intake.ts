@@ -3,6 +3,7 @@ import { CategorySchema } from "../../api/catalog-metadata.ts";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
 import { actorOf } from "../../audit/index.ts";
 import * as intake from "../../knowledge/index.ts";
+import { can } from "../../rbac/index.ts";
 import { ConflictError, HttpError, NotFoundError } from "../errors.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { requirePermission } from "../middleware/require-permission.ts";
@@ -23,6 +24,10 @@ const SnapshotSchema = z
 const DefaultCategorySchema = z
   .object({ category: CategorySchema })
   .openapi("IntakeDefaultCategory");
+
+const DefaultCategoryCheckSchema = z
+  .object({ category: CategorySchema, can_collect: z.boolean() })
+  .openapi("IntakeDefaultCategoryCheck");
 
 const ItemStateSchema = z.enum(["collected", "reviewing", "admitted", "discarded"]);
 
@@ -180,7 +185,10 @@ const getDefaultCategoryRoute = createRoute({
   summary: "Read the caller's personal default shared category",
   security: [{ bearerAuth: [] }],
   responses: {
-    200: { description: "OK", content: { "application/json": { schema: DefaultCategorySchema } } },
+    200: {
+      description: "OK",
+      content: { "application/json": { schema: DefaultCategoryCheckSchema } },
+    },
   },
 });
 
@@ -416,11 +424,18 @@ export function registerIntakeRoutes(app: OpenAPIHono<AppEnv>): void {
 
   app.openapi(getDefaultCategoryRoute, async (c) => {
     const principal = requireAuth(c);
+    const db = c.get("db");
     const defaults = await intake.listIntakeCategories(
       { tenant_id: principal.tenant_id, actor: actorOf(principal) },
-      c.get("db"),
+      db,
     );
-    return c.json({ category: defaults.default_category }, 200);
+    const collection = await can(db, {
+      tenant_id: principal.tenant_id,
+      principal,
+      permission: "intake:write",
+      quiet: true,
+    });
+    return c.json({ category: defaults.default_category, can_collect: collection.allow }, 200);
   });
   app.openapi(setDefaultCategoryRoute, async (c) => {
     const principal = requireAuth(c);

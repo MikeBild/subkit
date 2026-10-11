@@ -4,7 +4,7 @@ import { type CatalogMetadataPatch, humanMetadataWrite } from "../api/catalog-me
 import { auditAwait } from "../audit/audit.ts";
 import { AuditAction } from "../audit/types.ts";
 import { assertInsertRow } from "../db/assert-insert.ts";
-import { lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
+import { CatalogVocabularyBusyError, lockCatalogVocabulary } from "../db/catalog-vocabulary.ts";
 import { type Executor, getDb } from "../db/client.ts";
 import { workflows, workflowVersions } from "../db/schema/index.ts";
 import type { RequestSource } from "../observability/service-metadata.ts";
@@ -226,6 +226,9 @@ export async function saveWorkflowDraft(
       return { draft: draftView(wf, version) };
     });
   } catch (error) {
+    if (input.workflow_id && error instanceof CatalogVocabularyBusyError) {
+      return { code: "draft_conflict", errors: ["the draft changed; reload before saving"] };
+    }
     const conflict = await slugConflictResult(error, exec, input.tenant_id, slug);
     if (conflict) return { code: "slug_conflict", errors: conflict.errors };
     throw error;

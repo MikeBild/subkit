@@ -1,11 +1,17 @@
 import { logger } from "../../logging/logger.ts";
 import { getMetrics, METRIC_NAMES } from "../../observability/metrics.ts";
 import { instrument } from "../../observability/runtime-telemetry.ts";
+import { runSandboxWorkerJob } from "../../sandboxes/quickjs/runtime.ts";
 import { type ArchiveParseOutput, makeArchiveStrategies } from "./archive.ts";
 import { type DocxParseOutput, docxStrategy } from "./docx.ts";
 import { type PdfParseOutput, pdfStrategy } from "./pdf.ts";
 import { type PptxParseOutput, pptxStrategy } from "./pptx.ts";
-import { type BinaryFormat, BinaryParseError, FileStrategyRegistry } from "./strategy.ts";
+import {
+  type BinaryFormat,
+  BinaryParseError,
+  FileStrategyRegistry,
+  PARSER_TIMEOUT_MS,
+} from "./strategy.ts";
 import { type XlsxParseOutput, xlsStrategy, xlsxStrategy } from "./xlsx.ts";
 
 export type {
@@ -95,6 +101,16 @@ export async function parseBinaryFile<F extends BinaryFormat>(
   buffer: Buffer,
   format: F,
 ): Promise<BinaryParseResultFor<F>> {
+  if (!process.argv.includes("--sandbox-worker")) {
+    return parseBinaryFileInWorker(buffer, format);
+  }
+  return parseBinaryFileInCurrentProcess(buffer, format);
+}
+
+export async function parseBinaryFileInCurrentProcess<F extends BinaryFormat>(
+  buffer: Buffer,
+  format: F,
+): Promise<BinaryParseResultFor<F>> {
   const strategy = registry.get(format);
   if (!strategy) {
     throw new BinaryParseError(format, `no strategy registered for ${format}`);
@@ -122,5 +138,28 @@ export async function parseBinaryFile<F extends BinaryFormat>(
     });
     if (err instanceof BinaryParseError) throw err;
     throw new BinaryParseError(format, `${format}: ${(err as Error).message}`, { cause: err });
+  }
+}
+
+async function parseBinaryFileInWorker<F extends BinaryFormat>(
+  buffer: Buffer,
+  format: F,
+): Promise<BinaryParseResultFor<F>> {
+  if (buffer.byteLength > 32 * 1024 * 1024) {
+    throw new BinaryParseError(format, `${format}: parser input exceeds worker transport limit`);
+  }
+  try {
+    return await runSandboxWorkerJob<BinaryParseResultFor<F>>({
+      op: "parse_binary",
+      format,
+      buffer: buffer.toString("base64"),
+      wall_ms: PARSER_TIMEOUT_MS[format],
+    });
+  } catch (err) {
+    throw new BinaryParseError(
+      format,
+      err instanceof Error ? err.message : "Parser worker failed",
+      { cause: err },
+    );
   }
 }

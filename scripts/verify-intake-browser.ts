@@ -434,7 +434,8 @@ try {
     id,
   );
 
-  await page.getByTestId("intake-detail-actions").click();
+  const detailActions = page.getByTestId("intake-detail-actions");
+  if ((await detailActions.getAttribute("data-state")) !== "open") await detailActions.click();
   await page.getByTestId("intake-detail-restore").dispatchEvent("click");
   await page.getByTestId("intake-detail").getByText("Gesammelt", { exact: true }).waitFor();
   assert.deepEqual(requests.at(-1)?.body, { state: "collected", expected_version: 4 });

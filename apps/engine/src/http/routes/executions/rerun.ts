@@ -2,13 +2,14 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
 import { actorType } from "../../../audit/index.ts";
-import { executions } from "../../../db/schema/index.ts";
+import { executions, workflowVersions } from "../../../db/schema/index.ts";
 import type { ExecutionMode } from "../../../execution/index.ts";
 import {
   admitWorkflowRun,
   assertExecutionAuthorityCurrent,
   auditAdmissionRefusal,
   authorizeSensitiveResume,
+  deriveRerunSafety,
   executionVisibilityFilter,
   finalizeExecution,
   isSensitivePayload,
@@ -137,6 +138,21 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
       );
     }
 
+    const version = original.workflow_version_id
+      ? await db
+          .select({ dag: workflowVersions.dag })
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.tenant_id, principal.tenant_id),
+              eq(workflowVersions.id, original.workflow_version_id),
+            ),
+          )
+          .limit(1)
+      : [];
+    const safety = deriveRerunSafety(original.source_kind, version[0]?.dag ?? null);
+    const forcedHoldWrites = safety.mode !== "repeat_safe";
+
     await enforceSavedWorkflowAllowlist(principal, original.workflow_id, db);
 
     const request_source = runRequestSource(c, body.request_source);
@@ -184,7 +200,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
           workflow_id: original.workflow_id,
           workflow_version_id: original.workflow_version_id,
           execution_authority_id: body.execution_authority_id,
-          hold_writes: body.hold_writes,
+          hold_writes: forcedHoldWrites ? true : body.hold_writes,
           idempotency_key: body.idempotency_key,
           request_source,
           parent_execution_id: original.id,
@@ -257,6 +273,7 @@ export function registerRerunRoute(app: OpenAPIHono<AppEnv>): void {
           execution_mode,
           parent_execution_id: original.id,
           existing_execution_id: execution_id,
+          hold_writes: admitted.hold_writes,
         },
       });
     } catch (error) {

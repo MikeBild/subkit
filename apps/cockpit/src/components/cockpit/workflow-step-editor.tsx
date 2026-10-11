@@ -12,7 +12,7 @@ import {
   TextAreaField,
   TextField,
 } from "@/components/cockpit/form-field";
-import { ActionButton, FormDialog } from "@/components/cockpit/patterns";
+import { ActionButton, ContextHelp, FormDialog } from "@/components/cockpit/patterns";
 import { invalidateWorkflowAutomation } from "@/lib/automation-queries";
 import type { TranslationKey } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n-context";
@@ -335,16 +335,27 @@ export function StepDialog({
               />
             </>
           ) : (
-            <TextAreaField
-              id="step-code"
-              label={t("workflow.kind.transform")}
-              help={t("stepEditor.codeHelp")}
-              value={form.code}
-              onChange={(code) => set({ code })}
-              error={errorOf("code")}
-              rows={5}
-              mono
-            />
+            <>
+              <TextAreaField
+                id="step-code"
+                label={t("workflow.kind.transform")}
+                help={t("stepEditor.codeHelp")}
+                value={form.code}
+                onChange={(code) => set({ code })}
+                error={errorOf("code")}
+                rows={5}
+                mono
+              />
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                {t("stepEditor.sandboxTools")}
+                <ContextHelp
+                  label={t("stepEditor.sandboxTools")}
+                  testId="step-code-sandbox-tools-help"
+                >
+                  {t("stepEditor.sandboxToolsHelp")}
+                </ContextHelp>
+              </span>
+            </>
           )}
         </>
       ) : (

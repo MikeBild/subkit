@@ -22,7 +22,11 @@ export const WorkflowScheduleBindingSchema = z
     execution_mode: z.enum(["dev", "prod"]),
     admission_hold: z
       .object({
-        reason_code: z.enum(["execution_authority_required", "execution_authority_unavailable"]),
+        reason_code: z.enum([
+          "execution_authority_required",
+          "execution_authority_unavailable",
+          "input_required",
+        ]),
         observed_at: z.string(),
       })
       .nullable(),

@@ -89,21 +89,24 @@ describe("errorFields", () => {
     expect(errorFields(transient).error_class).toBe("transient");
   });
 
-  test("surfaces err.cause as a sibling field — drizzle-orm puts the pg error there", () => {
-    const pgErr = new Error("connection terminated unexpectedly");
-    const wrapped = new Error("Failed query: select 1\nparams: ");
+  test("removes Drizzle query text and parameters while retaining an allowlisted SQLSTATE", () => {
+    const pgErr = Object.assign(new Error("connection terminated unexpectedly"), { code: "23505" });
+    const wrapped = new Error(
+      "Failed query: select * from users where email = $1\nparams: secret@example.test",
+    );
     wrapped.cause = pgErr;
     const out = errorFields(wrapped);
-    expect(out.error).toBe("Failed query: select 1\nparams: ");
-    expect(out.cause).toBe("connection terminated unexpectedly");
-    expect(typeof out.stack).toBe("string");
+    expect(out.error).toBe("database query failed");
+    expect(out.cause).toBe("database query failed");
+    expect(out.sqlstate).toBe("23505");
+    expect(out.stack).toBeUndefined();
   });
 
-  test("stringifies non-Error causes", () => {
+  test("omits non-Error causes", () => {
     const wrapped = new Error("outer");
     wrapped.cause = { code: "ECONNRESET" };
     const out = errorFields(wrapped);
-    expect(out.cause).toBe("[object Object]");
+    expect(out.cause).toBe("database error cause omitted");
   });
 
   test("omits cause when undefined", () => {
@@ -160,6 +163,24 @@ describe("ndjson field-length cap", () => {
     );
     const deep = (rec.nested as Record<string, unknown>).deep as string;
     expect(deep).toContain("…[truncated 952 chars]");
+  });
+
+  test("removes SQL text and parameter values from nested structured log fields", () => {
+    const secret = "customer@example.test";
+    const rec = captureNdjson(() =>
+      logger.error({
+        module: "db",
+        action: "query.failed",
+        query: "select * from users where email = $1",
+        params: [secret],
+        nested: { sql: "delete from users", parameters: [secret], safe: "kept" },
+      }),
+    );
+    const encoded = JSON.stringify(rec);
+    expect(encoded).not.toContain(secret);
+    expect(encoded).not.toContain("select * from users");
+    expect(encoded).not.toContain("delete from users");
+    expect((rec.nested as Record<string, unknown>).safe).toBe("kept");
   });
 
   test("stamps OTel resource identity and W3C trace/span context", () => {

@@ -1,3 +1,4 @@
+import type { sandboxTools } from "./tools/index.ts";
 // Ambient type declarations for the `sk` global exposed inside the
 // QuickJS sandbox. Not used at runtime — consumed by the LLM-authoring
 // surface (skills, docs generation) and by any engine-side code that
@@ -17,7 +18,7 @@ export interface SkDecision {
   reason?: string;
 }
 
-export interface Sk {
+export interface Sk extends Readonly<typeof sandboxTools> {
   readonly http: SkHttp;
 
   get<T = unknown>(obj: unknown, path: string | readonly string[], fallback?: T): T;

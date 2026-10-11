@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "@hono/zod-openapi";
-import type { Expression } from "jsonata";
 import { auditAwait } from "../../audit/audit.ts";
 import { AuditAction } from "../../audit/types.ts";
 import { buildJsonataBindings } from "../../execution/jsonata-bindings.ts";
 import {
   compile as compileJsonata,
-  formatError as formatJsonataError,
+  evaluate as evaluateJsonata,
 } from "../../execution/jsonata-engine.ts";
 import { applySelector } from "../../execution/selectors.ts";
 import { parsePlaceholders } from "../../llm/substitution/parser.ts";
@@ -68,9 +67,8 @@ async function evalJsonata(
   timeout_ms: number,
   bindings?: Record<string, unknown>,
 ): Promise<{ ok: true; value: unknown } | { ok: false; error: EvalError }> {
-  let expr: Expression;
   try {
-    expr = compileJsonata(expression);
+    compileJsonata(expression);
   } catch (err) {
     const e = err as { message?: string; position?: number };
     return {
@@ -85,13 +83,7 @@ async function evalJsonata(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort("timeout"), timeout_ms);
   try {
-    const evalPromise = bindings
-      ? expr.evaluate(sample, bindings).catch((err: unknown) => {
-          throw formatJsonataError(err, expression);
-        })
-      : expr.evaluate(sample).catch((err: unknown) => {
-          throw formatJsonataError(err, expression);
-        });
+    const evalPromise = evaluateJsonata(expression, sample, bindings);
     const value = await Promise.race<unknown>([
       evalPromise,
       new Promise((_, reject) => {
@@ -309,7 +301,8 @@ export const dryRunTransformTool: ConversationTool = {
         let items: unknown;
         if (over) {
           try {
-            items = await compileJsonata(over).evaluate(
+            items = await evaluateJsonata(
+              over,
               scopeRecord,
               buildJsonataBindings(scopeRecord, inputValue),
             );

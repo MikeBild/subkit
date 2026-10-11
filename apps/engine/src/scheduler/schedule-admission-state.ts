@@ -6,6 +6,82 @@ import { workflowsSchedules } from "../db/schema/index.ts";
 import { invalidateTenantState } from "../operator/index.ts";
 import { emitResourceChange } from "../pubsub/resource-changes.ts";
 import { inspectScheduleAutomation } from "./automation-status.ts";
+import type { ScheduleInputError } from "./repo.ts";
+
+export async function recordScheduleInputRequired(
+  db: Db,
+  context: { tenant_id: string; schedule_id: string; observed_at: Date },
+  input_error: ScheduleInputError,
+): Promise<boolean> {
+  const changedState = await db.transaction(async (tx) => {
+    const [current] = await tx
+      .select({
+        workflow_id: workflowsSchedules.workflow_id,
+        reason: sql<string | null>`(${workflowsSchedules.admission_hold}->>'reason_code')`,
+        checked_version_id: sql<
+          string | null
+        >`(${workflowsSchedules.input_error}->>'checked_version_id')`,
+      })
+      .from(workflowsSchedules)
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, context.tenant_id),
+          eq(workflowsSchedules.id, context.schedule_id),
+          eq(workflowsSchedules.paused, false),
+        ),
+      )
+      .for("update");
+    if (!current) return false;
+    const changed =
+      current.reason !== "input_required" ||
+      current.checked_version_id !== input_error.checked_version_id;
+    if (!changed) return false;
+    await tx
+      .update(workflowsSchedules)
+      .set({
+        admission_hold: {
+          reason_code: "input_required",
+          observed_at: context.observed_at.toISOString(),
+        },
+        input_error,
+      })
+      .where(
+        and(
+          eq(workflowsSchedules.tenant_id, context.tenant_id),
+          eq(workflowsSchedules.id, context.schedule_id),
+        ),
+      );
+    if (current.reason !== "input_required") {
+      await auditAwait(
+        {
+          tenant_id: context.tenant_id,
+          actor_type: "system",
+          actor_id: null,
+          action: AuditAction.SCHEDULE_ADMISSION_CHANGED,
+          resource_type: "workflow_schedule",
+          resource_id: context.schedule_id,
+          result: "denied",
+          reason: "input_required",
+          metadata: {
+            request_source: "scheduler",
+            reason_code: "input_required",
+            state: "held",
+            input_error,
+          },
+        },
+        tx,
+      );
+    }
+    await emitResourceChange(tx, {
+      tenant_id: context.tenant_id,
+      type: "workflow.automation_changed",
+      ids: { workflow_id: current.workflow_id, schedule_id: context.schedule_id },
+    });
+    return true;
+  });
+  invalidateTenantState(context.tenant_id);
+  return changedState;
+}
 
 export async function recordScheduleAdmission(
   db: Db,

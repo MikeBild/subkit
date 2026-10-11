@@ -116,7 +116,7 @@ describe("transform wall-clock ceiling", () => {
 
   test("a quick step below the ceiling succeeds without touching the counter", async () => {
     await setConfigKey("sandbox.max_transform_wall_ms", originalCeiling);
-    const result = await runWithTimeout("return 1;", 100);
+    const result = await runWithTimeout("return 1;", 1_000);
     expect(result.status).toBe("succeeded");
     expect(result.output).toBe(1);
     expect(clampedCount()).toBeUndefined();

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   deriveExecutionOutcome,
+  deriveRerunSafety,
   fixedPlannedSteps,
   type OutcomeStepRow,
   pickStoppingStep,
@@ -48,6 +49,7 @@ describe("deriveExecutionOutcome", () => {
     const outcome = deriveExecutionOutcome(
       {
         status: "failed",
+        source_kind: "saved",
         failure: { step_id: "send", error_code: "http_4xx", error_message: "HTTP 401" },
         output_contract: "none",
       },
@@ -66,6 +68,10 @@ describe("deriveExecutionOutcome", () => {
       connector: null,
       steps: { total: 3, succeeded: 1, failed: 1, held: 0, skipped: 1 },
       output_contract: "none",
+      rerun_safety: {
+        mode: "prepare_only",
+        reason: "the persisted workflow definition is unavailable or invalid",
+      },
     });
   });
 
@@ -197,6 +203,47 @@ describe("deriveExecutionOutcome", () => {
     );
     expect(outcome.kind).toBe("running");
     expect(outcome.steps.skipped).toBe(0);
+  });
+});
+
+describe("deriveRerunSafety", () => {
+  const workflow = (step: Record<string, unknown>) => ({
+    name: "repeat-safety",
+    steps: [{ id: "operation", ...step }],
+  });
+  test("only complete local or read workflows are repeat-safe", () => {
+    expect(
+      deriveRerunSafety(
+        "saved",
+        workflow({ kind: "request", method: "GET", url: "https://example.org/items" }),
+      ).mode,
+    ).toBe("repeat_safe");
+    expect(deriveRerunSafety("saved", { steps: [{ kind: "request", method: "GET" }] }).mode).toBe(
+      "prepare_only",
+    );
+    expect(
+      deriveRerunSafety("draft", workflow({ kind: "transform", expression: "return 1;" })).mode,
+    ).toBe("unavailable");
+  });
+  test.each([
+    { kind: "request", method: "POST", side_effects: "read", url: "https://example.org/items" },
+    { kind: "request", method: "GET", side_effects: "write", url: "https://example.org/items" },
+    {
+      kind: "request",
+      method: "GET",
+      graphql: { query: "mutation { removeItem(id: 1) }" },
+      url: "https://example.org/graphql",
+    },
+    { kind: "request", method: "GET", sql: { query: "DELETE FROM items" }, connector: "database" },
+    {
+      kind: "request",
+      method: "GET",
+      mcp: { operation: "call_tool", tool_name: "remove_item" },
+      connector: "tools",
+    },
+    { kind: "call", workflow: "child" },
+  ])("external effects and unresolved child calls require preparation: %j", (step) => {
+    expect(deriveRerunSafety("saved", workflow(step)).mode).toBe("prepare_only");
   });
 });
 

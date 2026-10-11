@@ -951,7 +951,7 @@
       return fmtNumber(value, { locale: "de", digits: digits === undefined ? 0 : digits });
     },
   });
-  const sk = Object.freeze({
+  const sk = {
     http: http,
     get: get,
     has: has,
@@ -987,8 +987,11 @@
     isNil: isNil,
     fmt: fmt,
     version: "1.7.0",
-  });
+  };
+  Object.defineProperties(sk, Object.getOwnPropertyDescriptors(globalThis.__sk_tools__));
+  Object.freeze(sk);
 
+  delete globalThis.__sk_tools__;
   Object.defineProperty(globalThis, "sk", {
     value: sk,
     writable: false,

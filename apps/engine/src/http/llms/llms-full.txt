@@ -203,17 +203,17 @@ codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_K
 sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
 ```
 
-Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks do not infer the repository's domains on their own. Both use the same authenticated sk profile as the CLI.
+Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks can resolve a current folder name to known domains when no explicit declaration exists. Both use the same authenticated sk profile as the CLI.
 
 ### Set up and verify briefings
 
-MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit the generated `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` wires Claude Code SessionStart, UserPromptSubmit and SessionEnd hooks, and Codex SessionStart and UserPromptSubmit hooks. It is safe to rerun; `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` merges requested domains without removing existing domains or settings, and wires Claude Code and Codex SessionStart, UserPromptSubmit and SessionEnd hooks. Codex transcript capture runs asynchronously to fit its three-second hook limit. Both clients and the sk REPL share an 1,800-token briefing budget and 9,500-character hard limit. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks walk up from the working directory for `.sk/agent.json`; without it they stay silent. Run `sk agent init --domains <category>[,<category>]` once in each repository and commit that file. Each successful briefing gives the model the full domain context and shows you a concise status with loaded materials and any skill proposals awaiting review. If the engine is unreachable, the key is missing, or the declaration is invalid, the client shows a warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation; suggestions remain pending until a person reviews them. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Both clients send a transcript for candidate learning at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. Captured learnings remain candidates until a person reviews them.
 
-For open-ended check-ins, the briefing tells the agent to interpret the question using the domain declared by the current repository and the connected sources that best answer it. It distinguishes live service state from repository changes and static knowledge, and reports when a relevant source is unavailable. A repository without `.sk/agent.json` does not inherit another folder's briefing.
+For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
 ### Review collected material with your coding agent
 
@@ -274,6 +274,83 @@ judgment or replace a real browser/chat verification. It never deploys code.
 
 MIT
 
+## Sandbox data tools
+
+JavaScript workflow transforms can use bounded, synchronous `sk` helpers. They
+perform no network, filesystem or credential access. Namespaces are immutable.
+Promises and unseeded randomness are unsupported; use the execution clock and
+`sk.uuid()` for repeatable values.
+
+| Task | Helpers | Contract |
+| --- | --- | --- |
+| Decimal amounts | `sk.money.add/sub/mul/div/round/compare` | Decimal strings; `div` and `round` require scale and `down`, `halfUp`, `halfEven` or `up`. No currency conversion. |
+| CSV | `sk.csv.parse/stringify` | Explicit delimiter/header options; export escapes spreadsheet formulas by default. Up to 10,000 rows. |
+| Dates | `sk.date.parse/format/add/startOf/convertZone` | Date-only values stay dates. Local datetimes require an IANA zone; ambiguous or missing DST times require explicit `earlier`/`later`. |
+| Validation | `sk.schema.validate/assert`, `sk.assert` | Local schema references only; no remote resolution or asynchronous validators. |
+| URLs | `sk.url.parse/build/query/encode/decode` | WHATWG parsing, repeated query entries, UTF-8 percent encoding. No requests. |
+| XML | `sk.xml.parse/build` | Ordered `{name, attributes, children}` trees retain mixed text; no DTD or custom entities. |
+| Text and records | `sk.template.render`, `sk.diff.records` | Escaped HTML by default, explicit text mode; bounded list sections. Record diff requires a unique key. |
+
+```javascript
+return {
+  total: sk.money.add("19.90", "4.95"),
+  csv: sk.csv.stringify([{ name: "Ada", amount: "24.85" }]),
+  tomorrow: sk.date.add("2024-02-28", 1, "days"),
+  greeting: sk.template.render("Hello {{name}}", { name: "Ada" })
+};
+```
+
+Text inputs and outputs are limited to 1 MiB, structures to 100,000 nodes and
+64 levels. Existing sandbox memory, execution and output budgets still apply.
+Each helper is embedded and loaded on first access in each sandbox;
+regenerate it with `bun run gen:sandbox-tools` and check it with
+`bun run check:sandbox-tools-drift`. Package versions and timezone data are pinned
+in the lockfile. These tools do not add document rendering, OCR or a browser.
+JavaScript transforms, JSONata and binary parsing use bounded worker processes.
+The default lane can run two workers in parallel; hooks have a separate lane.
+Per-engine-process global and per-tenant queue limits apply across default and
+hook workers.
+The RSS watchdog is available on Linux; it is a polling limit rather than a
+kernel-enforced memory ceiling.
+
+## Runtime measurements
+
+`bun run benchmark:runtime:smoke` records local correctness, latency, throughput,
+fault recovery and sampled process-family memory. Use
+`bun scripts/runtime-benchmark.ts compare --baseline <baseline.json> --candidate <candidate.json> --output <directory>`
+to produce JSON, HTML and SVG evidence. Retain the original source, lockfile and
+runtime with each baseline; do not compare measurements from different machines.
+
+`bun run benchmark:runtime:full` uses five repetitions, a 60-second warmup and
+180-second measurement windows at concurrency 1, 4, 16 and 64. Reference performance
+acceptance requires Linux x64, four CPUs and at least 8 GiB RAM. Local smoke
+results do not establish that acceptance. Tail percentiles require adequate
+samples; errors and timeouts remain in the report. Read each report's coverage
+and environment limitations before interpreting a pass.
+
+`bun run benchmark:runtime:release` captures a candidate only; it does not issue a
+release verdict. It focuses on the eight release-gated JavaScript
+and JSONata measurements, with five repeats, a two-second warmup and a 30-second
+measurement window per run. Run paired baseline and candidate captures with
+`bun scripts/runtime-benchmark.ts paired --profile release --baseline-source <baseline-checkout> --candidate-source <candidate-checkout> --output <directory>`
+on the same reference machine. Capacity acceptance requires p95 no higher than
+100 ms at concurrency one and four, at least 100 successful operations per second
+at concurrency four, no errors, timeouts or rejections, 10,000 sampled successful observations and five paired repetitions for each
+gated measurement, on both baseline and candidate. This is an explicit fixed
+capacity budget, not a measurement of production load. The report separately
+preserves the historical relative latency and throughput comparison:
+per-call process isolation has an unavoidable transport cost, so that comparison
+remains evidence of a tradeoff rather than the release-capacity decision. The
+reference-machine requirement and every correctness check still apply. Latency
+samples use a bounded deterministic reservoir; event counts and throughput use
+all observations. A paired or compare command exits unsuccessfully on failed or
+inconclusive acceptance; the short smoke in `bun run verify` checks correctness
+and transport recovery but does not establish release capacity.
+Before `bun run release:tag`, set `SUBKIT_RUNTIME_BASELINE_MANIFEST` and
+`SUBKIT_RUNTIME_CANDIDATE_MANIFEST` to the retained paired reference manifests.
+The tag command requires a passing capacity comparison and verifies that the
+candidate runtime-source subset and lockfile hashes match the checkout being released.
+
 <!-- Source: coding-agents.md -->
 
 # Use sk from a coding agent
@@ -284,17 +361,17 @@ codex mcp add sk --url http://localhost:3000/mcp --bearer-token-env-var SK_API_K
 sk agent init --domains <category>   # in a repository: briefs each Claude Code and Codex session on that domain
 ```
 
-Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks do not infer the repository's domains on their own. Both use the same authenticated sk profile as the CLI.
+Use MCP for approved sk tools; run `sk agent init` to declare repository domains and install the Claude Code and Codex hooks that supply shared-memory briefings. Hooks can resolve a current folder name to known domains when no explicit declaration exists. Both use the same authenticated sk profile as the CLI.
 
 ### Set up and verify briefings
 
-MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit the generated `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` wires Claude Code SessionStart, UserPromptSubmit and SessionEnd hooks, and Codex SessionStart and UserPromptSubmit hooks. It is safe to rerun; `--skip-claude` and `--skip-codex` leave that client's settings untouched.
+MCP registration is a one-time machine setup. In each repository, run `sk agent init --domains <category>[,<category>]` and commit `.sk/agent.json` so every checkout uses the same domains. A domain can be a catalog category or a `domain:<slug>` tag. `init` merges requested domains without removing existing domains or settings, and wires Claude Code and Codex SessionStart, UserPromptSubmit and SessionEnd hooks. Codex transcript capture runs asynchronously to fit its three-second hook limit. Both clients and the sk REPL share an 1,800-token briefing budget and 9,500-character hard limit. `--skip-claude` and `--skip-codex` leave that client's settings untouched.
 
 Run `sk status`, then `sk agent briefing --json` from the repository to verify the declaration, credentials, engine connection and returned briefing. Use the JSON fields `domains`, `knowledge_sources`, `skills_full` and `used_tokens` to inspect the result. Empty `knowledge_sources` or `skills_full` means the briefing works but those items are not assigned to the declared domain. Put knowledge and skills in the domain's catalog category or tag them `domain:<slug>`.
 
-Hooks walk up from the working directory for `.sk/agent.json`; without it they stay silent. Run `sk agent init --domains <category>[,<category>]` once in each repository and commit that file. Each successful briefing gives the model the full domain context and shows you a concise status with loaded materials and any skill proposals awaiting review. If the engine is unreachable, the key is missing, or the declaration is invalid, the client shows a warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Claude Code sends a transcript for candidate learning at SessionEnd; Codex has no capture hook because its Stop hook runs after every turn. Captured learnings remain candidates until a person reviews them.
+Hooks first read `.sk/agent.json` when present. Otherwise, they match the current folder's normalized name exactly against readable project categories. A unique match creates `.sk/agent.json` with that project area and shared SubKit context when available. When no unique project area matches but shared SubKit context is available, the hook creates a shared-only declaration and asks which project knowledge sources and workflows belong there when setup is relevant. If neither is available, it asks before guessing or creating a declaration. Hook-created declarations stay marked as inferred, so later sessions continue checking the folder name as the readable catalog changes. Treat `inferred` and `inferred_folder_domain` as hook-managed fields. To make an inferred declaration explicit and maintain it yourself, remove both fields and edit `domains`; legacy inferred declarations are migrated by treating the first non-`subkit` domain as the inferred folder domain. A prompt can add other matching domains as the task changes. This works with or without Git metadata. The briefing tells the agent which declaration it created. Each successful briefing gives the model bounded domain context and shows a short, language-neutral status; oversized context is shortened with a visible warning. The model can offer relevant reviews in the language of your conversation; suggestions remain pending until a person reviews them. If the briefing is unavailable, the client shows a simple warning and continues the session. Use `/hooks` in Claude Code or Codex to see whether hooks are active. Codex also requires `[features] hooks = true` in `~/.codex/config.toml` and one-time trust in its `/hooks` UI. Both clients send a transcript for candidate learning at SessionEnd. Codex capture runs in a detached process because its hook deadline is three seconds. Captured learnings remain candidates until a person reviews them.
 
-For open-ended check-ins, the briefing tells the agent to interpret the question using the domain declared by the current repository and the connected sources that best answer it. It distinguishes live service state from repository changes and static knowledge, and reports when a relevant source is unavailable. A repository without `.sk/agent.json` does not inherit another folder's briefing.
+For open-ended check-ins, the briefing uses the current project's matched domain together with shared SubKit context, plus connected sources that best answer the question. It distinguishes live service state from repository changes and static knowledge, prioritizes blocked or failing work and imminent deadlines, and gives up to three specific next steps in the user's language. Maintenance suggestions must be grounded in repository instructions, explicit plans or TODOs, and observed issues such as failing checks or generated-file drift. Relevant knowledge sources and workflows from the folder's domain are recommended by name when they help with a concrete task. It reports when a relevant source is unavailable.
 
 ### Review collected material with your coding agent
 
@@ -455,6 +532,7 @@ Send a session transcript to the engine for learning distillation
 - `--agent` (string, default: claude-code) — Producing agent name
 - `--session-id` (string) — Session id for evidence attribution
 - `--hook` (default: false) — SessionEnd/Stop-hook mode: read hook JSON from stdin, never fail
+- `--detach` (default: false) — Process the hook payload in a detached process
 - `--json` (default: false) — JSON output
 
 #### `sk agent init`
@@ -2623,12 +2701,16 @@ QuickJS JS sandbox limits
 
 | path | type | default | scope | sensitive | requiresRestart | description |
 | ---- | ---- | ------- | ----- | --------- | --------------- | ----------- |
+| `sandbox.ipc_max_bytes` | number | `33554432` | global | no | no | Maximum sandbox worker request or response size in bytes. Default 32 MB. |
 | `sandbox.max_transform_wall_ms` | number | `300000` | global | no | no | Operator ceiling for a transform step's wall-clock, in ms. A step timeout_ms above it runs with the ceiling and sandbox_limit_clamped_total counts the cut. Default 5 min. |
 | `sandbox.memory_bytes` | number | `134217728` | global | no | no | Hard WASM heap cap for a JS sandbox run, in bytes. Default 128 MB. |
+| `sandbox.queue_limit` | number | `32` | global | no | no | Maximum queued sandbox jobs across one worker lane. Default 32. |
 | `sandbox.stack_bytes` | number | `2097152` | global | no | no | Max stack size for a JS sandbox run, in bytes. Default 2 MB. |
+| `sandbox.tenant_queue_limit` | number | `8` | global | no | no | Maximum queued sandbox jobs for one tenant in one worker lane. Default 8. |
 | `sandbox.tick_budget` | number | `10000000` | global | no | no | Interrupt-tick budget (coarse runaway backstop, not an opcode count). |
 | `sandbox.transform_wall_ms` | number | `60000` | global | no | no | Wall-clock cap for transform steps, in ms (overridable per step via timeout_ms). Long synchronous transforms block the worker — chunk via for_each instead of raising. Default 60 s. |
 | `sandbox.wall_ms` | number | `30000` | global | no | no | Default wall-clock cap for a JS sandbox run, in ms. Default 30 s. |
+| `sandbox.worker_rss_bytes` | number | `536870912` | global | no | no | RSS threshold that recycles a sandbox worker after a job, in bytes. Default 512 MB. |
 
 ## repl
 sk REPL session preferences

@@ -19,13 +19,17 @@ const headers = (): Record<string, string> => ({
   "content-type": "application/json",
 });
 
-async function createWorkflow(name: string): Promise<{ id: string }> {
+async function createWorkflow(
+  name: string,
+  input_schema?: Record<string, unknown>,
+): Promise<{ id: string }> {
   const res = await fetch(`${ctx.baseUrl}/v1/workflows`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({
       name,
       steps: [{ kind: "transform", id: "out", expression: "return { ok: true };" }],
+      ...(input_schema ? { input_schema } : {}),
     }),
   });
   if (!res.ok) throw new Error(`workflow create failed: ${res.status} ${await res.text()}`);
@@ -104,6 +108,14 @@ describe("schedules HTTP write surface", () => {
     expect(row2.input).toBe("scalar-input");
     expect(row2.upsert_status).toBe("updated");
 
+    const retained = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 10 * * *" }),
+    });
+    expect(retained.status).toBe(200);
+    expect(((await retained.json()) as { input: unknown }).input).toBe("scalar-input");
+
     const rows = await ctx.db
       .select()
       .from(workflowsSchedules)
@@ -114,7 +126,11 @@ describe("schedules HTTP write surface", () => {
       .select({ action: auditLog.action })
       .from(auditLog)
       .where(and(eq(auditLog.resource_type, "schedule"), eq(auditLog.resource_id, row.id)));
-    expect(audits.map((entry) => entry.action)).toEqual(["schedule.created", "schedule.updated"]);
+    expect(audits.map((entry) => entry.action)).toEqual([
+      "schedule.created",
+      "schedule.updated",
+      "schedule.updated",
+    ]);
   });
 
   test("schedule input round-trips null and arrays through write and catalog responses", async () => {
@@ -160,6 +176,64 @@ describe("schedules HTTP write surface", () => {
       }),
     });
     expect(missing.status).toBe(404);
+  });
+
+  test("schedule writes reject input that does not match the active workflow", async () => {
+    const wf = await createWorkflow("sched-input-contract", {
+      type: "object",
+      required: ["account_id"],
+      properties: { account_id: { type: "string" } },
+    });
+    const invalid = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ workflow_id: wf.id, cron: "0 8 * * *", input: {} }),
+    });
+    expect(invalid.status).toBe(400);
+    const body = (await invalid.json()) as {
+      details?: { issues?: Array<{ path: string; message: string }> };
+    };
+    expect(body.details?.issues?.[0]?.path).toBe("$input/account_id");
+    const schedules = await ctx.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.workflow_id, wf.id));
+    expect(schedules).toHaveLength(0);
+  });
+
+  test("schedule updates and resume keep an invalid persisted input held for correction", async () => {
+    const wf = await createWorkflow("sched-input-resume", {
+      type: "object",
+      required: ["account_id"],
+      properties: { account_id: { type: "string" } },
+    });
+    const created = await fetch(`${ctx.baseUrl}/v1/schedules`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        workflow_id: wf.id,
+        cron: "0 8 * * *",
+        paused: true,
+        input: { account_id: "account-1" },
+      }),
+    });
+    const schedule = (await created.json()) as { id: string };
+    await ctx.db
+      .update(workflowsSchedules)
+      .set({ input: {} })
+      .where(eq(workflowsSchedules.id, schedule.id));
+    const resumed = await fetch(`${ctx.baseUrl}/v1/schedules/${schedule.id}`, {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ paused: false }),
+    });
+    expect(resumed.status).toBe(400);
+    const [stored] = await ctx.db
+      .select()
+      .from(workflowsSchedules)
+      .where(eq(workflowsSchedules.id, schedule.id));
+    expect(stored?.paused).toBe(true);
+    expect(stored?.input).toEqual({});
   });
 
   test("PUT patches cron and paused; unknown id is 404", async () => {

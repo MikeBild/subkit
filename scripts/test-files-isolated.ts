@@ -6,6 +6,7 @@ const args = process.argv.slice(2);
 let listOnly = false;
 let shardIndex = 0;
 let shardCount = 1;
+let startAfter: string | undefined;
 const targets: string[] = [];
 
 for (let index = 0; index < args.length; index += 1) {
@@ -27,6 +28,12 @@ for (let index = 0; index < args.length; index += 1) {
     index += 1;
     continue;
   }
+  if (arg === "--start-after") {
+    startAfter = args[index + 1];
+    if (!startAfter) throw new Error("--start-after requires a test file path");
+    index += 1;
+    continue;
+  }
   if (arg.startsWith("--")) throw new Error(`unknown option: ${arg}`);
   targets.push(arg);
 }
@@ -43,7 +50,7 @@ const testPatterns = [
 
 if (targets.length === 0) {
   throw new Error(
-    "usage: bun run scripts/test-files-isolated.ts [--list] [--shard <index>/<count>] <file-or-directory> [...]",
+    "usage: bun run scripts/test-files-isolated.ts [--list] [--shard <index>/<count>] [--start-after <file>] <file-or-directory> [...]",
   );
 }
 
@@ -76,7 +83,12 @@ for (const target of targets) {
 const allTests = [...tests].sort();
 if (allTests.length === 0) throw new Error("no test files found");
 
-const orderedTests = allTests.filter((_, index) => index % shardCount === shardIndex);
+const shardedTests = allTests.filter((_, index) => index % shardCount === shardIndex);
+const startIndex = startAfter === undefined ? -1 : shardedTests.indexOf(repoRelative(startAfter));
+if (startAfter !== undefined && startIndex === -1) {
+  throw new Error(`--start-after file is not in the selected test set: ${startAfter}`);
+}
+const orderedTests = shardedTests.slice(startIndex + 1);
 if (orderedTests.length === 0) throw new Error("selected shard contains no test files");
 
 if (listOnly) {

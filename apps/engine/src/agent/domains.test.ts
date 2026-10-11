@@ -38,6 +38,7 @@ describe("resolveDomains", () => {
       domains: ["mikebild-dev", "ops"],
       from_prompt: ["ops"],
       from_repo: ["mikebild-dev"],
+      from_folder: [],
     });
   });
 
@@ -60,7 +61,28 @@ describe("resolveDomains", () => {
       domains: [],
       from_prompt: [],
       from_repo: [],
+      from_folder: [],
     });
+  });
+
+  test("the current folder matches only its normalized canonical category", () => {
+    expect(
+      resolveDomains({ folder_hint: "Harmoniqs", known: ["harmoniqs", "harmoniqs-app"] }),
+    ).toEqual({
+      domains: ["harmoniqs"],
+      from_prompt: [],
+      from_repo: [],
+      from_folder: ["harmoniqs"],
+    });
+    expect(resolveDomains({ folder_hint: "harmoniqs-app", known: ["harmoniqs"] })).toEqual({
+      domains: [],
+      from_prompt: [],
+      from_repo: [],
+      from_folder: [],
+    });
+    expect(
+      resolveDomains({ folder_hint: "/Users/example/harmoniqs", known: ["harmoniqs"] }),
+    ).toEqual({ domains: [], from_prompt: [], from_repo: [], from_folder: [] });
   });
 });
 

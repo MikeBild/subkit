@@ -89,7 +89,9 @@ export function scopeCatalogue(permissions: readonly string[]): string[] {
 }
 
 export function defaultKeyScopes(permissions: readonly string[]): string[] {
-  return ["workflow:read", "workflow:run"].filter((scope) => permissions.includes(scope));
+  return ["workflow:read", "workflow:run", "intake:read", "intake:write"].filter((scope) =>
+    permissions.includes(scope),
+  );
 }
 
 export function keyExpired(key: Pick<ApiKeyItem, "expires_at">, nowMs: number): boolean {
@@ -195,6 +197,6 @@ export function keyPresetScopes(preset: KeyScopePreset, permissions: readonly st
       scope.includes(":") &&
       (preset === "manage" ||
         scopeRisk(scope) === "reads" ||
-        (preset === "run" && scope === "workflow:run")),
+        (preset === "run" && (scope === "workflow:run" || scope === "intake:write"))),
   );
 }

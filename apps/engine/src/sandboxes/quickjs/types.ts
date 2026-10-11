@@ -9,6 +9,7 @@ export interface SandboxStats {
   ticks: number;
   duration_ms: number;
   peak_memory_bytes: number | null;
+  worker_pid?: number;
 }
 
 export interface SandboxRunResult<T> {

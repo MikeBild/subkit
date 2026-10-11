@@ -187,13 +187,12 @@ describe("HTTP temporary execution previews", () => {
       const rerun = await fetch(`${ctx.baseUrl}/v1/executions/${result.execution_id}/rerun`, {
         method: "POST",
         headers: { authorization: `Bearer ${ctx.apiKey}`, "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ hold_writes: false }),
       });
       expect(rerun.status).toBe(200);
-      expect(
-        RunResponseSchema.parse(await rerun.json()).steps?.find((step) => step.step_key === "send")
-          ?.held,
-      ).toBe(true);
+      const rerunResult = RunResponseSchema.parse(await rerun.json());
+      expect(rerunResult.hold_writes).toBe(true);
+      expect(rerunResult.steps?.find((step) => step.step_key === "send")?.held).toBe(true);
     }
     const live = await post({ source: "saved", workflow_id: workflow.id, hold_writes: false });
     expect(live.status).toBe(409);

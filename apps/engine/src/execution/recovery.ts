@@ -4,7 +4,7 @@ import { getConfig } from "../config/loader.ts";
 import type { Db } from "../db/client.ts";
 import { writeEvent } from "../db/events.ts";
 import { executionSteps, executions, workflowVersions } from "../db/schema/index.ts";
-import { logger } from "../logging/logger.ts";
+import { errorFields, logger } from "../logging/logger.ts";
 import type { ExecutionStatus } from "./types.ts";
 
 const DEFAULT_WORKFLOW_TIMEOUT_MS = 6 * 60 * 60 * 1000;
@@ -210,7 +210,7 @@ export async function recoverCrashedExecutions(
         msg: "crash recovery failed for one execution",
         execution_id: row.id,
         tenant_id: row.tenant_id,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     }
   }
@@ -331,7 +331,7 @@ export async function recoverCrashedExecutions(
         msg: "step-state reconciliation failed for one terminal execution",
         execution_id: row.id,
         tenant_id: row.tenant_id,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorFields(err),
       });
     }
   }
@@ -397,7 +397,7 @@ export function startCrashRecoveryMonitor(
             module: "queue",
             action: "crash_recovery.periodic_failed",
             msg: "periodic crash recovery sweep failed",
-            error: err instanceof Error ? err.message : String(err),
+            ...errorFields(err),
           });
         })
         .finally(schedule);

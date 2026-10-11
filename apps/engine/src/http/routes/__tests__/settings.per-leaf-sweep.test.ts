@@ -97,6 +97,14 @@ function pickValue(leaf: ConfigLeaf, salt: number): unknown {
       return tag;
     }
     case "number": {
+      const sandboxValues: Record<string, number> = {
+        "sandbox.queue_limit": 64,
+        "sandbox.tenant_queue_limit": 4,
+        "sandbox.ipc_max_bytes": 1024 * 1024,
+        "sandbox.worker_rss_bytes": 256 * 1024 * 1024,
+      };
+      const sandboxValue = sandboxValues[dottedPath(leaf)];
+      if (sandboxValue !== undefined) return sandboxValue;
       const numCandidates = [
         0.5,
         Math.max(1, Math.min(50, salt + 1)),

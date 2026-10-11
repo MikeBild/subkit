@@ -16,6 +16,7 @@ const BINARY_SUFFIXES = [
   ".woff",
   ".woff2",
   ".zip",
+  ".tgz",
 ];
 
 function trackedFiles(cwd: string = root, env = process.env): string[] {

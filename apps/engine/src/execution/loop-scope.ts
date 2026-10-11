@@ -20,6 +20,7 @@ export async function resolveForEachCollection(
   scope: Record<string, unknown>,
   start: number,
   clock: { now_ms: number; seed: string } | null,
+  signal?: AbortSignal,
 ): Promise<
   | { kind: "collection"; items: unknown[] }
   | { kind: "failure"; result: StepResult }
@@ -33,6 +34,7 @@ export async function resolveForEachCollection(
       input: { scope },
       limits: { wall_ms: 5_000 },
       clock,
+      ...(signal ? { signal } : {}),
     });
     collection = (out as { output: unknown }).output;
   } catch (err) {

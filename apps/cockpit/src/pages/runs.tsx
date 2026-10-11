@@ -85,6 +85,15 @@ type ExecutionListItem = components["schemas"]["ExecutionListItem"];
 type ExecutionStep = components["schemas"]["ExecutionStep"] & { credential_snapshots?: unknown };
 type ExecutionStepList = components["schemas"]["ExecutionStepListResponse"];
 
+type RerunSafety = {
+  mode: "repeat_safe" | "prepare_only" | "unavailable";
+  reason: string;
+};
+
+type ExecutionDetailWithRerunSafety = ExecutionDetail & {
+  outcome: ExecutionDetail["outcome"] & { rerun_safety?: RerunSafety };
+};
+
 const PAGE_SIZE = 25;
 
 function Copyable({ children }: { children: ReactNode }) {
@@ -108,11 +117,19 @@ function OutcomeText({ sentence }: { sentence: OutcomeSentence }) {
 function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string): void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const detail = useQuery({
+    queryKey: ["run", run.id, "rerun-safety"],
+    queryFn: () =>
+      apiRequest<ExecutionDetailWithRerunSafety>(`/v1/executions/${encodeURIComponent(run.id)}`),
+  });
+  const safety = detail.data?.outcome.rerun_safety;
+  const prepareOnly = safety?.mode === "prepare_only";
+  const unavailable = !safety || safety.mode === "unavailable";
   const rerun = useMutation({
     mutationFn: () =>
       apiRequest<{ execution_id: string }>(`/v1/executions/${encodeURIComponent(run.id)}/rerun`, {
         method: "POST",
-        body: JSON.stringify({ async: true }),
+        body: JSON.stringify({ async: true, ...(prepareOnly ? { hold_writes: true } : {}) }),
       }),
     onSuccess: async (result) => {
       toast.success(t("runs.rerun.started"));
@@ -122,16 +139,20 @@ function RerunAction({ run, onStarted }: { run: Execution; onStarted(id: string)
     onError: (error) => toast.error(rerunFailureText(error instanceof ApiError ? error : null, t)),
   });
   const running = isLive(run.status);
+  const disabled = running || unavailable || detail.isPending;
+  const disabledReason = running
+    ? t("runs.rerun.whileRunning")
+    : safety?.reason || t("runs.rerun.unavailable");
   return (
     <ActionButton
       variant="primary"
-      disabled={running}
-      disabledReason={t("runs.rerun.whileRunning")}
+      disabled={disabled}
+      disabledReason={disabledReason}
       pending={rerun.isPending}
       onClick={() => rerun.mutate()}
       testId="run-rerun-open"
     >
-      {t("runs.rerun.open")}
+      {t(prepareOnly ? "runs.rerun.prepare" : "runs.rerun.open")}
     </ActionButton>
   );
 }
