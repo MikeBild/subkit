@@ -34,7 +34,12 @@ export interface ExpectSleepStep {
   ms: number;
 }
 
-export type ExpectStep = ExpectWaitStep | ExpectSendStep | ExpectSleepStep | { kind: "ready" };
+export type ExpectStep =
+  | ExpectWaitStep
+  | ExpectSendStep
+  | ExpectSleepStep
+  | { kind: "ready" }
+  | { kind: "terminate" };
 
 function tclQuote(value: string): string {
   return `"${value
@@ -51,14 +56,15 @@ function tclRegex(value: string): string {
 
 export function buildExpectScript(
   steps: readonly ExpectStep[],
-  opts: { binary?: string } = {},
+  opts: { binary?: string; args?: readonly string[] } = {},
 ): string {
   const bin = opts.binary ?? SK_BIN;
   const lines = [
     "set timeout 20",
     "match_max 100000",
     "log_user 1",
-    `spawn -noecho ${tclQuote(bin)}`,
+    `spawn -noecho ${[bin, ...(opts.args ?? [])].map(tclQuote).join(" ")}`,
+    "exec stty rows 80 cols 120 < $spawn_out(slave,name)",
     "set childPid [exp_pid]",
     "set childReaped 0",
     "set scenarioCode [catch {",
@@ -92,6 +98,10 @@ export function buildExpectScript(
       lines.push(`send -- ${tclQuote(step.text)}`);
       continue;
     }
+    if (step.kind === "terminate") {
+      lines.push("exec kill -TERM $childPid");
+      continue;
+    }
     lines.push(`drain ${step.ms}`);
   }
   lines.push("set timeout 5");
@@ -114,7 +124,9 @@ export function buildExpectScript(
   lines.push("set outcome [wait]");
   lines.push("set childReaped 1");
   lines.push(
-    'if {[llength $outcome] != 4 || [lindex $outcome 2] != 0 || [lindex $outcome 3] != 0} {error "CLI did not exit normally with status zero: $outcome"}',
+    steps.some((step) => step.kind === "terminate")
+      ? 'if {[llength $outcome] < 6 || [lindex $outcome 4] ne "CHILDKILLED" || [lindex $outcome 5] ne "SIGTERM"} {error "CLI did not terminate cleanly after the scenario: $outcome"}'
+      : 'if {[llength $outcome] != 4 || [lindex $outcome 2] != 0 || [lindex $outcome 3] != 0} {error "CLI did not exit normally with status zero: $outcome"}',
   );
   lines.push("} scenarioError]");
   lines.push(
@@ -138,10 +150,13 @@ export interface RunPtyOptions {
   persona?: E2EEnv["personas"]["admin"];
   engineUrl?: string;
   cwd?: string;
+  args?: readonly string[];
+  unsetEnv?: readonly string[];
 }
 
 export interface RunPtyResult {
   visible: string;
+  raw: string;
   stderr: string;
   exitCode: number;
 }
@@ -167,11 +182,19 @@ export async function runPtyScenario(
   }
   if (opts.engineUrl) baseEnv.SUBKIT_ENGINE_URL = opts.engineUrl;
   if (opts.env) Object.assign(baseEnv, opts.env);
+  for (const key of opts.unsetEnv ?? []) delete baseEnv[key];
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(baseEnv)) if (v !== undefined) env[k] = v;
 
   const proc = Bun.spawn(
-    [EXPECT_BIN, "-c", buildExpectScript(steps, opts.binary ? { binary: opts.binary } : {})],
+    [
+      EXPECT_BIN,
+      "-c",
+      buildExpectScript(steps, {
+        ...(opts.binary ? { binary: opts.binary } : {}),
+        ...(opts.args ? { args: opts.args } : {}),
+      }),
+    ],
     {
       cwd: opts.cwd ?? REPO_ROOT,
       env,
@@ -187,6 +210,7 @@ export async function runPtyScenario(
   ]);
   return {
     visible: stripTerminal(stdout),
+    raw: stdout,
     stderr: stripTerminal(stderr),
     exitCode: exitCode as number,
   };

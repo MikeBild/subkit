@@ -687,7 +687,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
     void refreshStatus();
   };
 
-  const switchProfileFn = async (name: string): Promise<string> => {
+  const switchProfileFn = async (name: string): Promise<string | null> => {
     const cfg = loadConfig();
     const target = cfg.profiles[name];
     if (!target) return `profile "${name}" not found`;
@@ -764,7 +764,7 @@ export async function runInkRepl(opts: InkReplOptions): Promise<number> {
       ? `switched to "${name}" (${newProfile.engine_url})`
       : `switched to "${name}" (${newProfile.engine_url}) — engine unreachable`;
     publishProfileNotice(message);
-    return message;
+    return null;
   };
 
   const onSlash = async (
