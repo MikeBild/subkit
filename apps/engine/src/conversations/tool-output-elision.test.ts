@@ -70,7 +70,7 @@ describe("elideWithinTurnToolOutputs", () => {
       expect(stub._tool).toBe("inspect_workflow_draft");
       expect(typeof stub._raw_ref).toBe("string");
       expect(stub._note).toMatch(
-        /^<elided: tool=inspect_workflow_draft, ref=raw_[0-9a-f]{8}, original=\d+ chars; call get_raw_result\(ref="raw_[0-9a-f]{8}"\) for the full payload>$/,
+        /^<elided: tool=inspect_workflow_draft, ref=raw_[0-9a-f]{8}, original=\d+ chars; call get_raw_result\(ref="raw_[0-9a-f]{8}"\) and follow its bounded field retrieval instructions>$/,
       );
       expect(getRawResult(stub._raw_ref as string)).toEqual(payloads[idx]);
     }
@@ -226,7 +226,7 @@ describe("buildElidedToolOutputStub", () => {
         size_unit: "bytes",
       })._note,
     ).toBe(
-      '<elided: tool=list_users, ref=raw_abcd1234, original=12345 bytes; call get_raw_result(ref="raw_abcd1234") for the full payload>',
+      '<elided: tool=list_users, ref=raw_abcd1234, original=12345 bytes; call get_raw_result(ref="raw_abcd1234") and follow its bounded field retrieval instructions>',
     );
     expect(
       buildElidedToolOutputStub({
@@ -236,7 +236,7 @@ describe("buildElidedToolOutputStub", () => {
         size_unit: "chars",
       })._note,
     ).toBe(
-      '<elided: tool=list_users, ref=raw_abcd1234, original=12345 chars; call get_raw_result(ref="raw_abcd1234") for the full payload>',
+      '<elided: tool=list_users, ref=raw_abcd1234, original=12345 chars; call get_raw_result(ref="raw_abcd1234") and follow its bounded field retrieval instructions>',
     );
   });
 });

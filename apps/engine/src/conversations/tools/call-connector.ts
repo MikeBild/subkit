@@ -157,7 +157,7 @@ export const callConnectorTool: ConversationTool = {
     "Auth/credential is injected from the saved row — additional `headers` are merged on top (HTTP).",
     "4xx/5xx responses still return `ok:true` with the upstream status — the LLM should inspect the body and decide.",
     "`health` is `ok|auth_failed|endpoint_gone|deprecated|not_found|rate_limited|degraded`. `auth_failed`/`endpoint_gone` mean the connector itself is unusable: an empty body means 'auth failed / endpoint removed', NOT 'no data' — tell the user to fix the connector. `not_found`/`rate_limited` are request-level (wrong path / throttled); `deprecated` means the call SUCCEEDED but the vendor announced removal — surface the migration hint. Always use `health_suggestion` + `next_best_actions`.",
-    "Response bodies > 8KB are truncated; full payload is available via `get_raw_result(ref=raw_ref)`.",
+    "Response bodies > 8KB are truncated; retrieve larger payloads with `get_raw_result(ref=raw_ref)` and follow its bounded field retrieval instructions.",
     "Postgres: writes (INSERT/UPDATE/DELETE/DROP/…) are rejected unless `allow_writes:true` is passed. `row_limit` defaults to 100; queries with an existing LIMIT pass through unchanged.",
     "S3: `method` is one of GET/PUT/HEAD/LIST/DELETE; `path` is the object key (or prefix for LIST).",
     "Audit row records actor + connector + method + URL host + status; bodies, headers, full SQL, and full request bodies are NEVER logged.",

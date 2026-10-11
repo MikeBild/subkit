@@ -257,7 +257,7 @@ export function truncateForLlm(
     !Array.isArray(shortened)
   ) {
     (shortened as Record<string, unknown>)._truncation_note =
-      `${charsOmitted} chars in ${branchesOmitted} branch(es) omitted; full payload available via get_raw_result(ref="${refId}")`;
+      `${charsOmitted} chars in ${branchesOmitted} branch(es) omitted; fetch the omitted fields through get_raw_result(ref="${refId}") in bounded chunks`;
   }
   logger.debug({
     module: "conversation_tool",
@@ -274,7 +274,7 @@ export function truncateForLlm(
     truncated: true,
     data: shortened,
     raw_ref: refId,
-    note: `tool output truncated from ${originalLen} → ${shortenedLen} chars; call get_raw_result(ref="${refId}") for the full payload`,
+    note: `tool output truncated from ${originalLen} → ${shortenedLen} chars; call get_raw_result(ref="${refId}") and follow its bounded field retrieval instructions`,
   };
 }
 

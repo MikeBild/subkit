@@ -99,7 +99,7 @@ execution_id, poll_with: "get_execution" }`.
 - `inspect_execution_step` **[product]** — drill into a single step's
   input/output.
 - `list_executions` **[product]** — list past executions.
-- `get_raw_result` **[product]** — fetch an offloaded/oversize result payload.
+- `get_raw_result` **[product]** — fetch an offloaded result. Small results return whole; large results list fields to fetch by path and bounded chunks via offset/limit.
 - `list_attachments` / `preview_attachment` **[product]** — execution-produced
   files.
 - `list_schedules` **[product]**; `create_schedule`, `update_schedule`,

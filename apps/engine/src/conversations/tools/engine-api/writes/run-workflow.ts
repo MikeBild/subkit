@@ -733,7 +733,7 @@ export const runWorkflowTool: ConversationTool = {
             ...(sampledOutput.sampled
               ? {
                   output_sampled: true,
-                  output_note: `output is a sample (in-band "… sampled N of M" markers mark the cut points); full payload via get_raw_result(ref="${sampledOutput.raw_ref}") or inspect_execution_step. Present the sampled rows to the user directly — do NOT re-run the workflow to "get" the output.`,
+                  output_note: `output is a sample (in-band "… sampled N of M" markers mark the cut points); retrieve larger payloads via get_raw_result(ref="${sampledOutput.raw_ref}") and follow its bounded field retrieval instructions, or use inspect_execution_step. Present the sampled rows to the user directly — do NOT re-run the workflow to "get" the output.`,
                   ...(sampledOutput.raw_ref ? { output_raw_ref: sampledOutput.raw_ref } : {}),
                 }
               : {}),
