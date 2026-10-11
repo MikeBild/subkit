@@ -989,7 +989,7 @@ const CATALOG_META = [
   },
 ];
 
-async function mockApi(route) {
+async function mockApi(route, options = {}) {
   const request = route.request();
   const url = new URL(request.url());
   const path = url.pathname;
@@ -1007,7 +1007,7 @@ async function mockApi(route) {
         expires_at: "2026-08-11T09:00:00.000Z",
         absolute_expires_at: null,
       },
-      permissions: [
+      permissions: options.permissions ?? [
         "conversation:read",
         "conversation:write",
         "conversation:approve",

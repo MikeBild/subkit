@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import { verifyConventionJourneys } from "./konvention-check.mjs";
 import { verifyApiAccess } from "./lib/cockpit-api-access.mjs";
+import { verifyApiKeyIntakePersonas } from "./lib/cockpit-api-key-personas.mjs";
 import { verifyCatalogEvidence } from "./lib/cockpit-catalog-evidence.mjs";
 import { verifyChatActivation } from "./lib/cockpit-chat-activation.mjs";
 import { verifyChatActivity } from "./lib/cockpit-chat-activity.mjs";
@@ -101,6 +102,7 @@ const journeys = [
         ).length,
       }),
   ],
+  ["verifyApiKeyIntakePersonas", (_page, stand) => verifyApiKeyIntakePersonas(browser, stand)],
   [
     "verifyEnginePages",
     (page) =>
