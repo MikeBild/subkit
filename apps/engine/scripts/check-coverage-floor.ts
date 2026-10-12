@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { localDatabaseUrl } from "../../../scripts/lib/local-database-url.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO = resolve(dirname(__filename), "..", "..", "..");
@@ -86,7 +87,7 @@ function runCoverage(subsystemDir: string): CoverageRow[] {
     env: {
       ...process.env,
       SKIP_DOCKER: "1",
-      DATABASE_URL: process.env.DATABASE_URL ?? "postgres://subkit:subkit@127.0.0.1:5432/subkit",
+      DATABASE_URL: localDatabaseUrl(process.env),
       MASTER_KEY:
         process.env.MASTER_KEY ??
         "00000000000000000000000000000000000000000000000000000000000000aa",

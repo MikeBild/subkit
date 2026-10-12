@@ -34,6 +34,8 @@ services:
       POSTGRES_PASSWORD: ${SUBKIT_DB_PASSWORD:-subkit-local-only}
       POSTGRES_DB: subkit
       PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${SUBKIT_DB_PORT:-5432}:5432"
     volumes:
       - subkit_pgdata:/var/lib/postgresql/data
     healthcheck:
