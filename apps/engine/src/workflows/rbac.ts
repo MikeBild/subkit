@@ -55,7 +55,7 @@ export async function gateWorkflowRunRbac(
   await auditAwait(
     {
       tenant_id: p.principal.tenant_id,
-      actor_type: p.principal.kind === "user" ? "user" : "system",
+      actor_type: p.principal.kind,
       actor_id: p.principal.id,
       action: AuditAction.POLICY_DENIED,
       resource_type: p.approval?.resource_type ?? "workflow",

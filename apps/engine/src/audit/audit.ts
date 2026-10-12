@@ -5,6 +5,12 @@ import { logger } from "../logging/logger.ts";
 import { scrubAuditEntry } from "./scrub.ts";
 import type { AuditEntry } from "./types.ts";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function normalizeAuditActorId(actorId: string | null | undefined): string | null {
+  return actorId && UUID_RE.test(actorId) ? actorId : null;
+}
+
 function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
   const ctx = getContext();
   const tenantId = entry.tenant_id ?? ctx.tenant_id;
@@ -24,13 +30,12 @@ function buildEntry(entry: Partial<AuditEntry>): AuditEntry {
       : (entry.metadata ?? {}),
     ctx.auth_via,
   );
-
   return scrubAuditEntry({
     id: entry.id ?? crypto.randomUUID(),
     ts: entry.ts ?? new Date(),
     tenant_id: tenantId,
     actor_type: entry.actor_type ?? "system",
-    actor_id: entry.actor_id ?? null,
+    actor_id: normalizeAuditActorId(entry.actor_id),
     action: entry.action ?? ("system.startup" as AuditEntry["action"]),
     resource_type: entry.resource_type ?? "system",
     resource_id: entry.resource_id ?? null,

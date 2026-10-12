@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { auditAwait } from "../../../audit/audit.ts";
-import { AuditAction } from "../../../audit/types.ts";
+import { auditAwait, normalizeAuditActorId } from "../../../audit/audit.ts";
+import { AuditAction, type AuditActorType } from "../../../audit/types.ts";
 import { evaluateHook } from "../../../auth/hooks.ts";
+import type { ResolvedPrincipal } from "../../../auth/types.ts";
 import { persistCircuitState, recordCircuitFailure } from "../../../connectors/circuit-breaker.ts";
 import { filenameFromResponse } from "../../../connectors/drivers/file-promotion.ts";
 import type { query as graphqlQuery } from "../../../connectors/drivers/graphql.ts";
@@ -143,6 +144,16 @@ import {
 } from "./side-effects.ts";
 
 export const REQUEST_TIMEOUT_DEFAULT_MS = 60 * 60_000;
+
+export function requestEgressActor(
+  principal: Pick<ResolvedPrincipal, "kind" | "id"> | null | undefined,
+): { actor_type: AuditActorType; actor_id: string | null } {
+  if (!principal) return { actor_type: "unknown", actor_id: null };
+  return {
+    actor_type: principal.kind,
+    actor_id: normalizeAuditActorId(principal.id),
+  };
+}
 
 async function recordDriverOutcome(
   db: Db,
@@ -1009,8 +1020,7 @@ async function dispatchRequestStep(
             egressInput: {
               executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
-              actor_id: p.ctx.principal?.id ?? null,
-              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              ...requestEgressActor(p.ctx.principal),
               connector_id: connector.id,
               connector_slug: connector.slug,
               driver: "graphql",
@@ -1118,9 +1128,7 @@ async function dispatchRequestStep(
                 mcpEgressInput({
                   executor: p.ctx.db,
                   tenant_id: p.ctx.tenant_id,
-                  actor_id: p.ctx.principal?.id ?? null,
-                  actor_type:
-                    p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+                  ...requestEgressActor(p.ctx.principal),
                   connector: {
                     id: connector.id,
                     slug: connector.slug,
@@ -1301,8 +1309,7 @@ async function dispatchRequestStep(
             {
               executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
-              actor_id: p.ctx.principal?.id ?? null,
-              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              ...requestEgressActor(p.ctx.principal),
               connector_id: connector.id,
               connector_slug: connector.slug,
               driver: "s3",
@@ -1564,8 +1571,7 @@ async function dispatchRequestStep(
             {
               executor: p.ctx.db,
               tenant_id: p.ctx.tenant_id,
-              actor_id: p.ctx.principal?.id ?? null,
-              actor_type: p.ctx.principal?.kind === "system_account" ? "system_account" : "user",
+              ...requestEgressActor(p.ctx.principal),
               connector_id: connector.id,
               connector_slug: connector.slug,
               driver: "postgres",
@@ -1931,10 +1937,7 @@ async function dispatchRequestStep(
         ? {
             executor: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
-            actor_id: p.ctx.principal?.id ?? null,
-            actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
-              | "user"
-              | "system_account",
+            ...requestEgressActor(p.ctx.principal),
             connector_id: activeConnector.id,
             connector_slug: activeConnector.slug,
             driver: "http" as const,
@@ -2328,10 +2331,7 @@ async function dispatchRequestStep(
         ? {
             executor: p.ctx.db,
             tenant_id: p.ctx.tenant_id,
-            actor_id: p.ctx.principal?.id ?? null,
-            actor_type: (p.ctx.principal?.kind === "system_account" ? "system_account" : "user") as
-              | "user"
-              | "system_account",
+            ...requestEgressActor(p.ctx.principal),
             connector_id: activeConnector.id,
             connector_slug: activeConnector.slug,
             driver: "http" as const,

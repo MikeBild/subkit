@@ -47,6 +47,7 @@ export function registerCallRoutes(app: OpenAPIHono<AppEnv>): void {
       db,
       tenant_id: principal.tenant_id,
       actor_id: principal.id,
+      actor_type: principal.kind,
       connector_id: id,
       method: (body.method ?? "GET") as CallConnectorMethod,
       path: body.path ?? "",
