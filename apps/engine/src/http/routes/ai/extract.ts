@@ -2,6 +2,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Next } from "hono";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
 import { ExtractFileResponseSchema } from "../../../api/extract-schemas.ts";
+import { type Actor, auditActor } from "../../../audit/actor.ts";
 import {
   AuditAction,
   audit,
@@ -89,15 +90,14 @@ const route = createRoute({
 
 function auditDeniedTooLarge(
   tenantId: string | null,
-  actorId: string | null,
+  actor: Actor | null,
   details: Record<string, unknown>,
   db?: Db,
 ): void {
   audit(
     {
       tenant_id: tenantId ?? "00000000-0000-0000-0000-000000000000",
-      actor_type: actorId ? "user" : "system",
-      actor_id: actorId,
+      ...auditActor(actor),
       action: AuditAction.DATA_EXPORTED,
       resource_type: "extract",
       resource_id: null,
@@ -115,7 +115,7 @@ function extractBodyCap() {
 
     const principal = c.get("principal");
     const tenantId = principal?.tenant_id ?? null;
-    const actorId = principal?.kind === "user" ? principal.id : null;
+    const actor = principal ? { kind: principal.kind, id: principal.id } : null;
     const middlewareDb = c.get("db");
 
     const lenHeader = c.req.header("content-length");
@@ -127,7 +127,7 @@ function extractBodyCap() {
         if (declared > EXTRACT_BODY_CAP_BYTES) {
           auditDeniedTooLarge(
             tenantId,
-            actorId,
+            actor,
             {
               source: "content_length",
               declared_bytes: declared,
@@ -156,7 +156,7 @@ function extractBodyCap() {
           if (total > EXTRACT_BODY_CAP_BYTES) {
             auditDeniedTooLarge(
               tenantId,
-              actorId,
+              actor,
               {
                 source: "stream",
                 observed_bytes: total,
