@@ -1,4 +1,5 @@
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
+import type { KnownAuditActorType } from "../../audit/types.ts";
 import { truncateForLlm } from "../../conversations/tools/truncate.ts";
 import { getCredentialForConnector } from "../../credentials/service.ts";
 import type { Db } from "../../db/client.ts";
@@ -25,6 +26,7 @@ export interface CallConnectorRequest {
   db: Db;
   tenant_id: string;
   actor_id: string | null;
+  actor_type?: KnownAuditActorType;
   connector_id: string;
   method: CallConnectorMethod;
   path: string;
@@ -380,6 +382,7 @@ export async function callConnector(req: CallConnectorRequest): Promise<CallConn
   await recordConnectorInvoked({
     tenant_id: req.tenant_id,
     actor_id: req.actor_id,
+    ...(req.actor_type ? { actor_type: req.actor_type } : {}),
     executor: req.db,
     connector_id: connector.id,
     connector_slug: connector.slug,

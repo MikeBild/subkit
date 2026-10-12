@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { and, eq } from "drizzle-orm";
 import { createConnector } from "../../connectors/service.ts";
 import { upsertCredential } from "../../credentials/service.ts";
-import { apiKeys, users } from "../../db/schema/index.ts";
+import { apiKeys, auditLog, users } from "../../db/schema/index.ts";
 import { createRole } from "../../rbac/roles.ts";
 import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "../tests/setup.ts";
@@ -171,6 +172,18 @@ describe("POST /v1/connectors/{id}/call", () => {
     expect(body.metadata.method).toBe("GET");
     expect(body.metadata.path).toBe("/v1/customers");
     expect(typeof body.latency_ms).toBe("number");
+    const [audit] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, ctx.tenantId),
+          eq(auditLog.action, "connector.invoked"),
+          eq(auditLog.resource_id, connectorId),
+          eq(auditLog.actor_id, ctx.userId),
+        ),
+      );
+    expect(audit).toEqual({ actor_type: "user", actor_id: ctx.userId });
 
     expect(captured.length).toBe(1);
     expect(captured[0]?.headers.authorization).toBe("Bearer TEST-TOKEN-call-route");

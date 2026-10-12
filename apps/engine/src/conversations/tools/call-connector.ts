@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { actorType } from "../../audit/actor.ts";
 import { recordConnectorInvoked } from "../../audit/recorders/index.ts";
 import { query as graphqlQuery } from "../../connectors/drivers/graphql.ts";
 import { executeConnectorHttpRequest } from "../../connectors/drivers/http.ts";
@@ -335,6 +336,7 @@ export const callConnectorTool: ConversationTool = {
     await recordConnectorInvoked({
       tenant_id: ctx.tenant_id,
       actor_id: ctx.actor_id,
+      ...(ctx.principal ? { actor_type: actorType(ctx.principal) } : {}),
       executor: ctx.db,
       connector_id: connector.id,
       connector_slug: connector.slug,

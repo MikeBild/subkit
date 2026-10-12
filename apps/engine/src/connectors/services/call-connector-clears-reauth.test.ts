@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { upsertCredential } from "../../credentials/service.ts";
-import { connectors, tenants } from "../../db/schema/index.ts";
+import { auditLog, connectors, tenants } from "../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../db/tests/setup.ts";
 import { createMockServer, jsonResponse, type MockServer } from "../../test-helpers/mock-http.ts";
 import {
@@ -96,6 +96,26 @@ function call(connector_id: string, extra: Partial<CallConnectorRequest> = {}) {
 }
 
 describe("callConnector — re-auth clearing edge", () => {
+  test("preserves a known user actor type on direct connector invocation", async () => {
+    upstreamStatus = 200;
+    const connector_id = await seedFlaggedConnector("call-preserves-actor-type");
+    const actor_id = "bde323c4-8447-45b1-8aef-05cf93cc6e9a";
+    const result = await call(connector_id, { actor_id, actor_type: "user" });
+    expect(result.kind).toBe("ok");
+    const [entry] = await ctx.db
+      .select({ actor_type: auditLog.actor_type, actor_id: auditLog.actor_id })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.tenant_id, tenantId),
+          eq(auditLog.action, "connector.invoked"),
+          eq(auditLog.resource_id, connector_id),
+          eq(auditLog.actor_id, actor_id),
+        ),
+      );
+    expect(entry).toEqual({ actor_type: "user", actor_id });
+  });
+
   test("a 2xx with the stored credential clears needs_reauth", async () => {
     upstreamStatus = 200;
     const connector_id = await seedFlaggedConnector("call-clears-on-success");
