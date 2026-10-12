@@ -5,12 +5,13 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { localDatabaseUrl } from "./lib/local-database-url.ts";
 
 const root = join(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "subkit-clipper-binaries-"));
 const manifest = await Bun.file(join(root, "assets/clipper/manifest.json")).json();
 const databaseName = `test_clipper_binary_${process.pid}_${randomBytes(6).toString("hex")}`;
-const adminUrl = process.env.DATABASE_URL ?? "postgres://subkit:subkit@localhost:5432/subkit";
+const adminUrl = localDatabaseUrl(process.env);
 const databaseUrl = new URL(adminUrl);
 const fixtureEngineUrl = "https://engine.example/fixture";
 databaseUrl.pathname = `/${databaseName}`;

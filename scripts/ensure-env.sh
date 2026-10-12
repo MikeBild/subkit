@@ -14,7 +14,24 @@ stamp_version() {
   fi
 }
 
+validate_database_password() {
+  password=${SUBKIT_DB_PASSWORD-}
+  if [ -z "$password" ] && [ -f "$ENV_FILE" ]; then
+    password=$(sed -n 's/^SUBKIT_DB_PASSWORD=//p' "$ENV_FILE" | tail -n 1)
+  fi
+  if [ -z "$password" ]; then
+    return 0
+  fi
+  case "$password" in
+    *[!A-Za-z0-9._~-]*)
+      echo "[subkit] SUBKIT_DB_PASSWORD must use URL-unreserved characters only" >&2
+      return 1
+      ;;
+  esac
+}
+
 if [ -f "$ENV_FILE" ]; then
+  validate_database_password
   stamp_version
   exit 0
 fi
@@ -25,6 +42,7 @@ MASTER_KEY=$(openssl rand -hex 32)
 sed -i.bak "s/^MASTER_KEY=.*/MASTER_KEY=$MASTER_KEY/" "$ENV_FILE"
 rm -f "$ENV_FILE.bak"
 
+validate_database_password
 stamp_version
 
 echo "[subkit] created .env with auto-generated MASTER_KEY (engine v$PKG_VERSION)"
