@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { generateAccessToken } from "../../auth/oauth/tokens.ts";
 import { MCP_AUTHORING_SCOPE } from "../../auth/scopes.ts";
@@ -11,10 +10,13 @@ import {
   mcpOauthAccessTokens,
   mcpOauthClients,
 } from "../../db/schema/index.ts";
+import { getTestNow } from "../../test-helpers/determinism/clock.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { waitFor } from "../../test-helpers/determinism/wait.ts";
 import { type McpTestSuite, startMcpTestSuite } from "./setup.ts";
 
 let suite: McpTestSuite;
+const uuid = createDeterministicUuidFactory(0x6ca11e);
 
 beforeAll(async () => {
   suite = await startMcpTestSuite("execution-system-account-caller");
@@ -170,7 +172,7 @@ test("MCP workflow caller comes from the authenticated system account", async ()
 });
 
 test("persisted MCP OAuth access-token bearer caller reaches workflow output and lifecycle audit", async () => {
-  const clientId = `oauth-caller-${randomUUID()}`;
+  const clientId = `oauth-caller-${uuid()}`;
   const scopes = ["mcp:read", MCP_AUTHORING_SCOPE];
   await suite.http.db.insert(mcpOauthClients).values({
     client_id: clientId,
@@ -187,7 +189,7 @@ test("persisted MCP OAuth access-token bearer caller reaches workflow output and
       token_sha256: token.hash,
       scope: scopes.join(" "),
       resource: `${suite.http.baseUrl}/mcp`,
-      expires_at: new Date(Date.now() + 60_000),
+      expires_at: new Date(getTestNow() + 60_000),
     })
     .returning({ id: mcpOauthAccessTokens.id });
   if (!accessToken) throw new Error("MCP OAuth access token fixture missing");

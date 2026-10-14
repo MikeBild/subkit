@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createSubscription } from "../service.ts";
 import { createOutboundCtx, type OutboundTestCtx } from "./setup.ts";
+
+const deterministicUuid = createDeterministicUuidFactory(0xbaad);
 
 let ctx: OutboundTestCtx;
 
@@ -16,9 +18,9 @@ afterAll(async () => {
 });
 
 test("outbound subscription audit persists user, system account, and background actors", async () => {
-  const userId = randomUUID();
-  const accountId = randomUUID();
-  const legacyId = randomUUID();
+  const userId = deterministicUuid();
+  const accountId = deterministicUuid();
+  const legacyId = deterministicUuid();
   const create = (
     actor_id: string | null,
     actor?: { kind: "user" | "system_account"; id: string },

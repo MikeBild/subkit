@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog } from "../../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createInbound } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
+
+const deterministicUuid = createDeterministicUuidFactory(0x1baad);
 
 let ctx: InboundTestCtx;
 
@@ -16,7 +18,7 @@ afterAll(async () => {
 });
 
 test("legacy inbound ID-only attribution persists as unknown without an actor ID", async () => {
-  const legacyId = randomUUID();
+  const legacyId = deterministicUuid();
   const hook = await createInbound(
     {
       tenant_id: ctx.tenantId,

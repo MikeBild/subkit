@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { runMigrations } from "../../db/migrate.ts";
 import { auditLog } from "../../db/schema/index.ts";
@@ -8,9 +7,12 @@ import {
   hasCredentialAuthorityRevisionColumn,
   resetSecretColumnDetection,
 } from "../../runtime-config/secret-columns.ts";
+import { createDeterministicUuidFactory } from "../../test-helpers/determinism/ids.ts";
 import { getCredentialAuthorityMetadata } from "../authority-metadata.ts";
 import { sameAuthorityScopes } from "../authority-scopes.ts";
 import { getCredentialForConnector, rotateOAuth2Tokens, upsertCredential } from "../service.ts";
+
+const nextActorId = createDeterministicUuidFactory(0xfbd608);
 
 let ctx: TestDb;
 let counter = 0;
@@ -73,9 +75,9 @@ test("scope comparison preserves case and distinguishes unknown from an empty gr
 
 test("credential audit keeps trusted actor type and clears legacy ID-only attribution", async () => {
   const f = await fixture();
-  const userId = randomUUID();
-  const serviceId = randomUUID();
-  const legacyId = randomUUID();
+  const userId = nextActorId();
+  const serviceId = nextActorId();
+  const legacyId = nextActorId();
   await upsertCredential(
     { ...f.input, actor_id: userId, actor: { kind: "user", id: userId } },
     ctx.db,

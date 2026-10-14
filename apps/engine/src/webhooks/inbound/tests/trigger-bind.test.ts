@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { auditLog, webhooksInbound } from "../../../db/schema/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { bindFromWorkflow, unbindFromWorkflow } from "../service.ts";
 import { createInboundCtx, type InboundTestCtx } from "./setup.ts";
+
+const deterministicUuid = createDeterministicUuidFactory(0x71b1d);
 
 let ctx: InboundTestCtx;
 
@@ -24,8 +26,8 @@ const triggerStripe = {
 
 describe("inbound trigger bind/unbind helpers", () => {
   test("trigger audit preserves explicit actor types and leaves background actor empty", async () => {
-    const userId = randomUUID();
-    const accountId = randomUUID();
+    const userId = deterministicUuid();
+    const accountId = deterministicUuid();
     const user = await bindFromWorkflow(
       {
         tenant_id: ctx.tenantId,
@@ -197,7 +199,7 @@ describe("inbound trigger bind/unbind helpers", () => {
   });
 
   test("unbindFromWorkflow removes the row + emits WEBHOOK_TRIGGER_UNBOUND", async () => {
-    const accountId = randomUUID();
+    const accountId = deterministicUuid();
     const created = await bindFromWorkflow(
       {
         tenant_id: ctx.tenantId,

@@ -8,9 +8,12 @@ import { auditLog, tenants } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
 import { getMockProvider, resetMockProvider } from "../../../llm/mock-provider.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { dryRunTransformTool } from "../dry-run-transform.ts";
 import type { ToolContext } from "../index.ts";
 import { __resetLastPreviewStoreForTest, recordLastPreview } from "../last-preview-store.ts";
+
+const nextActorId = createDeterministicUuidFactory(0xd9b4e6);
 
 let ctx: TestDb;
 let tenant_id: string;
@@ -548,7 +551,7 @@ describe("dry_run_transform — javascript dialect", () => {
 
 describe("dry_run_transform — audit hygiene", () => {
   test("system-account principal is retained in the audit row", async () => {
-    const systemAccountId = crypto.randomUUID();
+    const systemAccountId = nextActorId();
     const toolCtx = {
       ...makeCtx(),
       actor_id: systemAccountId,
@@ -580,7 +583,7 @@ describe("dry_run_transform — audit hygiene", () => {
   });
 
   test("ID-only legacy context remains unknown rather than being attributed to a user", async () => {
-    const toolCtx = { ...makeCtx(), actor_id: crypto.randomUUID() };
+    const toolCtx = { ...makeCtx(), actor_id: nextActorId() };
     await dryRunTransformTool.execute(toolCtx, {
       expression: "value",
       sample_data: { value: true },
