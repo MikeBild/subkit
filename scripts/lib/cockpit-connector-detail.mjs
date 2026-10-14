@@ -428,7 +428,7 @@ async function assertConnectorMenu(page, localeName, includeAi, where) {
         ];
   const expectedIds = actions.map(([id]) => id);
   const snapshot = await page.waitForFunction(
-    (ids) => {
+    () => {
       const menus = [...document.querySelectorAll('[role="menu"]')].filter((menu) => {
         const style = getComputedStyle(menu);
         const rect = menu.getBoundingClientRect();
@@ -439,22 +439,29 @@ async function assertConnectorMenu(page, localeName, includeAi, where) {
           rect.height > 0
         );
       });
-      if (menus.length !== 1) return null;
-      const items = [...menus[0].querySelectorAll('[role="menuitem"]')].map((item) => ({
-        id: item.getAttribute("data-testid"),
-        label: item.innerText.trim(),
-      }));
-      return JSON.stringify(items.map((item) => item.id)) === JSON.stringify(ids) ? items : null;
+      if (menus.length === 0) return null;
+      const items = menus.flatMap((menu) =>
+        [...menu.querySelectorAll('[role="menuitem"]')].map((item) => ({
+          id: item.getAttribute("data-testid"),
+          label: item.innerText.trim(),
+        })),
+      );
+      if (items.length === 0) return null;
+      return {
+        count: menus.length,
+        items,
+      };
     },
-    expectedIds,
     { timeout: 10_000 },
   );
   const items = await snapshot.jsonValue();
   await snapshot.dispose();
-  const actualIds = items.map((item) => item.id);
+  const actualIds = items.items.map((item) => item.id);
+  if (items.count !== 1)
+    throw new Error(`${where}: expected one visible connector menu, found ${items.count}`);
   if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds))
-    throw new Error(`${where}: connector menu entries differ: ${JSON.stringify(actualIds)}`);
-  const labels = items.map((item) => item.label);
+    throw new Error(`${where}: connector menu actions differ: ${JSON.stringify(items.items)}`);
+  const labels = items.items.map((item) => item.label);
   if (JSON.stringify(labels) !== JSON.stringify(actions.map(([, label]) => label)))
     throw new Error(`${where}: connector menu order differs: ${JSON.stringify(labels)}`);
 }
@@ -1119,10 +1126,11 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         rows.length !== 1 ||
         !rows[0].includes("create_ticket") ||
         rows[0].includes("search_items")
-      )
+      ) {
         throw new Error(
           `${where}: tool search '${query}' did not filter name or description: ${JSON.stringify(rows)}`,
         );
+      }
       await assertToolCount();
     }
     await search.fill("no-matching-tool");
