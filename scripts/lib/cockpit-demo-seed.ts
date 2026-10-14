@@ -189,7 +189,7 @@ export function createCockpitDemoSeedSql(tenantId: string, adminUserId: string):
       i === 10
         ? []
         : i === 7
-          ? [{ id: "demo", kind: "transform", expression: "$input" }]
+          ? [{ id: "demo", kind: "transform", language: "javascript", expression: "return input;" }]
           : [
               {
                 id: "demo",

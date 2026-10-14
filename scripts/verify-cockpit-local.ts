@@ -1,18 +1,22 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  cockpitDemoBaseUrl,
+  cockpitDemoStateDirectory,
+  resolveCockpitDemoInstance,
+} from "./lib/cockpit-demo-instance.ts";
 
 type Json = Record<string, unknown>;
-const base = new URL(
-  process.env.SUBKIT_DEMO_URL ??
-    process.env.SUBKIT_LOCAL_URL ??
-    `http://127.0.0.1:${process.env.SUBKIT_TEST_PORT ?? "3000"}`,
+const instance = resolveCockpitDemoInstance(process.env, process.cwd());
+const base = cockpitDemoBaseUrl(
+  instance,
+  process.env.SUBKIT_DEMO_URL ?? process.env.SUBKIT_LOCAL_URL ?? instance.baseUrl,
 );
 for (const arg of process.argv.slice(2))
   if (arg !== "--keep-workflow") throw new Error(`Unknown option: ${arg}`);
-if (base.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(base.hostname))
-  throw new Error("Local journeys require a loopback HTTP installation");
-const key = readFileSync(resolve(".artifacts/cockpit-demo/api-key.txt"), "utf8").trim();
+const directory = cockpitDemoStateDirectory(instance, process.env.SUBKIT_DEMO_STATE_DIR);
+const key = readFileSync(resolve(directory, "api-key.txt"), "utf8").trim();
 const headers = { authorization: `Bearer ${key}`, "content-type": "application/json" };
 const suffix = randomUUID().slice(0, 8);
 const label = `local-journey-${suffix}`;
@@ -20,7 +24,7 @@ const steps: Json[] = [];
 const owned: { path: string; id: string }[] = [];
 let retainedWorkflow: Json | undefined;
 const keepWorkflow = process.argv.includes("--keep-workflow");
-const output = resolve(".artifacts/cockpit-demo/local-functional-journey.json");
+const output = resolve(directory, "local-functional-journey.json");
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -254,12 +258,11 @@ try {
       failure ??= `Cleanup: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
-  mkdirSync(resolve(".artifacts/cockpit-demo"), { recursive: true });
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
   let installation: unknown;
   try {
-    const receipt = JSON.parse(
-      readFileSync(resolve(".artifacts/cockpit-demo/receipt.json"), "utf8"),
-    );
+    const receipt = JSON.parse(readFileSync(resolve(directory, "receipt.json"), "utf8"));
     installation = { image: receipt.image, source: receipt.source, checkedAt: receipt.checkedAt };
   } catch {
     installation = { attribution: "receipt unavailable" };
@@ -269,6 +272,7 @@ try {
     `${JSON.stringify({ checkedAt: new Date().toISOString(), base: base.origin, installation, label, passed: !failure, failure, steps, retainedWorkflow: keepWorkflow ? retainedWorkflow : undefined, exclusions: ["No chat/model generation", "No visual assertions/screenshots", "Human grant and authorized live execution require the separate browser journey"] }, null, 2)}\n`,
     { mode: 0o600 },
   );
+  chmodSync(output, 0o600);
 }
 if (failure) {
   process.stderr.write(`${failure}\nEvidence: ${output}\n`);
