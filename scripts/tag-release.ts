@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { liveGateFailureHint } from "./llm-live-checks.ts";
+import { assertReleaseRefsUnchanged, releaseGateContext } from "./release-gate-provenance.ts";
 import { releaseVersionWasUsed } from "./release-history.ts";
 import { writeComparison } from "./runtime-benchmark/report.ts";
 import { lockfileSha256, sourceSha256 } from "./runtime-benchmark/runner.ts";
@@ -42,13 +43,15 @@ require_(
   `HEAD (${head.slice(0, 8)}) is not origin/main (${originMain.slice(0, 8)}) — push or pull first`,
 );
 
-const localTag = (() => {
+function readLocalTag(): string {
   try {
     return git("rev-parse", "--verify", "--quiet", `refs/tags/${tag}`);
-  } catch {
-    return "";
+  } catch (error) {
+    if ((error as { status?: number }).status === 1) return "";
+    throw error;
   }
-})();
+}
+const localTag = readLocalTag();
 const remoteTag = git("ls-remote", "--tags", "origin", `refs/tags/${tag}`);
 
 require_(remoteTag === "", `${tag} already exists on origin — bump to the next version`);
@@ -153,9 +156,54 @@ try {
   process.exit(1);
 }
 
+if (
+  git("rev-parse", "HEAD") !== head ||
+  git("status", "--porcelain") !== "" ||
+  git("ls-remote", "origin", "refs/heads/main").split(/\s+/)[0] !== head
+) {
+  throw new Error("Release source changed during verification; refusing to publish gate status");
+}
+assertReleaseRefsUnchanged(
+  localTag,
+  readLocalTag(),
+  git("ls-remote", "--tags", "origin", `refs/tags/${tag}`),
+  head,
+);
+execFileSync(
+  "gh",
+  [
+    "api",
+    "--method",
+    "POST",
+    `repos/{owner}/{repo}/statuses/${head}`,
+    "-f",
+    "state=success",
+    "-f",
+    `context=${releaseGateContext(tag)}`,
+    "-f",
+    "description=Mandatory local verification, live models and runtime capacity passed",
+    "--silent",
+  ],
+  { cwd: REPO, stdio: "inherit" },
+);
+
+assertReleaseRefsUnchanged(
+  localTag,
+  readLocalTag(),
+  git("ls-remote", "--tags", "origin", `refs/tags/${tag}`),
+  head,
+);
 if (localTag === "") git("tag", tag, head);
+if (readLocalTag() !== head) throw new Error("Release tag no longer points to the verified commit");
 console.log(`release:tag: ${tag} → ${head.slice(0, 8)}`);
 
-execFileSync("git", ["push", "origin", `refs/tags/${tag}`], { cwd: REPO, stdio: "inherit" });
+const pushed = execFileSync("git", ["push", "--porcelain", "origin", `${head}:refs/tags/${tag}`], {
+  cwd: REPO,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "inherit"],
+});
+process.stdout.write(pushed);
+if (!pushed.split("\n").some((line) => line.startsWith("*\t") && line.endsWith("[new tag]")))
+  throw new Error("Release tag was not newly created on origin; refusing version reuse");
 console.log(`\nrelease:tag: pushed ${tag}. Verify the deployed engine with:`);
 console.log(`  bun run verify:release -- --engine-url <url> --version ${version}`);
