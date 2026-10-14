@@ -1,4 +1,5 @@
 import type { components } from "@/api/schema";
+import { type ActorDirectory, actorDirectoryName } from "@/app/actor-directory-model";
 import type { ApiAccessSection } from "@/app/links";
 import type { TranslationKey } from "@/lib/i18n";
 import type { CatalogLabel } from "@/lib/machine-label";
@@ -7,9 +8,103 @@ import { permissionLabel } from "@/pages/admin-model";
 type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export type ApiKeyItem = components["schemas"]["ApiKey"];
+
+export function apiKeyOwnerLabel(
+  owner: Pick<ApiKeyItem, "user_id" | "system_account_id">,
+  directory: ActorDirectory,
+  t: Translate,
+): string {
+  if (owner.user_id && !owner.system_account_id) {
+    return actorDirectoryName(directory, "user", owner.user_id) ?? t("audit.actor.user");
+  }
+  if (owner.system_account_id && !owner.user_id) {
+    return (
+      actorDirectoryName(directory, "system_account", owner.system_account_id) ??
+      t("audit.actor.systemAccount")
+    );
+  }
+  return t("common.unknown");
+}
+
+export function apiKeyCreatorLabel(
+  creator: ApiKeyItem["creator"],
+  directory: ActorDirectory,
+  t: Translate,
+): string {
+  if (!creator) return t("common.unknown");
+  if (creator.kind === "system") return t("audit.actor.system");
+  return (
+    actorDirectoryName(directory, creator.kind, creator.id) ??
+    t(creator.kind === "user" ? "audit.actor.user" : "audit.actor.systemAccount")
+  );
+}
 export type ConnectedClientItem = components["schemas"]["OAuthClient"] & {
   last_used_at?: string | null;
 };
+
+export interface ConnectedClientHistoryLine {
+  person: string;
+  connectedAt: string | null;
+  revokedAt: string | null;
+  legacyUnknown: boolean;
+}
+
+export interface ConnectedClientActiveSummary {
+  people: string[];
+  moreCount: number;
+  hasUnknownLegacy: boolean;
+}
+
+export function connectedClientActiveSummary(
+  connectedBy: ConnectedClientItem["connected_by"],
+  t: Translate,
+): ConnectedClientActiveSummary {
+  const seenUsers = new Set<string>();
+  const active = connectedBy.grants
+    .filter((grant) => grant.revoked_at === null)
+    .sort((left, right) => Date.parse(right.connected_at) - Date.parse(left.connected_at))
+    .filter((grant) => {
+      if (seenUsers.has(grant.user_id)) return false;
+      seenUsers.add(grant.user_id);
+      return true;
+    });
+  return {
+    people: active
+      .slice(0, 2)
+      .map(
+        (grant) =>
+          grant.display_name?.trim() || grant.email?.trim() || t("connectedClients.unknownPerson"),
+      ),
+    moreCount: Math.max(0, active.length - 2),
+    hasUnknownLegacy: connectedBy.has_unknown_legacy,
+  };
+}
+
+export function connectedClientHistory(
+  connectedBy: ConnectedClientItem["connected_by"],
+  t: Translate,
+): ConnectedClientHistoryLine[] {
+  const grants: ConnectedClientHistoryLine[] = connectedBy.grants
+    .map((grant) => ({
+      person:
+        grant.display_name?.trim() || grant.email?.trim() || t("connectedClients.unknownPerson"),
+      connectedAt: grant.connected_at,
+      revokedAt: grant.revoked_at,
+      legacyUnknown: false,
+    }))
+    .sort(
+      (left, right) => Date.parse(right.connectedAt ?? "") - Date.parse(left.connectedAt ?? ""),
+    );
+  if (connectedBy.has_unknown_legacy) {
+    grants.push({
+      person: t("connectedClients.unknownLegacy"),
+      connectedAt: null,
+      revokedAt: null,
+      legacyUnknown: true,
+    });
+  }
+  return grants;
+}
 
 export const API_KEYS_QUERY = ["admin", "api-keys"] as const;
 

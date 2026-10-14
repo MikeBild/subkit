@@ -13,6 +13,7 @@ import {
   runOverlaySearch,
   runsFilterSearch,
   runsSummaryText,
+  runsWindowSummaryText,
   runTraceEvidence,
 } from "@/pages/runs-model";
 
@@ -354,6 +355,17 @@ describe("the summary line over all runs", () => {
     expect(
       runsSummaryText(1240, 0, (key, count, values) => translatePlural("de", key, count, values)),
     ).toBe("1.240 Läufe · 0 fehlgeschlagen");
+  });
+
+  test("a seven-day summary uses the compact localized window wording", () => {
+    const de = (
+      key: Parameters<typeof translatePlural>[1],
+      count: number,
+      values?: Record<string, string | number>,
+    ) => translatePlural("de", key, count, values);
+    expect(runsWindowSummaryText(240, 120, de)).toBe("240 Läufe in 7 Tagen · 120 fehlgeschlagen");
+    expect(runsWindowSummaryText(1, 1, de)).toBe("1 Lauf in 7 Tagen · 1 fehlgeschlagen");
+    expect(runsWindowSummaryText(240, null, de)).toBe("240 Läufe in 7 Tagen");
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { connectorAuthState, connectorHealthLabel, needsRenewal } from "./connector-auth-state";
 import { CATALOGS } from "./i18n";
+import { statusLabel } from "./status-label";
 
 describe("connector auth state", () => {
   test("a rejected credential reads as expired whichever column carries it", () => {
@@ -112,6 +113,13 @@ describe("connector auth state", () => {
       expect(en.toLowerCase()).not.toContain("unknown");
       expect(de.toLowerCase()).not.toContain("unbekannt");
     }
+  });
+
+  test("degraded has one truthful label across connector and workflow status surfaces", () => {
+    expect(connectorHealthLabel("degraded")).toBe("connectors.healthState.degraded");
+    expect(statusLabel((key) => key, "degraded")).toBe("connectors.healthState.degraded");
+    expect(CATALOGS.en["connectors.healthState.degraded"]).toBe("Limited");
+    expect(CATALOGS.de["connectors.healthState.degraded"]).toBe("Eingeschränkt");
   });
 
   test("an unmapped health state yields no line rather than an invented one", () => {

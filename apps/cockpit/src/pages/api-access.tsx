@@ -4,7 +4,6 @@ import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { apiRequest } from "@/api/client";
 import { useActorDirectory } from "@/app/actor-directory";
-import { actorDirectoryName } from "@/app/actor-directory-model";
 import { type ApiAccessSection, apiAccessSectionFromUrl } from "@/app/links";
 import { useLiveQueryOptions } from "@/app/live-events";
 import { useSession } from "@/app/session";
@@ -41,7 +40,11 @@ import { useI18n } from "@/lib/i18n-context";
 import {
   API_KEYS_QUERY,
   type ApiKeyItem,
+  apiKeyCreatorLabel,
+  apiKeyOwnerLabel,
   type ConnectedClientItem,
+  connectedClientActiveSummary,
+  connectedClientHistory,
   groupApiKeys,
   groupConnectedClients,
   type KeyScopePreset,
@@ -405,17 +408,11 @@ function KeysSection({
               { label: t("apiKeys.created"), value: dateTime(opened.created_at) },
               {
                 label: t("apiKeys.owner"),
-                value:
-                  opened.user_id && !opened.system_account_id
-                    ? (actorDirectoryName(directory, "user", opened.user_id) ??
-                      t("audit.actor.user"))
-                    : opened.system_account_id && !opened.user_id
-                      ? (actorDirectoryName(
-                          directory,
-                          "system_account",
-                          opened.system_account_id,
-                        ) ?? t("audit.actor.systemAccount"))
-                      : t("common.unknown"),
+                value: apiKeyOwnerLabel(opened, directory, t),
+              },
+              {
+                label: t("apiKeys.creator"),
+                value: apiKeyCreatorLabel(opened.creator, directory, t),
               },
               {
                 label: t("apiAccess.column.lastUsed"),
@@ -606,6 +603,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   const client = useQueryClient();
   const canRevoke = session.permissions.includes("mcp_oauth_client:revoke");
   const [revoking, setRevoking] = useState<ConnectedClientItem | null>(null);
+  const [opened, setOpened] = useState<ConnectedClientItem | null>(null);
   const revoke = useMutation({
     mutationFn: (clientId: string) =>
       apiRequest<void>(`/v1/oauth/clients/${encodeURIComponent(clientId)}`, { method: "DELETE" }),
@@ -633,20 +631,37 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
         { width: "w-[28%]" },
       ),
       column.custom(
-        "approved_by",
-        (item) => item.approved_by.join(", "),
-        t("apiAccess.column.approvedBy"),
-        (item) => (
-          <span className="block truncate" title={item.approved_by.join(", ")}>
-            {item.approved_by.length ? item.approved_by.join(", ") : "—"}
-          </span>
-        ),
-        { width: "w-[30%]" },
+        "connected_by",
+        (item) => connectedClientActiveSummary(item.connected_by, t).people.join(", "),
+        t("apiAccess.column.connectedBy"),
+        (item) => {
+          const summary = connectedClientActiveSummary(item.connected_by, t);
+          return (
+            <span className="block space-y-1">
+              {summary.people.length ? (
+                <span className="block truncate">
+                  {summary.people.join(", ")}
+                  {summary.moreCount > 0
+                    ? ` ${t("connectedClients.moreActivePeople", { count: summary.moreCount })}`
+                    : ""}
+                </span>
+              ) : summary.hasUnknownLegacy ? null : (
+                <span className="block">—</span>
+              )}
+              {summary.hasUnknownLegacy ? (
+                <span className="block text-xs text-muted-foreground">
+                  {t("connectedClients.unknownLegacy")}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
+        { width: "w-[38%]" },
       ),
       column.date(
         "last_used_at",
         (item) => item.last_used_at ?? null,
-        t("apiAccess.column.lastUsed"),
+        t("connectedClients.lastActive"),
         {
           width: "w-[20%]",
         },
@@ -655,8 +670,11 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
   }, [t, dateTime]);
 
   const groups = groupConnectedClients(query.data?.items ?? []);
+  const openedHistory = opened ? connectedClientHistory(opened.connected_by, t) : [];
+  const rowLabel = (item: ConnectedClientItem) =>
+    t("connectedClients.openRow", { name: item.client_name || t("connectedClients.unnamed") });
   const clientTable = (id: string, rows: ConnectedClientItem[], empty: string) => (
-    <ListTable
+    <ListTable<ConnectedClientItem>
       id={id}
       columns={columns}
       rows={rows}
@@ -682,6 +700,8 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
               ) : null
           : undefined
       }
+      onOpen={setOpened}
+      rowLabel={rowLabel}
     />
   );
   const total = query.data?.items.length ?? 0;
@@ -723,6 +743,45 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
           {clientTable("connected-clients-disabled-list", groups.disabled, "")}
         </CollapsibleSection>
       ) : null}
+      <RecordSheet
+        dock
+        open={opened !== null}
+        onOpenChange={(next) => !next && setOpened(null)}
+        title={opened?.client_name || t("connectedClients.unnamed")}
+        testId="connected-client-sheet"
+      >
+        {opened ? (
+          <FactList
+            testId="connected-client-sheet-facts"
+            items={
+              openedHistory.length
+                ? openedHistory.map((line) => ({
+                    label: t("apiAccess.column.connectedBy"),
+                    value: (
+                      <span className="block space-y-1">
+                        <span className="block">{line.person}</span>
+                        {line.connectedAt ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {t("connectedClients.connectedAt", {
+                              date: dateTime(line.connectedAt),
+                            })}
+                          </span>
+                        ) : null}
+                        {line.revokedAt ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {t("connectedClients.revokedAt", {
+                              date: dateTime(line.revokedAt),
+                            })}
+                          </span>
+                        ) : null}
+                      </span>
+                    ),
+                  }))
+                : [{ label: t("apiAccess.column.connectedBy"), value: "—" }]
+            }
+          />
+        ) : null}
+      </RecordSheet>
       <ConfirmDialog
         open={Boolean(revoking)}
         onOpenChange={(next) => !next && setRevoking(null)}
@@ -730,13 +789,7 @@ function ClientsSection({ query }: { query: UseQueryResult<{ items: ConnectedCli
           name: revoking?.client_name || t("connectedClients.unnamed"),
         })}
         verb={t("connectedClients.revokeVerb")}
-        consequence={
-          revoking && revoking.approved_by.length > 0
-            ? t("connectedClients.revokeConsequence", {
-                people: revoking.approved_by.join(", "),
-              })
-            : t("connectedClients.revokeConsequenceNoApproval")
-        }
+        consequence={t("connectedClients.revokeConsequence")}
         destructive
         onConfirm={async () => {
           if (revoking) await revoke.mutateAsync(revoking.client_id).catch(() => undefined);

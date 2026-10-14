@@ -43,6 +43,7 @@ import {
   auditActionLabel,
   auditActorName,
   auditAreaParams,
+  auditCountKey,
   auditDetailFacts,
   auditEvidenceBlocks,
   auditLinkParams,
@@ -55,6 +56,7 @@ import {
   auditScopeParams,
   auditSearchActions,
   canReadDirectory,
+  hasExplicitAuditWindow,
   initialAuditFilter,
   isAuditEntry,
   NO_AUDIT_LINK,
@@ -364,14 +366,17 @@ export function AuditPage() {
               {pending
                 ? t("audit.summary")
                 : t(
-                    list.infinite.hasNextPage
-                      ? "audit.countMore"
-                      : rows.length === 1
-                        ? "audit.count.one"
-                        : "audit.count",
-                    { count: rows.length },
+                    auditCountKey(
+                      window.location.search,
+                      linked,
+                      rows.length,
+                      list.infinite.hasNextPage,
+                    ),
+                    {
+                      count: rows.length,
+                    },
                   )}
-              {linked.tsFrom || linked.tsTo ? (
+              {hasExplicitAuditWindow(window.location.search) && (linked.tsFrom || linked.tsTo) ? (
                 <> · {windowFilterLabel(linked.tsFrom, linked.tsTo, t, dateTime)}</>
               ) : null}
             </span>

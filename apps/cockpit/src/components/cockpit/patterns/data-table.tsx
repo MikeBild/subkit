@@ -535,7 +535,7 @@ export function DataTable<TData extends RowData>({
       <div
         className={cn(
           "@container min-h-0 overflow-auto",
-          cards ? "hidden @2xl:block" : "block",
+          cards ? "hidden @4xl:block" : "block",
           stateOnly ? null : "rounded-lg border",
         )}
         data-testid={`${collectionId}-desktop`}
@@ -663,6 +663,7 @@ export function DataTable<TData extends RowData>({
                         key={cell.id}
                         style={{ width: widthByColumnId.get(cell.column.id) }}
                         className={cn(
+                          "min-w-0",
                           priorityClass(cell.column.columnDef.meta?.priority),
                           cellIndex === 0 ? "font-medium" : "text-muted-foreground",
                         )}
@@ -690,7 +691,7 @@ export function DataTable<TData extends RowData>({
                         style={{ width: "14rem" }}
                         data-slot="row-actions"
                       >
-                        <span className="flex items-center justify-end gap-1">
+                        <span className="flex max-w-full flex-wrap items-center justify-end gap-1">
                           {rowActions?.(row.original, index)}
                         </span>
                       </TableCell>
@@ -715,7 +716,7 @@ export function DataTable<TData extends RowData>({
         ) : null}
       </div>
       {cards ? (
-        <div className="min-h-0 overflow-y-auto @2xl:hidden" data-testid={`${collectionId}-mobile`}>
+        <div className="min-h-0 overflow-y-auto @4xl:hidden" data-testid={`${collectionId}-mobile`}>
           {showSkeleton ? (
             <div
               className={cn("grid divide-y", phase === "reserve" ? "invisible" : "sk-fade-in")}

@@ -361,6 +361,19 @@ describe("the sentence", () => {
     ).toBe("1 Vorschlag");
   });
 
+  test("degraded overview entries say limited and use the shared warning state", () => {
+    const row = attentionRow(item({ reason: "degraded" }), de);
+    expect(row.reason).toBe("Eingeschränkt");
+    expect(row.badge).toEqual({
+      state: "degraded",
+      label: "connectors.healthState.degraded",
+    });
+    expect(attentionRow(item({ reason: "degraded" }), en).reason).toBe("Limited");
+    expect(de("operations.cause.degraded", { name: "A" })).toBe(
+      "Konnektor A antwortet wiederholt mit Fehlern",
+    );
+  });
+
   test("a reason this build does not know keeps the subject and shows the engine's value, marked", () => {
     const sentence = attentionSentence(
       item({ reason: "quota_frozen" as AttentionItem["reason"] }),

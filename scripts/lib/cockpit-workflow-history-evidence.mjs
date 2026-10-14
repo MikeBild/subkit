@@ -1,4 +1,4 @@
-import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
+import { formatDateTime, LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
 
 function require(condition, message) {
   if (!condition) throw new Error(message);
@@ -15,11 +15,20 @@ export async function verifyWorkflowHistoryEvidence(
   capture,
   { mockApi, recordId },
 ) {
-  const t = (key) => translate(locale, key);
+  const t = (key, values) => translate(locale, key, values);
   const actorId = "01900000-0000-4000-8000-000000000071";
   const email = "workflow-author@example.test";
+  const fileCreatorId = "01900000-0000-4000-8000-000000000072";
+  const fileCreatorEmail = "file-creator@example.test";
+  const keyOwnerId = "01900000-0000-4000-8000-000000000073";
+  const keyOwnerEmail = "key-owner@example.test";
+  const keyCreatorId = "01900000-0000-4000-8000-000000000074";
+  const keyCreatorEmail = "key-creator@example.test";
+  const unknownAuthorityCreatorId = "01900000-0000-4000-8000-000000000075";
   const account = "Workflow publishing account";
   const checksum = "09af".repeat(16);
+  const fileCreatedAt = "2026-08-10T09:00:00.000Z";
+  const authorityCreatedAt = "2026-08-10T08:00:00.000Z";
   const history = [
     {
       id: "01900000-0000-4000-8000-000000000083",
@@ -47,6 +56,9 @@ export async function verifyWorkflowHistoryEvidence(
     checksum: row.version === 3 ? checksum : String(row.version).repeat(64),
   }));
   let undocumented = false;
+  let fileCreatorKnown = true;
+  let keyCreatorKnown = true;
+  let authorityCreatorKnown = true;
   let definition;
   const writes = [];
   const pattern = "**/v1/**";
@@ -99,8 +111,43 @@ export async function verifyWorkflowHistoryEvidence(
     if (path === "/v1/identity/users")
       return transform(route, (body) => ({
         ...body,
-        items: [{ ...body.items[0], id: actorId, email }],
-        total: 1,
+        items: [
+          [actorId, email],
+          [fileCreatorId, fileCreatorEmail],
+          [keyOwnerId, keyOwnerEmail],
+          [keyCreatorId, keyCreatorEmail],
+        ].map(([id, address]) => ({ ...body.items[0], id, email: address })),
+        total: 4,
+      }));
+    if (path === `/v1/files/${recordId}`)
+      return transform(route, (body) => ({
+        ...body,
+        created_by: fileCreatorKnown ? fileCreatorId : actorId,
+        creator: fileCreatorKnown ? { kind: "user", id: fileCreatorId } : null,
+        created_at: fileCreatedAt,
+      }));
+    if (path === "/v1/identity/api-keys")
+      return transform(route, (body) => ({
+        ...body,
+        items: body.items.map((item) =>
+          item.id === recordId
+            ? {
+                ...item,
+                user_id: keyOwnerId,
+                system_account_id: null,
+                creator: keyCreatorKnown ? { kind: "user", id: keyCreatorId } : null,
+              }
+            : item,
+        ),
+      }));
+    if (path === `/v1/workflows/${recordId}/execution-authorities`)
+      return transform(route, (body) => ({
+        ...body,
+        items: body.items.map((authority) => ({
+          ...authority,
+          created_at: authorityCreatedAt,
+          created_by: authorityCreatorKnown ? actorId : unknownAuthorityCreatorId,
+        })),
       }));
     if (path === "/v1/identity/system-accounts")
       return transform(route, (body) => ({
@@ -160,6 +207,113 @@ export async function verifyWorkflowHistoryEvidence(
       t("runs.caller.unknown"),
     );
     await capture("workflow-technical-undocumented-creator-checksum");
+
+    await stand.visit(page, `files/${recordId}`);
+    const fileFacts = page.getByTestId("file-facts");
+    await fileFacts
+      .getByText(
+        t("files.uploadedBy", {
+          date: formatDateTime(locale, fileCreatedAt),
+          name: fileCreatorEmail,
+        }),
+        { exact: true },
+      )
+      .waitFor({ state: "visible" });
+    require(!(await fileFacts.innerText()).includes(
+      fileCreatorId,
+    ), "File facts expose a raw creator identifier");
+    await capture("file-known-creator");
+    fileCreatorKnown = false;
+    await stand.visit(page, `files/${recordId}`);
+    await fileFacts
+      .getByText(
+        t("files.uploadedBy", {
+          date: formatDateTime(locale, fileCreatedAt),
+          name: t("runs.caller.unknown"),
+        }),
+        { exact: true },
+      )
+      .waitFor({ state: "visible" });
+    require(!(await fileFacts.innerText()).includes(
+      fileCreatorId,
+    ), "Unknown file creator exposes a raw identifier");
+    await capture("file-unknown-creator");
+
+    await stand.visit(page, "api-access?section=keys");
+    await page
+      .locator(
+        '[data-testid="api-keys-row-link-0"]:visible, [data-testid="api-keys-mobile-row-link-0"]:visible',
+      )
+      .click();
+    const keyFacts = page.getByTestId("api-key-sheet-facts");
+    const ownerFact = keyFacts.getByText(t("apiKeys.owner"), { exact: true }).locator("xpath=..");
+    const creatorFact = keyFacts
+      .getByText(t("apiKeys.creator"), { exact: true })
+      .locator("xpath=..");
+    await ownerFact.getByText(keyOwnerEmail, { exact: true }).waitFor({ state: "visible" });
+    await creatorFact.getByText(keyCreatorEmail, { exact: true }).waitFor({ state: "visible" });
+    require(!(await keyFacts.innerText()).includes(keyOwnerId) &&
+      !(await keyFacts.innerText()).includes(
+        keyCreatorId,
+      ), "API-key facts expose a raw owner or creator identifier");
+    await capture("api-key-owner-distinct-from-creator");
+    keyCreatorKnown = false;
+    await stand.visit(page, "api-access?section=keys");
+    await page
+      .locator(
+        '[data-testid="api-keys-row-link-0"]:visible, [data-testid="api-keys-mobile-row-link-0"]:visible',
+      )
+      .click();
+    const unknownKeyFacts = page.getByTestId("api-key-sheet-facts");
+    await unknownKeyFacts
+      .getByText(t("apiKeys.owner"), { exact: true })
+      .locator("xpath=..")
+      .getByText(keyOwnerEmail, { exact: true })
+      .waitFor({ state: "visible" });
+    await unknownKeyFacts
+      .getByText(t("apiKeys.creator"), { exact: true })
+      .locator("xpath=..")
+      .getByText(t("common.unknown"), { exact: true })
+      .waitFor({ state: "visible" });
+    await capture("api-key-unknown-creator-owner-retained");
+
+    await stand.visit(page, `workflows/${recordId}`);
+    await page.getByTestId("workflow-tabs-tab-approvals").click();
+    await page.getByTestId("workflow-former-grants-toggle").click();
+    const approvalRow = page.getByTestId("authority-history-0").locator("xpath=ancestor::tr");
+    await approvalRow
+      .getByText(`${email} · ${formatDateTime(locale, authorityCreatedAt)}`, { exact: true })
+      .waitFor({ state: "visible" });
+    require(!(await approvalRow.innerText()).includes(
+      actorId,
+    ), "Workflow approval row exposes a raw creator identifier");
+    await approvalRow.click();
+    const approvalSheet = page.getByTestId("authority-sheet");
+    await approvalSheet.waitFor({ state: "visible" });
+    await approvalSheet
+      .getByTestId("authority-effects")
+      .getByText("https://reports.example.test/monthly", { exact: false })
+      .waitFor({ state: "visible" });
+    require(!(await approvalSheet.innerText()).includes(
+      email,
+    ), "Workflow approval scope is confused with its creator");
+    await capture("workflow-approval-creator-separated-from-scope");
+    authorityCreatorKnown = false;
+    await stand.visit(page, `workflows/${recordId}`);
+    await page.getByTestId("workflow-tabs-tab-approvals").click();
+    await page.getByTestId("workflow-former-grants-toggle").click();
+    const unknownApprovalRow = page
+      .getByTestId("authority-history-0")
+      .locator("xpath=ancestor::tr");
+    await unknownApprovalRow
+      .getByText(`${t("audit.actor.user")} · ${formatDateTime(locale, authorityCreatedAt)}`, {
+        exact: true,
+      })
+      .waitFor({ state: "visible" });
+    require(!(await unknownApprovalRow.innerText()).includes(
+      unknownAuthorityCreatorId,
+    ), "Unmapped workflow approval creator exposes a raw identifier");
+    await capture("workflow-approval-unmapped-creator");
     require(writes.length === 0, "Read-only version evidence attempted a workflow mutation");
   } finally {
     await page.unroute(pattern, handler);

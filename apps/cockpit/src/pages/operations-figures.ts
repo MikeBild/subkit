@@ -97,7 +97,12 @@ export interface OperatingCounts {
     failed: number;
     successRatePercent: number | null;
   };
-  connectors: { enabled: number; notOk: number; healthyPercent: number | null };
+  connectors: {
+    enabled: number;
+    notOk: number;
+    needsReauth: number;
+    healthyPercent: number | null;
+  };
   repairs: { decided: number; appliedPercent: number | null };
 }
 
@@ -114,12 +119,25 @@ export function operatingCounts(envelope: unknown): OperatingCounts | null {
   const failed = countOf(runs.failed);
   const enabled = countOf(connectors.enabled);
   const notOk = countOf(connectors.not_ok);
+  const needsReauth = countOf(connectors.needs_reauth);
   const decided = countOf(repairs.decided);
-  if (total === null || failed === null || enabled === null || notOk === null || decided === null)
+  if (
+    total === null ||
+    failed === null ||
+    enabled === null ||
+    notOk === null ||
+    needsReauth === null ||
+    decided === null
+  )
     return null;
   return {
     runs: { total, failed, successRatePercent: numberOrNull(runs.success_rate_percent) },
-    connectors: { enabled, notOk, healthyPercent: numberOrNull(connectors.healthy_percent) },
+    connectors: {
+      enabled,
+      notOk,
+      needsReauth,
+      healthyPercent: numberOrNull(connectors.healthy_percent),
+    },
     repairs: { decided, appliedPercent: numberOrNull(repairs.applied_percent) },
   };
 }
@@ -153,7 +171,9 @@ export type OperatingFigure =
       value: number;
       href: string | null;
       basis: FigureBasis;
-      detail?: { kind: "failures" | "connectors"; count: number };
+      detail?:
+        | { kind: "failures"; count: number }
+        | { kind: "connectors"; count: number; needsReauth: number };
       money?: { currency: string; unpricedCalls: number };
       budget?: {
         percent: number;
@@ -240,7 +260,11 @@ export function operatingFigures(input: {
       id: "connectorHealth",
       state: "value",
       value: read.connectors.healthyPercent,
-      detail: { kind: "connectors", count: read.connectors.notOk },
+      detail: {
+        kind: "connectors",
+        count: read.connectors.notOk,
+        needsReauth: read.connectors.needsReauth,
+      },
       href:
         canOpen.connectors && read.connectors.notOk > 0
           ? connectorsHref({ health: "not_ok" })

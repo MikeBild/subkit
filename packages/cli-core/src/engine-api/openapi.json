@@ -1608,6 +1608,9 @@
               "not_ok": {
                 "type": "integer"
               },
+              "needs_reauth": {
+                "type": "integer"
+              },
               "healthy_percent": {
                 "type": [
                   "integer",
@@ -1624,6 +1627,7 @@
             "required": [
               "enabled",
               "not_ok",
+              "needs_reauth",
               "healthy_percent",
               "href"
             ]
@@ -3237,6 +3241,12 @@
           "email": {
             "type": "string"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "role": {
             "type": [
               "string",
@@ -3266,6 +3276,7 @@
           "id",
           "tenant_id",
           "email",
+          "display_name",
           "role",
           "status",
           "oauth_connections",
@@ -3302,6 +3313,14 @@
             "maxLength": 254,
             "format": "email"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 120
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -3316,19 +3335,55 @@
         ]
       },
       "UpdateUserBody": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "admin",
-              "member",
-              "enduser"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "member",
+                  "enduser"
+                ]
+              },
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "member",
+                  "enduser"
+                ]
+              },
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 120
+              }
+            },
+            "required": [
+              "display_name"
             ]
           }
-        },
-        "required": [
-          "role"
         ]
       },
       "ProviderIdentityBinding": {
@@ -3683,6 +3738,70 @@
             ],
             "format": "uuid"
           },
+          "creator": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "user"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "system_account"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "system"
+                    ]
+                  },
+                  "id": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Typed creator of the key, or null when creator provenance is unavailable or unknown."
+          },
           "allowed_workflows": {
             "type": [
               "array",
@@ -3744,6 +3863,7 @@
           "scopes",
           "user_id",
           "system_account_id",
+          "creator",
           "allowed_workflows",
           "allowed_connectors",
           "created_at",
@@ -4267,6 +4387,61 @@
             "type": "integer",
             "minimum": 0
           },
+          "connected_by": {
+            "type": "object",
+            "properties": {
+              "grants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "email": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "email"
+                    },
+                    "connected_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "revoked_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "display_name",
+                    "email",
+                    "connected_at",
+                    "revoked_at"
+                  ]
+                }
+              },
+              "has_unknown_legacy": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "grants",
+              "has_unknown_legacy"
+            ]
+          },
           "disabled_at": {
             "type": [
               "string",
@@ -4297,6 +4472,7 @@
           "registration_source",
           "approved_by",
           "live_connections",
+          "connected_by",
           "disabled_at",
           "retired_at",
           "created_at",
@@ -26604,7 +26780,13 @@
             "type": "string"
           },
           "actor_type": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "user",
+              "system_account",
+              "system",
+              "unknown"
+            ]
           },
           "actor_id": {
             "type": [
@@ -31631,7 +31813,7 @@
         "tags": [
           "identity"
         ],
-        "summary": "Update a user's role",
+        "summary": "Update a user's profile or role",
         "security": [
           {
             "bearerAuth": []
@@ -44644,6 +44826,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden — hiding is available for user-owned conversation lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -44686,6 +44878,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — visibility is available for user-owned conversation lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -49890,7 +50092,8 @@
               "enum": [
                 "user",
                 "system_account",
-                "system"
+                "system",
+                "unknown"
               ]
             },
             "required": false,

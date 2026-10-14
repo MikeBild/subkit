@@ -176,6 +176,17 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
   const openSheet = async () => {
     await stand.visit(page, `?review=workflow:${id}`);
     await page.getByTestId("attention-review-body").waitFor();
+    const reviewTitle = page.getByTestId("attention-review-title");
+    const expectedTitle = locale === "de" ? "1 Reparatur vorgeschlagen" : "1 repair proposed";
+    if ((await reviewTitle.innerText()).trim() !== expectedTitle)
+      throw new Error("The review sheet title does not identify the Monthly report proposal");
+    const workflowLink = page.getByTestId("attention-review-workflow");
+    await workflowLink.waitFor({ state: "visible" });
+    if ((await workflowLink.innerText()).trim() !== "Monthly report")
+      throw new Error("The review sheet workflow subtitle does not identify Monthly report");
+    const workflowTarget = new URL(await workflowLink.getAttribute("href"), page.url());
+    if (workflowTarget.pathname !== `/cockpit/workflows/${id}`)
+      throw new Error("The review sheet workflow subtitle does not link to its workflow");
   };
   const header = page.getByTestId("attention-review-actions");
   const approveOnly = async () => {
@@ -267,5 +278,282 @@ export async function verifyDecisionLifecycle(page, stand, id, locale, capture) 
       throw new Error("Combined approval did not settle after reload");
   } finally {
     for (const pattern of patterns) await page.unroute(pattern, handler);
+  }
+}
+
+export async function verifyOverviewDecisionVerbs(page, stand, id, locale) {
+  const now = new Date().toISOString();
+  const digest = "c".repeat(64);
+  const candidate = {
+    id,
+    workflow_id: id,
+    workflow_name: "Quarterly report",
+    tenant_id: id,
+    classification: "safe",
+    status: "proposed",
+    fixture_id: null,
+    created_at: now,
+    updated_at: now,
+    connector_id: null,
+    endpoint_key: null,
+    reviewable: true,
+    review_reason: null,
+    review_digest: digest,
+    diff: {
+      workflow_step_id: "fetch",
+      proposal: {
+        kind: "update_field_path",
+        classification: "safe",
+        description: "Map the response identifier",
+        reasoning: "The provider changed the result shape",
+        patch: { path: "data.id", value: "data.result.id" },
+      },
+    },
+  };
+  const entry = {
+    id: `workflow:${id}`,
+    class: "failing",
+    severity: "urgent",
+    kind: "workflow",
+    subject: { kind: "workflow", id, name: "Quarterly report" },
+    reason: "patch_proposed",
+    cause_class: null,
+    counts: { patches: 1 },
+    since: now,
+    deadline: null,
+    detail: null,
+    actions: [{ verb: "review", href: `/cockpit?review=workflow:${id}`, primary: true }],
+  };
+  const patterns = ["**/v1/patch-candidates**", "**/v1/attention*"];
+  const attemptedMutations = [];
+  const trackMutation = (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/v1/") && request.method() !== "GET")
+      attemptedMutations.push({ method: request.method(), path: url.pathname });
+  };
+  page.on("request", trackMutation);
+  const handler = async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() !== "GET") {
+      attemptedMutations.push({ method: request.method(), path });
+      return route.fulfill({ status: 405, contentType: "application/json", body: "{}" });
+    }
+    if (path === "/v1/attention")
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          schema_version: "attention.v1",
+          generated_at: now,
+          sources: Object.fromEntries(
+            [
+              "conversations",
+              "schedules",
+              "freshness",
+              "failures",
+              "patches",
+              "connectors",
+              "connections",
+              "secret_approvals",
+              "skills",
+              "budget",
+              "risk",
+            ].map((key) => [key, "answered"]),
+          ),
+          status: { health_state: "healthy", next_run_at: null },
+          items: [entry],
+        }),
+      });
+    if (path === "/v1/patch-candidates")
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [candidate], total: 1, reviewable_total: 1 }),
+      });
+    if (path === `/v1/patch-candidates/${id}/preview`)
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...candidate,
+          candidate_id: id,
+          reviewable: true,
+          review_digest: digest,
+          base_version_id: null,
+        }),
+      });
+    return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  };
+  for (const pattern of patterns) await page.route(pattern, handler);
+  const card = page.getByTestId("review-decision-0");
+  try {
+    await stand.visit(page, `?review=workflow:${id}`);
+    await page.getByTestId("attention-review-body").waitFor();
+    await card.waitFor({ state: "visible" });
+    const approve = page.getByTestId("review-decision-0-approve");
+    await approve.waitFor({ state: "visible" });
+    const expectedApprove = locale === "de" ? "Freigeben" : "Approve";
+    if ((await approve.innerText()).trim() !== expectedApprove)
+      throw new Error("The primary review action does not use the selected approval verb");
+    const reject = page.getByTestId("review-decision-0-reject");
+    await reject.waitFor({ state: "visible" });
+    const expectedReject = locale === "de" ? "Ablehnen" : "Reject";
+    if ((await reject.innerText()).trim() !== expectedReject)
+      throw new Error("The rejection action does not use the selected rejection verb");
+    await reject.click();
+    const note = page.getByTestId("review-decision-0-note");
+    await note.waitFor({ state: "visible" });
+    const expectedNoteLabel = locale === "de" ? "Notiz" : "Note";
+    const expectedPlaceholder =
+      locale === "de" ? "Warum wird das abgelehnt?" : "Why is this rejected?";
+    const expectedScope =
+      locale === "de"
+        ? "Die Notiz wird mit der Ablehnung festgehalten."
+        : "The note is recorded with the rejection.";
+    if ((await note.getAttribute("aria-label")) !== expectedNoteLabel)
+      throw new Error("The rejection note field does not have the localized label");
+    if ((await note.getAttribute("placeholder")) !== expectedPlaceholder)
+      throw new Error("The rejection note field does not have the localized prompt");
+    await page.getByText(expectedScope, { exact: true }).waitFor({ state: "visible" });
+    await note.fill("Keep the proposed change for later review");
+    await page.getByTestId("review-decision-0-reject-cancel").click();
+    if ((await note.count()) !== 0)
+      throw new Error("Cancel did not close the rejection note field");
+    if ((await card.count()) !== 1) throw new Error("Cancel removed the unresolved decision row");
+    await page.getByTestId("review-decision-0-reject").click();
+    const reopenedNote = page.getByTestId("review-decision-0-note");
+    await reopenedNote.waitFor({ state: "visible" });
+    if ((await reopenedNote.inputValue()) !== "")
+      throw new Error("Cancel did not reset the rejection note before reopening");
+    await page.getByTestId("review-decision-0-reject-cancel").click();
+    if ((await reopenedNote.count()) !== 0)
+      throw new Error("The reopened rejection note did not close on cancel");
+    if (attemptedMutations.length !== 0)
+      throw new Error(
+        `Review fixture received unexpected mutation requests: ${JSON.stringify(attemptedMutations)}`,
+      );
+  } finally {
+    page.off("request", trackMutation);
+    for (const pattern of patterns) await page.unroute(pattern, handler);
+  }
+}
+
+export async function verifyOverviewOperationsSummary(page, stand) {
+  await stand.visit(page, "");
+  const runsFigure = page.getByTestId("operations-figure-runs").filter({ visible: true });
+  await runsFigure.waitFor({ state: "visible" });
+  const runsTitle = runsFigure.locator(":scope > p").first();
+  const runsTitleText = (await runsTitle.innerText()).trim();
+  if (runsTitleText !== "Ausführungen")
+    throw new Error(`Overview runs title showed "${runsTitleText}" instead of Ausführungen`);
+  const runsFigureText = await runsFigure.innerText();
+  if (runsFigureText.includes("Läufe") || runsFigureText.includes("in 24 h"))
+    throw new Error("Overview runs tile contains Dummy-only title or subtitle copy");
+  const failedSubtitle = page.getByTestId("operations-figure-runs-detail");
+  await failedSubtitle.waitFor({ state: "visible" });
+  if ((await failedSubtitle.innerText()).trim() !== "4 fehlgeschlagen")
+    throw new Error("Overview runs subtitle did not show the exact localized failed count");
+  const connectorSubtitle = page.getByTestId("operations-figure-connectorHealth-detail");
+  await connectorSubtitle.waitFor({ state: "visible" });
+  if ((await connectorSubtitle.innerText()).trim() !== "5 brauchen Anmeldung")
+    throw new Error("Overview connector subtitle did not show the exact localized sign-in count");
+  const failureRow = page.getByTestId("overview-failures-row-0").filter({ visible: true });
+  await failureRow.waitFor({ state: "visible" });
+  const causeText = (await failureRow.locator("td").nth(1).innerText()).trim();
+  if (causeText !== "write_products · Anmeldung abgelehnt")
+    throw new Error(
+      `Overview failure cause showed "${causeText}" instead of the exact step and cause`,
+    );
+  const failuresText = await page.getByTestId("overview-failures").last().innerText();
+  if (failuresText.includes("PRIVATE_FAILURE_SENTINEL_DO_NOT_RENDER"))
+    throw new Error("Overview failure row exposed a technical error message");
+}
+
+export async function verifyOverviewDecisionHistory(page, stand, mockApi) {
+  const expectedActions = [
+    "patch_candidate.approved",
+    "patch_candidate.rejected",
+    "skill_candidate.approved",
+    "skill_candidate.rejected",
+    "approval.granted",
+    "approval.approved",
+    "approval.rejected",
+    "approval.declined",
+    "workflow.authority_granted",
+    "workflow.authority_revoked",
+    "policy.denied",
+    "approval.dispatch_denied",
+    "execution.boundary_refused",
+    "rbac.role_created",
+    "rbac.role_deleted",
+    "rbac.permission_granted",
+    "rbac.permission_revoked",
+    "rbac.user_role_assigned",
+    "rbac.user_role_revoked",
+    "user.created",
+    "user.deleted",
+    "user.role_changed",
+    "api_key.issued",
+    "api_key.revoked",
+    "workflow.deleted",
+    "workflow.version_restored",
+    "knowledge_source.restored",
+    "schedule.created",
+    "schedule.deleted",
+    "connector.deleted",
+    "secret.version_created",
+    "secret.version_revoked",
+    "settings.changed",
+  ];
+  const auditRequests = [];
+  const trackAudit = (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/v1/audit-log") auditRequests.push(url);
+  };
+  page.on("request", trackAudit);
+  try {
+    await stand.visit(page, "");
+    const historyLink = page.getByTestId("attention-history");
+    await historyLink.waitFor();
+    if ((await historyLink.innerText()).trim() !== "Was bereits entschieden wurde")
+      throw new Error("Overview history link label does not match the selected German copy");
+    const target = new URL(await historyLink.getAttribute("href"), page.url());
+    if (target.pathname !== "/cockpit/audit" || target.searchParams.get("scope") !== "decisions")
+      throw new Error("Overview history link did not target the decisions audit");
+    await historyLink.click();
+    await page.getByTestId("resource-audit").waitFor();
+    const current = new URL(page.url());
+    if (current.pathname !== "/cockpit/audit" || current.searchParams.get("scope") !== "decisions")
+      throw new Error("Overview decision history did not navigate to the decisions audit");
+    const scopedRequest = auditRequests.find((url) => url.searchParams.has("action"));
+    const actions = scopedRequest?.searchParams.get("action")?.split(",") ?? [];
+    if (JSON.stringify(actions) !== JSON.stringify(expectedActions))
+      throw new Error("Decision history did not load the curated decisions audit filter");
+
+    const overrideBootstrap = "**/v1/cockpit/bootstrap";
+    const withoutAuditPermission = async (route) => {
+      await mockApi({
+        request: () => route.request(),
+        fulfill: async (response) => {
+          const body = JSON.parse(response.body);
+          body.permissions = body.permissions.filter((permission) => permission !== "audit:read");
+          await route.fulfill({ ...response, body: JSON.stringify(body) });
+        },
+      });
+    };
+    await page.route(overrideBootstrap, withoutAuditPermission);
+    try {
+      const auditRequestCount = auditRequests.length;
+      await stand.visit(page, "");
+      if ((await page.getByTestId("attention-history").count()) !== 0)
+        throw new Error("Decision history link appeared without audit:read");
+      if (auditRequests.length !== auditRequestCount)
+        throw new Error("Overview loaded the audit API without audit:read");
+    } finally {
+      await page.unroute(overrideBootstrap, withoutAuditPermission);
+    }
+  } finally {
+    page.off("request", trackAudit);
   }
 }

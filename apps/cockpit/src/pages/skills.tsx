@@ -790,8 +790,8 @@ function SkillEditor({ id, permissions }: { id: string; permissions: readonly st
               items={[
                 { label: t("common.name"), value: title.trim() || MISSING },
                 {
-                  label: t("skills.editor.appliesTo"),
-                  value: t(skillAppliesToOptionKey(appliesTo)),
+                  label: t("skills.column.scope"),
+                  value: t(skillScopeKey(skill?.scope ?? "global")),
                 },
               ]}
               testId="skill-editor-preview-facts"

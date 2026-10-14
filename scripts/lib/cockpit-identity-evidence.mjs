@@ -2,7 +2,10 @@ import { LOCALE_TAGS, translate } from "../../apps/cockpit/src/lib/i18n.ts";
 
 const CHECKED_AT = "2026-08-09T07:23:00.000Z";
 const AUTHORITY_ID = "83a5ea73-46ce-497f-92f2-e3022a58d089";
+const UNKNOWN_AUTHORITY_ID = "94b6fb84-57df-508a-a3f3-f3033b3e109a";
 const ACTOR_ID = "56fd4ae5-87b5-4ad9-a6ec-adbcf327786e";
+const UNKNOWN_ACTOR_ID = "67ef5bf6-98c6-50e9-b4fd-d4de4c43879f";
+const TRACE_ID = "78f06c07-a9d7-510f-c50e-e5ef5d54980a";
 const GROUP_ID = "65bf6592-a6f3-4d54-bc65-3a5d92eca871";
 const ROLE_ID = "0e099ad8-d906-4dcc-a82d-3b20ec0c6553";
 const ACTOR_EMAIL = "identity-reader@example.test";
@@ -13,6 +16,8 @@ const ISSUER = "https://identity.example.test";
 const CURRENT_SUBJECT = "current-provider-account";
 const RECORDED_SUBJECT = "recorded-reader-account";
 const SECOND_SUBJECT = "recorded-second-account";
+const READ_CONNECTOR_NAME = "Identity read source";
+const WRITE_CONNECTOR_NAME = "Identity write destination";
 const API_ROUTE = "**/v1/**";
 
 function require(condition, message) {
@@ -79,6 +84,7 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
   require(connectorId !== secondConnectorId, "Identity fixture needs two distinct connectors");
   const state = { hidden: false, hideWorkflowLink: false, unknown: false, phase: "admission" };
   const requests = [];
+  const authorityRequests = [];
   const handler = async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -117,6 +123,15 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
         items: [{ ...body.items[0], id: GROUP_ID, name: GROUP_NAME }],
       }));
     }
+    if (path === "/v1/connectors") {
+      return transformedMock(route, mockApi, (body) => ({
+        ...body,
+        items: [
+          { ...body.items[0], id: connectorId, name: READ_CONNECTOR_NAME },
+          { ...body.items[0], id: secondConnectorId, name: WRITE_CONNECTOR_NAME },
+        ],
+      }));
+    }
     if (path === `/v1/workflows/${workflowId}/invocation`) {
       return transformedMock(route, mockApi, (body) => ({
         ...body,
@@ -143,12 +158,46 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
         ...body,
         workflow_id: workflowId,
         workflow_version_id: workflowVersionId,
-        execution_authority_id: AUTHORITY_ID,
+        trace_id: TRACE_ID,
+        execution_authority_id: state.unknown ? UNKNOWN_AUTHORITY_ID : AUTHORITY_ID,
         execution_environment: "prod",
         permission_basis: state.unknown ? null : "role",
         permission_phase: state.unknown ? null : state.phase,
         permission_checked_at: state.unknown ? null : CHECKED_AT,
       }));
+    }
+    const authorityMatch = path.match(/^\/v1\/workflows\/([^/]+)\/execution-authorities\/([^/]+)$/);
+    if (authorityMatch?.[1] === workflowId) {
+      authorityRequests.push(`${request.method()} ${path}`);
+      const authorityId = decodeURIComponent(authorityMatch[2]);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: authorityId,
+          workflow_id: workflowId,
+          workflow_version_id: workflowVersionId,
+          effect_manifest_digest: "7".repeat(64),
+          effect_manifest: { schema_version: 1, effects: [] },
+          execution_environment: "prod",
+          target_constraints: { targets: [] },
+          valid_from: CHECKED_AT,
+          valid_until: null,
+          max_runs: null,
+          reserved_runs: 1,
+          remaining_runs: null,
+          open_ended: true,
+          created_by: state.unknown ? UNKNOWN_ACTOR_ID : ACTOR_ID,
+          created_at: CHECKED_AT,
+          revoked_at: null,
+          revoked_by: null,
+          inherited_from: null,
+          superseded_by: null,
+          active_version: true,
+          ready_for_new_run: true,
+          state: "approved",
+        }),
+      });
     }
     if (path === `/v1/executions/${executionId}/steps`) {
       return transformedMock(route, mockApi, (body) => {
@@ -209,11 +258,20 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
       .locator(":scope > div")
       .filter({ has: page.getByText(translate(locale, "runs.permission.label"), { exact: true }) })
       .locator("dd");
+  const authorizedByValue = (facts) =>
+    facts
+      .locator(":scope > div")
+      .filter({
+        has: page.getByText(translate(locale, "runs.permission.authorizedBy"), { exact: true }),
+      })
+      .locator("dd");
   const openRun = async () => {
     await stand.visit(page, `?run=${executionId}`);
     await page.getByTestId("run-detail").waitFor({ state: "visible" });
     await page.getByTestId("run-detail-why-toggle").click();
     await page.getByTestId("run-detail-why-facts").waitFor({ state: "visible" });
+    await page.getByTestId("run-detail-technical-toggle").click();
+    await page.getByTestId("run-detail-facts").waitFor({ state: "visible" });
   };
   const stepRow = (index) =>
     page.getByTestId(
@@ -236,6 +294,16 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     const access = page.getByTestId("workflow-start-access");
     await access.waitFor({ state: "visible" });
     const accessToggle = access.getByTestId("workflow-start-access-toggle");
+    const startAccessLabel = locale === "de" ? "Wer darf starten" : "Who may start";
+    require(translate(locale, "invocation.startAccess") ===
+      startAccessLabel, `Start access translation must be "${startAccessLabel}"`);
+    const accessibleAccessToggle = access.getByRole("button", {
+      name: startAccessLabel,
+      exact: true,
+    });
+    require((await accessibleAccessToggle.count()) === 1 &&
+      (await accessibleAccessToggle.getAttribute("data-testid")) ===
+        "workflow-start-access-toggle", `Start access disclosure must have the exact accessible label "${startAccessLabel}"`);
     require((await accessToggle.getAttribute("aria-expanded")) ===
       "false", "Start access must begin collapsed");
     await accessToggle.click();
@@ -253,6 +321,11 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     const speaksAs = page.getByTestId("connector-speaks-as");
     await contains(speaksAs, CURRENT_SUBJECT, "current connector identity");
     await contains(speaksAs, ISSUER, "current connector issuer");
+    await excludes(
+      speaksAs,
+      [ACTOR_EMAIL, ACCOUNT_NAME, GROUP_NAME, ROLE_NAME, ACTOR_ID],
+      "current connector identity",
+    );
     await capture("identity-connector-known");
     state.unknown = true;
     await stand.visit(page, `connectors/${connectorId}?tab=connection`);
@@ -261,7 +334,20 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
       translate(locale, "runs.caller.unknown"),
       "unknown connector identity",
     );
-    await excludes(speaksAs, [CURRENT_SUBJECT, RECORDED_SUBJECT], "unknown connector identity");
+    await excludes(
+      speaksAs,
+      [
+        CURRENT_SUBJECT,
+        RECORDED_SUBJECT,
+        SECOND_SUBJECT,
+        ACTOR_EMAIL,
+        ACCOUNT_NAME,
+        GROUP_NAME,
+        ROLE_NAME,
+        ACTOR_ID,
+      ],
+      "unknown connector identity",
+    );
     await capture("identity-connector-unknown");
     state.unknown = false;
 
@@ -287,6 +373,26 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
         "recorded check phase and time",
       );
       await contains(why, translate(locale, "authority.production"), "recorded environment");
+      const runFacts = page.getByTestId("run-detail-facts");
+      const assertRunFact = async (label, expected) => {
+        const row = runFacts
+          .locator(":scope > div")
+          .filter({ has: page.getByText(label, { exact: true }) });
+        require((await row.count()) === 1, `Run detail must show exactly one ${label} fact`);
+        require((await row.locator("dd").innerText()).trim() ===
+          expected, `Run detail ${label} value did not match the recorded value`);
+      };
+      await assertRunFact(translate(locale, "runs.detail.runId"), executionId);
+      await assertRunFact(translate(locale, "authority.version"), workflowVersionId);
+      await assertRunFact(translate(locale, "audit.detail.trace"), TRACE_ID);
+      await contains(
+        authorizedByValue(why),
+        ACTOR_EMAIL,
+        "execution authority grantor from the recorded authority",
+      );
+      require(authorityRequests.includes(
+        `GET /v1/workflows/${workflowId}/execution-authorities/${AUTHORITY_ID}`,
+      ), "The referenced execution authority was not fetched with its workflow-scoped GET");
       const link = why.locator(`a[title="${AUTHORITY_ID}"]`);
       await link.waitFor({ state: "visible" });
       const href = await link.getAttribute("href");
@@ -296,15 +402,39 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
           "#workflow-automation", "Recorded approval link has wrong destination");
       await capture(`identity-permission-${phase}`);
     }
-    await contains(stepRow(0), translate(locale, "sideEffects.read"), "recorded read effect");
-    await contains(stepRow(1), translate(locale, "sideEffects.write"), "recorded write effect");
+    const readStep = stepRow(0);
+    const writeStep = stepRow(1);
+    await readStep
+      .getByText(`${translate(locale, "sideEffects.read")} · ${READ_CONNECTOR_NAME}`, {
+        exact: true,
+      })
+      .waitFor({ state: "visible" });
+    await writeStep
+      .getByText(`${translate(locale, "sideEffects.write")} · ${WRITE_CONNECTOR_NAME}`, {
+        exact: true,
+      })
+      .waitFor({ state: "visible" });
     const inline = stepRow(0).getByTestId("run-step-identities-inline-0");
-    await inline.getByRole("button").click();
-    for (const subject of [RECORDED_SUBJECT, SECOND_SUBJECT])
-      await contains(inline, `${subject} · ${ISSUER}`, "inline recorded step identity");
+    const identityToggle = inline.getByRole("button", {
+      name: translate(locale, "connectorDetail.connection.speaksAs"),
+      exact: true,
+    });
+    const inlineIdentities = [RECORDED_SUBJECT, SECOND_SUBJECT].map((subject) =>
+      inline.getByText(`${subject} · ${ISSUER}`, { exact: true }),
+    );
+    require((await identityToggle.getAttribute("aria-expanded")) ===
+      "false", "Row identity disclosure must begin collapsed");
+    for (const fact of inlineIdentities) await fact.waitFor({ state: "hidden" });
+    await identityToggle.click();
+    require((await identityToggle.getAttribute("aria-expanded")) ===
+      "true", "Row identity disclosure must expand");
+    for (const fact of inlineIdentities) await fact.waitFor({ state: "visible" });
     require((await page.getByTestId("run-step-sheet").count()) ===
       0, "Inline identity disclosure must not open a separate step sheet");
-    await inline.getByRole("button").click();
+    await identityToggle.click();
+    require((await identityToggle.getAttribute("aria-expanded")) ===
+      "false", "Row identity disclosure must collapse");
+    for (const fact of inlineIdentities) await fact.waitFor({ state: "hidden" });
     await openStep(0);
     const identities = page.getByTestId("run-step-identities");
     for (const subject of [RECORDED_SUBJECT, SECOND_SUBJECT])
@@ -357,6 +487,14 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
       [translate(locale, "runs.permission.role")],
       "current access is not historical evidence",
     );
+    await contains(
+      authorizedByValue(unknown),
+      translate(locale, "runs.permission.authorizedByUnknown"),
+      "unresolved execution authority grantor",
+    );
+    require(authorityRequests.includes(
+      `GET /v1/workflows/${workflowId}/execution-authorities/${UNKNOWN_AUTHORITY_ID}`,
+    ), "The unknown authority fixture did not request its exact workflow-scoped resource");
     await capture("identity-permission-unknown");
 
     state.hidden = true;
@@ -374,6 +512,7 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     await capture("identity-start-access-hidden");
     require(requests.length === 0, "Hidden start rules requested restricted actor directories");
     state.hideWorkflowLink = true;
+    const authorityRequestsBeforeHiddenRun = authorityRequests.length;
     await openRun();
     const hidden = page.getByTestId("run-detail-why-facts");
     await contains(
@@ -383,6 +522,8 @@ export async function verifyIdentityEvidence(page, stand, locale, capture, fixtu
     );
     require((await hidden.locator(`a[title="${AUTHORITY_ID}"]`).count()) ===
       0, "Approval link exposed without workflow read permission");
+    require(authorityRequests.length ===
+      authorityRequestsBeforeHiddenRun, "Execution authority details were requested without workflow read permission");
     await capture("identity-approval-link-hidden");
   } finally {
     await page.unroute(API_ROUTE, handler);

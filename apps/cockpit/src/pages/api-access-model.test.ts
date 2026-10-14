@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { actorDirectory } from "@/app/actor-directory-model";
 import { CATALOGS, type TranslationKey } from "@/lib/i18n";
 import {
   API_ACCESS_ORDER,
   type ApiKeyItem,
+  apiKeyCreatorLabel,
+  apiKeyOwnerLabel,
   type ConnectedClientItem,
   calendarDaysUntil,
+  connectedClientActiveSummary,
+  connectedClientHistory,
   defaultKeyScopes,
   groupApiKeys,
   groupConnectedClients,
@@ -43,6 +48,7 @@ function key(overrides: Partial<ApiKeyItem>): ApiKeyItem {
     scopes: ["workflow:read"],
     user_id: "u1",
     system_account_id: null,
+    creator: null,
     allowed_workflows: null,
     allowed_connectors: null,
     created_at: daysAgo(10),
@@ -54,6 +60,40 @@ function key(overrides: Partial<ApiKeyItem>): ApiKeyItem {
     ...overrides,
   };
 }
+
+describe("API key creator facts", () => {
+  test("resolves typed people and accounts while preserving system and unknown fallbacks", () => {
+    const directory = actorDirectory(
+      { items: [{ id: "u1", email: "owner@example.test" }] },
+      { items: [{ id: "s1", name: "Automation" }] },
+    );
+    expect(apiKeyCreatorLabel({ kind: "user", id: "u1" }, directory, t)).toBe("owner@example.test");
+    expect(apiKeyCreatorLabel({ kind: "system_account", id: "s1" }, directory, t)).toBe(
+      "Automation",
+    );
+    expect(apiKeyCreatorLabel({ kind: "system", id: null }, directory, t)).toBe("Engine");
+    expect(apiKeyCreatorLabel({ kind: "user", id: "missing" }, directory, t)).toBe("Person");
+    expect(apiKeyCreatorLabel(null, directory, t)).toBe("Unbekannt");
+  });
+
+  test("FactList owner and creator labels distinguish the issuing person from the key owner", () => {
+    const directory = actorDirectory(
+      {
+        items: [
+          { id: "user-a", email: "alice@example.test" },
+          { id: "user-b", email: "bob@example.test" },
+        ],
+      },
+      undefined,
+    );
+    const item = key({
+      user_id: "user-b",
+      creator: { kind: "user", id: "user-a" },
+    });
+    expect(apiKeyOwnerLabel(item, directory, t)).toBe("bob@example.test");
+    expect(apiKeyCreatorLabel(item.creator, directory, t)).toBe("alice@example.test");
+  });
+});
 
 describe("scope labels", () => {
   test("a scope reads as a name and a risk word, never as the raw string", () => {
@@ -169,6 +209,7 @@ function client(overrides: Partial<ConnectedClientItem>): ConnectedClientItem {
     redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
     registration_source: "dcr",
     approved_by: ["anna@example.com"],
+    connected_by: { grants: [], has_unknown_legacy: false },
     live_connections: 1,
     disabled_at: null,
     retired_at: null,
@@ -178,6 +219,147 @@ function client(overrides: Partial<ConnectedClientItem>): ConnectedClientItem {
 }
 
 describe("connected applications, in the order a reader needs them", () => {
+  test("the list summary is bounded to the two newest active connections", () => {
+    expect(
+      connectedClientActiveSummary(
+        {
+          grants: [
+            {
+              user_id: "old",
+              display_name: "Old Person",
+              email: "old@example.com",
+              connected_at: "2026-08-01T10:00:00.000Z",
+              revoked_at: null,
+            },
+            {
+              user_id: "old",
+              display_name: "Old Person",
+              email: "old@example.com",
+              connected_at: "2026-07-01T10:00:00.000Z",
+              revoked_at: null,
+            },
+            {
+              user_id: "newest",
+              display_name: "Newest Person",
+              email: "newest@example.com",
+              connected_at: "2026-10-01T10:00:00.000Z",
+              revoked_at: null,
+            },
+            {
+              user_id: "middle",
+              display_name: null,
+              email: "middle@example.com",
+              connected_at: "2026-09-01T10:00:00.000Z",
+              revoked_at: null,
+            },
+            {
+              user_id: "revoked",
+              display_name: "Revoked Person",
+              email: "revoked@example.com",
+              connected_at: "2026-10-02T10:00:00.000Z",
+              revoked_at: "2026-10-03T10:00:00.000Z",
+            },
+          ],
+          has_unknown_legacy: true,
+        },
+        t,
+      ),
+    ).toEqual({
+      people: ["Newest Person", "middle@example.com"],
+      moreCount: 1,
+      hasUnknownLegacy: true,
+    });
+  });
+
+  test("revoked-only history is excluded from the active summary", () => {
+    expect(
+      connectedClientActiveSummary(
+        {
+          grants: [
+            {
+              user_id: "revoked",
+              display_name: "Revoked Person",
+              email: "revoked@example.com",
+              connected_at: "2026-10-02T10:00:00.000Z",
+              revoked_at: "2026-10-03T10:00:00.000Z",
+            },
+          ],
+          has_unknown_legacy: false,
+        },
+        t,
+      ),
+    ).toEqual({ people: [], moreCount: 0, hasUnknownLegacy: false });
+  });
+
+  test("legacy attribution stays separately unknown", () => {
+    expect(connectedClientActiveSummary({ grants: [], has_unknown_legacy: true }, t)).toEqual({
+      people: [],
+      moreCount: 0,
+      hasUnknownLegacy: true,
+    });
+  });
+
+  test("connection history uses recorded names and times without exposing IDs", () => {
+    const history = connectedClientHistory(
+      {
+        grants: [
+          {
+            user_id: "user-old",
+            display_name: "   ",
+            email: "old@example.com",
+            connected_at: "2026-09-01T10:00:00.000Z",
+            revoked_at: "2026-09-03T10:00:00.000Z",
+          },
+          {
+            user_id: "user-current",
+            display_name: "Ada Example",
+            email: "ada@example.com",
+            connected_at: "2026-10-01T10:00:00.000Z",
+            revoked_at: null,
+          },
+          {
+            user_id: "user-unknown",
+            display_name: null,
+            email: null,
+            connected_at: "2026-08-01T10:00:00.000Z",
+            revoked_at: null,
+          },
+        ],
+        has_unknown_legacy: true,
+      },
+      t,
+    );
+    expect(history).toEqual([
+      {
+        person: "Ada Example",
+        connectedAt: "2026-10-01T10:00:00.000Z",
+        revokedAt: null,
+        legacyUnknown: false,
+      },
+      {
+        person: "old@example.com",
+        connectedAt: "2026-09-01T10:00:00.000Z",
+        revokedAt: "2026-09-03T10:00:00.000Z",
+        legacyUnknown: false,
+      },
+      {
+        person: "Unbekannte Person",
+        connectedAt: "2026-08-01T10:00:00.000Z",
+        revokedAt: null,
+        legacyUnknown: false,
+      },
+      {
+        person: "Historische Verbindung · Person unbekannt",
+        connectedAt: null,
+        revokedAt: null,
+        legacyUnknown: true,
+      },
+    ]);
+    expect(JSON.stringify(history)).not.toContain("user-current");
+    expect(JSON.stringify(history)).not.toContain("user-old");
+    expect(JSON.stringify(history)).not.toContain("user-unknown");
+  });
+
   const dead = Array.from({ length: 200 }, (_, index) =>
     client({
       id: `dead-${index}`,

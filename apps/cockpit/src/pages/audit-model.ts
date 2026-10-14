@@ -50,6 +50,7 @@ const ACTOR_KEYS: Record<string, TranslationKey> = {
   user: "audit.actor.user",
   system_account: "audit.actor.systemAccount",
   system: "audit.actor.system",
+  unknown: "audit.actor.unknown",
 };
 
 export function actorTypeLabel(actorType: string, t: Translate): CatalogLabel {
@@ -114,7 +115,7 @@ export function auditReasonLabel(
 }
 
 const RESOURCE_KEYS: Record<string, TranslationKey> = {
-  workflow: "nav.workflows",
+  workflow: "audit.resource.workflow",
   patch_candidate: "decisions.kind.patch",
   skill_candidate: "decisions.kind.skill",
   connector: "resource.connectors.title",
@@ -675,4 +676,30 @@ export function initialAuditFilter(search: string, now: number) {
   const filter = auditFilterFromUrl(search);
   if (filter.tsFrom || filter.tsTo || filter.traceId || filter.resourceId) return filter;
   return { ...filter, tsFrom: new Date(now - 30 * 86_400_000).toISOString() };
+}
+
+export function hasExplicitAuditWindow(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.has("ts_from") || params.has("ts_to");
+}
+
+export function auditCountKey(
+  search: string,
+  filter: AuditLinkFilter,
+  count: number,
+  hasNextPage: boolean,
+): TranslationKey {
+  const defaultWindow =
+    filter.tsFrom !== null &&
+    filter.tsTo === null &&
+    !hasExplicitAuditWindow(search) &&
+    filter.traceId === null &&
+    filter.resourceId === null;
+  if (defaultWindow)
+    return hasNextPage
+      ? "audit.countWindowMore"
+      : count === 1
+        ? "audit.countWindow.one"
+        : "audit.countWindow";
+  return hasNextPage ? "audit.countMore" : count === 1 ? "audit.count.one" : "audit.count";
 }

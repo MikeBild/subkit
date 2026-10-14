@@ -87,7 +87,14 @@ export async function verifyKnowledgeWriteEvidence(
                 version: versionToken(),
               }),
             });
-          savedFile = replacement ?? { ...body, filename };
+          savedFile = replacement ?? {
+            ...body,
+            filename,
+            description: "Evidence file purpose",
+            category: "finance",
+            description_source: "human",
+            category_source: "human",
+          };
           events.push(`file-get-${filename}`);
           return route.fulfill({ ...response, body: JSON.stringify(savedFile) });
         },
@@ -148,6 +155,23 @@ export async function verifyKnowledgeWriteEvidence(
     await page.getByTestId("knowledge-version-facts").filter({ hasText: note }).waitFor();
     await capture("knowledge-note-put-persisted");
     await stand.visit(page, `files/${recordId}`);
+    const fileTitle = page.getByTestId("file-sheet-title");
+    await fileTitle.filter({ hasText: filename }).waitFor({ state: "visible" });
+    const subtitle = page.getByTestId("file-sheet-subtitle");
+    await subtitle.waitFor({ state: "visible" });
+    require((await subtitle.getByTestId("catalog-metadata-description").innerText()).trim() ===
+      "Evidence file purpose", "File sheet header must place the exact metadata description in its subtitle");
+    require((await subtitle.getByTestId("catalog-metadata-chip").innerText()).trim() ===
+      "Finance", "File sheet subtitle must retain the category metadata");
+    const download = page.getByTestId("file-download");
+    await download.waitFor({ state: "visible" });
+    require((await download.getAttribute("download")) === filename &&
+      (await download.innerText()).trim() ===
+        t(
+          "files.download",
+        ), "File sheet download action must use the exact filename and localized label");
+    require((await download.getAttribute("data-variant")) ===
+      "outline", "File sheet download action must use the secondary outline button variant");
     await page.getByTestId("file-menu").click();
     await page.getByTestId("file-replace").click();
     await page

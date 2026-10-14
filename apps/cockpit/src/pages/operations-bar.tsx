@@ -221,10 +221,13 @@ function Figure({
     ? t(
         figure.detail.kind === "failures"
           ? "overview.operations.failedCount"
-          : figure.detail.count === 0
+          : figure.detail.needsReauth === 0
             ? "overview.operations.allConnected"
-            : "overview.operations.connectorsAttention",
-        { count: figure.detail.count },
+            : "overview.operations.connectorsSignIn",
+        {
+          count:
+            figure.detail.kind === "failures" ? figure.detail.count : figure.detail.needsReauth,
+        },
       )
     : partial && figure.money
       ? t("overview.operations.unpricedCalls", { calls: figure.money.unpricedCalls })

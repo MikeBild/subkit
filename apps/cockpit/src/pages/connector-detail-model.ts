@@ -342,3 +342,49 @@ export function connectorConfiguredTimeout(record: Record<string, unknown>): num
     ? value
     : null;
 }
+
+export function connectorConfiguredRuntime(record: Record<string, unknown>) {
+  const config = isRecord(record.config) ? record.config : {};
+  const http = record.driver === "http";
+  const storedTimeout = config.timeout_ms;
+  const storedRetries = config.max_retries;
+  const timeout = http
+    ? typeof storedTimeout === "number" &&
+      Number.isFinite(storedTimeout) &&
+      storedTimeout > 0 &&
+      storedTimeout <= 300000
+      ? storedTimeout
+      : null
+    : connectorConfiguredTimeout(record);
+  const retries =
+    http &&
+    typeof storedRetries === "number" &&
+    Number.isInteger(storedRetries) &&
+    storedRetries >= 0 &&
+    storedRetries <= 5
+      ? storedRetries
+      : null;
+  const snapshot = isRecord(record.template_snapshot) ? record.template_snapshot : {};
+  const overridden = config.capabilities !== undefined;
+  const capabilities = overridden ? config.capabilities : snapshot.capabilities;
+  const rawHints = isRecord(capabilities) ? capabilities.rate_limits : null;
+  const rateLimit =
+    isRecord(rawHints) &&
+    typeof rawHints.requests_per_second === "number" &&
+    Number.isFinite(rawHints.requests_per_second) &&
+    rawHints.requests_per_second > 0 &&
+    typeof rawHints.burst_size === "number" &&
+    Number.isInteger(rawHints.burst_size) &&
+    rawHints.burst_size > 0 &&
+    typeof rawHints.recommended_backoff_ms === "number" &&
+    Number.isInteger(rawHints.recommended_backoff_ms) &&
+    rawHints.recommended_backoff_ms > 0
+      ? {
+          requestsPerSecond: rawHints.requests_per_second,
+          burstSize: rawHints.burst_size,
+          recommendedBackoffMs: rawHints.recommended_backoff_ms,
+          source: overridden ? ("provider" as const) : ("template" as const),
+        }
+      : null;
+  return { timeout, timeoutApplied: record.driver === "mcp", retries, rateLimit };
+}

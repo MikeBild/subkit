@@ -429,6 +429,7 @@ const OAUTH_CLIENTS = (() => {
     registration_source: "dcr",
     approved_by: [],
     live_connections: 0,
+    connected_by: { grants: [], has_unknown_legacy: false },
     disabled_at: null,
     retired_at: null,
     created_at: at(1 + (index % 20)),
@@ -448,6 +449,19 @@ const OAUTH_CLIENTS = (() => {
     registration_source: "dcr",
     approved_by: ["operator@example.com"],
     live_connections: 1,
+    last_used_at: index === 2 ? "2026-08-04T08:30:00.000Z" : null,
+    connected_by: {
+      grants: [
+        {
+          user_id: `018f4b4a-6d33-7b3a-9c2d-00000000a00${index}`,
+          display_name: `Evidence Approver ${index + 1}`,
+          email: `approver-${index + 1}@example.test`,
+          connected_at: `2026-08-${String(2 + index).padStart(2, "0")}T08:30:00.000Z`,
+          revoked_at: null,
+        },
+      ],
+      has_unknown_legacy: index === 2,
+    },
     disabled_at: null,
     retired_at: null,
     created_at: at(2 + index),
@@ -652,6 +666,13 @@ const API_KEYS = [
     id: index === 0 ? uuid : `00000000-0000-4000-9500-${String(index).padStart(12, "0")}`,
     name,
     prefix: index === 0 ? "wf_live_demo" : `wf_live_key${index}`,
+    ...(index === 0
+      ? {
+          user_id: uuid,
+          system_account_id: null,
+          creator: { kind: "user", id: REVIEWER_ID },
+        }
+      : {}),
   })),
   ...Array.from({ length: 20 }, (_, index) => ({
     ...API_KEY_BASE,
@@ -1567,6 +1588,7 @@ async function mockApi(route, options = {}) {
             : rotate === 3
               ? { step_key: null, cause_class: "timeout" }
               : null,
+        error_message: rotate === 2 ? "PRIVATE_FAILURE_SENTINEL_DO_NOT_RENDER" : null,
       };
     });
     const status = url.searchParams.get("status");
@@ -1886,6 +1908,7 @@ async function mockApi(route, options = {}) {
       connectors: {
         enabled: 32,
         not_ok: 21,
+        needs_reauth: 5,
         healthy_percent: 34,
         href: "/cockpit/connectors?health=not_ok",
       },

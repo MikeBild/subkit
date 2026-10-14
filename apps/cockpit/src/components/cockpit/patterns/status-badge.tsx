@@ -74,6 +74,7 @@ export function StatusBadge({
 }) {
   const { t } = useI18n();
   const tone = statusTone(state);
+  const text = label ?? statusLabel(t, state);
   return (
     <Badge
       dot
@@ -81,9 +82,11 @@ export function StatusBadge({
       data-testid={testId}
       data-state={state}
       data-tone={tone}
-      className={cn(TONE_CLASS[tone])}
+      aria-label={text}
+      className={cn("min-w-0 max-w-full", TONE_CLASS[tone])}
+      title={text}
     >
-      {label ?? statusLabel(t, state)}
+      <span className="min-w-0 truncate">{text}</span>
     </Badge>
   );
 }

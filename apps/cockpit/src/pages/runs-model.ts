@@ -156,6 +156,16 @@ export function runsSummaryText(total: number, failed: number | null, tn: Transl
   return failed === null ? tn("runs.summaryTotal", total) : tn("runs.summary", total, { failed });
 }
 
+export function runsWindowSummaryText(
+  total: number,
+  failed: number | null,
+  tn: TranslatePlural,
+): string {
+  return failed === null
+    ? tn("workflowRuns.weekTotal", total)
+    : tn("workflowRuns.week", total, { failed });
+}
+
 export type RunFact = [label: string, value: ReactNode, full?: string];
 
 function identifierFact(label: string, value: string): RunFact {

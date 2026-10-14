@@ -69,13 +69,18 @@ function figureText(html: string, id: string): string {
 const counts = (
   over: {
     runs?: { total: number; failed: number; successRatePercent: number | null };
-    connectors?: { enabled: number; notOk: number; healthyPercent: number | null };
+    connectors?: {
+      enabled: number;
+      notOk: number;
+      needsReauth: number;
+      healthyPercent: number | null;
+    };
     repairs?: { decided: number; appliedPercent: number | null };
   } = {},
 ) =>
   answered({
     runs: { total: 40, failed: 2, successRatePercent: 95 },
-    connectors: { enabled: 8, notOk: 2, healthyPercent: 75 },
+    connectors: { enabled: 8, notOk: 2, needsReauth: 1, healthyPercent: 75 },
     repairs: { decided: 4, appliedPercent: 75 },
     ...over,
   });
@@ -113,6 +118,25 @@ describe("the operations bar", () => {
     expect(figureText(html, "cost")).toBe("Kosten87,22 $");
     expect(html.replaceAll(" ", " ")).toContain('data-family-kpi-value="87,22 $"');
     expect(html).not.toContain("mind.");
+  });
+
+  test("the runs tile keeps its Cockpit label and shows the failed count below", () => {
+    const html = render(figuresOf());
+    expect(figureText(html, "runs")).toContain("Ausführungen");
+    expect(figureText(html, "runs")).toContain("2 fehlgeschlagen");
+  });
+
+  test("the connector tile reports only persisted sign-in requirements", () => {
+    const html = render(figuresOf());
+    expect(figureText(html, "connectorHealth")).toContain("1 brauchen Anmeldung");
+    const connected = render(
+      figuresOf({
+        counts: counts({
+          connectors: { enabled: 8, notOk: 2, needsReauth: 0, healthyPercent: 75 },
+        }),
+      }),
+    );
+    expect(figureText(connected, "connectorHealth")).toContain("Alle verbunden");
   });
 
   test("a partly priced window reads 'mind.' and names what it leaves out", () => {
@@ -195,7 +219,7 @@ describe("the operations bar", () => {
       figuresOf({
         counts: counts({
           runs: { total: 0, failed: 0, successRatePercent: null },
-          connectors: { enabled: 0, notOk: 0, healthyPercent: null },
+          connectors: { enabled: 0, notOk: 0, needsReauth: 0, healthyPercent: null },
           repairs: { decided: 0, appliedPercent: null },
         }),
         spend: answered({ calls: 0, cost: null }),

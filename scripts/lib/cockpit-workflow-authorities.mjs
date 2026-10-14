@@ -81,6 +81,7 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
   let revoked = false;
   let writes = 0;
   let failRead = false;
+  let emptyAuthorities = true;
   const pattern = `**/v1/workflows/${workflowId}/execution-authorities**`;
   const handler = async (route) => {
     const request = route.request();
@@ -105,6 +106,12 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
         status: 503,
         contentType: "application/json",
         body: JSON.stringify({ error: { code: "unavailable" } }),
+      });
+    if (emptyAuthorities)
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], next_cursor: null }),
       });
     const older = url.searchParams.get("cursor") === id;
     const item = older
@@ -182,6 +189,17 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
       throw new Error(
         `A workflow nothing starts reads as ${await panel.getAttribute("data-state")}, not as on request`,
       );
+    await page.getByTestId("workflow-tabs-tab-approvals").click();
+    const emptyLine = locale === "de" ? "Noch keine Freigaben." : "No approvals yet.";
+    const emptyCopy = page.getByText(emptyLine, { exact: true }).filter({ visible: true });
+    await emptyCopy.first().waitFor();
+    if (
+      (await emptyCopy.count()) !== 1 ||
+      (await page.getByTestId("workflow-former-grants-toggle").count())
+    )
+      throw new Error("An empty approval history did not show exactly one localized empty state");
+    emptyAuthorities = false;
+    await page.reload();
     await openHistory();
     const row = page
       .locator(
@@ -233,6 +251,15 @@ export async function verifyWorkflowAuthorities(page, stand, workflowId, locale,
     const dialog = page.getByTestId("authority-revoke");
     await dialog.waitFor();
     await capture("revoke");
+    const revokeConsequence = await page.getByTestId("authority-revoke-consequence").innerText();
+    const expectedConsequence =
+      locale === "de"
+        ? "Neue Läufe mit dieser Freigabe werden abgelehnt; Erfolgtes bleibt."
+        : "New runs with this approval are refused; what already happened stays.";
+    if (revokeConsequence !== expectedConsequence)
+      throw new Error(
+        `Revoke consequence ${JSON.stringify(revokeConsequence)} differs from ${JSON.stringify(expectedConsequence)}`,
+      );
     const revokeTitle = await page.getByTestId("authority-revoke-title").innerText();
     if (!revokeTitle.includes(`${versionId.slice(0, 8)}…`) || revokeTitle.includes(id))
       throw new Error(`Revoke confirmation names ${JSON.stringify(revokeTitle)}`);

@@ -3,6 +3,8 @@ import { translate } from "@/lib/i18n";
 import {
   documentUnderTitle,
   knowledgeSummary,
+  knowledgeWorkflowId,
+  knowledgeWorkflowTarget,
   REFRESH_CRON,
   refreshFields,
   refreshRhythm,
@@ -55,6 +57,21 @@ const chunk = (
 });
 
 describe("knowledge sources as a reader sees them", () => {
+  test("a workflow usage target requires the persisted workflow scope and matching workflow record", () => {
+    expect(knowledgeWorkflowId("workflow", "wf-1")).toBe("wf-1");
+    expect(knowledgeWorkflowId("global", "wf-1")).toBeNull();
+    expect(knowledgeWorkflowId("workflow", null)).toBeNull();
+    expect(knowledgeWorkflowId("workflow", " ")).toBeNull();
+    expect(
+      knowledgeWorkflowTarget("workflow", "wf-1", { id: "wf-1", name: "Daily report" }),
+    ).toEqual({ id: "wf-1", name: "Daily report" });
+    expect(knowledgeWorkflowTarget("workflow", "wf-1", { id: "wf-2", name: "Other" })).toBeNull();
+    expect(knowledgeWorkflowTarget("workflow", "wf-1", null)).toBeNull();
+    expect(
+      knowledgeWorkflowTarget("global", null, { id: "wf-1", name: "Daily report" }),
+    ).toBeNull();
+  });
+
   test("the engine's source types read as four kinds", () => {
     expect(sourceKind("url")).toBe("url");
     expect(sourceKind("discovery_endpoint_index")).toBe("discovered");

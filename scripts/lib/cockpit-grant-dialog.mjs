@@ -2,11 +2,18 @@ import { assertSingleTriggers, TRANSCRIPT } from "./cockpit-single-trigger.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
 import { api, isPageApi, open, openTab, WORKFLOW } from "./cockpit-workflow-page.mjs";
 
+const WORKFLOW_VERSION = "7e9a1c3b-5d2f-4b46-9e80-1a3c5e7f9b52";
+
 const WORDS = {
   de: {
+    freshTitle: "Example API Demo Fetch v9 freigeben",
+    sameBoundary: "Widerrufbar unter Freigaben. Wächst die Grenze, fragt SubKit neu.",
     already: "Bereits freigegeben bis",
     oneLeft: "1 Lauf übrig",
     untilRevoked: "bis auf Widerruf",
+    sevenDays: "7 Tage",
+    thirtyDays: "30 Tage",
+    untilRevokedOption: "Bis auf Widerruf",
     soFar: "41 Läufe bisher",
     extend: "Verlängern / Grenzen ändern",
     production: "Produktion",
@@ -30,9 +37,14 @@ const WORDS = {
     resume: "Fortsetzen",
   },
   en: {
+    freshTitle: "Approve Example API Demo Fetch v9",
+    sameBoundary: "Revocable under Approvals. SubKit asks again when the approved boundary grows.",
     already: "Already approved until",
     oneLeft: "1 run left",
     untilRevoked: "until revoked",
+    sevenDays: "7 days",
+    thirtyDays: "30 days",
+    untilRevokedOption: "Until revoked",
     soFar: "41 runs so far",
     extend: "Extend / change limits",
     production: "Production",
@@ -83,10 +95,59 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
   const words = WORDS[localeName];
   const state = freshState();
   const handler = api(state);
+  const authorityList = (url) =>
+    new URL(url).pathname === `/v1/workflows/${WORKFLOW}/execution-authorities`;
+  const versionHistory = (url) => new URL(url).pathname === `/v1/workflows/${WORKFLOW}/history`;
+  const freshAuthorityHandler = async (route) => {
+    if (state.scenario === "grant" && route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], next_cursor: null }),
+      });
+      return;
+    }
+    await route.fallback();
+  };
+  const versionHistoryHandler = (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [{ id: WORKFLOW_VERSION, version: 9 }], total: 1 }),
+    });
+  };
   await page.route(isPageApi, handler);
+  await page.route(authorityList, freshAuthorityHandler);
+  await page.route(versionHistory, versionHistoryHandler);
   const at = (name) => `/workflows/<approval dialog: ${name}> (${localeName})`;
   try {
-    let where = at("already approved");
+    let where = at("fresh grant");
+    const authoritiesResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/workflows/${WORKFLOW}/execution-authorities` &&
+        response.request().method() === "GET",
+    );
+    await open(page, stand, state, "grant");
+    const authorities = await (await authoritiesResponse).json();
+    if (authorities.items.length !== 0)
+      throw new Error(
+        `${where}: the fresh fixture contains ${authorities.items.length} authorities`,
+      );
+    await page.getByTestId("workflow-automation-action").click();
+    await page.getByTestId("authority-grant-review").waitFor({ timeout: 15_000 });
+    const freshTitle = await text(page.getByTestId("authority-dialog-title"));
+    if (freshTitle !== words.freshTitle)
+      throw new Error(`${where}: the title reads "${freshTitle}"`);
+    const sameBoundary = await text(page.getByTestId("authority-consequence"));
+    if (sameBoundary !== words.sameBoundary)
+      throw new Error(`${where}: the same-boundary consequence reads "${sameBoundary}"`);
+    await assertSingleTriggers(page, where, DIALOG);
+    await capture("fresh-grant");
+    await closeDialog(page);
+    if (state.grants.length) throw new Error(`${where}: looking at the dialog granted something`);
+
+    where = at("already approved");
     state.expiring = true;
     await open(page, stand, state, "approved");
     await page.getByTestId("workflow-automation-action").click();
@@ -101,6 +162,20 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
       (await page.getByTestId("authority-limit-until-revoked").getAttribute("data-state")) !== "on"
     )
       throw new Error(`${where}: the dialog does not start at "until revoked"`);
+    const durationChoices = [
+      ["authority-limit-seven-days", words.sevenDays],
+      ["authority-limit-thirty-days", words.thirtyDays],
+      ["authority-limit-until-revoked", words.untilRevokedOption],
+    ];
+    const durationControl = page.getByTestId("authority-limit");
+    for (const [testId, label] of durationChoices) {
+      const option = page.getByTestId(testId);
+      if ((await text(option)) !== label)
+        throw new Error(`${where}: ${testId} visibly reads "${await text(option)}"`);
+      await durationControl.getByRole("radio", { name: label, exact: true }).waitFor({
+        state: "visible",
+      });
+    }
     for (const field of ["authority-runs", "authority-hours", "authority-suggestion"])
       if (await page.getByTestId(field).count())
         throw new Error(`${where}: "until revoked" shows ${field}`);
@@ -236,6 +311,8 @@ export async function verifyGrantDialog(page, stand, localeName, capture) {
     await closeDialog(page);
     if (state.grants.length) throw new Error(`${where}: the refused review granted something`);
   } finally {
+    await page.unroute(versionHistory, versionHistoryHandler);
+    await page.unroute(authorityList, freshAuthorityHandler);
     await page.unroute(isPageApi, handler);
     await stand.visit(page, "workflows");
   }

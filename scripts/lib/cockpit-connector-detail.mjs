@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../apps/cockpit/src/lib/i18n.ts";
 import { assertSingleTriggers } from "./cockpit-single-trigger.mjs";
 import { assertNoTooltipWithoutHover } from "./cockpit-unprompted-tooltip.mjs";
 import { assertNoVisibleUuids } from "./cockpit-visible-uuids.mjs";
@@ -6,17 +7,27 @@ const MCP_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c1";
 const PG_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c2";
 const OAUTH_ID = "018f4b4a-6d33-7b3a-9c2d-1234567890c4";
 const ADDRESS = "https://mcp.tickets.example.org/v1/mcp";
+const PROBE_RESULT = { ok: true, latency_ms: 42 };
+const PROBE_AT = "2099-01-01T12:00:00.000Z";
+const CREDENTIAL_EXPIRY = "2099-01-08T12:00:00.000Z";
+const EXPIRED_CREDENTIAL_EXPIRY = "2020-01-08T12:00:00.000Z";
 
 const days = (count) => new Date(Date.parse("2026-08-10T09:00:00.000Z") - count * 86_400_000);
 const iso = (count) => days(count).toISOString();
 
-function mcpRecord(trusted) {
+function mcpRecord(
+  trusted,
+  description = "Tickets suchen und anlegen.",
+  descriptionSource = "llm",
+  fixtureState = null,
+) {
   return {
     id: MCP_ID,
     tenant_id: MCP_ID,
     slug: "tickets-mcp",
     display_name: "Ticket-Server",
-    description: "Tickets suchen und anlegen.",
+    description,
+    description_source: descriptionSource,
     driver: "mcp",
     environment: "prod",
     auth_type: "header",
@@ -48,15 +59,39 @@ function mcpRecord(trusted) {
     },
     enabled: true,
     last_error: null,
-    health_state: "ok",
+    health_state: fixtureState?.authExpired ? "needs_reauth" : "ok",
     health_reason: null,
     health_error_code: null,
-    needs_reauth: false,
+    needs_reauth: fixtureState?.authExpired ?? false,
     auth_failed_at: null,
     auth_failed_reason: null,
     sign_in: null,
     created_at: iso(30),
     updated_at: iso(1),
+    last_tested_at: fixtureState?.lastTestedAt ?? null,
+    ...(fixtureState
+      ? {
+          credentials: [
+            {
+              id: "018f4b4a-6d33-7b3a-9c2d-1234567890c6",
+              mode: "header",
+              environment: fixtureState.expiryEnvironment,
+              has_oauth_refresh: false,
+              granted_scopes: null,
+              oauth2_expires_at:
+                fixtureState.expiryState === "invalid"
+                  ? "not-a-date"
+                  : fixtureState.expiryState === "missing"
+                    ? null
+                    : fixtureState.expiryState === "expired"
+                      ? EXPIRED_CREDENTIAL_EXPIRY
+                      : CREDENTIAL_EXPIRY,
+              connection: null,
+              created_at: iso(30),
+            },
+          ],
+        }
+      : {}),
   };
 }
 
@@ -141,7 +176,17 @@ const INSPECT = {
   slug: "tickets-mcp",
   tools: [
     { name: "search_items", description: "Tickets suchen", claims: "read" },
-    { name: "create_ticket", description: "Ein Ticket anlegen", claims: "write" },
+    {
+      name: "create_ticket",
+      description: "Ein Ticket anlegen",
+      claims: "write",
+      input_schema: {
+        type: "object",
+        properties: { title: { type: "string", description: "Ticket title" } },
+        required: ["title"],
+        additionalProperties: false,
+      },
+    },
   ],
   capabilities: { tools: true, resources: false, prompts: true },
   instructions: null,
@@ -157,8 +202,38 @@ function connectorApi(state, variant) {
     const url = new URL(request.url());
     const path = url.pathname;
     if (path === `/v1/connectors/${MCP_ID}`) {
-      const record = { ...mcpRecord(state.trusted), template_version: 17 };
+      if (request.method() === "PATCH") {
+        const body = JSON.parse(request.postData() ?? "{}");
+        state.metadataPatches.push(body);
+        state.description = body.description;
+        state.descriptionSource = "human";
+      }
+      const record = {
+        ...mcpRecord(state.trusted, state.description, state.descriptionSource, state),
+        template_version: 17,
+      };
       if (variant === "zero") delete record.config.mcp.remote_tool_call_timeout_ms;
+      if (["template-runtime", "override-runtime", "http-runtime"].includes(variant)) {
+        record.template_snapshot = {
+          capabilities: {
+            rate_limits: { requests_per_second: 2.5, burst_size: 8, recommended_backoff_ms: 1500 },
+          },
+        };
+      }
+      if (variant === "override-runtime")
+        record.config.capabilities = {
+          rate_limits: { requests_per_second: 10, burst_size: 20, recommended_backoff_ms: 2500 },
+        };
+      if (variant === "http-runtime") {
+        record.driver = "http";
+        record.config = {
+          timeout_ms: 8000,
+          max_retries: 0,
+          static_headers: { Authorization: "runtime-secret" },
+          static_query: { token: "runtime-secret" },
+          capabilities: { rate_limits: null },
+        };
+      }
       return json(route, record);
     }
     if (path === `/v1/connectors/${PG_ID}`) return json(route, PG_RECORD);
@@ -240,13 +315,22 @@ function connectorApi(state, variant) {
         tools_without_confirmation: state.trusted,
       });
     }
-    if (path === `/v1/connectors/${MCP_ID}/test`) return json(route, { ok: true, latency_ms: 42 });
-    if (path === "/v1/workflows" && url.searchParams.get("connector"))
+    if (path === `/v1/connectors/${MCP_ID}/test`) {
+      state.lastTestedAt = PROBE_AT;
+      return json(route, PROBE_RESULT);
+    }
+    if (path === "/v1/workflows" && url.searchParams.get("connector")) {
+      if (state.workflowUsage === "empty")
+        return json(route, { items: [], total: 0, categories: [] });
       return json(route, {
-        items: [{ id: "018f4b4a-6d33-7b3a-9c2d-1234567890c3", name: "Tickets zusammenfassen" }],
-        total: 1,
+        items: [
+          { id: "018f4b4a-6d33-7b3a-9c2d-1234567890c3", name: "Tickets zusammenfassen" },
+          { id: "018f4b4a-6d33-7b3a-9c2d-1234567890c5", name: "Tickets nachverfolgen" },
+        ],
+        total: 2,
         categories: [],
       });
+    }
     return route.fallback();
   };
 }
@@ -325,8 +409,76 @@ async function occurrences(page, word) {
   return body.split(word).length - 1;
 }
 
+async function assertConnectorMenu(page, localeName, includeAi, where) {
+  const actions =
+    localeName === "de"
+      ? [
+          ["connector-test", "Verbindung testen"],
+          ["connector-menu-edit", "Bearbeiten"],
+          ["catalog-metadata-edit", "Beschreibung und Kategorie"],
+          ...(includeAi ? [["catalog-metadata-accept", "KI-Text übernehmen"]] : []),
+          ["connector-menu-delete", "Löschen"],
+        ]
+      : [
+          ["connector-test", "Test connection"],
+          ["connector-menu-edit", "Edit"],
+          ["catalog-metadata-edit", "Description and category"],
+          ...(includeAi ? [["catalog-metadata-accept", "Accept AI text"]] : []),
+          ["connector-menu-delete", "Delete"],
+        ];
+  const expectedIds = actions.map(([id]) => id);
+  const snapshot = await page.waitForFunction(
+    (ids) => {
+      const menus = [...document.querySelectorAll('[role="menu"]')].filter((menu) => {
+        const style = getComputedStyle(menu);
+        const rect = menu.getBoundingClientRect();
+        return (
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      });
+      if (menus.length !== 1) return null;
+      const items = [...menus[0].querySelectorAll('[role="menuitem"]')].map((item) => ({
+        id: item.getAttribute("data-testid"),
+        label: item.innerText.trim(),
+      }));
+      return JSON.stringify(items.map((item) => item.id)) === JSON.stringify(ids) ? items : null;
+    },
+    expectedIds,
+    { timeout: 10_000 },
+  );
+  const items = await snapshot.jsonValue();
+  await snapshot.dispose();
+  const actualIds = items.map((item) => item.id);
+  if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds))
+    throw new Error(`${where}: connector menu entries differ: ${JSON.stringify(actualIds)}`);
+  const labels = items.map((item) => item.label);
+  if (JSON.stringify(labels) !== JSON.stringify(actions.map(([, label]) => label)))
+    throw new Error(`${where}: connector menu order differs: ${JSON.stringify(labels)}`);
+}
+
 async function openTab(page, tab) {
   await page.getByTestId(`connector-tabs-tab-${tab}`).click();
+}
+
+async function openReadyConnectorTest(page) {
+  await page.getByTestId("connector-menu").click();
+  await page.waitForFunction(
+    () => {
+      const action = document.querySelector('[data-testid="connector-test"]');
+      return (
+        action !== null &&
+        action.getAttribute("aria-disabled") !== "true" &&
+        action.getAttribute("data-disabled") !== "true" &&
+        !action.hasAttribute("disabled")
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+  return page.getByTestId("connector-test");
 }
 
 async function unfold(page, testId) {
@@ -625,6 +777,14 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
   const state = {
     trusted: ["search_items"],
     sent: [],
+    metadataPatches: [],
+    description: "Tickets suchen und anlegen.",
+    descriptionSource: "llm",
+    workflowUsage: "positive",
+    expiryState: "matching",
+    expiryEnvironment: "prod",
+    authExpired: false,
+    lastTestedAt: null,
     oauth: {
       enabled: true,
       needsReauth: false,
@@ -645,26 +805,41 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await unfold(page, "connector-runtime-section");
     await page.getByTestId("connector-runtime").waitFor({ state: "visible", timeout: 10_000 });
   };
-  const assertConfiguration = async (timeout) => {
+  const assertConfiguration = async (
+    timeout,
+    { applied = true, retries = null, rateHint = null } = {},
+  ) => {
     const heading = await page.getByTestId("connector-runtime-section-toggle").innerText();
     if (heading.trim() !== (de ? "Laufzeit" : "Runtime"))
       throw new Error(`${where}: configured runtime carries a historical measurement window`);
     const runtime = page.getByTestId("connector-runtime");
     await runtime.waitFor({ state: "visible" });
     const facts = await runtime.locator(":scope > div").evaluateAll((rows) =>
-      rows.map((row) => ({
-        label: row.querySelector("dt")?.textContent?.trim(),
-        value: row.querySelector("dd")?.textContent?.trim(),
-      })),
+      rows.map((row) => {
+        const label = row.querySelector("dt")?.cloneNode(true);
+        label?.querySelectorAll("[hidden]").forEach((hidden) => hidden.remove());
+        return {
+          label: label?.textContent?.trim(),
+          value: row.querySelector("dd")?.textContent?.trim(),
+        };
+      }),
     );
-    const unknown = de ? "nicht dokumentiert" : "not documented";
+    const unknown = de ? "Nicht angegeben" : "Not specified";
+    const appliedLabel = de ? "Wirksam" : "Applied";
+    const notAppliedLabel = de ? "Nicht angewendet" : "Not applied";
     const expected = [
       {
         label: de ? "Zeitlimit" : "Time limit",
-        value: timeout === null ? unknown : `${timeout} ms`,
+        value:
+          timeout === null
+            ? unknown
+            : `${timeout} ms · ${applied ? appliedLabel : notAppliedLabel}`,
       },
-      { label: de ? "Wiederholungen" : "Retries", value: unknown },
-      { label: de ? "Ratenlimit" : "Rate limit", value: unknown },
+      {
+        label: de ? "Wiederholungen" : "Retries",
+        value: retries === null ? unknown : `${retries} · ${notAppliedLabel}`,
+      },
+      { label: de ? "Ratenlimit" : "Rate limit", value: rateHint ?? unknown },
     ];
     if (JSON.stringify(facts) !== JSON.stringify(expected))
       throw new Error(`${where}: configured runtime facts differ: ${JSON.stringify(facts)}`);
@@ -681,6 +856,124 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
         throw new Error(`${where}: historical metric ${id} replaces configured runtime facts`);
   };
   try {
+    await openConnection(MCP_ID);
+    const initialTestAction = await openReadyConnectorTest(page);
+    const probeResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connectors/${MCP_ID}/test` &&
+        response.request().method() === "POST",
+    );
+    const inspectResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connectors/${MCP_ID}/mcp/inspect` &&
+        response.request().method() === "POST",
+    );
+    const testedRecord = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connectors/${MCP_ID}` &&
+        response.request().method() === "GET",
+    );
+    await initialTestAction.click();
+    const [probe] = await Promise.all([probeResponse, inspectResponse, testedRecord]);
+    if (JSON.stringify(await probe.json()) !== JSON.stringify(PROBE_RESULT))
+      throw new Error(`${where}: the successful probe result differs`);
+    await page.getByTestId("connector-probe-result").waitFor({ state: "visible" });
+    const probeLine = (await page.getByTestId("connector-probe-result").innerText()).trim();
+    const formatted = formatDateTime(localeName, PROBE_AT);
+    const formattedExpiry = formatDateTime(localeName, CREDENTIAL_EXPIRY);
+    const expectedProbeFacts = de
+      ? [
+          `gültig bis ${formattedExpiry}`,
+          `geprüft ${formatted}`,
+          `${Math.round(PROBE_RESULT.latency_ms)} ms`,
+        ]
+      : [
+          `valid until ${formattedExpiry}`,
+          `tested ${formatted}`,
+          `${Math.round(PROBE_RESULT.latency_ms)} ms`,
+        ];
+    for (const fact of expectedProbeFacts)
+      if (!probeLine.includes(fact))
+        throw new Error(`${where}: successful connector state omits "${fact}" — "${probeLine}"`);
+    if (
+      (await page.getByTestId("connector-strip-state").innerText()).trim() !==
+      (de ? "Verbindung geprüft" : "Connection tested")
+    )
+      throw new Error(`${where}: successful probe is not presented as tested`);
+    for (const invalidExpiry of ["missing", "invalid", "wrong-environment"]) {
+      state.expiryState = invalidExpiry === "wrong-environment" ? "matching" : invalidExpiry;
+      state.expiryEnvironment = invalidExpiry === "wrong-environment" ? "dev" : "prod";
+      await openConnection(MCP_ID);
+      await page.getByTestId("connector-probe-result").waitFor({ state: "visible" });
+      const invalidLine = (await page.getByTestId("connector-probe-result").innerText()).trim();
+      if (invalidLine.includes(de ? "gültig bis" : "valid until"))
+        throw new Error(
+          `${where}: ${invalidExpiry} expiry is presented as valid — "${invalidLine}"`,
+        );
+      if (!invalidLine.includes(`${de ? "geprüft" : "tested"} ${formatted}`))
+        throw new Error(
+          `${where}: ${invalidExpiry} expiry hid the probe timestamp — "${invalidLine}"`,
+        );
+      if (invalidLine.includes(`${Math.round(PROBE_RESULT.latency_ms)} ms`))
+        throw new Error(
+          `${where}: ${invalidExpiry} expiry retained transient probe latency — "${invalidLine}"`,
+        );
+    }
+    state.expiryState = "expired";
+    state.expiryEnvironment = "prod";
+    state.authExpired = true;
+    await openConnection(MCP_ID);
+    const expiredLine = page.getByTestId("connector-probe-result");
+    const expiredAt = formatDateTime(localeName, EXPIRED_CREDENTIAL_EXPIRY);
+    const expectedExpiredLine = de
+      ? `seit ${expiredAt} · 2 Workflows können nicht laufen`
+      : `since ${expiredAt} · 2 workflows cannot run`;
+    await expiredLine
+      .getByText(expectedExpiredLine, { exact: true })
+      .waitFor({ state: "visible", timeout: 10_000 });
+    const actualExpiredLine = (await expiredLine.innerText()).trim();
+    if (actualExpiredLine !== expectedExpiredLine)
+      throw new Error(`${where}: expired credential line is "${actualExpiredLine}"`);
+    if ((await page.getByTestId("connector-state").getAttribute("data-strip")) !== "expired")
+      throw new Error(`${where}: the expired credential does not set the expired state`);
+    state.expiryState = "matching";
+    state.expiryEnvironment = "prod";
+    state.authExpired = false;
+    await openConnection(MCP_ID);
+    const usageCopy = de
+      ? {
+          positive: "2 Workflows nutzen Ticket-Server",
+          empty: "Noch keine Workflows mit Ticket-Server.",
+        }
+      : {
+          positive: "2 workflows use Ticket-Server",
+          empty: "No workflows with Ticket-Server yet.",
+        };
+    await openTab(page, "usage");
+    await page.getByTestId("connector-usage-summary").waitFor({ state: "visible" });
+    if (
+      (await page.getByTestId("connector-usage-summary").innerText()).trim() !== usageCopy.positive
+    )
+      throw new Error(`${where}: connector usage summary is not exact`);
+    await capture("connector-workflow-usage-positive");
+    state.workflowUsage = "empty";
+    await stand.visit(page, `connectors/${MCP_ID}?tab=usage`);
+    await page.getByTestId("connector-workflows").waitFor({ state: "visible" });
+    await page
+      .getByTestId("connector-workflows")
+      .getByText(usageCopy.empty, { exact: true })
+      .filter({ visible: true })
+      .first()
+      .waitFor({ state: "visible" });
+    if (
+      (await page
+        .getByTestId(/^connector-workflow-(?:mobile-)?row-link-\d+$/)
+        .filter({ visible: true })
+        .count()) > 0
+    )
+      throw new Error(`${where}: the empty connector usage still shows workflow rows`);
+    await capture("connector-workflow-usage-empty");
+    state.workflowUsage = "positive";
     await openConnection(MCP_ID);
     await assertConfiguration(12000);
     await unfold(page, "connector-technical");
@@ -712,6 +1005,7 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     if (await page.getByTestId("connector-key-toggle").count())
       throw new Error(`${where}: "Schlüssel ersetzen" stands in the tab; it lives in Bearbeiten`);
     await page.getByTestId("connector-menu").click();
+    await assertConnectorMenu(page, localeName, true, where);
     await page.getByTestId("connector-menu-edit").click();
     const header = await page.locator("#connector-edit-header").inputValue();
     if (header !== "X-API-KEY")
@@ -720,6 +1014,37 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(`${where}: editing offers no way to replace the key`);
     await page.getByTestId("connector-edit-dialog-cancel").click();
     await page.getByTestId("connector-edit-dialog").waitFor({ state: "detached" });
+    await page.getByTestId("connector-menu").click();
+    const patchResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connectors/${MCP_ID}` &&
+        response.request().method() === "PATCH",
+    );
+    const refreshedRecord = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === `/v1/connectors/${MCP_ID}` &&
+        response.request().method() === "GET",
+    );
+    await page.getByTestId("catalog-metadata-accept").click();
+    await Promise.all([patchResponse, refreshedRecord]);
+    if (
+      JSON.stringify(state.metadataPatches.at(-1)) !==
+      JSON.stringify({
+        description: "Tickets suchen und anlegen.",
+        accept_description: true,
+      })
+    )
+      throw new Error(
+        `${where}: accepting AI text sent ${JSON.stringify(state.metadataPatches.at(-1))}`,
+      );
+    await page.getByTestId("connector-menu").click();
+    await assertConnectorMenu(page, localeName, false, `${where} · human description`);
+    state.description = "";
+    state.descriptionSource = "llm";
+    await stand.visit(page, `connectors/${MCP_ID}?tab=connection`);
+    await page.getByTestId("connector-menu").click();
+    await assertConnectorMenu(page, localeName, false, `${where} · empty AI description`);
+    await page.keyboard.press("Escape");
     await assertNoVisibleUuids(page.locator("main").first(), where);
     await assertNoSidewaysScroll(page, where);
     await assertSingleTriggers(page, where);
@@ -767,6 +1092,49 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       throw new Error(
         `${where}: the tool list does not show what the server claims — "${secondText}"`,
       );
+    const expectedToolCount = de ? "2 Werkzeuge" : "2 tools";
+    const toolSummary = page.getByTestId("connector-mcp-session");
+    const assertToolCount = async () => {
+      const summary = (await toolSummary.innerText()).trim();
+      if (!summary.startsWith(`${expectedToolCount} · `))
+        throw new Error(`${where}: tool summary omits the inspected count: ${summary}`);
+      if (!summary.includes(de ? "eingelesen" : "read"))
+        throw new Error(`${where}: tool summary omits when tools were read: ${summary}`);
+    };
+    await assertToolCount();
+    const visibleTools = () =>
+      page
+        .locator(
+          '[data-testid="connector-mcp-tool-row-0"], [data-testid="connector-mcp-tool-row-1"], [data-testid="connector-mcp-tool-mobile-row-0"], [data-testid="connector-mcp-tool-mobile-row-1"]',
+        )
+        .filter({ visible: true });
+    const search = page.getByTestId("connector-tools-search");
+    for (const query of ["CREATE_TICKET", "anlegen"]) {
+      await search.fill(query);
+      await visibleTools().filter({ hasText: "create_ticket" }).first().waitFor();
+      const rows = await visibleTools().allInnerTexts();
+      if (rows.length !== 1 || !rows[0].includes("create_ticket") || rows[0].includes("search_items"))
+        throw new Error(`${where}: tool search '${query}' did not filter name or description: ${JSON.stringify(rows)}`);
+      await assertToolCount();
+    }
+    await search.fill("no-matching-tool");
+    await page
+      .getByTestId("connector-mcp-tool-empty")
+      .filter({ visible: true })
+      .first()
+      .waitFor({ state: "visible" });
+    if ((await visibleTools().count()) !== 0)
+      throw new Error(`${where}: unmatched tool search retained a tool row`);
+    await page
+      .getByTestId("connector-tools-clear-filters")
+      .filter({ visible: true })
+      .first()
+      .click();
+    await second.waitFor({ state: "visible" });
+    const restoredTools = await visibleTools().allInnerTexts();
+    if (restoredTools.length !== INSPECT.tools.length || !restoredTools.some((row) => row.includes("search_items")) || !restoredTools.some((row) => row.includes("create_ticket")))
+      throw new Error(`${where}: clearing tool search did not restore the inspected tools`);
+    await assertToolCount();
     await page
       .locator(
         '[data-testid="connector-mcp-tool-row-link-1"], [data-testid="connector-mcp-tool-mobile-row-link-1"]',
@@ -774,7 +1142,16 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       .filter({ visible: true })
       .first()
       .click();
-    await page.getByTestId("connector-mcp-tool-1-sheet").waitFor({ state: "visible" });
+    const toolSheet = page.getByTestId("connector-mcp-tool-1-sheet");
+    await toolSheet.waitFor({ state: "visible" });
+    if (!(await toolSheet.innerText()).includes(INSPECT.tools[1].description))
+      throw new Error(`${where}: tool sheet omits the inspected purpose`);
+    const schemaBlock = toolSheet.getByTestId("connector-tool-input-schema");
+    if ((await schemaBlock.getByText(de ? "Eingabeschema" : "Input schema", { exact: true }).count()) !== 1)
+      throw new Error(`${where}: tool sheet omits the localized input schema label`);
+    const shownSchema = JSON.parse(await schemaBlock.locator("pre code").innerText());
+    if (JSON.stringify(shownSchema) !== JSON.stringify(INSPECT.tools[1].input_schema))
+      throw new Error(`${where}: tool input schema differs from the inspected schema`);
     await assertNoTooltipWithoutHover(page, `${where} · tool sheet`);
     await page.getByTestId("connector-mcp-tool-1-trusted").click();
     for (let attempt = 0; attempt < 40 && state.sent.length === 0; attempt += 1)
@@ -786,6 +1163,26 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     await assertNoSidewaysScroll(page, where);
     await assertSingleTriggers(page, `${where} · tools`);
     await capture("connector-mcp-tools");
+
+    variant = "template-runtime";
+    await openConnection(MCP_ID);
+    await assertConfiguration(12000, {
+      rateHint: de
+        ? "2.5 Anfragen/s · Burst: 8 · Empfohlener Backoff: 1500 ms · Vorlagenhinweis"
+        : "2.5 requests/s · Burst: 8 · Recommended backoff: 1500 ms · Template guidance",
+    });
+    variant = "override-runtime";
+    await openConnection(MCP_ID);
+    await assertConfiguration(12000, {
+      rateHint: de
+        ? "10 Anfragen/s · Burst: 20 · Empfohlener Backoff: 2500 ms · Provider-Hinweis"
+        : "10 requests/s · Burst: 20 · Recommended backoff: 2500 ms · Provider guidance",
+    });
+    variant = "http-runtime";
+    await openConnection(MCP_ID);
+    await assertConfiguration(8000, { applied: false, retries: 0 });
+    if ((await page.getByTestId("connector-runtime").innerText()).includes("runtime-secret"))
+      throw new Error(`${where}: runtime exposes secret fields`);
 
     variant = "zero";
     await openConnection(MCP_ID);

@@ -29,7 +29,7 @@ import { catalogLabel, LabelText } from "@/lib/machine-label";
 import {
   asRuntime,
   authLabel,
-  connectorConfiguredTimeout,
+  connectorConfiguredRuntime,
   docKindLabel,
   documentationLinks,
   driverLabel,
@@ -166,18 +166,43 @@ export function ConnectorConnectionFacts({
 
 export function ConnectorRuntimeSection({ record }: { record: RecordValue }) {
   const { t } = useI18n();
-  const timeout = connectorConfiguredTimeout(record);
-  const unknown = t("runs.caller.unknown");
+  const runtime = connectorConfiguredRuntime(record);
+  const unspecified = t("connectorDetail.runtime.notSpecified");
+  const status = t(
+    runtime.timeoutApplied
+      ? "connectorDetail.runtime.effective"
+      : "connectorDetail.runtime.notApplied",
+  );
+  const rateLimit = runtime.rateLimit;
   return (
     <FactList
       testId="connector-runtime"
       items={[
         {
           label: t("connectorDetail.runtime.timeout"),
-          value: timeout === null ? unknown : `${timeout} ms`,
+          value: runtime.timeout === null ? unspecified : `${runtime.timeout} ms · ${status}`,
+          ...(runtime.timeout !== null && !runtime.timeoutApplied
+            ? { help: t("connectorDetail.runtime.storedNotApplied") }
+            : {}),
         },
-        { label: t("connectorDetail.runtime.retries"), value: unknown },
-        { label: t("connectorDetail.runtime.rateLimit"), value: unknown },
+        {
+          label: t("connectorDetail.runtime.retries"),
+          value:
+            runtime.retries === null
+              ? unspecified
+              : `${runtime.retries} · ${t("connectorDetail.runtime.notApplied")}`,
+          help:
+            runtime.retries === null
+              ? t("connectorDetail.runtime.workflowRetriesHelp")
+              : `${t("connectorDetail.runtime.storedNotApplied")} ${t("connectorDetail.runtime.workflowRetriesHelp")}`,
+        },
+        {
+          label: t("connectorDetail.runtime.rateLimit"),
+          value: rateLimit
+            ? `${t("connectorDetail.runtime.rateHint", { rate: rateLimit.requestsPerSecond, burst: rateLimit.burstSize, backoff: rateLimit.recommendedBackoffMs })} · ${t(rateLimit.source === "template" ? "connectorDetail.runtime.templateHint" : "connectorDetail.runtime.providerHint")}`
+            : unspecified,
+          help: t("connectorDetail.runtime.rateHintHelp"),
+        },
       ]}
     />
   );

@@ -267,7 +267,10 @@ function catalogColumns(
       (row) => row.driver,
       t("catalog.kind"),
       (row) => {
-        const kind = driverLabel(stringField(row, "driver"), t) || MISSING;
+        const kind =
+          row.driver === "mcp"
+            ? t("catalog.kind.mcp")
+            : driverLabel(stringField(row, "driver"), t) || MISSING;
         if (row.driver === "mcp")
           return typeof row.tools_count === "number"
             ? `${kind} · ${t(row.tools_count === 1 ? "connectorDetail.tools.count.one" : "connectorDetail.tools.count.other", { count: row.tools_count })}`

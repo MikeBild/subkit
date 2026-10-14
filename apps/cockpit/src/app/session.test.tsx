@@ -106,6 +106,16 @@ describe("session loading", () => {
         false,
       ),
     ).toBe("signed-out");
+    expect(
+      sessionView(
+        {
+          isPending: false,
+          error: new ApiError(401, { code: "unauthorized" }, null),
+          data,
+        },
+        false,
+      ),
+    ).toBe("expired");
     expect(sessionView({ isPending: false, error: null, data }, true)).toBe("expired");
     expect(sessionView({ isPending: false, error: null, data: undefined }, true)).toBe(
       "signed-out",

@@ -21,7 +21,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
       "group flex min-w-0 flex-col gap-2",
       from === "user"
         ? "is-user ml-auto w-fit max-w-[85%] justify-end"
-        : "is-assistant w-full max-w-[72ch]",
+        : "is-assistant w-full max-w-[72ch] 2xl:max-w-[88ch]",
       className,
     )}
     {...props}

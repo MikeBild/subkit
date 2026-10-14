@@ -217,10 +217,24 @@ describe("P11 StatusBadge", () => {
     expect(html).toContain('data-slot="status-dot"');
     expect(html).toContain(translate("de", "status.failed"));
     expect(html).toContain('data-tone="error"');
+    expect(html).toContain("min-w-0 max-w-full");
+    expect(html).toContain("min-w-0 truncate");
+    expect(html).toContain(`title="${translate("de", "status.failed")}"`);
+    expect(html).toContain(`aria-label="${translate("de", "status.failed")}"`);
   });
 
   test("a plain badge draws no dot", () => {
     expect(render(<Badge>Kategorie</Badge>)).not.toContain("status-dot");
+  });
+
+  test("a long status is bounded while its complete text stays accessible", () => {
+    const label = "Zugangsdaten abgelehnt und erneute Anmeldung erforderlich";
+    const html = render(<StatusBadge state="rejected" label={label} />);
+    expect(html).toContain(`title="${label}"`);
+    expect(html).toContain(`aria-label="${label}"`);
+    expect(html).toContain("min-w-0 max-w-full");
+    expect(html).toContain("min-w-0 truncate");
+    expect(html).toContain(`>${label}</span>`);
   });
 
   test("tones", () => {

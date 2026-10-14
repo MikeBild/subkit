@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import type { RowData } from "@tanstack/react-table";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiRequest } from "@/api/client";
 import { type PeopleSection, peopleHref, peopleSectionFromUrl } from "@/app/links";
@@ -79,6 +79,7 @@ const INVITE_TTL_HOURS = 24;
 interface UserItem {
   id: string;
   email: string;
+  display_name: string | null;
   role: string;
   status: string;
   oauth_connections?: number;
@@ -508,12 +509,14 @@ function PersonSheet({
   const canReadGrants = session.permissions.includes("rbac:read");
   const canAssignCustom = session.permissions.includes("rbac:write");
   const [picked, setPicked] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [confirm, setConfirm] = useState<"deactivate" | "invite" | "revokeGrants" | null>(null);
   const grants = useGrants(canReadGrants && user !== null);
   const ownGrants = (grants.data?.items ?? []).filter(
     (grant) => user && grant.subject_type === "user" && grant.subject_id === user.id,
   );
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
+  useEffect(() => setDisplayName(user?.display_name ?? ""), [user?.id, user?.display_name]);
   const shownRoleName = user ? (picked ?? user.role) : null;
   const role = shownRoleName ? (roles?.find((item) => item.name === shownRoleName) ?? null) : null;
   const detail = useRoleDetail(role);
@@ -547,6 +550,18 @@ function PersonSheet({
       setConfirm(null);
       await refresh();
       toast.success(t("people.roleUpdated"));
+    },
+    onError: (error) => refusalToast(error, t),
+  });
+  const updateDisplayName = useMutation({
+    mutationFn: (target: UserItem) =>
+      apiRequest<UserItem>(`/v1/identity/users/${encodeURIComponent(target.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ display_name: displayName.trim() || null }),
+      }),
+    onSuccess: async () => {
+      await refresh();
+      toast.success(t("people.displayNameUpdated"));
     },
     onError: (error) => refusalToast(error, t),
   });
@@ -591,7 +606,8 @@ function PersonSheet({
   const purpose = shownRoleName
     ? builtinRoleDescription(shownRoleName, role?.description ?? null, t)
     : null;
-  useDirtyGuard(Boolean(changed));
+  const displayNameChanged = Boolean(user && displayName.trim() !== (user.display_name ?? ""));
+  useDirtyGuard(Boolean(changed || displayNameChanged));
   const self = user?.id === session.principal.id;
   const menu: ActionMenuItem[] =
     canWrite && user && !self
@@ -631,12 +647,35 @@ function PersonSheet({
         dock
         open={Boolean(user)}
         onOpenChange={(open) => !open && close()}
-        title={<span className="break-all">{user?.email}</span>}
+        title={<span className="break-all">{user?.display_name || user?.email}</span>}
         badge={user ? <StatusBadge state={user.status} /> : null}
         menu={menu.length > 0 ? <ActionMenu items={menu} testId="people-sheet-menu" /> : null}
         testId="people-sheet"
         closeTestId="people-sheet-close"
       >
+        {user ? (
+          <Section label={t("people.displayName")}>
+            <div className="flex flex-col gap-2">
+              <Input
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                maxLength={120}
+                aria-label={t("people.displayName")}
+                data-testid="people-display-name"
+                disabled={!canWrite}
+              />
+              {canWrite && displayNameChanged ? (
+                <Button
+                  onClick={() => updateDisplayName.mutate(user)}
+                  disabled={updateDisplayName.isPending}
+                  data-testid="people-display-name-save"
+                >
+                  {t("common.save")}
+                </Button>
+              ) : null}
+            </div>
+          </Section>
+        ) : null}
         {user ? (
           <FactList
             testId="people-sheet-facts"
@@ -812,19 +851,24 @@ function PeopleTab({ action }: { action: ReactNode }) {
   const shown = items.filter(
     (item) =>
       (roleFilter === "all" || item.role === roleFilter) &&
-      (!needle || item.email.toLowerCase().includes(needle)),
+      (!needle ||
+        (item.display_name ?? "").toLowerCase().includes(needle) ||
+        item.email.toLowerCase().includes(needle)),
   );
   const roleOptions = [...new Set(items.map((item) => item.role))];
   const columns = useMemo<CockpitColumn<UserItem>[]>(() => {
     const column = tableColumns<UserItem>({ t, dateTime });
     return [
       column.custom(
-        "email",
-        (row) => row.email,
-        t("people.email"),
+        "person",
+        (row) => row.display_name || row.email,
+        t("people.person"),
         (row, index) => (
-          <span className="block truncate" data-testid={`people-name-${index}`}>
-            {row.email}
+          <span className="flex min-w-0 flex-col" data-testid={`people-name-${index}`}>
+            <span className="truncate">{row.display_name || row.email}</span>
+            {row.display_name ? (
+              <span className="truncate text-xs text-muted-foreground">{row.email}</span>
+            ) : null}
           </span>
         ),
         { width: "w-[44%]" },
@@ -925,12 +969,17 @@ function InvitePersonDialog({
   const roles = useRoles(open && session.permissions.includes("rbac:read"));
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<PersonRole>("member");
+  const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState<{ token: string; expiresAt: string } | null>(null);
   const create = useMutation({
     mutationFn: async () => {
       const user = await apiRequest<UserItem>("/v1/identity/users", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim(), role }),
+        body: JSON.stringify({
+          email: email.trim(),
+          role,
+          ...(displayName.trim() ? { display_name: displayName.trim() } : {}),
+        }),
       });
       return apiRequest<{ plaintext_token: string; expires_at: string }>(
         `/v1/identity/users/${encodeURIComponent(user.id)}/invites`,
@@ -940,6 +989,7 @@ function InvitePersonDialog({
     onSuccess: async (result) => {
       onOpenChange(false);
       setEmail("");
+      setDisplayName("");
       setInvite({ token: result.plaintext_token, expiresAt: result.expires_at });
       toast.success(t("people.created"));
     },
@@ -960,6 +1010,16 @@ function InvitePersonDialog({
         onSubmit={() => create.mutate()}
         testId="people-create-dialog"
       >
+        <Field>
+          <FieldLabel htmlFor="people-display-name-create">{t("people.displayName")}</FieldLabel>
+          <Input
+            id="people-display-name-create"
+            value={displayName}
+            maxLength={120}
+            onChange={(event) => setDisplayName(event.target.value)}
+            data-testid="people-create-display-name"
+          />
+        </Field>
         <Field>
           <FieldLabel htmlFor="people-email">{t("people.email")}</FieldLabel>
           <Input
@@ -1097,7 +1157,7 @@ function RolesTab({ action }: { action: ReactNode }) {
       column.custom(
         "permissions",
         (row) => row.permissions?.length,
-        t("access.permissions"),
+        t("access.rolePermissions"),
         (row) =>
           row.permissions ? (
             <PermissionList permissions={row.permissions} limit={3} testId="role-row-permissions" />
@@ -1290,7 +1350,7 @@ function GroupsTab({ action }: { action: ReactNode }) {
   const columns = useMemo<CockpitColumn<GroupItem>[]>(() => {
     const column = tableColumns<GroupItem>({ t, dateTime });
     return [
-      column.text("name", (row) => row.name, t("common.name"), { width: "w-[40%]" }),
+      column.text("name", (row) => row.name, t("access.group"), { width: "w-[40%]" }),
       column.custom(
         "member_count",
         (row) => row.member_count,
@@ -1506,7 +1566,7 @@ function GrantsTab({ action }: { action: ReactNode }) {
       column.custom(
         "expires",
         (row) => row.expires_at,
-        t("common.status"),
+        t("access.validity"),
         (row) => (
           <span
             title={

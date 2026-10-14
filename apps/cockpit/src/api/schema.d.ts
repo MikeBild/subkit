@@ -3241,7 +3241,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update a user's role */
+        /** Update a user's profile or role */
         patch: {
             parameters: {
                 query?: never;
@@ -13651,6 +13651,15 @@ export interface paths {
                         "application/json": components["schemas"]["Conversation"];
                     };
                 };
+                /** @description Forbidden — hiding is available for user-owned conversation lists */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Not found */
                 404: {
                     headers: {
@@ -13696,6 +13705,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Conversation"];
+                    };
+                };
+                /** @description Forbidden — visibility is available for user-owned conversation lists */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
                 /** @description Not found */
@@ -18338,7 +18356,7 @@ export interface paths {
                 query?: {
                     action?: string;
                     actor_id?: string;
-                    actor_type?: "user" | "system_account" | "system";
+                    actor_type?: "user" | "system_account" | "system" | "unknown";
                     resource_type?: string;
                     resource_types?: string;
                     resource_id?: string;
@@ -19361,6 +19379,7 @@ export interface components {
             connectors: {
                 enabled: number;
                 not_ok: number;
+                needs_reauth: number;
                 healthy_percent: number | null;
                 href: string | null;
             };
@@ -19755,6 +19774,7 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             email: string;
+            display_name: string | null;
             role: string | null;
             /** @enum {string} */
             status: "invited" | "active" | "disabled";
@@ -19769,12 +19789,18 @@ export interface components {
         CreateUserBody: {
             /** Format: email */
             email: string;
+            display_name?: string | null;
             /** @enum {string} */
             role?: "admin" | "member" | "enduser";
         };
         UpdateUserBody: {
             /** @enum {string} */
             role: "admin" | "member" | "enduser";
+            display_name?: string | null;
+        } | {
+            /** @enum {string} */
+            role?: "admin" | "member" | "enduser";
+            display_name: string | null;
         };
         ProviderIdentityBinding: {
             /** Format: uuid */
@@ -19864,6 +19890,22 @@ export interface components {
             user_id: string | null;
             /** Format: uuid */
             system_account_id: string | null;
+            /** @description Typed creator of the key, or null when creator provenance is unavailable or unknown. */
+            creator: {
+                /** @enum {string} */
+                kind: "user";
+                /** Format: uuid */
+                id: string;
+            } | {
+                /** @enum {string} */
+                kind: "system_account";
+                /** Format: uuid */
+                id: string;
+            } | {
+                /** @enum {string} */
+                kind: "system";
+                id: null;
+            } | null;
             allowed_workflows: string[] | null;
             allowed_connectors: string[] | null;
             created_at: string;
@@ -19999,6 +20041,20 @@ export interface components {
             registration_source: "dcr" | "manual";
             approved_by: string[];
             live_connections: number;
+            connected_by: {
+                grants: {
+                    /** Format: uuid */
+                    user_id: string;
+                    display_name: string | null;
+                    /** Format: email */
+                    email: string | null;
+                    /** Format: date-time */
+                    connected_at: string;
+                    /** Format: date-time */
+                    revoked_at: string | null;
+                }[];
+                has_unknown_legacy: boolean;
+            };
             disabled_at: string | null;
             retired_at: string | null;
             created_at: string;
@@ -25402,7 +25458,8 @@ export interface components {
             id: string;
             ts: string;
             tenant_id: string;
-            actor_type: string;
+            /** @enum {string} */
+            actor_type: "user" | "system_account" | "system" | "unknown";
             actor_id: string | null;
             action: string;
             resource_type: string;

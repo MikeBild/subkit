@@ -1,6 +1,9 @@
 const WORDS = {
   de: {
     target: ["Web-Dienst", "MCP-Server"],
+    byHandLine: "Art, Adresse und Zugang selbst festlegen.",
+    description: "Beschreibung",
+    purpose: "Zweck",
     signIn: ["Ohne", "Mit Schlüssel", "Mit Konto"],
     secret: "Zugangsschlüssel",
     oauth: ["Rückleitung", "Anmeldedienst", "Client-ID", "Client-Secret", "Berechtigungen"],
@@ -9,6 +12,9 @@ const WORDS = {
   },
   en: {
     target: ["Web service", "MCP server"],
+    byHandLine: "Set the type, address and access yourself.",
+    description: "Description",
+    purpose: "Purpose",
     signIn: ["None", "With key", "With account"],
     secret: "Access key",
     oauth: ["Redirect address", "Sign-in service", "Client ID", "Client secret", "Scopes"],
@@ -42,13 +48,16 @@ async function assertInside(page, testId) {
   await page.getByTestId(testId).waitFor({ state: "visible" });
 }
 
-async function openForm(page, stand) {
+async function openForm(page, stand, words) {
   await stand.visit(page, "connectors");
   await page.getByTestId("catalog-primary-action").click();
   const dialog = page.getByTestId("create-connector-dialog");
   await dialog.waitFor({ state: "visible", timeout: 10_000 });
   const manual = page.getByTestId("create-connector-manual");
-  if (await manual.count()) await manual.click();
+  const manualLine = manual.getByText(words.byHandLine, { exact: true });
+  if ((await manual.count()) !== 1 || (await manualLine.count()) !== 1)
+    throw new Error("/connectors · create: the manual choice does not explain what can be set");
+  await manual.click();
   await page.getByTestId("create-connector-target").waitFor({ state: "visible", timeout: 5_000 });
   return dialog;
 }
@@ -161,7 +170,7 @@ async function fill(page, id, value) {
 }
 
 async function verifyForm(page, stand, words, where, capture) {
-  const dialog = await openForm(page, stand);
+  const dialog = await openForm(page, stand, words);
   const target = await optionTexts(page, "create-connector-target");
   if (target.join("|") !== words.target.join("|"))
     throw new Error(`${where}: "what" offers ${JSON.stringify(target)}`);
@@ -176,6 +185,13 @@ async function verifyForm(page, stand, words, where, capture) {
   await secret.waitFor({ state: "visible", timeout: 5_000 });
   const label = (await page.locator('label[for="create-connector-secret"]').innerText()).trim();
   if (label !== words.secret) throw new Error(`${where}: the key field reads "${label}"`);
+  const descriptionLabel = (
+    await page.locator('label[for="create-connector-description"]').innerText()
+  ).trim();
+  if (descriptionLabel !== words.description)
+    throw new Error(`${where}: the manual form's description field reads "${descriptionLabel}"`);
+  if ((await page.getByText(words.purpose, { exact: true }).count()) !== 0)
+    throw new Error(`${where}: the manual form still presents a purpose field`);
   if ((await oauthFieldsShown(page)) !== 0)
     throw new Error(`${where}: a new connector starts with more than its key`);
   await capture("create-connector-key");
@@ -215,7 +231,7 @@ async function verifyForm(page, stand, words, where, capture) {
 }
 
 async function verifyWebAccount(page, stand, words, where, state) {
-  const dialog = await openForm(page, stand);
+  const dialog = await openForm(page, stand, words);
   await page.getByTestId("create-connector-signin-account").click();
   await fill(page, "create-connector-name", "Fixture Mail");
   await fill(page, "create-connector-address", "https://mail.example.org/v1");
@@ -250,8 +266,8 @@ async function verifyWebAccount(page, stand, words, where, state) {
     throw new Error(`${where}: the client secret is shown again`);
 }
 
-async function verifyMcpAccount(page, stand, where, state) {
-  await openForm(page, stand);
+async function verifyMcpAccount(page, stand, words, where, state) {
+  await openForm(page, stand, words);
   await page.getByTestId("create-connector-target-mcp").click();
   await page.getByTestId("create-connector-signin-account").click();
   await fill(page, "create-connector-name", "Fixture Tickets");
@@ -289,7 +305,7 @@ async function verifyNoPublicAddress(page, stand, words, where, state) {
   const handler = (route) => json(route, { ...original, oauth_callback_url: null });
   await page.route(matcher, handler);
   try {
-    const dialog = await openForm(page, stand);
+    const dialog = await openForm(page, stand, words);
     await page.getByTestId("create-connector-signin-account").click();
     if (await page.getByTestId("create-connector-callback").count())
       throw new Error(`${where}: a redirect address is shown that the engine does not have`);
@@ -321,7 +337,7 @@ export async function verifyCreateConnector(page, stand, localeName, capture) {
   try {
     await verifyForm(page, stand, words, where, capture);
     await verifyWebAccount(page, stand, words, `${where} · web service with account`, state);
-    await verifyMcpAccount(page, stand, `${where} · MCP server with account`, state);
+    await verifyMcpAccount(page, stand, words, `${where} · MCP server with account`, state);
     await verifyMcpPageSignIn(page, stand, `/connectors/<mcp with account> (${localeName})`, state);
     await verifyNoPublicAddress(page, stand, words, `${where} · no public address`, state);
   } finally {
