@@ -127,7 +127,8 @@ export function assertCockpitDemoActionMarker(
   marker: unknown,
   expected: CockpitDemoInstance,
 ): void {
-  if (args.has("--reset") || args.has("--stop")) assertCockpitDemoMarker(marker, expected);
+  if (args.has("--reset") || args.has("--stop") || args.has("--restart"))
+    assertCockpitDemoMarker(marker, expected);
 }
 
 export function readCockpitDemoMarker(instance: CockpitDemoInstance): CockpitDemoMarker | null {

@@ -44,11 +44,12 @@ The command prints the current local user API key and stores it with owner-only 
 | --- | --- |
 | `bun run demo:local` | Start or resume; build only when application sources changed; retain manual edits. |
 | `bun run demo:local:stop` | Stop the demo and preserve its named database/object volumes and API key; requires a marker created by a successful demo start. |
-| `bun run demo:local:restart` | Restart the demo services and check readiness. |
+| `bun run demo:local:restart` | Restart only the marked demo instance and check readiness; requires a marker created by a successful demo start. |
 | `bun run demo:local:rebuild` | Rebuild the current checkout and resume the same data. |
-| `bun run demo:local:reset` | Delete only this demo project's data, run migrations/setup again, restore fixtures and issue a new API key; requires a marker created by a successful demo start. |
+| `bun run demo:local:reset` | Delete only the marked demo project's database and object-storage volumes, then run migrations/setup, restore the synthetic baseline and issue a new API key; requires a marker created by a successful demo start. |
 | `bun run demo:local:status` | Show local service health and authenticated readiness. |
 | `bun run demo:local:key` | Print the current local login key. |
+| `bun run demo:local:lifecycle` | Start, stop, restart, reset and reseed a disposable isolated demo instance; verify its fixtures and cleanup without touching the default demo. |
 | `bun run demo:local:verify` | Run local API and browser journeys, including one provider chat response and workflow approval/execution; no screenshots. |
 | `bun run demo:local:verify -- --mock` | Run the same journeys and verify chat through the mock provider without an external model call. |
 
