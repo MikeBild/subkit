@@ -93,6 +93,7 @@
     "demo:local:reset": "bun run scripts/start-cockpit-demo.ts --reset",
     "demo:local:restart": "bun run scripts/start-cockpit-demo.ts --restart",
     "demo:local:status": "bun run scripts/start-cockpit-demo.ts --status",
+    "demo:local:lifecycle": "bun run scripts/verify-cockpit-demo-lifecycle.ts",
     "demo:local:key": "bun run scripts/start-cockpit-demo.ts --key",
     "verify:cockpit-local": "bun run scripts/verify-cockpit-local.ts",
     "verify:cockpit-local-browser": "bun run scripts/verify-local-cockpit-browser.mjs",

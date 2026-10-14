@@ -1,9 +1,26 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import { deleteOwnedConversation } from "./lib/cockpit-chat-cleanup.mjs";
+import { recoverOwnedConversationReceipts } from "./lib/cockpit-chat-recovery.mjs";
+import { installChatConversationCapture } from "./lib/cockpit-chat-sse.mjs";
+import { cockpitDemoDatabaseGeneration } from "./lib/cockpit-demo-database-generation.mjs";
 import {
+  assertCockpitDemoMarker,
   cockpitDemoBaseUrl,
   cockpitDemoStateDirectory,
+  readCockpitDemoMarker,
   resolveCockpitDemoInstance,
 } from "./lib/cockpit-demo-instance.ts";
 import {
@@ -12,6 +29,7 @@ import {
   finalizeLocalVerification,
   redactLocalVerificationError,
 } from "./lib/cockpit-demo-verification.ts";
+import { shouldLoadBrowserWorkflowCleanup } from "./lib/cockpit-workflow-cleanup-scope.mjs";
 import { verifyLocalChatWorkspace } from "./lib/cockpit-workspace-journey.mjs";
 
 const instance = resolveCockpitDemoInstance(process.env, process.cwd());
@@ -46,6 +64,27 @@ if (!key) throw new Error("Local demo API key is missing");
 const build = JSON.parse(await readFile(resolve(directory, "build.json"), "utf8"));
 if (!/^[a-f0-9]{64}$/.test(build.source) || !/^sha256:[a-f0-9]{64}$/.test(build.image))
   throw new Error("Current local demo build receipt is missing source or image identity");
+const marker = readCockpitDemoMarker(instance);
+assertCockpitDemoMarker(marker, instance);
+if (marker.source !== build.source || marker.image !== build.image)
+  throw new Error("Current local demo instance and build receipts do not match");
+const demoState = JSON.parse(await readFile(resolve(directory, "state.json"), "utf8"));
+if (!/^[0-9a-f-]{36}$/i.test(demoState.tenantId ?? ""))
+  throw new Error("Current local demo database tenant identity is missing");
+const selectedDatabaseGeneration = cockpitDemoDatabaseGeneration(instance, process.cwd());
+const databaseGeneration = createHash("sha256")
+  .update(
+    JSON.stringify({
+      project: instance.project,
+      apiPort: instance.apiPort,
+      dbPort: instance.dbPort,
+      tenantId: demoState.tenantId,
+      source: build.source,
+      image: build.image,
+      database: selectedDatabaseGeneration,
+    }),
+  )
+  .digest("hex");
 const receipt = {
   startedAt: new Date().toISOString(),
   base: base.origin,
@@ -53,6 +92,8 @@ const receipt = {
   checks: [],
   chat: null,
 };
+const chatRunId = randomUUID();
+const chatOwnershipPath = resolve(directory, `browser-chat-ownership-${chatRunId}.json`);
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 1000 },
@@ -62,11 +103,39 @@ const errors = [];
 const authenticationValues = new Set([key]);
 const redact = (error) => redactLocalVerificationError(error, authenticationValues);
 let ownedWorkflow = null;
+let sessionIdentity = null;
+let ownedConversation = null;
 try {
+  await context.exposeBinding("__subkitCaptureOwnedConversation", async (_source, value) => {
+    if (typeof value?.id === "string" && /^[0-9a-f-]{36}$/i.test(value.id)) {
+      const captured = {
+        schema: "subkit-local-chat-ownership-v1",
+        id: value.id,
+        runId: chatRunId,
+        instance: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+        databaseGeneration,
+        tenantId: sessionIdentity?.tenantId ?? null,
+        ownerId: sessionIdentity?.ownerId ?? null,
+      };
+      if (!captured.tenantId || !captured.ownerId)
+        throw new Error("Conversation capture has no authenticated tenant and owner");
+      const temporaryPath = `${chatOwnershipPath}.tmp`;
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await chmod(directory, 0o700);
+      await writeFile(temporaryPath, `${JSON.stringify(captured)}\n`, { mode: 0o600 });
+      await chmod(temporaryPath, 0o600);
+      await rename(temporaryPath, chatOwnershipPath);
+      ownedConversation = captured;
+    }
+  });
+  await context.exposeBinding("__subkitConversationCaptureFailure", (_source, reason) => {
+    errors.push(`Conversation ownership capture failed: ${redact(reason)}`);
+  });
   await context.addInitScript(() => {
     localStorage.setItem("sk-cockpit-locale", "de");
     localStorage.setItem("sk-cockpit-theme", "light");
   });
+  await context.addInitScript(installChatConversationCapture, { timeoutMs: 5000 });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   page.on("pageerror", (error) => errors.push(redact(error)));
@@ -96,15 +165,62 @@ try {
   });
   if (!bootstrap.ok()) throw new Error(`Authenticated bootstrap failed: ${bootstrap.status()}`);
   const session = await bootstrap.json();
+  if (session.tenant?.id !== demoState.tenantId || !session.principal?.id)
+    throw new Error("Browser session does not match the selected local demo database tenant");
+  sessionIdentity = { tenantId: session.tenant.id, ownerId: session.principal.id };
   if (typeof session.csrf_token === "string") authenticationValues.add(session.csrf_token);
   const writeHeaders = {
     origin: base.origin,
     "x-subkit-client": "cockpit",
     "x-subkit-csrf": session.csrf_token,
   };
+  if (cleanupOnly) {
+    const recovery = await recoverOwnedConversationReceipts({
+      directory,
+      instance: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+      databaseGeneration,
+      tenantId: sessionIdentity.tenantId,
+      ownerId: sessionIdentity.ownerId,
+      readDirectory: readdir,
+      readFile,
+      lstat,
+      unlink,
+      cleanup: (id, ownedReceipt) =>
+        deleteOwnedConversation({
+          id,
+          receipt: ownedReceipt,
+          selectedInstance: {
+            key: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+            databaseGeneration,
+          },
+          currentInstance: {
+            key: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+            databaseGeneration,
+          },
+          tenantId: sessionIdentity.tenantId,
+          ownerId: sessionIdentity.ownerId,
+          headers: { ...writeHeaders, ...sessionHeaders },
+          request: {
+            delete: (path, options) => context.request.delete(`${base.origin}${path}`, options),
+            post: (path, options) => context.request.post(`${base.origin}${path}`, options),
+          },
+        }),
+    });
+    receipt.chatCleanupRecovery = recovery;
+    errors.push(...recovery.failures.map(redact));
+    console.log(`PASS local conversation cleanup recovery: ${recovery.cleaned} removed`);
+  }
   receipt.checks.push("browser-api-key-login");
   console.log("PASS browser-api-key-login");
-  if (!readOnly && !chatOnly && !workspaceOnly) {
+  const shouldLoadWorkflowCleanup = shouldLoadBrowserWorkflowCleanup({
+    readOnly,
+    chatOnly,
+    workspaceOnly,
+    cleanupOnly,
+    apiReceiptPresent: existsSync(resolve(directory, "local-functional-journey.json")),
+    browserReceiptPresent: existsSync(resolve(directory, "browser-workflow-functional.json")),
+  });
+  if (shouldLoadWorkflowCleanup) {
     const apiReceipt = JSON.parse(
       await readFile(resolve(directory, "local-functional-journey.json"), "utf8"),
     );
@@ -235,7 +351,8 @@ try {
       (url) => /\/cockpit\/chat\/[^/]+$/.test(url.pathname) && !url.pathname.endsWith("/new"),
       { timeout: 90000 },
     );
-    const id = new URL(page.url()).pathname.split("/").at(-1);
+    const id = ownedConversation?.id;
+    if (!id) throw new Error("No server-originated conversation ownership receipt was captured");
     let assistant = null;
     for (let attempt = 0; attempt < 90; attempt += 1) {
       const response = await context.request.get(`${base.origin}/v1/conversations/${id}`, {
@@ -370,6 +487,63 @@ try {
       },
     });
     errors.push(...failures.map(redact));
+  }
+  if (ownedConversation) {
+    try {
+      const currentBuild = JSON.parse(await readFile(resolve(directory, "build.json"), "utf8"));
+      const currentMarker = readCockpitDemoMarker(instance);
+      assertCockpitDemoMarker(currentMarker, instance);
+      if (
+        currentMarker.source !== currentBuild.source ||
+        currentMarker.image !== currentBuild.image
+      ) {
+        errors.push("Owned conversation cleanup failed: local build identity changed");
+      } else {
+        const currentState = JSON.parse(await readFile(resolve(directory, "state.json"), "utf8"));
+        const currentDatabaseGeneration = cockpitDemoDatabaseGeneration(instance, process.cwd());
+        const currentGeneration = createHash("sha256")
+          .update(
+            JSON.stringify({
+              project: instance.project,
+              apiPort: instance.apiPort,
+              dbPort: instance.dbPort,
+              tenantId: currentState.tenantId,
+              source: currentBuild.source,
+              image: currentBuild.image,
+              database: currentDatabaseGeneration,
+            }),
+          )
+          .digest("hex");
+        const result = await deleteOwnedConversation({
+          id: ownedConversation.id,
+          receipt: ownedConversation,
+          selectedInstance: {
+            key: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+            databaseGeneration,
+          },
+          currentInstance: {
+            key: `${instance.project}:${instance.apiPort}:${instance.dbPort}`,
+            databaseGeneration: currentGeneration,
+          },
+          tenantId: currentState.tenantId,
+          ownerId: sessionIdentity?.ownerId,
+          headers: { ...writeHeaders, ...sessionHeaders },
+          request: {
+            delete: (path, options) => context.request.delete(`${base.origin}${path}`, options),
+            post: (path, options) => context.request.post(`${base.origin}${path}`, options),
+          },
+        });
+        receipt.chat = {
+          ...(receipt.chat ?? {}),
+          conversationId: ownedConversation.id,
+          deleted: true,
+          alreadyMissing: result.alreadyMissing,
+        };
+        await unlink(chatOwnershipPath).catch(() => {});
+      }
+    } catch (error) {
+      errors.push(`Owned conversation cleanup failed: ${redact(error)}`);
+    }
   }
   if (errors.length) {
     receipt.passed = false;

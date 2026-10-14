@@ -193,15 +193,21 @@ describe("cockpit demo instance identity", () => {
     }
   });
 
-  test("requires a matching marker only for destructive lifecycle actions", () => {
+  test("requires a matching marker before stop, restart, or reset", () => {
     const instance = resolveCockpitDemoInstance({}, "/repo");
+    const marker = cockpitDemoMarker(instance, "sha256:image", "sha256:source");
 
-    expect(() => assertCockpitDemoActionMarker(new Set(["--reset"]), null, instance)).toThrow(
-      "missing or invalid",
-    );
-    expect(() => assertCockpitDemoActionMarker(new Set(["--stop"]), null, instance)).toThrow(
-      "missing or invalid",
-    );
+    for (const action of ["--stop", "--restart", "--reset"]) {
+      expect(() => assertCockpitDemoActionMarker(new Set([action]), null, instance)).toThrow(
+        "missing or invalid",
+      );
+      expect(() =>
+        assertCockpitDemoActionMarker(new Set([action]), { ...marker, dbPort: 55440 }, instance),
+      ).toThrow("does not match");
+      expect(() =>
+        assertCockpitDemoActionMarker(new Set([action]), marker, instance),
+      ).not.toThrow();
+    }
     expect(() => assertCockpitDemoActionMarker(new Set(), null, instance)).not.toThrow();
   });
 });
