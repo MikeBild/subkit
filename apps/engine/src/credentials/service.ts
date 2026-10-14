@@ -248,10 +248,6 @@ export type CredentialWriteSource =
   | "credential_setup_grant"
   | "unspecified";
 
-function toBuf(u: Uint8Array): Buffer {
-  return Buffer.from(u);
-}
-
 export async function upsertCredential(
   input: UpsertCredentialInput,
   exec?: Executor,
@@ -305,16 +301,16 @@ export async function upsertCredential(
           connector_id: input.connector_id,
           environment: input.environment,
           mode: input.mode,
-          ciphertext: toBuf(placeholder.ciphertext),
-          iv: toBuf(placeholder.iv),
-          auth_tag: toBuf(placeholder.auth_tag),
+          ciphertext: Buffer.from(placeholder.ciphertext),
+          iv: Buffer.from(placeholder.iv),
+          auth_tag: Buffer.from(placeholder.auth_tag),
         })
         .returning({ id: credentials.id });
       if (!row) throw new Error("credential insert returned no row");
       id = row.id;
     } else {
       const inserted = await tx.execute(
-        sql`insert into ${credentials} ("tenant_id", "connector_id", "environment", "mode", "ciphertext", "iv", "auth_tag") values (${input.tenant_id}, ${input.connector_id}, ${input.environment}, ${input.mode}, ${toBuf(placeholder.ciphertext)}, ${toBuf(placeholder.iv)}, ${toBuf(placeholder.auth_tag)}) returning "id"`,
+        sql`insert into ${credentials} ("tenant_id", "connector_id", "environment", "mode", "ciphertext", "iv", "auth_tag") values (${input.tenant_id}, ${input.connector_id}, ${input.environment}, ${input.mode}, ${Buffer.from(placeholder.ciphertext)}, ${Buffer.from(placeholder.iv)}, ${Buffer.from(placeholder.auth_tag)}) returning "id"`,
       );
       const row = (inserted.rows as Array<{ id: string }>)[0];
       if (!row) throw new Error("credential insert returned no row");
@@ -384,12 +380,12 @@ export async function upsertCredential(
                 : null,
             }
           : {}),
-        ciphertext: toBuf(payload.ciphertext),
-        iv: toBuf(payload.iv),
-        auth_tag: toBuf(payload.auth_tag),
-        oauth2_refresh_ciphertext: refreshPayload ? toBuf(refreshPayload.ciphertext) : null,
-        oauth2_refresh_iv: refreshPayload ? toBuf(refreshPayload.iv) : null,
-        oauth2_refresh_auth_tag: refreshPayload ? toBuf(refreshPayload.auth_tag) : null,
+        ciphertext: Buffer.from(payload.ciphertext),
+        iv: Buffer.from(payload.iv),
+        auth_tag: Buffer.from(payload.auth_tag),
+        oauth2_refresh_ciphertext: refreshPayload ? Buffer.from(refreshPayload.ciphertext) : null,
+        oauth2_refresh_iv: refreshPayload ? Buffer.from(refreshPayload.iv) : null,
+        oauth2_refresh_auth_tag: refreshPayload ? Buffer.from(refreshPayload.auth_tag) : null,
         oauth2_expires_at: input.oauth2_expires_at ?? null,
         granted_scopes: grantedScopes,
         ...(withAuthorityRevision && authorityChanged
@@ -520,14 +516,14 @@ export async function rotateOAuth2Tokens(
                 : null,
             }
           : {}),
-        ciphertext: toBuf(payload.ciphertext),
-        iv: toBuf(payload.iv),
-        auth_tag: toBuf(payload.auth_tag),
+        ciphertext: Buffer.from(payload.ciphertext),
+        iv: Buffer.from(payload.iv),
+        auth_tag: Buffer.from(payload.auth_tag),
         ...(refreshPayload
           ? {
-              oauth2_refresh_ciphertext: toBuf(refreshPayload.ciphertext),
-              oauth2_refresh_iv: toBuf(refreshPayload.iv),
-              oauth2_refresh_auth_tag: toBuf(refreshPayload.auth_tag),
+              oauth2_refresh_ciphertext: Buffer.from(refreshPayload.ciphertext),
+              oauth2_refresh_iv: Buffer.from(refreshPayload.iv),
+              oauth2_refresh_auth_tag: Buffer.from(refreshPayload.auth_tag),
             }
           : {}),
         granted_scopes: nextScope,

@@ -1,7 +1,6 @@
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import { ErrorSchema } from "../../../api/common-schemas.ts";
-import { actorOf } from "../../../audit/actor.ts";
-import { AuditAction, auditAwait } from "../../../audit/index.ts";
+import { AuditAction, actorOf, auditAwait } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import {
   resolveConnectorTemplate,

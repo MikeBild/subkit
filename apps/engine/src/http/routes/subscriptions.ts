@@ -1,8 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { and, eq } from "drizzle-orm";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { actorOf } from "../../audit/actor.ts";
-import { AuditAction, audit } from "../../audit/index.ts";
+import { AuditAction, actorOf, audit } from "../../audit/index.ts";
 import { deliveries, events } from "../../db/schema/index.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";

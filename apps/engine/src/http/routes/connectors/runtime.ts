@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../../api/common-schemas.ts";
-import { actorOf } from "../../../audit/actor.ts";
+import { actorOf } from "../../../audit/index.ts";
 import * as connectorSvc from "../../../connectors/index.ts";
 import { PREVIEW_CLASSIFICATIONS } from "../../../execution/index.ts";
 import { NotFoundError, UnprocessableEntityError } from "../../errors.ts";

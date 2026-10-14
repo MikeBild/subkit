@@ -1,6 +1,6 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { ErrorSchema, IdParam } from "../../api/common-schemas.ts";
-import { actorOf } from "../../audit/actor.ts";
+import { actorOf } from "../../audit/index.ts";
 import { getBoss } from "../../queue/index.ts";
 import * as svc from "../../webhooks/index.ts";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors.ts";
