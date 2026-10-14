@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { auditLog, tenants } from "../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../db/tests/setup.ts";
+import { createDeterministicUuidFactory } from "../test-helpers/determinism/ids.ts";
 import { createSubscription } from "../webhooks/outbound/service.ts";
 import { EngineClient } from "./index.ts";
+
+const deterministicUuid = createDeterministicUuidFactory(0x51b5c);
 
 let testDb: TestDb;
 
@@ -37,8 +39,8 @@ test("EngineClient subscription update and delete retain user and service-accoun
     );
   const userSubscription = await create("user");
   const accountSubscription = await create("account");
-  const userId = randomUUID();
-  const accountId = randomUUID();
+  const userId = deterministicUuid();
+  const accountId = deterministicUuid();
   const userClient = new EngineClient({
     tenant_id: tenant.id,
     actor_id: userId,

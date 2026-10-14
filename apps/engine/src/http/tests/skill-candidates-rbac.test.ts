@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { AuditAction } from "../../audit/types.ts";
 import {
@@ -10,7 +10,10 @@ import {
   systemAccounts,
 } from "../../db/schema/index.ts";
 import { builtinRoleId } from "../../rbac/roles.ts";
+import { createDeterministicHexFactory } from "../../test-helpers/determinism/ids.ts";
 import { createHttpTestServer, type HttpTestServer } from "./setup.ts";
+
+const nextHex = createDeterministicHexFactory(0x5c1bac);
 
 let srv: HttpTestServer;
 
@@ -24,7 +27,7 @@ function sha256Hex(v: string): string {
 }
 
 async function mintKey(scopes: string[]): Promise<string> {
-  const rand = randomBytes(24).toString("base64url").slice(0, 32); // allow-random: test only
+  const rand = Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32);
   const plaintext = `wf_live_${rand}`;
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
@@ -68,7 +71,7 @@ beforeAll(async () => {
     .update(systemAccounts)
     .set({ role_id: await builtinRoleId(srv.db, "admin") })
     .where(eq(systemAccounts.id, srv.systemAccountId));
-  const systemPlaintext = `wf_live_${randomBytes(24).toString("base64url").slice(0, 32)}`;
+  const systemPlaintext = `wf_live_${Buffer.from(nextHex(24), "hex").toString("base64url").slice(0, 32)}`;
   await srv.db.insert(apiKeys).values({
     tenant_id: srv.tenantId,
     system_account_id: srv.systemAccountId,

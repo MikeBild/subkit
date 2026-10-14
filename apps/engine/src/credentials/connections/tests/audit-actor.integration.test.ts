@@ -11,6 +11,7 @@ import {
 } from "../../../db/schema/index.ts";
 import { createHttpTestServer, type HttpTestServer } from "../../../http/tests/setup.ts";
 import { builtinRoleId } from "../../../rbac/roles.ts";
+import { getTestNow } from "../../../test-helpers/determinism/clock.ts";
 import { refreshDueConnections } from "../service.ts";
 import { type FakeOAuthServer, startFakeOAuthServer } from "./fake-oauth-server.ts";
 
@@ -294,7 +295,7 @@ test("connection callbacks preserve actors, ownership, and system refresh proven
 
   await server.db
     .update(outboundConnections)
-    .set({ expires_at: new Date(Date.now() + 60_000) })
+    .set({ expires_at: new Date(getTestNow() + 60_000) })
     .where(eq(outboundConnections.id, connection.id));
   expect(await refreshDueConnections(server.db)).toEqual({ refreshed: 1, failed: 0 });
   const [refresh] = await server.db

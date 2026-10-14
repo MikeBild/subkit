@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import { and, eq } from "drizzle-orm";
 import { auditLog, connectors, credentials } from "../../../db/schema/index.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { createEmptyDraftDocument } from "../../authoring-state.ts";
 import { createConversation } from "../../service.ts";
 import { type ConversationTestCtx, createConversationTestCtx } from "../../tests/setup.ts";
@@ -14,6 +15,8 @@ import { startConnectorFromDescriptionTool } from "../start-connector-from-descr
 import { startConnectorFromTemplateTool } from "../start-connector-from-template.ts";
 import { suggestConnectorTemplatesTool } from "../suggest-connector-templates.ts";
 import { validateConnectorDraftTool } from "../validate-connector-draft.ts";
+
+const nextActorId = createDeterministicUuidFactory(0xc8e3a5);
 
 let ctx: ConversationTestCtx;
 let server: ReturnType<typeof Bun.serve>;
@@ -405,7 +408,7 @@ describe("connector draft tools", () => {
 
   test("system-account engine context is retained in the connector-probe audit row", async () => {
     const toolCtx = await createToolCtx();
-    const systemAccountId = crypto.randomUUID();
+    const systemAccountId = nextActorId();
     toolCtx.base.actor_id = null;
     toolCtx.base.engineClient = new EngineClient({
       tenant_id: ctx.tenant_id,

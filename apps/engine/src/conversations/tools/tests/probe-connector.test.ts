@@ -5,6 +5,7 @@ import { upsertCredential } from "../../../credentials/service.ts";
 import { auditLog, connectors, roles, tenants, users } from "../../../db/schema/index.ts";
 import { createTestDb, type TestDb } from "../../../db/tests/setup.ts";
 import { EngineClient } from "../../../engine-client/index.ts";
+import { createDeterministicUuidFactory } from "../../../test-helpers/determinism/ids.ts";
 import { grantApproval } from "../../../tools/approval.ts";
 import { dispatchTool } from "../../../tools/dispatcher.ts";
 import { conversationToolProvider } from "../../../tools/providers/conversation.ts";
@@ -21,6 +22,8 @@ interface CapturedReq {
 }
 
 const CANARY = "SHOULD-NEVER-APPEAR-IN-AUDIT-c4n4ry";
+
+const nextActorId = createDeterministicUuidFactory(0xeac5f7);
 
 let ctx: TestDb;
 let server: Server;
@@ -454,7 +457,7 @@ describe("probe_connector — audit hygiene", () => {
 
   test("probe audit preserves the resolved system-account actor", async () => {
     const env = await seedProbeConnector({ slug: "system_actor_probe", tokenValue: CANARY });
-    const actorId = crypto.randomUUID();
+    const actorId = nextActorId();
     const tctx = makeToolContext(env);
     tctx.actor_id = actorId;
     tctx.principal = {

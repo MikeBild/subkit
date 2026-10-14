@@ -128,7 +128,7 @@ describe("inspect_role", () => {
 
 describe("edit_role", () => {
   test("system-account principal is retained in the role-update audit row", async () => {
-    const systemAccountId = crypto.randomUUID();
+    const systemAccountId = uuid();
     const machineRole = await createRole(ctx.db, tenant_id, "machine_role", "Machine role");
     const toolCtx = {
       ...makeToolCtx(),
