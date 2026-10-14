@@ -5,6 +5,15 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cockpitDemoCheckoutFingerprint } from "./lib/cockpit-demo-fingerprint.ts";
+import {
+  assertCockpitDemoActionMarker,
+  assertCockpitDemoMarker,
+  cockpitDemoImage,
+  cockpitDemoMarker,
+  readCockpitDemoMarker,
+  resolveCockpitDemoInstance,
+} from "./lib/cockpit-demo-instance.ts";
 import {
   cockpitDemoId,
   cockpitDemoManifest,
@@ -14,11 +23,14 @@ import {
 import { dockerAvailableKiB, dockerStorageProblem } from "./lib/cockpit-demo-storage.ts";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const PROJECT = "subkit-cockpit-demo";
-const IMAGE = "subkit:cockpit-demo";
-const PORT = process.env.SUBKIT_TEST_PORT || "3000";
-const BASE = `http://127.0.0.1:${PORT}`;
-const STATE_DIR = join(ROOT, ".artifacts", "cockpit-demo");
+const INSTANCE = resolveCockpitDemoInstance(process.env, ROOT);
+const IMAGE = cockpitDemoImage(INSTANCE);
+const PROJECT = INSTANCE.project;
+const PORT = String(INSTANCE.apiPort);
+const DB_PORT = String(INSTANCE.dbPort);
+const BASE = INSTANCE.baseUrl;
+const STATE_DIR = INSTANCE.stateDir;
+const MARKER_FILE = join(STATE_DIR, "instance.json");
 const KEY_FILE = join(STATE_DIR, "api-key.txt");
 const STATE_FILE = join(STATE_DIR, "state.json");
 const BUILD_FILE = join(STATE_DIR, "build.json");
@@ -33,7 +45,15 @@ const COMPOSE = [
   "-f",
   "docker-compose.demo.yml",
 ];
-const env = { ...process.env, SUBKIT_TEST_IMAGE: IMAGE, SUBKIT_TEST_PORT: PORT };
+const env = {
+  ...process.env,
+  SUBKIT_DB_PORT: DB_PORT,
+  SUBKIT_TEST_IMAGE: IMAGE,
+  SUBKIT_TEST_PORT: PORT,
+  SUBKIT_DEMO_STATE_DIR: STATE_DIR,
+  SUBKIT_DEMO_URL: BASE,
+  ...(INSTANCE.id ? { SUBKIT_DEMO_INSTANCE: INSTANCE.id } : {}),
+};
 let key = "";
 
 type DemoState = {
@@ -68,6 +88,7 @@ function readJson<T>(file: string): T | null {
 
 function save(file: string, value: unknown): void {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+  chmodSync(STATE_DIR, 0o700);
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   chmodSync(file, 0o600);
 }
@@ -125,39 +146,7 @@ async function keyWorks(): Promise<boolean> {
 }
 
 function sourceFingerprint(): string {
-  const paths = spawnSync(
-    "git",
-    [
-      "ls-files",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "-z",
-      "apps",
-      "packages",
-      "assets",
-      "Dockerfile",
-      ".dockerignore",
-      "package.json",
-      "bun.lock",
-      "bunfig.toml",
-      "tsconfig.json",
-      "scripts/gen-embedded-cockpit.ts",
-      "scripts/build-clipper.ts",
-      "scripts/fetch-embedding-assets.ts",
-      "scripts/stage-cli-binaries.ts",
-      "deploy/docker",
-    ],
-    { cwd: ROOT, encoding: "utf8" },
-  );
-  if (paths.status !== 0) fail("Cannot identify the local source files");
-  const hash = createHash("sha256");
-  for (const name of [...new Set(paths.stdout.split("\0"))].sort()) {
-    if (!name || /(?:\.test\.|\/tests\/|\/__tests__\/|\/node_modules\/)/.test(name)) continue;
-    const path = join(ROOT, name);
-    if (existsSync(path)) hash.update(name).update(readFileSync(path));
-  }
-  return hash.digest("hex");
+  return cockpitDemoCheckoutFingerprint(ROOT);
 }
 
 function imageId(): string {
@@ -333,14 +322,17 @@ async function verifyLogin(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  if (!/^\d+$/.test(PORT) || Number(PORT) < 1 || Number(PORT) > 65535)
-    fail("SUBKIT_TEST_PORT must be a valid port");
   const args = new Set(process.argv.slice(2));
   for (const arg of args)
     if (
       !["--stop", "--reset", "--restart", "--rebuild", "--mock", "--status", "--key"].includes(arg)
     )
       fail(`Unknown option: ${arg}`);
+  const marker = readCockpitDemoMarker(INSTANCE);
+  if (marker) assertCockpitDemoMarker(marker, INSTANCE);
+  assertCockpitDemoActionMarker(args, marker, INSTANCE);
+  if (existsSync(STATE_DIR)) chmodSync(STATE_DIR, 0o700);
+  if (existsSync(KEY_FILE)) chmodSync(KEY_FILE, 0o600);
   if (args.has("--key")) {
     process.stdout.write(readFileSync(KEY_FILE, "utf8"));
     return;
@@ -359,7 +351,7 @@ async function main(): Promise<void> {
     return;
   }
   if (args.has("--reset")) {
-    process.stdout.write("Resetting only the subkit-cockpit-demo containers and volumes.\n");
+    process.stdout.write(`Resetting only the ${PROJECT} containers and volumes.\n`);
     if (run(["down", "--volumes", "--remove-orphans"]).status !== 0) fail("Demo reset failed");
     for (const name of [KEY_FILE, STATE_FILE, join(STATE_DIR, "receipt.json")])
       rmSync(name, { force: true });
@@ -384,7 +376,9 @@ async function main(): Promise<void> {
   if (run(["up", "-d", "--wait", "--no-build"]).status !== 0)
     fail("The isolated demo stack did not become healthy");
   checkDockerStorage(false);
-  save(BUILD_FILE, { source: fingerprint, image: imageId() });
+  const currentImage = imageId();
+  save(BUILD_FILE, { source: fingerprint, image: currentImage });
+  save(MARKER_FILE, cockpitDemoMarker(INSTANCE, currentImage, fingerprint));
 
   let freshSetup = false;
   key = existsSync(KEY_FILE) ? readFileSync(KEY_FILE, "utf8").trim() : "";

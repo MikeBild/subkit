@@ -23,7 +23,7 @@ services:
       retries: 30
 
   engine:
-    image: subkit:cockpit-demo
+    image: ${SUBKIT_TEST_IMAGE:-subkit:cockpit-demo}
     depends_on:
       demo-api:
         condition: service_healthy
