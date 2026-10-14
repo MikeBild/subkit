@@ -89,8 +89,10 @@ export async function verifyManagementEvidence(
   const formatDate = (value) => formatDateTime(locale, value);
   let entries = [];
   const auditWrites = [];
+  const auditRequests = [];
   const auditRequestListener = (request) => {
     const url = new URL(request.url());
+    if (url.pathname === "/v1/audit-log") auditRequests.push(url);
     if (url.pathname.startsWith("/v1/") && request.method() !== "GET")
       auditWrites.push({ method: request.method(), path: url.pathname });
   };
@@ -255,7 +257,31 @@ export async function verifyManagementEvidence(
             metadata: {},
           },
         ];
-        return { ...body, items: entries, next_cursor: null };
+        const resourceTypes = requestUrl.searchParams.get("resource_types")?.split(",") ?? [];
+        const visibleEntries = resourceTypes.length
+          ? resourceTypes.includes("connector")
+            ? [
+                {
+                  ...body.items[0],
+                  ts: auditTimestamp(1),
+                  id: "fa9e3912-6ef1-4436-b6a9-d8953d552a66",
+                  actor_type: "user",
+                  actor_id: ACTOR_ID,
+                  action: "connector.created",
+                  resource_type: "connector",
+                  resource_id: "ab9d2917-023a-4e7d-9132-9f7d93dd3d04",
+                  resource_name: "Area filter connector",
+                  trace_id: null,
+                  result: "success",
+                  reason: null,
+                  before: null,
+                  after: null,
+                  metadata: {},
+                },
+              ]
+            : entries.filter((entry) => resourceTypes.includes(entry.resource_type))
+          : entries;
+        return { ...body, items: visibleEntries, next_cursor: null };
       });
     const auditId = /^\/v1\/audit-log\/([^/]+)$/.exec(path)?.[1];
     if (auditId && entries.some((entry) => entry.id === auditId))
@@ -330,6 +356,42 @@ export async function verifyManagementEvidence(
     const defaultWindowCount = translate(locale, "audit.countWindow", { count: 2 });
     require((await summaryNote.innerText()).trim() ===
       defaultWindowCount, "Default audit count must name the thirty-day window without an absolute-date chip");
+    const areaFilter = page.getByTestId("audit-scope-filter");
+    require((await areaFilter.innerText()).trim() ===
+      t("audit.scope.all"), "Audit area filter must default to the localized all-events option");
+    await areaFilter.click();
+    const areaOptions = page.getByRole("option");
+    const expectedAreaOptions = [
+      "audit.scope.all",
+      "resource.runs.title",
+      "resource.workflows.title",
+      "resource.connectors.title",
+      "resource.knowledge.title",
+      "resource.files.title",
+      "nav.chat",
+      "people.section.people",
+    ].map(t);
+    require((await areaOptions.allInnerTexts()).map((label) => label.trim()).join(" · ") ===
+      expectedAreaOptions.join(
+        " · ",
+      ), "Audit area filter must expose every localized area option in the established order");
+    const requestsBeforeConnectorFilter = auditRequests.length;
+    await page.getByRole("option", { name: t("resource.connectors.title"), exact: true }).click();
+    await contains(row(page, "data-table", 0), "Area filter connector", "connector area result");
+    const connectorAreaRequest = auditRequests
+      .slice(requestsBeforeConnectorFilter)
+      .find(
+        (request) =>
+          request.searchParams.get("resource_types") === "connector,credential,connection",
+      );
+    require(connectorAreaRequest, "Selecting the connector area must request its exact resource types from the audit API");
+    require((await row(page, "data-table", 1).count()) ===
+      0, "Selecting the connector area must exclude every non-connector result");
+    require((await row(page, "data-table", 0).innerText()).includes(
+      t("audit.action.connectorCreated"),
+    ), "Connector area results must contain the localized connector event");
+    await areaFilter.click();
+    await page.getByRole("option", { name: t("audit.scope.all"), exact: true }).click();
     const deleted = row(page, "data-table", 0);
     const unknown = row(page, "data-table", 1);
     await contains(deleted, DELETED_NAME, "saved deleted object name");

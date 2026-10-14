@@ -36,7 +36,7 @@ describe("connector usage", () => {
 describe("connectors that count against health", () => {
   const state = {
     q: "",
-    status: "all",
+    status: "all" as const,
     category: "all",
     connector: "",
     health: "not_ok" as const,

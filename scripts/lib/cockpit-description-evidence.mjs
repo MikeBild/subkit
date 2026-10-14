@@ -222,9 +222,16 @@ export async function verifyDescriptionEvidence(
     await page.getByTestId("catalog-metadata-edit").click();
     const dialog = page.getByTestId("catalog-metadata-dialog");
     await dialog.waitFor({ state: "visible" });
-    await dialog.getByRole("heading", { name: t("catalogMeta.dialogTitle"), exact: true }).waitFor({
-      state: "visible",
+    const heading = dialog.getByRole("heading", {
+      name: t("catalogMeta.dialogTitle"),
+      exact: true,
     });
+    await heading.waitFor({ state: "visible" });
+    require((await heading.count()) === 1 &&
+      (await heading.innerText()).trim() ===
+        t(
+          "catalogMeta.dialogTitle",
+        ), `${record.kind} metadata dialog must show its exact heading once`);
     const resourceName =
       record.base.name ?? record.base.filename ?? record.base.title ?? record.base.display_name;
     const subtitle = `${t(`inbox.resource.${record.kind === "knowledge_source" ? "knowledgeSource" : record.kind}`)} · ${resourceName}`;

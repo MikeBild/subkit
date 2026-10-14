@@ -458,6 +458,33 @@ export async function verifyOverviewOperationsSummary(page, stand) {
   await connectorSubtitle.waitFor({ state: "visible" });
   if ((await connectorSubtitle.innerText()).trim() !== "5 brauchen Anmeldung")
     throw new Error("Overview connector subtitle did not show the exact localized sign-in count");
+  const budgetFigure = page.getByTestId("operations-figure-budget").filter({ visible: true });
+  await budgetFigure.waitFor({ state: "visible" });
+  const budgetLabel = (await budgetFigure.locator(":scope > p").nth(0).innerText()).trim();
+  if (budgetLabel !== "Nutzung · Monat")
+    throw new Error(
+      `Overview budget tile label showed "${budgetLabel}" instead of Nutzung · Monat`,
+    );
+  const budgetPrimary = budgetFigure.locator(":scope > p").nth(1);
+  const budgetAmount = (await budgetPrimary.locator("span").nth(0).innerText())
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (budgetAmount !== "mind. 412,87 €")
+    throw new Error(`Overview budget amount showed "${budgetAmount}" instead of mind. 412,87 €`);
+  const budgetShare = (await budgetPrimary.locator("span").nth(1).innerText())
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (budgetShare !== "95 % des Tokenkontingents")
+    throw new Error(
+      `Overview budget share showed "${budgetShare}" instead of 95 % des Tokenkontingents`,
+    );
+  if ((await budgetFigure.getAttribute("data-budget-pressure")) !== "critical")
+    throw new Error("Overview budget tile did not retain the critical budget pressure state");
+  const budgetText = await budgetFigure.innerText();
+  if (budgetText.includes("übrig") || budgetText.includes("7.500.000"))
+    throw new Error(
+      "Overview budget tile did not follow the approved shortened amount-and-percent display",
+    );
   const failureRow = page.getByTestId("overview-failures-row-0").filter({ visible: true });
   await failureRow.waitFor({ state: "visible" });
   const causeText = (await failureRow.locator("td").nth(1).innerText()).trim();

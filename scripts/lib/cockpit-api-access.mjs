@@ -70,8 +70,10 @@ export async function verifyApiAccess(page, stand, locale, fixture) {
   if (shape.tabs.join("|") !== TAB_NAMES[locale].join("|"))
     throw new Error(`${where}: the tabs are "${shape.tabs.join(", ")}"`);
   if (!shape.tabListVisible) throw new Error(`${where}: the tab bar is not on screen`);
-  if (shape.counts.apps !== null || shape.counts.keys !== null)
-    throw new Error(`${where}: a tab counts what needs nobody — ${JSON.stringify(shape.counts)}`);
+  if (shape.counts.apps !== null || shape.counts.keys !== "1")
+    throw new Error(
+      `${where}: the tabs should show one action-needed key only — ${JSON.stringify(shape.counts)}`,
+    );
 
   const appTable = page.getByTestId("connected-clients-desktop");
   const appHeaders = (await appTable.locator("thead th").allInnerTexts())
