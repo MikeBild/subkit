@@ -1,6 +1,21 @@
 import { expect, test } from "bun:test";
-import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
-import { type CatalogQueryState, catalogListParams, catalogOperatingStatus } from "./catalog-model";
+import {
+  CATALOG_WORKFLOW_FILTER_STATUSES,
+  type CatalogQueryState,
+  catalogListParams,
+  catalogOperatingStatus,
+} from "./catalog-model";
+
+const EXPECTED_WORKFLOW_FILTER_STATUSES = [
+  "active",
+  "waiting_approval",
+  "waiting_connector",
+  "failing",
+  "stopped",
+  "repair_required",
+  "unapproved",
+  "disabled",
+] as const;
 
 const state: CatalogQueryState = {
   q: "",
@@ -13,7 +28,9 @@ const state: CatalogQueryState = {
 };
 
 test("workflow operating filters use the server aggregate before pagination", () => {
-  for (const status of WORKFLOW_OPERATING_STATUSES) {
+  expect(CATALOG_WORKFLOW_FILTER_STATUSES).toEqual(EXPECTED_WORKFLOW_FILTER_STATUSES);
+  expect(CATALOG_WORKFLOW_FILTER_STATUSES).toHaveLength(8);
+  for (const status of EXPECTED_WORKFLOW_FILTER_STATUSES) {
     const params = catalogListParams("workflows", { ...state, status });
     expect(params.operating_status).toBe(status);
     expect(params).not.toHaveProperty("status");

@@ -666,6 +666,7 @@ const API_KEYS = [
     id: index === 0 ? uuid : `00000000-0000-4000-9500-${String(index).padStart(12, "0")}`,
     name,
     prefix: index === 0 ? "wf_live_demo" : `wf_live_key${index}`,
+    ...(index === 1 ? { expires_at: new Date(Date.now() + 3 * 86_400_000).toISOString() } : {}),
     ...(index === 0
       ? {
           user_id: uuid,

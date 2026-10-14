@@ -1,4 +1,3 @@
-import { WORKFLOW_OPERATING_STATUSES } from "@shared/workflow-operating-status.ts";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import type { SortingState } from "@tanstack/react-table";
@@ -30,9 +29,11 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { type CursorPage, useInfiniteList } from "@/lib/use-infinite-list";
 import { humanizeCategory } from "@/lib/workflow-category";
 import {
+  CATALOG_WORKFLOW_FILTER_STATUSES,
   catalogListParams,
   catalogOperatingStatus,
   OPERATING_STATUS_KEYS,
+  type WorkflowStatusFilter,
 } from "@/pages/catalog-model";
 import { driverLabel } from "@/pages/connector-detail-model";
 import {
@@ -49,7 +50,7 @@ type WorkflowListItem = components["schemas"]["WorkflowListItem"];
 interface CatalogState {
   kind: "all" | "oauth" | "mcp" | "key";
   q: string;
-  status: string;
+  status: WorkflowStatusFilter;
   category: string;
   connector: string;
   health: ConnectorHealthFilter | null;
@@ -74,7 +75,7 @@ interface CatalogConfig {
   summaryKeys: { one: TranslationKey; other: TranslationKey };
   actionKey?: TranslationKey;
   defaultSort: string;
-  statuses: readonly string[];
+  statuses: readonly WorkflowStatusFilter[];
 }
 
 const CONFIG: Record<CatalogResource, CatalogConfig> = {
@@ -89,7 +90,7 @@ const CONFIG: Record<CatalogResource, CatalogConfig> = {
     },
     actionKey: "resource.workflows.action",
     defaultSort: "updated_at",
-    statuses: WORKFLOW_OPERATING_STATUSES,
+    statuses: CATALOG_WORKFLOW_FILTER_STATUSES,
   },
   connectors: {
     endpoint: "/v1/connectors",
@@ -128,8 +129,8 @@ function parseState(config: CatalogConfig): CatalogState {
       ["oauth", "mcp", "key"].includes(params.get("kind") ?? "")
         ? (params.get("kind") as "oauth" | "mcp" | "key")
         : "all",
-    status: config.statuses.includes(params.get("operating_status") ?? "")
-      ? (params.get("operating_status") ?? "all")
+    status: config.statuses.includes(params.get("operating_status") as WorkflowStatusFilter)
+      ? (params.get("operating_status") as WorkflowStatusFilter)
       : "all",
     category: params.get("category") ?? "all",
     connector: params.get("connector") ?? "",
@@ -435,7 +436,7 @@ export function CatalogPage({
   if (resource === "workflows")
     selects.push({
       value: state.status,
-      onChange: (status) => setState({ status }),
+      onChange: (status) => setState({ status: status as WorkflowStatusFilter }),
       label: t("catalog.filterStatus"),
       testId: "catalog-status-filter",
       options: [

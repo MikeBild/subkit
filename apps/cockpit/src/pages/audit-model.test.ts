@@ -31,7 +31,7 @@ import {
   searchedActionParams,
   shortIdentifier,
 } from "@/pages/audit-model";
-import { auditAreaParams, auditObjectName, initialAuditFilter } from "./audit-model";
+import { AUDIT_AREAS, auditAreaParams, auditObjectName, initialAuditFilter } from "./audit-model";
 
 type AuditEntry = components["schemas"]["AuditEntry"];
 
@@ -899,9 +899,54 @@ describe("searching the whole record, not the rows on screen", () => {
 });
 
 test("audit areas select resource types on the server without changing actor identity", () => {
-  expect(auditAreaParams("all")).toEqual({});
-  expect(auditAreaParams("runs")).toEqual({ resource_types: "execution,execution_step" });
-  expect(auditAreaParams("people").resource_types?.split(",")).toContain("user");
+  expect(AUDIT_AREAS).toEqual({
+    all: [],
+    runs: ["execution", "execution_step"],
+    workflows: [
+      "workflow",
+      "workflow_version",
+      "workflow_execution_authority",
+      "workflow_schedule",
+    ],
+    connectors: ["connector", "credential", "connection"],
+    knowledge: ["knowledge_source", "knowledge_source_version", "skill", "skill_candidate"],
+    files: ["file"],
+    conversations: ["conversation", "conversation_elicitation"],
+    people: [
+      "user",
+      "user_identity",
+      "group",
+      "role",
+      "resource_grant",
+      "api_key",
+      "system_account",
+      "mcp_oauth_client",
+    ],
+  });
+  expect(
+    Object.fromEntries(
+      Object.keys(AUDIT_AREAS).map((area) => [
+        area,
+        auditAreaParams(area as keyof typeof AUDIT_AREAS),
+      ]),
+    ),
+  ).toEqual({
+    all: {},
+    runs: { resource_types: "execution,execution_step" },
+    workflows: {
+      resource_types: "workflow,workflow_version,workflow_execution_authority,workflow_schedule",
+    },
+    connectors: { resource_types: "connector,credential,connection" },
+    knowledge: {
+      resource_types: "knowledge_source,knowledge_source_version,skill,skill_candidate",
+    },
+    files: { resource_types: "file" },
+    conversations: { resource_types: "conversation,conversation_elicitation" },
+    people: {
+      resource_types:
+        "user,user_identity,group,role,resource_grant,api_key,system_account,mcp_oauth_client",
+    },
+  });
 });
 
 test("audit names prefer historical evidence and never guess from an identifier", () => {

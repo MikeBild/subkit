@@ -17,12 +17,26 @@ const STATUS_KEYS = {
   disabled: "workflowStrip.state.disabled",
   unknown: "automation.state.unknown",
 };
+const FILTERABLE_WORKFLOW_STATUSES = [
+  "active",
+  "waiting_approval",
+  "waiting_connector",
+  "failing",
+  "stopped",
+  "repair_required",
+  "unapproved",
+  "disabled",
+];
 const categoryAt = (index) => ["finance", "support", "other"][index % 3];
 const idAt = (kind, index) => `0a738614-5c4f-4a53-${kind}-${String(index + 1).padStart(12, "0")}`;
 const EXPECTED_KIND_SLUGS = {
   oauth: ["evidence-oauth"],
   mcp: ["evidence-mcp-known", "evidence-mcp-unknown", "evidence-mcp-empty", "evidence-mcp-oauth"],
   key: ["evidence-key"],
+};
+const SKILLS_SUMMARY_HELP_SENTENCES = {
+  de: "Beschreibung und Kategorie helfen der KI, die passenden Skills zu finden.",
+  en: "Description and category help the AI find the right skills.",
 };
 const title = (row) => row.name ?? row.display_name;
 
@@ -509,7 +523,33 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
       "workflow AI count",
     );
     const active = visibleRows(page).filter({ hasText: "Evidence active" });
-    await contains(active, t("catalogMeta.empty"), "missing description placeholder");
+    const missingDescription = active.getByText(t("catalogMeta.empty"), { exact: true });
+    require((await missingDescription.count()) ===
+      1, "A workflow with no description must render exactly one exact localized placeholder in its catalog row");
+    await missingDescription.waitFor({ state: "visible" });
+    const workflowStatusHeader = page
+      .getByTestId("data-table-desktop")
+      .getByRole("columnheader", { name: t("catalog.status"), exact: true })
+      .filter({ visible: true });
+    require((await workflowStatusHeader.count()) ===
+      1, "Workflow catalog must render exactly one visible Status column header");
+    await page.getByTestId("catalog-status-filter").click();
+    const statusOptions = page
+      .locator('[data-testid^="catalog-status-filter-option-"]')
+      .filter({ visible: true });
+    const actualStatusOptions = (await statusOptions.allTextContents()).map((label) =>
+      label.trim(),
+    );
+    const expectedStatusOptions = [
+      t("catalog.allStatuses"),
+      ...FILTERABLE_WORKFLOW_STATUSES.map((status) => t(STATUS_KEYS[status])),
+    ];
+    require(actualStatusOptions.length === expectedStatusOptions.length &&
+      actualStatusOptions.join("|") ===
+        expectedStatusOptions.join(
+          "|",
+        ), `Workflow status filter must expose the eight selectable workflow statuses in order; got ${JSON.stringify(await statusOptions.evaluateAll((items) => items.map((item) => ({ id: item.getAttribute("data-testid"), text: item.textContent?.trim() }))))}`);
+    await page.keyboard.press("Escape");
     const day = new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
       weekday: "long",
       timeZone: "UTC",
@@ -520,12 +560,20 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
       "saved schedule rhythm",
     );
     await capture("catalog-workflows-all");
-    for (const status of WORKFLOW_OPERATING_STATUSES) {
+    for (const status of FILTERABLE_WORKFLOW_STATUSES) {
       const requestStart = requests.length;
       await choose(page, "catalog-status-filter", status);
       const selected = workflow.filter((row) => row.operating_status === status);
       await expectRows("workflows", selected, { operating_status: status }, requestStart);
-      await contains(visibleRows(page), t(STATUS_KEYS[status]), "positive operating status");
+      const statusCell = visibleRows(page)
+        .filter({ hasText: title(selected[0]) })
+        .locator("td")
+        .nth(2);
+      require((await statusCell.innerText())
+        .trim()
+        .startsWith(
+          t(STATUS_KEYS[status]),
+        ), `Workflow ${status} must render its mapped status label in the Status column`);
       await capture(`catalog-status-${status}`);
     }
     await resetRows("workflows", workflow);
@@ -641,6 +689,23 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
       await capture(`catalog-${resource}-category`);
       await resetRows(resource, rows);
     }
+    await page.getByTestId("catalog-kind-filter").click();
+    const kindOptions = page
+      .locator('[data-testid^="catalog-kind-filter-option-"]')
+      .filter({ visible: true });
+    const actualKindOptions = (await kindOptions.allTextContents()).map((label) => label.trim());
+    const expectedKindOptions = [
+      t("catalog.kindAll"),
+      t("catalog.kind.oauth"),
+      t("catalog.kind.mcp"),
+      t("catalog.kind.key"),
+    ];
+    require(actualKindOptions.length === expectedKindOptions.length &&
+      actualKindOptions.join("|") ===
+        expectedKindOptions.join(
+          "|",
+        ), `Connector kind filter must expose All, OAuth, MCP, and key exactly; got ${JSON.stringify(actualKindOptions)}`);
+    await page.keyboard.press("Escape");
     for (const kind of ["oauth", "mcp", "key"]) {
       const requestStart = requests.length;
       const expected = EXPECTED_KIND_SLUGS[kind].map((slug) => {
@@ -737,6 +802,11 @@ export async function verifyCatalogEvidence(page, stand, locale, capture, { tena
         const helpDescription = await page
           .locator(`[id="${await help.getAttribute("aria-describedby")}"]`)
           .textContent();
+        const expectedHelpSentence = SKILLS_SUMMARY_HELP_SENTENCES[locale];
+        require(typeof expectedHelpSentence === "string" &&
+          helpDescription?.includes(
+            expectedHelpSentence,
+          ), `Skills help must state how description and category help AI find suitable skills in ${locale}`);
         require(helpDescription ===
           t(
             "skills.summaryHelp",

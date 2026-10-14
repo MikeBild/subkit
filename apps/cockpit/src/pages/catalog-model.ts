@@ -8,13 +8,26 @@ import type { ListParams } from "@/lib/use-infinite-list";
 export interface CatalogQueryState {
   q: string;
   kind?: "all" | "oauth" | "mcp" | "key";
-  status: string;
+  status: WorkflowStatusFilter;
   category: string;
   connector: string;
   health: "not_ok" | null;
   sort: string;
   order: "asc" | "desc";
 }
+
+export const CATALOG_WORKFLOW_FILTER_STATUSES = [
+  "active",
+  "waiting_approval",
+  "waiting_connector",
+  "failing",
+  "stopped",
+  "repair_required",
+  "unapproved",
+  "disabled",
+] as const satisfies readonly Exclude<WorkflowOperatingStatus, "unknown">[];
+
+export type WorkflowStatusFilter = (typeof CATALOG_WORKFLOW_FILTER_STATUSES)[number] | "all";
 
 export function catalogListParams(resource: string, state: CatalogQueryState): ListParams {
   const params: ListParams = { sort: state.sort, order: state.order };
