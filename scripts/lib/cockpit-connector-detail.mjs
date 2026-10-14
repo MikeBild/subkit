@@ -817,7 +817,9 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     const facts = await runtime.locator(":scope > div").evaluateAll((rows) =>
       rows.map((row) => {
         const label = row.querySelector("dt")?.cloneNode(true);
-        label?.querySelectorAll("[hidden]").forEach((hidden) => hidden.remove());
+        label?.querySelectorAll("[hidden]").forEach((hidden) => {
+          hidden.remove();
+        });
         return {
           label: label?.textContent?.trim(),
           value: row.querySelector("dd")?.textContent?.trim(),
@@ -1113,8 +1115,14 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       await search.fill(query);
       await visibleTools().filter({ hasText: "create_ticket" }).first().waitFor();
       const rows = await visibleTools().allInnerTexts();
-      if (rows.length !== 1 || !rows[0].includes("create_ticket") || rows[0].includes("search_items"))
-        throw new Error(`${where}: tool search '${query}' did not filter name or description: ${JSON.stringify(rows)}`);
+      if (
+        rows.length !== 1 ||
+        !rows[0].includes("create_ticket") ||
+        rows[0].includes("search_items")
+      )
+        throw new Error(
+          `${where}: tool search '${query}' did not filter name or description: ${JSON.stringify(rows)}`,
+        );
       await assertToolCount();
     }
     await search.fill("no-matching-tool");
@@ -1132,7 +1140,11 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
       .click();
     await second.waitFor({ state: "visible" });
     const restoredTools = await visibleTools().allInnerTexts();
-    if (restoredTools.length !== INSPECT.tools.length || !restoredTools.some((row) => row.includes("search_items")) || !restoredTools.some((row) => row.includes("create_ticket")))
+    if (
+      restoredTools.length !== INSPECT.tools.length ||
+      !restoredTools.some((row) => row.includes("search_items")) ||
+      !restoredTools.some((row) => row.includes("create_ticket"))
+    )
       throw new Error(`${where}: clearing tool search did not restore the inspected tools`);
     await assertToolCount();
     await page
@@ -1147,7 +1159,11 @@ export async function verifyConnectorDetail(page, stand, localeName, capture) {
     if (!(await toolSheet.innerText()).includes(INSPECT.tools[1].description))
       throw new Error(`${where}: tool sheet omits the inspected purpose`);
     const schemaBlock = toolSheet.getByTestId("connector-tool-input-schema");
-    if ((await schemaBlock.getByText(de ? "Eingabeschema" : "Input schema", { exact: true }).count()) !== 1)
+    if (
+      (await schemaBlock
+        .getByText(de ? "Eingabeschema" : "Input schema", { exact: true })
+        .count()) !== 1
+    )
       throw new Error(`${where}: tool sheet omits the localized input schema label`);
     const shownSchema = JSON.parse(await schemaBlock.locator("pre code").innerText());
     if (JSON.stringify(shownSchema) !== JSON.stringify(INSPECT.tools[1].input_schema))
