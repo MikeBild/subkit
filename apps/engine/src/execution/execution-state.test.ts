@@ -46,6 +46,7 @@ async function newQueued(
     source_ref: null,
     request_source,
     caller_context,
+    caller_origin: caller_context ? "principal" : "unknown",
   });
 }
 
